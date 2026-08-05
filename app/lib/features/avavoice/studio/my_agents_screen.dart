@@ -171,7 +171,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                               const SizedBox(height: Msg.s1),
                               Row(children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
                                   decoration: BoxDecoration(
                                     color: _statusColor(a.status),
                                     borderRadius: BorderRadius.circular(Msg.rPill),
@@ -204,7 +204,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
 
   Widget _empty() => Center(
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(Msg.s6),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: 72, height: 72,

@@ -257,7 +257,7 @@ class LiveMapScreen extends StatelessWidget {
                         bottom: 8,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                              horizontal: Msg.s2, vertical: 2),
                           color: Colors.white.withOpacity(0.7),
                           child: const Text('© OpenStreetMap',
                               style: TextStyle(fontSize: 9, color: Colors.black54)),
@@ -270,7 +270,7 @@ class LiveMapScreen extends StatelessWidget {
               SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                  padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s4),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,

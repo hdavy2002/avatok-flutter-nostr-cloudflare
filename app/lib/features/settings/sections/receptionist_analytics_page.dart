@@ -28,7 +28,7 @@ PreferredSizeWidget _darkHeader({required String title, String? tag}) {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: Row(children: [
             const AdBackButton(),
             const SizedBox(width: 8),
@@ -123,7 +123,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
         color: AD.iconSearch,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s6),
           children: [
             _daysChips(),
             const SizedBox(height: Msg.s3),
@@ -203,7 +203,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
   Widget _miniCard(String label, String value, IconData icon, Color accent) =>
       AdCard(
         radius: AD.rStatCard,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: icon, color: accent, size: 30),
           const SizedBox(height: Msg.s2),
@@ -223,7 +223,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
     final vm = _n(_totals['voicemails']);
     final total = (agent + vm).clamp(1, 1 << 31);
     return AdCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
@@ -272,7 +272,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
     if (hours.length < 24) return const SizedBox.shrink();
     final maxH = hours.fold<int>(1, (m, v) => v > m ? v : m);
     return AdCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
@@ -327,7 +327,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
     final first = (days.first['date'] ?? '').toString();
     final last = (days.last['date'] ?? '').toString();
     return AdCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
@@ -381,7 +381,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
     if (callers.isEmpty) return const SizedBox.shrink();
     final maxC = callers.fold<int>(1, (m, e) => _n(e['count']) > m ? _n(e['count']) : m);
     return AdCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
@@ -394,7 +394,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
         const SizedBox(height: Msg.s1),
         for (final c in callers)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s2),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
@@ -438,7 +438,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
     final maxC =
         countries.fold<int>(1, (m, e) => _n(e['count']) > m ? _n(e['count']) : m);
     return AdCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
@@ -451,7 +451,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
         const SizedBox(height: Msg.s1),
         for (final c in countries.take(12))
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s2),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [

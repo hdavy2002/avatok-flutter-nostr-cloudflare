@@ -135,7 +135,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,7 +165,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 color: AD.inputField,
                 borderRadius: BorderRadius.circular(AD.rInput),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     size: 18, color: AD.placeholderOnWhite),
@@ -181,7 +181,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                       border: InputBorder.none,
                       hintText: 'Email or AvaTOK number',
                       hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                      contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     ),
                   ),
                 ),
@@ -190,7 +190,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             const SizedBox(height: Msg.s2),
             if (_resolving)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s2),
                 child: Row(children: [
                   const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
                   const SizedBox(width: Msg.s2),
@@ -200,7 +200,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             if (_resolvedHit != null) _resolvedTile(_resolvedHit!),
             if (_resolvedMiss && !_resolving)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s2),
                 child: Text(
                     'No AvaTOK account for that. You can only find people by their '
                     'email or AvaTOK number — invite them below instead.',
@@ -226,7 +226,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               onTap: _inviting ? null : _invite,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 15),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 decoration: BoxDecoration(
                   color: AD.card,
                   borderRadius: Msg.brMd,

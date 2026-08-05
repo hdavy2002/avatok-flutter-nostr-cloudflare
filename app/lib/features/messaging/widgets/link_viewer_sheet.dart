@@ -279,7 +279,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                 onVerticalDragEnd: _onDragEnd,
                 behavior: HitTestBehavior.opaque,
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+                  padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s2),
                   child: Row(children: [
                     _RoundIconButton(
                       icon: PhosphorIcons.caretDown(PhosphorIconsStyle.regular),

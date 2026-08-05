@@ -127,7 +127,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
       body: ZinePaper(
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
             child: Row(children: [
               Expanded(child: ZineChip(label: 'Marketplace', active: _tabs.index == 0, onTap: () => _tabs.animateTo(0))),
               const SizedBox(width: Msg.s2),
@@ -160,7 +160,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
           ),
           const SizedBox(height: Msg.s3),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(Msg.s4),
             decoration: BoxDecoration(
               color: AD.card,
               borderRadius: BorderRadius.circular(Msg.rLg),
@@ -203,7 +203,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
               ),
             )
           else
-            ..._agents.map((a) => Padding(padding: const EdgeInsets.only(bottom: 10), child: AgentCard(agent: a, onTap: () => _openAgent(a)))),
+            ..._agents.map((a) => Padding(padding: const EdgeInsets.only(bottom: Msg.s3), child: AgentCard(agent: a, onTap: () => _openAgent(a)))),
         ],
       ),
     );
@@ -262,7 +262,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
                   color: AD.online,
                   radius: BorderRadius.circular(Msg.rPill),
                   boxShadow: Msg.none,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
                   child: Text('Join', style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
                 ),
               ],

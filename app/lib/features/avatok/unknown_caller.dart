@@ -184,7 +184,7 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

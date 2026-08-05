@@ -196,7 +196,7 @@ class WalletChipTrack extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: 5),
+                    const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                 decoration: BoxDecoration(
                   color: i == activeIndex ? AW.lime : Colors.transparent,
                   borderRadius: Msg.brPill,

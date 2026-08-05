@@ -538,7 +538,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     // `_controlRow` so that when translation is unavailable (every
     // `SizedBox.shrink()` return above) it collapsed to genuinely nothing, with
     // no phantom gap left hanging off the mic button.
-    if (!session) return Padding(padding: const EdgeInsets.only(left: 28), child: button);
+    if (!session) return Padding(padding: const EdgeInsets.only(left: Msg.s6), child: button);
 
     // Session detail. Only while translating, so an idle call shows a bare
     // circle indistinguishable from mute/speaker — which is the point.
@@ -559,7 +559,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
         GestureDetector(
           onTap: switching != null ? null : _switchLanguage,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
             decoration: BoxDecoration(
               color: AD.card,
               // A chip IS one of the shapes Msg.rPill is reserved for.
@@ -671,7 +671,7 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s1, Msg.s5, Msg.s3),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               widget.currentCode == null ? 'Translate incoming voice' : 'Change language',
@@ -713,7 +713,7 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
                       ),
                 hintText: 'Search languages',
                 hintStyle: ADText.preview(),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide(color: AD.borderControl, width: 1),

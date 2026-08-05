@@ -60,7 +60,7 @@ class AvaDocActions {
       return const <Widget>[];
     }
     Widget item(IconData icon, String label, Future<void> Function() run) => ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s5),
           leading: Icon(icon, color: AD.textPrimary),
           // The trailing "✨" was emoji in user-facing copy — now a Phosphor
           // sparkle beside the label.
@@ -202,7 +202,7 @@ class AvaDocActions {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, Msg.s4, 20, Msg.s2),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.regular),
                   size: 20, color: AD.textPrimary),

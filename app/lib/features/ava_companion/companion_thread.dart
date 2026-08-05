@@ -580,7 +580,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           Expanded(
             child: ListView.builder(
               controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
               itemCount: _msgs.length + (_busy ? 1 : 0),
               itemBuilder: (context, i) {
                 if (i >= _msgs.length) return _workingChip();
@@ -596,7 +596,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
 
   Widget _header() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 14, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s4, Msg.s3),
       decoration: const BoxDecoration(
         color: AD.headerFooter,
         border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
@@ -680,21 +680,21 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     final isAva = !m.me;
     final showListen = isAva && m.id != 'intro' && !m.blocked && AvaVoice.enabled;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Column(
         crossAxisAlignment:
             m.me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           if (isAva)
             Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 3),
+              padding: const EdgeInsets.only(left: Msg.s1, bottom: Msg.s1),
               child: Text('AVA', style: ADText.statCaption(c: AD.textSecondary)),
             ),
           if (m.text.trim().isNotEmpty)
             Container(
               constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width * 0.78),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
               decoration: BoxDecoration(
                 color: m.me ? AD.bubbleOutBg : AD.bubbleInBg,
                 borderRadius: m.me ? AD.bubbleOutRadius : AD.bubbleInRadius,
@@ -708,7 +708,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           // the image is being created, then replaced by the real image.
           if (m.imageGenerating)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Msg.s2),
               child: Container(
                 width: 240,
                 height: 200,
@@ -735,7 +735,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           // Disk-cached so they load instantly on reopen (no re-download).
           for (final url in m.images)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Msg.s2),
               child: GestureDetector(
                 onTap: () => _openImageFull(url),
                 child: CachedImage(url, width: 240, radius: BorderRadius.circular(14)),
@@ -763,7 +763,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           // Messenger thread (only when opened from a thread, i.e. onUseDraft set).
           if (isAva && m.id != 'intro' && !m.blocked && widget.discussContext != null)
             Padding(
-              padding: const EdgeInsets.only(top: 5, left: 2),
+              padding: const EdgeInsets.only(top: Msg.s2, left: 2),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 if (widget.onUseDraft != null) ...[
                   GestureDetector(
@@ -792,7 +792,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           // tools) or coins. Opens the top-up sheet ($10 unlocks everything).
           if (isAva && (m.reason == 'premium_required' || m.reason == 'insufficient_coins'))
             Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2),
+              padding: const EdgeInsets.only(top: Msg.s2, left: 2),
               child: ZinePressable(
                 onTap: () => AvaWalletHook.instance
                     .openTopUp(context, suggestedUsd: kMinTopUpUsd),
@@ -875,7 +875,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
 
   Widget _composer() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s3),
       decoration: const BoxDecoration(
         color: AD.headerFooter,
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
@@ -917,7 +917,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 borderRadius: BorderRadius.circular(AD.rInput),
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
               child: TextField(
                 controller: _input,
                 minLines: 1,

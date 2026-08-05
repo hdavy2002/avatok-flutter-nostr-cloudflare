@@ -7,6 +7,7 @@ import '../../../core/ui/zine_widgets.dart';
 import '../../campaigns/campaign_analytics_screen.dart';
 import '../../campaigns/campaigns_home_screen.dart';
 import '../settings_registry.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// Settings → "Campaigns" section (AVA-CAMP-FL-NAV — Specs/
 /// OUTBOUND-AI-CALLING-CAMPAIGNS.md). Two entries next to Ava Receptionist:
@@ -77,7 +78,7 @@ class _CampaignsCard extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(Msg.s3),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: iconColor, size: 36),
           const SizedBox(width: 12),

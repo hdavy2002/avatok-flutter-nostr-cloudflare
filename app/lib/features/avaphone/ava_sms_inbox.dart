@@ -112,7 +112,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
         bottom: false,
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
             child: Row(children: [
               Text('Messages', style: PhoneTheme.title(size: 24)),
               const Spacer(),
@@ -121,7 +121,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
             ]),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, 0, Msg.s5, Msg.s2),
             child: Text('Text any AvaTOK number — separate from your Messenger chats.',
                 style: PhoneTheme.sub(size: 12)),
           ),
@@ -180,7 +180,7 @@ class _SmsRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           PhoneTheme.ring(Avatar(
               seed: contact.uid, name: contact.name, size: 48,
@@ -272,7 +272,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
           borderRadius: Msg.brSheetTop,
           border: Border(top: BorderSide(color: PhoneTheme.border, width: 1.5)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(
             child: Container(width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
@@ -314,7 +314,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                 backgroundColor: PhoneTheme.accent,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(Msg.rMd),
                   side: const BorderSide(color: PhoneTheme.border, width: 2)),

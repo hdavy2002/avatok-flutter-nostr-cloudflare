@@ -178,7 +178,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
         ),
       ),
       Padding(
-        padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
+        padding: EdgeInsets.fromLTRB(hPad, Msg.s2, hPad, Msg.s5),
         child: Column(children: [
           ZineButton(
             label: 'Save & turn on Ava',
@@ -214,7 +214,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             ),
             const SizedBox(width: 12),
             Expanded(child: Padding(
-              padding: const EdgeInsets.only(top: 3),
+              padding: const EdgeInsets.only(top: Msg.s1),
               child: Text(text, style: ADText.preview()),
             )),
           ]),
@@ -276,12 +276,12 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                   .copyWith(fontSize: 16, letterSpacing: -0.18),
               border: InputBorder.none,
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
             ),
           ),
         ),
         if (trailing != null)
-          Padding(padding: const EdgeInsets.only(right: 14), child: trailing),
+          Padding(padding: const EdgeInsets.only(right: Msg.s4), child: trailing),
       ]),
     );
   }

@@ -52,7 +52,7 @@ class PaidBusyCard extends StatelessWidget {
         color: AD.card,
         radius: AD.rDialog,
         boxShadow: AD.dialogShadow,
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -114,7 +114,7 @@ Widget _adPillButton({
     borderWidth: 1,
     boxShadow: const <BoxShadow>[],
     radius: Msg.brMd,
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+    padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
     child: Row(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.center,

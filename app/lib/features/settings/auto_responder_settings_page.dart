@@ -192,7 +192,7 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -205,7 +205,7 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(Msg.s5),
               children: [
                 if (!_featureEnabled)
                   Padding(
@@ -380,7 +380,7 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
   Widget _timeField(String label, String value, VoidCallback onTap) => ZinePressable(
         onTap: onTap,
         radius: BorderRadius.circular(AD.rInput),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         color: AD.card,
         pressedColor: AD.cardHover,
         borderColor: AD.borderControl,

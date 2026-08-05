@@ -173,7 +173,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
       backgroundColor: AD.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.coins(PhosphorIconsStyle.fill), color: AD.incomingCall, size: 44),

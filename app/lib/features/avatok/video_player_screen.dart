@@ -90,7 +90,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 18, 10),
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s5, Msg.s3),
                 child: Row(children: [
                   const AdBackButton(),
                   const Spacer(),
@@ -109,7 +109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                  padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s4),
                   child: Row(children: [
                     ZinePressable(
                       onTap: () => setState(() => c.value.isPlaying ? c.pause() : c.play()),

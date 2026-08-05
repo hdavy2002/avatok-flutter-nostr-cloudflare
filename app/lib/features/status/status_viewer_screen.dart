@@ -102,7 +102,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
   Widget _media(StatusPost p) {
     if (p.media == null) {
       return Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(Msg.s6),
         child: Text(p.text ?? '',
             textAlign: TextAlign.center,
             style: ADText.bubbleBody().copyWith(fontSize: 20)),
@@ -124,7 +124,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
   }
 
   Widget _header() => Container(
-        padding: const EdgeInsets.fromLTRB(6, 8, 14, 10),
+        padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s4, Msg.s3),
         decoration: const BoxDecoration(
           // Scrim: white glyphs must stay legible over a bright photo.
           gradient: LinearGradient(

@@ -91,7 +91,7 @@ class AvaDialTheme {
       );
 
   static Widget chip(String label, {Color color = unknown, IconData? icon}) => Container(
-        padding: EdgeInsets.fromLTRB(icon == null ? 9 : 7, 3, 9, 3),
+        padding: EdgeInsets.fromLTRB(icon == null ? 9 : 7, Msg.s1, Msg.s3, Msg.s1),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.16),
           // Genuine status pill — one of the shapes rPill is reserved for.

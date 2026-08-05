@@ -90,7 +90,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
             : _categories.isEmpty
                 ? Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(28),
+                      padding: const EdgeInsets.all(Msg.s6),
                       child: ZineEmptyState(
                           icon: PhosphorIcons.eye(PhosphorIconsStyle.bold),
                           text: 'No templates are available on this device yet. '
@@ -107,10 +107,10 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
   // ── category grid ─────────────────────────────────────────────────────────
   Widget _categoryGrid() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
       children: [
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(Msg.s4),
           decoration: BoxDecoration(
             color: AD.card,
             borderRadius: BorderRadius.circular(Msg.rLg),
@@ -145,7 +145,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
       },
       radius: BorderRadius.circular(Msg.rLg),
       boxShadow: Msg.none,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
         ZineIconBadge(icon: _categoryIcon(c.capability), color: accent, size: 46),
         const SizedBox(width: Msg.s3),
@@ -168,7 +168,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
   // ── use-case template list ────────────────────────────────────────────────
   Widget _templateList(VisionCategory c) {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
       itemCount: c.templates.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (_, i) => _templateCard(c.templates[i]),
@@ -180,7 +180,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
       onTap: () => _pickTemplate(t),
       radius: BorderRadius.circular(Msg.rLg),
       boxShadow: Msg.none,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: _categoryIcon(t.capability), color: AD.tabCalls, size: 38),

@@ -742,7 +742,7 @@ class _CallScreenState extends State<CallScreen> {
         // avatar/status block below it has room to breathe.
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 0),
             child: Row(
               children: [
                 // Back = MINIMIZE (keeps the call alive as a PiP/pill), not hang up.
@@ -1115,7 +1115,7 @@ class _CallScreenState extends State<CallScreen> {
             child: Container(
               margin: EdgeInsets.fromLTRB(
                   12, 0, 12, 12 + (bottomInset > 0 ? bottomInset : 4)),
-              padding: const EdgeInsets.fromLTRB(8, 18, 8, 18),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s5, Msg.s2, Msg.s5),
               decoration: BoxDecoration(
                 color: light ? AD.card : Colors.black.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(AD.rSheet),
@@ -1292,7 +1292,7 @@ class _CallScreenState extends State<CallScreen> {
       shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: GridView.count(
             shrinkWrap: true,
             crossAxisCount: 3,
@@ -1407,7 +1407,7 @@ class _CallScreenState extends State<CallScreen> {
       shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 20, 8, 24),
+          padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s5, Msg.s2, Msg.s5),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -1827,7 +1827,7 @@ class _CallNetHudState extends State<_CallNetHud>
       child: AnimatedContainer(
         duration: Msg.slow,
         curve: Msg.curve,
-        padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
         decoration: BoxDecoration(
           color: _bg,
           borderRadius: Msg.brPill,
@@ -1880,7 +1880,7 @@ class _CallNetHudState extends State<_CallNetHud>
                 opacity: weak ? 1 : 0,
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                   decoration: BoxDecoration(
                     color: AD.danger,
                     borderRadius: Msg.brPill,
@@ -1917,7 +1917,7 @@ class _CallNetHudState extends State<_CallNetHud>
       ),
       builder: (_) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1953,7 +1953,7 @@ class _CallNetHudState extends State<_CallNetHud>
   }
 
   Widget _detailRow(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [

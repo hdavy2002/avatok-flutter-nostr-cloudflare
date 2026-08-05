@@ -16,6 +16,7 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../auto_download_settings_page.dart';
 import '../settings_registry.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 void registerAutoDownloadSection() {
   SettingsSectionRegistry.register(
@@ -68,7 +69,7 @@ class _AutoDownloadTileState extends State<_AutoDownloadTile> {
   Widget build(BuildContext context) {
     return AdCard(
       onTap: _open,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
         ZineIconBadge(
             icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.fill),

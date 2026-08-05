@@ -278,7 +278,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                         keyboard: TextInputType.phone)
                     : AdCard(
                         color: AvaDialTheme.surface2,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                         child: Text(widget.number,
                             style: AvaDialTheme.value(size: 16, color: AvaDialTheme.text)),
                       ),
@@ -312,7 +312,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                 if (_custom.isNotEmpty) _label('More fields'),
                 for (var i = 0; i < _custom.length; i++) ...[
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.only(bottom: Msg.s3),
                     child: Row(children: [
                       Expanded(
                         flex: 4,
@@ -367,7 +367,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
               ),
               child: SafeArea(
                 top: false,
-                minimum: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                minimum: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
                 child: AdButton(
                   label: widget.create ? 'Add contact' : 'Save',
                   variant: AdButtonVariant.primary,
@@ -380,7 +380,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
   }
 
   Widget _label(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.only(bottom: Msg.s2),
         child: Text(t, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
       );
 
@@ -407,7 +407,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         filled: true,
         fillColor: AvaDialTheme.surface2,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(

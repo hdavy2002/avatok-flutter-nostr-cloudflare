@@ -16,6 +16,7 @@ import '../../core/ringback_player.dart';
 import '../../core/ui/avatok_dark.dart';
 import 'call_screen.dart';
 import 'paid_busy_card.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// [AVA-IDGATE-1] Place a 1:1 AvaTOK call THROUGH POST /api/call.
 ///
@@ -195,7 +196,7 @@ Future<void> place1to1Call(
         body: SafeArea(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(Msg.s5),
               child: PaidBusyCard(
                 name: name,
                 message: msg,

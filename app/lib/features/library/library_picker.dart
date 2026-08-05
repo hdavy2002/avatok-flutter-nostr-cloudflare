@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title.
@@ -23,7 +24,7 @@ PreferredSizeWidget _darkHeader({
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: Row(children: [
             if (showBack) ...[
               const AdBackButton(),
@@ -97,7 +98,7 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
       appBar: _darkHeader(title: 'Add from Library'),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
           child: Row(children: [
             for (final f in const ['all', 'image', 'video', 'document']) ...[
               AdChip(label: _label(f), active: _filter == f, onTap: () => _setFilter(f)),
@@ -111,7 +112,7 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
               : _items.isEmpty
                   ? Center(child: Text('No files here yet.', style: ADText.preview()))
                   : GridView.builder(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(Msg.s4),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 0.8),
                       itemCount: _items.length,
@@ -150,7 +151,7 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
                 : _iconFor(it),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s2),
             child: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.statCaption(c: AD.textSecondary)),
           ),

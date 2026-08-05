@@ -450,7 +450,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
             GestureDetector(
               onTap: widget.onCycleSpeed,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                 decoration: BoxDecoration(
                   color: inkC.withValues(alpha: 0.10),
                   borderRadius: Msg.brPill,
@@ -595,7 +595,7 @@ class MediaTimestampScrim extends StatelessWidget {
         right: 0,
         bottom: 0,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 16, 8, 6),
+          padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s4, Msg.s2, Msg.s2),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -621,7 +621,7 @@ class MediaForwardedLabel extends StatelessWidget {
         left: 6,
         top: 6,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.6),
             borderRadius: Msg.brPill,
@@ -1164,7 +1164,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                 color: Colors.black.withValues(alpha: 0.62),
                 child: Row(children: [
                   Icon(info.icon, size: 16, color: Colors.white),
@@ -1377,7 +1377,7 @@ class _YouTubeCardState extends State<YouTubeCard> {
                   left: 8,
                   top: 8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: Msg.brPill,
@@ -1389,7 +1389,7 @@ class _YouTubeCardState extends State<YouTubeCard> {
             ),
           ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+          padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s3),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(
               _loadingMeta ? 'YouTube video' : (_title?.isNotEmpty == true ? _title! : 'YouTube video'),

@@ -58,7 +58,7 @@ class VisionBadge extends StatelessWidget {
   const VisionBadge({super.key});
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.tabCalls,
           borderRadius: Msg.brPill,
@@ -77,7 +77,7 @@ class FreeBadge extends StatelessWidget {
   const FreeBadge({super.key});
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.online,
           borderRadius: Msg.brPill,
@@ -171,7 +171,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           height: MediaQuery.of(context).size.height * .72,
           child: Column(children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s2),
               child: Text('Which language should the agent speak?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
             ),
             Padding(

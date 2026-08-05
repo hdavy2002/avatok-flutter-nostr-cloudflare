@@ -5,6 +5,7 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avaapps/avaapps_screen.dart';
 import '../settings_registry.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// Settings → "Tools & connectors" section. A single row that opens
 /// [AvaAppsScreen], where the user connects their own Google accounts
@@ -35,7 +36,7 @@ class _ToolsCard extends StatelessWidget {
         MaterialPageRoute(builder: (_) => const AvaAppsScreen()),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(Msg.s3),
         child: Row(children: [
           ZineIconBadge(
             icon: PhosphorIcons.plugs(PhosphorIconsStyle.fill),

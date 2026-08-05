@@ -629,7 +629,7 @@ class _WalletScreenState extends State<WalletScreen> {
           final valid = d != null && d >= minUnits && d <= maxUnits;
           final previewCoins = valid ? (d * tokensPerUnit).round() : 0;
           return Padding(
-            padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
+            padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, MediaQuery.of(c).viewInsets.bottom + 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Top up wallet', style: ADText.appTitle()),
               const SizedBox(height: Msg.s1),
@@ -699,7 +699,7 @@ class _WalletScreenState extends State<WalletScreen> {
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (c) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 24),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, MediaQuery.of(c).viewInsets.bottom + 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Top up wallet', style: ADText.appTitle()),
           const SizedBox(height: Msg.s1),

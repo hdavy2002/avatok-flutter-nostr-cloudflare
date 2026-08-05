@@ -38,7 +38,7 @@ class _LogPageState extends State<LogPage> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
                 AdBackButton(onTap: () => Navigator.of(context).maybePop()),
                 const SizedBox(width: Msg.s1),
@@ -86,10 +86,10 @@ class _LogPageState extends State<LogPage> {
         // 'relay') to validate the worst-case media path on demand. Device-level
         // tester knob — not per-account data.
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s3),
           child: AdCard(
             radius: AD.rListCard,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
             boxShadow: const [],
             child: Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -131,7 +131,7 @@ class _LogPageState extends State<LogPage> {
                   ]),
                 )
               : Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                  padding: const EdgeInsets.fromLTRB(Msg.s5, 0, Msg.s5, Msg.s3),
                   child: AdCard(
                     radius: AD.rListCard,
                     padding: EdgeInsets.zero,

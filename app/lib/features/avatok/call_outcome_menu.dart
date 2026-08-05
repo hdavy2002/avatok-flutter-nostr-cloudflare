@@ -272,7 +272,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
           color: AD.popover,
           radius: AD.rDialog,
           boxShadow: const [],
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
           child: Text('Sent — $_first will see it',
               textAlign: TextAlign.center, style: ADText.appTitle()),
         ),
@@ -285,7 +285,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
         color: AD.popover,
         radius: AD.rDialog,
         boxShadow: const [],
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -443,7 +443,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                   ),
                   isDense: true,
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
                 ),
               ),
               const SizedBox(height: 8),

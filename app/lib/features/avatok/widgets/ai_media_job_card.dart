@@ -205,7 +205,7 @@ Widget _pillButton({
     onTap: onPressed,
     behavior: HitTestBehavior.opaque,
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: Msg.brSm,
@@ -392,7 +392,7 @@ class _ReadyCard extends StatelessWidget {
             Positioned(
               left: 6, bottom: 6,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
                 decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: Msg.brPill),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 12, color: accent),

@@ -305,7 +305,7 @@ class _DurationPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.65),
           borderRadius: Msg.brSm,
@@ -323,7 +323,7 @@ class _DurationPill extends StatelessWidget {
 /// Footer: favicon + lowercase domain (WhatsApp parity).
 class _DomainFooter extends StatelessWidget {
   const _DomainFooter({required this.preview, this.padding =
-      const EdgeInsets.fromLTRB(10, 0, 10, 9), this.theme});
+      const EdgeInsets.fromLTRB(Msg.s3, 0, Msg.s3, Msg.s3), this.theme});
   final LinkPreview preview;
   final EdgeInsets padding;
   final BubbleTheme? theme;
@@ -452,7 +452,7 @@ class LinkPreviewCard extends StatelessWidget {
                 if (preview.title != null)
                   Padding(
                     padding: EdgeInsets.fromLTRB(
-                        10, 8, 10, preview.description != null ? 0 : 6),
+                        Msg.s3, Msg.s2, Msg.s3, preview.description != null ? 0 : 6),
                     child: Text(
                       preview.title!,
                       maxLines: 2,
@@ -462,7 +462,7 @@ class LinkPreviewCard extends StatelessWidget {
                   ),
                 if (preview.description != null)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 3, 10, 6),
+                    padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s1, Msg.s3, Msg.s2),
                     child: Text(
                       preview.description!,
                       maxLines: 2,
@@ -509,7 +509,7 @@ class ComposeLinkPreview extends StatelessWidget {
     final p = preview;
     final t = theme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+      margin: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, 2),
       decoration: BoxDecoration(
         color: t?.bg ?? AD.card,
         borderRadius: Msg.brMd,
@@ -543,7 +543,7 @@ class ComposeLinkPreview extends StatelessWidget {
         ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

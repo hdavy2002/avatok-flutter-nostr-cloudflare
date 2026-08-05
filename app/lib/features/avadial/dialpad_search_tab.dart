@@ -139,7 +139,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           'users — invite them to join.',
           style: ADText.preview(c: AvaDialTheme.textSoft),
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        actionsPadding: const EdgeInsets.fromLTRB(Msg.s5, 0, Msg.s5, Msg.s4),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
@@ -162,7 +162,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
   Widget build(BuildContext context) {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
         // [AVADIAL-SEARCH-2] White box, black text (owner spec) — same
         // AvaDialTheme.search* tokens as the four tab search bars. This field
         // keeps its own outlined/prefixIcon shape rather than the pill used
@@ -189,7 +189,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
                   ),
             filled: true,
             fillColor: AvaDialTheme.searchFill,
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(vertical: Msg.s3),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AD.rInput),
               borderSide: const BorderSide(color: AvaDialTheme.border, width: 1),
@@ -246,11 +246,11 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
       );
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s1, Msg.s4, Msg.s5),
       children: [
         AdCard(
           color: AvaDialTheme.surface2,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
             ZineIconBadge(icon: PhosphorIcons.user(PhosphorIconsStyle.bold), color: AD.primaryBadge),
             const SizedBox(width: 12),
@@ -294,7 +294,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         ),
       const SizedBox(height: 8),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s6),
         child: GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),

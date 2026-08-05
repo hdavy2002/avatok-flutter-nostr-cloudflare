@@ -264,7 +264,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
             child: ZineCard(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(Msg.s5),
               boxShadow: Msg.lift,
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill),
@@ -311,14 +311,14 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
       );
 
   Widget _topBar() => Padding(
-        padding: const EdgeInsets.fromLTRB(18, Msg.s3, 18, 0),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, 0),
         child: Row(children: [
           // Forced `color:`/`boxShadow:` DROPPED — ZinePressable is already
           // re-skinned dark and defaults to AD.card with no shadow.
           ZinePressable(
             onTap: _minimize,
             radius: Msg.brPill, // a round icon button is genuinely round
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(Msg.s3),
             child: PhosphorIcon(
                 PhosphorIcons.caretDown(PhosphorIconsStyle.regular),
                 size: 18, color: AD.textPrimary),

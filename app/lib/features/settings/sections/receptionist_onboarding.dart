@@ -239,7 +239,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(Msg.s5),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -521,7 +521,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   Widget _summaryRow(String text, {String? pill}) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-        padding: const EdgeInsets.only(top: 9, right: 10),
+        padding: const EdgeInsets.only(top: Msg.s3, right: Msg.s3),
         child: Container(
           width: 5, height: 5,
           decoration:
@@ -543,7 +543,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   }) {
     // [WALLET-UX-1] Roomier card: 20px padding, 44px badge, 19sp title.
     return AdCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(Msg.s5),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: icon, color: AD.iconVideo, size: 44),

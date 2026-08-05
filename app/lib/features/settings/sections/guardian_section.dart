@@ -137,7 +137,7 @@ class _GuardianCardState extends State<_GuardianCard> {
   Widget build(BuildContext context) {
     final isParent = _kind == AccountKind.parent;
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),

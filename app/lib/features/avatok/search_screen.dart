@@ -253,7 +253,7 @@ class _SearchScreenState extends State<SearchScreen> {
               color: AD.headerFooter,
               border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
             child: Column(children: [
               Row(children: [
                 GestureDetector(
@@ -356,12 +356,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 if (_q.isNotEmpty &&
                     contactHits.isEmpty && groupHits.isEmpty && onAvatok.isEmpty &&
                     _directory.isEmpty && invitable.isEmpty && _msgHits.isEmpty && !_searchingDir)
-                  Padding(padding: const EdgeInsets.all(28),
+                  Padding(padding: const EdgeInsets.all(Msg.s6),
                       child: Center(child: _emptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
                           text: 'No matches.\nFind people by their full email address or AvaTOK number.'))),
                 if (_q.isEmpty && _device.isEmpty)
-                  Padding(padding: const EdgeInsets.all(28),
+                  Padding(padding: const EdgeInsets.all(Msg.s6),
                       child: Center(child: _emptyState(
                           icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                           text: 'Search your contacts, the directory and your phone book'))),
@@ -412,7 +412,7 @@ class _SearchScreenState extends State<SearchScreen> {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 hintText: hint,
                 hintStyle: ADText.preview(c: AD.placeholderOnWhite),
               ),
@@ -443,11 +443,11 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _chip(String label, _Scope scope) {
     final active = _scope == scope;
     return Padding(
-      padding: const EdgeInsets.only(right: 9),
+      padding: const EdgeInsets.only(right: Msg.s3),
       child: GestureDetector(
         onTap: () => setState(() => _scope = scope),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
           decoration: BoxDecoration(
             color: active ? AD.primaryBadge : AD.card,
             borderRadius: BorderRadius.circular(AD.rTab),
@@ -461,7 +461,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _section(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2),
         child: Text(label, style: ADText.sectionLabel()),
       );
 
@@ -506,7 +506,7 @@ class _SearchScreenState extends State<SearchScreen> {
         trailing: GestureDetector(
           onTap: () => DeviceContactsService.invite(d),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
             decoration: BoxDecoration(
               color: AD.newGroup,
               borderRadius: Msg.brPill,
@@ -526,7 +526,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (blocked) PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
       if (archived)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
           decoration: BoxDecoration(
             color: AD.card,
             borderRadius: BorderRadius.circular(AD.rBadge),

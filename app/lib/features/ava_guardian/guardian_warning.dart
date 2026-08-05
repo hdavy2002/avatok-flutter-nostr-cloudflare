@@ -219,7 +219,7 @@ class GuardianWarningSheet extends StatelessWidget {
     final accent = info.accent;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             ZineIconBadge(icon: info.icon, color: accent, size: 40),

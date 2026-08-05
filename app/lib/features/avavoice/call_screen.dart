@@ -166,7 +166,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             const SizedBox(height: Msg.s3),
             // Top bar: language + timer mono stickers.
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
               child: Row(children: [
                 _chip(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                     languageLabel(widget.language)),
@@ -181,7 +181,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             _PulsingRing(
               active: _state == 'live' || _state == 'wrapup',
               child: Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(Msg.s2),
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   color: AD.tabCalls,
@@ -227,7 +227,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             const Spacer(),
             // Controls — bordered circles; hang-up = coral.
             Padding(
-              padding: const EdgeInsets.only(bottom: 30),
+              padding: const EdgeInsets.only(bottom: Msg.s6),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 if (a.visionEnabled) ...[
                   _roundBtn(PhosphorIcons.monitor(PhosphorIconsStyle.bold), () {
@@ -259,7 +259,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   // Mono sticker chip — ink border, hard shadow; coral when alerting.
   Widget _chip(IconData icon, String label, {bool alert = false}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: alert ? AD.danger : AD.card,
           borderRadius: BorderRadius.circular(Msg.rPill),
@@ -317,7 +317,7 @@ class _PulsingRingState extends State<_PulsingRing>
     return AnimatedBuilder(
       animation: _c,
       builder: (_, child) => Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(Msg.s3),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(

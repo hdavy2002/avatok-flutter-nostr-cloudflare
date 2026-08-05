@@ -200,7 +200,7 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
         // inbox header strip
         Container(
           margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           decoration: BoxDecoration(
             color: _bubbleSurface,
             border: Border.all(color: _bubbleHair, width: 1),
@@ -227,7 +227,7 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
         else
           for (final e in visible)
             Padding(
-              padding: const EdgeInsets.only(bottom: 7),
+              padding: const EdgeInsets.only(bottom: Msg.s2),
               child: _EmailCard(e: e, onView: () => _view(e), onSpam: () => _spam(e), onDelete: () => _delete(e)),
             ),
       ],
@@ -249,7 +249,7 @@ class _EmailCard extends StatelessWidget {
         color: _bubbleSurface, border: Border.all(color: _bubbleHair, width: 1),
         borderRadius: Msg.brMd,
       ),
-      padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // sender monogram
@@ -268,7 +268,7 @@ class _EmailCard extends StatelessWidget {
                 if (e.flag != null) ...[
                   const SizedBox(width: Msg.s1),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                     decoration: BoxDecoration(color: AD.danger, borderRadius: Msg.brPill),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 9, color: Colors.white),
@@ -282,7 +282,7 @@ class _EmailCard extends StatelessWidget {
                 Padding(padding: const EdgeInsets.only(top: 1),
                     child: Text(e.addr, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: _mono.copyWith(fontSize: 10, color: _bubbleMuted))),
-              Padding(padding: const EdgeInsets.only(top: 6),
+              Padding(padding: const EdgeInsets.only(top: Msg.s2),
                   child: Text(e.subject, maxLines: 2, overflow: TextOverflow.ellipsis,
                       style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13))),
               if (e.snippet.isNotEmpty)
@@ -460,7 +460,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
     }
     if (_mode == 'reply') {
       return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _metaRow('TO', '${e.from}  ·  ${e.addr}'),
           const SizedBox(height: Msg.s2),
@@ -468,7 +468,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
           const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(AD.rInput)),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(Msg.s4),
             child: TextField(
               controller: _reply,
               autofocus: true,
@@ -492,7 +492,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
     final accent = avaEmailAccent(e.accentToken);
     final initial = (e.from.trim().isEmpty ? '?' : e.from.trim()[0]).toUpperCase();
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
@@ -515,7 +515,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
         const Divider(color: AD.borderHairline, height: 1, thickness: 1),
         const SizedBox(height: Msg.s3),
         if (_loadingBody)
-          const Padding(padding: EdgeInsets.symmetric(vertical: 20),
+          const Padding(padding: EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)))
         else
           Text(e.body.isNotEmpty ? e.body : e.snippet,

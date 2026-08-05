@@ -512,7 +512,7 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
         if (_mode == _Mode.signIn)
           Padding(
-            padding: const EdgeInsets.only(top: 11),
+            padding: const EdgeInsets.only(top: Msg.s3),
             child: Align(
               alignment: Alignment.centerRight,
               child: ZineLink('forgot password?', onTap: () => _switch(_Mode.reset)),
@@ -521,7 +521,7 @@ class _SignInScreenState extends State<SignInScreen> {
         // Passwordless: sign in with just an email code (no password / no phone).
         if (_mode == _Mode.signIn)
           Padding(
-            padding: const EdgeInsets.only(top: 14),
+            padding: const EdgeInsets.only(top: Msg.s4),
             child: Center(
               child: ZineLink('Sign in with an email code instead',
                   fontSize: 14, onTap: () => _emailCode()),

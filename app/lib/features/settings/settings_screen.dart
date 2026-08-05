@@ -377,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _aiCard() {
     return AdCard(
       radius: AD.rListCard,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(
@@ -431,13 +431,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _section(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 10, left: 4),
+        padding: const EdgeInsets.only(bottom: Msg.s3, left: Msg.s1),
         child: Text(t, style: ADText.sectionLabel()),
       );
 
   Widget _tile(IconData icon, Color accent, String title, String sub, VoidCallback onTap, {bool danger = false}) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: ZinePressable(
           onTap: onTap,
           color: AD.card,
@@ -445,7 +445,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           borderColor: AD.borderControl,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const [],
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(width: 12),
@@ -559,7 +559,7 @@ PreferredSizeWidget _adHeader(String title,
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+          padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
           child: Row(children: [
             if (showBack) AdBackButton(onTap: onBack) else const SizedBox(width: 8),
             const SizedBox(width: 4),

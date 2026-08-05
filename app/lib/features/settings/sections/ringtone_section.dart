@@ -155,10 +155,10 @@ class _RingtoneCardState extends State<_RingtoneCard> {
   @override
   Widget build(BuildContext context) {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: _loading
           ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
+              padding: EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(
                   child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
             )
@@ -191,7 +191,7 @@ class _RingtoneCardState extends State<_RingtoneCard> {
     final playing = _playingId == t.id;
     final isDefault = _selected == t.id;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Row(children: [
         IconButton(
           visualDensity: VisualDensity.compact,

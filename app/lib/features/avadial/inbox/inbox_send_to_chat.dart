@@ -231,7 +231,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                      contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                       hintText: 'Search contacts',
                       hintStyle: ADText.preview(c: AvaDialTheme.textMute),
                     ),
@@ -248,7 +248,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
                     child: CircularProgressIndicator(color: AvaDialTheme.accent))
                 : contacts.isEmpty
                     ? Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 30),
+                        padding: const EdgeInsets.symmetric(vertical: Msg.s6),
                         child: Text(
                           _query.isEmpty ? 'No AvaTOK contacts yet' : 'No matches',
                           style: ADText.preview(c: AvaDialTheme.textSoft),

@@ -120,7 +120,7 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
     final title = _isEdit ? 'Edit with Ava' : 'Make an image with Ava';
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,7 +147,7 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
                 borderRadius: Msg.brLg,
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s1),
               child: TextField(
                 controller: _ctrl,
                 autofocus: true,

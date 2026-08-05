@@ -98,7 +98,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
       appBar: _header('Privacy'),
       body: p == null
           ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
-          : ListView(padding: const EdgeInsets.all(20), children: [
+          : ListView(padding: const EdgeInsets.all(Msg.s5), children: [
               Text('HOW PEOPLE CAN FIND YOU', style: ADText.sectionLabel()),
               const SizedBox(height: Msg.s2),
               // AvaTOK number — always on, locked.
@@ -157,7 +157,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
             child: Row(children: [
               if (showBack) ...[
                 GestureDetector(
@@ -191,7 +191,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
 
   Widget _card({required Widget child, VoidCallback? onTap}) {
     final box = Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(Msg.s5),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
@@ -311,7 +311,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
       appBar: _pickerHeader(context, 'Last seen'),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text('ONLY THESE PEOPLE SEE YOUR LAST SEEN', style: ADText.sectionLabel()),
@@ -350,7 +350,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
               onTap: () => Navigator.pop(context, _picked.toList()),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 15),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 decoration: BoxDecoration(
                   color: AD.primaryBadge,
                   borderRadius: Msg.brMd,
@@ -378,7 +378,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
             child: Row(children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,

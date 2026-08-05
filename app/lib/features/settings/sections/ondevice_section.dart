@@ -57,7 +57,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
   @override
   Widget build(BuildContext context) {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: ValueListenableBuilder<bool>(
         valueListenable: _mode.enabled,
         builder: (context, on, _) {

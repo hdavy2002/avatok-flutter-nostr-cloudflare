@@ -57,7 +57,7 @@ class _LinkSheet extends StatelessWidget {
       ),
       child: SafeArea(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(24, 14, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 24 + MediaQuery.of(context).viewInsets.bottom),
           child: Column(mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Center(child: Container(width: 38, height: 5,

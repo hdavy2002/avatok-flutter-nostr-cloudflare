@@ -92,7 +92,7 @@ class LiveInkPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Msg.s1),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       // Genuine status pill.
       decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -128,7 +128,7 @@ class ChatOverlay extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Container(
               margin: const EdgeInsets.symmetric(vertical: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
               decoration: BoxDecoration(
                 color: kInkScrim,
                 borderRadius: const BorderRadius.only(
@@ -177,7 +177,7 @@ class FlyLayer extends StatelessWidget {
                 child: child!,
               ),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Msg.s1),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                 // Genuine pill.
                 decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
                 child: Text(m.text, style: ADText.tabLabel(c: AD.textPrimary)),
@@ -229,7 +229,7 @@ class DonationBannerWidget extends StatelessWidget {
       duration: Msg.slow,
       builder: (_, v, child) => Transform.scale(scale: .8 + v * .2, child: Opacity(opacity: v, child: child)),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: AD.online,
           borderRadius: Msg.brMd,
@@ -271,7 +271,7 @@ class LiveTopBar extends StatelessWidget {
               child: GestureDetector(
                 onTap: onCreatorTap,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                   // Creator chip — a genuine pill.
                   decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
                   child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -282,7 +282,7 @@ class LiveTopBar extends StatelessWidget {
             const SizedBox(width: Msg.s2),
             if (live)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                 decoration: BoxDecoration(
                   color: AD.danger,
                   // Status badge — a genuine pill.

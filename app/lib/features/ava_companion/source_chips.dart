@@ -38,7 +38,7 @@ class SourceChipsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (citations.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: Msg.s2),
       child: Wrap(
         spacing: Msg.s1,
         runSpacing: Msg.s1,

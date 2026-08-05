@@ -308,7 +308,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
     if (_items.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(Msg.s6),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 54),
             const SizedBox(height: Msg.s3),
@@ -334,7 +334,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
         return false;
       },
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s5),
         itemCount: types.length + (_hasMore ? 1 : 0),
         itemBuilder: (context, i) {
           if (i >= types.length) {
@@ -347,7 +347,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
           final type = types[i];
           final rows = groups[type]!;
           return Padding(
-            padding: const EdgeInsets.only(bottom: 18),
+            padding: const EdgeInsets.only(bottom: Msg.s5),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 0, 0, 8),
@@ -355,7 +355,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
               ),
               for (final item in rows)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: Msg.s3),
                   child: _MemoryRow(
                     item: item,
                     onConfirm: () => _confirm(item),
@@ -401,7 +401,7 @@ class _MemoryRow extends StatelessWidget {
     final hedged = item.isLowConfidence;
     return AdCard(
       radius: AD.rListCard,
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
@@ -455,7 +455,7 @@ class _ConfirmedBadge extends StatelessWidget {
   const _ConfirmedBadge();
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.online,
           borderRadius: Msg.brPill,

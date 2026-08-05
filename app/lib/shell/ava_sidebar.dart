@@ -168,7 +168,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     return Column(children: [
           // header — wordmark + close
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 14, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s4, Msg.s2),
             child: Row(children: [
               const ZineLogoMark(size: 22),
               const SizedBox(width: 8),
@@ -193,7 +193,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           ),
           // profile (tap → public profile)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
             child: ZinePressable(
               onTap: () => widget.onSelect('profile'),
               color: AD.card,
@@ -201,7 +201,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               borderWidth: 1,
               radius: BorderRadius.circular(AD.rListCard),
               boxShadow: const [],
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
               child: Row(children: [
                 _inkedAvatar(),
                 const SizedBox(width: 12),
@@ -226,12 +226,12 @@ class _AvaSidebarState extends State<AvaSidebar> {
           // Plan status — green PREMIUM ✓ pill once the wallet is topped up, else
           // a ghost "Free plan" chip that taps through to the Subscribe screen.
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
             child: Align(alignment: Alignment.centerLeft, child: _planChip()),
           ),
           // (Subscribe moved into the list below the Contacts item — see ListView.)
           Expanded(
-            child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), children: [
+            child: ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2), children: [
               // Featured tiles — shown in BOTH focus and non-focus modes so the
               // renamed Messenger/ChatAVA + the AI Voice Agent item are always
               // visible (focus mode default is ON; these are the core surfaces).
@@ -286,7 +286,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
                   borderWidth: 1,
                   radius: BorderRadius.circular(AD.rListCard),
                   boxShadow: const [],
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
                   child: Row(children: [
                     // White fill so the badge's glyph stays legible against the
                     // violet Subscribe tile. `ZineIconBadge` picks its glyph
@@ -314,7 +314,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // standard apps are featured tiles or live under ACCOUNT now).
               if (apps.isNotEmpty) ...[
                 Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
+                    padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s4, Msg.s2, Msg.s2),
                     child: Text('Apps', style: ADText.sectionLabel())),
                 for (final a in apps) _appRow(a),
               ],
@@ -327,7 +327,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: widget.onSignOut,
@@ -378,7 +378,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         borderWidth: 1,
         radius: BorderRadius.circular(AD.rListCard),
         boxShadow: const [],
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: color),
           const SizedBox(width: 12),
@@ -411,7 +411,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const [],
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
             ZineIconBadge(icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold), color: AD.danger),
             const SizedBox(width: 12),
@@ -441,7 +441,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   }
 
   Widget _subRow(String key, String label, IconData icon) => Padding(
-        padding: const EdgeInsets.only(left: 14, top: 3),
+        padding: const EdgeInsets.only(left: Msg.s4, top: Msg.s1),
         child: ZinePressable(
           onTap: () => widget.onSelect(key),
           color: AD.card,
@@ -449,7 +449,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: AD.iconSearch, size: 30),
             const SizedBox(width: Msg.s3),
@@ -465,7 +465,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     if (tools.isEmpty) return const [];
     return [
       Padding(
-        padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s4, Msg.s2, Msg.s2),
         child: Text(headerFor(widget.accountKind), style: ADText.sectionLabel()),
       ),
       for (final t in tools) _toolRow(t),
@@ -473,7 +473,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   }
 
   Widget _toolRow(AdminTool t) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: ZinePressable(
           onTap: () => widget.onSelect(t.key),
           color: AD.card,
@@ -481,7 +481,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           child: Row(children: [
             ZineIconBadge(icon: t.icon, color: t.color, size: 30),
             const SizedBox(width: Msg.s3),
@@ -499,7 +499,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   Widget _appRow(AppEntry a) {
     final paid = _paidAppIds.contains(a.id);
     return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: ZinePressable(
           // The row still opens the app; the PAID badge shows it needs a top-up.
           // The actual spend gate (PaidFeature) lives at the feature's point of
@@ -510,7 +510,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           child: Row(children: [
             ZineIconBadge(icon: a.icon, color: a.color, size: 30),
             const SizedBox(width: Msg.s3),
@@ -543,7 +543,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         borderWidth: 1,
         radius: BorderRadius.circular(AD.rListCard),
         boxShadow: const <BoxShadow>[],
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: accent, size: 30),
           const SizedBox(width: Msg.s3),
@@ -595,7 +595,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
       // (collapsed by default). Covers identity, money, storage, connectors,
       // invites, diagnostics and app settings, so the label names all of that.
       Padding(
-        padding: const EdgeInsets.fromLTRB(6, 18, 6, 6),
+        padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s5, Msg.s2, Msg.s2),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _accountOpen = !_accountOpen),
@@ -654,7 +654,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   }
 
   Widget _acct(String key, String name, IconData icon, {VoidCallback? onTap}) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: ZinePressable(
           onTap: onTap ?? () => widget.onSelect(key),
           color: AD.card,
@@ -662,7 +662,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           child: Row(children: [
             // ZineIconBadge picks the glyph colour from the fill's luminance, so
             // a white fill gives a dark glyph — the neutral badge on the dark v2

@@ -28,7 +28,7 @@ class ServicesRoot extends StatelessWidget {
         current: RootId.services,
         extra: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+            padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s1),
             child: Text('SERVICES', style: ADText.sectionLabel()),
           ),
           ShellMenuRow(

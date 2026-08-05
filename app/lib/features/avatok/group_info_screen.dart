@@ -512,7 +512,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   // active state is hard-wired to AD.primaryBadge (orange) and it wraps a
   // GestureDetector. This is a plain Container -> no elevation, no ripple, no tap.
   Widget _addedPill() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: AD.newGroup,
           borderRadius: BorderRadius.circular(AD.rChip),
@@ -546,14 +546,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           side: BorderSide(color: AD.borderHairline, width: 1),
           borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
       builder: (ctx) => SafeArea(child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Add members', style: ADText.threadName()),
           const SizedBox(height: 8),
           // [ISSUE-GROUP-ADDED-FLAT-1] Empty state now only fires when there are no
           // eligible contacts at all — existing members are listed, not filtered out.
           if (candidates.isEmpty)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 20),
+            Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s5),
                 child: Text('No contacts available to add',
                     style: ADText.preview(c: AD.textSecondary)))
           else
@@ -610,7 +610,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 16, 12),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
               child: Row(children: [
                 GestureDetector(
                   onTap: () => Navigator.of(context).maybePop(),
@@ -666,7 +666,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     Positioned(
                       right: -2, bottom: -2,
                       child: Container(
-                        padding: const EdgeInsets.all(5),
+                        padding: const EdgeInsets.all(Msg.s2),
                         decoration: BoxDecoration(
                           color: AD.primaryBadge,
                           shape: BoxShape.circle,
@@ -691,7 +691,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   onTap: _amAdmin ? _editDescription : null,
                   borderRadius: BorderRadius.circular(AD.rListCard),
                   child: Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(Msg.s4),
                     decoration: BoxDecoration(
                       color: AD.card,
                       borderRadius: BorderRadius.circular(AD.rListCard),
@@ -732,7 +732,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             // any member sees the current mode; only owner/admin can change it.
             if (_companionModeLoaded) _companionModeSection(),
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
               child: Text('MEMBERS', style: ADText.sectionLabel()),
             ),
             for (final m in _group.members)
@@ -830,7 +830,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -873,7 +873,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         opacity: (_amAdmin || selected) ? 1 : 0.55,
         child: Container(
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: Msg.s3),
           decoration: BoxDecoration(
             color: selected ? AD.newGroup.withValues(alpha: 0.22) : AD.headerFooter,
             borderRadius: BorderRadius.circular(AD.rChip),
@@ -887,7 +887,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   /// Small "admin" pill (replaces ZineSticker).
   Widget _adminPill() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.newGroup.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(AD.rChip),
@@ -914,7 +914,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           opacity: enabled ? 1 : 0.5,
           child: Container(
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s4),
             decoration: BoxDecoration(
               color: fill,
               borderRadius: Msg.brMd,

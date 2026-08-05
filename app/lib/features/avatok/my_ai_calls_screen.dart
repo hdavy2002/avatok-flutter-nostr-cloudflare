@@ -163,7 +163,7 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
       boxShadow: const [],
       borderColor: AD.borderControl,
       borderWidth: 1,
-      padding: const EdgeInsets.all(13),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
         ZineIconBadge(icon: PhosphorIcons.robot(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
         const SizedBox(width: Msg.s2),
@@ -274,7 +274,7 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
                     ],
                     for (final t in _t!.turns)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.only(bottom: Msg.s3),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(t.speaker == 'caller' ? 'You' : 'Ava', style: ADText.statCaption()),
                           const SizedBox(height: 2),

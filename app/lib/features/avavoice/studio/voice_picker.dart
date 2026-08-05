@@ -73,13 +73,13 @@ class _VoicePickerState extends State<VoicePicker> {
       final sel = v.name == widget.selected;
       final playing = _playing == v.name;
       return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: ZinePressable(
           onTap: () => widget.onSelected(v.name),
           color: sel ? AD.tabCalls : AD.card,
           radius: BorderRadius.circular(Msg.rLg),
           boxShadow: Msg.none,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
             PhosphorIcon(
                 sel ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),

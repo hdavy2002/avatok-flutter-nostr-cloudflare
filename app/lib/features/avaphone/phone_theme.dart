@@ -69,7 +69,7 @@ class PhoneTheme {
 
   /// A small pill chip (e.g. the "AvaTOK number" / "true" markers in the refs).
   static Widget chip(String label, {Color color = teal, IconData? icon}) => Container(
-        padding: EdgeInsets.fromLTRB(icon == null ? 9 : 7, 3, 9, 3),
+        padding: EdgeInsets.fromLTRB(icon == null ? 9 : 7, Msg.s1, Msg.s3, Msg.s1),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.16),
           // Genuine status pill — one of the shapes rPill is reserved for.

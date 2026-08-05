@@ -41,7 +41,7 @@ PreferredSizeWidget _darkHeader({required String title, String? tag}) {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: Row(children: [
             const AdBackButton(),
             const SizedBox(width: 8),
@@ -202,7 +202,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
           : _unavailable
               ? _comingSoon()
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+                  padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s6),
                   children: [
                     _explainerCard(),
                     const SizedBox(height: 16),
@@ -271,7 +271,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
       example.length > 28 ? '${example.substring(0, 28)}…' : example;
 
   Widget _explainerCard() => AdCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(
               icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill),
@@ -289,7 +289,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
       );
 
   Widget _activeBanner() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rInput),
@@ -306,10 +306,10 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
       );
 
   Widget _comingSoon() => ListView(
-        padding: const EdgeInsets.fromLTRB(18, 40, 18, 28),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, 40, Msg.s5, Msg.s6),
         children: [
           AdCard(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(Msg.s5),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ZineIconBadge(
                   icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),

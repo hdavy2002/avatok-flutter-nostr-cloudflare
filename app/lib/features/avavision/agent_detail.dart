@@ -157,7 +157,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Widget _body(VisionAgent a) {
     final busy = _avail?.busy ?? a.busy;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+      padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
       children: [
         if (a.images.isNotEmpty) ...[
           SizedBox(
@@ -246,7 +246,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Widget _infoTile(IconData icon, Color accent, String title, String body) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: ZineCard(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(Msg.s4),
           radius: Msg.rLg,
           boxShadow: Msg.none,
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

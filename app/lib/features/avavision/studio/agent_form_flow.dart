@@ -358,7 +358,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       ),
       body: ZinePaper(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s6),
           children: [for (var i = 0; i < _stepCount; i++) _stepBlock(i)],
         ),
       ),
@@ -393,7 +393,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                 onTap: state == _WizState.todo || _working ? null : () => setState(() => _step = i),
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  padding: const EdgeInsets.symmetric(vertical: Msg.s2),
                   child: Text(_titles[i],
                       style: ADText.threadName(c: state == _WizState.todo ? AD.textTertiary : AD.textPrimary).copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
                 ),
@@ -507,7 +507,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(Msg.rLg),
@@ -671,7 +671,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         const SizedBox(height: Msg.s4),
       ] else
         Padding(
-          padding: const EdgeInsets.only(bottom: 18),
+          padding: const EdgeInsets.only(bottom: Msg.s5),
           child: Text('This capability reads the whole frame with AI — there\'s no on-screen overlay.',
               style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         ),
@@ -827,7 +827,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       color: sel ? AD.tabGroups : AD.card,
       radius: BorderRadius.circular(Msg.rLg),
       boxShadow: Msg.none,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           width: 22,

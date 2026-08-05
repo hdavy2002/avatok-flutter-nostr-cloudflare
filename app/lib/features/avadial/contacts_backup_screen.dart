@@ -413,7 +413,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                 ),
                 if (_restoring)
                   Padding(
-                    padding: const EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.only(top: Msg.s3),
                     child: Text(
                       _rTotal > 0
                           ? 'Restoring… $_rDone of $_rTotal contacts'
@@ -463,10 +463,10 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
   }
 
   Widget _stat(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: AdCard(
           color: AvaDialTheme.surface2,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
           child: Row(children: [
             Expanded(child: Text(label, style: AvaDialTheme.value(size: 14, color: AvaDialTheme.text))),
             Text(value, style: AvaDialTheme.title(size: 14, color: AD.iconSearch)),
@@ -475,10 +475,10 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
       );
 
   Widget _bullet(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
-            padding: const EdgeInsets.only(top: 3, right: 10),
+            padding: const EdgeInsets.only(top: Msg.s1, right: Msg.s3),
             child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: AD.online, size: 15),
           ),
           Expanded(child: Text(text, style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft))),

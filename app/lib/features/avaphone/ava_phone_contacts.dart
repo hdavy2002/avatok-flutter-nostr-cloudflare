@@ -206,7 +206,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         bottom: false,
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2),
             child: Row(children: [
               Text('Contacts', style: PhoneTheme.title(size: 24)),
               const Spacer(),
@@ -223,8 +223,8 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           // Explicit clarification banner (owner request): these are AvaTOK-network
           // identities, not the phone's address book.
           Container(
-            margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            margin: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
             decoration: BoxDecoration(
               color: PhoneTheme.surface,
               borderRadius: BorderRadius.circular(Msg.rMd),
@@ -239,10 +239,10 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
             ]),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
             child: Container(
               height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
               decoration: BoxDecoration(
                 color: PhoneTheme.surface,
                 borderRadius: Msg.brMd,
@@ -282,7 +282,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         onTap: () => _actions(c),
         onLongPress: () => _actions(c), // long-press → view/dial/share/block/delete
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 46,
                 avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
@@ -373,7 +373,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
           borderRadius: Msg.brSheetTop,
           border: Border(top: BorderSide(color: PhoneTheme.border, width: 1.5)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill))),
@@ -410,7 +410,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: PhoneTheme.accent, foregroundColor: Colors.white,
-                elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: 0, padding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(Msg.rMd),
                   side: const BorderSide(color: PhoneTheme.border, width: 2)),
@@ -428,7 +428,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: PhoneTheme.text,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 side: const BorderSide(color: PhoneTheme.border, width: 1.5),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Msg.rMd)),
               ),

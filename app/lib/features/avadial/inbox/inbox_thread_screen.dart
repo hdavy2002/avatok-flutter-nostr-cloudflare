@@ -495,13 +495,13 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
             final items = _dayGrouped(cards);
             return ListView.builder(
               controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s4),
               itemCount: items.length,
               itemBuilder: (context, i) {
                 final item = items[i];
                 if (item.isHeader) {
                   return Padding(
-                    padding: const EdgeInsets.only(top: 4, bottom: 10),
+                    padding: const EdgeInsets.only(top: Msg.s1, bottom: Msg.s3),
                     child: _DateSeparator(label: item.dayLabel!),
                   );
                 }
@@ -533,7 +533,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                   );
                   if (campaignWidget != null) {
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: Msg.s3),
                       child: campaignWidget,
                     );
                   }
@@ -541,7 +541,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                   // `t`) — fall through to the default rendering below.
                 }
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: Msg.s3),
                   child: _VoicemailCard(
                     card: card,
                     callerName: _title,
@@ -602,7 +602,7 @@ class _DateSeparator extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: AvaDialTheme.surface2,
           // Date separator chip — a genuine pill.
@@ -1273,7 +1273,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
               ),
               if (_expanded)
                 Padding(
-                  padding: const EdgeInsets.only(top: 6),
+                  padding: const EdgeInsets.only(top: Msg.s2),
                   child: Text(_c.transcript!, style: ADText.preview(c: subInk)),
                 ),
             ],
@@ -1283,7 +1283,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
               Wrap(spacing: Msg.s1, runSpacing: 4, children: [
                 for (final tag in _meta!.tags)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
                     decoration: BoxDecoration(
                       color: AD.bubbleInPlay.withValues(alpha: 0.14),
                       // Tag chip — a genuine pill.

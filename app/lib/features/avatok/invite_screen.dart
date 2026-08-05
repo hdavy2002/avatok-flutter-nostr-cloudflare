@@ -210,7 +210,7 @@ class _InviteScreenState extends State<InviteScreen> {
               color: AD.headerFooter,
               border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
             child: Column(children: [
               Row(children: [
                 _backButton(context),
@@ -273,7 +273,7 @@ class _InviteScreenState extends State<InviteScreen> {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                 hintText: hint,
                 hintStyle: ADText.preview(c: AD.placeholderOnWhite),
               ),
@@ -313,7 +313,7 @@ class _InviteScreenState extends State<InviteScreen> {
           style: ADText.preview(c: AD.textSecondary)));
     }
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 2),
       itemBuilder: (_, i) => _row(items[i]),
@@ -321,7 +321,7 @@ class _InviteScreenState extends State<InviteScreen> {
   }
 
   Widget _row(ContactRef c) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [
           Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
@@ -410,7 +410,7 @@ class _InviteScreenState extends State<InviteScreen> {
   Widget _permissionPanel({required String title, required String body, required String cta}) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(Msg.s6),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 48, color: AD.textTertiary),
           const SizedBox(height: 16),
@@ -429,7 +429,7 @@ class _InviteScreenState extends State<InviteScreen> {
       GestureDetector(
         onTap: onPressed,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
             borderRadius: Msg.brMd,

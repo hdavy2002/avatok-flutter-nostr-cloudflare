@@ -196,7 +196,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent))
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s5, Msg.s4, Msg.s6),
               children: [
                 Center(
                   child: Column(children: [

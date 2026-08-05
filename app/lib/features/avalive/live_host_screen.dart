@@ -337,7 +337,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                 child: Column(children: [
                   Row(children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                       decoration: BoxDecoration(
                         color: _live ? AD.danger : AD.card,
                         // Status badge — a genuine pill.
@@ -363,7 +363,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                     LiveInkPill('${fmtClock(elapsed)} · ${fmtClock(remaining)} left', icon: PhosphorIcons.timer(PhosphorIconsStyle.regular)),
                     const SizedBox(width: Msg.s2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Msg.s1),
+                      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                       decoration: BoxDecoration(
                         color: AD.online,
                         // Earnings badge — a genuine pill.
@@ -469,7 +469,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                       : Center(
                           child: isError
                               ? Padding(
-                                  padding: const EdgeInsets.all(20),
+                                  padding: const EdgeInsets.all(Msg.s5),
                                   child: ZineEmptyState(
                                       icon: PhosphorIcons.warning(PhosphorIconsStyle.regular), text: _status),
                                 )

@@ -123,7 +123,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 14, 20, 18 + MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 18 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
@@ -137,7 +137,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
           const SizedBox(height: Msg.s3),
           AdCard(
             color: AD.card,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(Msg.s4),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), size: 18, color: AD.iconBell),
               const SizedBox(width: Msg.s2),

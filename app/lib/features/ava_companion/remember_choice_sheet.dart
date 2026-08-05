@@ -141,7 +141,7 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
         : (_accountDefault == true ? 'Remember' : 'Keep local only');
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 14, 20, 18 + MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 18 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),

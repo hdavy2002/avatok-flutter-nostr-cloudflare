@@ -223,7 +223,7 @@ class _CallsTabStrip extends StatelessWidget {
         color: AvaDialTheme.surface,
         border: Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -758,10 +758,10 @@ class _ContactsTabState extends State<_ContactsTab> {
         // [AVADIAL-CONTACTS-MERGE] Banner now explains the merged view: an orange
         // badge = already on AvaTOK (tap to call), everyone else gets an invite.
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 0),
           child: AdCard(
             color: AvaDialTheme.surface2,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
                   size: 12, color: _kAvatokOrange),
@@ -782,9 +782,9 @@ class _ContactsTabState extends State<_ContactsTab> {
         // discovering someone NEW is number/email only, via the directory
         // lookup in _AddAvaTokContactDialog below).
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 0),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
             decoration: BoxDecoration(
               color: AvaDialTheme.searchFill,
               borderRadius: Msg.brMd,
@@ -841,7 +841,7 @@ class _ContactsTabState extends State<_ContactsTab> {
           // show they're on the AvaTOK network") — a translucent green wash over
           // the normal dark card, distinct from every other AvaDial list row.
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
             decoration: BoxDecoration(
               color: AD.online.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(AD.rListCard),
@@ -911,7 +911,7 @@ class _ContactsTabState extends State<_ContactsTab> {
       items.addAll(device);
     }
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 96),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 96),
       itemCount: items.length,
       itemBuilder: (context, i) {
         final it = items[i];
@@ -923,7 +923,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         if (it == _Marker.deviceEmpty) return _deviceEmptyCard();
         if (it == _Marker.serverSearching) {
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s4),
             child: Row(children: [
               const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: AvaDialTheme.accent)),
@@ -934,7 +934,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         }
         if (it == _Marker.checking) {
           return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 18),
+            padding: EdgeInsets.symmetric(vertical: Msg.s5),
             child: Center(child: CircularProgressIndicator(color: AvaDialTheme.accent)),
           );
         }
@@ -954,7 +954,7 @@ class _ContactsTabState extends State<_ContactsTab> {
   Widget _serverHitRow(Contact c) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           decoration: BoxDecoration(
             color: AD.online.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(AD.rListCard),
@@ -1003,7 +1003,7 @@ class _ContactsTabState extends State<_ContactsTab> {
       child: GestureDetector(
         onTap: on ? () => _callDevice(c) : () => _inviteDevice(c),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           decoration: BoxDecoration(
             // On-AvaTOK rows get a faint orange wash so they stand out in the book.
             color: on ? _kAvatokOrange.withValues(alpha: 0.10) : AvaDialTheme.surface2,
@@ -1056,7 +1056,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: AdCard(
           color: AvaDialTheme.surface2,
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(Msg.s4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 20, color: AD.iconSearch),
@@ -1187,7 +1187,7 @@ class _AddAvaTokContactDialogState extends State<_AddAvaTokContactDialog> {
               child: Text(_error!, style: ADText.preview(c: AD.danger))),
         if (notOnAvaTok)
           Padding(
-            padding: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.only(top: Msg.s3),
             child: Text('Not on AvaTOK yet — invite them instead?',
                 style: ADText.preview(c: AD.danger)),
           ),
@@ -1256,9 +1256,9 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 0),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
         decoration: BoxDecoration(
           // [AVADIAL-SEARCH-2] White field, black text (owner spec).
           color: AvaDialTheme.searchFill,
@@ -1577,12 +1577,12 @@ class _LogsTabState extends State<_LogsTab> {
     return RefreshIndicator(
       onRefresh: _reload,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s5),
         itemCount: visible.length + 1,
         itemBuilder: (context, idx) {
           if (idx == 0) {
             return Padding(
-              padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
+              padding: const EdgeInsets.fromLTRB(2, Msg.s1, 2, Msg.s2),
               child: Row(children: [
                 Text('${visible.length} call${visible.length == 1 ? '' : 's'}',
                     style: ADText.statCaption(c: AvaDialTheme.textMute)),
@@ -1611,7 +1611,7 @@ class _LogsTabState extends State<_LogsTab> {
             direction: DismissDirection.endToStart,
             background: Container(
               alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 22),
+              padding: const EdgeInsets.only(right: Msg.s5),
               margin: const EdgeInsets.symmetric(vertical: 4),
               decoration: BoxDecoration(
                 color: AD.danger,
@@ -1631,7 +1631,7 @@ class _LogsTabState extends State<_LogsTab> {
                 onLongPress: openMenu,
                 child: AdCard(
                   color: AvaDialTheme.surface2,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
                   child: Row(children: [
                     ZineIconBadge(icon: _iconFor(e.dir), color: _colorFor(e.dir)),
                     const SizedBox(width: 12),
@@ -1733,10 +1733,10 @@ class _BlockTabState extends State<_BlockTab> {
       // (owner spec, pic6): this is the AvaTOK contact block list, never the
       // phone's address book.
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 0),
         child: AdCard(
           color: AvaDialTheme.surface2,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 16, color: AD.danger),
             const SizedBox(width: 8),
@@ -1790,7 +1790,7 @@ class _BlockTabState extends State<_BlockTab> {
           );
         }
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s5),
           itemCount: entries.length,
           itemBuilder: (context, i) {
             final e = entries[i];
@@ -1834,7 +1834,7 @@ class _BlockTabState extends State<_BlockTab> {
                 onLongPress: openMenu,
                 child: AdCard(
                   color: AvaDialTheme.surface2,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
                   child: Row(children: [
                     ZineIconBadge(
                         icon: e.reportedSpam

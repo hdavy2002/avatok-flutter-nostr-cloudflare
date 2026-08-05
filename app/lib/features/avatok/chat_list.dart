@@ -353,7 +353,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       InkWell(
         onTap: () => setState(() => _requestsExpanded = !_requestsExpanded),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
           decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(
                   color: AD.borderHairline, width: 1))),
@@ -367,7 +367,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     style: ADText.rowName())),
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
               decoration: BoxDecoration(
                   color: AD.iconSearch.withValues(alpha: 0.18),
                   borderRadius: Msg.brPill),
@@ -734,7 +734,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       Positioned(
         right: -6, top: -4,
         child: Container(
-          padding: dot ? const EdgeInsets.all(4) : const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          padding: dot ? const EdgeInsets.all(4) : const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 1),
           constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
@@ -1935,7 +1935,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           // status avatar · filter dropdown · search · notifications. Persistent
           // across all 3 tabs (Chat/Community/Call log), unlike the tab bodies.
           Container(
-            padding: const EdgeInsets.fromLTRB(14, 8, 12, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s3, Msg.s3),
             decoration: const BoxDecoration(
               color: AD.headerFooter,
               border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
@@ -2003,7 +2003,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 // under the tab strip so it never scrolls away. Groups and Calls
                 // each carry their own dock (same AdSearchDock widget).
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
                   child: AdSearchDock(
                     controller: _searchCtl,
                     hint: 'Search chats',
@@ -2042,7 +2042,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     InkWell(
                       onTap: () => setState(() => _showArchived = !_showArchived),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                         decoration: const BoxDecoration(
                             border: Border(bottom: BorderSide(
                                 color: AD.borderHairline, width: 1))),
@@ -2255,7 +2255,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         ),
       ],
       child: Container(
-        padding: const EdgeInsets.fromLTRB(11, 7, 8, 7),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s2, Msg.s2),
         decoration: BoxDecoration(
           color: _filter == 'all' ? AD.card : AD.unreadAccent.withValues(alpha: 0.22),
           borderRadius: BorderRadius.circular(Msg.rSm),
@@ -2397,7 +2397,7 @@ class _AvaTokTabStrip extends StatelessWidget {
           if (showCount) ...[
             const SizedBox(width: 5),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 1),
               decoration: BoxDecoration(color: AD.unreadAccent, borderRadius: Msg.brPill),
               child: Text('$communityInvites',
                   style: ADText.statCaption(c: Colors.white)),

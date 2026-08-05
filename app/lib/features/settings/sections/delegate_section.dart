@@ -97,7 +97,7 @@ class _DelegateCardState extends State<_DelegateCard> {
   @override
   Widget build(BuildContext context) {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),

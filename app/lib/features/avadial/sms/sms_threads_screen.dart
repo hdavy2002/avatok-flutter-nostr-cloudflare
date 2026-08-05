@@ -242,7 +242,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 88),
+                        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 88),
                         itemCount: visible.length,
                         itemBuilder: (context, i) => _row(visible[i]),
                       ),
@@ -290,9 +290,9 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
   /// submit and no debounce (threads are already in memory).
   Widget _searchBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 2),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
         decoration: BoxDecoration(
           // [AVADIAL-SEARCH-2] White pill, black text (owner spec) — same tokens
           // as the other three Calls search bars, see AvaDialTheme.search*.
@@ -334,7 +334,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                 setState(() => _query = '');
               },
               child: Padding(
-                padding: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.only(left: Msg.s2),
                 child: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), size: 18, color: AvaDialTheme.searchHint),
               ),
             ),
@@ -345,7 +345,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
 
   Widget _segmented() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
       child: Row(children: [
         Expanded(child: _segTab('Inbox', _Filter.inbox, PhosphorIcons.tray(PhosphorIconsStyle.bold))),
         const SizedBox(width: 8),
@@ -366,7 +366,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
       borderColor: AD.borderControl,
       borderWidth: 1,
       boxShadow: const [],
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s3),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, size: 17, color: fg),
         const SizedBox(width: Msg.s2),
@@ -387,7 +387,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: AdCard(
         onTap: () => _openThread(t),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         child: Row(children: [
           ZineIconBadge(
             icon: spam
@@ -416,7 +416,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
               padding: const EdgeInsets.only(left: 8),
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                 decoration: BoxDecoration(
                   color: AD.primaryBadge, // orange — owner spec 2026-07-14
                   // Unread badge — one of the shapes rPill is reserved for.

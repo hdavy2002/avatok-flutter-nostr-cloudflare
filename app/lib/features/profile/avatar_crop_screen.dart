@@ -123,7 +123,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 18, 12),
+              padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s5, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: Msg.s3),

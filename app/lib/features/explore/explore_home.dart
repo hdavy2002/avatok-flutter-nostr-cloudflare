@@ -122,7 +122,7 @@ class _ExploreHomeState extends State<ExploreHome> {
           color: AD.headerFooter,
           border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
         child: Row(children: [
           AdBackButton(onTap: widget.onMenu, icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
           const SizedBox(width: 12),
@@ -158,7 +158,7 @@ class _ExploreHomeState extends State<ExploreHome> {
   // (no gradient scrims — gradients are forbidden).
   Widget _liveRail() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s1),
           child: Row(children: [
             Container(width: 9, height: 9, decoration: BoxDecoration(
                 color: AD.danger, shape: BoxShape.circle,
@@ -191,7 +191,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                       Positioned.fill(child: CoverImage(
                           url: l.coverUrl, seed: l.id.hashCode, radius: BorderRadius.zero)),
                       Positioned(left: 8, top: 8, child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                         decoration: BoxDecoration(
                           color: AD.destructiveBg,
                           borderRadius: Msg.brPill,
@@ -207,7 +207,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                     ])),
                     Container(height: 1, color: AD.borderControl),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+                      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
                       child: Row(children: [
                         Expanded(child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

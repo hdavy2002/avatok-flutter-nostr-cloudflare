@@ -54,7 +54,7 @@ Future<bool> showCallAgentSheet(
         ),
         // Bottom inset = keyboard + system nav bar, so the lime button is never
         // hidden behind the navigation bar (pic 10).
-        padding: EdgeInsets.fromLTRB(20, 16, 20,
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5,
             20 + MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),

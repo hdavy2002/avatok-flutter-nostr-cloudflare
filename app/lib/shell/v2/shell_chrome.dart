@@ -124,7 +124,7 @@ class ShellSidebar extends StatelessWidget {
       child: SafeArea(
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 14, 10),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s4, Msg.s3),
             child: Row(children: [
               const ZineLogoMark(size: 22),
               const SizedBox(width: 8),
@@ -150,9 +150,9 @@ class ShellSidebar extends StatelessWidget {
             ]),
           ),
           Expanded(
-            child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 10), children: [
+            child: ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3), children: [
               Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
+                  padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s2),
                   child: Text('APPS', style: ADText.sectionLabel(c: AD.textTertiary))),
               // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only;
               // RootId.key stays 'avatalk'). Mirror of app_switcher_bar `_meta`.
@@ -181,7 +181,7 @@ class ShellSidebar extends StatelessWidget {
               ],
               const SizedBox(height: Msg.s1),
               Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
+                  padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s2),
                   child: Text('MORE', style: ADText.sectionLabel(c: AD.textTertiary))),
               // Rescued from the retired Home dashboard drawer (2026-07-12 nav
               // rebrand) so they stay reachable from every app, not just Home.
@@ -248,7 +248,7 @@ class ShellSidebar extends StatelessWidget {
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: scope.onSignOut,
@@ -317,7 +317,7 @@ class _SidebarRow extends StatelessWidget {
           borderWidth: 1,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const [],
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: color),
             const SizedBox(width: 12),

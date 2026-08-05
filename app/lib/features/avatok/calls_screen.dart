@@ -116,7 +116,7 @@ class _CallsScreenState extends State<CallsScreen> {
         // Appbar band (§8): paper-2 fill, ink bottom border, Nunito title.
         Container(
           height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
           decoration: const BoxDecoration(
             color: AD.headerFooter,
             border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
@@ -188,7 +188,7 @@ class _CallsScreenState extends State<CallsScreen> {
                               ],
                             )
                           : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
                               itemCount: visible.length,
                               separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
                               // [ISSUE-CALLS-SEARCH-1] _row no longer takes an
@@ -215,7 +215,7 @@ class _CallsScreenState extends State<CallsScreen> {
       onLongPress: () => _confirmDelete(c),
       onSecondaryTap: () => _confirmDelete(c), // desktop right-click
       child: Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),

@@ -238,7 +238,7 @@ class _VoicemailCardState extends State<VoicemailCard> {
           ),
           if (_expanded)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Msg.s2),
               child: Text(_transcript, style: ADText.preview()),
             ),
         ],
@@ -315,7 +315,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (_bookingCreated)
             Padding(
-              padding: const EdgeInsets.only(right: 6, top: 1),
+              padding: const EdgeInsets.only(right: Msg.s2, top: 1),
               child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 14, color: AD.online),
             ),
           Expanded(child: Text(_summary, style: ADText.preview())),
@@ -332,7 +332,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
           ),
           if (_expanded)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Msg.s2),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 for (final t in _turns)
                   Padding(

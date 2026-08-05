@@ -433,7 +433,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
       opacity: locked || paid ? 0.45 : 1,
       child: AdCard(
         radius: Msg.rMd,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             ZineIconBadge(
@@ -456,7 +456,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
                   if (paid) ...[
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                       decoration: BoxDecoration(
                         color: AD.online.withValues(alpha: 0.16),
                         // Status chip — a genuine pill.

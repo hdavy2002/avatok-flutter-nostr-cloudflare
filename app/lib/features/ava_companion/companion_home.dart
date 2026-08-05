@@ -245,7 +245,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
@@ -294,7 +294,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
@@ -345,7 +345,7 @@ class _CompanionHomeState extends State<CompanionHome> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s2, Msg.s5, Msg.s2),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(s.title.isEmpty ? 'Chat' : s.title,
@@ -540,7 +540,7 @@ class _CompanionHomeState extends State<CompanionHome> {
   Widget _emptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(Msg.s6),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineIconBadge(
               icon: PhosphorIcons.chatTeardropDots(PhosphorIconsStyle.fill),
@@ -572,7 +572,7 @@ class _CompanionHomeState extends State<CompanionHome> {
 
   Widget _sessionList() {
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 96),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, 96),
       itemCount: _sessions.length,
       buildDefaultDragHandles: false, // long-press opens the menu; drag uses the handle
       onReorder: _showArchived ? (_, __) {} : _onReorder,
@@ -580,7 +580,7 @@ class _CompanionHomeState extends State<CompanionHome> {
         final s = _sessions[i];
         return Padding(
           key: ValueKey(s.id),
-          padding: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.only(bottom: Msg.s3),
           child: _SessionCard(
             session: s,
             index: i,
@@ -630,7 +630,7 @@ class _SessionCard extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: AdCard(
         radius: AD.rListCard,
-        padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s2, Msg.s3),
         child: Row(children: [
         Container(
           width: 44, height: 44, alignment: Alignment.center,
@@ -717,7 +717,7 @@ class _PersonaTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return AdCard(
       radius: AD.rListCard,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       onTap: onTap,
       child: Row(children: [
         Container(

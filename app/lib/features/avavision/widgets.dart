@@ -44,7 +44,7 @@ class MiniPill extends StatelessWidget {
       {super.key, this.fill = AD.card, this.fg = AD.textPrimary, this.icon, this.shadow = true});
   @override
   Widget build(BuildContext context) => Container(
-        padding: EdgeInsets.symmetric(horizontal: icon == null ? 8 : 7, vertical: 3),
+        padding: EdgeInsets.symmetric(horizontal: icon == null ? 8 : 7, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: fill,
           borderRadius: Msg.brPill,
@@ -255,7 +255,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           height: MediaQuery.of(context).size.height * .72,
           child: Column(children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s2),
               child: Text('Which language should the agent speak?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
             ),
             Padding(

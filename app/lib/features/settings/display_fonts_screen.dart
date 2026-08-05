@@ -42,7 +42,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -52,7 +52,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
           ),
         ),
       ),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
+      body: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
         Text('Make message, chat, contacts and menu text bigger or smaller. '
             'Big titles and icons stay the same size.', style: ADText.preview()),
         const SizedBox(height: Msg.s4),

@@ -369,7 +369,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         // 2) Top chips: language + countdown.
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
             child: Column(children: [
               Row(children: [
                 _chip(PhosphorIcons.translate(PhosphorIconsStyle.bold), _langLabel(widget.language)),
@@ -420,7 +420,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
   Widget _seenIndicator() => Align(
         alignment: Alignment.center,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           decoration: BoxDecoration(
             color: AD.card,
             borderRadius: BorderRadius.circular(Msg.rPill),
@@ -443,7 +443,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       valueListenable: vn,
       builder: (_, score, __) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           decoration: BoxDecoration(
             color: AD.card.withValues(alpha: .92),
             borderRadius: BorderRadius.circular(Msg.rMd),
@@ -457,7 +457,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
               Text(score?.toString() ?? '—', style: ADText.appTitle().copyWith(fontSize: 30, height: 1.08, letterSpacing: -0.6)),
               if (a.scoringMode == 'hybrid' && showAgent == false)
                 Padding(
-                  padding: const EdgeInsets.only(left: 6, bottom: 4),
+                  padding: const EdgeInsets.only(left: Msg.s2, bottom: Msg.s1),
                   child: Text('live', style: ADText.sectionLabel(c: AD.textTertiary).copyWith(fontSize: 9, letterSpacing: 0.72)),
                 ),
             ]),
@@ -485,7 +485,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
                 : Positioned(
                     bottom: -2,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                       decoration: BoxDecoration(
                         color: AD.primaryBadge,
                         borderRadius: BorderRadius.circular(Msg.rPill),
@@ -547,7 +547,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         color: AD.bg,
         alignment: Alignment.center,
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(Msg.s6),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), color: AD.danger),
             const SizedBox(height: 16),
@@ -564,7 +564,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       );
 
   Widget _chip(IconData icon, String label, {bool alert = false}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: alert ? AD.danger : AD.card,
           borderRadius: BorderRadius.circular(Msg.rPill),
@@ -617,7 +617,7 @@ class _Badge extends StatelessWidget {
   const _Badge(this.text);
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: AD.primaryBadge,
           borderRadius: BorderRadius.circular(Msg.rPill),
@@ -633,7 +633,7 @@ class _Sheet extends StatelessWidget {
   const _Sheet({required this.child});
   @override
   Widget build(BuildContext context) => Container(
-        padding: EdgeInsets.fromLTRB(20, 18, 20, 20 + MediaQuery.of(context).padding.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, 20 + MediaQuery.of(context).padding.bottom),
         decoration: const BoxDecoration(
           color: AD.card,
           borderRadius: Msg.brSheetTop,

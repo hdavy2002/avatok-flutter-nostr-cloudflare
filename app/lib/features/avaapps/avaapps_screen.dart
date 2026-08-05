@@ -33,7 +33,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
+          padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s5, Msg.s3),
           child: Row(children: [
             const AdBackButton(),
             const SizedBox(width: Msg.s1),
@@ -422,7 +422,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           slivers: [
             // Header (intro, search) — fixed, non-grid content.
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, 0),
               sliver: SliverList(delegate: SliverChildListDelegate([
           Row(children: [
             Expanded(child: Text('Connect your apps and let Ava act across them — read '
@@ -470,7 +470,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           if (_loading)
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AD.iconSearch))),
           if (!_loading && _visible.isEmpty)
-            Padding(padding: const EdgeInsets.all(20),
+            Padding(padding: const EdgeInsets.all(Msg.s5),
                 child: Center(child: Text('No apps found.', style: ADText.preview(c: AD.textTertiary)))),
               ])),
             ),
@@ -482,7 +482,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             // loads only the visible icons (from disk after first fetch).
             if (!_loading && _visible.isNotEmpty)
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 4,
@@ -498,7 +498,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               ),
             // Trailing content (Ask Ava, answer, tip).
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
               sliver: SliverList(delegate: SliverChildListDelegate([
           Text('Ask Ava', style: ADText.sectionLabel()),
           const SizedBox(height: Msg.s2),
@@ -537,7 +537,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           if (_answer != null) ...[
             const SizedBox(height: Msg.s3),
             AdCard(
-              radius: AD.rListCard, padding: const EdgeInsets.all(14),
+              radius: AD.rListCard, padding: const EdgeInsets.all(Msg.s4),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 30),
                 const SizedBox(width: 12),
@@ -608,7 +608,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             Positioned(
               right: -6, top: -6,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
                 decoration: BoxDecoration(
                   color: AD.card,
                   borderRadius: BorderRadius.circular(8),

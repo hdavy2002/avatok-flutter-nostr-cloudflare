@@ -510,7 +510,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           AdButton(
             label: 'Take photo', fullWidth: true, variant: AdButtonVariant.teal,
@@ -862,7 +862,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(AD.rInput),
             border: Border.all(color: error ? AD.danger : AD.borderControl, width: 1),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
           child: Row(children: [
             Icon(icon, size: 20, color: AD.textOnInput),
             const SizedBox(width: Msg.s2),
@@ -910,7 +910,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+                padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
                 child: Row(children: [
                   Expanded(
                     child: Text.rich(
@@ -933,11 +933,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           absorbing: held,
           child: ListView(
           controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(hPad, 18, hPad, 40 + MediaQuery.of(context).padding.bottom),
+          padding: EdgeInsets.fromLTRB(hPad, Msg.s5, hPad, 40 + MediaQuery.of(context).padding.bottom),
           children: [
             if (held)
               Padding(
-                padding: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.only(bottom: Msg.s4),
                 child: Row(children: [
                   const SizedBox(width: 18, height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
@@ -1072,7 +1072,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             const SizedBox(height: Msg.s1),
             if (_genderLocked)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
                 decoration: BoxDecoration(
                   color: AD.inputField,
                   borderRadius: BorderRadius.circular(AD.rInput),
@@ -1144,7 +1144,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             // "Ava is checking…" indicator while the moderation call is in flight.
             if (_bioChecking)
               Padding(
-                padding: const EdgeInsets.only(top: 9),
+                padding: const EdgeInsets.only(top: Msg.s3),
                 child: Row(children: [
                   const SizedBox(width: 14, height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
@@ -1162,7 +1162,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             if (_rejectBanner != null) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
                 decoration: BoxDecoration(
                   color: AD.danger.withValues(alpha: .14),
                   borderRadius: BorderRadius.circular(AD.rInput),

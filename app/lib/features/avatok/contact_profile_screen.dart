@@ -135,7 +135,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         child: Column(children: [
           _header(context),
           Expanded(
-            child: ListView(padding: const EdgeInsets.all(20), children: [
+            child: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
         Center(
           child: Container(
             decoration: BoxDecoration(
@@ -244,7 +244,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   /// Inline dark v2 header (replaces the light ZineAppBar): header/footer fill,
   /// hairline bottom border, circular back button + kicker/title stack.
   Widget _header(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
         decoration: const BoxDecoration(
           color: AD.headerFooter,
           border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
@@ -273,7 +273,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         onTap: onPressed,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
             borderRadius: Msg.brMd,
@@ -287,7 +287,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
       );
 
   Widget _box(String label, IconData icon, Color accent, {required Widget child}) => Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),

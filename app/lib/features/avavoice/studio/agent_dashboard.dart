@@ -54,7 +54,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                 color: AD.tabGroups,
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(Msg.s5),
                   children: [
                     Row(children: [
                       Avatar(seed: a.id, name: a.name, size: 56, avatarUrl: a.avatarUrl),
@@ -88,7 +88,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                       // Earnings hero — money = mint (§7.10/§7.11).
                       ZineCard(
                         color: AD.card,
-                        padding: const EdgeInsets.all(18),
+                        padding: const EdgeInsets.all(Msg.s5),
                         boxShadow: Msg.lift,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('You earned', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
@@ -166,7 +166,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
         child: ZineCard(
           radius: Msg.rLg,
           boxShadow: Msg.none,
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(Msg.s4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(height: Msg.s2),

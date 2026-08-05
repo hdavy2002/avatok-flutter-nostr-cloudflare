@@ -374,7 +374,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -880,7 +880,7 @@ class _OwnerProfileBlock extends StatelessWidget {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (c) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('Share this listing', style: ADText.appTitle(), textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -982,7 +982,7 @@ class _OwnerProfileBlock extends StatelessWidget {
             onTap: () => _openQrSheet(context),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                padding: const EdgeInsets.all(5),
+                padding: const EdgeInsets.all(Msg.s2),
                 decoration: BoxDecoration(
                   color: AD.inputField,
                   borderRadius: BorderRadius.circular(10),
@@ -1057,7 +1057,7 @@ class _CategoryBlock extends StatelessWidget {
       const SizedBox(height: 12),
       if (rows.isNotEmpty)
         AdCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
           radius: AD.rListCard,
           child: Column(children: [
             for (var i = 0; i < rows.length; i++)
@@ -1247,7 +1247,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
+      padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
       child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
@@ -1282,7 +1282,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             if (_loadingSlots) const Center(child: Padding(padding: EdgeInsets.all(12),
                 child: CircularProgressIndicator(color: AD.iconSearch)))
             else if (_slots.isEmpty)
-              Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+              Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                   child: Text('No availability this day — try another date.', style: ADText.preview()))
             else
               Wrap(spacing: 8, runSpacing: 8, children: [
@@ -1394,7 +1394,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       // Occupied slots are shown GREYED, not hidden (spec) — tap does nothing.
       onTap: available ? () => setState(() { _slotStart = start; _slotEnd = end; _error = null; }) : null,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: sel ? AD.primaryBadge : (available ? AD.card : AD.headerFooter),
           border: Border.all(color: sel ? AD.primaryBadge : AD.borderControl, width: 1),
@@ -1438,7 +1438,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Rate this session', style: ADText.appTitle()),
           const SizedBox(height: 12),

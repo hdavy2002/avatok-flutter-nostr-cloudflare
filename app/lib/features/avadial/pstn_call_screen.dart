@@ -209,7 +209,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
       backgroundColor: AvaDialTheme.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s6, Msg.s5, Msg.s6),
           child: Column(
             children: [
               const Spacer(),

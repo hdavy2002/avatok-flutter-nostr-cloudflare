@@ -556,10 +556,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   @override
   Widget build(BuildContext context) {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: _loading
           ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
+              padding: EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(child: SizedBox(
                   width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
             )
@@ -771,7 +771,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   borderColor: AD.borderControl,
                   radius: BorderRadius.circular(AD.rInput),
                   boxShadow: const [],
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                   child: Row(children: [
                     Icon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
@@ -815,7 +815,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   radius: BorderRadius.circular(AD.rInput),
                   boxShadow: const [],
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                   child: Row(children: [
                     Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
@@ -840,7 +840,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   radius: BorderRadius.circular(AD.rInput),
                   boxShadow: const [],
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                   child: Row(children: [
                     Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
@@ -1015,7 +1015,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
 
   Widget _toggleRow(String title, String sub, bool value, ValueChanged<bool> onChanged) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1197,7 +1197,7 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
               child: AdField(
                 controller: _search,
                 hint: 'Search languages',
@@ -1262,7 +1262,7 @@ class _TokenGateBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rInput),

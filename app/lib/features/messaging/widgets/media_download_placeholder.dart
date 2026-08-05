@@ -180,7 +180,7 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
               if (sizeLabel.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: Msg.brPill,

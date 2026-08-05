@@ -816,10 +816,10 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
   }
 
   Widget _bullet(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.only(bottom: Msg.s2),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
-            padding: const EdgeInsets.only(top: 5, right: 8),
+            padding: const EdgeInsets.only(top: Msg.s2, right: Msg.s2),
             child: Container(
               width: 4, height: 4,
               decoration: const BoxDecoration(color: AvaDialTheme.textMute, shape: BoxShape.circle),
@@ -867,7 +867,7 @@ class _PstnForwardingRow extends StatelessWidget {
       },
       behavior: HitTestBehavior.opaque,
       child: AdCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         child: Row(children: [
           ZineIconBadge(
               icon: PhosphorIcons.voicemail(PhosphorIconsStyle.fill),

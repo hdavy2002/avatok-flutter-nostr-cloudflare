@@ -116,7 +116,7 @@ class PaidBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final fam = AD.familyByName('mint');
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: fam.chipBg,
         borderRadius: Msg.brPill,

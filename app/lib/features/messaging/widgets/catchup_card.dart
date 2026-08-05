@@ -20,7 +20,7 @@ class CatchupCard extends StatelessWidget {
     if (bullets.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
       decoration: BoxDecoration(
         color: AD.card,
         border: Border.all(color: AD.borderControl, width: 1),
@@ -46,10 +46,10 @@ class CatchupCard extends StatelessWidget {
         const SizedBox(height: 8),
         for (final b in bullets)
           Padding(
-            padding: const EdgeInsets.only(bottom: 5),
+            padding: const EdgeInsets.only(bottom: Msg.s2),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Padding(
-                padding: const EdgeInsets.only(top: 2, right: 6),
+                padding: const EdgeInsets.only(top: 2, right: Msg.s2),
                 child: Text('•', style: ADText.rowName()),
               ),
               Expanded(

@@ -456,7 +456,7 @@ class _ZineFieldState extends State<ZineField> {
                 focusedBorder: InputBorder.none,
                 disabledBorder: InputBorder.none,
                 filled: false,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: Msg.s4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
               ),
             ),
           ),
@@ -911,7 +911,7 @@ class ZineDropdown<T> extends StatelessWidget {
         const SizedBox(height: Msg.s2),
       ],
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: Msg.brMd,

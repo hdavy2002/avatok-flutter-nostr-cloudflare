@@ -166,7 +166,7 @@ class _InCallScreenState extends State<InCallScreen> {
       backgroundColor: AvaDialTheme.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s6, Msg.s5, Msg.s6),
           child: Column(children: [
             const Spacer(),
             _avatar(name),
@@ -243,7 +243,7 @@ class _InCallScreenState extends State<InCallScreen> {
         borderColor: AvaDialTheme.border,
         // Round call controls — the phone-call idiom; kept circular.
         radius: Msg.brPill,
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(Msg.s5),
         child: Icon(icon, size: 26, color: active ? Colors.white : AvaDialTheme.text),
       ),
       const SizedBox(height: Msg.s1),

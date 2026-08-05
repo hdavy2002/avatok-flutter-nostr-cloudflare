@@ -81,7 +81,7 @@ class _VoiceCardState extends State<_VoiceCard> {
   @override
   Widget build(BuildContext context) {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(

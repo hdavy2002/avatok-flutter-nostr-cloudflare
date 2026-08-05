@@ -323,7 +323,7 @@ class _HomeCardsState extends State<HomeCards> {
         break;
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Row(children: [
         PhosphorIcon(icon, size: 16, color: color),
         const SizedBox(width: Msg.s2),
@@ -355,7 +355,7 @@ class _HomeCardsState extends State<HomeCards> {
           // Plan §3 correction: the in-network inbox is NOT carrier SMS, so the
           // SMS tab is an explicit unavailable state until the SMS role ships.
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s2),
             child: Text('SMS available once Ava is your SMS app.',
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           )
@@ -363,7 +363,7 @@ class _HomeCardsState extends State<HomeCards> {
           _skeletonLine(200)
         else if (_unread.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s2),
             child: Text('You are all caught up.',
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           )
@@ -379,7 +379,7 @@ class _HomeCardsState extends State<HomeCards> {
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _msgTab = tab),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: active ? AD.primaryBadge : AD.card,
           borderRadius: Msg.brPill,
@@ -393,7 +393,7 @@ class _HomeCardsState extends State<HomeCards> {
 
   Widget _unreadRow(BuildContext context, _UnreadPreview m) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
@@ -413,7 +413,7 @@ class _HomeCardsState extends State<HomeCards> {
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
             decoration: BoxDecoration(
               color: AD.unreadAccent,
               borderRadius: Msg.brPill,
@@ -547,7 +547,7 @@ class _HomeCardsState extends State<HomeCards> {
   }
 
   Widget _geoRow(String label, int views) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: Row(children: [
           Expanded(
             child: Text(label.isEmpty ? 'Unknown' : label,
@@ -591,7 +591,7 @@ class _HomeCardsState extends State<HomeCards> {
   }
 
   Widget _listingRow(ListingAgg l) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

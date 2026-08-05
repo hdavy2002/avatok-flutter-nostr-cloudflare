@@ -231,7 +231,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 16, 12),
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
                 child: Row(children: [
                   GestureDetector(
                     onTap: () => Navigator.of(context).maybePop(),
@@ -259,17 +259,17 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
           // name and picking members — not discovered only once Create is greyed
           // out with no explanation (owner request 2026-07-17).
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s5, Msg.s4, Msg.s1),
             child: Center(child: _photoPicker()),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s2),
             child: _nameField(),
           ),
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s1),
               child: Text('ADD MEMBERS', style: ADText.sectionLabel()),
             ),
           ),
@@ -340,7 +340,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
         onTap: enabled ? _create : null,
         borderRadius: Msg.brMd,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s3),
           decoration: BoxDecoration(
             color: fill,
             borderRadius: Msg.brMd,
@@ -382,7 +382,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 filled: false,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
               ),
             ),
           ),
@@ -424,7 +424,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             Positioned(
               right: -2, bottom: -2,
               child: Container(
-                padding: const EdgeInsets.all(5),
+                padding: const EdgeInsets.all(Msg.s2),
                 decoration: BoxDecoration(
                   color: _photoUploadFailed ? AD.danger : AD.newGroup,
                   shape: BoxShape.circle,

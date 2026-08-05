@@ -253,7 +253,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 38, height: 5,
@@ -284,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       borderColor: AD.borderControl,
       radius: BorderRadius.circular(AD.rListCard),
       boxShadow: const [],
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
       child: Row(children: [
         ZineIconBadge(icon: icon, color: accent, size: 32),
         const SizedBox(width: 12),
@@ -490,14 +490,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _securityRow(IconData icon, Color accent, String title, String subtitle, VoidCallback onTap) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: ZinePressable(
           onTap: onTap,
           color: AD.card,
           borderColor: AD.borderControl,
           radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const [],
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(width: 12),
@@ -526,7 +526,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 18, 12),
+              padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s5, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: Msg.s3),
@@ -548,7 +548,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       // Generous bottom padding (plus the system nav-bar inset) so the Update
       // button always sits comfortably above the nav bar — never chopped.
-      body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 40 + MediaQuery.of(context).padding.bottom), children: [
+      body: ListView(padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, 40 + MediaQuery.of(context).padding.bottom), children: [
         Center(
           child: GestureDetector(
             onTap: _photoBusy ? null : _editPhoto,
@@ -669,7 +669,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'learns from in Settings → AvaBrain.', style: ADText.preview()),
         const SizedBox(height: 16),
         AdCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Share last seen / online', style: ADText.rowName().copyWith(fontSize: 14)),
@@ -700,7 +700,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: ADText.preview()),
         const SizedBox(height: 12),
         AdCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Show my private number instead of my AvaTOK number', style: ADText.rowName().copyWith(fontSize: 14)),
@@ -742,7 +742,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: QrImageView(data: _shareLink, size: 150, backgroundColor: AD.inputField),
               ))
             else
-              const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator(color: AD.primaryBadge))),
+              const Center(child: Padding(padding: EdgeInsets.all(Msg.s6), child: CircularProgressIndicator(color: AD.primaryBadge))),
             const SizedBox(height: Msg.s2),
             Center(child: Text(
               _cardNumber.isNotEmpty ? _cardNumber : 'Scan to add me on AvaTOK',
@@ -751,7 +751,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // Restored 2026-07-23 [PROFILE-DISPLAY-2] after it went missing from the card.
             if (_cardEmail.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 3),
+                padding: const EdgeInsets.only(top: Msg.s1),
                 child: Center(child: Text(_cardEmail,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))),

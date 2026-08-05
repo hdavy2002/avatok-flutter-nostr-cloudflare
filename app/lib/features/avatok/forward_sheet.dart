@@ -187,7 +187,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                    contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     hintText: 'Search groups and contacts',
                     hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
                   ),
@@ -204,7 +204,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
                   child: CircularProgressIndicator(color: AD.iconSearch))
               : (groups.isEmpty && contacts.isEmpty)
                   ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 30),
+                      padding: const EdgeInsets.symmetric(vertical: Msg.s6),
                       child: Text(
                           _query.isEmpty
                               ? 'No groups or contacts yet'
@@ -243,7 +243,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s1, Msg.s4, Msg.s4),
             child: Row(children: [
               Expanded(
                 child: Text(
@@ -266,7 +266,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
   }
 
   Widget _sectionHeader(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(2, 12, 0, 6),
+        padding: const EdgeInsets.fromLTRB(2, Msg.s3, 0, Msg.s2),
         child: Text(label, style: ADText.sectionLabel()),
       );
 
@@ -281,7 +281,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
       onTap: () => _toggle(target),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [
           leading,
           const SizedBox(width: 12),
@@ -337,7 +337,7 @@ class _SendButton extends StatelessWidget {
         opacity: enabled ? 1 : 0.4,
         child: Container(
           height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 22),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
             borderRadius: Msg.brMd,

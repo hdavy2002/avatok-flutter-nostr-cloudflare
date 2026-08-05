@@ -105,7 +105,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
               color: AD.headerFooter,
               border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s4),
             child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               const AdBackButton(),
               const SizedBox(width: 12),
@@ -138,10 +138,10 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
           ),
           SizedBox(
             height: 58,
-            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), children: [
+            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: 10), children: [
               for (final s in const [['soonest', 'Soonest'], ['cheapest', 'Cheapest'], ['popular', 'Popular'], ['rating', 'Top rated']])
                 Padding(
-                  padding: const EdgeInsets.only(right: 9),
+                  padding: const EdgeInsets.only(right: Msg.s3),
                   child: AdChip(
                     label: s[1],
                     active: _sort == s[0],
@@ -164,7 +164,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
             icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
             text: 'Search the marketplace — events, sessions, creators.'));
       }
-      return ListView(padding: const EdgeInsets.all(18), children: [
+      return ListView(padding: const EdgeInsets.all(Msg.s5), children: [
         Text('Recent searches', style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s2),
         for (final r in _recent)
@@ -172,7 +172,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
             behavior: HitTestBehavior.opaque,
             onTap: () { _q.text = r; _run(); },
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 9),
+              padding: const EdgeInsets.symmetric(vertical: Msg.s3),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
                 const SizedBox(width: Msg.s2),
@@ -254,7 +254,7 @@ class _FilterSheetState extends State<_FilterSheet> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Filters', style: ADText.appTitle()),
           const SizedBox(height: 12),

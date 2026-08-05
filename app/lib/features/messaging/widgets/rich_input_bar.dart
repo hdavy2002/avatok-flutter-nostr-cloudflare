@@ -187,12 +187,12 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (widget.topSlot != null) widget.topSlot!,
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               // ONE wide pill holding the field and every control, right-aligned.
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.only(left: 14, right: 2),
+                  padding: const EdgeInsets.only(left: Msg.s4, right: 2),
                   decoration: BoxDecoration(
                     color: widget.fieldColor,
                     borderRadius: Msg.brLg,

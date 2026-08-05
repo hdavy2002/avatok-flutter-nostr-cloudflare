@@ -62,7 +62,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
+          padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s5, Msg.s3),
           child: Row(children: [
             const AdBackButton(),
             const SizedBox(width: Msg.s1),
@@ -166,7 +166,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               onRefresh: _load,
               // Bottom padding includes the device safe-area inset + extra so the
               // last ledger row (e.g. "Other") isn't chopped by the gesture nav bar.
-              child: ListView(padding: EdgeInsets.fromLTRB(18, 18, 18, 30 + MediaQuery.of(context).padding.bottom + 32), children: [
+              child: ListView(padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, 30 + MediaQuery.of(context).padding.bottom + 32), children: [
                 const _DriveSection(),
                 const SizedBox(height: 12),
                 const _BackupRestoreSection(),
@@ -389,7 +389,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                   duration: Msg.slow,
                   curve: Curves.easeOutCubic,
                   height: (54 * (((s['used_bytes'] as num?) ?? 0) / maxV)).clamp(4, 54).toDouble(),
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  margin: const EdgeInsets.symmetric(horizontal: Msg.s2),
                   decoration: BoxDecoration(
                     color: AD.online,
                     borderRadius: BorderRadius.circular(4),
@@ -572,7 +572,7 @@ class _DriveSectionState extends State<_DriveSection> {
   Widget build(BuildContext context) {
     return AdCard(
       radius: AD.rListCard,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill), color: AD.online, size: 34),
@@ -605,7 +605,7 @@ class _DriveSectionState extends State<_DriveSection> {
             Text('No AvaTOK files yet — anything you save to Drive appears here.', style: ADText.preview())
           else
             ...(_files.take(12).map((f) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  padding: const EdgeInsets.symmetric(vertical: Msg.s2),
                   child: Row(children: [
                     PhosphorIcon(PhosphorIcons.file(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
                     const SizedBox(width: 8),
@@ -763,7 +763,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
   Widget build(BuildContext context) {
     return AdCard(
       radius: AD.rListCard,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
@@ -789,7 +789,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
   Widget _actions() {
     if (_connected == null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [
           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2, color: AD.iconSearch)),
           const SizedBox(width: Msg.s2),

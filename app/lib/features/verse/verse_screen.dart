@@ -57,7 +57,7 @@ class _VerseScreenState extends State<VerseScreen> {
               : RefreshIndicator(
                   onRefresh: () => _load(fresh: true),
                   color: AD.tabGroups,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8), children: [
+                  child: ListView(padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2), children: [
                     _periodChips(),
                     const SizedBox(height: Msg.s3),
                     ..._nudgeBanners(s),
@@ -153,7 +153,7 @@ class _VerseScreenState extends State<VerseScreen> {
           const SizedBox(width: Msg.s1),
           if (pill)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
               decoration: BoxDecoration(
                 color: AD.online,
                 borderRadius: BorderRadius.circular(Msg.rPill),
@@ -345,7 +345,7 @@ class _VerseScreenState extends State<VerseScreen> {
         ),
         if (events.isEmpty && left > 0)
           Padding(
-            padding: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.only(top: Msg.s2),
             child: Text('Publish an upcoming listing to announce it.', style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ),
       ],
@@ -411,7 +411,7 @@ class _VerseScreenState extends State<VerseScreen> {
         if (rs.isEmpty) Text('All caught up 🎉', style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         for (final r in rs.take(5))
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s2),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Container(
                 width: 30, height: 30,
@@ -495,13 +495,13 @@ class StatementsScreen extends StatelessWidget {
         markWord: 'Statements',
         tag: 'monthly earnings csv',
       ),
-      body: ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 24), children: [
+      body: ListView(padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5), children: [
         for (final m in _months)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: Msg.s3),
             child: ZineCard(
               radius: Msg.rLg,
-              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
               boxShadow: Msg.none,
               child: Row(children: [
                 ZineIconBadge(icon: PhosphorIcons.receipt(PhosphorIconsStyle.bold), color: AD.online, size: 30),

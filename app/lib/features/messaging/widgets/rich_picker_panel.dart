@@ -101,7 +101,7 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
   // Search (left) · segmented Emoji|GIF|Sticker · backspace (right).
   Widget _topBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s2),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
@@ -158,7 +158,7 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
       onTap: () => _setTab(t),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: on ? AD.primaryBadge : Colors.transparent,
           borderRadius: BorderRadius.circular(Msg.rSm),
@@ -240,13 +240,13 @@ class _EmojiTabState extends State<_EmojiTab> {
         // — which needs a RenderBox context — can jump to this category.
         child: Padding(
           key: key,
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s1),
           child: Text(label, style: ADText.sectionLabel()),
         ),
       );
 
   Widget _sliverGrid(List<String> emojis) => SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
         sliver: SliverGrid(
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 44,
@@ -260,7 +260,7 @@ class _EmojiTabState extends State<_EmojiTab> {
       );
 
   Widget _grid(List<String> emojis) => GridView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s2),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 44,
           childAspectRatio: 1,
@@ -420,7 +420,7 @@ class _GifTabState extends State<_GifTab> {
   // Secondary, demoted access to the full native GIPHY browser. Default browsing
   // is the cached proxy grid above; this link is the richer (uncached) option.
   Widget _giphyLink() => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s1, Msg.s3, Msg.s2),
         child: GestureDetector(
           onTap: _openGiphy,
           behavior: HitTestBehavior.opaque,
@@ -462,7 +462,7 @@ class _GifTabState extends State<_GifTab> {
       if (_loading && _items.isNotEmpty)
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
+            padding: EdgeInsets.symmetric(vertical: Msg.s4),
             child: Center(
               child: SizedBox(
                 width: 20,
@@ -477,14 +477,14 @@ class _GifTabState extends State<_GifTab> {
 
   Widget _note(String msg) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Text(msg, textAlign: TextAlign.center, style: ADText.preview()),
         ),
       );
 
   Widget _sliverHeader(String label) => SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s1),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(label,
@@ -494,7 +494,7 @@ class _GifTabState extends State<_GifTab> {
       );
 
   Widget _sliverGrid(List<GifResult> items) => SliverPadding(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(Msg.s2),
         sliver: SliverGrid(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
@@ -593,7 +593,7 @@ class _StickerTabState extends State<_StickerTab> {
 
   Widget _header(String label) => SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s1),
           child: Text(label, style: ADText.sectionLabel()),
         ),
       );

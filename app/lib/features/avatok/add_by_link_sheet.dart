@@ -104,7 +104,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(
             width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
@@ -121,7 +121,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
                 borderRadius: BorderRadius.circular(AD.rInput),
                 border: _error != null ? Border.all(color: AD.danger, width: 1.5) : null,
               ),
-              padding: const EdgeInsets.only(left: 14, right: 4),
+              padding: const EdgeInsets.only(left: Msg.s4, right: Msg.s1),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
                     size: 18, color: AD.placeholderOnWhite),
@@ -137,7 +137,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
                       border: InputBorder.none,
                       hintText: 'avatok.ai/add?t=…',
                       hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                      contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     ),
                   ),
                 ),
@@ -150,7 +150,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
                 ),
               ]),
             ),
-            if (_error != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(_error!, style: ADText.preview(c: AD.danger))),
+            if (_error != null) Padding(padding: const EdgeInsets.only(top: Msg.s2), child: Text(_error!, style: ADText.preview(c: AD.danger))),
             const SizedBox(height: Msg.s3),
             _PrimaryButton(
               label: _resolving ? 'Looking up…' : 'Continue',
@@ -193,7 +193,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
           if (c.sharesRealNumber) ...[
             const SizedBox(height: Msg.s2),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
               decoration: BoxDecoration(color: AD.danger.withValues(alpha: 0.14), borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
               child: Text('No AvaTOK number yet — this contact shares a real phone number.', style: ADText.preview()),
             ),
@@ -213,7 +213,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
   }
 
   Widget _row(IconData icon, String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [
           PhosphorIcon(icon, size: 16, color: AD.textSecondary),
           const SizedBox(width: 8),
@@ -240,7 +240,7 @@ class _PrimaryButton extends StatelessWidget {
         opacity: onTap == null ? 0.5 : 1,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 15),
+          padding: const EdgeInsets.symmetric(vertical: Msg.s4),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
             borderRadius: Msg.brMd,
@@ -273,7 +273,7 @@ class _GhostButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 15),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s4),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: AD.card,

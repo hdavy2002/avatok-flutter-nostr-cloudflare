@@ -48,7 +48,7 @@ class MediaLibraryScreen extends StatelessWidget {
           foregroundColor: AD.textPrimary,
           shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
           leading: const Padding(
-            padding: EdgeInsets.only(left: 10),
+            padding: EdgeInsets.only(left: Msg.s3),
             child: Center(child: AdBackButton()),
           ),
           leadingWidth: 60,
@@ -141,7 +141,7 @@ class MediaLibraryScreen extends StatelessWidget {
       return _empty(PhosphorIcons.link(PhosphorIconsStyle.bold), 'No links yet');
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
       itemCount: links.length,
       separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
       itemBuilder: (_, i) {
@@ -152,7 +152,7 @@ class MediaLibraryScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(AD.rListCard),
             onTap: () => launchUrl(Uri.parse(l.url), mode: LaunchMode.externalApplication),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
               decoration: BoxDecoration(
                 color: AD.card,
                 borderRadius: BorderRadius.circular(AD.rListCard),
@@ -177,7 +177,7 @@ class MediaLibraryScreen extends StatelessWidget {
       return _empty(PhosphorIcons.fileText(PhosphorIconsStyle.bold), 'No documents yet');
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
       itemCount: docs.length,
       separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
       itemBuilder: (_, i) {
@@ -189,7 +189,7 @@ class MediaLibraryScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(AD.rListCard),
             onTap: () => launchUrl(Uri.parse(d.downloadUrl), mode: LaunchMode.externalApplication),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
               decoration: BoxDecoration(
                 color: AD.card,
                 borderRadius: BorderRadius.circular(AD.rListCard),
@@ -226,7 +226,7 @@ class MediaLibraryScreen extends StatelessWidget {
     showDialog(context: context, builder: (_) => Dialog(
       // Image lightbox sits on a warm-ink scrim (allowed as an overlay dim).
       backgroundColor: AD.scrim,
-      insetPadding: const EdgeInsets.all(10),
+      insetPadding: const EdgeInsets.all(Msg.s3),
       child: FutureBuilder<Uint8List>(
         future: MediaService.downloadAndDecrypt(m),
         builder: (_, s) => s.hasData

@@ -195,13 +195,13 @@ class _StatusScreenState extends State<StatusScreen> {
     }
     showDialog(context: context, builder: (_) => Dialog(
       backgroundColor: AD.popover,
-      insetPadding: const EdgeInsets.all(14),
+      insetPadding: const EdgeInsets.all(Msg.s4),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AD.rDialog),
         side: const BorderSide(color: AD.borderCard, width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(p.authorName, style: ADText.threadName().copyWith(fontSize: 18)),
           const SizedBox(height: Msg.s3),
@@ -213,7 +213,7 @@ class _StatusScreenState extends State<StatusScreen> {
                       borderRadius: BorderRadius.circular(12),
                       child: Image.memory(s.data!, fit: BoxFit.contain),
                     )
-                  : const Padding(padding: EdgeInsets.all(30),
+                  : const Padding(padding: EdgeInsets.all(Msg.s6),
                       child: CircularProgressIndicator(color: AD.iconSearch)),
             )
           else
@@ -237,7 +237,7 @@ class _StatusScreenState extends State<StatusScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
             child: Row(children: [
               if (showBack) ...[
                 GestureDetector(
@@ -283,12 +283,12 @@ class _StatusScreenState extends State<StatusScreen> {
       backgroundColor: AD.bg,
       appBar: _header(),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
         children: [
           // "My status" — white-ring avatar + orange add circle (dark v2 accent).
           AdCard(
             radius: 16,
-            padding: const EdgeInsets.all(13),
+            padding: const EdgeInsets.all(Msg.s4),
             onTap: _addSheet,
             child: Row(children: [
               Stack(clipBehavior: Clip.none, children: [
@@ -325,7 +325,7 @@ class _StatusScreenState extends State<StatusScreen> {
           ),
           const SizedBox(height: Msg.s4),
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 9),
+            padding: const EdgeInsets.only(left: Msg.s1, bottom: Msg.s3),
             child: Text('Recent', style: ADText.sectionLabel()),
           ),
           if (_posts.isEmpty)

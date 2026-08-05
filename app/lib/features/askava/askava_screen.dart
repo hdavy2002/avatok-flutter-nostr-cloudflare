@@ -439,9 +439,9 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
+        margin: const EdgeInsets.symmetric(vertical: Msg.s2),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: mine ? AD.bubbleOutBg : AD.card,
           borderRadius: mine ? AD.bubbleOutRadius : AD.bubbleInRadius,
@@ -490,8 +490,8 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: Msg.s2),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -531,8 +531,8 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
   Widget _typing() => Align(
         alignment: Alignment.centerLeft,
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          margin: const EdgeInsets.symmetric(vertical: Msg.s2),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           decoration: BoxDecoration(
             color: AD.card,
             borderRadius: AD.bubbleInRadius,
@@ -548,7 +548,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         color: AD.headerFooter,
       ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
       child: Row(children: [
         Expanded(
           // Input box stays WHITE (owner request 2026-07-13, pic 3).
@@ -558,7 +558,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
               borderRadius: BorderRadius.circular(AD.rInput),
               border: Border.all(color: AD.borderControl, width: 1),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
             child: TextField(
               controller: _input,
               minLines: 1,

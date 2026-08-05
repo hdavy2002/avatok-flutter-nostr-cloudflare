@@ -206,7 +206,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
   // ── FREE: Google Drive backup ──────────────────────────────────────────────
   Widget _driveCard() {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.cloud(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
@@ -233,7 +233,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
   Widget _driveActions() {
     if (_driveConnected == null) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 6),
+        padding: EdgeInsets.symmetric(vertical: Msg.s2),
         child: Row(children: [
           SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2)),
           SizedBox(width: Msg.s2),
@@ -300,7 +300,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
   // ── PAID: R2 cross-device sync ──────────────────────────────────────────────
   Widget _r2Card() {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.devices(PhosphorIconsStyle.fill), color: AD.iconSearch, size: 34),
@@ -365,7 +365,7 @@ class _FreeChip extends StatelessWidget {
   const _FreeChip();
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.primaryBadge,
           borderRadius: Msg.brPill,

@@ -249,7 +249,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     }
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -285,7 +285,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
               // Beta notice (owner request 2026-07-14): manual switches are a
               // beta-period quirk; the Play Store release sets them automatically.
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(Msg.s3),
                 decoration: BoxDecoration(
                   color: _teal.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(Msg.rSm),
@@ -303,7 +303,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
               const SizedBox(height: Msg.s3),
               if (_loading)
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 28),
+                  padding: EdgeInsets.symmetric(vertical: Msg.s6),
                   child: Center(child: CircularProgressIndicator(color: _teal)),
                 )
               else ...[
@@ -412,7 +412,7 @@ class _StepRow extends StatelessWidget {
                   const SizedBox(width: 8),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 1),
                     decoration: BoxDecoration(
                       color: teal.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(Msg.rSm),
@@ -443,13 +443,13 @@ class _StepRow extends StatelessWidget {
             onPressed: onTap,
             style: TextButton.styleFrom(
               foregroundColor: teal,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3),
             ),
             child: Text(actionLabel ?? 'Enable'),
           )
         else
           const Padding(
-            padding: EdgeInsets.only(right: 10),
+            padding: EdgeInsets.only(right: Msg.s3),
             child: Text(
               'On',
               style: TextStyle(
@@ -461,7 +461,7 @@ class _StepRow extends StatelessWidget {
     // The active task gets a soft highlight card so the eye lands on ONE thing.
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2, horizontal: Msg.s2),
       decoration: active
           ? BoxDecoration(
               color: teal.withValues(alpha: 0.07),

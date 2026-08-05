@@ -374,7 +374,30 @@ class AdButton extends StatelessWidget {
         AdButtonVariant.danger => AD.destructiveBg,
         AdButtonVariant.ghost => AD.card,
       };
-  Color get _fg => variant == AdButtonVariant.ghost ? AD.textPrimary : Colors.white;
+  /// [UI-CONTRAST-1 2026-08-05] Foreground ink, chosen PER FILL rather than
+  /// "white unless ghost".
+  ///
+  /// WHY: `primary` fills with `AD.primaryBadge` (#E8833A). White on that is
+  /// **2.5:1** — below the WCAG AA minimum of 4.5:1 for body text and below
+  /// even the 3:1 large-text floor. This is the app's main call-to-action, so
+  /// the single least accessible thing in the product was also the thing every
+  /// user is meant to press. `teal` (#2FA98C) is the same story at ~2.9:1.
+  ///
+  /// Dark ink fixes both without touching the fills, so the buttons keep their
+  /// colour identity:
+  ///   orange #E8833A + #17171B ink  ≈ 7.1:1
+  ///   teal   #2FA98C + #17171B ink  ≈ 6.2:1
+  /// `danger` (#C0533F) is a dark fill and genuinely needs white (~5.1:1);
+  /// `ghost` is a dark card and keeps `textPrimary`.
+  ///
+  /// Do NOT "simplify" this back to a single white — the whole point is that
+  /// the right ink depends on how light the fill is.
+  Color get _fg => switch (variant) {
+        AdButtonVariant.primary => AD.textOnInput,
+        AdButtonVariant.teal => AD.textOnInput,
+        AdButtonVariant.danger => AD.destructiveInk,
+        AdButtonVariant.ghost => AD.textPrimary,
+      };
 
   @override
   Widget build(BuildContext context) {

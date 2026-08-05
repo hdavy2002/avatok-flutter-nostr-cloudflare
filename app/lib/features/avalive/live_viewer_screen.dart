@@ -299,7 +299,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
             child: Row(children: [
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
                   decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brSm),
                   child: TextField(
                     controller: _chatCtl,

@@ -172,7 +172,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
           borderRadius: Msg.brSheetTop,
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: EdgeInsets.fromLTRB(20, Msg.s4, 20, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Top up Tokens',
               style: ADText.threadName().copyWith(fontSize: 19)),
@@ -250,7 +250,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
             onTap: _busy ? null : (active ? _stop : _openMenu),
             onLongPress: active ? _openMenu : null,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
               decoration: BoxDecoration(
                 color: active ? _aiAccent : AD.card,
                 borderRadius: Msg.brPill,
@@ -330,7 +330,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
         borderRadius: Msg.brSheetTop,
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, Msg.s4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // The sheet drag handle is genuinely a pill.
         Center(

@@ -114,7 +114,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
         color: AD.headerFooter,
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // ── result banner (after Safety shield) ─────────────────────────────
         if (_scored) _scoreBanner(scam),
@@ -183,7 +183,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
 
   Widget _bannerShell(Color bg, IconData icon, Color fg, String text, Widget? trailing) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(AD.rStatCard),

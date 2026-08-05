@@ -160,7 +160,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s5, Msg.s3),
               child: Row(children: [
                 AdBackButton(onTap: () => Navigator.of(context).maybePop()),
                 const SizedBox(width: Msg.s1),
@@ -222,7 +222,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ])
                 : ListView.separated(
                     controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
+                    padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s6),
                     // [NOTIF-LAZY-1] +1 for the paging spinner / end-of-feed cap.
                     itemCount: _items.length + 1,
                     separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
@@ -230,7 +230,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       if (i == _items.length) {
                         if (_end) return const SizedBox(height: 8);
                         return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 18),
+                          padding: EdgeInsets.symmetric(vertical: Msg.s5),
                           child: Center(
                             child: SizedBox(
                               width: 18, height: 18,
@@ -244,7 +244,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       final (icon, accent) = _meta(n.type);
                       return AdCard(
                         radius: AD.rListCard,
-                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
                         boxShadow: const [],
                         // A group invite taps back to the messenger — the Groups
                         // tab badge points the user at the new group.

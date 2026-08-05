@@ -59,7 +59,7 @@ class _AboutScreenState extends State<AboutScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -107,7 +107,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

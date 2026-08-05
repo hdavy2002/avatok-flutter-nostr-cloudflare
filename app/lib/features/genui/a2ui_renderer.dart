@@ -331,7 +331,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     final fg = _tok(n['fg']?.toString(), fallback: AD.textPrimary);
     final icon = n['icon']?.toString();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rPill)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[PhosphorIcon(_icon(icon), size: 13, color: fg), const SizedBox(width: Msg.s1)],
@@ -369,7 +369,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
 
     final inner = Container(
       height: full ? 46 : null,
-      padding: full ? null : const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+      padding: full ? null : const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
       decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd), boxShadow: Msg.none),
       alignment: Alignment.center,
       child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -414,7 +414,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     return IntrinsicHeight(
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Container(
-        width: 64, color: accent, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        width: 64, color: accent, padding: const EdgeInsets.symmetric(vertical: Msg.s3, horizontal: Msg.s1),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(start, textAlign: TextAlign.center, style: ADText.rowName().copyWith(fontSize: 13, height: 1.3)),
           if (end.isNotEmpty) Text(end, textAlign: TextAlign.center, style: ADText.tabLabel(c: AD.textPrimary).copyWith(fontSize: 9, letterSpacing: 0.36)),
@@ -422,7 +422,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       ),
       Container(width: 1, color: AD.borderHairline),
       Expanded(child: Padding(
-        padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(_resolve(n['title'], scope), maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
           if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: Msg.s2, runSpacing: 4, children: meta)),
@@ -857,7 +857,7 @@ class _ComposioFormState extends State<_ComposioForm> {
     }
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -960,7 +960,7 @@ class _ComposioFormState extends State<_ComposioForm> {
           hintText: f.placeholder,
           hintStyle: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13, height: 1.42),
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
           filled: true,
           fillColor: AD.card,
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: const BorderSide(color: AD.borderControl, width: 1)),

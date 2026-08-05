@@ -203,10 +203,10 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       );
     }
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: _loading
           ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
+              padding: EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(child: SizedBox(
                   width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
             )
@@ -319,7 +319,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       borderColor: AD.borderControl,
       radius: BorderRadius.circular(AD.rListCard),
       boxShadow: const [],
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
       child: Row(children: [
         Icon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
         const SizedBox(width: Msg.s2),
@@ -343,7 +343,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
     return Column(children: [
       for (final d in docs)
         Padding(
-          padding: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.only(bottom: Msg.s2),
           child: Row(children: [
             Icon(PhosphorIcons.fileText(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
             const SizedBox(width: 8),
@@ -434,7 +434,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       borderColor: AD.borderControl,
       radius: BorderRadius.circular(AD.rListCard),
       boxShadow: const [],
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       child: Text(value, style: ADText.rowName(), textAlign: TextAlign.center),
     );
   }
@@ -573,7 +573,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.86),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Container(width: 40, height: 4,
                   decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),

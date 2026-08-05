@@ -196,7 +196,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -214,11 +214,11 @@ class _IdentityScreenState extends State<IdentityScreen> {
         color: AD.iconSearch,
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
-            : ListView(padding: const EdgeInsets.all(20), children: [
+            : ListView(padding: const EdgeInsets.all(Msg.s5), children: [
                 // ── Level card ────────────────────────────────────────────
                 AdCard(
                   color: AD.card,
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(Msg.s5),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
@@ -336,9 +336,9 @@ class _IdentityScreenState extends State<IdentityScreen> {
       ])),
     ]);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: onTap == null
-          ? AdCard(radius: AD.rListCard, padding: const EdgeInsets.all(13), child: body)
+          ? AdCard(radius: AD.rListCard, padding: const EdgeInsets.all(Msg.s4), child: body)
           : ZinePressable(
               onTap: onTap,
               color: AD.card,
@@ -347,7 +347,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
               borderWidth: 1,
               radius: BorderRadius.circular(AD.rListCard),
               boxShadow: const [],
-              padding: const EdgeInsets.all(13),
+              padding: const EdgeInsets.all(Msg.s4),
               child: body,
             ),
     );
@@ -367,9 +367,9 @@ class _IdentityScreenState extends State<IdentityScreen> {
         PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
     ]);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: onTap == null
-          ? AdCard(radius: AD.rListCard, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ? AdCard(radius: AD.rListCard, padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
               child: body)
           : ZinePressable(
               onTap: onTap,
@@ -379,7 +379,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
               borderWidth: 1,
               radius: BorderRadius.circular(AD.rListCard),
               boxShadow: const [],
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
               child: body,
             ),
     );

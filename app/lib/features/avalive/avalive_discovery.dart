@@ -158,7 +158,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
 
   Widget _card(ListingCard l, {required bool live}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: Msg.s4),
       child: GestureDetector(
         onTap: () => live
             ? _watch(l)
@@ -182,7 +182,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                 // LIVE → danger badge (white text allowed on danger).
                 if (live)
                   Positioned(left: 10, top: 10, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: Msg.s1),
+                    padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                     decoration: BoxDecoration(
                       color: AD.danger,
                       // Status badge — a genuine pill.
@@ -197,7 +197,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                   )),
                 // Price chip — card fill + hairline border (no dark scrims).
                 Positioned(right: 10, top: 10, child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: Msg.s1),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                   decoration: BoxDecoration(
                     color: AD.card,
                     // Price chip — a genuine pill.

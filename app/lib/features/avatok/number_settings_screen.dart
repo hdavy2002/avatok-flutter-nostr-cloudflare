@@ -234,7 +234,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
             : widget.gate
                 ? Column(children: [
-                    Expanded(child: ListView(padding: const EdgeInsets.all(20), children: _content())),
+                    Expanded(child: ListView(padding: const EdgeInsets.all(Msg.s5), children: _content())),
                     SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -247,7 +247,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
                     ),
                   ])
                 : SafeArea(
-                    child: ListView(padding: const EdgeInsets.all(20), children: _content()),
+                    child: ListView(padding: const EdgeInsets.all(Msg.s5), children: _content()),
                   ),
       ),
     );
@@ -265,7 +265,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
             child: Row(children: [
               if (showBack) ...[
                 GestureDetector(
@@ -301,7 +301,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
 
   /// List/settings card surface.
   Widget _card({required Widget child, VoidCallback? onTap,
-      EdgeInsetsGeometry padding = const EdgeInsets.all(18)}) {
+      EdgeInsetsGeometry padding = const EdgeInsets.all(Msg.s5)}) {
     final box = Container(
       padding: padding,
       decoration: BoxDecoration(
@@ -317,7 +317,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
 
   /// Highlighted/accent card (pale accent tint) for calls-to-action.
   Widget _accentCard({required Widget child, Color accent = AD.primaryBadge}) => Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(Msg.s5),
         decoration: BoxDecoration(
           color: accent.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -528,7 +528,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         widgets.add(Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: _card(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
             onTap: _busy ? null : () => _confirm(n),
             child: Row(children: [
               Expanded(child: Text(n.display, style: ADText.rowName().copyWith(fontSize: 16), overflow: TextOverflow.ellipsis)),
@@ -582,7 +582,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
                 hintText: 'Want certain digits? e.g. 777',
                 hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 15, color: AD.placeholderOnWhite),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
               ),
             ),
           ),

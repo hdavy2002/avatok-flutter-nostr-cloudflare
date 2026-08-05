@@ -123,7 +123,7 @@ class ListingCardTile extends StatelessWidget {
               ),
               // LIVE → red sticker (white text); else category tag.
               Positioned(left: 8, top: 8, child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
                 decoration: BoxDecoration(
                   color: live ? AD.destructiveBg : AD.card,
                   borderRadius: Msg.brPill,
@@ -140,7 +140,7 @@ class ListingCardTile extends StatelessWidget {
               )),
               if (card.adultsOnly)
                 Positioned(right: 8, top: 8, child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
                   decoration: BoxDecoration(
                     color: AD.destructiveBg,
                     borderRadius: Msg.brPill,
@@ -152,7 +152,7 @@ class ListingCardTile extends StatelessWidget {
           ),
           Container(height: 1, color: AD.borderControl),
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s3),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.rowName()),

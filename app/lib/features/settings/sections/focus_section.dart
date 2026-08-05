@@ -41,7 +41,7 @@ class _FocusModeCardState extends State<_FocusModeCard> {
   @override
   Widget build(BuildContext context) {
     return AdCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: ValueListenableBuilder<bool>(
         valueListenable: FocusMode.enabled,
         builder: (context, on, _) => Row(children: [

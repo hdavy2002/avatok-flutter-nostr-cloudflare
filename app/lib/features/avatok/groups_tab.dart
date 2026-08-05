@@ -148,7 +148,7 @@ class _GroupsTabState extends State<GroupsTab> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 16, 12),
+              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
               child: Row(children: [
                 if (widget.onMenu != null) ...[
                   _hdrBtn(PhosphorIcons.list(PhosphorIconsStyle.bold), widget.onMenu!),
@@ -192,7 +192,7 @@ class _GroupsTabState extends State<GroupsTab> {
                   : noResults
                       ? _noResults()
                       : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+                      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, 110),
                       children: [
                         // Section headers are tied to their FILTERED section, so a
                         // header never survives alone when its rows are filtered out.
@@ -242,7 +242,7 @@ class _GroupsTabState extends State<GroupsTab> {
           onTap: onTap,
           borderRadius: Msg.brMd,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
             decoration: BoxDecoration(
               color: AD.newGroup,
               borderRadius: Msg.brMd,
@@ -287,7 +287,7 @@ class _GroupsTabState extends State<GroupsTab> {
   /// A dark card surface with an optional tap (replaces ZineCard).
   Widget _card({required Widget child, EdgeInsetsGeometry? padding, VoidCallback? onTap}) {
     final content = Container(
-      padding: padding ?? const EdgeInsets.all(13),
+      padding: padding ?? const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),

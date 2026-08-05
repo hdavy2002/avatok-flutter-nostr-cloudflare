@@ -133,7 +133,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -179,7 +179,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
     return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 32), children: [
       if (c.bannerKey != null && c.bannerKey!.isNotEmpty)
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, 0),
           child: CoverImage(url: c.bannerKey, seed: c.uid.hashCode, height: 130),
         ),
       Padding(
@@ -268,7 +268,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
           Text('Listings', style: ADText.appTitle()),
           const SizedBox(height: Msg.s2),
           if (rest.isEmpty && pinned == null)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+            Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 child: Text('No listings yet — check back soon.', style: ADText.preview())),
           GridView.builder(
             shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -280,7 +280,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
           const SizedBox(height: Msg.s5),
           Text('Reviews', style: ADText.appTitle()),
           if (c.reviews.isEmpty)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+            Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 child: Text('No reviews yet.', style: ADText.preview())),
           for (final r in c.reviews) ReviewTile(review: r),
         ]),
@@ -344,7 +344,7 @@ class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
+        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('My channel', style: ADText.appTitle()),
           const SizedBox(height: Msg.s3),

@@ -293,7 +293,7 @@ class _CallsTabState extends State<_CallsTab> {
         side: BorderSide(color: PhoneTheme.border, width: 1.5),
         borderRadius: Msg.brSheetTop),
       builder: (_) => SafeArea(child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${c.name.isNotEmpty ? c.name : c.seed} — ${history.length} call${history.length == 1 ? '' : 's'}',
               style: PhoneTheme.title(size: 17)),
@@ -354,7 +354,7 @@ class _CallsTabState extends State<_CallsTab> {
                       children: [
                         if (favs.isNotEmpty) _favRow(favs),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s2),
                           child: Text('Recent', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
                         ),
                         for (final c in _calls) _CallRow(
@@ -434,12 +434,12 @@ class _SearchHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
       child: Row(children: [
         Expanded(
           child: Container(
             height: 46,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
             decoration: BoxDecoration(
               color: PhoneTheme.surface,
               borderRadius: Msg.brMd,
@@ -477,7 +477,7 @@ class _NetworkBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(14, 2, 14, 4),
+      margin: const EdgeInsets.fromLTRB(Msg.s4, 2, Msg.s4, Msg.s1),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: PhoneTheme.teal.withValues(alpha: 0.12),
@@ -519,7 +519,7 @@ class _CallRow extends StatelessWidget {
       onTap: onTap,
       onLongPress: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(children: [
           PhoneTheme.ring(Avatar(seed: entry.seed, name: entry.name, size: 46, avatarUrl: avatarUrl)),
           const SizedBox(width: 12),
@@ -746,7 +746,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
           right: BorderSide(color: PhoneTheme.border, width: 1.5),
         ),
       ),
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + bottom),
+      padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, 16 + bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),

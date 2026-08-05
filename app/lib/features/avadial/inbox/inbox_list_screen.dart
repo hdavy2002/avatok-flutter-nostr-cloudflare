@@ -351,7 +351,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
       height: 40,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
         children: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -410,7 +410,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
   Widget build(BuildContext context) {
     final content = Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s1),
         child: AdSearchDock(
           controller: _searchCtrl,
           hint: 'Search calls, numbers, transcripts',
@@ -486,7 +486,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
     return RefreshIndicator(
       onRefresh: _reload,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s5),
         itemCount: threads.length,
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -614,7 +614,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
       onTap: () => _open(t),
       onLongPress: () => _showThreadMenu(t),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: isCampaign ? _campaignCardBg : (hasUnread ? _unreadCardBg : _readCardBg),
           borderRadius: BorderRadius.circular(AD.rListCard),

@@ -35,7 +35,7 @@ PreferredSizeWidget _darkHeader({
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: Row(children: [
             if (showBack) ...[
               const AdBackButton(),
@@ -254,7 +254,7 @@ Widget _sheetTile({
     InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
         child: Row(children: [
           PhosphorIcon(icon, size: 21, color: iconColor),
           const SizedBox(width: Msg.s3),
@@ -371,7 +371,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
         onRefresh: _load,
         child: _loading && _tree == null
             ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
-            : ListView(padding: const EdgeInsets.all(18), children: [
+            : ListView(padding: const EdgeInsets.all(Msg.s5), children: [
                 _SearchBar(hint: 'Search files & folders', onChanged: (v) => setState(() => _query = v)),
                 const SizedBox(height: Msg.s3),
                 if (empty)
@@ -421,10 +421,10 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
 
   Widget _row({required IconData icon, required Color color, required String title, required String sub, required VoidCallback onTap, VoidCallback? menu}) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: AdCard(
           radius: 14,
-          padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
           onTap: onTap,
           child: Row(children: [
             ZineIconBadge(icon: icon, color: color),
@@ -458,7 +458,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
       backgroundColor: AD.overlaySheet,
       shape: _sheetShape,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+        Padding(padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s3),
             child: Row(children: [
               ZineIconBadge(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 30),
               const SizedBox(width: Msg.s3),
@@ -688,7 +688,7 @@ class _FolderViewState extends State<_FolderView> {
       floatingActionButton: _ZineFab(onTap: _add),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s2),
           child: _SearchBar(hint: 'Search files', onChanged: _onQuery),
         ),
         if (_dayFilter != null) _dayChip(),
@@ -707,7 +707,7 @@ class _FolderViewState extends State<_FolderView> {
                       color: AD.iconSearch,
                       onRefresh: _refresh,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 100),
+                        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, 100),
                         itemCount: cells.length + (showSentinel ? 1 : 0),
                         itemBuilder: (_, i) {
                           if (i >= cells.length) {
@@ -732,7 +732,7 @@ class _FolderViewState extends State<_FolderView> {
   }
 
   Widget _dayChip() => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s1, Msg.s5, Msg.s1),
         child: Row(children: [
           ZinePressable(
             onTap: () => setState(() => _dayFilter = null),
@@ -754,14 +754,14 @@ class _FolderViewState extends State<_FolderView> {
 
   Widget _typeChips() => SizedBox(
         height: 48,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(18, 6, 18, 6), children: [
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(Msg.s5, 6, Msg.s5, 6), children: [
           _chip('All', null),
           for (final c in _cats) _chip(c.label, c.key),
         ]),
       );
 
   Widget _chip(String label, String? key) => Padding(
-        padding: const EdgeInsets.only(right: 9),
+        padding: const EdgeInsets.only(right: Msg.s3),
         child: AdChip(
           label: label,
           active: _typeFilter == key,
@@ -770,7 +770,7 @@ class _FolderViewState extends State<_FolderView> {
       );
 
   Widget _tileRow(List<LibraryItem> tiles) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: Msg.s3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (var i = 0; i < 3; i++) ...[
             if (i > 0) const SizedBox(width: Msg.s2),
@@ -823,7 +823,7 @@ class _FolderViewState extends State<_FolderView> {
       backgroundColor: AD.overlaySheet,
       shape: _sheetShape,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+        Padding(padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2),
             child: Row(children: [
               ZineIconBadge(icon: _catOf(m.category).icon, color: _catOf(m.category).color, size: 30),
               const SizedBox(width: Msg.s3),
@@ -946,7 +946,7 @@ class _ThumbTileState extends State<_ThumbTile> {
           Positioned(
             left: 0, right: 0, bottom: 0,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s2),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter, end: Alignment.topCenter,
@@ -1001,7 +1001,7 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
     backgroundColor: AD.overlaySheet,
     shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Padding(padding: const EdgeInsets.all(18), child: Text(title, style: ADText.threadName())),
+      Padding(padding: const EdgeInsets.all(Msg.s5), child: Text(title, style: ADText.threadName())),
       const Divider(height: 2, color: AD.borderHairline, thickness: 1),
       Flexible(child: ListView(shrinkWrap: true, children: [
         for (final a in apps)
@@ -1024,7 +1024,7 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
     backgroundColor: AD.overlaySheet,
     shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Padding(padding: const EdgeInsets.all(18),
+      Padding(padding: const EdgeInsets.all(Msg.s5),
           child: Text('${appByKey(app).name} — choose folder', style: ADText.threadName())),
       const Divider(height: 2, color: AD.borderHairline, thickness: 1),
       Flexible(child: ListView(shrinkWrap: true, children: [
@@ -1296,7 +1296,7 @@ class _ImageViewerState extends State<_ImageViewer> {
             onTap: () => Navigator.of(context).maybePop(),
             behavior: HitTestBehavior.opaque,
             child: Container(
-              padding: const EdgeInsets.all(9),
+              padding: const EdgeInsets.all(Msg.s3),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.55),
                 shape: BoxShape.circle,
@@ -1352,7 +1352,7 @@ Future<String?> _promptName(BuildContext context, String title, {String initial 
             border: Border.all(color: AD.borderControl, width: 1),
             boxShadow: AD.dialogShadow,
           ),
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

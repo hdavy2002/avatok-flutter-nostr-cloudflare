@@ -71,7 +71,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
@@ -156,11 +156,11 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
   }) {
     final selected = mode == value;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: AdCard(
         onTap: () => _select(value),
         radius: AD.rListCard,
-        padding: const EdgeInsets.all(13),
+        padding: const EdgeInsets.all(Msg.s4),
         color: selected ? AD.cardHover : AD.card,
         boxShadow: const [],
         child: Row(children: [

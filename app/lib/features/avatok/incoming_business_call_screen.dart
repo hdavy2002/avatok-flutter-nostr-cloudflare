@@ -580,7 +580,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
       shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s3),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Report spam', style: ADText.appTitle(c: AD.textPrimary)),
             const SizedBox(height: Msg.s1),
@@ -653,7 +653,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
             // starved the row — it left each of the four slots ~78px, which is
             // narrower than the word "Receptionist" renders at, so that one
             // label alone got scaled down and the row looked mismatched.
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s5),
             child: Column(
               children: [
                 const Spacer(),
@@ -705,7 +705,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 // Report Spam sits at the far edge NEXT TO DECLINE — never
                 // adjacent to Accept. Keep it that way.
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
                   child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -874,7 +874,7 @@ class _QuickReplySheet extends StatelessWidget {
         color: AD.card,
         borderRadius: Msg.brSheetTop,
       ),
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 30),
+      padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s6),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           width: 44, height: 5,
@@ -896,12 +896,12 @@ class _QuickReplySheet extends StatelessWidget {
         ),
         const SizedBox(height: Msg.s3),
         ...kQuickReplies.map((r) => Padding(
-              padding: const EdgeInsets.only(bottom: 7),
+              padding: const EdgeInsets.only(bottom: Msg.s2),
               child: GestureDetector(
                 onTap: () => Navigator.of(context).pop(r),
                 behavior: HitTestBehavior.opaque,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                   decoration: BoxDecoration(
                     color: AD.textPrimary.withValues(alpha: 0.05),
                     borderRadius: Msg.brMd,

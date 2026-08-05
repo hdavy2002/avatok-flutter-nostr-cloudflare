@@ -142,7 +142,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
                         child: Text('No messages yet', style: TextStyle(color: AD.textSecondary)))
                     : ListView.builder(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
                         itemCount: _rows.length,
                         itemBuilder: (context, i) => _bubble(_rows[i]),
                       ),
@@ -160,7 +160,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
         decoration: BoxDecoration(
           color: mine ? AD.bubbleOutBg : AD.card,
@@ -187,7 +187,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
     };
     final color = latest == 'failed' ? AD.danger : AD.textSecondary;
     return Padding(
-      padding: const EdgeInsets.only(right: 18, bottom: 2),
+      padding: const EdgeInsets.only(right: Msg.s5, bottom: 2),
       child: Align(
         alignment: Alignment.centerRight,
         child: Text(label, style: AvaDialTheme.tag(size: 11, color: color)),
@@ -197,7 +197,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
 
   Widget _composerBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s3),
       decoration: const BoxDecoration(
         color: AD.headerFooter,
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
@@ -236,7 +236,7 @@ class _SendButton extends StatelessWidget {
       borderColor: AD.borderControl,
       borderWidth: 1,
       boxShadow: const [],
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: loading
           ? const SizedBox(
               width: 20, height: 20,

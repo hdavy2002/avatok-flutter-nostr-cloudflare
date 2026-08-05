@@ -124,7 +124,7 @@ class _BookingSheetState extends State<_BookingSheet> {
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Book ${a.name}', style: ADText.threadName().copyWith(fontSize: 21, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 16),
@@ -153,7 +153,7 @@ class _BookingSheetState extends State<_BookingSheet> {
               color: AD.card,
               radius: Msg.rLg,
               boxShadow: Msg.none,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(Msg.s4),
               child: Column(children: [
                 if (a.isFreeForCallers)
                   Row(children: [
@@ -193,7 +193,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         onTap: onTap,
         radius: BorderRadius.circular(Msg.rLg),
         boxShadow: Msg.none,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s4),
         child: Row(children: [
           PhosphorIcon(icon, size: 17, color: AD.tabGroups),
           const SizedBox(width: Msg.s2),

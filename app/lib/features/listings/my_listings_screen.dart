@@ -132,7 +132,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                   onRefresh: _load,
                   color: AD.primaryBadge,
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
+                    padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, 96),
                     itemCount: _items.length,
                     separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
                     itemBuilder: (_, i) {

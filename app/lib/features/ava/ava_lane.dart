@@ -55,7 +55,7 @@ class AvaLaneBubble extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: Msg.s2),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
@@ -75,7 +75,7 @@ class AvaLaneBubble extends StatelessWidget {
           children: [
             // Author row: "Ava" + sparkle + (guardian shield) + info affordance.
             Padding(
-              padding: const EdgeInsets.only(bottom: 3),
+              padding: const EdgeInsets.only(bottom: Msg.s1),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text('Ava',
                     style: ADText.tabLabel(c: edge).copyWith(fontSize: 11)),
@@ -103,7 +103,7 @@ class AvaLaneBubble extends StatelessWidget {
             // Guardian variant: a slim safety strip above the body.
             if (_isGuardian)
               Container(
-                margin: const EdgeInsets.only(bottom: 6),
+                margin: const EdgeInsets.only(bottom: Msg.s2),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: safety.withValues(alpha: 0.10),
@@ -124,7 +124,7 @@ class AvaLaneBubble extends StatelessWidget {
             Text(text, style: ADText.bubbleBody(c: AD.bubbleInInk)),
             if (time.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 3),
+                padding: const EdgeInsets.only(top: Msg.s1),
                 child: Text(time, style: ADText.bubbleMeta(c: edge)),
               ),
           ],
@@ -148,7 +148,7 @@ void showAvaLaneInfo(BuildContext context) {
     shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
     builder: (ctx) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, Msg.s5),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Container(

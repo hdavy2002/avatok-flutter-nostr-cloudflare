@@ -119,7 +119,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
       body: SafeArea(
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
             child: AdField(
               controller: _search,
               hint: 'Search name or type a number',
@@ -144,7 +144,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
     }
     final filtered = _filtered;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s1, Msg.s4, Msg.s5),
       children: [
         // Manual-number row (always available, even with contacts denied).
         if (_looksLikeNumber) _manualNumberRow(),
@@ -193,7 +193,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: AdCard(
         onTap: () => _openThread(c.number),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         child: Row(children: [
           Container(
             width: 38,

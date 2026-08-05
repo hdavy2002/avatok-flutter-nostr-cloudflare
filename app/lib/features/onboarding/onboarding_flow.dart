@@ -390,7 +390,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
+          padding: EdgeInsets.fromLTRB(hPad, Msg.s2, hPad, Msg.s5),
           child: _primary("Keep going", _selectedKind != null ? _next : null),
         ),
       ],
@@ -416,7 +416,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       borderWidth: 1,
       radius: Msg.brMd,
       boxShadow: Msg.none,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(icon: icon, color: color, size: 42),
         const SizedBox(width: Msg.s3),
@@ -491,7 +491,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
+          padding: EdgeInsets.fromLTRB(hPad, Msg.s2, hPad, Msg.s5),
           child: _primary(
             'Keep going',
             _profileReady ? _saveProfileAndNext : null,
@@ -606,13 +606,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 focusedBorder: InputBorder.none,
                 filled: false,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
               ),
             ),
           ),
           if (trailing != null)
             Padding(
-              padding: const EdgeInsets.only(right: 14),
+              padding: const EdgeInsets.only(right: Msg.s4),
               child: trailing,
             ),
         ]),
@@ -748,7 +748,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       onTap: (on || _permBusy) ? null : () => _requestRow(r),
       child: AdCard(
         radius: Msg.rMd,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: r.icon, color: r.color, size: 42),
           const SizedBox(width: Msg.s3),
@@ -815,7 +815,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
+          padding: EdgeInsets.fromLTRB(hPad, Msg.s2, hPad, Msg.s5),
           child: allGranted
               ? _primary('Continue', _next)
               : Column(mainAxisSize: MainAxisSize.min, children: [
@@ -867,7 +867,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Container(
-          padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 20),
+          padding: EdgeInsets.fromLTRB(hPad, Msg.s4, hPad, Msg.s5),
           decoration: const BoxDecoration(
             color: AD.headerFooter,
             border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
@@ -907,7 +907,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Widget _termSection(String title, String body) => Padding(
-        padding: const EdgeInsets.only(bottom: 18),
+        padding: const EdgeInsets.only(bottom: Msg.s5),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: ADText.threadName().copyWith(fontSize: 17)),
           const SizedBox(height: Msg.s1),
@@ -1006,7 +1006,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               const adAccents = [AD.iconSearch, AD.primaryBadge, AD.danger, AD.iconVideo, AD.online];
               return AdCard(
                 radius: Msg.rMd,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
                 child: Row(children: [
                   ZineIconBadge(icon: a.icon, color: adAccents[i % adAccents.length], size: 40),
                   const SizedBox(width: 12),
@@ -1029,7 +1029,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-            padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 20),
+            padding: EdgeInsets.fromLTRB(hPad, Msg.s1, hPad, Msg.s5),
             child: _primary("Let's go", _finish)),
       ],
     );

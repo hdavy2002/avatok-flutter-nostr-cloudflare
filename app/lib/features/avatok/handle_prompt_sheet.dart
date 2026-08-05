@@ -103,7 +103,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
     return SingleChildScrollView(
       padding: EdgeInsets.only(bottom: bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 12),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,7 +143,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                 borderRadius: BorderRadius.circular(AD.rInput),
                 border: _available == false ? Border.all(color: AD.danger, width: 1.5) : null,
               ),
-              padding: const EdgeInsets.only(left: 14, right: 12),
+              padding: const EdgeInsets.only(left: Msg.s4, right: Msg.s3),
               child: Row(children: [
                 Text('@', style: ADText.rowName(c: AD.placeholderOnWhite)),
                 const SizedBox(width: 4),
@@ -164,7 +164,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                       border: InputBorder.none,
                       hintText: 'yourname',
                       hintStyle: ADText.rowName(c: AD.placeholderOnWhite),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                      contentPadding: const EdgeInsets.symmetric(vertical: Msg.s4),
                     ),
                   ),
                 ),
@@ -239,7 +239,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
   Widget _sticker(String text, {required bool ok, required bool hint, required IconData icon}) {
     final accent = hint ? AD.textTertiary : (ok ? AD.online : AD.danger);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(AD.rStatCard),

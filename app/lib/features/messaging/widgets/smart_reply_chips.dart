@@ -19,7 +19,7 @@ class SmartReplyChips extends StatelessWidget {
       height: 42,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
         children: [
           for (final s in suggestions)
             Padding(
@@ -29,7 +29,7 @@ class SmartReplyChips extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 child: Container(
                   alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
                   decoration: BoxDecoration(
                     color: AD.card,
                     border: Border.all(color: AD.borderControl, width: 1),

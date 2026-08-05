@@ -105,7 +105,7 @@ class _MarketplaceAgentTile extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const MarketplaceAgentSettingsPage()),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(Msg.s3),
             child: Row(children: [
               ZineIconBadge(
                 icon: PhosphorIcons.storefront(PhosphorIconsStyle.fill),
@@ -383,7 +383,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                   Expanded(child: _timeBtn('End', _quietEnd, () => _pickTime(false))),
                 ]),
                 Padding(
-                  padding: const EdgeInsets.only(top: 6),
+                  padding: const EdgeInsets.only(top: Msg.s2),
                   child: Text(
                     'During quiet hours your agent defers new negotiations until they end.',
                     style: ADText.preview(),
@@ -414,7 +414,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
   }
 
   Widget _label(String s) => Padding(
-        padding: const EdgeInsets.only(bottom: 6, top: 2),
+        padding: const EdgeInsets.only(bottom: Msg.s2, top: 2),
         child: Text(s, style: ADText.rowName()),
       );
 
@@ -484,7 +484,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
             child: GestureDetector(
               onTap: () => onSel(e.key),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 11),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: sel == e.key ? AD.destructiveBg : AD.card,
