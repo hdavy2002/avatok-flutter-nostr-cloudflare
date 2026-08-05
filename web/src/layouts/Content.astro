@@ -10,6 +10,10 @@ export interface Props {
   width?: 'narrow' | 'wide';
   noindex?: boolean;
   tone?: 'cream' | 'sky' | 'lime' | 'pink';
+  /** Per-page OpenGraph image. Defaults to the shared editorial card. */
+  image?: string;
+  /** Override the `<title>` / og:title. Defaults to `${title} · avaTOK`. */
+  ogTitle?: string;
 }
 
 const {
@@ -21,6 +25,8 @@ const {
   width = 'narrow',
   noindex = false,
   tone,
+  image = '/og-editorial.png',
+  ogTitle,
 } = Astro.props;
 
 const updatedLabel = updated
@@ -35,9 +41,9 @@ const routeTone = tone ?? (
 ---
 
 <Base
-  title={`${title} · avaTOK`}
+  title={ogTitle ?? `${title} · avaTOK`}
   description={description ?? lead}
-  image="/og-editorial.png"
+  image={image}
   chrome={false}
   noindex={noindex}
 >

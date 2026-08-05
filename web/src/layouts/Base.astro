@@ -38,6 +38,11 @@ const {
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
+// og:image must be an ABSOLUTE url — Facebook, WhatsApp, LinkedIn and Slack all
+// drop a relative path, which is why shared links used to render with no card.
+const ogImage = image
+  ? new URL(image, Astro.site ?? 'https://avatok.ai').toString()
+  : undefined;
 ---
 
 <!doctype html>
@@ -56,11 +61,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    {image && <meta property="og:image" content={image} />}
+    {ogImage && <meta property="og:image" content={ogImage} />}
     <meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    {image && <meta name="twitter:image" content={image} />}
+    {ogImage && <meta name="twitter:image" content={ogImage} />}
 
     <!-- Preload the two most-used font faces to cut first-paint FOUT. -->
     <link rel="preload" href="/fonts/Fredoka-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
