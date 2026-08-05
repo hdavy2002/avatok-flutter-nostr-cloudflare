@@ -258,10 +258,10 @@ class _FilterSheetState extends State<_FilterSheet> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Filters', style: ADText.appTitle()),
           const SizedBox(height: 12),
-          Text('PRICE: \$${_price.start.round()} – \$${_price.end.round()}${_price.end >= 500 ? '+' : ''}',
+          Text('PRICE: \u20b9${_price.start.round()} – \u20b9${_price.end.round()}${_price.end >= 5000 ? '+' : ''}',
               style: ADText.sectionLabel()),
           RangeSlider(
-            values: _price, min: 0, max: 500, divisions: 50,
+            values: _price, min: 0, max: 5000, divisions: 50,
             activeColor: AD.iconSearch,
             inactiveColor: AD.borderControl,
             onChanged: (v) => setState(() => _price = v),

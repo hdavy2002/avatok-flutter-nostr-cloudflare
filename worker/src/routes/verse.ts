@@ -306,22 +306,22 @@ export async function verseStatement(req: Request, env: Env): Promise<Response> 
   if (u.get("format") === "json") return json({ month, items, totals });
 
   const esc = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  const usd = (c: number) => (c / 100).toFixed(2);
+  const inr = (c: number) => String(c); // 1 token = ₹1
   const csv = [
-    "date,type,listing,gross_usd,platform_fee_usd,net_usd,order_id",
-    ...items.map((i) => [i.date, i.type, esc(i.listing), usd(i.gross), usd(i.platform_fee), usd(i.net), i.order_id].join(",")),
-    `TOTAL,,,${usd(totals.gross)},${usd(totals.fee)},${usd(totals.net)},`,
+    "date,type,listing,gross_inr,platform_fee_inr,net_inr,order_id",
+    ...items.map((i) => [i.date, i.type, esc(i.listing), inr(i.gross), inr(i.platform_fee), inr(i.net), i.order_id].join(",")),
+    `TOTAL,,,${inr(totals.gross)},${inr(totals.fee)},${inr(totals.net)},`,
   ].join("\n");
 
   if (u.get("email") === "1") {
     const email = await clerkEmail(env, ctx.uid);
     if (email) {
-      const tbl = items.map((i) => `<tr><td>${i.date}</td><td>${i.type}</td><td>${i.listing}</td><td align="right">$${usd(i.gross)}</td><td align="right">$${usd(i.platform_fee)}</td><td align="right">$${usd(i.net)}</td></tr>`).join("");
+      const tbl = items.map((i) => `<tr><td>${i.date}</td><td>${i.type}</td><td>${i.listing}</td><td align="right">₹${inr(i.gross)}</td><td align="right">₹${inr(i.platform_fee)}</td><td align="right">₹${inr(i.net)}</td></tr>`).join("");
       const html = `<div style="font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:24px">
         <h2>AvaTok earnings statement — ${month}</h2>
         <table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">
           <tr><th>Date</th><th>Type</th><th>Listing</th><th>Gross</th><th>Fee</th><th>Net</th></tr>${tbl}
-          <tr><th colspan="3">Total</th><th align="right">$${usd(totals.gross)}</th><th align="right">$${usd(totals.fee)}</th><th align="right">$${usd(totals.net)}</th></tr>
+          <tr><th colspan="3">Total</th><th align="right">₹${inr(totals.gross)}</th><th align="right">₹${inr(totals.fee)}</th><th align="right">₹${inr(totals.net)}</th></tr>
         </table></div>`;
       try { await env.Q_EMAIL.send({ to: email, subject: `Your AvaTok earnings statement — ${month}`, html }); } catch { /* best-effort */ }
       return json({ ok: true, emailed: true, month, items: items.length, totals });

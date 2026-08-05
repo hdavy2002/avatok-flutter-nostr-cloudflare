@@ -97,7 +97,8 @@ const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
 // explicit owner decision — a non-zero value re-introduces a renewing grant.
 const DAILY_FREE_GRANT = 0;
 
-// [AI-WALLET-SPENDABLE-2] 1 wallet token == $0.01 == 10,000 micro-USD. Matches
+// [AI-WALLET-SPENDABLE-2] Cost basis: 1 wallet token == $0.01 == 10,000 micro-USD
+// (the user-facing price is \u20b91/token; near-parity, 1 US cent = \u20b90.964). Matches
 // the canonical site-wide rate documented in routes/wallet.ts (TOKENS_PER_USD =
 // 100) and worker/src/lib/ai_billing.ts (AI_TOKENS_PER_USD = 100). Defined
 // locally (not imported) because do/wallet.ts is the Durable Object module and

@@ -129,10 +129,10 @@ class ListingPickCard extends StatelessWidget {
         Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(affCoinsLabel(listing.price),
+              Text(affTokensLabel(listing.price),
                   style: ADText.rowName().copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 1),
-              Text('You earn ~${affCoinsLabel(est)} per sale — for life',
+              Text('You earn ~${affTokensLabel(est)} per sale — for life',
                   style: ADText.rowName(c: AD.online)),
             ]),
           ),
@@ -183,7 +183,7 @@ class LinkRow extends StatelessWidget {
         ),
         const SizedBox(width: Msg.s3),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(affCoinsLabel(link.earnedCoins),
+          Text(affTokensLabel(link.earnedTokens),
               style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
           Text('Earned', style: ADText.sectionLabel(c: AD.textTertiary)),
         ]),

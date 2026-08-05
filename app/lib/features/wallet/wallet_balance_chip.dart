@@ -58,7 +58,7 @@ class _WalletBalanceChipState extends State<WalletBalanceChip> {
   }
 
   /// Compact coin count, e.g. 10000 → "10,000" (same as the wallet screen).
-  static String _coins(num coins) {
+  static String _tokens(num coins) {
     final s = coins.abs().toInt().toString();
     final b = StringBuffer();
     for (var i = 0; i < s.length; i++) {
@@ -93,7 +93,7 @@ class _WalletBalanceChipState extends State<WalletBalanceChip> {
               PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.regular),
                   size: 14, color: AD.online),
               const SizedBox(width: Msg.s1),
-              Text(_coins(v), style: ADText.tabLabel()),
+              Text(_tokens(v), style: ADText.tabLabel()),
             ]),
           ),
         );

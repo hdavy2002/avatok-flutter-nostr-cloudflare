@@ -6,7 +6,7 @@ import type { Env } from "../types";
 import { clerkEmail } from "../ledger";
 import { buildIcs, icsB64, joinUrlFor, signJoinToken } from "./ics";
 
-const usd = (coins: number): string => `$${(coins / 100).toFixed(2)}`;
+const inr = (tokens: number): string => `\u20b9${tokens}`;
 const whenUtc = (ms: number): string => new Date(ms).toUTCString();
 
 function shell(title: string, bodyHtml: string, cta?: { label: string; url: string }): string {
@@ -48,7 +48,7 @@ export async function emailBookingConfirmed(env: Env, c: BookingEmailCtx, opts?:
   const body = (other: string) => `
     <p style="margin:0 0 8px;font-weight:600">${c.title}</p>
     <p style="margin:0 0 8px">${whenUtc(c.start)} → ${whenUtc(c.end)}</p>
-    <p style="margin:0 0 8px">With: ${other}${c.price > 0 ? ` · ${usd(c.price)}` : " · free"}</p>`;
+    <p style="margin:0 0 8px">With: ${other}${c.price > 0 ? ` · ${inr(c.price)}` : " · free"}</p>`;
   await Promise.all([
     queueEmail(env, c.buyerId, `Booking ${verb}: ${c.title}`, shell(`You have a booking ✅`, body(c.creatorName), cta), ics),
     queueEmail(env, c.creatorId, `Booking ${verb}: ${c.title}`, shell(`New booking ${verb}`, body(c.buyerName), cta), ics),
@@ -73,20 +73,20 @@ export async function emailBookingCancelled(env: Env, c: BookingEmailCtx & { can
 /** Refund issued (any rule) — buyer always; creator variant for no-show wording (Phase 7 reuses). */
 export async function emailRefundIssued(env: Env, uid: string, o: { title: string; amount: number; reason: string }): Promise<void> {
   await queueEmail(env, uid, `Your money was refunded — ${o.title}`,
-    shell("Refund issued", `<p style="margin:0 0 8px;font-weight:600">${o.title}</p><p style="margin:0 0 8px">Amount: <b>${usd(o.amount)}</b></p><p style="margin:0 0 8px">Reason: ${o.reason}</p>`));
+    shell("Refund issued", `<p style="margin:0 0 8px;font-weight:600">${o.title}</p><p style="margin:0 0 8px">Amount: <b>${inr(o.amount)}</b></p><p style="margin:0 0 8px">Reason: ${o.reason}</p>`));
 }
 
 /** Settlement paid → creator (Phase 7 hooks in). */
 export async function emailSettlementPaid(env: Env, uid: string, o: { title: string; gross: number; fee: number; net: number }): Promise<void> {
   await queueEmail(env, uid, `You got paid — ${o.title}`,
-    shell("Settlement paid", `<p style="margin:0 0 8px;font-weight:600">${o.title}</p><p style="margin:0 0 8px">Gross ${usd(o.gross)} · fee ${usd(o.fee)} · <b>net ${usd(o.net)}</b> to your AvaWallet.</p>`));
+    shell("Settlement paid", `<p style="margin:0 0 8px;font-weight:600">${o.title}</p><p style="margin:0 0 8px">Gross ${inr(o.gross)} · fee ${inr(o.fee)} · <b>net ${inr(o.net)}</b> to your AvaWallet.</p>`));
 }
 
 /** Payout sent/failed → creator (Phase 3 Wise status hooks in). */
 export async function emailPayoutStatus(env: Env, uid: string, o: { amount: number; status: "sent" | "failed"; detail?: string }): Promise<void> {
-  await queueEmail(env, uid, `Payout ${o.status}: ${usd(o.amount)}`,
+  await queueEmail(env, uid, `Payout ${o.status}: ${inr(o.amount)}`,
     shell(o.status === "sent" ? "Payout sent 🎉" : "Payout failed",
-      `<p style="margin:0 0 8px">Amount: <b>${usd(o.amount)}</b></p>${o.detail ? `<p style="margin:0 0 8px">${o.detail}</p>` : ""}`));
+      `<p style="margin:0 0 8px">Amount: <b>${inr(o.amount)}</b></p>${o.detail ? `<p style="margin:0 0 8px">${o.detail}</p>` : ""}`));
 }
 
 /** Reminder emails (T-24h "Tomorrow:" and T-60m "Within 1 hour") — used by the

@@ -754,7 +754,7 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
   const mins = Math.min(billedMinutes(usedMs), Number(s.limit_minutes));
   const bk = await db.prepare("SELECT * FROM avavoice_bookings WHERE id=?1").bind(String(s.booking_id)).first<any>();
   const a = await loadAgent(env, String(s.agent_id));
-  let gross = 0, creatorCoins = 0, refundCoins = 0;
+  let gross = 0, creatorTokens = 0, refundTokens = 0;
 
   if (bk && a) {
     if (a.payer_mode === "creator_pays") {
@@ -769,13 +769,13 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
           meta: JSON.stringify({ title: `AvaVoice usage — ${a.name}`, minutes: mins, rate_per_hour: CREATOR_PAYS_RATE_PER_HOUR }),
         },
       });
-      creatorCoins = 0; // sponsored agents never earn (Q2)
+      creatorTokens = 0; // sponsored agents never earn (Q2)
     } else {
       gross = Math.min(perMin(Number(bk.rate_per_hour)) * mins, Number(bk.escrow_coins));
       if (gross > 0) {
         const rel = await release(env, String(bk.order_id), a.creator_id,
             { title: `AvaVoice — ${a.name}`, app: APP, feeRate: FEE_RATE, gross });
-        creatorCoins = Number((rel.body as any)?.net ?? Math.floor(gross / 2));
+        creatorTokens = Number((rel.body as any)?.net ?? Math.floor(gross / 2));
         // AvaAffiliate (§6): voice sessions are commissionable — funded from the
         // platform fee, creator share untouched. Idempotent inside; never throws.
         if (rel.ok && Number((rel.body as any)?.fee) > 0) {
@@ -786,9 +786,9 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
           });
         }
       }
-      refundCoins = Math.max(0, Number(bk.escrow_coins) - gross);
-      if (refundCoins > 0) {
-        await refund(env, String(bk.order_id), String(bk.user_id), refundCoins,
+      refundTokens = Math.max(0, Number(bk.escrow_coins) - gross);
+      if (refundTokens > 0) {
+        await refund(env, String(bk.order_id), String(bk.user_id), refundTokens,
             { opId: `refund:${bk.order_id}:unused`, reason: "unused AvaVoice minutes", title: `AvaVoice — ${a.name}` });
       }
     }
@@ -798,12 +798,12 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
 
   await db.prepare(
     `UPDATE avavoice_sessions SET status='ended', end_reason=?2, billed_minutes=?3, gross_coins=?4, creator_coins=?5, refund_coins=?6, updated_at=?7 WHERE id=?1`,
-  ).bind(String(s.id), reason, mins, gross, creatorCoins, refundCoins, now).run();
-  const platformCoins = a?.payer_mode === "creator_pays" ? gross : gross - creatorCoins;
+  ).bind(String(s.id), reason, mins, gross, creatorTokens, refundTokens, now).run();
+  const platformTokens = a?.payer_mode === "creator_pays" ? gross : gross - creatorTokens;
   // Caller-side event (funnel + refunds visibility).
   track(env, String(s.user_id), "avavoice_call_ended", APP, {
     agent: String(s.agent_id), reason, minutes: mins, seconds: Math.round(usedMs / 1000),
-    gross_coins: gross, refund_coins: refundCoins, language: String(s.language),
+    gross_coins: gross, refund_coins: refundTokens, language: String(s.language),
     payer_mode: a?.payer_mode ?? "unknown",
   });
   // One Brain B1 §5 — live-session close (settleSession is the natural close hook).
@@ -816,14 +816,14 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
   if (a) {
     track(env, a.creator_id, "avavoice_creator_settlement", APP, {
       agent: a.id, agent_name: a.name, payer_mode: a.payer_mode, reason,
-      minutes: mins, gross_coins: gross, earned_coins: creatorCoins,
-      platform_coins: platformCoins, refund_coins: refundCoins,
+      minutes: mins, gross_coins: gross, earned_coins: creatorTokens,
+      platform_coins: platformTokens, refund_coins: refundTokens,
     });
   }
   // Admin/ops metrics: utilization, money split, end-reason mix, per-agent blobs.
-  metric(env, "avavoice_minutes", [mins, gross, creatorCoins, platformCoins, refundCoins],
+  metric(env, "avavoice_minutes", [mins, gross, creatorTokens, platformTokens, refundTokens],
       [String(s.agent_id), reason, a?.payer_mode ?? "unknown"]);
   if (reason === "hard_cap") metric(env, "avavoice_hard_cap_cut", [1], [String(s.agent_id)]);
   if (reason === "disconnect") metric(env, "avavoice_disconnect_settle", [1], [String(s.agent_id)]);
-  return json({ ok: true, ended: true, billed_minutes: mins, gross_coins: gross, refund_coins: refundCoins, reason });
+  return json({ ok: true, ended: true, billed_minutes: mins, gross_coins: gross, refund_coins: refundTokens, reason });
 }

@@ -154,6 +154,62 @@ must not 400, and the cache-busted `/api/config` must reflect it.
 Builds themselves are `workflow_dispatch` only and **you never trigger one unless
 the owner explicitly asks** (see the Git protocol section below).
 
+---
+
+## 💰 THE UNIT IS A **TOKEN**, AND 1 TOKEN = **₹1** (owner decision 2026-08-05)
+
+**Never write "coin" or "AvaCoin" again, and never print a `$` for a wallet
+amount.** The word is **token**; the symbol is **₹**. India is the only market
+for now — there are no international customers, and Wise/USD payouts are not in
+use. `[TOKENS-INR-1]` renamed every capitalised `Coin`/`Coins` identifier and
+switched every money formatter to `₹`.
+
+**This was a relabel, not a revaluation.** No balance, price, ledger row or D1
+column changed value, because the stored integer already WAS the rupee at both
+ends of the pipe:
+
+- money-in — `worker/src/routes/wallet.ts` INR rail: `tokens = round(paise/100)`
+- money-out — `worker/src/routes/upi_payout.ts`: `gross_inr_paise = tokens * 100`
+
+The display layer was the last holdout still calling that same integer a US cent
+and printing `$`. It is near-parity anyway: at `cfg.usdInrRate = 96.4`, one US
+cent is ₹0.964, so ₹1/token and $0.01/token differ by ~3.6%.
+
+### What must NOT be renamed — and why each one bites
+
+1. **Every lowercase `snake_case` form is frozen**: `amount_coins`, `gross_coins`,
+   `price_coins`, `escrow_coins`, `balance_coins`, `held_coins`, `coins_per_usd`,
+   `insufficient_avacoins`, Stripe `metadata[coins]`. These are the client↔server
+   wire contract and D1 column names. Shipped clients keep sending and reading
+   them forever; a rename is a silent break for every user who hasn't updated.
+   The precedent for changing a client-visible one is `routes/call_translation.ts`
+   — dual-emit `insufficient_tokens` **and** `error_legacy: insufficient_avacoins`
+   for a release cycle, and accept both on the client.
+2. **Five remote-config flag keys still end in `...Coins`**:
+   `upiPayoutMinCoins`, `affiliateDailyEarnCapCoins`,
+   `affiliateMonthlyEarnCapCoins`, `affiliatePerReferredCapCoins`,
+   `affiliateMinQualifyingTopupCoins`. The key must match `DEFAULTS` in
+   `routes/config.ts` **and** the override blob already sitting in prod KV.
+   Rename one and the flag silently reverts to its default.
+3. **`STORAGE_COINS_PER_GB` is a wrangler env binding**, not a variable.
+4. **`PhosphorIcons.coins(...)` / `PhosphorIcons.handCoins(...)` are package
+   symbols.** A blind coins→tokens sed produces `handTokens`, which does not
+   exist — that is a compile error, and with no local Flutter toolchain you will
+   only find it 40–80 minutes later in CI.
+5. **Legacy `currency_display` values** `COINS`/`COIN`/`AVACOIN` are persisted in
+   D1 `listings.currency_display`. `intent_theme.dart` must keep resolving them
+   or those rows render as the literal string `COINS 2000`.
+
+### Real US dollars that must KEEP their `$`
+
+`micro_usd` cost accounting (`TOKEN_MICRO_USD`, `AI_TOKENS_PER_USD` — provider
+invoices genuinely are USD), Google Play tier labels and `_usdFromCents` in
+`wallet_screen.dart` (Play still bills the USD-defined SKU at its localised
+rate — the app says so at `wallet_screen.dart:686`), `kMinTopUpUsd`,
+`subscribe_screen.dart` plan prices, the USD branch of `wallet_statement.ts`,
+and the multi-currency `_currencySymbol` map in `intent_theme.dart` (marketplace
+listings are a separate, genuinely multi-currency unit).
+
 ### Four ways flags and deploys will lie to you (learned the hard way 2026-07-15)
 
 **1. NEVER state an effective flag value from `config.ts`. Go and read prod.**

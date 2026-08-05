@@ -96,14 +96,14 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
               Text(s.maskedHandle, style: ADText.rowName()),
               const SizedBox(height: 2),
               Text(
-                'Bound ${fmtAffDate(s.boundAt)} · spent ${affCoinsLabel(s.ltvCoins)}',
+                'Bound ${fmtAffDate(s.boundAt)} · spent ${affTokensLabel(s.ltvTokens)}',
                 style: ADText.sectionLabel(c: AD.textTertiary),
               ),
             ]),
           ),
           const SizedBox(width: Msg.s2),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('+${affCoinsLabel(s.commissionCoins)}',
+            Text('+${affTokensLabel(s.commissionTokens)}',
                 style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
             Text('Your cut', style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),

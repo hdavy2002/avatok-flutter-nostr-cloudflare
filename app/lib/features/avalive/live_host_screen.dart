@@ -194,7 +194,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
         case 'donation':
           setState(() {
             _donationsTotal += (e['amount'] as num?)?.toInt() ?? 0;
-            _feed.add(ChatLine('💰 ${e['name']}', 'donated \$${(((e['amount'] as num?)?.toInt() ?? 0) / 100).toStringAsFixed(2)}'));
+            _feed.add(ChatLine('💰 ${e['name']}', 'donated \u20b9${((e['amount'] as num?)?.toInt() ?? 0)}'));
             _feedMeta.add((uid: '', name: ''));
           });
           _refreshEarnings();
@@ -370,7 +370,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                         borderRadius: Msg.brPill,
                         border: Border.all(color: AD.borderControl, width: 1),
                       ),
-                      child: Text('~\$${(earnings / 100).toStringAsFixed(2)} so far',
+                      child: Text('~\u20b9$earnings so far',
                           style: ADText.sectionLabel(c: AD.bg)),
                     ),
                   ]),

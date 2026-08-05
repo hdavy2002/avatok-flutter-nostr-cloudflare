@@ -1044,7 +1044,7 @@ async function settleSession(env: Env, s: any, now: number, reason: string, tele
   const mins = Math.min(billedMinutes(usedMs), Number(s.limit_minutes));
   const bk = await db.prepare("SELECT * FROM avavision_bookings WHERE id=?1").bind(String(s.booking_id)).first<any>();
   const a = await loadAgent(env, String(s.agent_id));
-  let gross = 0, creatorCoins = 0, refundCoins = 0;
+  let gross = 0, creatorTokens = 0, refundTokens = 0;
 
   if (bk && a) {
     if (a.payer_mode === "creator_pays") {
@@ -1058,13 +1058,13 @@ async function settleSession(env: Env, s: any, now: number, reason: string, tele
           meta: JSON.stringify({ title: `AvaVision usage — ${a.name}`, minutes: mins, rate_per_hour: CREATOR_PAYS_RATE_PER_HOUR }),
         },
       });
-      creatorCoins = 0; // sponsored agents never earn
+      creatorTokens = 0; // sponsored agents never earn
     } else {
       gross = Math.min(perMin(Number(bk.rate_per_hour)) * mins, Number(bk.escrow_coins));
       if (gross > 0) {
         const rel = await release(env, String(bk.order_id), a.creator_id,
             { title: `AvaVision — ${a.name}`, app: APP, feeRate: FEE_RATE, gross });
-        creatorCoins = Number((rel.body as any)?.net ?? Math.floor(gross / 2));
+        creatorTokens = Number((rel.body as any)?.net ?? Math.floor(gross / 2));
         if (rel.ok && Number((rel.body as any)?.fee) > 0) {
           await settleAffiliate(env, {
             // APP="avavision" — affiliate's app union doesn't list it yet (Phase Z
@@ -1075,9 +1075,9 @@ async function settleSession(env: Env, s: any, now: number, reason: string, tele
           });
         }
       }
-      refundCoins = Math.max(0, Number(bk.escrow_coins) - gross);
-      if (refundCoins > 0) {
-        await refund(env, String(bk.order_id), String(bk.user_id), refundCoins,
+      refundTokens = Math.max(0, Number(bk.escrow_coins) - gross);
+      if (refundTokens > 0) {
+        await refund(env, String(bk.order_id), String(bk.user_id), refundTokens,
             { opId: `refund:${bk.order_id}:unused`, reason: "unused AvaVision minutes", title: `AvaVision — ${a.name}` });
       }
     }
@@ -1093,13 +1093,13 @@ async function settleSession(env: Env, s: any, now: number, reason: string, tele
   await db.prepare(
     `UPDATE avavision_sessions SET status='ended', end_reason=?2, billed_minutes=?3, gross_coins=?4, creator_coins=?5, refund_coins=?6,
        frames_streamed=?7, snapshot_calls=?8, avg_score=?9, peak_score=?10, updated_at=?11 WHERE id=?1`,
-  ).bind(String(s.id), reason, mins, gross, creatorCoins, refundCoins,
+  ).bind(String(s.id), reason, mins, gross, creatorTokens, refundTokens,
       framesStreamed, snapshotCalls, avgScore, peakScore, now).run();
 
-  const platformCoins = a?.payer_mode === "creator_pays" ? gross : gross - creatorCoins;
+  const platformTokens = a?.payer_mode === "creator_pays" ? gross : gross - creatorTokens;
   track(env, String(s.user_id), "avavision_call_ended", APP, {
     agent: String(s.agent_id), reason, minutes: mins, seconds: Math.round(usedMs / 1000),
-    gross_coins: gross, refund_coins: refundCoins, language: String(s.language),
+    gross_coins: gross, refund_coins: refundTokens, language: String(s.language),
     payer_mode: a?.payer_mode ?? "unknown", frames_streamed: framesStreamed, snapshot_calls: snapshotCalls,
   });
   // One Brain B1 §5 — live-session close (settleSession is the natural close hook).
@@ -1110,16 +1110,16 @@ async function settleSession(env: Env, s: any, now: number, reason: string, tele
   if (a) {
     track(env, a.creator_id, "avavision_creator_settlement", APP, {
       agent: a.id, agent_name: a.name, payer_mode: a.payer_mode, reason,
-      minutes: mins, gross_coins: gross, earned_coins: creatorCoins,
-      platform_coins: platformCoins, refund_coins: refundCoins,
+      minutes: mins, gross_coins: gross, earned_coins: creatorTokens,
+      platform_coins: platformTokens, refund_coins: refundTokens,
     });
   }
-  metric(env, "avavision_minutes", [mins, gross, creatorCoins, platformCoins, refundCoins],
+  metric(env, "avavision_minutes", [mins, gross, creatorTokens, platformTokens, refundTokens],
       [String(s.agent_id), reason, a?.payer_mode ?? "unknown"]);
   if (reason === "hard_cap") metric(env, "avavision_hard_cap_cut", [1], [String(s.agent_id)]);
   if (reason === "disconnect") metric(env, "avavision_disconnect_settle", [1], [String(s.agent_id)]);
-  return json({ ok: true, billed_minutes: mins, gross_coins: gross, creator_coins: creatorCoins,
-    refund_coins: refundCoins, status: "ended", end_reason: reason });
+  return json({ ok: true, billed_minutes: mins, gross_coins: gross, creator_coins: creatorTokens,
+    refund_coins: refundTokens, status: "ended", end_reason: reason });
 }
 
 // ---------------------------------------------------------------------------

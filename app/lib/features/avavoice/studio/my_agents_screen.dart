@@ -183,8 +183,8 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                                 const SizedBox(width: 8),
                                 Flexible(child: Text(
                                   a.isFreeForCallers
-                                      ? 'Free to callers · you pay ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hr'
-                                      : '${fmtCoins(a.ratePerHourCoins)}/hr · you earn ${fmtCoins(creatorNetPerHour(a.ratePerHourCoins))}/hr',
+                                      ? 'Free to callers · you pay ${fmtTokens(kCreatorPaysRateTokensPerHour)}/hr'
+                                      : '${fmtTokens(a.ratePerHourTokens)}/hr · you earn ${fmtTokens(creatorNetPerHour(a.ratePerHourTokens))}/hr',
                                   maxLines: 1, overflow: TextOverflow.ellipsis,
                                   style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
                                 )),

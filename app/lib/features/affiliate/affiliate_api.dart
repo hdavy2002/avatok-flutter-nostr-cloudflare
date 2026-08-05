@@ -21,12 +21,10 @@ const String kAffiliateLinkBase = 'https://avatok.ai/a/';
 /// `commission_rates` (service='affiliate_default').
 const double kAffiliateRate = 0.10;
 
-/// Coins are USD cents. "$12.34" / "Free".
-String affCoinsLabel(int coins) => coins == 0
-    ? 'Free'
-    : '\$${(coins / 100).toStringAsFixed(coins % 100 == 0 ? 0 : 2)}';
+/// 1 token = Rs 1. "₹1234" / "Free".
+String affTokensLabel(int tokens) => tokens == 0 ? 'Free' : '\u20b9$tokens';
 
-int estimatedCommissionPerSale(int priceCoins) => (priceCoins * kAffiliateRate).floor();
+int estimatedCommissionPerSale(int priceTokens) => (priceTokens * kAffiliateRate).floor();
 
 int _i(dynamic v) => (v as num?)?.toInt() ?? 0;
 String _s(dynamic v, [String dflt = '']) => v?.toString() ?? dflt;
@@ -44,23 +42,23 @@ class AffiliateProfile {
 }
 
 class AffiliateTotals {
-  final int lifetimeCoins, monthCoins, heldCoins, referredUsers;
+  final int lifetimeTokens, monthTokens, heldTokens, referredUsers;
   const AffiliateTotals.zero()
-      : lifetimeCoins = 0, monthCoins = 0, heldCoins = 0, referredUsers = 0;
+      : lifetimeTokens = 0, monthTokens = 0, heldTokens = 0, referredUsers = 0;
   AffiliateTotals.fromJson(Map<String, dynamic> j)
-      : lifetimeCoins = _i(j['lifetime_coins']),
-        monthCoins = _i(j['month_coins']),
-        heldCoins = _i(j['held_coins']),
+      : lifetimeTokens = _i(j['lifetime_coins']),
+        monthTokens = _i(j['month_coins']),
+        heldTokens = _i(j['held_coins']),
         referredUsers = _i(j['referred_users']);
   Map<String, dynamic> toJson() => {
-        'lifetime_coins': lifetimeCoins,
-        'month_coins': monthCoins,
-        'held_coins': heldCoins,
+        'lifetime_coins': lifetimeTokens,
+        'month_coins': monthTokens,
+        'held_coins': heldTokens,
         'referred_users': referredUsers,
       };
   /// Withdrawable now = lifetime minus the refund-window hold (never negative).
-  int get availableCoins =>
-      (lifetimeCoins - heldCoins) < 0 ? 0 : lifetimeCoins - heldCoins;
+  int get availableTokens =>
+      (lifetimeTokens - heldTokens) < 0 ? 0 : lifetimeTokens - heldTokens;
 }
 
 /// GET /api/affiliate/me.
@@ -99,7 +97,7 @@ class AffiliateListing {
 
 class AffiliateLink {
   final String id, listingId, app, title, status;
-  final int clicks, binds, earnedCoins;
+  final int clicks, binds, earnedTokens;
   final String url;
   AffiliateLink.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
@@ -109,7 +107,7 @@ class AffiliateLink {
         status = _s(j['status'], 'active'),
         clicks = _i(j['clicks']),
         binds = _i(j['binds']),
-        earnedCoins = _i(j['earned_coins']),
+        earnedTokens = _i(j['earned_coins']),
         url = _s(j['url']).isEmpty ? '$kAffiliateLinkBase${_s(j['id'])}' : _s(j['url']);
   bool get paused => status == 'paused';
 }
@@ -128,11 +126,11 @@ class AffiliateFunnel {
 
 class AffiliateDayPoint {
   final String day; // 'YYYY-MM-DD'
-  final int clicks, earnedCoins;
+  final int clicks, earnedTokens;
   AffiliateDayPoint.fromJson(Map<String, dynamic> j)
       : day = _s(j['day']),
         clicks = _i(j['clicks']),
-        earnedCoins = _i(j['earned_coins']);
+        earnedTokens = _i(j['earned_coins']);
 }
 
 class AffiliateConversion {
@@ -178,12 +176,12 @@ class AffiliateAsset {
 
 class AffiliateSubscriber {
   final String maskedHandle;
-  final int boundAt, ltvCoins, commissionCoins;
+  final int boundAt, ltvTokens, commissionTokens;
   AffiliateSubscriber.fromJson(Map<String, dynamic> j)
       : maskedHandle = _s(j['masked_handle'], 'User •••'),
         boundAt = _i(j['bound_at']),
-        ltvCoins = _i(j['ltv_coins']),
-        commissionCoins = _i(j['commission_coins']);
+        ltvTokens = _i(j['ltv_coins']),
+        commissionTokens = _i(j['commission_coins']);
 }
 
 class AffiliateApi {

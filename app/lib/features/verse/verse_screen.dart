@@ -202,14 +202,14 @@ class _VerseScreenState extends State<VerseScreen> {
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Text(verseUsd(s.n(e, 'settled')), style: ADText.appTitle().copyWith(fontSize: 40, height: 1.0, letterSpacing: -0.8)),
+          child: Text(verseInr(s.n(e, 'settled')), style: ADText.appTitle().copyWith(fontSize: 40, height: 1.0, letterSpacing: -0.8)),
         ),
         const SizedBox(height: 2),
         Text('Settled this period', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
         const SizedBox(height: Msg.s2),
-        _kv('Pending in escrow (your 80%)', verseUsd(s.n(e, 'pending_escrow_net'))),
-        _kv('Maturing (7-day hold)', verseUsd(s.n(e, 'maturing'))),
-        _kv('Ready to pay out', verseUsd(s.n(e, 'payoutable')), pill: true),
+        _kv('Pending in escrow (your 80%)', verseInr(s.n(e, 'pending_escrow_net'))),
+        _kv('Maturing (7-day hold)', verseInr(s.n(e, 'maturing'))),
+        _kv('Ready to pay out', verseInr(s.n(e, 'payoutable')), pill: true),
         const SizedBox(height: Msg.s2),
         Row(children: [
           ZineButton(
@@ -237,9 +237,9 @@ class _VerseScreenState extends State<VerseScreen> {
         if (ev.isEmpty && (ct['sessions'] as num? ?? 0) == 0)
           Text('No upcoming events or consults yet.', style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         for (final p in ev.take(4))
-          _kv('${p['title']} — ${p['joined']} joined', '≈ ${verseUsd((p['projected_net'] as num?) ?? 0)}'),
+          _kv('${p['title']} — ${p['joined']} joined', '≈ ${verseInr((p['projected_net'] as num?) ?? 0)}'),
         if ((ct['sessions'] as num? ?? 0) > 0)
-          _kv('Today: ${ct['sessions']} consult(s) booked', '≈ ${verseUsd((ct['projected_net'] as num?) ?? 0)} by tonight',
+          _kv('Today: ${ct['sessions']} consult(s) booked', '≈ ${verseInr((ct['projected_net'] as num?) ?? 0)} by tonight',
               color: AD.online),
       ],
     );
@@ -279,7 +279,7 @@ class _VerseScreenState extends State<VerseScreen> {
               Row(children: [
                 Expanded(child: Text('${e['title']}', maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.preview().copyWith(fontSize: 13, height: 1.42))),
-                Text('${verseUsd((e['revenue'] as num?) ?? 0)} · ${e['orders']} orders',
+                Text('${verseInr((e['revenue'] as num?) ?? 0)} · ${e['orders']} orders',
                     style: ADText.rowName(c: AD.online).copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600)),
               ]),
               const SizedBox(height: 4),

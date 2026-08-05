@@ -1172,8 +1172,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   /// $3/h = 5 Tokens/min for the booked duration.
-  int get _translationCoins => _translate && _translateLang != null ? TranslationApi.quoteCoins(_durationMin) : 0;
-  int get _totalCoins => widget.listing.effectivePrice + _translationCoins;
+  int get _translationTokens => _translate && _translateLang != null ? TranslationApi.quoteTokens(_durationMin) : 0;
+  int get _totalTokens => widget.listing.effectivePrice + _translationTokens;
 
   @override
   void initState() {
@@ -1224,7 +1224,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         setState(() => _error = 'Complete the top-up in your browser, then tap Confirm again — your slot is kept.');
         Analytics.capture('checkout_topup_opened', {'shortfall': shortfall});
       } else {
-        setState(() => _error = 'Not enough Tokens (need ${fmtCoins(needed)}, have ${fmtCoins(bal)}) — top-up is currently unavailable.');
+        setState(() => _error = 'Not enough Tokens (need ${fmtTokens(needed)}, have ${fmtTokens(bal)}) — top-up is currently unavailable.');
       }
       _loadBalance();
       return;
@@ -1311,7 +1311,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                         style: ADText.rowName()),
                     const SizedBox(height: 4),
                     Text(
-                      'Live voice translation · \$3 per hour'
+                      'Live voice translation · \u20b9300 per hour'
                       '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
                       style: ADText.preview(c: AD.textPrimary),
                     ),
@@ -1343,26 +1343,26 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               Row(children: [
                 PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
                 const SizedBox(width: 8),
-                Text('Wallet: ${_balance == null ? '…' : fmtCoins(_balance!)}',
+                Text('Wallet: ${_balance == null ? '…' : fmtTokens(_balance!)}',
                     style: ADText.rowName()),
                 const Spacer(),
                 Text(l.priceLabel, style: ADText.rowName(c: AD.online)),
               ]),
               // Itemized total when translation is on: e.g. $60 + $3 × 1 h = $63.
-              if (_translationCoins > 0) ...[
+              if (_translationTokens > 0) ...[
                 const Divider(height: 16, color: AD.borderControl, thickness: 1),
                 Row(children: [
                   Expanded(child: Text(
                     'Voice translation · $_durationMin min',
                     style: ADText.preview(),
                   )),
-                  Text('+ ${fmtCoins(_translationCoins)}', style: ADText.preview(c: AD.textPrimary)),
+                  Text('+ ${fmtTokens(_translationTokens)}', style: ADText.preview(c: AD.textPrimary)),
                 ]),
                 const SizedBox(height: 4),
                 Row(children: [
                   Expanded(child: Text('Total (including voice translation)',
                       style: ADText.rowName())),
-                  Text(fmtCoins(_totalCoins), style: ADText.rowName(c: AD.online)),
+                  Text(fmtTokens(_totalTokens), style: ADText.rowName(c: AD.online)),
                 ]),
               ],
             ]),
@@ -1370,9 +1370,9 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           if (_error != null) AdErrorMsg(_error!),
           const SizedBox(height: 16),
           AdButton(
-            label: _totalCoins == 0
+            label: _totalTokens == 0
                 ? 'Confirm (free)'
-                : 'Pay ${l.money(_totalCoins)} & confirm',
+                : 'Pay ${l.money(_totalTokens)} & confirm',
             fullWidth: true,
             fontSize: 19,
             loading: _busy,

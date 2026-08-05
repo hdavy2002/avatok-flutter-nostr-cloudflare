@@ -71,7 +71,7 @@ async function promptFacts(env: Env, link: AssetLinkRow):
 function buildPrompt(p: { title: string; price: number; creator: string; app: string; format: string; style?: string }): string {
   const appLabel = APP_LABEL[p.app] ?? "AvaTok";
   const priceLabel = p.price > 0
-    ? `$${(p.price / 100).toFixed(p.price % 100 === 0 ? 0 : 2)}${p.app === "avavoice" ? "/hour" : ""}` : "";
+    ? `₹${p.price}${p.app === "avavoice" ? "/hour" : ""}` : "";
   const style = (p.style || "").trim().slice(0, 200);
   return [
     `Design a vibrant, modern social-media promo graphic (${p.format} format) for "${p.title}" — `,

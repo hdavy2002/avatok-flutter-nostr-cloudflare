@@ -33,7 +33,7 @@ function freeQuotaBytes(env: Env): number {
   return Number(env.STORAGE_FREE_GB || "10") * GB;
 }
 
-async function walletCoins(env: Env, uid: string): Promise<number> {
+async function walletTokens(env: Env, uid: string): Promise<number> {
   try {
     const w = await walletOp(env, uid, { op: "balance", uid });
     return Number(w.body?.balance ?? w.body?.coins ?? w.body?.available ?? 0);
@@ -64,7 +64,7 @@ export async function recomputeStorage(env: Env, uid: string): Promise<StorageSu
   const prev = await mdb.prepare("SELECT quota_bytes, state FROM storage_quota WHERE uid=?1").bind(uid).first<any>();
   const quota = Number(prev?.quota_bytes || freeQuotaBytes(env));
   let state: StorageState = "ok";
-  if (used > quota) state = (await walletCoins(env, uid)) > 0 ? "over_quota_paying" : "read_only";
+  if (used > quota) state = (await walletTokens(env, uid)) > 0 ? "over_quota_paying" : "read_only";
   await mdb.prepare(
     `INSERT INTO storage_quota (uid, used_bytes, quota_bytes, state, by_category, updated_at)
      VALUES (?1,?2,?3,?4,?5,?6)
@@ -96,7 +96,7 @@ export async function checkUploadAllowed(
   if (s.used_bytes + addBytes <= s.quota_bytes) return { ok: true };
   // Would exceed the free quota → needs a funded wallet (20 coins/GB/mo, billed
   // by the consumers monthly cron). Empty wallet ⇒ reject; NEVER delete files.
-  if ((await walletCoins(env, uid)) > 0) return { ok: true };
+  if ((await walletTokens(env, uid)) > 0) return { ok: true };
   await mediaSession(env).prepare(
     `INSERT INTO storage_quota (uid, used_bytes, quota_bytes, state, updated_at)
      VALUES (?1, ?2, ?3, 'read_only', ?4)

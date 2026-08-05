@@ -58,11 +58,11 @@ class PayoutApi {
     }
   }
 
-  static Future<Map<String, dynamic>> request(String accountId, int amountCoins) async {
+  static Future<Map<String, dynamic>> request(String accountId, int amountTokens) async {
     try {
       final r = await ApiAuth.postJson('$kPayoutBase/request', {
         'account_id': accountId,
-        'amount_coins': amountCoins,
+        'amount_coins': amountTokens,
       });
       return {..._json(r.body), 'status_code': r.statusCode};
     } catch (_) {

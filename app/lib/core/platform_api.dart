@@ -41,8 +41,8 @@ class PlatformApi {
   static String walletLiveUrl() => '${kWalletBase.replaceFirst('https', 'wss')}/live';
 
   // ── AvaCalendar (Phase 3) ─────────────────────────────────────────────────
-  static Future<Map<String, dynamic>> createSlot({required String title, required int startAt, required int endAt, int priceCoins = 0, int capacity = 1, String? description}) async =>
-      _json((await ApiAuth.postJson('$kCalendarBase/slots', {'title': title, 'start_at': startAt, 'end_at': endAt, 'price_coins': priceCoins, 'capacity': capacity, if (description != null) 'description': description})).body);
+  static Future<Map<String, dynamic>> createSlot({required String title, required int startAt, required int endAt, int priceTokens = 0, int capacity = 1, String? description}) async =>
+      _json((await ApiAuth.postJson('$kCalendarBase/slots', {'title': title, 'start_at': startAt, 'end_at': endAt, 'price_coins': priceTokens, 'capacity': capacity, if (description != null) 'description': description})).body);
   static Future<List<Map<String, dynamic>>> slots({String? hostNpub}) async =>
       _list(_json((await ApiAuth.getSigned('$kCalendarBase/slots${hostNpub != null ? '?host=$hostNpub' : ''}')).body), 'slots');
   static Future<Map<String, dynamic>> book(String slotId) async =>
@@ -97,8 +97,8 @@ class PlatformApi {
       _json((await ApiAuth.postJson('$kPayoutBase/setup', {'account_holder': accountHolder, 'ifsc': ifsc, 'account_number': accountNumber, if (label != null) 'label': label})).body);
   static Future<List<Map<String, dynamic>>> payoutAccounts() async =>
       _list(_json((await ApiAuth.getSigned('$kPayoutBase/accounts')).body), 'accounts');
-  static Future<Map<String, dynamic>> payoutRequest({required String accountId, required int amountCoins}) async =>
-      _json((await ApiAuth.postJson('$kPayoutBase/request', {'account_id': accountId, 'amount_coins': amountCoins})).body);
+  static Future<Map<String, dynamic>> payoutRequest({required String accountId, required int amountTokens}) async =>
+      _json((await ApiAuth.postJson('$kPayoutBase/request', {'account_id': accountId, 'amount_coins': amountTokens})).body);
   static Future<List<Map<String, dynamic>>> payoutStatus() async =>
       _list(_json((await ApiAuth.getSigned('$kPayoutBase/status')).body), 'requests');
 
@@ -107,8 +107,8 @@ class PlatformApi {
     final q = <String>[if (kind != null) 'kind=$kind', if (category != null) 'category=$category', if (seller != null) 'seller=$seller'];
     return _list(_json((await ApiAuth.getSigned('$kOlxBase/listings${q.isEmpty ? '' : '?${q.join('&')}'}')).body), 'listings');
   }
-  static Future<Map<String, dynamic>> olxCreate({required String kind, required String title, String? notes, String? category, int? priceCoins, String? location, List<String>? imageHashes}) async =>
-      _json((await ApiAuth.postJson('$kOlxBase/listings', {'kind': kind, 'title': title, if (notes != null) 'notes': notes, if (category != null) 'category': category, if (priceCoins != null) 'price_coins': priceCoins, if (location != null) 'location': location, if (imageHashes != null) 'image_hashes': imageHashes})).body);
+  static Future<Map<String, dynamic>> olxCreate({required String kind, required String title, String? notes, String? category, int? priceTokens, String? location, List<String>? imageHashes}) async =>
+      _json((await ApiAuth.postJson('$kOlxBase/listings', {'kind': kind, 'title': title, if (notes != null) 'notes': notes, if (category != null) 'category': category, if (priceTokens != null) 'price_coins': priceTokens, if (location != null) 'location': location, if (imageHashes != null) 'image_hashes': imageHashes})).body);
   /// Upload the digital deliverable bytes for a digital listing (seller).
   static Future<Map<String, dynamic>> olxUploadFile(String listingId, List<int> bytes, {String fileName = 'download.bin', String mime = 'application/octet-stream'}) async =>
       _json((await ApiAuth.postBytes('$kOlxBase/listings/$listingId/file', bytes, extraHeaders: {'x-file-name': fileName, 'x-content-type': mime})).body);

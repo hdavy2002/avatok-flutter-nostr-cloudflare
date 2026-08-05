@@ -68,7 +68,7 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
 
   void _withdraw() {
     Analytics.capture('affiliate_payout_requested',
-        {'amount_coins': widget.totals.availableCoins});
+        {'amount_coins': widget.totals.availableTokens});
     Navigator.push(context, MaterialPageRoute(builder: (_) => const PayoutScreen()));
   }
 
@@ -87,12 +87,12 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
             Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Expanded(child: StatCard(label: 'Available',
                   icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-                  color: AD.online, value: affCoinsLabel(t.availableCoins),
-                  sub: '${t.availableCoins} coins')),
+                  color: AD.online, value: affTokensLabel(t.availableTokens),
+                  sub: '${t.availableTokens} coins')),
               const SizedBox(width: Msg.s3),
               Expanded(child: StatCard(label: 'Held (refund window)',
                   icon: PhosphorIcons.hourglass(PhosphorIconsStyle.bold),
-                  color: AD.micIdleBg, value: affCoinsLabel(t.heldCoins),
+                  color: AD.micIdleBg, value: affTokensLabel(t.heldTokens),
                   sub: 'releases after 7 days')),
             ]),
             const SizedBox(height: Msg.s4),
@@ -177,7 +177,7 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
           ]),
         ),
         const SizedBox(width: Msg.s2),
-        Text('${positive ? '+' : '−'}${affCoinsLabel(amount.abs())}',
+        Text('${positive ? '+' : '−'}${affTokensLabel(amount.abs())}',
             style: ADText.rowName(c: positive ? AD.online : AD.danger).copyWith(fontWeight: FontWeight.w700)),
       ]),
     );

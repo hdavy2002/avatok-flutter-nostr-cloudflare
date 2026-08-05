@@ -1492,16 +1492,16 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   const orderId = `ord_${bookingId.slice(0, 18)}`;
 
   // Voice translation add-on ("Would you like this to be translated into the
-  // language of your choice?"). $3/h = 5 AvaCoins/min for the booked duration;
+  // language of your choice?"). $3/h = 5 Tokens/min for the booked duration;
   // 100% platform fee — NEVER shared with the creator. Unused minutes refund
   // at settlement.
-  let trlLang: string | null = null, trlCoins = 0, trlOrderId: string | null = null;
+  let trlLang: string | null = null, trlTokens = 0, trlOrderId: string | null = null;
   if (b.translation?.lang) {
     if (!l.translation_enabled) return json({ error: "translation not offered on this listing" }, 400);
     const lang = String(b.translation.lang);
     if (!TRL_LANGS.has(lang)) return json({ error: "unsupported translation language", lang }, 400);
     trlLang = lang;
-    trlCoins = Math.ceil((end - start) / 60_000) * TRL_RATE;
+    trlTokens = Math.ceil((end - start) / 60_000) * TRL_RATE;
     trlOrderId = `trl_${bookingId.slice(0, 18)}`;
   }
 
@@ -1524,19 +1524,19 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
     if (!h.ok) {
       await releaseBlocks(env, "avabooking", bookingId);
       if (creatorClaimed) await releaseBlocks(env, APP, bookingId);
-      if (h.status === 402) return json({ error: "insufficient_funds", needed: amount + trlCoins, ...h.body }, 402);
+      if (h.status === 402) return json({ error: "insufficient_funds", needed: amount + trlTokens, ...h.body }, 402);
       return json({ error: "payment failed", detail: h.body }, 502);
     }
   }
   // Translation prepay → its own escrow bucket (trl_*). On failure, unwind the
   // main hold so the buyer never pays for a booking they didn't get.
-  if (trlOrderId && trlCoins > 0) {
-    const th = await hold(env, ctx.uid, trlOrderId, trlCoins, { title: `Voice translation (${trlLang})`, app: "avatranslate" });
+  if (trlOrderId && trlTokens > 0) {
+    const th = await hold(env, ctx.uid, trlOrderId, trlTokens, { title: `Voice translation (${trlLang})`, app: "avatranslate" });
     if (!th.ok) {
       if (amount > 0) await refund(env, orderId, ctx.uid, amount, { opId: `refund:${orderId}:trlfail`, reason: "booking failed (translation payment)", title: String(l.title) });
       await releaseBlocks(env, "avabooking", bookingId);
       if (creatorClaimed) await releaseBlocks(env, APP, bookingId);
-      if (th.status === 402) return json({ error: "insufficient_funds", needed: amount + trlCoins, ...th.body }, 402);
+      if (th.status === 402) return json({ error: "insufficient_funds", needed: amount + trlTokens, ...th.body }, 402);
       return json({ error: "payment failed", detail: th.body }, 502);
     }
   }
@@ -1556,7 +1556,7 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
     db.prepare(
       `INSERT INTO bookings (id, creator_id, buyer_id, listing_id, kind, starts_at, ends_at, price, order_id, status, translation_lang, translation_coins, trl_order_id, created_at, updated_at)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'confirmed',?10,?11,?12,?13,?13)`,
-    ).bind(bookingId, l.creator_id, ctx.uid, id, bkKind, start, end, amount, amount > 0 ? orderId : null, trlLang, trlCoins, trlOrderId, now),
+    ).bind(bookingId, l.creator_id, ctx.uid, id, bkKind, start, end, amount, amount > 0 ? orderId : null, trlLang, trlTokens, trlOrderId, now),
     mkEvent(ctx.uid, "attendee"),
     mkEvent(l.creator_id, "host"),
     db.prepare("UPDATE listings SET joined_count=joined_count+1, updated_at=?2 WHERE id=?1").bind(id, now),
@@ -1591,9 +1591,9 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
     });
   }
   return json({
-    ok: true, booking_id: bookingId, order_id: orderId, amount, paid: amount + trlCoins > 0,
-    translation: trlLang ? { lang: trlLang, coins: trlCoins, order_id: trlOrderId } : null,
-    total: amount + trlCoins,
+    ok: true, booking_id: bookingId, order_id: orderId, amount, paid: amount + trlTokens > 0,
+    translation: trlLang ? { lang: trlLang, coins: trlTokens, order_id: trlOrderId } : null,
+    total: amount + trlTokens,
     start_at: start, end_at: end, joinable: l.status === "live",
   });
 }

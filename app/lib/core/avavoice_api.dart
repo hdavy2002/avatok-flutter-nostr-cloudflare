@@ -8,25 +8,27 @@ import 'config.dart';
 /// Spec: Specs/AVAVOICE-PROPOSAL.md (approved 2026-06-11).
 /// Money rules: coins are USD cents; platform keeps 50% (odd cent → platform);
 /// per-minute billing rounded UP; creator-pays agents bill the CREATOR a flat
-/// $5/hour platform fee (kCreatorPaysRateCoinsPerHour). Never say "credits".
+/// $5/hour platform fee (kCreatorPaysRateTokensPerHour). Never say "credits".
 const String _base = 'https://$kSignalingHost/api/avavoice';
 
 /// Flat platform fee for creator-pays (sponsored) agents — $5/hour in coins.
-const int kCreatorPaysRateCoinsPerHour = 500;
+const int kCreatorPaysRateTokensPerHour = 500;
 
 /// Hard product caps (rulebook): one hour max, 10 concurrent calls per agent.
 const int kMaxSessionMinutes = 60;
 const int kMaxConcurrentCalls = 10;
 const List<int> kSessionLimitChoices = [5, 10, 30, 60];
 
-String fmtCoins(int coins) =>
-    coins == 0 ? 'Free' : '\$${(coins / 100).toStringAsFixed(coins % 100 == 0 ? 0 : 2)}';
+/// Wallet money label. 1 token = Rs 1 (owner pricing decision, fixed - not
+/// an FX conversion). The stored integer IS the rupee amount, so there is
+/// no divide here; see worker/src/lib/fx_rates.ts.
+String fmtTokens(int tokens) => tokens == 0 ? 'Free' : '\u20b9$tokens';
 
 /// Per-minute price (ceil) for an hourly rate, in coins.
-int perMinuteCoins(int ratePerHourCoins) => (ratePerHourCoins / 60).ceil();
+int perMinuteTokens(int ratePerHourTokens) => (ratePerHourTokens / 60).ceil();
 
 /// Creator's net per hour after the 50% platform fee (odd cent → platform).
-int creatorNetPerHour(int ratePerHourCoins) => ratePerHourCoins ~/ 2;
+int creatorNetPerHour(int ratePerHourTokens) => ratePerHourTokens ~/ 2;
 
 class VoiceOption {
   final String name; // Gemini prebuilt voice name, e.g. "Puck"
@@ -113,7 +115,7 @@ class VoiceAgent {
   final String id, name, role, systemProfile, voiceName, payerMode, status;
   final String? avatarUrl, creatorUid, creatorName;
   final List<String> images; // listing photos (1–5, public CDN URLs)
-  final int ratePerHourCoins, sessionLimitMin;
+  final int ratePerHourTokens, sessionLimitMin;
   final bool visionEnabled;
   final List<AgentBrainFile> files;
   final int callsTotal;
@@ -133,7 +135,7 @@ class VoiceAgent {
         images = ((j['images'] as List?) ?? const []).map((u) => u.toString()).toList(),
         creatorUid = j['creator_uid']?.toString(),
         creatorName = j['creator_name']?.toString(),
-        ratePerHourCoins = (j['rate_per_hour'] as num?)?.toInt() ?? 0,
+        ratePerHourTokens = (j['rate_per_hour'] as num?)?.toInt() ?? 0,
         sessionLimitMin = (j['session_limit_min'] as num?)?.toInt() ?? 30,
         visionEnabled = j['vision_enabled'] == true,
         files = ((j['files'] as List?) ?? const [])
@@ -146,7 +148,7 @@ class VoiceAgent {
   bool get isFreeForCallers => payerMode == 'creator_pays';
   bool get busy => (activeCalls ?? 0) >= kMaxConcurrentCalls;
   String get rateLabel =>
-      isFreeForCallers ? 'Free to call' : '${fmtCoins(ratePerHourCoins)}/hr · ${fmtCoins(perMinuteCoins(ratePerHourCoins))}/min';
+      isFreeForCallers ? 'Free to call' : '${fmtTokens(ratePerHourTokens)}/hr · ${fmtTokens(perMinuteTokens(ratePerHourTokens))}/min';
 }
 
 class AgentAvailability {
@@ -161,7 +163,7 @@ class AgentAvailability {
 class VoiceBooking {
   final String id, agentId, agentName, status;
   final String? agentAvatar;
-  final int scheduledAt, bookedMinutes, escrowCoins;
+  final int scheduledAt, bookedMinutes, escrowTokens;
   VoiceBooking.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
         agentId = (j['agent_id'] ?? '').toString(),
@@ -170,11 +172,11 @@ class VoiceBooking {
         status = (j['status'] ?? 'booked').toString(),
         scheduledAt = (j['scheduled_at'] as num?)?.toInt() ?? 0,
         bookedMinutes = (j['booked_minutes'] as num?)?.toInt() ?? 0,
-        escrowCoins = (j['escrow_coins'] as num?)?.toInt() ?? 0;
+        escrowTokens = (j['escrow_coins'] as num?)?.toInt() ?? 0;
 }
 
 class AgentDayStats {
-  final int bookings, calls, minutes, grossCoins, netCoins, refundsCoins;
+  final int bookings, calls, minutes, grossTokens, netTokens, refundsTokens;
   // Audience analytics (last 30 days) — views by country / age group.
   final int views30d, uniqueViewers30d;
   final List<MapEntry<String, int>> viewsByCountry, viewsByAgeGroup;
@@ -188,9 +190,9 @@ class AgentDayStats {
       : bookings = (j['bookings'] as num?)?.toInt() ?? 0,
         calls = (j['calls'] as num?)?.toInt() ?? 0,
         minutes = (j['minutes'] as num?)?.toInt() ?? 0,
-        grossCoins = (j['gross_coins'] as num?)?.toInt() ?? 0,
-        netCoins = (j['net_coins'] as num?)?.toInt() ?? 0,
-        refundsCoins = (j['refunds_coins'] as num?)?.toInt() ?? 0,
+        grossTokens = (j['gross_coins'] as num?)?.toInt() ?? 0,
+        netTokens = (j['net_coins'] as num?)?.toInt() ?? 0,
+        refundsTokens = (j['refunds_coins'] as num?)?.toInt() ?? 0,
         views30d = (j['views_30d'] as num?)?.toInt() ?? 0,
         uniqueViewers30d = (j['unique_viewers_30d'] as num?)?.toInt() ?? 0,
         viewsByCountry = _pairs(j['views_by_country'], 'country'),

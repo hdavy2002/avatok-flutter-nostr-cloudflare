@@ -292,7 +292,7 @@ export interface Env {
   // and must be unbound separately (ops step). Do NOT reintroduce.
 
   // AvaStorage (universal per-account pool). Free quota in GB (default 5);
-  // over-quota metered price in AvaCoins per GB per month (default 20 — billed
+  // over-quota metered price in Tokens per GB per month (default 20 — billed
   // by the consumers monthly cron, ledger type storage_charge).
   STORAGE_FREE_GB?: string;
   STORAGE_COINS_PER_GB?: string;

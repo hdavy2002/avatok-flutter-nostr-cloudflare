@@ -217,7 +217,7 @@ export async function affiliateMe(req: Request, env: Env): Promise<Response> {
       lifetime_coins: Number(totals?.lifetime ?? 0),
       month_coins: Number(monthRow?.month ?? 0),
       held_coins: Number(totals?.held ?? 0),
-      // [AFF-COMM-LIFECYCLE-1] Coins that exist only in D1 and NOT in the wallet:
+      // [AFF-COMM-LIFECYCLE-1] Tokens that exist only in D1 and NOT in the wallet:
       // awaiting the affiliateQualifyDays window (or parked in held_review). The
       // affiliate home screen must label these as not-yet-earned (§9 pending explainer).
       pending_coins: Number(totals?.pending ?? 0),
@@ -634,7 +634,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
  *  applicationId) and APP_STORE_ID (unset on the Android-only launch ⇒ NO App
  *  Store badge is rendered at all — never a dead id000000000 link). */
 function previewHtml(env: Env, p: { title: string; price?: number | null; app?: string; creator?: string | null; deepLink?: string; linkId?: string; token?: string; missing?: boolean }): string {
-  const price = p.price != null && p.price > 0 ? `$${(p.price / 100).toFixed(2)}` : "";
+  const price = p.price != null && p.price > 0 ? `\u20b9${p.price}` : "";
   const appLabel = p.app ? APP_LABEL[p.app] ?? "AvaTok" : "AvaTok";
   const open = p.deepLink ? `<script>setTimeout(function(){window.location.href=${JSON.stringify(p.deepLink)};},300);</script>` : "";
   const playId = (env.PLAY_PACKAGE_ID || "ai.avatok.avatok_call").trim();
@@ -962,9 +962,9 @@ export async function runAffiliateQualification(env: Env, now: number = Date.now
     const id = String(raw.id);
     const affUid = String(raw.affiliate_uid);
     const referredUid = String(raw.referred_uid);
-    const grossCoins = Number(raw.gross_coins ?? 0);
-    const reversedCoins = Number(raw.reversed_coins ?? 0);
-    const amount = Number(raw.affiliate_coins ?? 0) - reversedCoins;
+    const grossTokens = Number(raw.gross_coins ?? 0);
+    const reversedTokens = Number(raw.reversed_coins ?? 0);
+    const amount = Number(raw.affiliate_coins ?? 0) - reversedTokens;
     const flags = parseRiskFlags(raw.risk_flags);
 
     /** Terminal outcome: never a silent skip (§6.1). */
@@ -977,7 +977,7 @@ export async function runAffiliateQualification(env: Env, now: number = Date.now
       await trackUser(env, affUid, await emailOf(affUid), "affiliate_commission_reversed", APP, {
         commission_id: id, affiliate_uid: affUid, referred_uid: referredUid,
         link_id: String(raw.link_id ?? ""), order_id: String(raw.order_id ?? ""),
-        gross_coins: grossCoins, affiliate_coins: amount,
+        gross_coins: grossTokens, affiliate_coins: amount,
         outcome: status, reason, wallet_clawback: false, stage: "qualification",
       }).catch(() => undefined);
       metric(env, "affiliate_commission_reversed", [amount], [status, reason]);
@@ -985,7 +985,7 @@ export async function runAffiliateQualification(env: Env, now: number = Date.now
 
     try {
       // --- Gate 1: the commission itself is already (partly) reversed ---------
-      if (!(amount > 0) || reversedCoins > 0) { await finish("reversed", "refunded"); continue; }
+      if (!(amount > 0) || reversedTokens > 0) { await finish("reversed", "refunded"); continue; }
 
       // --- Gate 2: a fraud/clustering flag already parked this row -----------
       const blocking = flags.find((f) => BLOCKING_RISK_FLAGS.has(f));
@@ -995,7 +995,7 @@ export async function runAffiliateQualification(env: Env, now: number = Date.now
       if (affUid === referredUid) { await finish("reversed", "self_referral"); continue; }
 
       // --- Gate 4: dust farming (§6.2 minimum qualifying top-up) -------------
-      if (grossCoins < minTopup) { await finish("reversed", "below_min_topup"); continue; }
+      if (grossTokens < minTopup) { await finish("reversed", "below_min_topup"); continue; }
 
       // --- Gate 5: the SOURCE top-up must still be paid ----------------------
       // A missing row is NOT evidence of a refund (Play top-ups and deleted
@@ -1061,7 +1061,7 @@ export async function runAffiliateQualification(env: Env, now: number = Date.now
           type: "affiliate_topup_commission", ref: String(raw.order_id ?? id),
           meta: JSON.stringify({
             link_id: String(raw.link_id ?? ""), topup_id: String(raw.order_id ?? ""),
-            coins: grossCoins, rate: TOPUP_AFFILIATE_RATE, qualified_at: now,
+            coins: grossTokens, rate: TOPUP_AFFILIATE_RATE, qualified_at: now,
           }),
         },
       });
@@ -1075,12 +1075,12 @@ export async function runAffiliateQualification(env: Env, now: number = Date.now
       await trackUser(env, affUid, await emailOf(affUid), "affiliate_commission_promoted", APP, {
         commission_id: id, affiliate_uid: affUid, referred_uid: referredUid,
         link_id: String(raw.link_id ?? ""), order_id: String(raw.order_id ?? ""),
-        gross_coins: grossCoins, affiliate_coins: amount, rate: TOPUP_AFFILIATE_RATE,
+        gross_coins: grossTokens, affiliate_coins: amount, rate: TOPUP_AFFILIATE_RATE,
         qualify_days: qualifyDays, created_at: Number(raw.created_at ?? 0), promoted_at: now,
         days_pending: Math.round((now - Number(raw.created_at ?? now)) / 86_400_000),
         wallet_credited: true, hold_days: 7,
       }).catch(() => undefined);
-      metric(env, "affiliate_commission_promoted", [amount, grossCoins]);
+      metric(env, "affiliate_commission_promoted", [amount, grossTokens]);
     } catch (e) {
       // Never let one bad row stop the batch; the row keeps its 'pending' status
       // and is retried on the next tick.

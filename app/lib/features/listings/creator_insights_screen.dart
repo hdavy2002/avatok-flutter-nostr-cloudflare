@@ -94,7 +94,7 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
         ]),
         const SizedBox(height: Msg.s4),
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _stat('Revenue (30d)', '\$${(_i(bookings['gross_coins_30d']) / 100).toStringAsFixed(2)}',
+          _stat('Revenue (30d)', '\u20b9${_i(bookings['gross_coins_30d'])}',
               PhosphorIcons.coins(PhosphorIconsStyle.bold), AD.online, money: true),
           const SizedBox(width: Msg.s4),
           _stat('Followers', '${_i(s['follower_count'])}',

@@ -86,10 +86,10 @@ PreferredSizeWidget _darkHeader({
 // export sheet. Data plumbing (live WS balance, drift cache, keyset pagination,
 // Stripe / Play Billing top-ups) is unchanged.
 
-// Coin economics — CANONICAL, MUST match the server (worker/src/routes/wallet.ts
-// COINS_PER_USD) and AvaPayout. 1 USD = 100 Tokens (1 coin = $0.01). Balances/
+// Token economics — CANONICAL, MUST match the server (worker/src/routes/wallet.ts
+// TOKENS_PER_USD) and AvaPayout. 1 USD = 100 Tokens (1 coin = $0.01). Balances/
 // ledger amounts are in coins; USD is derived for display only.
-const int kCoinsPerUsd = 100;
+const int kTokensPerUsd = 100;
 
 /// Withdraw/payout is hidden until the marketplace + payout flow ships. Flip to
 /// true to bring the Withdraw button back on the wallet hero card.
@@ -106,7 +106,7 @@ String? _appliedPublishableKey;
 String _usdFromCents(int cents) => '\$${(cents.abs() / 100).toStringAsFixed(2)}';
 
 /// Compact coin count, e.g. 10000 → "10,000".
-String _coins(num coins) {
+String _tokens(num coins) {
   final s = coins.abs().toInt().toString();
   final b = StringBuffer();
   for (var i = 0; i < s.length; i++) {
@@ -355,7 +355,7 @@ class _WalletScreenState extends State<WalletScreen> {
         'bonus_coins': ((b['bonus'] as num?) ?? 0).toInt(),
         'free_coins': ((b['free'] as num?) ?? 0).toInt(),
         'held_coins': _held,
-        'balance_usd_cents': (_balance * 100 / kCoinsPerUsd).round(),
+        'balance_usd_cents': (_balance * 100 / kTokensPerUsd).round(),
         'entries_loaded': _entries.length,
         'has_ledger': _entries.isNotEmpty,
         'filtered': _filtered,
@@ -370,13 +370,13 @@ class _WalletScreenState extends State<WalletScreen> {
       // email + phone ride
       // every event (see Analytics._base), so support can pull THIS user by
       // email/phone in PostHog and reconcile the missing ledger row.
-      final traceableCoins = ((b['balance'] as num?) ?? 0).toInt() +
+      final traceableTokens = ((b['balance'] as num?) ?? 0).toInt() +
           ((b['bonus'] as num?) ?? 0).toInt();
-      if (traceableCoins > 0 && _entries.isEmpty && !_filtered && !_loading) {
+      if (traceableTokens > 0 && _entries.isEmpty && !_filtered && !_loading) {
         Analytics.capture('wallet_balance_without_ledger', {
-          'balance_coins': traceableCoins,
+          'balance_coins': traceableTokens,
           'held_coins': _held,
-          'balance_usd_cents': (traceableCoins * 100 / kCoinsPerUsd).round(),
+          'balance_usd_cents': (traceableTokens * 100 / kTokensPerUsd).round(),
         });
       }
     } else if (mounted) {
@@ -486,7 +486,7 @@ class _WalletScreenState extends State<WalletScreen> {
   // Flow: fetch the region-aware quote → ask amount in the user's top-up
   // currency → server mints a PaymentIntent → present the native sheet
   // (card / Apple Pay / Google Pay) right here → poll the balance so the topped-up
-  // coins + the new ledger entry land on this same page. Coins are credited
+  // coins + the new ledger entry land on this same page. Tokens are credited
   // server-side ONLY (Stripe webhook); the client never moves money itself.
   //
   // [TOKENS-FX-1] Region-aware: /api/wallet/topup-quote decides the currency —
@@ -503,7 +503,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (!mounted) return;
     final inr = quote['currency'] == 'INR';
     final currency = inr ? 'inr' : 'usd';
-    final tokensPerUnit = ((quote['tokens_per_unit'] as num?) ?? (inr ? 1 : kCoinsPerUsd)).toInt();
+    final tokensPerUnit = ((quote['tokens_per_unit'] as num?) ?? (inr ? 1 : kTokensPerUsd)).toInt();
     final cents = await _askAmountMinor(quote); // minor units of `currency`
     if (cents == null || !mounted) return;
     final coins = (cents * tokensPerUnit / 100).round();
@@ -591,7 +591,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (credited) {
       final added = _balance - before;
       Analytics.capture('wallet_topup_succeeded', {'cents': cents, 'coins': added});
-      _snack('Added ${_coins(added)} Tokens to your wallet');
+      _snack('Added ${_tokens(added)} Tokens to your wallet');
     } else {
       // Payment captured but the webhook is still settling — reassure, don't alarm.
       Analytics.capture('wallet_topup_pending_credit', {'cents': cents, 'coins': coins});
@@ -608,7 +608,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<int?> _askAmountMinor(Map<String, dynamic> quote) async {
     final inr = quote['currency'] == 'INR';
     final sym = inr ? '₹' : '\$';
-    final tokensPerUnit = ((quote['tokens_per_unit'] as num?) ?? (inr ? 1 : kCoinsPerUsd)).toInt();
+    final tokensPerUnit = ((quote['tokens_per_unit'] as num?) ?? (inr ? 1 : kTokensPerUsd)).toInt();
     final minUnits = ((quote['min_amount'] as num?) ?? (inr ? 100 : 1)).toInt();
     final maxUnits = inr ? 50000 : 500; // both = 50,000 tokens (server MAX_TOPUP)
     final qPresets = [
@@ -616,7 +616,7 @@ class _WalletScreenState extends State<WalletScreen> {
         if (p is Map && p['amount'] is num) (p['amount'] as num).toInt(),
     ];
     final presets = qPresets.isNotEmpty ? qPresets : (inr ? const [100, 200, 500, 1000] : const [1, 2, 5, 10]);
-    final rateCopy = inr ? '1 Token = ${sym}1' : '1 USD = ${_coins(kCoinsPerUsd)} Tokens';
+    final rateCopy = inr ? '1 Token = ${sym}1' : '1 USD = ${_tokens(kTokensPerUsd)} Tokens';
     final ctrl = TextEditingController();
     return showModalBottomSheet<int>(
       context: context,
@@ -627,7 +627,7 @@ class _WalletScreenState extends State<WalletScreen> {
         builder: (c, setSheet) {
           final d = double.tryParse(ctrl.text.trim());
           final valid = d != null && d >= minUnits && d <= maxUnits;
-          final previewCoins = valid ? (d * tokensPerUnit).round() : 0;
+          final previewTokens = valid ? (d * tokensPerUnit).round() : 0;
           return Padding(
             padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, MediaQuery.of(c).viewInsets.bottom + 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -645,13 +645,13 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               const SizedBox(height: Msg.s2),
               Text(
-                valid ? '= ${_coins(previewCoins)} Tokens' : 'Enter $sym$minUnits – $sym${_coins(maxUnits)}',
+                valid ? '= ${_tokens(previewTokens)} Tokens' : 'Enter $sym$minUnits – $sym${_tokens(maxUnits)}',
                 style: ADText.rowName(c: valid ? AD.online : AD.textTertiary),
               ),
               const SizedBox(height: Msg.s3),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final v in presets)
-                  AdSticker('$sym$v · ${_coins(v * tokensPerUnit)} Tokens', onTap: () {
+                  AdSticker('$sym$v · ${_tokens(v * tokensPerUnit)} Tokens', onTap: () {
                     Analytics.capture('wallet_topup_preset', {'amount': v, 'currency': inr ? 'inr' : 'usd', 'tokens': v * tokensPerUnit});
                     setSheet(() => ctrl.text = inr ? '$v' : v.toStringAsFixed(2));
                   }),
@@ -703,11 +703,11 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Top up wallet', style: ADText.appTitle()),
           const SizedBox(height: Msg.s1),
-          Text('Pay securely with Google Play. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ADText.preview()),
+          Text('Pay securely with Google Play. \$1 = ${_tokens(kTokensPerUsd)} Tokens.', style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           for (final t in kTopupTiers) ...[
             AdButton(
-              label: '\$${t.usd}   ·   ${_coins(t.tokens)} Tokens',
+              label: '\$${t.usd}   ·   ${_tokens(t.tokens)} Tokens',
               fullWidth: true,
               trailingIcon: false,
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
@@ -983,7 +983,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   _scaffoldKey.currentState?.openDrawer();
                 },
               ),
-        // [WALLET-UX-1] Owner decision: no "AvaCoins" branding in the UI — the
+        // [WALLET-UX-1] Owner decision: no "Tokens" branding in the UI — the
         // wallet's user-facing unit is Tokens (display copy only; code
         // identifiers and storage keys keep their historical names).
         tag: 'your tokens',
@@ -1053,7 +1053,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     const Spacer(),
                     Flexible(
                       child: Text(
-                        'last $_days days · ${_coins(spent)} out',
+                        'last $_days days · ${_tokens(spent)} out',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
@@ -1086,7 +1086,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         for (final c in byCat)
                           (color: _catColor('${c['key']}'), value: ((c['tokens'] as num?) ?? 0)),
                       ],
-                      centerValue: _coins(spent),
+                      centerValue: _tokens(spent),
                     ),
                     const SizedBox(width: Msg.s4),
                     Expanded(
@@ -1098,7 +1098,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             WalletLegendRow(
                               color: _catColor('${byCat[i]['key']}'),
                               label: '${byCat[i]['label'] ?? _catLabel('${byCat[i]['key']}')}',
-                              value: _coins(((byCat[i]['tokens'] as num?) ?? 0)),
+                              value: _tokens(((byCat[i]['tokens'] as num?) ?? 0)),
                             ),
                           ],
                         ],
@@ -1217,7 +1217,7 @@ class _WalletScreenState extends State<WalletScreen> {
   // ── pieces ──────────────────────────────────────────────────────────────
 
   Widget _balanceHero() {
-    final usd = (_balance / kCoinsPerUsd).toStringAsFixed(2);
+    final inrValue = _tokens(_balance);
     return WalletCard(
       color: AW.mint,
       radius: Msg.rLg,
@@ -1244,7 +1244,7 @@ class _WalletScreenState extends State<WalletScreen> {
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(_coins(_balance), style: AWText.balanceHuge()),
+              child: Text(_tokens(_balance), style: AWText.balanceHuge()),
             ),
           ),
           const SizedBox(width: Msg.s2),
@@ -1255,8 +1255,8 @@ class _WalletScreenState extends State<WalletScreen> {
         ]),
         const SizedBox(height: Msg.s2),
         Text(
-          '≈ \$$usd value · refills monthly'
-          '${_held > 0 ? ' · ${_coins(_held)} on hold' : ''}',
+          '≈ \u20b9$inrValue value · refills monthly'
+          '${_held > 0 ? ' · ${_tokens(_held)} on hold' : ''}',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: AWText.balanceSub(),
@@ -1354,7 +1354,7 @@ class _WalletScreenState extends State<WalletScreen> {
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Text('${isIn ? '+' : '−'}${_coins(tokens)}', style: AWText.statBig(c: color)),
+          child: Text('${isIn ? '+' : '−'}${_tokens(tokens)}', style: AWText.statBig(c: color)),
         ),
         const SizedBox(height: 2),
         Text(isIn ? 'Money in' : 'Money out', style: AWText.caption(c: AW.txMute)),
@@ -1433,7 +1433,7 @@ class _WalletScreenState extends State<WalletScreen> {
         color: _catColor(cat),
         title: _titleOf(e),
         sub: _catLabel(cat),
-        amountLabel: '${tokens >= 0 ? '+' : '−'}${_coins(tokens.abs())}',
+        amountLabel: '${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())}',
         isIn: tokens >= 0,
         time: _clock(ts),
         showDivider: !first,
@@ -1453,7 +1453,7 @@ class _WalletScreenState extends State<WalletScreen> {
             child: Text(_titleOf(e), maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),
           ),
           const SizedBox(width: Msg.s2),
-          Text('${tokens >= 0 ? '+' : '−'}${_coins(tokens.abs())}',
+          Text('${tokens >= 0 ? '+' : '−'}${_tokens(tokens.abs())}',
               style: AWText.amount(c: tokens >= 0 ? AW.mint : AW.coral)),
         ]),
       );
@@ -1491,7 +1491,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final ts = _tsOf(entry);
     final cat = _catOf(entry);
     final isIn = tokens >= 0;
-    final amountLabel = '${isIn ? '+' : '−'}${_coins(tokens.abs())}';
+    final amountLabel = '${isIn ? '+' : '−'}${_tokens(tokens.abs())}';
 
     // Cost maths — only rendered when BOTH a duration and a per-minute rate are
     // present; a half-filled equation is worse than none.
@@ -1521,7 +1521,7 @@ class _WalletScreenState extends State<WalletScreen> {
       (label: 'Paid', value: usdLabel),
       (label: 'Paid with', value: paidWith),
       (label: 'Status', value: status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1)),
-      (label: 'Balance after', value: balAfter == null ? '' : '${_coins(balAfter)} tokens'),
+      (label: 'Balance after', value: balAfter == null ? '' : '${_tokens(balAfter)} tokens'),
     ].where((r) => r.value.trim().isNotEmpty).toList();
 
     await showModalBottomSheet<void>(
@@ -1590,8 +1590,8 @@ class _WalletScreenState extends State<WalletScreen> {
               if (durLabel != null && rate != null) ...[
                 WalletBreakdownBox(
                   duration: durLabel,
-                  rate: _coins(rate),
-                  total: _coins(tokens.abs()),
+                  rate: _tokens(rate),
+                  total: _tokens(tokens.abs()),
                   totalColor: isIn ? AW.mint : AW.coral,
                 ),
                 const SizedBox(height: Msg.s4),

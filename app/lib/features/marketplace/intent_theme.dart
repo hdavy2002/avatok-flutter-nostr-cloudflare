@@ -240,15 +240,20 @@ String _compact(num v, String code) {
 ///
 /// [currencyDisplay] maps to `ListingCard.currency` (the listing's
 /// `currency_display`), where commerce listings store **real currency in major
-/// units** (see `ListingCard.displayPrice` — "3000 INR"). The AvaCoin
-/// convention (`fmtCoins`: 1 USD = 100 coins) is honoured when the currency is
-/// explicitly a coin sentinel (`COINS`/`AVACOIN`) — then [price] is divided by
-/// 100 and shown as USD, matching `ListingCard.money(coins)`.
+/// units** (see `ListingCard.displayPrice` — "3000 INR"). The Token
+/// convention (`fmtTokens`: 1 token = ₹1) is honoured when the currency is
+/// explicitly a token sentinel (`TOKENS`/`TOKEN`, or the legacy `COINS`/`COIN`/
+/// `AVACOIN`) — then [price] is shown as-is in ₹, matching
+/// `ListingCard.money(tokens)`.
 String _amount(int price, String? currencyDisplay) {
   final code =
       (currencyDisplay == null || currencyDisplay.trim().isEmpty) ? 'USD' : currencyDisplay.trim().toUpperCase();
-  if (code == 'COINS' || code == 'AVACOIN' || code == 'COIN') {
-    return '\$${_compact(price / 100.0, 'USD')}';
+  // 'COINS'/'AVACOIN'/'COIN' are legacy values already persisted in D1
+  // (listings.currency_display) from before the token rename — they must keep
+  // resolving or those rows render as the literal text "COINS 2000".
+  if (code == 'TOKENS' || code == 'TOKEN' ||
+      code == 'COINS' || code == 'AVACOIN' || code == 'COIN') {
+    return '\u20b9${_compact(price.toDouble(), 'INR')}';
   }
   return '${_currencySymbol(code)}${_compact(price, code)}';
 }

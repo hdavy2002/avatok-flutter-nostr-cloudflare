@@ -196,13 +196,13 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
           Text(
               balUnavailable
                   ? '$kWalletUnavailableMessage · goes to the creator instantly'
-                  : 'Balance \$${(bal / 100).toStringAsFixed(2)} · goes to the creator instantly',
+                  : 'Balance \u20b9$bal · goes to the creator instantly',
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
             for (final a in amounts)
               ZineSticker(
-                '\$${(a / 100).toStringAsFixed(a % 100 == 0 ? 0 : 2)}',
+                '\u20b9$a',
                 kind: ZineStickerKind.ok, // the pay action
                 onTap: () { Navigator.pop(sheetCtx); _donate(a); },
               ),

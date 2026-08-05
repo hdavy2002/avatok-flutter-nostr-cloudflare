@@ -593,7 +593,7 @@ export async function runAvaImage(
     track(env, uid, "ava_image_error", "avaai", { stage: "reserve", reason: created.error, tier });
     if (created.error === "AI_INSUFFICIENT_TOKENS") {
       return { ok: false, blocked: true, reason: "insufficient_balance", tier: PLANS[tier].key,
-        message: "You don't have enough AvaCoins for an image right now.", httpStatus: 200 };
+        message: "You don't have enough Tokens for an image right now.", httpStatus: 200 };
     }
     return { ok: false, reason: created.error, message: "I couldn't start that image right now — please try again.", httpStatus: created.status };
   }

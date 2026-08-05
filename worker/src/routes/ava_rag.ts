@@ -5,7 +5,7 @@
 //
 // FREE + PREMIUM. AI Search (memory & file search) is available to ALL users:
 //   • FREE  — ingest is CAPPED (freeQuota: default 10 GB / 10,000 items),
-//             search is unrestricted, and there is NO AvaCoin charge.
+//             search is unrestricted, and there is NO Token charge.
 //   • PREMIUM (topped-up wallet) — uncapped ingest, metered per op via chargeFeature.
 // Per-user ISOLATION + scale: users are pooled into a FIXED set of sharded AI
 // Search instances and isolated by a per-user `<uid>/` folder filter, all via the
@@ -147,7 +147,7 @@ export async function avaRagBackfill(req: Request, env: Env): Promise<Response> 
 // chats") and hidden by default in thread search.
 //
 // Gating mirrors /rag/search: open to ALL users (free + premium), premium metered
-// with AvaCoins. During the free launch betaFreePremium makes premium-quality
+// with Tokens. During the free launch betaFreePremium makes premium-quality
 // retrieval available to everyone (search itself was never premium-gated here).
 export async function avaThreadSearch(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -240,7 +240,7 @@ export async function avaRagSearch(req: Request, env: Env): Promise<Response> {
   if (!query) return json({ error: "query required" }, 400);
 
   try {
-    // Search is open to all users; only premium is metered with AvaCoins.
+    // Search is open to all users; only premium is metered with Tokens.
     const results = await searchForUser(env, ctx.uid, query, undefined, { tier: premium ? "premium" : "free" });
     if (premium) await chargeFeature(env, ctx.uid, "ava_memory", crypto.randomUUID()).catch(() => ({ ok: false }));
     track(env, ctx.uid, "ava_memory_search", "avaai", { tier: premium ? "premium" : "free" });

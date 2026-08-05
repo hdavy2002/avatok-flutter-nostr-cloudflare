@@ -2,7 +2,7 @@
 //
 // The listener's DEVICE streams the incoming call audio straight to Google via
 // a short-lived ephemeral token minted here; no media ever flows through the
-// Worker. This module does exactly two jobs: tokens + AvaCoins metering.
+// Worker. This module does exactly two jobs: tokens + Tokens metering.
 //
 //   POST /api/translate/start        → wallet check → session row → ephemeral token
 //   POST /api/translate/:id/beat     → bill elapsed 5-min slices (prepaid first, then wallet)
@@ -10,7 +10,7 @@
 //   POST /api/translate/:id/token    → fresh ephemeral token (reconnects; tokens are 1-use/30-min)
 //   GET  /api/translate/quote        → price preview for the booking pipeline
 //
-// Billing: 5 AvaCoins/min = 300/hour = $3/hour (1 coin = $0.01). 100% of every
+// Billing: 5 Tokens/min = 300/hour = $3/hour (1 coin = $0.01). 100% of every
 // translation fee lands in platform:fees — the creator NEVER shares in it
 // (owner rule). Two modes:
 //   prepaid — chosen at booking; coins sit in escrow trl_<orderId>; consumed
@@ -30,10 +30,10 @@ import { track, metric } from "../hooks";
 import { readConfig } from "./config";
 
 export const TRANSLATE_MODEL = "gemini-3.5-live-translate-preview";
-export const RATE_PER_MIN = 5;            // AvaCoins/min → 300/h = $3/h
+export const RATE_PER_MIN = 5;            // Tokens/min → 300/h = $3/h
 export const SLICE_MIN = 5;               // billing granularity (one heartbeat slice)
-export const SLICE_COINS = SLICE_MIN * RATE_PER_MIN; // 25
-const MIN_START_COINS = 3 * SLICE_COINS;  // need ≥15 min of runway to start payg
+export const SLICE_TOKENS = SLICE_MIN * RATE_PER_MIN; // 25
+const MIN_START_TOKENS = 3 * SLICE_TOKENS;  // need ≥15 min of runway to start payg
 const APP = "avatranslate";
 
 // BCP-47 codes Live Translation supports (docs 2026-06-09). Server-side guard;
@@ -47,7 +47,7 @@ export function slicesDue(elapsedMin: number): number {
 }
 
 /** Pure pro-rata true-up (tested): coins owed for a session that ran usedMs. */
-export function fairCoins(usedMs: number, ratePerMin = RATE_PER_MIN): number {
+export function fairTokens(usedMs: number, ratePerMin = RATE_PER_MIN): number {
   return Math.max(1, Math.ceil(usedMs / 60_000)) * ratePerMin;
 }
 
@@ -115,7 +115,7 @@ async function balance(env: Env, uid: string): Promise<number> {
 /** Debit one payg slice from the listener's wallet → platform:fees. Idempotent on op_id. */
 async function billWalletSlice(env: Env, s: TrlSession, slice: number): Promise<boolean> {
   const r = await walletOp(env, s.uid, {
-    op: "spend", uid: s.uid, amount: SLICE_COINS, type: "spend", app_name: APP,
+    op: "spend", uid: s.uid, amount: SLICE_TOKENS, type: "spend", app_name: APP,
     ref: s.id, op_id: `trl:${s.id}:${slice}`,
     ledger: {
       debit: acctUser(s.uid), credit: ACCT_PLATFORM_FEES, type: "translation_fee", ref: s.id,
@@ -125,7 +125,7 @@ async function billWalletSlice(env: Env, s: TrlSession, slice: number): Promise<
   return r.status === 200;
 }
 
-/** Coins already consumed against a prepaid translation order (all sessions). */
+/** Tokens already consumed against a prepaid translation order (all sessions). */
 async function prepaidConsumed(env: Env, trlOrderId: string): Promise<number> {
   const r = await metaDb(env).prepare(
     "SELECT COALESCE(SUM(billed_coins),0) AS c FROM translation_sessions WHERE trl_order_id=?1",
@@ -139,7 +139,7 @@ async function prepaidConsumed(env: Env, trlOrderId: string): Promise<number> {
  * booking close); when prepay runs out, the session continues against the
  * wallet. Returns the state the client must act on.
  */
-async function meter(env: Env, s: TrlSession, now: number): Promise<{ ok: boolean; reason?: string; billedMin: number; billedCoins: number; mode: string }> {
+async function meter(env: Env, s: TrlSession, now: number): Promise<{ ok: boolean; reason?: string; billedMin: number; billedTokens: number; mode: string }> {
   // BETA PHASE: live translation is free for everyone — keep the session active
   // and never bill (no wallet spend, no escrow consume). billed_coins stays as-is
   // (0 for beta sessions), so translateStop's true-up moves nothing. Flip
@@ -149,13 +149,13 @@ async function meter(env: Env, s: TrlSession, now: number): Promise<{ ok: boolea
       await metaDb(env).prepare(
         "UPDATE translation_sessions SET status='active', last_beat_at=?2, updated_at=?2 WHERE id=?1",
       ).bind(s.id, now).run();
-      return { ok: true, billedMin: s.billed_min, billedCoins: s.billed_coins, mode: s.mode };
+      return { ok: true, billedMin: s.billed_min, billedTokens: s.billed_coins, mode: s.mode };
     }
   } catch { /* meter normally if the config lookup fails */ }
   const elapsedMin = Math.floor((now - s.started_at) / 60_000);
   const needSlices = slicesDue(elapsedMin);                        // pay-ahead
   let paidSlices = Math.floor(s.billed_min / SLICE_MIN);
-  let billedMin = s.billed_min, billedCoins = s.billed_coins, mode = s.mode;
+  let billedMin = s.billed_min, billedTokens = s.billed_coins, mode = s.mode;
 
   // Prepay budget left on this booking (shared across the booking's sessions).
   let prepayLeft = 0;
@@ -165,25 +165,25 @@ async function meter(env: Env, s: TrlSession, now: number): Promise<{ ok: boolea
   }
 
   while (paidSlices < needSlices) {
-    if (mode === "prepaid" && prepayLeft >= SLICE_COINS) {
-      prepayLeft -= SLICE_COINS;                                    // consumed from escrow at settlement
+    if (mode === "prepaid" && prepayLeft >= SLICE_TOKENS) {
+      prepayLeft -= SLICE_TOKENS;                                    // consumed from escrow at settlement
     } else {
       if (mode === "prepaid") mode = "payg";                        // prepay exhausted → wallet
       const ok = await billWalletSlice(env, { ...s, mode } as TrlSession, paidSlices);
       if (!ok) {
         await metaDb(env).prepare(
           "UPDATE translation_sessions SET billed_min=?2, billed_coins=?3, mode=?4, status='paused_funds', last_beat_at=?5, updated_at=?5 WHERE id=?1",
-        ).bind(s.id, billedMin, billedCoins, mode, now).run();
-        return { ok: false, reason: "insufficient_avacoins", billedMin, billedCoins, mode };
+        ).bind(s.id, billedMin, billedTokens, mode, now).run();
+        return { ok: false, reason: "insufficient_avacoins", billedMin, billedTokens, mode };
       }
     }
-    paidSlices++; billedMin += SLICE_MIN; billedCoins += SLICE_COINS;
+    paidSlices++; billedMin += SLICE_MIN; billedTokens += SLICE_TOKENS;
   }
 
   await metaDb(env).prepare(
     "UPDATE translation_sessions SET billed_min=?2, billed_coins=?3, mode=?4, status='active', last_beat_at=?5, updated_at=?5 WHERE id=?1",
-  ).bind(s.id, billedMin, billedCoins, mode, now).run();
-  return { ok: true, billedMin, billedCoins, mode };
+  ).bind(s.id, billedMin, billedTokens, mode, now).run();
+  return { ok: true, billedMin, billedTokens, mode };
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +227,7 @@ export async function translateStart(req: Request, env: Env): Promise<Response> 
     if (bk.buyer_id === ctx.uid && bk.trl_order_id && Number(bk.translation_coins) > 0) {
       trlOrderId = String(bk.trl_order_id);
       const left = Number(bk.translation_coins) - await prepaidConsumed(env, trlOrderId);
-      if (left >= SLICE_COINS) mode = "prepaid";
+      if (left >= SLICE_TOKENS) mode = "prepaid";
     }
   } else if (context === "live") {
     const l = await db.prepare("SELECT id, creator_id FROM listings WHERE id=?1").bind(ref).first<any>();
@@ -242,18 +242,18 @@ export async function translateStart(req: Request, env: Env): Promise<Response> 
         if (bk.trl_order_id && Number(bk.translation_coins) > 0) {
           trlOrderId = String(bk.trl_order_id);
           const left = Number(bk.translation_coins) - await prepaidConsumed(env, trlOrderId);
-          if (left >= SLICE_COINS) mode = "prepaid";
+          if (left >= SLICE_TOKENS) mode = "prepaid";
         }
       }
     }
   } // conference: any authed member may translate; billing is on them.
 
   // Wallet runway check for payg starts — the FIRST pop-up ("you don't have
-  // AvaCoins in your wallet to listen to live translation").
+  // Tokens in your wallet to listen to live translation").
   if (mode === "payg" && !cfg.betaFreePremium) {
     const bal = await balance(env, ctx.uid);
-    if (bal < MIN_START_COINS) {
-      return json({ error: "insufficient_avacoins", needed: MIN_START_COINS, balance: bal, rate_per_min: RATE_PER_MIN }, 402);
+    if (bal < MIN_START_TOKENS) {
+      return json({ error: "insufficient_avacoins", needed: MIN_START_TOKENS, balance: bal, rate_per_min: RATE_PER_MIN }, 402);
     }
   }
 
@@ -296,11 +296,11 @@ export async function translateBeat(req: Request, env: Env, id: string): Promise
   const m = await meter(env, s, Date.now());
   if (!m.ok) {
     track(env, ctx.uid, "translation_paused_funds", APP, { billed_min: m.billedMin });
-    // The SECOND pop-up ("you have utilized your AvaCoins for your voice
+    // The SECOND pop-up ("you have utilized your Tokens for your voice
     // translation, please top up your wallet to add some more coins").
     return json({ error: "insufficient_avacoins", reason: "balance_exhausted", billed_min: m.billedMin, rate_per_min: RATE_PER_MIN }, 402);
   }
-  return json({ ok: true, billed_min: m.billedMin, billed_coins: m.billedCoins, mode: m.mode, beat_every_sec: SLICE_MIN * 60 });
+  return json({ ok: true, billed_min: m.billedMin, billed_coins: m.billedTokens, mode: m.mode, beat_every_sec: SLICE_MIN * 60 });
 }
 
 // ---------------------------------------------------------------------------
@@ -315,9 +315,9 @@ export async function translateStop(req: Request, env: Env, id: string): Promise
   if (s.status === "ended") return json({ ok: true, already: true });
 
   const now = Date.now();
-  const fair = fairCoins(now - s.started_at, s.rate_per_min);
+  const fair = fairTokens(now - s.started_at, s.rate_per_min);
   const usedMin = fair / s.rate_per_min;
-  let finalMin = s.billed_min, finalCoins = s.billed_coins;
+  let finalMin = s.billed_min, finalTokens = s.billed_coins;
 
   if (s.billed_coins > fair) {
     const over = s.billed_coins - fair;
@@ -330,17 +330,17 @@ export async function translateStop(req: Request, env: Env, id: string): Promise
     }
     // Prepaid: nothing moved yet — just shrink the consumption marker so
     // settlement charges only real minutes.
-    finalMin = usedMin; finalCoins = fair;
+    finalMin = usedMin; finalTokens = fair;
   }
 
   await metaDb(env).prepare(
     "UPDATE translation_sessions SET status='ended', billed_min=?2, billed_coins=?3, last_beat_at=?4, updated_at=?4 WHERE id=?1",
-  ).bind(id, finalMin, finalCoins, now).run();
-  track(env, ctx.uid, "translation_stopped", APP, { minutes: finalMin, coins: finalCoins, mode: s.mode });
+  ).bind(id, finalMin, finalTokens, now).run();
+  track(env, ctx.uid, "translation_stopped", APP, { minutes: finalMin, coins: finalTokens, mode: s.mode });
   // One Brain B1 §5 — live-session close (natural close hook exists here).
   track(env, ctx.uid, "live_session_close", APP, { feature: "translate", model: TRANSLATE_MODEL, verb: "transcribe", session_id: id, minutes: finalMin });
-  metric(env, "translation_minutes", [finalMin, finalCoins]);
-  return json({ ok: true, minutes: finalMin, coins: finalCoins });
+  metric(env, "translation_minutes", [finalMin, finalTokens]);
+  return json({ ok: true, minutes: finalMin, coins: finalTokens });
 }
 
 // ---------------------------------------------------------------------------

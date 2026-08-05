@@ -17,7 +17,7 @@ class TranslationApi {
 
   /// Tokens for [minutes]. Name kept for source compatibility; the unit is
   /// Tokens, and every user-visible string says "Tokens".
-  static int quoteCoins(int minutes) => minutes * ratePerMin;
+  static int quoteTokens(int minutes) => minutes * ratePerMin;
 
   /// Start a metered session → { session_id, token, mode, ... } or status 402
   /// { error: insufficient_tokens, error_legacy: insufficient_avacoins }

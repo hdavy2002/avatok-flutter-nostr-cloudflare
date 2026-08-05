@@ -18,7 +18,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
-import { transferCoins } from "./wallet";
+import { transferTokens } from "./wallet";
 import { track, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { claimBlock, releaseBlocks, freeSlots, loadPolicy, policyViolation } from "../cal/engine";
@@ -128,7 +128,7 @@ export async function bookSlot(req: Request, env: Env): Promise<Response> {
   // Pay if priced: debit attendee → credit host. On failure, release the claim.
   const price = Math.trunc(Number(slot.price_coins || 0));
   if (price > 0) {
-    const t = await transferCoins(env, ctx.uid, slot.host_uid, price, APP, `booking:${bookingId}`, 0);
+    const t = await transferTokens(env, ctx.uid, slot.host_uid, price, APP, `booking:${bookingId}`, 0);
     if (!t.ok) {
       await releaseBlocks(env, "avabooking", bookingId);
       return json({ error: "payment failed", detail: t.body }, t.status === 402 ? 402 : 502);
@@ -219,9 +219,9 @@ export async function cancelBooking(req: Request, env: Env): Promise<Response> {
     const pct = byCreator ? 100 : (h24 ? 100 : 50);
     const amount = Math.round(price * pct / 100);
     if (amount > 0) {
-      const t = await transferCoins(env, creatorId, buyerId, amount, APP, `refund:${bookingId}`, 0);
+      const t = await transferTokens(env, creatorId, buyerId, amount, APP, `refund:${bookingId}`, 0);
       if (t.ok) {
-        refundNote = `Refund: ${pct}% ($${(amount / 100).toFixed(2)}) returned to the buyer's wallet.`;
+        refundNote = `Refund: ${pct}% (\u20b9${amount}) returned to the buyer's wallet.`;
         const reason = byCreator ? "creator cancelled — full refund" : (h24 ? "cancelled ≥24h before — full refund" : "cancelled <24h before — 50% refund");
         try { await emailRefundIssued(env, buyerId, { title: list[0]?.title ?? "Booking", amount, reason }); } catch { /* best-effort */ }
         await metaDb(env).prepare("UPDATE bookings SET status='refunded', updated_at=?2 WHERE id=?1").bind(bookingId, Date.now()).run();

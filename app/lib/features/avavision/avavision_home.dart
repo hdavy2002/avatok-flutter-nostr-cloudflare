@@ -248,7 +248,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
                   const SizedBox(height: Msg.s1),
                   Text(
                     '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
-                    '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}',
+                    '${b.escrowTokens > 0 ? ' · ${fmtTokens(b.escrowTokens)} held' : ''} · ${b.status}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4),

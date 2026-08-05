@@ -31,8 +31,15 @@ import { listVoidedPlayPurchases, verifyPlayProduct } from "../play";
 // hoisted before either module body runs.
 import { txDetailFor, labelFor } from "./wallet_statement";
 
-// Token economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 tokens,
-// i.e. 1 token = $0.01. So 1 token == 1 USD cent and usdCentsForTokens is identity.
+// Token economics — CANONICAL, site-wide (incl. AvaPayout): 1 token = \u20b91.
+// This is an owner pricing decision, FIXED, not an FX conversion (see
+// lib/fx_rates.ts). India is the only market for now.
+//
+// The legacy USD basis (1 token = $0.01 = 1 US cent) is kept ONLY for the
+// Stripe/Play rails, which are denominated in USD upstream. It happens to be
+// near-parity: at cfg.usdInrRate = 96.4, one US cent is \u20b90.964, so the two
+// bases differ by ~3.6% and no stored balance changed value when the user-facing
+// unit became the rupee. Do NOT read $0.01 as the price the user sees.
 // AvaPayout (routes/payout.ts) already converts tokens→USD at this same rate.
 // NOTE: this is a RENAME of the old "coins" unit at the SAME value (100/USD), so
 // stored balances are unchanged. Internal D1 columns (amount_coins), Stripe
@@ -147,7 +154,7 @@ export async function commissionRate(env: Env, app: string): Promise<number> {
  * (minus `commissionOverride` if given, else the app rate) into a 7-day hold.
  * Returns { ok, status, buyerBalance, sellerNet, commission } or an error body.
  */
-export async function transferCoins(
+export async function transferTokens(
   env: Env,
   buyer: string,
   seller: string,
@@ -166,7 +173,7 @@ export async function transferCoins(
 }
 
 // [AVA-CAMP-B1-WALLET] Thin exports for the outbound-campaign escrow ops (Specs/
-// OUTBOUND-AI-CALLING-CAMPAIGNS.md §2/§5), mirroring `transferCoins` above.
+// OUTBOUND-AI-CALLING-CAMPAIGNS.md §2/§5), mirroring `transferTokens` above.
 // CampaignDO/VobizAgentRoom call these instead of building the walletOp() body
 // by hand. The DO exposes "release_reservation" (not "release") to avoid
 // colliding with the pre-existing hold-release op of the same name.
@@ -273,7 +280,7 @@ async function stripeApi(
 
 // POST /api/wallet/topup/intent { usd_cents } — creates a Stripe PaymentIntent so
 // the app can present the NATIVE in-app PaymentSheet (card / Apple Pay / Google
-// Pay) with NO browser redirect. Coins are still credited server-side only, by
+// Pay) with NO browser redirect. Tokens are still credited server-side only, by
 // the payment_intent.succeeded webhook — the client never moves money itself.
 // Money route: rate-limited 5/h (A3). Client sends the real USD amount in cents;
 // the server is the single source of truth for the coin conversion.

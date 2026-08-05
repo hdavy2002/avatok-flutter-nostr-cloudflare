@@ -757,7 +757,7 @@ export async function libraryRecord(req: Request, env: Env, exec: ExecutionConte
 // GET /api/storage — AvaStorage accounting for the bars UI. One universal pool per
 // account. Bytes are summed over DISTINCT content keys (shortcuts/copies don't
 // double-count), non-deleted only. Quota: free GB from config; over quota draws
-// AvaCoins/GB/month from the AvaWallet — an empty wallet over quota = read-only.
+// Tokens/GB/month from the AvaWallet — an empty wallet over quota = read-only.
 export async function getStorage(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -785,7 +785,7 @@ export async function getStorage(req: Request, env: Env): Promise<Response> {
   const quota = freeGb * 1024 * 1024 * 1024;
   let state: "ok" | "read_only" = "ok";
   if (total > quota) {
-    // Over the free quota — needs AvaCoins. Empty wallet → read-only (never delete).
+    // Over the free quota — needs Tokens. Empty wallet → read-only (never delete).
     let coins = 0;
     try {
       const w = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });

@@ -1284,7 +1284,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- Speech-to-text (OpenAI Whisper via OpenRouter; replaced on-device sherpa) ---
       if (p === "/api/stt/transcribe" && req.method === "POST") return await sttTranscribe(req, env);
 
-      // --- Live voice translation (Gemini 3.5 Live Translate; $3/h AvaCoins) ---
+      // --- Live voice translation (Gemini 3.5 Live Translate; $3/h Tokens) ---
       if (p === "/api/translate/quote" && req.method === "GET") return translateQuote(req);
       if (p === "/api/translate/start" && req.method === "POST") return await translateStart(req, env);
       if (p === "/api/translate/call/start" && req.method === "POST") return await callTranslationStart(req, env);

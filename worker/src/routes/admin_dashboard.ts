@@ -88,7 +88,7 @@ export async function adminOverview(req: Request, env: Env): Promise<Response> {
 
   const [
     liveStreams, consults, voiceCalls, visionCalls,
-    escrowCoins, feesToday, feesMtd, gmvToday, signupsToday,
+    escrowTokens, feesToday, feesMtd, gmvToday, signupsToday,
   ] = await Promise.all([
     safeScalar(M.prepare("SELECT COUNT(*) AS n FROM live_sessions WHERE state='live'").first(), "n", 0),
     safeScalar(M.prepare("SELECT COUNT(*) AS n FROM bookings WHERE kind LIKE 'consult%' AND status='confirmed' AND starts_at<=?1 AND ends_at>=?1").bind(now).first(), "n", 0),
@@ -130,7 +130,7 @@ export async function adminOverview(req: Request, env: Env): Promise<Response> {
       voice_calls: voiceCalls, vision_calls: visionCalls, translation: null,
       total: liveStreams + consults + voiceCalls + visionCalls,
     },
-    money: { escrow_coins: escrowCoins, fees_today_coins: feesToday, fees_mtd_coins: feesMtd, gmv_today_coins: gmvToday },
+    money: { escrow_coins: escrowTokens, fees_today_coins: feesToday, fees_mtd_coins: feesMtd, gmv_today_coins: gmvToday },
     signups_today: signupsToday,
     needs_attention: { failed_settlements: failedSettlements, recon_diffs: reconDiffs, pending_payouts: pendingPayouts, open_reports: openReports, csam_hits: csamHits, open_alerts: openAlerts },
     surfaces,

@@ -5,7 +5,7 @@
 //
 // Phase 1 only gates FIRST-PARTY AI services (Messenger AI, AI voice, receptionist,
 // image gen) — there is no creator/marketplace pricing yet, so a flat monthly tier
-// is a clean fit. Phase 2 (creators, cash-out) moves consumption onto AvaCoins
+// is a clean fit. Phase 2 (creators, cash-out) moves consumption onto Tokens
 // pay-per-use; this file stays the "what a subscription unlocks" source of truth.
 //
 // Tunable WITHOUT redeploy: an admin can override the matrix via the KV key

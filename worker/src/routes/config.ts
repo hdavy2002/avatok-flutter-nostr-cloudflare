@@ -49,7 +49,7 @@ export interface PlatformConfig {
   // [M-D1 2026-07-17 / M-D11 2026-07-18] simOnlyPhoneEnabled REMOVED — phone OTP was
   // deleted app-wide 2026-07-10 (/api/id/phone/confirm is in LEGACY_GONE → 410 and the
   // handler is unrouted). Liveness only, no phone anywhere; the flag gated nothing reachable.
-  // Live voice translation (Gemini 3.5 Live Translate, $3/h in AvaCoins).
+  // Live voice translation (Gemini 3.5 Live Translate, $3/h in Tokens).
   translationEnabled: boolean;       // master switch for /api/translate/*
   /** 1:1 P2P call translation. Independent gate: remains dark by default. */
   callTranslationEnabled: boolean;
@@ -338,7 +338,7 @@ export interface PlatformConfig {
   callRoomAuthEnforced: boolean;
   // BETA PHASE (2026-06-21, owner): open EVERYTHING at premium tier, free for all.
   // When true: isPremiumAI is true for every user (all AI tools unlocked, daily cap
-  // bypassed), chargeFeature deducts nothing (no AvaCoin metering), and the wallet
+  // bypassed), chargeFeature deducts nothing (no Token metering), and the wallet
   // balance reports premium:1 so the whole client renders premium (green pill →
   // "BETA PHASE", no PAID badges, no upsell). Flip to false in KV to restore the
   // normal free/premium + coin-metering model — no redeploy needed.
@@ -857,7 +857,7 @@ export interface PlatformConfig {
   campaignMaxContacts: number;            // ingestion cap per campaign (2000)
   campaignCallMaxMin: number;             // hard cap on a single AI call, minutes (10)
   campaignWrapCueMin: number;             // wrap-up cue before the call cap, minutes (8)
-  campaignTokensPerMin: number;           // AvaCoin cost, tokens/min (6)
+  campaignTokensPerMin: number;           // Token cost, tokens/min (6)
   campaignDidMonthlyTokens: number;       // per-DID monthly token allotment (700)
   campaignKbMaxFiles: number;             // per-campaign KB file cap (10)
   campaignToolBudget: number;             // ToolRuntime call budget per session (6)

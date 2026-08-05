@@ -15,9 +15,9 @@ import 'payout_api.dart';
 /// Flow: choose/add bank → (IdentityGate fires here if unverified) → amount →
 /// confirm (Wise fee deducted from the amount) → history with statuses.
 /// Server enforces the same gates API-side: KYC, tax fields, creator agreement.
-const _kMinCoins = 1000; // $10 — keep in sync with worker routes/payout.ts
+const _kMinTokens = 1000; // ₹1,000 — keep in sync with worker routes/payout.ts
 
-String _usd(num coins) => '\$${(coins / 100).toStringAsFixed(2)}';
+String _inr(num tokens) => '\u20b9${tokens.round()}';
 
 class PayoutScreen extends StatefulWidget {
   const PayoutScreen({super.key});
@@ -102,7 +102,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
     if (!mounted) return;
     if (r['ok'] == true) {
       Analytics.capture('payout_requested_ui', {'amount': amount});
-      _snack('Withdrawal submitted — ${_usd(amount)} on its way to your bank.');
+      _snack('Withdrawal submitted — ${_inr(amount)} on its way to your bank.');
       _refresh();
     } else if (r['reason'] == 'tax_info_required') {
       _snack('Tax information is missing for this bank. Remove it and add it again with your tax details.');
@@ -186,12 +186,12 @@ class _PayoutScreenState extends State<PayoutScreen> {
                 padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
                 children: [
                   Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(child: _card('Wallet balance', _usd(_balance),
+                    Expanded(child: _card('Wallet balance', _inr(_balance),
                         PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online)),
                     const SizedBox(width: Msg.s3),
-                    Expanded(child: _card('Available to withdraw', _usd(_balance),
+                    Expanded(child: _card('Available to withdraw', _inr(_balance),
                         PhosphorIcons.bank(PhosphorIconsStyle.bold), AD.newGroup,
-                        footnote: _held > 0 ? '+ ${_usd(_held)} on 7-day hold' : null)),
+                        footnote: _held > 0 ? '+ ${_inr(_held)} on 7-day hold' : null)),
                   ]),
                   if (!_enabled) ...[
                     const SizedBox(height: Msg.s4),
@@ -296,7 +296,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
           ZineButton(
             label: 'Withdraw',
             fontSize: 15,
-            onPressed: _balance >= _kMinCoins ? () => _withdraw(a) : null,
+            onPressed: _balance >= _kMinTokens ? () => _withdraw(a) : null,
           ),
         ]),
       ),
@@ -317,7 +317,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
           Flexible(
-            child: Text('${_usd(((r['amount_coins'] as num?) ?? 0))} → ${r['target_currency'] ?? ''}',
+            child: Text('${_inr(((r['amount_coins'] as num?) ?? 0))} → ${r['target_currency'] ?? ''}',
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.rowName().copyWith(fontWeight: FontWeight.w600)),
           ),
@@ -495,7 +495,7 @@ class _AmountSheetState extends State<_AmountSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final valid = _amount >= _kMinCoins && _amount <= widget.max;
+    final valid = _amount >= _kMinTokens && _amount <= widget.max;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Padding(
@@ -503,13 +503,13 @@ class _AmountSheetState extends State<_AmountSheet> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Withdraw to bank', style: ADText.appTitle()),
           const SizedBox(height: Msg.s1),
-          Text('Available: ${_usd(widget.max)} · minimum ${_usd(_kMinCoins)}',
+          Text('Available: ${_inr(widget.max)} · minimum ${_inr(_kMinTokens)}',
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
           ZineField(
             controller: _ctrl,
             autofocus: true,
-            label: 'Amount in coins (1 coin = \$0.01)',
+            label: 'Amount in tokens (1 token = \u20b91)',
             leadIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
             keyboardType: TextInputType.number,
             onChanged: (v) => setState(() => _amount = int.tryParse(v.trim()) ?? 0),
@@ -522,7 +522,7 @@ class _AmountSheetState extends State<_AmountSheet> {
               boxShadow: const <BoxShadow>[],
               padding: const EdgeInsets.all(Msg.s3),
               child: Text(
-                'You\'ll receive ≈ ${_usd(_amount)} in ${widget.currency}. '
+                'You\'ll receive ≈ ${_inr(_amount)} in ${widget.currency}. '
                 'The Wise transfer fee is deducted from this amount; the exact '
                 'rate is locked when the transfer is created.',
                 style: ADText.preview(c: AD.online),
@@ -530,7 +530,7 @@ class _AmountSheetState extends State<_AmountSheet> {
             ),
           const SizedBox(height: Msg.s4),
           ZineButton(
-            label: valid ? 'Withdraw ${_usd(_amount)}' : 'Enter an amount',
+            label: valid ? 'Withdraw ${_inr(_amount)}' : 'Enter an amount',
             fullWidth: true,
             onPressed: valid ? () => Navigator.pop(context, _amount) : null,
           ),

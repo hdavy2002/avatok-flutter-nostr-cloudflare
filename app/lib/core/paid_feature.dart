@@ -134,18 +134,18 @@ class PaidBadge extends StatelessWidget {
 }
 
 /// Wraps a premium action. Tapping [child] runs [onRun] only if the wallet can
-/// cover [costCoins]; otherwise it shows the cost preview and opens the top-up
-/// sheet. Set [costCoins] to 0 for "subscription/feature-gated" actions that
+/// cover [costTokens]; otherwise it shows the cost preview and opens the top-up
+/// sheet. Set [costTokens] to 0 for "subscription/feature-gated" actions that
 /// just need a non-empty wallet check.
 class PaidFeature extends StatelessWidget {
   final Widget child;
 
   /// Cost preview, e.g. "Generate image" → shown as "Generate image — 20 coins".
   final String actionLabel;
-  final int costCoins;
+  final int costTokens;
 
   /// The actual premium action; invoked only after a successful balance check
-  /// (and, when [costCoins] > 0, a successful spend).
+  /// (and, when [costTokens] > 0, a successful spend).
   final Future<void> Function() onRun;
 
   /// Override the wallet hook (tests / previews). Defaults to the global instance.
@@ -156,26 +156,26 @@ class PaidFeature extends StatelessWidget {
     required this.child,
     required this.actionLabel,
     required this.onRun,
-    this.costCoins = 0,
+    this.costTokens = 0,
     this.wallet,
   });
 
   AvaWalletHook get _w => wallet ?? AvaWalletHook.instance;
 
   Future<void> _onTap(BuildContext context) async {
-    final ok = await _w.canSpend(costCoins);
+    final ok = await _w.canSpend(costTokens);
     if (!ok) {
       if (!context.mounted) return;
       // Show the cost preview, then route to top-up.
-      if (costCoins > 0) {
+      if (costTokens > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$actionLabel — $costCoins coins. Top up to continue.')));
+            SnackBar(content: Text('$actionLabel — $costTokens coins. Top up to continue.')));
       }
       await _w.openTopUp(context, suggestedUsd: kMinTopUpUsd);
       return;
     }
-    if (costCoins > 0) {
-      final spent = await _w.spend(costCoins, reason: actionLabel);
+    if (costTokens > 0) {
+      final spent = await _w.spend(costTokens, reason: actionLabel);
       if (!spent) {
         if (context.mounted) await _w.openTopUp(context, suggestedUsd: kMinTopUpUsd);
         return;

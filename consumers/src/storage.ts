@@ -3,7 +3,7 @@
 //   storageSnapshots()  — daily: upsert this month's used_bytes per user into
 //                         storage_snapshots (AvaStorage trend mini-bars).
 //   storageBilling()    — monthly (1st, UTC midnight tick): every user over the
-//                         free quota pays 20 AvaCoins/GB/month from the AvaWallet
+//                         free quota pays 20 Tokens/GB/month from the AvaWallet
 //                         (WalletDO `spend`, idempotent op_id `storage:<uid>:<YYYY-MM>`,
 //                         double-entry ledger row type `storage_charge`).
 //                         Empty wallet ⇒ state read_only — files are NEVER deleted

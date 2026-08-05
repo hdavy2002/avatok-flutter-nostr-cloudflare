@@ -82,7 +82,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                       Row(children: [
                         _stat('Minutes talked', '${s.minutes}', PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.online),
                         const SizedBox(width: Msg.s2),
-                        _stat('Refunds', fmtCoins(s.refundsCoins), PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), AD.danger),
+                        _stat('Refunds', fmtTokens(s.refundsTokens), PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), AD.danger),
                       ]),
                       const SizedBox(height: 16),
                       // Earnings hero — money = mint (§7.10/§7.11).
@@ -93,11 +93,11 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('You earned', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                           const SizedBox(height: Msg.s1),
-                          Text(fmtCoins(s.netCoins), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: -0.76)),
+                          Text(fmtTokens(s.netTokens), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: -0.76)),
                           const SizedBox(height: Msg.s1),
                           Text(a.isFreeForCallers
                               ? 'Sponsored agent — callers talk free; usage billed to your AvaWallet.'
-                              : 'Gross ${fmtCoins(s.grossCoins)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
+                              : 'Gross ${fmtTokens(s.grossTokens)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
                               style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
                         ]),
                       ),

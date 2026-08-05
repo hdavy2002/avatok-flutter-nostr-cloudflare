@@ -18,7 +18,7 @@ import { notifyUser } from "../notify";
 import { clerkEmail } from "../ledger";
 import { agreementAccepted, currentAgreementVersion } from "./kyc";
 
-const MIN_COINS = 1000; // §10.3 minimum withdrawal ($10)
+const MIN_TOKENS = 1000; // §10.3 minimum withdrawal ($10)
 const CREATOR_AGREEMENT = "creator-agreement"; // A1 — accepted before 1st withdrawal
 
 function payoutEnabled(env: Env): boolean {
@@ -105,7 +105,7 @@ export async function payoutRequest(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   const amount = Math.trunc(Number(b.amount_coins));
   const accountId = String(b.account_id || "");
-  if (!(amount >= MIN_COINS)) return json({ error: `minimum withdrawal is ${MIN_COINS} coins` }, 400);
+  if (!(amount >= MIN_TOKENS)) return json({ error: `minimum withdrawal is ${MIN_TOKENS} coins` }, 400);
 
   const acct = await env.DB_WALLET.prepare("SELECT id, wise_recipient_id, currency, tax_form_status FROM payout_accounts WHERE id=?1 AND uid=?2")
     .bind(accountId, ctx.uid).first<any>();
@@ -152,7 +152,7 @@ export async function payoutRequest(req: Request, env: Env): Promise<Response> {
     void brainIngest(env, { uid: ctx.uid, domain: "wallet", kind: "payout_requested", sourceId: id, text: `Requested a payout of ${amount} coins`, meta: { amount, currency } });
     track(env, ctx.uid, "payout_requested", "avapayout", { amount });
     await payoutEmail(env, ctx.uid, "Withdrawal on its way", [
-      `Your withdrawal of ${amount} coins ($${(amount / 100).toFixed(2)}) has been submitted to your bank.`,
+      `Your withdrawal of ₹${amount} (${amount} tokens) has been submitted to your bank.`,
       `We'll email you again once the transfer is sent. Reference: ${id}.`,
     ]);
     return json({ ok: true, payout_id: id, status: "funded", amount_coins: amount });
@@ -204,9 +204,9 @@ export async function wiseWebhook(req: Request, env: Env): Promise<Response> {
     ]);
   } else if (status === "completed") {
     void brainIngest(env, { uid: reqRow.uid, domain: "wallet", kind: "payout_completed", sourceId: reqRow.id, text: `Payout of ${reqRow.amount_coins} coins completed`, meta: { amount: reqRow.amount_coins } });
-    try { await notifyUser(env, reqRow.uid, { type: "wallet", title: "Payout sent ✓", body: `${reqRow.amount_coins} coins withdrawn`, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
+    try { await notifyUser(env, reqRow.uid, { type: "wallet", title: "Payout sent ✓", body: `${reqRow.amount_coins} tokens withdrawn`, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
     await payoutEmail(env, reqRow.uid, "Withdrawal sent ✓", [
-      `Your withdrawal of ${reqRow.amount_coins} coins ($${(reqRow.amount_coins / 100).toFixed(2)}) was sent to your bank.`,
+      `Your withdrawal of ₹${reqRow.amount_coins} (${reqRow.amount_coins} tokens) was sent to your bank.`,
       `Reference: ${reqRow.id}.`,
     ]);
   }

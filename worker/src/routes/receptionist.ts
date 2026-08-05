@@ -1132,7 +1132,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
       const b = await walletOp(env, to, { op: "balance", uid: to });
       // [RECEPT-AVAIL-SPENDABLE-1] Gate on SPENDABLE (free daily grant + persistent
       // bonus + paid), NOT the paid-only `balance`. Every non-premium user gets 250
-      // free AvaCoins/day that receptionist costs draw from first (allow_free), so a
+      // free Tokens/day that receptionist costs draw from first (allow_free), so a
       // paid-only check made Ava "unavailable" for everyone who hadn't topped up →
       // caller fell to native voicemail.
       // [RECEPT-5-TOKEN-FLOOR] Five spendable tokens are required in every mode,

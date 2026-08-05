@@ -69,7 +69,7 @@ Future<void> showBookingCard(
   required int endsAt,
   String? bookingId,
   String? counterpart,
-  int? priceCoins,
+  int? priceTokens,
   String? status,
   bool amCreator = false,
   VoidCallback? onChanged,
@@ -107,9 +107,9 @@ Future<void> showBookingCard(
             _row(PhosphorIcons.clock(PhosphorIconsStyle.regular), '${fmtRange(startsAt, endsAt)} · ${fmtTimeBoth(startsAt)}'),
             if (counterpart != null && counterpart.isNotEmpty)
               _row(PhosphorIcons.user(PhosphorIconsStyle.regular), counterpart),
-            if ((priceCoins ?? 0) > 0)
+            if ((priceTokens ?? 0) > 0)
               _row(PhosphorIcons.coins(PhosphorIconsStyle.regular),
-                  '\$${((priceCoins!) / 100).toStringAsFixed(2)}', money: true),
+                  '\u20b9${priceTokens!}', money: true),
             const SizedBox(height: Msg.s4),
             // Phase 7 — join the delivered session (room opens 10 min early;
             // rejoin within the slot always works — same order, new token).

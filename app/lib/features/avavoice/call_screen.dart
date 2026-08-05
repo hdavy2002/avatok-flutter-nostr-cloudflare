@@ -141,7 +141,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       title: const Text('Call ended'),
       content: Text(a.isFreeForCallers
           ? 'You talked with ${a.name} for ${_fmt(_elapsedSec)}. This call was free — the creator covered it.'
-          : 'You talked with ${a.name} for ${_fmt(_elapsedSec)}.\n\nBilled: $billed min × ${fmtCoins(perMinuteCoins(a.ratePerHourCoins))} = ${fmtCoins(billed * perMinuteCoins(a.ratePerHourCoins))}. Any unused escrow is refunded to your AvaWallet.'),
+          : 'You talked with ${a.name} for ${_fmt(_elapsedSec)}.\n\nBilled: $billed min × ${fmtTokens(perMinuteTokens(a.ratePerHourTokens))} = ${fmtTokens(billed * perMinuteTokens(a.ratePerHourTokens))}. Any unused escrow is refunded to your AvaWallet.'),
       actions: [TextButton(
           onPressed: () { Navigator.pop(d); Navigator.pop(context); },
           child: const Text('Done'))],

@@ -7,12 +7,10 @@ import 'config.dart';
 /// conversation view. All authed reads/writes ride the [ApiAuth] contract.
 const String _base = 'https://$kSignalingHost/api';
 
-/// `$12.50` — coins are USD cents.
-String verseUsd(num coins) {
-  final v = coins / 100;
-  final neg = v < 0 ? '-' : '';
-  final a = v.abs();
-  return '$neg\$${a.toStringAsFixed(a % 1 == 0 ? 0 : 2)}';
+/// `₹1250` — 1 token = Rs 1.
+String verseInr(num tokens) {
+  final neg = tokens < 0 ? '-' : '';
+  return '$neg\u20b9${tokens.abs().round()}';
 }
 
 class VerseSummary {

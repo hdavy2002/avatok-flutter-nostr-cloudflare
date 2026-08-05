@@ -345,7 +345,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
                   style: ADText.preview(c: AD.textTertiary)),
             ),
             const SizedBox(width: Msg.s2),
-            Text('+${affCoinsLabel(c.coins)}',
+            Text('+${affTokensLabel(c.coins)}',
                 style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 2),
@@ -611,7 +611,7 @@ class _BarsPainter extends CustomPainter {
     if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
     final n = points.length;
     final maxClicks = points.fold<int>(1, (m, p) => p.clicks > m ? p.clicks : m);
-    final maxEarn = points.fold<int>(1, (m, p) => p.earnedCoins > m ? p.earnedCoins : m);
+    final maxEarn = points.fold<int>(1, (m, p) => p.earnedTokens > m ? p.earnedTokens : m);
     final slot = size.width / n;
     final barW = (slot * .55).clamp(1.0, 14.0);
 
@@ -639,7 +639,7 @@ class _BarsPainter extends CustomPainter {
     final path = Path();
     for (var i = 0; i < n; i++) {
       final x = i * slot + slot / 2;
-      final y = size.height - (points[i].earnedCoins / maxEarn) * (size.height - 4);
+      final y = size.height - (points[i].earnedTokens / maxEarn) * (size.height - 4);
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -649,7 +649,7 @@ class _BarsPainter extends CustomPainter {
     if (n > 1) canvas.drawPath(path, linePaint);
     for (var i = 0; i < n; i++) {
       final x = i * slot + slot / 2;
-      final y = size.height - (points[i].earnedCoins / maxEarn) * (size.height - 4);
+      final y = size.height - (points[i].earnedTokens / maxEarn) * (size.height - 4);
       canvas.drawCircle(Offset(x, y), 2.5, dotPaint);
     }
   }

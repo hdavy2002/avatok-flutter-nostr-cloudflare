@@ -1,7 +1,7 @@
 // AvaReferral — "invite a friend, earn coins" (2026-06-18).
 //
 // Product rules (owner decisions):
-//   • The INVITER earns REWARD_COINS when a person they invited JOINS and
+//   • The INVITER earns REWARD_TOKENS when a person they invited JOINS and
 //     qualifies. The joiner gets nothing (one-sided).
 //   • Qualified join = the invitee finishes a VERIFIED login on a NEW account
 //     (a real Clerk uid, not a `guest:` handle-only account) within
@@ -24,8 +24,8 @@ import { track, metric } from "../hooks";
 import { notifyUser } from "../notify";
 
 // Economics (CANONICAL site-wide): 1 USD = 100 coins (1 coin = $0.01).
-// REWARD_COINS=10 ⇒ $0.10.
-const REWARD_COINS = 10;
+// REWARD_TOKENS=10 ⇒ $0.10.
+const REWARD_TOKENS = 10;
 const REFERRER_CAP = 20;                       // max rewarded invites per inviter
 const CLAIM_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // joiner must claim within 14d of signup
 const APP = "avareferral";
@@ -122,11 +122,11 @@ export async function referralClaim(req: Request, env: Env): Promise<Response> {
 
   // Credit the INVITER into the 7-day hold (reversible). Idempotent by op_id.
   const credit = await walletOp(env, referrer, {
-    op: "earn", uid: referrer, amount: REWARD_COINS, commission: 0,
+    op: "earn", uid: referrer, amount: REWARD_TOKENS, commission: 0,
     app_name: APP, counterparty_uid: referred, ref: `referral:${referred}`,
     op_id: `referral:${referred}`,
     ledger: { credit: `user:${referrer}`, type: "referral", ref: `referral:${referred}`,
-      meta: JSON.stringify({ title: `Referral reward (+${REWARD_COINS} coins)` }) },
+      meta: JSON.stringify({ title: `Referral reward (+${REWARD_TOKENS} coins)` }) },
   });
   if (credit.status !== 200) {
     await db.prepare("UPDATE referral_attributions SET status='rejected' WHERE referred_uid=?1").bind(referred).run();
@@ -134,18 +134,18 @@ export async function referralClaim(req: Request, env: Env): Promise<Response> {
   }
 
   await db.prepare("UPDATE referral_attributions SET status='credited', reward_coins=?2, credited_at=?3 WHERE referred_uid=?1")
-    .bind(referred, REWARD_COINS, now).run();
+    .bind(referred, REWARD_TOKENS, now).run();
 
-  track(env, referrer, "referral_rewarded", APP, { reward: REWARD_COINS });
-  metric(env, "referral_rewarded", [REWARD_COINS]);
+  track(env, referrer, "referral_rewarded", APP, { reward: REWARD_TOKENS });
+  metric(env, "referral_rewarded", [REWARD_TOKENS]);
   try {
     await notifyUser(env, referrer, {
-      type: "wallet", title: `+${REWARD_COINS} coins — your invite joined!`,
-      body: "Available after a short hold.", data: { deeplink: "/wallet", amount: REWARD_COINS },
+      type: "wallet", title: `+${REWARD_TOKENS} coins — your invite joined!`,
+      body: "Available after a short hold.", data: { deeplink: "/wallet", amount: REWARD_TOKENS },
     });
   } catch { /* best-effort */ }
 
-  return json({ ok: true, credited: true, reward_coins: REWARD_COINS, referrer });
+  return json({ ok: true, credited: true, reward_coins: REWARD_TOKENS, referrer });
 }
 
 async function recordRejected(env: Env, referred: string, referrer: string, reason: string, dev: string | null, ip: string | null): Promise<void> {
@@ -170,7 +170,7 @@ export async function referralSummary(req: Request, env: Env): Promise<Response>
   ).bind(ctx.uid).first<{ rewarded: number; coins_earned: number; total: number }>();
   const rewarded = Number(row?.rewarded ?? 0);
   return json({
-    reward_coins: REWARD_COINS,
+    reward_coins: REWARD_TOKENS,
     rewarded_invites: rewarded,
     coins_earned: Number(row?.coins_earned ?? 0),
     cap: REFERRER_CAP,

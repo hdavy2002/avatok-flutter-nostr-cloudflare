@@ -239,7 +239,7 @@ class DonationBannerWidget extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.regular), size: 17, color: AD.bg),
           const SizedBox(width: Msg.s2),
-          Text('${banner.name} donated \$${(banner.amount / 100).toStringAsFixed(2)}',
+          Text('${banner.name} donated \u20b9${banner.amount}',
               style: ADText.rowName(c: AD.bg)),
         ]),
       ),

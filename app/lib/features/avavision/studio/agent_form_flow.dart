@@ -72,10 +72,9 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
 
   // Step 4 — pricing
   late final _rate = TextEditingController(
-      text: widget.existing == null || widget.existing!.ratePerHourCoins == 0
-          ? '20'
-          : (widget.existing!.ratePerHourCoins / 100)
-              .toStringAsFixed(widget.existing!.ratePerHourCoins % 100 == 0 ? 0 : 2));
+      text: widget.existing == null || widget.existing!.ratePerHourTokens == 0
+          ? '2000'
+          : widget.existing!.ratePerHourTokens.toString());
   late String _payerMode = widget.existing?.payerMode ?? 'user_pays';
   late int _sessionLimit = widget.existing?.sessionLimitMin ?? 30;
 
@@ -120,7 +119,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     super.dispose();
   }
 
-  int get _rateCoins => ((double.tryParse(_rate.text.trim()) ?? 0) * 100).round();
+  int get _rateTokens => (double.tryParse(_rate.text.trim()) ?? 0).round();
 
   // Live always runs; "both" when the deep snapshot is also enabled.
   String get _visionMode => _agenticSnapshot ? 'both' : 'live';
@@ -132,7 +131,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         'system_profile': _profile.text.trim(),
         'voice_name': _voice,
         'images': _images,
-        'rate_per_hour': _payerMode == 'creator_pays' ? 0 : _rateCoins,
+        'rate_per_hour': _payerMode == 'creator_pays' ? 0 : _rateTokens,
         'payer_mode': _payerMode,
         'session_limit_min': _sessionLimit,
         // vision
@@ -234,8 +233,8 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           return false;
         }
       case 4:
-        if (_payerMode == 'user_pays' && _rateCoins < 100) {
-          _snack('Set a rate of at least \$1/hour.');
+        if (_payerMode == 'user_pays' && _rateTokens < 100) {
+          _snack('Set a rate of at least \u20b9100/hour.');
           return false;
         }
     }
@@ -311,7 +310,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       'agent': _agentId ?? '',
       'ok': r.isEmpty,
       'payer_mode': _payerMode,
-      'rate_coins': _payerMode == 'creator_pays' ? 0 : _rateCoins,
+      'rate_coins': _payerMode == 'creator_pays' ? 0 : _rateTokens,
       'session_limit': _sessionLimit,
       'capability': _capability,
       'overlay': _overlayEnabled ? _overlayStyle : 'none',
@@ -773,14 +772,14 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           'You set an hourly rate. Users are billed per minute; you earn 50% after the platform fee.'),
       const SizedBox(height: Msg.s2),
       _payerCard('creator_pays', 'You cover the sessions (free for users)',
-          'Great for brand/clinic coaches. You pay a flat ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hour of session time from your AvaWallet. Snapshots are bundled in.'),
+          'Great for brand/clinic coaches. You pay a flat ${fmtTokens(kCreatorPaysRateTokensPerHour)}/hour of session time from your AvaWallet. Snapshots are bundled in.'),
       const SizedBox(height: Msg.s4),
       if (userPays) ...[
         ZineField(
           controller: _rate,
-          label: 'your hourly rate (usd)',
+          label: 'your hourly rate (₹)',
           labelIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
-          leadText: r'$',
+          leadText: '₹',
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (_) => setState(() {}),
         ),
@@ -798,8 +797,8 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             const SizedBox(width: Msg.s2),
             Expanded(
               child: Text(
-                _rateCoins >= 100
-                    ? 'Users pay ${fmtCoins(perMinuteCoins(_rateCoins))}/min · You earn ${fmtCoins(creatorNetPerHour(_rateCoins))}/hr after the 50% platform fee'
+                _rateTokens >= 100
+                    ? 'Users pay ${fmtTokens(perMinuteTokens(_rateTokens))}/min · You earn ${fmtTokens(creatorNetPerHour(_rateTokens))}/hr after the 50% platform fee'
                     : 'Enter your hourly rate to see what you\'ll earn',
                 style: ADText.rowName().copyWith(fontSize: 13, height: 1.3),
               ),

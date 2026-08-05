@@ -178,8 +178,8 @@ class ListingCard {
     return null;
   }
 
-  /// "$12.50" — coins are USD cents.
-  String money(int coins) => coins == 0 ? 'Free' : '\$${(coins / 100).toStringAsFixed(coins % 100 == 0 ? 0 : 2)}';
+  /// "₹1250" — 1 token = Rs 1.
+  String money(int tokens) => tokens == 0 ? 'Free' : '₹$tokens';
   String get priceLabel => money(effectivePrice);
 }
 

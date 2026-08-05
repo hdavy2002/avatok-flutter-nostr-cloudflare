@@ -45,7 +45,7 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   List<int> get _durationChoices => kSessionLimitChoices.where((m) => m <= a.sessionLimitMin).toList();
 
-  int get _totalCoins => a.isFreeForCallers ? 0 : perMinuteCoins(a.ratePerHourCoins) * _minutes;
+  int get _totalTokens => a.isFreeForCallers ? 0 : perMinuteTokens(a.ratePerHourTokens) * _minutes;
 
   DateTime get _scheduled => DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
 
@@ -80,7 +80,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     }
     setState(() => _working = true);
     Analytics.capture('avavision_booking_confirm_tapped',
-        {'agent': a.id, 'minutes': _minutes, 'total_coins': _totalCoins, 'language': _language});
+        {'agent': a.id, 'minutes': _minutes, 'total_coins': _totalTokens, 'language': _language});
     final r = await AvaVisionApi.book(a.id,
         scheduledAt: _scheduled.millisecondsSinceEpoch, minutes: _minutes, language: _language);
     if (!mounted) return;
@@ -94,7 +94,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         Analytics.capture('avavision_topup_prompted', {'agent': a.id, 'where': 'booking'});
         final needed = (r['needed'] as num?)?.toInt();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Not enough Tokens${needed != null ? ' — you need ${fmtCoins(needed)}' : ''}.'),
+          content: Text('Not enough Tokens${needed != null ? ' — you need ${fmtTokens(needed)}' : ''}.'),
           action: SnackBarAction(
               label: 'Top up',
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()))),
@@ -110,7 +110,7 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final perMin = perMinuteCoins(a.ratePerHourCoins);
+    final perMin = perMinuteTokens(a.ratePerHourTokens);
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -157,11 +157,11 @@ class _BookingSheetState extends State<_BookingSheet> {
                                 style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600))),
                       ])
                     else ...[
-                      _row('${a.name} · $_minutes min × ${fmtCoins(perMin)}/min', fmtCoins(_totalCoins)),
+                      _row('${a.name} · $_minutes min × ${fmtTokens(perMin)}/min', fmtTokens(_totalTokens)),
                       const SizedBox(height: 8),
                       const Divider(height: 1, color: AD.borderHairline),
                       const SizedBox(height: 8),
-                      _row('Held in escrow now', fmtCoins(_totalCoins), bold: true),
+                      _row('Held in escrow now', fmtTokens(_totalTokens), bold: true),
                       const SizedBox(height: Msg.s1),
                       Align(
                           alignment: Alignment.centerLeft,
@@ -173,7 +173,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                 ),
                 const SizedBox(height: Msg.s4),
                 ZineButton(
-                  label: a.isFreeForCallers ? 'Confirm booking' : 'Pay ${fmtCoins(_totalCoins)} & book',
+                  label: a.isFreeForCallers ? 'Confirm booking' : 'Pay ${fmtTokens(_totalTokens)} & book',
                   fullWidth: true,
                   loading: _working,
                   icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),

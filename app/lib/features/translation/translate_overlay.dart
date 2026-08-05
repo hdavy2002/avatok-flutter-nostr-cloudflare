@@ -177,15 +177,15 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
           Text('Top up Tokens',
               style: ADText.threadName().copyWith(fontSize: 19)),
           const SizedBox(height: Msg.s1),
-          const ZineSticker('\$3 per hour · 5 tokens / min',
+          const ZineSticker('\u20b9300 per hour · 5 tokens / min',
               kind: ZineStickerKind.hint),
           const SizedBox(height: Msg.s4),
           Wrap(spacing: Msg.s3, runSpacing: Msg.s3, children: [
-            for (final usd in const [3, 5, 10, 20])
+            for (final amt in const [300, 500, 1000, 2000])
               ZineSticker(
-                '\$$usd',
+                '\u20b9$amt',
                 kind: ZineStickerKind.ok, // the pay action
-                onTap: () => Navigator.pop(sCtx, usd * 100),
+                onTap: () => Navigator.pop(sCtx, amt),
               ),
           ]),
         ]),
@@ -291,7 +291,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
                     boxShadow: Msg.lift,
                   ),
                   child: Text(
-                    '$min min · ${TranslationApi.quoteCoins(min)} tokens (\$3/h)',
+                    '$min min · ${TranslationApi.quoteTokens(min)} tokens (\u20b9300/h)',
                     style: ADText.statCaption(c: AD.textSecondary),
                   ),
                 ),
@@ -349,7 +349,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
                   style: ADText.threadName().copyWith(fontSize: 19))),
         ]),
         const SizedBox(height: Msg.s1),
-        Text('Incoming voice translated live · \$3 per hour in Tokens',
+        Text('Incoming voice translated live · \u20b9300 per hour in Tokens',
             style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
         const SizedBox(height: Msg.s3),
         ZineField(

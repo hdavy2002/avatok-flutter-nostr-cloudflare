@@ -138,7 +138,7 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
     final endsAt = (b['ends_at'] as num?)?.toInt() ?? 0;
     final title = b['title'] as String? ?? 'Booking';
     final settled = !upcoming && (status == 'completed' || (status == 'confirmed' && endsAt < DateTime.now().millisecondsSinceEpoch));
-    final net = (price * 0.8 / 100).toStringAsFixed(2);
+    final net = (price * 0.8).round();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: Msg.s3),
@@ -153,7 +153,7 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
           endsAt: endsAt,
           bookingId: b['id'] as String?,
           counterpart: amCreator ? b['buyer_id'] as String? : b['creator_id'] as String?,
-          priceCoins: price,
+          priceTokens: price,
           status: status,
           amCreator: amCreator,
           onChanged: _refresh,
@@ -173,13 +173,13 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
                 zineStatusSticker(status),
                 if (price > 0) ...[
                   const SizedBox(width: Msg.s2),
-                  Text('\$${(price / 100).toStringAsFixed(2)}',
+                  Text('\u20b9$price',
                       style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
                 ],
                 if (amCreator && settled && price > 0) ...[
                   const SizedBox(width: Msg.s2),
                   Flexible(
-                    child: Text('Earned ~\$$net',
+                    child: Text('Earned ~\u20b9$net',
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: ADText.sectionLabel(c: AD.online)),
                   ),

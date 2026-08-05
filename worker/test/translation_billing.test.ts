@@ -1,8 +1,8 @@
 // Voice-translation billing math (routes/translate.ts).
-// $3/hour = 5 AvaCoins/min, metered in 5-min pay-ahead slices, per-minute
-// pro-rata true-up on stop. 1 AvaCoin = $0.01.
+// $3/hour = 5 Tokens/min, metered in 5-min pay-ahead slices, per-minute
+// pro-rata true-up on stop. 1 Token = $0.01.
 import { describe, it, expect } from "vitest";
-import { slicesDue, fairCoins, RATE_PER_MIN, SLICE_MIN, SLICE_COINS } from "../src/routes/translate";
+import { slicesDue, fairTokens, RATE_PER_MIN, SLICE_MIN, SLICE_TOKENS } from "../src/routes/translate";
 
 describe("translation pricing constants", () => {
   it("$3/hour exactly", () => {
@@ -10,7 +10,7 @@ describe("translation pricing constants", () => {
   });
   it("one slice = 5 min = 25 coins", () => {
     expect(SLICE_MIN).toBe(5);
-    expect(SLICE_COINS).toBe(25);
+    expect(SLICE_TOKENS).toBe(25);
   });
 });
 
@@ -22,11 +22,11 @@ describe("slicesDue (pay-ahead metering)", () => {
   it("never negative", () => expect(slicesDue(-3)).toBe(1));
 });
 
-describe("fairCoins (per-minute pro-rata true-up)", () => {
-  it("minimum 1 minute", () => expect(fairCoins(1_000)).toBe(5));
-  it("rounds up partial minutes", () => expect(fairCoins(61_000)).toBe(10));
-  it("exactly one hour = 300 coins = $3", () => expect(fairCoins(3_600_000)).toBe(300));
-  it("90 min = 450 coins = $4.50", () => expect(fairCoins(90 * 60_000)).toBe(450));
+describe("fairTokens (per-minute pro-rata true-up)", () => {
+  it("minimum 1 minute", () => expect(fairTokens(1_000)).toBe(5));
+  it("rounds up partial minutes", () => expect(fairTokens(61_000)).toBe(10));
+  it("exactly one hour = 300 coins = $3", () => expect(fairTokens(3_600_000)).toBe(300));
+  it("90 min = 450 coins = $4.50", () => expect(fairTokens(90 * 60_000)).toBe(450));
 });
 
 describe("booking prepay (the $60 + 1h example)", () => {

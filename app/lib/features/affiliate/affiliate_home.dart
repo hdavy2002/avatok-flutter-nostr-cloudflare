@@ -50,7 +50,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
       if (me.affiliate != null) {
         Analytics.capture('affiliate_dashboard_viewed', {
           'links': _links?.length ?? -1,
-          'lifetime_coins': me.totals.lifetimeCoins,
+          'lifetime_coins': me.totals.lifetimeTokens,
         });
         _loadLinks();
       }
@@ -302,16 +302,16 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
             ),
           // Metric cards (§7.11) — accent rotation.
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _stat('Lifetime earned', affCoinsLabel(t.lifetimeCoins),
+            Expanded(child: _stat('Lifetime earned', affTokensLabel(t.lifetimeTokens),
                 PhosphorIcons.trophy(PhosphorIconsStyle.bold), AD.online,
-                money: true, sub: '${t.lifetimeCoins} coins')),
+                money: true, sub: '${t.lifetimeTokens} coins')),
             const SizedBox(width: Msg.s3),
-            Expanded(child: _stat('This month', affCoinsLabel(t.monthCoins),
+            Expanded(child: _stat('This month', affTokensLabel(t.monthTokens),
                 PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), AD.primaryBadge, money: true)),
           ]),
           const SizedBox(height: Msg.s3),
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _stat('Held (refund window)', affCoinsLabel(t.heldCoins),
+            Expanded(child: _stat('Held (refund window)', affTokensLabel(t.heldTokens),
                 PhosphorIcons.hourglass(PhosphorIconsStyle.bold), AD.micIdleBg)),
             const SizedBox(width: Msg.s3),
             Expanded(child: _stat('Referred users', '${t.referredUsers}',
@@ -346,7 +346,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
               ),
             )
           else
-            ...(_links!..sort((a, b) => b.earnedCoins.compareTo(a.earnedCoins)))
+            ...(_links!..sort((a, b) => b.earnedTokens.compareTo(a.earnedTokens)))
                 .map(_linkRow),
         ],
       ),
@@ -410,7 +410,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
           ),
           const SizedBox(width: Msg.s3),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(affCoinsLabel(l.earnedCoins),
+            Text(affTokensLabel(l.earnedTokens),
                 style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
             Text('Earned', style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),

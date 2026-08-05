@@ -161,20 +161,20 @@ export async function clerkEmail(env: Env, uid: string): Promise<string | null> 
 }
 
 export interface ReceiptLine { label: string; amount: number; } // coins (1 = $0.01)
-const usd = (coins: number) => `$${(coins / 100).toFixed(2)}`;
+const inr = (tokens: number) => `\u20b9${tokens}`;
 
 export async function sendReceipt(env: Env, uid: string, kind: "topup" | "purchase", opts: { orderId: string; title: string; lines: ReceiptLine[]; total: number; date?: number }): Promise<boolean> {
   const email = await clerkEmail(env, uid);
   if (!email) return false;
   const when = new Date(opts.date ?? Date.now()).toUTCString();
-  const rows = opts.lines.map((l) => `<tr><td style="padding:6px 12px 6px 0;color:#444">${l.label}</td><td style="padding:6px 0;text-align:right">${usd(l.amount)}</td></tr>`).join("");
+  const rows = opts.lines.map((l) => `<tr><td style="padding:6px 12px 6px 0;color:#444">${l.label}</td><td style="padding:6px 0;text-align:right">${inr(l.amount)}</td></tr>`).join("");
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px">
     <h2 style="margin:0 0 4px">AvaTok receipt</h2>
     <p style="color:#666;margin:0 0 16px">${kind === "topup" ? "Wallet top-up" : "Purchase"} — ${when}</p>
     <p style="margin:0 0 16px;font-weight:600">${opts.title}</p>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">${rows}
-      <tr><td style="padding:10px 12px 0 0;font-weight:700;border-top:1px solid #eee">Total</td><td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eee">${usd(opts.total)}</td></tr>
+      <tr><td style="padding:10px 12px 0 0;font-weight:700;border-top:1px solid #eee">Total</td><td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eee">${inr(opts.total)}</td></tr>
     </table>
     <p style="color:#999;font-size:12px;margin-top:20px">Payment source: ${kind === "topup" ? "card (Stripe)" : "AvaTok wallet"} · Order ${opts.orderId}<br>1 Token = $0.01</p>
   </div>`;

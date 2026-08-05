@@ -81,9 +81,10 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
     Analytics.capture('listing_pipeline_opened');
   }
 
-  int get _priceCoins {
-    final usd = double.tryParse(_price.text.trim()) ?? 0;
-    return (usd * 100).round().clamp(0, 1000000).toInt();
+  /// The field takes rupees and 1 token = ₹1, so there is no ×100 here.
+  int get _priceTokens {
+    final rupees = double.tryParse(_price.text.trim()) ?? 0;
+    return rupees.round().clamp(0, 1000000).toInt();
   }
 
   List<String> get _badges => [
@@ -95,8 +96,8 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         'one_liner': _desc.text.trim().split('\n').first,
         'description': _desc.text.trim(),
         'category': _category, 'status': 'draft',
-        'price': _priceCoins, 'effective_price': _priceCoins, 'promo_pct': 0,
-        'currency_display': 'USD',
+        'price': _priceTokens, 'effective_price': _priceTokens, 'promo_pct': 0,
+        'currency_display': 'TOKENS',
         'country': _country.text.trim().isEmpty ? null : _country.text.trim().toUpperCase(),
         'adults_only': _adultsOnly,
         'badges': _badges,
@@ -191,7 +192,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       'title': _title.text.trim(),
       'description': _desc.text.trim(),
       'category': _category,
-      'price': _priceCoins,
+      'price': _priceTokens,
       'country': _country.text.trim().isEmpty ? null : _country.text.trim().toUpperCase(),
       'adults_only': _adultsOnly,
       'badges': _badges,
@@ -457,9 +458,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
   Widget _stepPrice() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineField(
           controller: _price,
-          label: 'price (usd)',
+          label: 'price (₹)',
           labelIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
-          leadText: r'$',
+          leadText: '₹',
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
         const SizedBox(height: Msg.s2),
@@ -674,7 +675,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                 ]),
                 const SizedBox(height: Msg.s2),
                 Text(
-                  'Attendees can hear you live in their own language. They pay \$3/hour '
+                  'Attendees can hear you live in their own language. They pay \u20b9300/hour '
                   'in Tokens on top of your price — your earnings are not affected.',
                   style: ADText.preview(c: AD.textPrimary),
                 ),

@@ -215,7 +215,7 @@ async function computeCampaignMetric(env: Env, metric: CampaignMetric, ownerUid:
       const tokensTotal = Number(aggRow[0]) || 0;
       const nAnswered = Number(aggRow[1]) || 0;
       const nBookings = Number(aggRow[2]) || 0;
-      // [AVA-CAMP-Q-BACKEND] ₹ figures alongside the token figures. 1 AvaCoin
+      // [AVA-CAMP-Q-BACKEND] ₹ figures alongside the token figures. 1 Token
       // token = ₹1 = $0.01 (worker/src/feature_pricing.ts's coins_per_usd:100 —
       // 100 tokens per USD, and $1 ≈ ₹1 at token-pricing parity in this app's
       // wallet model, i.e. tokens and rupees are the SAME number here), so

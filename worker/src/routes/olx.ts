@@ -1,5 +1,5 @@
 // AvaOLX (Phase 5, §10.6). Tables in DB_MEDIA. Physical = free classifieds (contact
-// via AvaChat). Digital = AvaCoins-priced, Tier-2 to list, signed R2 download, 24h
+// via AvaChat). Digital = Tokens-priced, Tier-2 to list, signed R2 download, 24h
 // refund if not downloaded. Browse = Tier 1 (open); list/sell = Tier 2.
 //   POST   /api/olx/listings              create (digital body = bytes after JSON header? no — separate upload)
 //   GET    /api/olx/listings              browse (?kind=&category=&seller=)
@@ -14,7 +14,7 @@ import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail, kycVerified } from "../authz";
 import { mediaSession, mediaDb } from "../db/shard";
-import { transferCoins } from "./wallet";
+import { transferTokens } from "./wallet";
 import { presignGetUrl } from "../aws/sigv4";
 import { track } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
@@ -195,7 +195,7 @@ export async function olxBuy(req: Request, env: Env): Promise<Response> {
   if (!product) return json({ error: "product file not uploaded yet" }, 409);
 
   // Pay: debit buyer → credit seller minus 15% commission (avaolx), 7-day hold.
-  const t = await transferCoins(env, ctx.uid, listing.seller_uid, listing.price_coins, APP, `olx:${listingId}`);
+  const t = await transferTokens(env, ctx.uid, listing.seller_uid, listing.price_coins, APP, `olx:${listingId}`);
   if (!t.ok) return json({ error: "payment failed", detail: t.body }, t.status === 402 ? 402 : 502);
 
   const purchaseId = crypto.randomUUID();

@@ -231,7 +231,9 @@ export function userChargeMicroUsd(providerCostMicroUsd: number): number {
   return Math.ceil((p * AI_MARKUP_BPS) / 100);
 }
 
-/** 1 USD = 100 wallet tokens (matches wallet.ts TOKENS_PER_USD — canonical, site-wide). */
+/** Provider-cost basis: 1 USD = 100 wallet tokens (matches wallet.ts TOKENS_PER_USD).
+ *  This is COST accounting only — provider invoices are in USD. The user-facing
+ *  price of a token is \u20b91 (near-parity: 1 US cent = \u20b90.964). */
 export const AI_TOKENS_PER_USD = 100;
 
 /** 1 wallet token == $0.01 == 10,000 micro-USD. Mirrors do/wallet.ts's TOKEN_MICRO_USD (defined independently there — the DO module intentionally does not import this file). */

@@ -222,7 +222,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         title: const Text('Session ended'),
         content: Text(a.isFreeForCallers
             ? 'You trained with ${a.name} for ${_fmt(_elapsedSec)}. This session was free — the creator covered it.'
-            : 'You trained with ${a.name} for ${_fmt(_elapsedSec)}.\n\nBilled: $billed min × ${fmtCoins(perMinuteCoins(a.ratePerHourCoins))} = ${fmtCoins(billed * perMinuteCoins(a.ratePerHourCoins))}. Any unused escrow is refunded to your AvaWallet.'),
+            : 'You trained with ${a.name} for ${_fmt(_elapsedSec)}.\n\nBilled: $billed min × ${fmtTokens(perMinuteTokens(a.ratePerHourTokens))} = ${fmtTokens(billed * perMinuteTokens(a.ratePerHourTokens))}. Any unused escrow is refunded to your AvaWallet.'),
         actions: [
           TextButton(
             onPressed: () { Navigator.pop(d); Navigator.pop(context); },

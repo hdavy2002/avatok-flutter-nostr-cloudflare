@@ -149,7 +149,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     final quota = (d?['quota_bytes'] as num?)?.toDouble() ?? (5 * 1024 * 1024 * 1024);
     final frac = quota <= 0 ? 0.0 : (total / quota).clamp(0.0, 1.0);
     final state = (d?['state'] ?? 'ok').toString();
-    final coinsPerGb = (d?['coins_per_gb_month'] as num?)?.toInt() ?? 20;
+    final tokensPerGb = (d?['coins_per_gb_month'] as num?)?.toInt() ?? 20;
     final byCat = ((d?['by_category'] as Map?) ?? const {}).cast<String, dynamic>();
     final gbOver = total > quota ? ((total - quota) / (1024 * 1024 * 1024)).ceil() : 0;
 
@@ -180,11 +180,11 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                 if (state == 'read_only') _readOnlyCard()
                 else if (state == 'over_quota_paying') _warnCard(
                   sticker: 'Over quota',
-                  text: 'Over the free quota — ${gbOver * coinsPerGb} Tokens/month ($coinsPerGb coins/GB × $gbOver GB) are charged from your wallet.',
+                  text: 'Over the free quota — ${gbOver * tokensPerGb} Tokens/month ($tokensPerGb tokens/GB × $gbOver GB) are charged from your wallet.',
                 )
                 else if (frac >= 0.8) _warnCard(
                   sticker: 'Heads up',
-                  text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $coinsPerGb Tokens/GB per month.',
+                  text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $tokensPerGb Tokens/GB per month.',
                 ),
                 const SizedBox(height: 24),
                 Text('By type', style: ADText.sectionLabel()),

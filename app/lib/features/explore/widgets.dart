@@ -15,8 +15,10 @@ String flagEmoji(String? cc) {
   return String.fromCharCodes([0x1F1E6 + u.codeUnitAt(0) - 65, 0x1F1E6 + u.codeUnitAt(1) - 65]);
 }
 
-String fmtCoins(int coins) =>
-    coins == 0 ? 'Free' : '\$${(coins / 100).toStringAsFixed(coins % 100 == 0 ? 0 : 2)}';
+/// Wallet money label. 1 token = Rs 1 (owner pricing decision, fixed - not
+/// an FX conversion). The stored integer IS the rupee amount, so there is
+/// no divide here; see worker/src/lib/fx_rates.ts.
+String fmtTokens(int tokens) => tokens == 0 ? 'Free' : '\u20b9$tokens';
 
 String fmtWhen(int? ms) {
   if (ms == null) return '';
@@ -164,7 +166,7 @@ class ListingCardTile extends StatelessWidget {
               const SizedBox(height: 4),
               Row(children: [
                 if (card.promoPct > 0) ...[
-                  Text(fmtCoins(card.price), style: ADText.preview(c: AD.textTertiary)
+                  Text(fmtTokens(card.price), style: ADText.preview(c: AD.textTertiary)
                       .copyWith(decoration: TextDecoration.lineThrough)),
                   const SizedBox(width: 4),
                 ],

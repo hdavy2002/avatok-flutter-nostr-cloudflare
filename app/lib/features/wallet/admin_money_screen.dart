@@ -115,8 +115,8 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
 
   void _snack(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
 
-  // 1 USD = 100 Tokens (canonical, site-wide: matches wallet/top-up + payout).
-  String _usd(num c) => '\$${(c.abs() / 100).toStringAsFixed(2)}';
+  // 1 Token = ₹1 (canonical, site-wide: matches wallet/top-up + UPI payout).
+  String _inr(num c) => '\u20b9${c.abs().round()}';
 
   @override
   Widget build(BuildContext context) {
@@ -146,10 +146,10 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
           const SizedBox(height: Msg.s4),
           // Metric cards — accent rotation.
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _stat('Balance', _usd((a['balance'] as num?) ?? 0),
+            _stat('Balance', _inr((a['balance'] as num?) ?? 0),
                 PhosphorIcons.wallet(PhosphorIconsStyle.regular), AD.online, money: true),
             const SizedBox(width: Msg.s3),
-            _stat('Held', _usd((a['held'] as num?) ?? 0),
+            _stat('Held', _inr((a['held'] as num?) ?? 0),
                 PhosphorIcons.lock(PhosphorIconsStyle.regular), AD.newGroup),
           ]),
           const SizedBox(height: Msg.s3),
@@ -239,7 +239,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
                 style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13)),
           ),
           const SizedBox(width: Msg.s2),
-          Text(_usd(amount),
+          Text(_inr(amount),
               style: ADText.rowName(c: positive ? AD.online : AD.danger)
                   .copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
         ]),

@@ -8,7 +8,7 @@
 // here, not from the request. Tune freely; keys must match what each feature
 // route passes to chargeFeature().
 //
-// 2026-06-26: the unit was renamed AvaCoins/coins → "Tokens" at the SAME value
+// 2026-06-26: the unit was renamed Tokens/coins → "Tokens" at the SAME value
 // (100/USD), so these numeric prices and all stored balances are unchanged — only
 // the label changed. Per-service token costs are owner-tunable; see TOKEN-ECONOMY.md.
 // 1 token is the smallest billable unit, so sub-1¢ actions floor to 1 token.

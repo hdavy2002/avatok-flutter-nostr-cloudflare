@@ -19,21 +19,23 @@ import 'config.dart';
 const String _base = 'https://$kSignalingHost/api/avavision';
 
 /// Flat platform fee for creator-pays (sponsored) agents — $5/hour in coins.
-const int kCreatorPaysRateCoinsPerHour = 500;
+const int kCreatorPaysRateTokensPerHour = 500;
 
 /// Hard product caps (master §3): one hour max, 10 concurrent sessions per agent.
 const int kMaxSessionMinutes = 60;
 const int kMaxConcurrentCalls = 10;
 const List<int> kSessionLimitChoices = [5, 10, 30, 60];
 
-String fmtCoins(int coins) =>
-    coins == 0 ? 'Free' : '\$${(coins / 100).toStringAsFixed(coins % 100 == 0 ? 0 : 2)}';
+/// Wallet money label. 1 token = Rs 1 (owner pricing decision, fixed - not
+/// an FX conversion). The stored integer IS the rupee amount, so there is
+/// no divide here; see worker/src/lib/fx_rates.ts.
+String fmtTokens(int tokens) => tokens == 0 ? 'Free' : '\u20b9$tokens';
 
 /// Per-minute price (ceil) for an hourly rate, in coins.
-int perMinuteCoins(int ratePerHourCoins) => (ratePerHourCoins / 60).ceil();
+int perMinuteTokens(int ratePerHourTokens) => (ratePerHourTokens / 60).ceil();
 
 /// Creator's net per hour after the 50% platform fee (odd cent → platform).
-int creatorNetPerHour(int ratePerHourCoins) => ratePerHourCoins ~/ 2;
+int creatorNetPerHour(int ratePerHourTokens) => ratePerHourTokens ~/ 2;
 
 /// The platform this client runs on — used to filter the template catalog and
 /// publish-time platform coherence (master §6 capability/platform table).
@@ -237,7 +239,7 @@ class VisionAgent {
   final String id, name, role, systemProfile, voiceName, payerMode, status;
   final String? avatarUrl, creatorUid, creatorName;
   final List<String> images; // listing photos (1–5, public CDN URLs)
-  final int ratePerHourCoins, sessionLimitMin;
+  final int ratePerHourTokens, sessionLimitMin;
   final List<AgentBrainFile> files;
   final int callsTotal;
   final double? ratingAvg;
@@ -265,7 +267,7 @@ class VisionAgent {
         images = ((j['images'] as List?) ?? const []).map((u) => u.toString()).toList(),
         creatorUid = (j['creator_id'] ?? j['creator_uid'])?.toString(),
         creatorName = j['creator_name']?.toString(),
-        ratePerHourCoins = (j['rate_per_hour'] as num?)?.toInt() ?? 0,
+        ratePerHourTokens = (j['rate_per_hour'] as num?)?.toInt() ?? 0,
         sessionLimitMin = (j['session_limit_min'] as num?)?.toInt() ?? 30,
         files = ((j['files'] as List?) ?? const [])
             .map((f) => AgentBrainFile.fromJson((f as Map).cast<String, dynamic>()))
@@ -298,7 +300,7 @@ class VisionAgent {
   bool get hasScore => scoringMode != 'none' && (scoreLabel != null && scoreLabel!.isNotEmpty);
   String get rateLabel => isFreeForCallers
       ? 'Free to call'
-      : '${fmtCoins(ratePerHourCoins)}/hr · ${fmtCoins(perMinuteCoins(ratePerHourCoins))}/min';
+      : '${fmtTokens(ratePerHourTokens)}/hr · ${fmtTokens(perMinuteTokens(ratePerHourTokens))}/min';
 }
 
 class AgentAvailability {
@@ -315,7 +317,7 @@ class AgentAvailability {
 class VisionBooking {
   final String id, agentId, agentName, status;
   final String? agentAvatar;
-  final int scheduledAt, bookedMinutes, escrowCoins;
+  final int scheduledAt, bookedMinutes, escrowTokens;
   VisionBooking.fromJson(Map<String, dynamic> j)
       : id = (j['id'] ?? '').toString(),
         agentId = (j['agent_id'] ?? '').toString(),
@@ -324,12 +326,12 @@ class VisionBooking {
         status = (j['status'] ?? 'booked').toString(),
         scheduledAt = (j['scheduled_at'] as num?)?.toInt() ?? 0,
         bookedMinutes = (j['booked_minutes'] as num?)?.toInt() ?? 0,
-        escrowCoins = (j['escrow_coins'] as num?)?.toInt() ?? 0;
+        escrowTokens = (j['escrow_coins'] as num?)?.toInt() ?? 0;
 }
 
 /// Dashboard stats — AvaVoice numbers plus avg/peak score + snapshot usage.
 class AgentDayStats {
-  final int bookings, calls, minutes, grossCoins, netCoins, refundsCoins;
+  final int bookings, calls, minutes, grossTokens, netTokens, refundsTokens;
   // vision additions
   final double? avgScore;
   final int? peakScore;
@@ -347,9 +349,9 @@ class AgentDayStats {
       : bookings = (j['bookings'] as num?)?.toInt() ?? 0,
         calls = (j['calls'] as num?)?.toInt() ?? 0,
         minutes = (j['minutes'] as num?)?.toInt() ?? 0,
-        grossCoins = (j['gross_coins'] as num?)?.toInt() ?? 0,
-        netCoins = (j['net_coins'] as num?)?.toInt() ?? 0,
-        refundsCoins = (j['refunds_coins'] as num?)?.toInt() ?? 0,
+        grossTokens = (j['gross_coins'] as num?)?.toInt() ?? 0,
+        netTokens = (j['net_coins'] as num?)?.toInt() ?? 0,
+        refundsTokens = (j['refunds_coins'] as num?)?.toInt() ?? 0,
         avgScore = (j['avg_score'] as num?)?.toDouble(),
         peakScore = (j['peak_score'] as num?)?.toInt(),
         snapshotCalls = (j['snapshot_calls'] as num?)?.toInt() ?? 0,

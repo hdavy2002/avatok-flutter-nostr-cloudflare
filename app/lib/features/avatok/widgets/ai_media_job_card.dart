@@ -156,7 +156,7 @@ String _friendlyError(AiMediaJob job) {
     'provider_unavailable' => 'The AI service is unavailable right now.',
     'unsupported_format' => "This file type isn't supported for this action.",
     'input_too_large' => 'This file is too large for this action.',
-    'insufficient_balance' => 'Not enough AvaCoins to finish this.',
+    'insufficient_balance' => 'Not enough Tokens to finish this.',
     'cancelled_by_user' => 'Cancelled.',
     _ => "Couldn't finish your $noun.",
   };
