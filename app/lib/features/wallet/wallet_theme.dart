@@ -1,87 +1,104 @@
-// [WALLET-REDESIGN-1] AvaWallet redesign — design tokens.
+// [WALLET-REDESIGN-1] AvaWallet design tokens.
 //
-// The wallet screen runs its own local flavour of the design language: the
-// "Zine poster" idiom (flat saturated accent fills, HARD pure-black borders,
-// HARD un-blurred offset shadows, pill chips, Nunito at w700/w800) rendered on
-// a DARK canvas instead of the light paper of `core/ui/zine.dart`.
+// [UI-DS-SWEEP-1] 2026-08-05 — FOLDED ONTO `AD` / `ADText` / `Msg`.
 //
-// It deliberately does NOT extend `AD` (core/ui/avatok_dark.dart): AD is the
-// soft-shadow / hairline-border dark system, and mixing the two mid-screen
-// reads as a bug. Accent hexes are reused verbatim from `Zine` so the poster
-// palette stays identical across the app.
+// This file used to be a whole parallel design system: its own neutral ramp,
+// its own five poster accents, its own Nunito scale pinned at w800, and a
+// "Zine poster" idiom of PURE-black 2.5px borders plus HARD un-blurred offset
+// shadows. The 2026-08-05 UI audit counted eight such systems live at once and
+// named this one the worst offender — a wallet screen that looked like it came
+// from a different app than the chat screen next to it.
 //
-// Nothing here is screen-specific — only colors and type. Widgets live in
-// `wallet_widgets.dart`.
+// It is now a THIN ALIAS LAYER. Every value below resolves to a token in
+// `core/ui/avatok_dark.dart` (`AD` / `ADText`) or `core/ui/messenger_theme.dart`
+// (`Msg`). The `AW` / `AWText` NAMES are kept deliberately: they have dozens of
+// call sites across `wallet_screen.dart` and `wallet_widgets.dart`, and there
+// is no local compiler, so pointing the names at the right values is far safer
+// than rewriting every call site by hand.
+//
+// DO NOT add a new colour, size or weight here. If the wallet needs a value,
+// it belongs in `AD`.
 
 import 'package:flutter/material.dart';
 
-/// AvaWallet palette. Flat fills, pure-black ink, dark canvas.
+import '../../core/ui/avatok_dark.dart';
+
+/// AvaWallet palette — an alias layer over [AD]. No bespoke hexes.
 class AW {
   AW._();
 
   // ---------------------------------------------------------------- surfaces
-  /// Screen background — near-black.
-  static const Color bg = Color(0xFF0E0E11);
+  /// Screen background.
+  static const Color bg = AD.bg;
 
   /// Card / row surface.
-  static const Color surf = Color(0xFF1A1A1F);
+  static const Color surf = AD.card;
 
   /// Raised surface (popovers, calendar) — one step lighter than [surf].
-  static const Color surf2 = Color(0xFF26262D);
+  static const Color surf2 = AD.cardHover;
 
   // -------------------------------------------------------------------- text
-  /// Primary text — warm off-white (matches the poster paper tone).
-  static const Color tx = Color(0xFFF4F1E8);
-
-  /// Secondary text.
-  static const Color txSoft = Color(0xFFB6B1A7);
-
-  /// Tertiary / caption / placeholder text.
-  static const Color txMute = Color(0xFF7D786F);
+  static const Color tx = AD.textPrimary;
+  static const Color txSoft = AD.textSecondary;
+  static const Color txMute = AD.textTertiary;
 
   // ------------------------------------------------------------ lines & ink
-  /// Hairline divider / soft border — translucent white so it works over any
-  /// surface tone without a second token per surface.
-  static const Color hair = Color(0x17FFFFFF);
+  /// Hairline divider / quiet border.
+  static const Color hair = AD.borderHairline;
 
-  /// PURE black — every hard border and every hard offset shadow. Not the warm
-  /// `Zine.ink`: on a dark canvas the warm brown reads as muddy, pure black
-  /// reads as a deliberate poster outline.
-  static const Color ink = Color(0xFF000000);
+  /// Container border. Was PURE black at 2.5px (the poster outline); it is now
+  /// the standard AD card border, because the outline was most of what made the
+  /// wallet read as a sticker book rather than as a wallet.
+  static const Color ink = AD.borderCard;
 
-  /// Glyph / label color that sits ON a bright accent fill.
-  static const Color glyph = Color(0xFF131313);
+  /// Glyph / label colour that sits ON a bright accent fill.
+  static const Color glyph = AD.textOnInput;
 
-  // ------------------------------------------------------- poster accents
+  // ------------------------------------------------------------- accents
+  //
+  // Was five bespoke poster hexes (mint / lime / coral / blue / lilac) shared
+  // with the light `Zine` system. Each now points at its nearest AD token, so
+  // the wallet spends the SAME colours as the rest of the app and colour keeps
+  // meaning something. The names survive because they read semantically at the
+  // call sites ("money in is mint, money out is coral").
+
   /// Money / success / incoming.
-  static const Color mint = Color(0xFF77EDAE);
+  static const Color mint = AD.online;
 
-  /// Primary action / selection.
-  static const Color lime = Color(0xFFBFEB56);
+  /// Primary action / selection — the single app accent.
+  static const Color lime = AD.primaryBadge;
 
   /// Spend / outgoing / destructive. The ONLY fill that takes white text.
-  static const Color coral = Color(0xFFFE674C);
+  static const Color coral = AD.danger;
 
   /// Brand / informational.
-  static const Color blue = Color(0xFFA0F7F1);
+  static const Color blue = AD.newGroup;
 
   /// AI / magic.
-  static const Color lilac = Color(0xFFCDAEF2);
+  static const Color lilac = AD.micIdleBg;
 
   /// Accent rotation for adjacent badges.
   static const List<Color> accents = [mint, lime, coral, blue, lilac];
 }
 
-/// AvaWallet type scale. Nunito throughout — only 600/700/800/900 are bundled
-/// (see app/pubspec.yaml), so every style here is w700 or w800.
+/// AvaWallet type scale — a thin skin over [ADText].
 ///
-/// Each helper takes an optional `c` with a sensible default, mirroring
-/// `ADText`, so call sites read `AWText.rowTitle()` / `AWText.rowTitle(c: ...)`.
+/// [UI-DS-SWEEP-1] Every style here used to be w800 (a few w700), which is why
+/// nothing on the wallet screen could be emphasised: the balance, the row
+/// title, the timestamp and the caption were all the same weight. Hierarchy now
+/// comes from contrast — w700 tops out the scale, titles and values sit at
+/// w600, and body/meta/caption drop to w400/w500.
+///
+/// Font sizes are UNCHANGED on purpose (bar `rowTitle`, 14.5 → 15, snapping a
+/// half-pixel onto the scale). Changing a size changes layout, and there is no
+/// local compiler or emulator to check the result.
 class AWText {
   AWText._();
 
-  static const String family = 'Nunito';
+  static const String family = ADText.family;
 
+  /// Delegates to [ADText] so family and defaults have ONE source; the wallet
+  /// only overrides size, weight, tracking and leading.
   static TextStyle _s(
     double size,
     FontWeight w,
@@ -89,116 +106,114 @@ class AWText {
     double? spacing,
     double? height,
   }) =>
-      TextStyle(
-        fontFamily: family,
+      ADText.rowName(c: c).copyWith(
         fontSize: size,
         fontWeight: w,
-        color: c,
         letterSpacing: spacing,
-        height: height,
+        height: height ?? 1.2,
       );
 
-  /// Screen title ("AvaWallet") — 28 / 800.
+  /// Screen title ("AvaWallet") — 28 / 700.
   static TextStyle walletTitle({Color? c}) =>
-      _s(28, FontWeight.w800, c ?? AW.tx, spacing: -0.6);
+      _s(28, FontWeight.w700, c ?? AW.tx, spacing: -0.6);
 
-  /// Small uppercase kicker above a block — 11 / 800.
+  /// Small kicker above a block — 11 / 600.
   static TextStyle kicker({Color? c}) =>
-      _s(11, FontWeight.w800, c ?? AW.txMute, spacing: 0.9);
+      _s(11, FontWeight.w600, c ?? AW.txMute, spacing: 0.9);
 
-  /// Hero balance number — 56 / 800, tight.
+  /// Hero balance number — 56 / 700, tight.
   static TextStyle balanceHuge({Color? c}) =>
-      _s(56, FontWeight.w800, c ?? AW.glyph, spacing: -1.5, height: 0.9);
+      _s(56, FontWeight.w700, c ?? AW.glyph, spacing: -1.5, height: 0.9);
 
-  /// Unit suffix next to the hero balance ("AVA") — 18 / 800.
+  /// Unit suffix next to the hero balance ("AVA") — 18 / 600.
   static TextStyle balanceUnit({Color? c}) =>
-      _s(18, FontWeight.w800, c ?? AW.glyph);
+      _s(18, FontWeight.w600, c ?? AW.glyph);
 
-  /// Label on the balance card — 15 / 800.
+  /// Label on the balance card — 15 / 600.
   static TextStyle cardLabel({Color? c}) =>
-      _s(15, FontWeight.w800, c ?? AW.glyph, spacing: 0.4);
+      _s(15, FontWeight.w600, c ?? AW.glyph, spacing: 0.4);
 
-  /// Sub-line under the hero balance — 13 / 800.
+  /// Sub-line under the hero balance — 13 / 500.
   static TextStyle balanceSub({Color? c}) =>
-      _s(13, FontWeight.w800, c ?? AW.glyph);
+      _s(13, FontWeight.w500, c ?? AW.glyph);
 
-  /// Stat tile number — 30 / 800.
+  /// Stat tile number — 30 / 700.
   static TextStyle statBig({Color? c}) =>
-      _s(30, FontWeight.w800, c ?? AW.tx, spacing: -1);
+      _s(30, FontWeight.w700, c ?? AW.tx, spacing: -1);
 
-  /// Uppercase caption under a stat / donut — 11 / 800.
+  /// Caption under a stat / donut — 11 / 500.
   static TextStyle caption({Color? c}) =>
-      _s(11, FontWeight.w800, c ?? AW.txMute, spacing: 0.6);
+      _s(11, FontWeight.w500, c ?? AW.txMute, spacing: 0.6);
 
-  /// Small section heading / inline glyph — 15 / 800.
+  /// Small section heading / inline glyph — 15 / 600.
   static TextStyle sectionHead({Color? c}) =>
-      _s(15, FontWeight.w800, c ?? AW.tx);
+      _s(15, FontWeight.w600, c ?? AW.tx);
 
-  /// Section title — 20 / 800.
+  /// Section title — 20 / 700.
   static TextStyle sectionTitle({Color? c}) =>
-      _s(20, FontWeight.w800, c ?? AW.tx, spacing: -0.4);
+      _s(20, FontWeight.w700, c ?? AW.tx, spacing: -0.4);
 
-  /// Meta line inside a card — 12 / 800.
+  /// Meta line inside a card — 12 / 400.
   static TextStyle cardMeta({Color? c}) =>
-      _s(12, FontWeight.w800, c ?? AW.txSoft);
+      _s(12, FontWeight.w400, c ?? AW.txSoft);
 
-  /// Transaction row title — 14.5 / 800.
+  /// Transaction row title — 15 / 600 (matches [ADText.rowName]).
   static TextStyle rowTitle({Color? c}) =>
-      _s(14.5, FontWeight.w800, c ?? AW.tx);
+      _s(15, FontWeight.w600, c ?? AW.tx);
 
-  /// Transaction row subtitle — 12 / 700.
+  /// Transaction row subtitle — 12 / 400.
   static TextStyle rowSub({Color? c}) =>
-      _s(12, FontWeight.w700, c ?? AW.txMute);
+      _s(12, FontWeight.w400, c ?? AW.txMute);
 
-  /// Transaction amount — 16 / 800.
+  /// Transaction amount — 16 / 600.
   static TextStyle amount({Color? c}) =>
-      _s(16, FontWeight.w800, c ?? AW.tx, spacing: -0.3);
+      _s(16, FontWeight.w600, c ?? AW.tx, spacing: -0.3);
 
-  /// Transaction timestamp — 11 / 700.
+  /// Transaction timestamp — 11 / 400.
   static TextStyle rowTime({Color? c}) =>
-      _s(11, FontWeight.w700, c ?? AW.txMute);
+      _s(11, FontWeight.w400, c ?? AW.txMute);
 
-  /// Bar-chart axis / value label — 10 / 800.
+  /// Bar-chart axis / value label — 10 / 500.
   static TextStyle barLabel({Color? c}) =>
-      _s(10, FontWeight.w800, c ?? AW.txMute);
+      _s(10, FontWeight.w500, c ?? AW.txMute);
 
-  /// Number in the middle of the donut — 28 / 800.
+  /// Number in the middle of the donut — 28 / 700.
   static TextStyle donutCenter({Color? c}) =>
-      _s(28, FontWeight.w800, c ?? AW.tx, spacing: -1);
+      _s(28, FontWeight.w700, c ?? AW.tx, spacing: -1);
 
-  /// Donut legend label — 13 / 700.
+  /// Donut legend label — 13 / 400.
   static TextStyle legendLabel({Color? c}) =>
-      _s(13, FontWeight.w700, c ?? AW.txSoft);
+      _s(13, FontWeight.w400, c ?? AW.txSoft);
 
-  /// Donut legend value — 13 / 800.
+  /// Donut legend value — 13 / 600.
   static TextStyle legendValue({Color? c}) =>
-      _s(13, FontWeight.w800, c ?? AW.tx);
+      _s(13, FontWeight.w600, c ?? AW.tx);
 
-  /// Segmented-chip label — 12 / 800.
+  /// Segmented-chip label — 12 / 600.
   static TextStyle chipLabel({Color? c}) =>
-      _s(12, FontWeight.w800, c ?? AW.tx, spacing: 0.3);
+      _s(12, FontWeight.w600, c ?? AW.tx, spacing: 0.3);
 
-  /// Search-field input text — 13 / 700.
+  /// Search-field input text — 13 / 400.
   static TextStyle searchText({Color? c}) =>
-      _s(13, FontWeight.w700, c ?? AW.tx);
+      _s(13, FontWeight.w400, c ?? AW.tx);
 
-  /// Hero amount on the transaction-detail screen — 52 / 800.
+  /// Hero amount on the transaction-detail screen — 52 / 700.
   static TextStyle detailAmount({Color? c}) =>
-      _s(52, FontWeight.w800, c ?? AW.tx, spacing: -1.6, height: 0.9);
+      _s(52, FontWeight.w700, c ?? AW.tx, spacing: -1.6, height: 0.9);
 
-  /// Status-pill label (uppercase) — 11 / 800.
+  /// Status-pill label — 11 / 600.
   static TextStyle pillLabel({Color? c}) =>
-      _s(11, FontWeight.w800, c ?? AW.glyph, spacing: 0.6);
+      _s(11, FontWeight.w600, c ?? AW.glyph, spacing: 0.6);
 
-  /// Value inside the cost-breakdown box — 22 / 800.
+  /// Value inside the cost-breakdown box — 22 / 700.
   static TextStyle breakdownValue({Color? c}) =>
-      _s(22, FontWeight.w800, c ?? AW.tx);
+      _s(22, FontWeight.w700, c ?? AW.tx);
 
-  /// Key/value row label — 13 / 700.
+  /// Key/value row label — 13 / 400.
   static TextStyle infoLabel({Color? c}) =>
-      _s(13, FontWeight.w700, c ?? AW.txMute);
+      _s(13, FontWeight.w400, c ?? AW.txMute);
 
-  /// Key/value row value — 14 / 800.
+  /// Key/value row value — 14 / 600.
   static TextStyle infoValue({Color? c}) =>
-      _s(14, FontWeight.w800, c ?? AW.tx);
+      _s(14, FontWeight.w600, c ?? AW.tx);
 }

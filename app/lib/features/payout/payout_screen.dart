@@ -3,7 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../identity/identity_api.dart';
 import '../identity/identity_gate.dart';
@@ -67,8 +69,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final added = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: AD.bg,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (_) => const _AddBankSheet(),
     );
     if (added == true) _refresh();
@@ -82,8 +84,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final amount = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: AD.bg,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (_) => _AmountSheet(max: _balance, currency: (acct['currency'] ?? 'INR').toString()),
     );
     if (amount == null || !mounted) return;
@@ -117,16 +119,16 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: AD.bg,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: .8,
         builder: (_, ctrl) => Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(children: [
-            Text('Creator agreement (v$version)', style: ZineText.cardTitle(size: 20)),
-            const SizedBox(height: 12),
+            Text('Creator agreement (v$version)', style: ADText.appTitle()),
+            const SizedBox(height: Msg.s3),
             Expanded(
               child: SingleChildScrollView(
                 controller: ctrl,
@@ -134,10 +136,10 @@ class _PayoutScreenState extends State<PayoutScreen> {
                     doc ??
                         'Please review the AvaTOK creator agreement at avatok.ai/legal/creator-agreement. '
                             'By accepting you confirm you have read and agree to it.',
-                    style: ZineText.sub(size: 14, color: Zine.ink)),
+                    style: ADText.preview(c: AD.textPrimary)),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
             Row(children: [
               Expanded(
                 child: ZineButton(
@@ -147,7 +149,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   onPressed: () => Navigator.pop(ctx, false),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Msg.s3),
               Expanded(
                 child: ZineButton(
                   label: 'I agree',
@@ -169,7 +171,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(
         title: 'AvaPayout',
         markWord: 'Payout',
@@ -177,46 +179,46 @@ class _PayoutScreenState extends State<PayoutScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        color: Zine.blueInk,
+        color: AD.primaryBadge,
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
                 children: [
                   Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: _card('Wallet balance', _usd(_balance),
-                        PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint)),
-                    const SizedBox(width: 12),
+                        PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online)),
+                    const SizedBox(width: Msg.s3),
                     Expanded(child: _card('Available to withdraw', _usd(_balance),
-                        PhosphorIcons.bank(PhosphorIconsStyle.bold), Zine.blue,
+                        PhosphorIcons.bank(PhosphorIconsStyle.bold), AD.newGroup,
                         footnote: _held > 0 ? '+ ${_usd(_held)} on 7-day hold' : null)),
                   ]),
                   if (!_enabled) ...[
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s4),
                     ZineCard(
-                      color: Zine.paper2,
-                      radius: Zine.rSm,
-                      boxShadow: Zine.shadowXs,
-                      padding: const EdgeInsets.all(14),
+                      color: AD.card,
+                      radius: Msg.rLg,
+                      boxShadow: const <BoxShadow>[],
+                      padding: const EdgeInsets.all(Msg.s4),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         const ZineSticker('coming soon', kind: ZineStickerKind.hint),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: Msg.s2),
                         Text(
                           'Bank transfers are not live yet — you can link a bank and your balance keeps accruing.',
-                          style: ZineText.sub(size: 13.5),
+                          style: ADText.preview(),
                         ),
                       ]),
                     ),
                   ],
-                  const SizedBox(height: 26),
+                  const SizedBox(height: Msg.s5),
                   Row(children: [
-                    Expanded(child: Text('BANK ACCOUNTS', style: ZineText.kicker(size: 11.5))),
-                    ZineLink('+ ADD BANK', onTap: _addBank),
+                    Expanded(child: Text('Bank accounts', style: ADText.sectionLabel())),
+                    ZineLink('+ Add bank', onTap: _addBank),
                   ]),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: Msg.s3),
                   if (_accounts.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: Msg.s4),
                       child: ZineEmptyState(
                         icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
                         text: 'No bank linked yet. Add one to withdraw your earnings.',
@@ -224,11 +226,11 @@ class _PayoutScreenState extends State<PayoutScreen> {
                     )
                   else
                     ..._accounts.map(_accountCard),
-                  const SizedBox(height: 26),
-                  Text('HISTORY', style: ZineText.kicker(size: 11.5)),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: Msg.s5),
+                  Text('History', style: ADText.sectionLabel()),
+                  const SizedBox(height: Msg.s3),
                   if (_history.isEmpty)
-                    Text('No withdrawals yet.', style: ZineText.sub(size: 13.5))
+                    Text('No withdrawals yet.', style: ADText.preview())
                   else
                     ..._history.map(_historyRow),
                 ],
@@ -240,22 +242,22 @@ class _PayoutScreenState extends State<PayoutScreen> {
   /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _card(String label, String value, IconData icon, Color accent, {String? footnote}) {
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
+      radius: Msg.rLg,
+      padding: const EdgeInsets.all(Msg.s4),
+      boxShadow: const <BoxShadow>[],
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(icon: icon, color: accent, size: 30),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Text(value, style: ZineText.stat(size: 26, color: Zine.mintInk)),
+          child: Text(value, style: ADText.appTitle(c: AD.online).copyWith(fontSize: 26)),
         ),
-        const SizedBox(height: 3),
-        Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+        const SizedBox(height: Msg.s1),
+        Text(label, style: ADText.sectionLabel()),
         if (footnote != null) ...[
           const SizedBox(height: 2),
-          Text(footnote.toUpperCase(), style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+          Text(footnote, style: ADText.sectionLabel(c: AD.textTertiary)),
         ],
       ]),
     );
@@ -270,27 +272,27 @@ class _PayoutScreenState extends State<PayoutScreen> {
       _ => ZineStickerKind.hint,
     };
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(14),
-        boxShadow: Zine.shadowXs,
+        radius: Msg.rLg,
+        padding: const EdgeInsets.all(Msg.s4),
+        boxShadow: const <BoxShadow>[],
         child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.bank(PhosphorIconsStyle.bold), color: Zine.mint),
-          const SizedBox(width: 12),
+          ZineIconBadge(icon: PhosphorIcons.bank(PhosphorIconsStyle.bold), color: AD.online),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text((a['label'] ?? 'Bank ****${a['account_number_last4'] ?? ''}').toString(),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 14.5)),
-              const SizedBox(height: 5),
+                  style: ADText.rowName()),
+              const SizedBox(height: Msg.s1),
               Wrap(spacing: 6, runSpacing: 4, children: [
                 ZineSticker('${a['currency'] ?? ''} · $status', kind: statusKind),
                 if (taxMissing) const ZineSticker('tax info missing', kind: ZineStickerKind.no),
               ]),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           ZineButton(
             label: 'Withdraw',
             fontSize: 15,
@@ -305,34 +307,33 @@ class _PayoutScreenState extends State<PayoutScreen> {
   Widget _historyRow(Map<String, dynamic> r) {
     final status = (r['status'] ?? '').toString();
     final color = switch (status) {
-      'completed' => Zine.mintInk,
-      'failed' || 'refunded' => Zine.coral,
-      _ => Zine.inkSoft,
+      'completed' => AD.online,
+      'failed' || 'refunded' => AD.danger,
+      _ => AD.textSecondary,
     };
     final when = DateTime.fromMillisecondsSinceEpoch(((r['created_at'] as num?) ?? 0).toInt());
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
           Flexible(
             child: Text('${_usd(((r['amount_coins'] as num?) ?? 0))} → ${r['target_currency'] ?? ''}',
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.value(size: 14, weight: FontWeight.w800)),
+                style: ADText.rowName().copyWith(fontWeight: FontWeight.w600)),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary)),
           ),
-          const SizedBox(width: 6),
-          Text(status.toUpperCase(), style: ZineText.tag(size: 11, color: color)),
+          const SizedBox(width: Msg.s2),
+          Text(status, style: ADText.sectionLabel(c: color)),
         ]),
         const SizedBox(height: 2),
         Text(
           '${when.day}/${when.month}/${when.year}'
-                  '${r['failure_reason'] != null ? ' — ${r['failure_reason']}' : ''}'
-              .toUpperCase(),
-          style: ZineText.kicker(size: 9.5, color: Zine.inkMute),
+          '${r['failure_reason'] != null ? ' — ${r['failure_reason']}' : ''}',
+          style: ADText.sectionLabel(c: AD.textTertiary),
         ),
       ]),
     );
@@ -407,23 +408,23 @@ class _AddBankSheetState extends State<_AddBankSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s6),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Add a bank account', style: ZineText.cardTitle(size: 21)),
-          const SizedBox(height: 16),
+          Text('Add a bank account', style: ADText.appTitle()),
+          const SizedBox(height: Msg.s4),
           ZineField(controller: _holder, label: 'Account holder name'),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: _ifsc, label: 'IFSC code', textCapitalization: TextCapitalization.characters),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: _number, label: 'Account number', keyboardType: TextInputType.number),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: _label, label: 'Label (optional)'),
-          const SizedBox(height: 20),
-          Text('Tax details', style: ZineText.cardTitle(size: 16)),
-          const SizedBox(height: 4),
+          const SizedBox(height: Msg.s5),
+          Text('Tax details', style: ADText.threadName()),
+          const SizedBox(height: Msg.s1),
           Text('Needed once for year-end reporting. We store only the type and last 4 digits.',
-              style: ZineText.sub(size: 12.5)),
-          const SizedBox(height: 12),
+              style: ADText.preview()),
+          const SizedBox(height: Msg.s3),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
               child: ZineDropdown<String>(
@@ -441,7 +442,7 @@ class _AddBankSheetState extends State<_AddBankSheet> {
                 }),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineDropdown<String>(
                 label: 'ID type',
@@ -457,10 +458,10 @@ class _AddBankSheetState extends State<_AddBankSheet> {
               ),
             ),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: _taxId, label: 'Tax ID', error: _error != null),
           if (_error != null) ZineErrorMsg(_error!),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s5),
           ZineButton(
             label: 'Save bank account',
             fullWidth: true,
@@ -498,13 +499,13 @@ class _AmountSheetState extends State<_AmountSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s6),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Withdraw to bank', style: ZineText.cardTitle(size: 21)),
-          const SizedBox(height: 4),
+          Text('Withdraw to bank', style: ADText.appTitle()),
+          const SizedBox(height: Msg.s1),
           Text('Available: ${_usd(widget.max)} · minimum ${_usd(_kMinCoins)}',
-              style: ZineText.sub(size: 13.5)),
-          const SizedBox(height: 16),
+              style: ADText.preview()),
+          const SizedBox(height: Msg.s4),
           ZineField(
             controller: _ctrl,
             autofocus: true,
@@ -513,21 +514,21 @@ class _AmountSheetState extends State<_AmountSheet> {
             keyboardType: TextInputType.number,
             onChanged: (v) => setState(() => _amount = int.tryParse(v.trim()) ?? 0),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           if (_amount > 0)
             ZineCard(
-              color: Zine.paper2,
-              radius: Zine.rSm,
-              boxShadow: Zine.shadowXs,
-              padding: const EdgeInsets.all(13),
+              color: AD.card,
+              radius: Msg.rLg,
+              boxShadow: const <BoxShadow>[],
+              padding: const EdgeInsets.all(Msg.s3),
               child: Text(
                 'You\'ll receive ≈ ${_usd(_amount)} in ${widget.currency}. '
                 'The Wise transfer fee is deducted from this amount; the exact '
                 'rate is locked when the transfer is created.',
-                style: ZineText.sub(size: 13, color: Zine.mintInk),
+                style: ADText.preview(c: AD.online),
               ),
             ),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           ZineButton(
             label: valid ? 'Withdraw ${_usd(_amount)}' : 'Enter an amount',
             fullWidth: true,

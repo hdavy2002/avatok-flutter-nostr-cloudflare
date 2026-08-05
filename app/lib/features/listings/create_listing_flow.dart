@@ -9,7 +9,9 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avavoice/studio/agent_form_flow.dart';
 import '../avavision/studio/agent_form_flow.dart' as avavision;
@@ -249,7 +251,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       ),
       body: ZinePaper(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
           children: [
             for (var i = 0; i < 6; i++) _stepBlock(i),
           ],
@@ -272,12 +274,12 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             _stepDot(i, state),
             if (!last)
               Expanded(
-                child: Container(width: 2.5, color: Zine.ink.withValues(alpha: 0.25),
-                    margin: const EdgeInsets.symmetric(vertical: 4)),
+                child: Container(width: 2.5, color: AD.textPrimary.withValues(alpha: 0.25),
+                    margin: const EdgeInsets.symmetric(vertical: Msg.s1)),
               ),
           ]),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Padding(
             padding: EdgeInsets.only(bottom: last ? 0 : 18),
@@ -287,20 +289,20 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                 onTap: state == _StepState.todo ? null : () => setState(() { _error = null; _step = i; }),
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  padding: const EdgeInsets.symmetric(vertical: Msg.s1),
                   child: Text(_stepTitles[i],
-                      style: ZineText.cardTitle(
-                          color: state == _StepState.todo ? Zine.inkMute : Zine.ink)),
+                      style: ADText.appTitle(c: state == _StepState.todo ? AD.textTertiary : AD.textPrimary)),
                 ),
               ),
               if (state == _StepState.active) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: Msg.s2),
                 ZineCard(
-                  padding: const EdgeInsets.all(16),
+                  color: AD.card,
+                  padding: const EdgeInsets.all(Msg.s4),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     _stepBody(i),
                     if (_error != null) ZineErrorMsg(_error!),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: Msg.s4),
                     Row(children: [
                       Expanded(
                         child: i == 5
@@ -320,7 +322,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                                 onPressed: _continue,
                               ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: Msg.s3),
                       ZineLink(i == 0 ? 'cancel' : 'back', fontSize: 14, onTap: _back),
                     ]),
                   ]),
@@ -335,23 +337,23 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
 
   Widget _stepDot(int i, _StepState state) {
     final (fill, fg) = switch (state) {
-      _StepState.active => (Zine.lime, Zine.ink),
-      _StepState.done => (Zine.ink, Zine.paper),
-      _StepState.todo => (Zine.card, Zine.inkMute),
+      _StepState.active => (AD.primaryBadge, AD.textPrimary),
+      _StepState.done => (AD.textPrimary, AD.bg),
+      _StepState.todo => (AD.card, AD.textTertiary),
     };
     return Container(
       width: 34, height: 34,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: fill,
-        border: Border.all(color: state == _StepState.todo ? Zine.inkMute : Zine.ink, width: Zine.bw),
-        boxShadow: state == _StepState.active ? Zine.shadowXs : null,
+        border: Border.all(color: state == _StepState.todo ? AD.textTertiary : AD.borderCard, width: 1),
+        boxShadow: state == _StepState.active ? const <BoxShadow>[] : null,
       ),
       child: Center(
         child: state == _StepState.done
             ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 16, color: fg)
             : Text('${i + 1}',
-                style: TextStyle(fontFamily: ZineText.display, fontWeight: FontWeight.w600,
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 16, color: fg)),
       ),
     );
@@ -369,50 +371,50 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
   // ---- step 1: offering type ----
   Widget _stepType() => Column(children: [
         _radioCard('live_event', 'Live event', 'Stream to many viewers at a set time (AvaLive)',
-            PhosphorIcons.broadcast(PhosphorIconsStyle.bold), Zine.coral),
-        const SizedBox(height: 10),
+            PhosphorIcons.broadcast(PhosphorIconsStyle.bold), AD.danger),
+        const SizedBox(height: Msg.s3),
         _radioCard('consult', 'Consultation', 'Bookable 1:1 or small-group sessions from your availability',
-            PhosphorIcons.user(PhosphorIconsStyle.bold), Zine.lilac),
-        const SizedBox(height: 10),
+            PhosphorIcons.user(PhosphorIconsStyle.bold), AD.micIdleBg),
+        const SizedBox(height: Msg.s3),
         _radioCard('ai_agent', 'AI voice agent',
             'A Gemini-powered voice agent callers can talk to 24/7 (AvaVoice)',
-            PhosphorIcons.robot(PhosphorIconsStyle.bold), Zine.blueInk),
-        const SizedBox(height: 10),
+            PhosphorIcons.robot(PhosphorIconsStyle.bold), AD.primaryBadge),
+        const SizedBox(height: Msg.s3),
         _radioCard('ai_vision_agent', 'AI vision agent',
             'A camera coach that SEES the user — form, technique, live score (AvaVision)',
-            PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.lilac),
+            PhosphorIcons.eye(PhosphorIconsStyle.bold), AD.micIdleBg),
       ]);
 
   Widget _radioCard(String value, String title, String sub, IconData icon, Color accent) {
     final sel = _kind == value;
     return ZinePressable(
       onTap: () => setState(() => _kind = value),
-      color: sel ? Zine.blue : Zine.card,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: sel ? Zine.shadowSm : const <BoxShadow>[],
-      padding: const EdgeInsets.all(14),
+      color: sel ? AD.newGroup : AD.card,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: sel ? const <BoxShadow>[] : const <BoxShadow>[],
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(children: [
         Container(
           width: 22, height: 22,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Zine.card,
-            border: Border.all(color: Zine.ink, width: Zine.bw),
+            color: AD.card,
+            border: Border.all(color: AD.borderCard, width: 1),
           ),
           child: sel
               ? Center(
                   child: Container(width: 9, height: 9,
-                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Zine.ink)))
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: AD.textPrimary)))
               : null,
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: Msg.s3),
         ZineIconBadge(icon: icon, color: accent, size: 30),
-        const SizedBox(width: 12),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.cardTitle(size: 16.5)),
+            Text(title, style: ADText.threadName()),
             const SizedBox(height: 2),
-            Text(sub, style: ZineText.sub(size: 13)),
+            Text(sub, style: ADText.preview()),
           ]),
         ),
       ]),
@@ -430,7 +432,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         ZineField(
           controller: _desc,
           label: 'description',
@@ -439,7 +441,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
           maxLines: 4,
           textCapitalization: TextCapitalization.sentences,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         ZineDropdown<String>(
           label: 'category',
           value: _category,
@@ -460,12 +462,12 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
           leadText: r'$',
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s2),
         const ZineSticker('0 = free', kind: ZineStickerKind.hint),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         if (_kind == 'consult') ...[
-          Text('GROUP SIZE', style: ZineText.kicker()),
-          const SizedBox(height: 9),
+          Text('Group size', style: ADText.sectionLabel()),
+          const SizedBox(height: Msg.s2),
           Row(children: [
             for (final c in const [1, 10, 20]) ...[
               Expanded(
@@ -475,36 +477,36 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                   onTap: () => setState(() => _capacity = c),
                 ),
               ),
-              if (c != 20) const SizedBox(width: 9),
+              if (c != 20) const SizedBox(width: Msg.s2),
             ],
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
         ],
         if (_kind == 'live_event') ...[
           ZinePressable(
             onTap: _pickWhen,
-            color: _start == null ? Zine.card : Zine.blue,
-            radius: BorderRadius.circular(Zine.rField),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            color: _start == null ? AD.card : AD.newGroup,
+            radius: BorderRadius.circular(Msg.rMd),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 19, color: Zine.ink),
-              const SizedBox(width: 10),
+              PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 19, color: AD.textPrimary),
+              const SizedBox(width: Msg.s3),
               Expanded(
                 child: Text(
                   _start == null ? 'Pick date & time' : fmtWhen(_start!.millisecondsSinceEpoch),
-                  style: ZineText.value(size: 15.5),
+                  style: ADText.rowName(),
                 ),
               ),
-              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
             ]),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Text('If the time conflicts with your calendar, publish will flag it (greyed slot).',
-              style: ZineText.sub(size: 12.5)),
-          const SizedBox(height: 16),
+              style: ADText.preview()),
+          const SizedBox(height: Msg.s4),
         ],
         Row(children: [
-          Expanded(child: Text('DURATION', style: ZineText.kicker())),
+          Expanded(child: Text('Duration', style: ADText.sectionLabel())),
           SizedBox(
             width: 132,
             child: ZineDropdown<int>(
@@ -515,20 +517,20 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             ),
           ),
         ]),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         const Divider(),
-        const SizedBox(height: 6),
-        Text('PRICING EXTRAS', style: ZineText.kicker()),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
+        Text('Pricing extras', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s3),
         Row(children: [
-          Expanded(child: Text('Early-bird discount', style: ZineText.value(size: 15))),
+          Expanded(child: Text('Early-bird discount', style: ADText.rowName())),
           ZineToggle(value: _earlyBird, onChanged: (v) => setState(() => _earlyBird = v)),
         ]),
         if (_earlyBird) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             SizedBox(width: 92, child: ZineField(controller: _ebPct, label: '% off', keyboardType: TextInputType.number)),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: ZinePressable(
                 onTap: () async {
@@ -537,31 +539,31 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                       firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 180)));
                   if (d != null) setState(() => _ebEnds = d);
                 },
-                radius: BorderRadius.circular(Zine.rField),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                radius: BorderRadius.circular(Msg.rMd),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
                 child: Row(children: [
-                  PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
-                  const SizedBox(width: 8),
+                  PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
+                  const SizedBox(width: Msg.s2),
                   Flexible(
                     child: Text(_ebEnds == null ? 'Until…' : fmtWhen(_ebEnds!.millisecondsSinceEpoch),
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
                   ),
                 ]),
               ),
             ),
           ]),
         ],
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         ZineField(
           controller: _promoCode,
           label: 'promo code (optional)',
           textCapitalization: TextCapitalization.characters,
           hint: 'AVATOK10',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Row(children: [
           Expanded(child: ZineField(controller: _promoPct, label: '% off', keyboardType: TextInputType.number)),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Expanded(child: ZineField(controller: _promoMax, label: 'max uses', keyboardType: TextInputType.number)),
         ]),
       ]);
@@ -583,9 +585,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             Stack(clipBehavior: Clip.none, children: [
               Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderCard, width: 1),
+                  boxShadow: const <BoxShadow>[],
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: CoverImage(url: _coverUrls[i], seed: i, width: 88, height: 88),
@@ -597,10 +599,10 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                   child: Container(
                     width: 26, height: 26,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: Zine.coral,
-                      border: Border.all(color: Zine.ink, width: 2),
+                      shape: BoxShape.circle, color: AD.danger,
+                      border: Border.all(color: AD.borderCard, width: 2),
                     ),
-                    child: const Icon(Icons.close, size: 14, color: Colors.white),
+                    child: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Colors.white),
                   ),
                 ),
               ),
@@ -611,21 +613,21 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
               child: Container(
                 width: 88, height: 88,
                 decoration: BoxDecoration(
-                  color: Zine.paper2,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Border.all(color: Zine.ink.withValues(alpha: 0.45), width: 2),
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderCard.withValues(alpha: 0.45), width: 2),
                 ),
                 child: _uploading
                     ? const Center(child: SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)))
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AD.primaryBadge)))
                     : PhosphorIcon(PhosphorIcons.cameraPlus(PhosphorIconsStyle.bold),
-                        size: 26, color: Zine.inkSoft),
+                        size: 26, color: AD.textSecondary),
               ),
             ),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Text('1–5 photos (at least one required). Served via Cloudflare (AVIF) and cached on devices.',
-            style: ZineText.sub(size: 12.5)),
+            style: ADText.preview()),
       ]);
 
   // ---- step 5: icons & flags ----
@@ -638,52 +640,52 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
           textCapitalization: TextCapitalization.characters,
           hint: 'IN',
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         ZineField(
           controller: _language,
           label: 'language (badge, optional)',
           labelIcon: PhosphorIcons.translate(PhosphorIconsStyle.bold),
           hint: 'e.g. Hindi',
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         Row(children: [
-          Expanded(child: Text('18+ only', style: ZineText.value(size: 15))),
+          Expanded(child: Text('18+ only', style: ADText.rowName())),
           ZineToggle(value: _adultsOnly, onChanged: (v) => setState(() => _adultsOnly = v)),
         ]),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         const Divider(),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         // Voice translation banner — lilac (AI/magic accent, §2).
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(Msg.s4),
           decoration: BoxDecoration(
-            color: Zine.lilac,
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Zine.border,
-            boxShadow: Zine.shadowXs,
+            color: AD.micIdleBg,
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            border: Border.all(color: AD.borderCard, width: 1),
+            boxShadow: const <BoxShadow>[],
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  PhosphorIcon(PhosphorIcons.globe(PhosphorIconsStyle.bold), size: 17, color: Zine.ink),
-                  const SizedBox(width: 7),
-                  Expanded(child: Text('Voice translation available', style: ZineText.cardTitle(size: 15.5))),
+                  PhosphorIcon(PhosphorIcons.globe(PhosphorIconsStyle.bold), size: 17, color: AD.textPrimary),
+                  const SizedBox(width: Msg.s2),
+                  Expanded(child: Text('Voice translation available', style: ADText.threadName())),
                 ]),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s2),
                 Text(
                   'Attendees can hear you live in their own language. They pay \$3/hour '
                   'in Tokens on top of your price — your earnings are not affected.',
-                  style: ZineText.sub(size: 12.5, color: Zine.ink),
+                  style: ADText.preview(c: AD.textPrimary),
                 ),
               ]),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             ZineToggle(value: _translationEnabled, onChanged: (v) => setState(() => _translationEnabled = v)),
           ]),
         ),
         if (_translationEnabled) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           ZineDropdown<String>(
             label: 'language of transmission (the language you speak)',
             value: _spokenLang,
@@ -698,14 +700,14 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
 
   // ---- step 6: preview & publish (A6 — REAL details widget with draft data) ----
   Widget _stepPreview() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('PREVIEW — WHAT BUYERS SEE', style: ZineText.kicker()),
-        const SizedBox(height: 10),
+        Text('Preview — what buyers see', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s3),
         Container(
           height: 440,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Zine.border,
-            boxShadow: Zine.shadowSm,
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            border: Border.all(color: AD.borderCard, width: 1),
+            boxShadow: const <BoxShadow>[],
           ),
           clipBehavior: Clip.antiAlias,
           child: ListingDetailView(card: _draftCard()),

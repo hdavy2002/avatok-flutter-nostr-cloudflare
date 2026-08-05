@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/platform_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart' show AccountScope;
 import '../calendar/booking_card.dart';
@@ -44,23 +46,23 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.card,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        foregroundColor: Zine.ink,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        foregroundColor: AD.textPrimary,
+        shape: const Border(bottom: BorderSide(color: AD.borderCard, width: 1)),
         leading: const Padding(
-          padding: EdgeInsets.only(left: 10),
+          padding: EdgeInsets.only(left: Msg.s3),
           child: Center(child: ZineBackButton()),
         ),
         leadingWidth: 60,
-        title: Text('AvaBooking', style: ZineText.appbar().copyWith(fontSize: 21)),
+        title: Text('AvaBooking', style: ADText.appTitle().copyWith(fontSize: 21)),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 14),
+            padding: const EdgeInsets.only(right: Msg.s4),
             child: Center(
               child: ZineBackButton(
                 icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
@@ -71,14 +73,14 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
         ],
         bottom: TabBar(
           controller: _tab,
-          labelColor: Zine.ink,
-          unselectedLabelColor: Zine.inkMute,
-          indicatorColor: Zine.ink,
+          labelColor: AD.textPrimary,
+          unselectedLabelColor: AD.textTertiary,
+          indicatorColor: AD.textPrimary,
           indicatorWeight: 3,
           dividerColor: Colors.transparent,
-          labelStyle: ZineText.tag(size: 11.5),
-          unselectedLabelStyle: ZineText.tag(size: 11.5, color: Zine.inkMute),
-          tabs: const [Tab(text: 'UPCOMING'), Tab(text: 'PAST')],
+          labelStyle: ADText.sectionLabel(),
+          unselectedLabelStyle: ADText.sectionLabel(c: AD.textTertiary),
+          tabs: const [Tab(text: 'Upcoming'), Tab(text: 'Past')],
         ),
       ),
       body: TabBarView(controller: _tab, children: [
@@ -92,19 +94,19 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
     if (_error != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineEmptyState(
               icon: PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
               text: 'Could not load bookings — pull to retry.',
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             ZineErrorMsg('$_error'),
           ]),
         ),
       );
     }
-    if (items == null) return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
+    if (items == null) return const Center(child: CircularProgressIndicator(color: AD.primaryBadge));
     if (items.isEmpty) {
       return Center(
         child: ZineEmptyState(
@@ -116,10 +118,10 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
       );
     }
     return RefreshIndicator(
-      color: Zine.blueInk,
+      color: AD.primaryBadge,
       onRefresh: _refresh,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Msg.s4),
         itemCount: items.length,
         itemBuilder: (ctx, i) => _card(items[i], upcoming: upcoming),
       ),
@@ -139,10 +141,10 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
     final net = (price * 0.8 / 100).toStringAsFixed(2);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        radius: Msg.rLg,
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
         onTap: () => showBookingCard(
           context,
           sourceApp: sourceApp,
@@ -158,34 +160,34 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
         ),
         child: Row(children: [
           ZineIconBadge(icon: zineSourceIcon(sourceApp), color: zineSourceColor(sourceApp)),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${fmtDate(startsAt)} · ${fmtRange(startsAt, endsAt)}'.toUpperCase(),
-                  style: ZineText.kicker(size: 10)),
-              const SizedBox(height: 3),
+              Text('${fmtDate(startsAt)} · ${fmtRange(startsAt, endsAt)}',
+                  style: ADText.sectionLabel()),
+              const SizedBox(height: Msg.s1),
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 15)),
-              const SizedBox(height: 6),
+                  style: ADText.rowName()),
+              const SizedBox(height: Msg.s2),
               Row(children: [
                 zineStatusSticker(status),
                 if (price > 0) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: Msg.s2),
                   Text('\$${(price / 100).toStringAsFixed(2)}',
-                      style: ZineText.value(size: 13.5, color: Zine.mintInk, weight: FontWeight.w900)),
+                      style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
                 ],
                 if (amCreator && settled && price > 0) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: Msg.s2),
                   Flexible(
-                    child: Text('EARNED ~\$$net',
+                    child: Text('Earned ~\$$net',
                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: ZineText.tag(size: 10.5, color: Zine.mintInk)),
+                        style: ADText.sectionLabel(c: AD.online)),
                   ),
                 ],
               ]),
             ]),
           ),
-          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
         ]),
       ),
     );

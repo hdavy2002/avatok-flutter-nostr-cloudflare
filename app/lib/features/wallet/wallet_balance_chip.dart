@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'wallet_screen.dart';
 
 /// [WALLET-UX-1] Shared last-known wallet balance for lightweight header chips.
@@ -40,8 +41,8 @@ class WalletBalanceStore {
 }
 
 /// Compact header chip: coin icon + total spendable tokens. Tapping opens the
-/// wallet. Same visual family as [AdChip] (pill, hairline border, 12.5/800
-/// label) so it sits naturally in the AvaTalk header band. Renders nothing
+/// wallet. Same visual family as [AdChip] (pill, hairline border,
+/// [ADText.tabLabel]) so it sits naturally in the AvaTalk header band. Renders nothing
 /// until the first balance is known — the header never shows a wrong "0".
 class WalletBalanceChip extends StatefulWidget {
   const WalletBalanceChip({super.key});
@@ -81,22 +82,18 @@ class _WalletBalanceChipState extends State<WalletBalanceChip> {
           },
           behavior: HitTestBehavior.opaque,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
             decoration: BoxDecoration(
               color: AD.card,
-              borderRadius: BorderRadius.circular(100),
+              // A chip IS one of the shapes a pill is reserved for.
+              borderRadius: Msg.brPill,
               border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.bold),
+              PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.regular),
                   size: 14, color: AD.online),
-              const SizedBox(width: 5),
-              Text(_coins(v),
-                  style: TextStyle(
-                      fontFamily: ADText.family,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12.5,
-                      color: AD.textPrimary)),
+              const SizedBox(width: Msg.s1),
+              Text(_coins(v), style: ADText.tabLabel()),
             ]),
           ),
         );

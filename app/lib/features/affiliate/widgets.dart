@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 
@@ -16,9 +18,9 @@ class AffApp {
 }
 
 final kAffApps = <AffApp>[
-  AffApp('avalive', 'AvaLive', PhosphorIcons.broadcast(PhosphorIconsStyle.bold), Zine.coral),
-  AffApp('avaconsult', 'AvaConsult', PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), Zine.blue),
-  AffApp('avavoice', 'AvaVoice', PhosphorIcons.microphone(PhosphorIconsStyle.bold), Zine.lilac),
+  AffApp('avalive', 'AvaLive', PhosphorIcons.broadcast(PhosphorIconsStyle.bold), AD.danger),
+  AffApp('avaconsult', 'AvaConsult', PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), AD.newGroup),
+  AffApp('avavoice', 'AvaVoice', PhosphorIcons.microphone(PhosphorIconsStyle.bold), AD.micIdleBg),
 ];
 
 AffApp affApp(String key) =>
@@ -53,23 +55,23 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
+      radius: Msg.rLg,
+      padding: const EdgeInsets.all(Msg.s4),
+      boxShadow: const <BoxShadow>[],
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(icon: icon, color: color, size: 30),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Text(value, maxLines: 1, style: ZineText.stat(size: 24)),
+          child: Text(value, maxLines: 1, style: ADText.appTitle().copyWith(fontSize: 24)),
         ),
-        const SizedBox(height: 3),
-        Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: ZineText.kicker(size: 9.5)),
+        const SizedBox(height: Msg.s1),
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: ADText.sectionLabel()),
         if (sub != null)
-          Text(sub!.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+          Text(sub!, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ADText.sectionLabel(c: AD.textTertiary)),
       ]),
     );
   }
@@ -87,54 +89,54 @@ class ListingPickCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final est = estimatedCommissionPerSale(listing.price);
     return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(13),
-      boxShadow: Zine.shadowXs,
+      radius: Msg.rLg,
+      padding: const EdgeInsets.all(Msg.s3),
+      boxShadow: const <BoxShadow>[],
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: 2)),
+              border: Border.fromBorderSide(BorderSide(color: AD.borderCard, width: 2)),
             ),
             child: Avatar(seed: listing.creatorId.isEmpty ? listing.id : listing.creatorId,
                 name: listing.creatorName, size: 44, avatarUrl: listing.creatorAvatar),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(listing.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: ZineText.cardTitle(size: 15.5)),
-              const SizedBox(height: 3),
+                  style: ADText.threadName()),
+              const SizedBox(height: Msg.s1),
               Row(children: [
                 Flexible(child: Text(listing.creatorName, maxLines: 1,
-                    overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12))),
+                    overflow: TextOverflow.ellipsis, style: ADText.preview())),
                 if (listing.rating != null) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s2),
                   PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-                      size: 13, color: Zine.coral),
+                      size: 13, color: AD.danger),
                   const SizedBox(width: 2),
                   Text(listing.rating!.toStringAsFixed(1),
-                      style: ZineText.value(size: 12)),
+                      style: ADText.rowName()),
                 ],
               ]),
             ]),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           AppBadge(appKey: listing.app),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(affCoinsLabel(listing.price),
-                  style: ZineText.value(size: 15, weight: FontWeight.w900)),
+                  style: ADText.rowName().copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 1),
               Text('You earn ~${affCoinsLabel(est)} per sale — for life',
-                  style: ZineText.value(size: 11.5, color: Zine.mintInk)),
+                  style: ADText.rowName(c: AD.online)),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           ZineButton(
             label: 'Create my link',
             variant: ZineButtonVariant.blue,
@@ -158,32 +160,32 @@ class LinkRow extends StatelessWidget {
     final a = affApp(link.app);
     return ZinePressable(
       onTap: onTap,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
-      padding: const EdgeInsets.all(12),
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: const <BoxShadow>[],
+      padding: const EdgeInsets.all(Msg.s3),
       child: Row(children: [
         ZineIconBadge(icon: a.icon, color: a.color, size: 40),
-        const SizedBox(width: 12),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(link.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 14))),
+                  style: ADText.rowName())),
               if (link.paused) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s2),
                 const ZineSticker('paused', kind: ZineStickerKind.hint),
               ],
             ]),
-            const SizedBox(height: 3),
-            Text('${link.clicks} clicks · ${link.binds} referred'.toUpperCase(),
-                style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+            const SizedBox(height: Msg.s1),
+            Text('${link.clicks} clicks · ${link.binds} referred',
+                style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(affCoinsLabel(link.earnedCoins),
-              style: ZineText.value(size: 14.5, weight: FontWeight.w900, color: Zine.mintInk)),
-          Text('EARNED', style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+              style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
+          Text('Earned', style: ADText.sectionLabel(c: AD.textTertiary)),
         ]),
       ]),
     );
@@ -197,7 +199,7 @@ class AffEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(Msg.s6),
           child: ZineEmptyState(
             icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
             text: text,

@@ -11,7 +11,9 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 import 'link_created_sheet.dart';
@@ -106,15 +108,15 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
 
   /// Phosphor icon + accent + label per promotable app.
   static (IconData, Color, String) _appMeta(String key) => switch (key) {
-        'avaconsult' => (PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), Zine.blue, 'AvaConsult'),
-        'avavoice' => (PhosphorIcons.microphone(PhosphorIconsStyle.bold), Zine.lilac, 'AvaVoice'),
-        _ => (PhosphorIcons.broadcast(PhosphorIconsStyle.bold), Zine.coral, 'AvaLive'),
+        'avaconsult' => (PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), AD.newGroup, 'AvaConsult'),
+        'avavoice' => (PhosphorIcons.microphone(PhosphorIconsStyle.bold), AD.micIdleBg, 'AvaVoice'),
+        _ => (PhosphorIcons.broadcast(PhosphorIconsStyle.bold), AD.danger, 'AvaLive'),
       };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: widget.link.title,
         tag: 'link analytics',
@@ -127,10 +129,10 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         ],
       ),
       body: _loading && _stats == null
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : _failed
               ? _retry()
-              : RefreshIndicator(onRefresh: _load, color: Zine.blueInk, child: _body()),
+              : RefreshIndicator(onRefresh: _load, color: AD.primaryBadge, child: _body()),
     );
   }
 
@@ -140,7 +142,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
             icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
             text: 'Could not load analytics.',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
               fontSize: 16, onPressed: _load),
         ]),
@@ -150,7 +152,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
     final s = _stats!;
     final (appIcon, appAccent, appLabel) = _appMeta(widget.link.app);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
       children: [
         Row(children: [
           ZineSticker(appLabel, icon: appIcon),
@@ -162,44 +164,44 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
               active: _range == r,
               onTap: () { if (_range != r) { _range = r; _load(); } },
             ),
-            if (r != _ranges.last) const SizedBox(width: 7),
+            if (r != _ranges.last) const SizedBox(width: Msg.s2),
           ],
         ]),
-        const SizedBox(height: 20),
+        const SizedBox(height: Msg.s5),
         _kicker('Conversion funnel'),
         _funnel(s.funnel, appAccent),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         _kicker('Clicks & earnings over time'),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         _TimeseriesChart(points: s.timeseries),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         _kicker('Top sources'),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         _sources(s),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         _kicker('Recent conversions'),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         if (s.recent.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s4),
             child: Text('No conversions yet — share your link to get started!',
-                style: ZineText.sub(size: 13)),
+                style: ADText.preview()),
           )
         else
           ...s.recent.map(_conversionRow),
         if (RemoteConfig.affiliateAssetKitEnabled) ...[
-          const SizedBox(height: 22),
+          const SizedBox(height: Msg.s5),
           _kicker('Marketing kit'),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s2),
           Text(
             'AI-generated promo images for this listing — story, post and banner. '
             'Tap one to add your QR code and share it.',
-            style: ZineText.sub(size: 12.5),
+            style: ADText.preview(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           _marketingKit(),
         ],
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         ZineButton(
           label: 'View subscribers',
           variant: ZineButtonVariant.blue,
@@ -210,7 +212,7 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
           onPressed: () => Navigator.push(context, MaterialPageRoute(
               builder: (_) => SubscribersScreen(link: widget.link))),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         ZineButton(
           label: _paused ? 'Resume link' : 'Pause link',
           variant: _paused ? ZineButtonVariant.ghost : ZineButtonVariant.coral,
@@ -225,18 +227,18 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
         ),
         if (_paused)
           Padding(
-            padding: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.only(top: Msg.s3),
             child: Text(
               'Paused links stop binding NEW users. Existing referrals keep earning you commission.',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 11.5),
+              style: ADText.preview(),
             ),
           ),
       ],
     );
   }
 
-  Widget _kicker(String t) => Text(t.toUpperCase(), style: ZineText.kicker(size: 11.5));
+  Widget _kicker(String t) => Text(t, style: ADText.sectionLabel());
 
   Widget _funnel(AffiliateFunnel f, Color accent) {
     final steps = <(String, int)>[
@@ -248,22 +250,22 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
     ];
     final maxV = steps.fold<int>(1, (m, s) => s.$2 > m ? s.$2 : m);
     return Column(children: [
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s3),
       for (var i = 0; i < steps.length; i++) ...[
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 3.5),
           child: Row(children: [
-            SizedBox(width: 96, child: Text(steps[i].$1, style: ZineText.sub(size: 12))),
+            SizedBox(width: 96, child: Text(steps[i].$1, style: ADText.preview())),
             Expanded(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(Msg.rSm),
                 child: Stack(children: [
                   Container(
                     height: 18,
                     decoration: BoxDecoration(
-                      color: Zine.paper2,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Zine.ink, width: 1.5),
+                      color: AD.card,
+                      borderRadius: BorderRadius.circular(Msg.rSm),
+                      border: Border.all(color: AD.borderCard, width: 1.5),
                     ),
                   ),
                   FractionallySizedBox(
@@ -271,22 +273,22 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
                     child: Container(
                       height: 18,
                       decoration: BoxDecoration(
-                        color: Zine.mint,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Zine.ink, width: 1.5),
+                        color: AD.online,
+                        borderRadius: BorderRadius.circular(Msg.rSm),
+                        border: Border.all(color: AD.borderCard, width: 1.5),
                       ),
                     ),
                   ),
                 ]),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             SizedBox(width: 76, child: Text(
               i == 0
                   ? '${steps[i].$2}'
                   : '${steps[i].$2} · ${_pct(steps[i].$2, steps[i - 1].$2)}',
               textAlign: TextAlign.right,
-              style: ZineText.value(size: 11.5),
+              style: ADText.rowName(),
             )),
           ]),
         ),
@@ -299,9 +301,9 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
 
   Widget _sources(AffiliateLinkStats s) {
     final items = <(String, int, IconData, Color)>[
-      ('QR scans', s.srcQr, PhosphorIcons.qrCode(PhosphorIconsStyle.bold), Zine.blue),
-      ('Link taps', s.srcLink, PhosphorIcons.linkSimple(PhosphorIconsStyle.bold), Zine.lime),
-      ('Shares', s.srcShare, PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), Zine.lilac),
+      ('QR scans', s.srcQr, PhosphorIcons.qrCode(PhosphorIconsStyle.bold), AD.newGroup),
+      ('Link taps', s.srcLink, PhosphorIcons.linkSimple(PhosphorIconsStyle.bold), AD.primaryBadge),
+      ('Shares', s.srcShare, PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), AD.micIdleBg),
     ];
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final it in items)
@@ -310,16 +312,16 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
             padding: EdgeInsets.only(right: it == items.last ? 0 : 10),
             // Metric card (§7.11).
             child: ZineCard(
-              radius: Zine.rSm,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-              boxShadow: Zine.shadowXs,
+              radius: Msg.rLg,
+              padding: const EdgeInsets.symmetric(vertical: Msg.s3, horizontal: Msg.s2),
+              boxShadow: const <BoxShadow>[],
               child: Column(children: [
                 ZineIconBadge(icon: it.$3, color: it.$4, size: 28),
-                const SizedBox(height: 8),
-                Text('${it.$2}', style: ZineText.stat(size: 20)),
+                const SizedBox(height: Msg.s2),
+                Text('${it.$2}', style: ADText.appTitle().copyWith(fontSize: 20)),
                 const SizedBox(height: 2),
-                Text(it.$1.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.kicker(size: 8.5)),
+                Text(it.$1, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ADText.sectionLabel()),
               ]),
             ),
           ),
@@ -329,26 +331,26 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
 
   /// Conversion row — ledger style (§7.10): label + dotted leader + mint value.
   Widget _conversionRow(AffiliateConversion c) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s2),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
             Flexible(
               child: Text('${c.maskedUser} purchased',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
+                  style: ADText.rowName().copyWith(fontWeight: FontWeight.w600)),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s2),
             Expanded(
               child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                  style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                  style: ADText.preview(c: AD.textTertiary)),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s2),
             Text('+${affCoinsLabel(c.coins)}',
-                style: ZineText.value(size: 13.5, weight: FontWeight.w900, color: Zine.mintInk)),
+                style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 2),
-          Text(fmtAffDate(c.ts).toUpperCase(),
-              style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+          Text(fmtAffDate(c.ts),
+              style: ADText.sectionLabel(c: AD.textTertiary)),
         ]),
       );
 
@@ -361,11 +363,11 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _assets.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            separatorBuilder: (_, __) => const SizedBox(width: Msg.s3),
             itemBuilder: (_, i) => _assetCard(_assets[i]),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
       ],
       ZineButton(
         label: _generating
@@ -399,24 +401,24 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
             child: Container(
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
+                borderRadius: BorderRadius.circular(Msg.rLg),
+                border: Border.all(color: AD.borderCard, width: 1),
+                boxShadow: const <BoxShadow>[],
               ),
               // CF-AVIF transformed variant, disk-cached (existing image pipeline).
               child: FutureBuilder<File?>(
                 future: AvatarCache.get(a.url, 480),
                 builder: (_, snap) => snap.data == null
-                    ? Container(color: Zine.paper2,
+                    ? Container(color: AD.card,
                         child: const Center(child: SizedBox(width: 18, height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))))
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AD.primaryBadge))))
                     : Image.file(snap.data!, fit: BoxFit.cover,
                         width: double.infinity, height: double.infinity),
               ),
             ),
           ),
-          const SizedBox(height: 6),
-          Text(a.format.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+          const SizedBox(height: Msg.s2),
+          Text(a.format, style: ADText.sectionLabel()),
         ]),
       ),
     );
@@ -482,7 +484,7 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
   Widget build(BuildContext context) {
     final aspect = _LinkDetailScreenState._assetAspect(widget.asset.format);
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'Share ${widget.asset.format}',
         tag: 'qr included',
@@ -491,9 +493,9 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
         Expanded(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(Msg.s4),
               child: _image == null
-                  ? const CircularProgressIndicator(color: Zine.blueInk)
+                  ? const CircularProgressIndicator(color: AD.primaryBadge)
                   : RepaintBoundary(
                       key: _boundaryKey,
                       child: AspectRatio(
@@ -510,10 +512,10 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
                               left: 0, right: 0,
                               child: Center(
                                 child: Container(
-                                  padding: const EdgeInsets.all(6),
+                                  padding: const EdgeInsets.all(Msg.s2),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(Msg.rMd),
                                   ),
                                   child: QrImageView(
                                     data: widget.link.url,
@@ -532,7 +534,7 @@ class _AssetShareScreenState extends State<AssetShareScreen> {
         ),
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
             child: ZineButton(
               label: 'Share with QR',
               fullWidth: true,
@@ -560,16 +562,17 @@ class _TimeseriesChart extends StatelessWidget {
       return Container(
         height: 120, alignment: Alignment.center,
         decoration: BoxDecoration(
-            border: Border.all(color: Zine.inkMute, width: 2),
-            borderRadius: BorderRadius.circular(Zine.rSm)),
-        child: Text('No activity in this period yet', style: ZineText.sub(size: 12.5)),
+            border: Border.all(color: AD.textTertiary, width: 2),
+            borderRadius: BorderRadius.circular(Msg.rLg)),
+        child: Text('No activity in this period yet', style: ADText.preview()),
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(10),
-        boxShadow: Zine.shadowXs,
+        color: AD.card,
+        radius: Msg.rLg,
+        padding: const EdgeInsets.all(Msg.s3),
+        boxShadow: const <BoxShadow>[],
         child: SizedBox(
           height: 130,
           width: double.infinity,
@@ -579,11 +582,11 @@ class _TimeseriesChart extends StatelessWidget {
           ),
         ),
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: Msg.s2),
       Row(children: [
-        _legend(Zine.blue, 'Clicks'),
-        const SizedBox(width: 14),
-        _legend(Zine.mintInk, 'Earnings'),
+        _legend(AD.newGroup, 'Clicks'),
+        const SizedBox(width: Msg.s4),
+        _legend(AD.online, 'Earnings'),
       ]),
     ]);
   }
@@ -592,10 +595,10 @@ class _TimeseriesChart extends StatelessWidget {
         Container(width: 11, height: 11,
             decoration: BoxDecoration(
                 color: c,
-                border: Border.all(color: Zine.ink, width: 1.5),
+                border: Border.all(color: AD.borderCard, width: 1.5),
                 borderRadius: BorderRadius.circular(3))),
-        const SizedBox(width: 5),
-        Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+        const SizedBox(width: Msg.s1),
+        Text(label, style: ADText.sectionLabel()),
       ]);
 }
 
@@ -612,16 +615,16 @@ class _BarsPainter extends CustomPainter {
     final slot = size.width / n;
     final barW = (slot * .55).clamp(1.0, 14.0);
 
-    final barPaint = Paint()..color = Zine.blue;
+    final barPaint = Paint()..color = AD.newGroup;
     final barEdge = Paint()
-      ..color = Zine.ink
+      ..color = AD.textPrimary
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
     final linePaint = Paint()
-      ..color = Zine.mintInk
+      ..color = AD.online
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
-    final dotPaint = Paint()..color = Zine.mintInk;
+    final dotPaint = Paint()..color = AD.online;
 
     // clicks bars
     for (var i = 0; i < n; i++) {

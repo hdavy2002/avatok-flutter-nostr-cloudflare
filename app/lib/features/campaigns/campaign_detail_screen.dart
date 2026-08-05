@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Campaign detail dashboard (Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md) —
 /// header (name/status/progress/spend), a filterable per-contact list, and
@@ -173,21 +174,21 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       onRefresh: _reload,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(Msg.s5),
         children: [
           _headerCard(c),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           _actionRow(c),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           _shortcutRow(),
-          const SizedBox(height: 18),
-          Text('CONTACTS', style: ADText.sectionLabel()),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s4),
+          Text('Contacts', style: ADText.sectionLabel()),
+          const SizedBox(height: Msg.s3),
           _filterChips(),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           if (filtered.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
+              padding: const EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(
                 child: Text('No contacts match this filter.',
                     style: ADText.preview(c: AD.textSecondary)),
@@ -196,7 +197,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           else
             for (final contact in filtered) ...[
               _contactTile(contact),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s3),
             ],
         ],
       ),
@@ -216,7 +217,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: Row(children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -234,7 +235,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s4),
               Expanded(
                 child: Text(_campaign?.name.isNotEmpty == true ? _campaign!.name : 'Campaign',
                     style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -256,13 +257,13 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           constraints: BoxConstraints(minHeight: box.maxHeight),
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(Msg.s6),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.duotone),
                     size: 48, color: AD.danger),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s4),
                 Text(message, textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 _retryButton(),
               ]),
             ),
@@ -277,15 +278,15 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: _load,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Text('Retry', style: ADText.rowName()),
         ]),
       ),
@@ -303,7 +304,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
     final spendPct = spendCap <= 0 ? null : (spent / spendCap).clamp(0.0, 1.0);
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
@@ -316,19 +317,19 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
                 style: ADText.threadName().copyWith(fontSize: 19),
                 maxLines: 2, overflow: TextOverflow.ellipsis),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           _statusChip(c.status),
         ]),
         if (c.goalText.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s2),
           Text(c.goalText, style: ADText.preview(c: AD.textSecondary),
               maxLines: 2, overflow: TextOverflow.ellipsis),
         ],
-        const SizedBox(height: 16),
-        Text('PROGRESS', style: ADText.sectionLabel()),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s4),
+        Text('Progress', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s2),
         ClipRRect(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(Msg.rSm),
           child: LinearProgressIndicator(
             value: pct,
             minHeight: 8,
@@ -336,7 +337,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
             valueColor: const AlwaysStoppedAnimation<Color>(AD.online),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s2),
         Row(children: [
           Expanded(
             child: Text('$done of $total called', style: ADText.preview(c: AD.textSecondary)),
@@ -344,12 +345,12 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           Text('${c.nAnswered} answered · ${c.nMissed} missed',
               style: ADText.statCaption(c: AD.textTertiary)),
         ]),
-        const SizedBox(height: 16),
-        Text('SPEND', style: ADText.sectionLabel()),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s4),
+        Text('Spend', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s2),
         if (spendPct != null) ...[
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(Msg.rSm),
             child: LinearProgressIndicator(
               value: spendPct,
               minHeight: 8,
@@ -358,17 +359,17 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
                   spendPct >= 1.0 ? AD.danger : AD.iconBell),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Row(children: [
             PhosphorIcon(PhosphorIcons.coin(PhosphorIconsStyle.bold), size: 13, color: AD.textTertiary),
-            const SizedBox(width: 4),
+            const SizedBox(width: Msg.s1),
             Text('$spent of $spendCap tokens spent',
                 style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ] else ...[
           Row(children: [
             PhosphorIcon(PhosphorIcons.coin(PhosphorIconsStyle.bold), size: 13, color: AD.textTertiary),
-            const SizedBox(width: 4),
+            const SizedBox(width: Msg.s1),
             Text('$spent tokens spent · no cap set',
                 style: ADText.statCaption(c: AD.textTertiary)),
           ]),
@@ -400,7 +401,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         color = AD.outgoingCall; // ready/pausing/cancelling/window_wait
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(AD.rChip),
@@ -424,7 +425,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           onPressed: _busy || !canPause ? null : _pause,
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s3),
       Expanded(
         child: _actionButton(
           label: 'Resume',
@@ -432,7 +433,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           onPressed: _busy || !canResume ? null : _resume,
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s3),
       Expanded(
         child: _actionButton(
           label: 'Cancel',
@@ -456,15 +457,15 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: onPressed,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s3),
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           border: Border.all(color: disabled ? AD.borderControl : (danger ? AD.danger.withValues(alpha: 0.4) : AD.borderControl), width: 1),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(icon, size: 18, color: fg),
-          const SizedBox(height: 4),
+          const SizedBox(height: Msg.s1),
           Text(label, style: ADText.statCaption(c: fg)),
         ]),
       ),
@@ -480,7 +481,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
           onTap: _openInbox,
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s3),
       Expanded(
         child: _shortcutButton(
           label: 'Open analytics',
@@ -496,7 +497,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -504,7 +505,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(icon, size: 16, color: AD.iconSearch),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Flexible(
             child: Text(label, style: ADText.rowName().copyWith(fontSize: 13),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -544,7 +545,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         children: [
           for (final e in entries) ...[
             _filterChip(e.$1, e.$2),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
           ],
         ],
       ),
@@ -557,10 +558,10 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _filter = f),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: active ? AD.primaryBadge.withValues(alpha: 0.16) : AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(
               color: active ? AD.primaryBadge.withValues(alpha: 0.5) : AD.borderControl, width: 1),
         ),
@@ -573,7 +574,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
   Widget _contactTile(CampaignContactStat contact) {
     final name = (contact.name ?? '').isNotEmpty ? contact.name! : (contact.e164 ?? 'Unknown contact');
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
@@ -587,7 +588,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
               const SizedBox(height: 2),
               Text(contact.e164!, style: ADText.preview(c: AD.textSecondary)),
             ],
-            const SizedBox(height: 4),
+            const SizedBox(height: Msg.s1),
             Text(
               'Attempts: ${contact.attempts}'
               '${(contact.lastOutcome ?? '').isNotEmpty ? ' · ${contact.lastOutcome}' : ''}',
@@ -595,7 +596,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
             ),
           ]),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         _contactStatusChip(contact.status),
       ]),
     );
@@ -623,7 +624,7 @@ class _CampaignDetailScreenState extends State<CampaignDetailScreen> {
         color = AD.textTertiary; // pending
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(AD.rChip),

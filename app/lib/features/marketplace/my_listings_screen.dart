@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'edit_listing_screen.dart';
 
 /// Friendly status label (the raw 'published' shows as 'live' to owners).
@@ -68,9 +70,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
               ]);
             }
             return ListView.separated(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(Msg.s3),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
               itemBuilder: (_, i) => _MyListingRow(card: items[i], onChanged: _reload),
             );
           },
@@ -112,8 +114,8 @@ class _MyListingRow extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: ListTile(
         leading: card.coverUrl != null
-            ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(6))
-            : Icon(Icons.inventory_2_outlined, size: 32, color: AD.textTertiary),
+            ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(Msg.rSm))
+            : PhosphorIcon(PhosphorIcons.package(PhosphorIconsStyle.regular), size: 32, color: AD.textTertiary),
         title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
             style: ADText.rowName()),
         subtitle: Text('${card.displayPrice} · ${_statusLabel(card.status)}',

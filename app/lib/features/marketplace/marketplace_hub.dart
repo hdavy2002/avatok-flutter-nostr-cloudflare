@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../explore/explore_home.dart';
 import 'my_listings_screen.dart';
@@ -46,10 +48,10 @@ class MarketplaceHub extends StatelessWidget {
         title: Text('Marketplace', style: ADText.appTitle()),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Msg.s4),
         children: [
           _Tile(
-            icon: Icons.storefront,
+            icon: PhosphorIcons.storefront(PhosphorIconsStyle.regular),
             title: 'Browse marketplace',
             subtitle: 'Buy, sell & social listings near you',
             onTap: () {
@@ -59,16 +61,16 @@ class MarketplaceHub extends StatelessWidget {
               ));
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           _Tile(
-            icon: Icons.add_box_outlined,
+            icon: PhosphorIcons.plusSquare(PhosphorIconsStyle.regular),
             title: 'Create listing',
             subtitle: 'Sell, buy or post a social listing',
             onTap: () => _openListingComposer(context),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           _Tile(
-            icon: Icons.inventory_2_outlined,
+            icon: PhosphorIcons.package(PhosphorIconsStyle.regular),
             title: 'My listings',
             subtitle: 'Manage, edit, mark sold or renew',
             onTap: () {
@@ -97,7 +99,7 @@ class _Tile extends StatelessWidget {
         leading: Icon(icon, size: 28, color: AD.iconSearch),
         title: Text(title, style: ADText.rowName()),
         subtitle: Text(subtitle, style: ADText.preview()),
-        trailing: Icon(Icons.chevron_right, color: AD.textTertiary),
+        trailing: PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.regular), color: AD.textTertiary),
         onTap: onTap,
       ),
     );

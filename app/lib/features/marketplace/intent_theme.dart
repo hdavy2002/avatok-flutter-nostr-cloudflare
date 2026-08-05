@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../explore/widgets.dart';
 
 /// Marketplace intent theming — the SHARED pale palette (M-D6, owner decision
@@ -380,7 +381,7 @@ class MarketplaceCard extends StatelessWidget {
           ),
           Container(height: 1, color: it.tintBorder),
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -396,7 +397,7 @@ class MarketplaceCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: ADText.preview(c: AD.textSecondary)),
                 ],
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s2),
                 Row(children: [
                   if (label.isNotEmpty)
                     Flexible(
@@ -411,12 +412,12 @@ class MarketplaceCard extends StatelessWidget {
                   RatingStars(rating: card.ratingAvg, count: reviewN, size: 13),
                 ]),
                 if (_hasLocation) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: Msg.s1),
                   Row(children: [
                     if (card.country != null) ...[
                       Text(flagEmoji(card.country),
                           style: const TextStyle(fontSize: 12)),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: Msg.s1),
                     ],
                     if ((card.location ?? '').isNotEmpty)
                       Expanded(
@@ -446,16 +447,16 @@ class _IntentChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: theme.chipBg,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: theme.tintBorder, width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         PhosphorIcon(theme.icon, size: 11, color: theme.chipFg),
-        const SizedBox(width: 4),
-        Text(theme.label.toUpperCase(),
+        const SizedBox(width: Msg.s1),
+        Text(theme.label,
             style: ADText.statCaption(c: theme.chipFg)),
       ]),
     );
@@ -469,13 +470,13 @@ class _NewBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
       decoration: BoxDecoration(
         color: AD.card,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: theme.tintBorder, width: 1),
       ),
-      child: Text('NEW', style: ADText.statCaption(c: theme.tint)),
+      child: Text('New', style: ADText.statCaption(c: theme.tint)),
     );
   }
 }

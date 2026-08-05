@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/analytics.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'sell_listing_flow.dart' show kMarketCurrencies;
 
 /// AvaMarketplace P5 — "Call Agent" sheet (Zine-styled). Captures the buyer's
@@ -30,13 +31,13 @@ Future<bool> showCallAgentSheet(
         filled: true,
         fillColor: AD.inputField,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.iconSearch, width: 1)),
       );
   Widget label(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 6, top: 2),
+        padding: const EdgeInsets.only(bottom: Msg.s2, top: 2),
         child: Text(t, style: TextStyle(fontFamily: ADText.family, fontSize: 14, fontWeight: FontWeight.w700, color: AD.textPrimary)),
       );
 
@@ -56,33 +57,33 @@ Future<bool> showCallAgentSheet(
         padding: EdgeInsets.fromLTRB(20, 16, 20,
             20 + MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 14),
+          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
               decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)))),
-          Text('Call the seller’s agent', style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 19, color: AD.textPrimary)),
-          const SizedBox(height: 6),
+          Text('Call the seller’s agent', style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 19, color: AD.textPrimary)),
+          const SizedBox(height: Msg.s2),
           Text('Your agent negotiates in the background — you can keep browsing. The result lands in your chat as a voice note.',
               style: TextStyle(fontFamily: ADText.family, fontSize: 13, color: AD.textSecondary)),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           label('Your max price'),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: TextField(
               controller: maxCtrl, keyboardType: TextInputType.number,
               decoration: box('e.g. 35000'),
             )),
-            const SizedBox(width: 12),
+            const SizedBox(width: Msg.s3),
             SizedBox(width: 110, child: DropdownButtonFormField<String>(
               value: cur, isExpanded: true, decoration: box(null),
               items: [for (final c in kMarketCurrencies) DropdownMenuItem(value: c, child: Text(c))],
               onChanged: (v) => setState(() => cur = v ?? 'USD'),
             )),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           label('Must-haves (optional)'),
           TextField(controller: mustCtrl, decoration: box('e.g. must include warranty, pickup this week')),
           if (error != null)
-            Padding(padding: const EdgeInsets.only(top: 10),
+            Padding(padding: const EdgeInsets.only(top: Msg.s3),
                 child: AdErrorMsg(error!)),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           if (dailyLimited)
             AdButton(
               label: 'Message seller',

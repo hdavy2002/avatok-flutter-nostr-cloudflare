@@ -551,7 +551,7 @@ class _AcceptedStageState extends State<AcceptedStage>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ScaleTransition(
-                    scale: CurvedAnimation(parent: _pop, curve: Curves.elasticOut),
+                    scale: CurvedAnimation(parent: _pop, curve: Curves.easeOutCubic),
                     child: Container(
                       width: 128,
                       height: 128,

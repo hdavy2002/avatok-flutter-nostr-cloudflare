@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 // ---------------------------------------------------------------------------
 // AVA-CAMP-FL-ANALYTICS — campaign analytics (account rollup + per-campaign).
@@ -85,10 +86,10 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
           onRefresh: _refresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(Msg.s5),
             children: [
               _PeriodToggle(period: _period, onChanged: _setPeriod),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
               _AnalyticsCard(
                 icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
                 iconColor: AD.iconSearch,
@@ -96,7 +97,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
                 future: _spend,
                 builder: (data) => _spendBody(data),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _AnalyticsCard(
                 icon: PhosphorIcons.trophy(PhosphorIconsStyle.bold),
                 iconColor: AD.outgoingCall,
@@ -104,7 +105,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
                 future: _leaderboard,
                 builder: (data) => _leaderboardBody(data),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _AnalyticsCard(
                 icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
                 iconColor: AD.iconPhone,
@@ -112,7 +113,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
                 future: _volume,
                 builder: (data) => _volumeBody(data),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _AnalyticsCard(
                 icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
                 iconColor: AD.iconShield,
@@ -152,7 +153,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
       children: [
         for (final r in rows) ...[
           _LeaderboardRow(name: r.name, answerRate: r.answerRate, bookingRate: r.bookingRate),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
         ],
       ],
     );
@@ -186,7 +187,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: Row(children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -205,7 +206,7 @@ class _CampaignAnalyticsScreenState extends State<CampaignAnalyticsScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s4),
               Expanded(
                 child: Text(title,
                     style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -276,7 +277,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
           future: _funnel,
           builder: (data) => _funnelBody(data),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         _AnalyticsCard(
           icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
           iconColor: AD.iconShield,
@@ -284,7 +285,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
           future: _outcomes,
           builder: (data) => _outcomesBody(data),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         _AnalyticsCard(
           icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
           iconColor: AD.iconBell,
@@ -292,7 +293,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
           future: _hourOfDay,
           builder: (data) => _hourOfDayBody(data),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         _AnalyticsCard(
           icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
           iconColor: AD.outgoingCall,
@@ -300,7 +301,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
           future: _cost,
           builder: (data) => _costBody(data),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         _AnalyticsCard(
           icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
           iconColor: AD.iconVideo,
@@ -308,7 +309,7 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
           future: _machineRate,
           builder: (data) => _singleRateBody(data, key: 'rate'),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         _AnalyticsCard(
           icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
           iconColor: AD.iconCamera,
@@ -359,11 +360,11 @@ class _CampaignAnalyticsCardsState extends State<CampaignAnalyticsCards> {
       if (days.isNotEmpty && tokens.isNotEmpty)
         _TimeSeriesBars(labels: days, values: tokens, color: AD.outgoingCall, unit: 'tok'),
       if (perAnswer != null || perBooking != null) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Row(children: [
           if (perAnswer != null)
             Expanded(child: _StatChip(label: 'Per answer', value: _fmtNum(_asNum(perAnswer)))),
-          if (perAnswer != null && perBooking != null) const SizedBox(width: 10),
+          if (perAnswer != null && perBooking != null) const SizedBox(width: Msg.s3),
           if (perBooking != null)
             Expanded(child: _StatChip(label: 'Per booking', value: _fmtNum(_asNum(perBooking)))),
         ]),
@@ -392,7 +393,7 @@ class _PeriodToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(Msg.s1),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rTab),
@@ -411,7 +412,7 @@ class _PeriodToggle extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => onChanged(value),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s3),
         decoration: BoxDecoration(
           color: active ? AD.primaryBadge : Colors.transparent,
           borderRadius: BorderRadius.circular(AD.rTab - 2),
@@ -446,7 +447,7 @@ class _AnalyticsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
@@ -455,7 +456,7 @@ class _AnalyticsCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           PhosphorIcon(icon, size: 18, color: iconColor),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text(title,
                 style: ADText.rowName().copyWith(fontSize: 15),
@@ -465,13 +466,13 @@ class _AnalyticsCard extends StatelessWidget {
         ]),
         const SizedBox(height: 2),
         Text(_kAnalyticsLagNote, style: ADText.statCaption(c: AD.textFaint)),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         FutureBuilder<Map<String, dynamic>>(
           future: future,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
               return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 18),
+                padding: EdgeInsets.symmetric(vertical: Msg.s4),
                 child: Center(
                   child: SizedBox(
                     width: 22,
@@ -508,7 +509,7 @@ class _UnavailableBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s3),
       child: Text(
         _kUnavailableMessage,
         style: ADText.preview(c: AD.textTertiary),
@@ -536,7 +537,7 @@ class _BarList extends StatelessWidget {
       children: [
         for (var i = 0; i < n; i++) ...[
           _barRow(labels[i], values[i], maxV),
-          if (i != n - 1) const SizedBox(height: 10),
+          if (i != n - 1) const SizedBox(height: Msg.s3),
         ],
       ],
     );
@@ -552,10 +553,10 @@ class _BarList extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         Text(_fmtNum(value), style: ADText.statCaption(c: AD.textTertiary)),
       ]),
-      const SizedBox(height: 4),
+      const SizedBox(height: Msg.s1),
       ClipRRect(
         borderRadius: BorderRadius.circular(4),
         child: LayoutBuilder(builder: (context, box) {
@@ -613,10 +614,10 @@ class _TimeSeriesBars extends StatelessWidget {
   Widget _bar(String label, num value, num maxV) {
     final h = maxV <= 0 ? 2.0 : (_maxBarHeight * (value / maxV).clamp(0.0, 1.0)).toDouble();
     return Padding(
-      padding: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.only(right: Msg.s3),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(_fmtNum(value), style: ADText.statCaption(c: AD.textTertiary)),
-        const SizedBox(height: 4),
+        const SizedBox(height: Msg.s1),
         Container(
           width: _barWidth,
           height: h < 2 ? 2 : h,
@@ -625,7 +626,7 @@ class _TimeSeriesBars extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         SizedBox(
           width: _barWidth + 14,
           child: Text(label,
@@ -654,7 +655,7 @@ class _FunnelSteps extends StatelessWidget {
       children: [
         for (var i = 0; i < steps.length; i++) ...[
           _step(steps[i], maxV),
-          if (i != steps.length - 1) const SizedBox(height: 10),
+          if (i != steps.length - 1) const SizedBox(height: Msg.s3),
         ],
       ],
     );
@@ -670,10 +671,10 @@ class _FunnelSteps extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         Text(_fmtNum(s.count), style: ADText.statCaption(c: AD.textTertiary)),
       ]),
-      const SizedBox(height: 4),
+      const SizedBox(height: Msg.s1),
       ClipRRect(
         borderRadius: BorderRadius.circular(4),
         child: LayoutBuilder(builder: (context, box) {
@@ -704,7 +705,7 @@ class _LeaderboardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(
         color: AD.cardHover,
         borderRadius: BorderRadius.circular(AD.rStatCard),
@@ -717,9 +718,9 @@ class _LeaderboardRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         _miniStat('Answer', answerRate, AD.online),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         _miniStat('Booking', bookingRate, AD.outgoingCall),
       ]),
     );
@@ -745,9 +746,9 @@ class _RateBar extends StatelessWidget {
     final frac = (pct / 100).clamp(0.0, 1.0).toDouble();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('${_fmtNum(pct)}%', style: ADText.rowName().copyWith(fontSize: 20)),
-      const SizedBox(height: 8),
+      const SizedBox(height: Msg.s2),
       ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(Msg.rSm),
         child: LinearProgressIndicator(
           value: frac,
           minHeight: 8,
@@ -769,7 +770,7 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
       decoration: BoxDecoration(
         color: AD.cardHover,
         borderRadius: BorderRadius.circular(AD.rStatCard),

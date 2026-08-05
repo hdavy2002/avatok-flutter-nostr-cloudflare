@@ -87,7 +87,7 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
     final targetX = toLeft <= toRight ? b.left : b.right;
     final target = Offset(targetX, p.dy.clamp(b.top, b.bottom));
     _snap = Tween<Offset>(begin: p, end: target).animate(
-      CurvedAnimation(parent: _spring, curve: Curves.easeOutBack),
+      CurvedAnimation(parent: _spring, curve: Curves.easeOutCubic),
     );
     _spring
       ..reset()

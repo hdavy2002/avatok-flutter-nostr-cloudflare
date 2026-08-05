@@ -4,7 +4,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../identity/identity_screen.dart';
 import 'affiliate_api.dart';
@@ -98,19 +100,19 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
       final go = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
-          backgroundColor: Zine.card,
+          backgroundColor: AD.card,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            side: const BorderSide(color: AD.borderCard, width: 1),
           ),
-          title: Text('Verify your email first', style: ZineText.cardTitle()),
+          title: Text('Verify your email first', style: ADText.appTitle()),
           content: Text(
               'Becoming an affiliate just needs a verified email + password '
               '(free, takes a minute). Verify now?',
-              style: ZineText.sub(size: 14)),
+              style: ADText.preview()),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false),
-                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+                child: Text('Not now', style: ADText.preview(c: AD.textSecondary))),
             ZineButton(label: 'Verify email', fontSize: 15,
                 onPressed: () => Navigator.pop(c, true)),
           ],
@@ -139,17 +141,17 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
 
   /// Phosphor icon + accent per promotable app (zine accent rotation).
   (IconData, Color, String) _appMeta(String key) => switch (key) {
-        'avalive' => (PhosphorIcons.broadcast(PhosphorIconsStyle.bold), Zine.coral, 'AvaLive'),
-        'avaconsult' => (PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), Zine.blue, 'AvaConsult'),
-        'avavoice' => (PhosphorIcons.microphone(PhosphorIconsStyle.bold), Zine.lilac, 'AvaVoice'),
-        _ => (PhosphorIcons.broadcast(PhosphorIconsStyle.bold), Zine.coral, 'AvaLive'),
+        'avalive' => (PhosphorIcons.broadcast(PhosphorIconsStyle.bold), AD.danger, 'AvaLive'),
+        'avaconsult' => (PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), AD.newGroup, 'AvaConsult'),
+        'avavoice' => (PhosphorIcons.microphone(PhosphorIconsStyle.bold), AD.micIdleBg, 'AvaVoice'),
+        _ => (PhosphorIcons.broadcast(PhosphorIconsStyle.bold), AD.danger, 'AvaLive'),
       };
 
   @override
   Widget build(BuildContext context) {
     if (!RemoteConfig.avaAffiliateEnabled) {
       return Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         appBar: const ZineAppBar(title: 'AvaAffiliate', markWord: 'Affiliate'),
         body: Center(
           child: ZineEmptyState(
@@ -160,7 +162,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'AvaAffiliate',
         markWord: 'Affiliate',
@@ -182,7 +184,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
                   icon: PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
                   text: 'Could not reach the server.',
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s4),
                 ZineButton(
                   label: 'Retry',
                   variant: ZineButtonVariant.ghost,
@@ -192,7 +194,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
               ]),
             )
           : !_meKnown && _me == null
-              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+              ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
               : _isAffiliate
                   ? _dashboard()
                   : _landing(),
@@ -202,35 +204,35 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
   // ── landing (not an affiliate yet) ─────────────────────────────────────────
   Widget _landing() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
       children: [
         // Hero — mint money card (§7.3 accent fill), hard offset shadow.
         ZineCard(
-          color: Zine.mint,
-          padding: const EdgeInsets.all(20),
-          boxShadow: Zine.shadow,
+          color: AD.online,
+          padding: const EdgeInsets.all(Msg.s5),
+          boxShadow: const <BoxShadow>[],
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
-                color: Zine.card, size: 42),
-            const SizedBox(height: 14),
-            Text('Earn 10% for life', style: ZineText.hero(size: 30)),
-            const SizedBox(height: 10),
+                color: AD.card, size: 42),
+            const SizedBox(height: Msg.s4),
+            Text('Earn 10% for life', style: ADText.appTitle().copyWith(fontSize: 30)),
+            const SizedBox(height: Msg.s3),
             Text(
               'Promote any creator listing on AvaLive, AvaConsult or AvaVoice. '
               'Every user who joins through your link earns you 10% of '
               'everything they ever spend on it — paid instantly to your AvaWallet.',
-              style: ZineText.sub(size: 13.5, color: Zine.ink),
+              style: ADText.preview(c: AD.textPrimary),
             ),
           ]),
         ),
-        const SizedBox(height: 22),
-        _how(PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.blue, 'Pick a product',
+        const SizedBox(height: Msg.s5),
+        _how(PhosphorIcons.storefront(PhosphorIconsStyle.bold), AD.newGroup, 'Pick a product',
             'Browse listings across the three apps and grab your unique link + QR.'),
-        _how(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), Zine.lilac, 'Share anywhere',
+        _how(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), AD.micIdleBg, 'Share anywhere',
             'Stories, group chats, print the QR — every signup binds to you for life.'),
-        _how(PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint, 'Get paid instantly',
+        _how(PhosphorIcons.wallet(PhosphorIconsStyle.bold), AD.online, 'Get paid instantly',
             'Commission lands in your AvaWallet the moment a referred purchase settles. The creator\'s share is never touched.'),
-        const SizedBox(height: 20),
+        const SizedBox(height: Msg.s5),
         ZineButton(
           label: 'Become an Affiliate',
           fullWidth: true,
@@ -238,23 +240,23 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
           loading: _registering,
           onPressed: _registering ? null : _register,
         ),
-        const SizedBox(height: 10),
-        Text('FREE TO JOIN. ALL YOU NEED IS A VERIFIED EMAIL.',
+        const SizedBox(height: Msg.s3),
+        Text('Free to join. All you need is a verified email.',
             textAlign: TextAlign.center,
-            style: ZineText.kicker(size: 10, color: Zine.inkMute)),
+            style: ADText.sectionLabel(c: AD.textTertiary)),
       ],
     );
   }
 
   Widget _how(IconData icon, Color accent, String title, String body) => Padding(
-        padding: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.only(bottom: Msg.s4),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: icon, color: accent, size: 40),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.cardTitle(size: 16)),
-            const SizedBox(height: 3),
-            Text(body, style: ZineText.sub(size: 12.5)),
+            Text(title, style: ADText.threadName()),
+            const SizedBox(height: Msg.s1),
+            Text(body, style: ADText.preview()),
           ])),
         ]),
       );
@@ -265,25 +267,26 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
     final code = _me?.affiliate?.code ?? '';
     return RefreshIndicator(
       onRefresh: _load,
-      color: Zine.blueInk,
+      color: AD.primaryBadge,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
         children: [
           // Share-code row with copy button (bordered circle).
           if (code.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.only(bottom: Msg.s4),
               child: ZineCard(
-                radius: Zine.rSm,
-                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-                boxShadow: Zine.shadowXs,
+                color: AD.card,
+                radius: Msg.rLg,
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s3, Msg.s3),
+                boxShadow: const <BoxShadow>[],
                 child: Row(children: [
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('AFFILIATE CODE', style: ZineText.kicker(size: 9.5)),
+                      Text('Affiliate code', style: ADText.sectionLabel()),
                       const SizedBox(height: 2),
                       Text(code, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.tag(size: 15)),
+                          style: ADText.sectionLabel()),
                     ]),
                   ),
                   ZineBackButton(
@@ -300,21 +303,21 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
           // Metric cards (§7.11) — accent rotation.
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Expanded(child: _stat('Lifetime earned', affCoinsLabel(t.lifetimeCoins),
-                PhosphorIcons.trophy(PhosphorIconsStyle.bold), Zine.mint,
+                PhosphorIcons.trophy(PhosphorIconsStyle.bold), AD.online,
                 money: true, sub: '${t.lifetimeCoins} coins')),
-            const SizedBox(width: 12),
+            const SizedBox(width: Msg.s3),
             Expanded(child: _stat('This month', affCoinsLabel(t.monthCoins),
-                PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), Zine.lime, money: true)),
+                PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), AD.primaryBadge, money: true)),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Expanded(child: _stat('Held (refund window)', affCoinsLabel(t.heldCoins),
-                PhosphorIcons.hourglass(PhosphorIconsStyle.bold), Zine.lilac)),
-            const SizedBox(width: 12),
+                PhosphorIcons.hourglass(PhosphorIconsStyle.bold), AD.micIdleBg)),
+            const SizedBox(width: Msg.s3),
             Expanded(child: _stat('Referred users', '${t.referredUsers}',
-                PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.blue)),
+                PhosphorIcons.usersThree(PhosphorIconsStyle.bold), AD.newGroup)),
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           ZineButton(
             label: 'Promote a new product',
             fullWidth: true,
@@ -322,19 +325,19 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
             trailingIcon: false,
             onPressed: _openPicker,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: Msg.s5),
           Row(children: [
-            Expanded(child: Text('MY LINKS', style: ZineText.kicker(size: 11.5))),
+            Expanded(child: Text('My links', style: ADText.sectionLabel())),
             ZineLink('EARNINGS →', onTap: () => Navigator.push(context, MaterialPageRoute(
                 builder: (_) => AffiliateEarningsScreen(totals: t)))),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           if (_links == null)
-            const Padding(padding: EdgeInsets.all(28),
-                child: Center(child: CircularProgressIndicator(color: Zine.blueInk)))
+            const Padding(padding: EdgeInsets.all(Msg.s6),
+                child: Center(child: CircularProgressIndicator(color: AD.primaryBadge)))
           else if (_links!.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
+              padding: const EdgeInsets.symmetric(vertical: Msg.s5),
               child: Center(
                 child: ZineEmptyState(
                   icon: PhosphorIcons.linkSimple(PhosphorIconsStyle.bold),
@@ -354,22 +357,22 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
   Widget _stat(String label, String value, IconData icon, Color accent,
           {bool money = false, String? sub}) =>
       ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(14),
-        boxShadow: Zine.shadowXs,
+        radius: Msg.rLg,
+        padding: const EdgeInsets.all(Msg.s4),
+        boxShadow: const <BoxShadow>[],
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: icon, color: accent, size: 30),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(value, style: ZineText.stat(size: 24, color: money ? Zine.mintInk : Zine.ink)),
+            child: Text(value, style: ADText.appTitle(c: money ? AD.online : AD.textPrimary).copyWith(fontSize: 24)),
           ),
-          const SizedBox(height: 3),
-          Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.kicker(size: 9.5)),
+          const SizedBox(height: Msg.s1),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ADText.sectionLabel()),
           if (sub != null)
-            Text(sub.toUpperCase(), style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+            Text(sub, style: ADText.sectionLabel(c: AD.textTertiary)),
         ]),
       );
 
@@ -377,39 +380,39 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
   Widget _linkRow(AffiliateLink l) {
     final (icon, accent, _) = _appMeta(l.app);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.all(12),
-        boxShadow: Zine.shadowXs,
+        radius: Msg.rLg,
+        padding: const EdgeInsets.all(Msg.s3),
+        boxShadow: const <BoxShadow>[],
         onTap: () => Navigator.push(context, MaterialPageRoute(
                 builder: (_) => LinkDetailScreen(link: l)))
             .then((_) => _load()),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: accent, size: 40),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(
                   child: Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 14)),
+                      style: ADText.rowName()),
                 ),
                 if (l.paused) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s2),
                   const ZineSticker('paused', kind: ZineStickerKind.hint),
                 ],
               ]),
-              const SizedBox(height: 3),
-              Text('${l.clicks} clicks · ${l.binds} referred'.toUpperCase(),
-                  style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+              const SizedBox(height: Msg.s1),
+              Text('${l.clicks} clicks · ${l.binds} referred',
+                  style: ADText.sectionLabel(c: AD.textTertiary)),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(affCoinsLabel(l.earnedCoins),
-                style: ZineText.value(size: 14.5, weight: FontWeight.w900, color: Zine.mintInk)),
-            Text('EARNED', style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+                style: ADText.rowName(c: AD.online).copyWith(fontWeight: FontWeight.w700)),
+            Text('Earned', style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),
         ]),
       ),

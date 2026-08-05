@@ -3,7 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
 import 'affiliate_api.dart';
@@ -74,26 +76,26 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
   Widget build(BuildContext context) {
     final t = widget.totals;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(title: 'Earnings', markWord: 'Earnings', tag: 'your 10%, for life'),
       body: RefreshIndicator(
         onRefresh: _load,
-        color: Zine.blueInk,
+        color: AD.primaryBadge,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
           children: [
             Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Expanded(child: StatCard(label: 'Available',
                   icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-                  color: Zine.mint, value: affCoinsLabel(t.availableCoins),
+                  color: AD.online, value: affCoinsLabel(t.availableCoins),
                   sub: '${t.availableCoins} coins')),
-              const SizedBox(width: 12),
+              const SizedBox(width: Msg.s3),
               Expanded(child: StatCard(label: 'Held (refund window)',
                   icon: PhosphorIcons.hourglass(PhosphorIconsStyle.bold),
-                  color: Zine.lilac, value: affCoinsLabel(t.heldCoins),
+                  color: AD.micIdleBg, value: affCoinsLabel(t.heldCoins),
                   sub: 'releases after 7 days')),
             ]),
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: 'Withdraw with AvaPayout',
               fullWidth: true,
@@ -102,31 +104,31 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
               trailingIcon: false,
               onPressed: _withdraw,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             Text(
               'Commissions land in your AvaWallet instantly at settlement and become withdrawable after the 7-day refund window.',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 11.5),
+              style: ADText.preview(),
             ),
-            const SizedBox(height: 22),
-            Text('COMMISSION HISTORY', style: ZineText.kicker(size: 11.5)),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s5),
+            Text('Commission history', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s2),
             if (_failed)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s5),
                 child: Column(children: [
                   ZineEmptyState(
                     icon: PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
                     text: 'Could not load your history.',
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Msg.s4),
                   ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
                       fontSize: 16, onPressed: _load),
                 ]),
               )
             else if (_entries == null)
-              const Padding(padding: EdgeInsets.all(32),
-                  child: Center(child: CircularProgressIndicator(color: Zine.blueInk)))
+              const Padding(padding: EdgeInsets.all(Msg.s6),
+                  child: Center(child: CircularProgressIndicator(color: AD.primaryBadge)))
             else if (_entries!.isEmpty)
               const AffEmpty('No commissions yet.\nShare your links — every referred purchase pays you 10%.')
             else ...[
@@ -134,11 +136,11 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
               if (_cursor != null && _cursor!.isNotEmpty)
                 Center(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(top: Msg.s2),
                     child: _loadingMore
                         ? const SizedBox(width: 18, height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))
-                        : ZineLink('LOAD MORE', onTap: _more),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AD.primaryBadge))
+                        : ZineLink('Load more', onTap: _more),
                   ),
                 ),
             ],
@@ -154,30 +156,29 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
     final positive = amount >= 0;
     final createdAt = ((e['created_at'] as num?) ?? 0).toInt();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s1),
       child: Row(children: [
         ZineIconBadge(
           icon: positive
               ? PhosphorIcons.trendUp(PhosphorIconsStyle.bold)
               : PhosphorIcons.arrowUUpLeft(PhosphorIconsStyle.bold),
-          color: positive ? Zine.mint : Zine.coral,
+          color: positive ? AD.online : AD.danger,
           size: 32,
         ),
-        const SizedBox(width: 11),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${e['title'] ?? (positive ? 'Affiliate commission' : 'Commission reversed')}',
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.value(size: 13.5)),
+                style: ADText.rowName()),
             const SizedBox(height: 1),
-            Text(fmtAffDate(createdAt).toUpperCase(),
-                style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+            Text(fmtAffDate(createdAt),
+                style: ADText.sectionLabel(c: AD.textTertiary)),
           ]),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         Text('${positive ? '+' : '−'}${affCoinsLabel(amount.abs())}',
-            style: ZineText.value(size: 14, weight: FontWeight.w900,
-                color: positive ? Zine.mintInk : Zine.coral)),
+            style: ADText.rowName(c: positive ? AD.online : AD.danger).copyWith(fontWeight: FontWeight.w700)),
       ]),
     );
   }

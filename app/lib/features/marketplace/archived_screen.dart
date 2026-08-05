@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// AvaMarketplace — Archived. Shows the owner's expired + cancelled listings with
 /// a Restore action (→ draft). Restored drafts appear in the "Drafts" section
@@ -60,7 +62,7 @@ class _ArchivedScreenState extends State<ArchivedScreen> {
                 Center(child: Text('Nothing archived yet.', style: ADText.preview())),
               ]);
             }
-            return ListView(padding: const EdgeInsets.all(12), children: [
+            return ListView(padding: const EdgeInsets.all(Msg.s3), children: [
               if (drafts.isNotEmpty) ...[
                 const _SectionHeader('Restored drafts'),
                 for (final c in drafts) _Row(card: c, draft: true, onChanged: _reload),
@@ -82,8 +84,8 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader(this.text);
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-        child: Text(text.toUpperCase(), style: ADText.sectionLabel()),
+        padding: const EdgeInsets.fromLTRB(Msg.s1, Msg.s3, Msg.s1, Msg.s2),
+        child: Text(text, style: ADText.sectionLabel()),
       );
 }
 
@@ -122,7 +124,7 @@ class _Row extends StatelessWidget {
             style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w800))),
+              child: Text('Cancel', style: TextStyle(color: AD.textSecondary, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
           AdButton(label: 'Delete', variant: AdButtonVariant.danger, onPressed: () => Navigator.pop(ctx, true)),
         ],
       ),
@@ -174,13 +176,13 @@ class _Row extends StatelessWidget {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 16, left: 16, right: 16, top: 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Edit draft', style: ADText.threadName()),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           TextField(controller: title, decoration: deco('Title')),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           TextField(controller: desc, maxLines: 3, decoration: deco('Description')),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           TextField(controller: price, keyboardType: TextInputType.number, decoration: deco('Price')),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           AdButton(label: 'Save', fullWidth: true, onPressed: () => Navigator.of(ctx).pop(true)),
         ]),
       ),
@@ -203,19 +205,19 @@ class _Row extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: ListTile(
         leading: card.coverUrl != null
-            ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(6))
-            : Icon(Icons.inventory_2_outlined, size: 32, color: AD.textTertiary),
+            ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(Msg.rSm))
+            : PhosphorIcon(PhosphorIcons.package(PhosphorIconsStyle.regular), size: 32, color: AD.textTertiary),
         title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
         subtitle: Text('${card.displayPrice} · $_label', style: ADText.preview()),
         trailing: draft
             ? Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                IconButton(tooltip: 'Edit', icon: Icon(Icons.edit_outlined, color: AD.textSecondary), onPressed: () => _edit(context)),
+                IconButton(tooltip: 'Edit', icon: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.regular), color: AD.textSecondary), onPressed: () => _edit(context)),
                 AdButton(label: 'Publish', fontSize: 13, onPressed: () => _republish(context)),
               ])
             : Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                 TextButton(onPressed: () => _restore(context),
-                    child: Text('Restore', style: TextStyle(color: AD.iconSearch, fontFamily: ADText.family, fontWeight: FontWeight.w800))),
-                IconButton(tooltip: 'Delete forever', icon: Icon(Icons.delete_outline, color: AD.danger), onPressed: () => _deleteForever(context)),
+                    child: Text('Restore', style: TextStyle(color: AD.iconSearch, fontFamily: ADText.family, fontWeight: FontWeight.w600))),
+                IconButton(tooltip: 'Delete forever', icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.regular), color: AD.danger), onPressed: () => _deleteForever(context)),
               ]),
       ),
     );

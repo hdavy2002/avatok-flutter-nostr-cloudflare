@@ -3,7 +3,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Creator Insights — audience analytics across ALL the creator's offerings
@@ -45,19 +47,19 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
   Widget build(BuildContext context) {
     final s = _s;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(
         title: 'Creator insights',
         markWord: 'insights',
         tag: 'last 30 days',
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : s == null
               ? Center(child: ZineEmptyState(
                   icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
                   text: 'Could not load insights — pull to retry.'))
-              : RefreshIndicator(onRefresh: _load, color: Zine.blueInk, child: _body(s)),
+              : RefreshIndicator(onRefresh: _load, color: AD.primaryBadge, child: _body(s)),
     );
   }
 
@@ -72,39 +74,40 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
     final conv = s['conversion_pct'];
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6),
       children: [
         // Metric cards (§7.11) — accent rotation blue/lime/coral/lilac/mint.
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _stat('Views (30d)', '${_i(views['last30d'])}',
-              PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.blue),
-          const SizedBox(width: 14),
+              PhosphorIcons.eye(PhosphorIconsStyle.bold), AD.newGroup),
+          const SizedBox(width: Msg.s4),
           _stat('Unique viewers', '${_i(views['unique_viewers'])}',
-              PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.lime),
+              PhosphorIcons.usersThree(PhosphorIconsStyle.bold), AD.primaryBadge),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _stat('Bookings (30d)', '${_i(bookings['last30d'])}',
-              PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), Zine.coral),
-          const SizedBox(width: 14),
+              PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), AD.danger),
+          const SizedBox(width: Msg.s4),
           _stat('Conversion', conv == null ? '—' : '$conv%',
-              PhosphorIcons.trendUp(PhosphorIconsStyle.bold), Zine.lilac),
+              PhosphorIcons.trendUp(PhosphorIconsStyle.bold), AD.micIdleBg),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _stat('Revenue (30d)', '\$${(_i(bookings['gross_coins_30d']) / 100).toStringAsFixed(2)}',
-              PhosphorIcons.coins(PhosphorIconsStyle.bold), Zine.mint, money: true),
-          const SizedBox(width: 14),
+              PhosphorIcons.coins(PhosphorIconsStyle.bold), AD.online, money: true),
+          const SizedBox(width: Msg.s4),
           _stat('Followers', '${_i(s['follower_count'])}',
-              PhosphorIcons.heart(PhosphorIconsStyle.bold), Zine.blue),
+              PhosphorIcons.heart(PhosphorIconsStyle.bold), AD.newGroup),
         ]),
 
         if (byDay.isNotEmpty) ...[
           _h('Views — last 30 days'),
           ZineCard(
-            radius: Zine.rSm,
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-            boxShadow: Zine.shadowXs,
+            color: AD.card,
+            radius: Msg.rLg,
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
+            boxShadow: const <BoxShadow>[],
             child: SizedBox(height: 120, child: _bars(byDay)),
           ),
         ],
@@ -119,9 +122,9 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
           _h('Age groups'),
           for (final a in byAge)
             _ledgerRow(a['age_group'].toString(), '${_i(a['views'])}'),
-          const SizedBox(height: 6),
-          Text('ONLY VIEWERS WHO SHARED A BIRTH YEAR ARE COUNTED.',
-              style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+          const SizedBox(height: Msg.s2),
+          Text('Only viewers who shared a birth year are counted.',
+              style: ADText.sectionLabel(c: AD.textTertiary)),
         ],
 
         if (bySource.isNotEmpty) ...[
@@ -134,51 +137,62 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
           _h('Your offerings — views (30d)'),
           for (final l in listings)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: Msg.s2),
               child: Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(l['title']?.toString() ?? l['subject_id'].toString(),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
-                  Text(l['kind'].toString().toUpperCase(),
-                      style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+                      style: ADText.rowName().copyWith(fontWeight: FontWeight.w600)),
+                  Text(l['kind'].toString(),
+                      style: ADText.sectionLabel(c: AD.textTertiary)),
                 ])),
-                const SizedBox(width: 10),
-                Text('${_i(l['views_30d'])}', style: ZineText.value(size: 15, weight: FontWeight.w900)),
+                const SizedBox(width: Msg.s3),
+                Text('${_i(l['views_30d'])}', style: ADText.rowName().copyWith(fontWeight: FontWeight.w700)),
               ]),
             ),
         ],
 
-        const SizedBox(height: 14),
-        Text(
-          '📈 Numbers update in near-real-time. Guests (not signed in) are counted in views but not in unique viewers.',
-          style: ZineText.sub(size: 12),
-        ),
+        const SizedBox(height: Msg.s4),
+        // [UI-DS-SWEEP-1] emoji in user-facing copy replaced by a Phosphor glyph.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: PhosphorIcon(PhosphorIcons.trendUp(PhosphorIconsStyle.regular),
+                size: 14, color: AD.textTertiary),
+          ),
+          const SizedBox(width: Msg.s2),
+          Expanded(
+            child: Text(
+              'Numbers update in near-real-time. Guests (not signed in) are counted in views but not in unique viewers.',
+              style: ADText.preview(),
+            ),
+          ),
+        ]),
       ],
     );
   }
 
   Widget _h(String t) => Padding(
-        padding: const EdgeInsets.only(top: 24, bottom: 10),
-        child: Text(t, style: ZineText.cardTitle(size: 17)),
+        padding: const EdgeInsets.only(top: Msg.s5, bottom: Msg.s3),
+        child: Text(t, style: ADText.threadName()),
       );
 
   /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _stat(String label, String value, IconData icon, Color accent, {bool money = false}) => Expanded(
         child: ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.all(14),
-          boxShadow: Zine.shadowXs,
+          radius: Msg.rLg,
+          padding: const EdgeInsets.all(Msg.s4),
+          boxShadow: const <BoxShadow>[],
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 30),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(value, style: ZineText.stat(size: 30, color: money ? Zine.mintInk : Zine.ink)),
+              child: Text(value, style: ADText.appTitle(c: money ? AD.online : AD.textPrimary).copyWith(fontSize: 30)),
             ),
-            const SizedBox(height: 3),
-            Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+            const SizedBox(height: Msg.s1),
+            Text(label, style: ADText.sectionLabel()),
           ]),
         ),
       );
@@ -197,8 +211,8 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 1),
                 height: 8 + 96 * (_i(d['views']) / max),
                 decoration: BoxDecoration(
-                  color: Zine.blue,
-                  border: Border.all(color: Zine.ink, width: 1.5),
+                  color: AD.newGroup,
+                  border: Border.all(color: AD.borderCard, width: 1.5),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
                 ),
               ),
@@ -210,21 +224,21 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
 
   /// Ledger row (§7.10): label + dotted leader + Nunito 900 value.
   Widget _ledgerRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: Msg.s1),
         child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
           Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.sub(size: 13.5)),
-          const SizedBox(width: 6),
+              style: ADText.preview()),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text(
               '·' * 80,
               maxLines: 1,
               overflow: TextOverflow.clip,
-              style: ZineText.sub(size: 13, color: Zine.inkMute),
+              style: ADText.preview(c: AD.textTertiary),
             ),
           ),
-          const SizedBox(width: 6),
-          Text(value, style: ZineText.value(size: 14, weight: FontWeight.w900)),
+          const SizedBox(width: Msg.s2),
+          Text(value, style: ADText.rowName().copyWith(fontWeight: FontWeight.w700)),
         ]),
       );
 }

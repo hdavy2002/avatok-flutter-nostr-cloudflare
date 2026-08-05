@@ -5,7 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/subscribe_api.dart';
 import '../../core/play_billing.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// SubscribeScreen — Phase 1 plans (Free / Plus / Pro / Max).
@@ -29,7 +31,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   String _currentStatus = 'none';
   int? _busyTier; // tier whose button is mid-checkout
 
-  static const _accents = [Zine.card, Zine.mint, Zine.blue, Zine.lilac];
+  static const _accents = [AD.card, AD.online, AD.newGroup, AD.micIdleBg];
 
   @override
   void initState() {
@@ -98,28 +100,28 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: SafeArea(
         child: Column(children: [
           // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
             child: Row(children: [
               ZineBackButton(
                 icon: PhosphorIcons.caretLeft(PhosphorIconsStyle.bold),
                 onTap: () => Navigator.maybePop(context),
               ),
-              const SizedBox(width: 10),
-              Text('Subscribe', style: ZineText.cardTitle(size: 20)),
+              const SizedBox(width: Msg.s3),
+              Text('Subscribe', style: ADText.appTitle()),
             ]),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 'Pick a plan. Upgrade or cancel anytime.',
-                style: ZineText.sub(size: 13, color: Zine.inkSoft),
+                style: ADText.preview(c: AD.textSecondary),
               ),
             ),
           ),
@@ -131,7 +133,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView(
-                          padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+                          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s1, Msg.s4, Msg.s5),
                           children: [
                             for (var i = 0; i < _plans.length; i++)
                               _planCard(_plans[i], _accents[i % _accents.length]),
@@ -152,55 +154,62 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     final lines = _featureLines(plan);
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 7),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      margin: const EdgeInsets.symmetric(vertical: Msg.s2),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s4),
       decoration: BoxDecoration(
-        color: isCurrent ? Zine.lime : Zine.card,
-        borderRadius: BorderRadius.circular(Zine.rSm),
-        border: Border.all(color: Zine.ink, width: Zine.bw),
-        boxShadow: Zine.shadowSm,
+        // [UI-DS-SWEEP-1] The current plan is marked with an accent TINT + an
+        // accent border, not a solid accent fill. A solid fill would put white
+        // body text straight on the accent (~2.6:1) — the old light theme got
+        // away with it because its ink was dark.
+        color: isCurrent ? AD.primaryBadge.withValues(alpha: 0.16) : AD.card,
+        borderRadius: BorderRadius.circular(Msg.rLg),
+        border: Border.all(
+            color: isCurrent ? AD.primaryBadge : AD.borderCard, width: 1),
+        boxShadow: const <BoxShadow>[],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: _iconFor(tier), color: accent),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: ZineText.cardTitle(size: 18)),
+              Text(name, style: ADText.appTitle()),
               Text(
                 price == 0 ? 'Free forever' : '\$${price.toStringAsFixed(0)} / month',
-                style: ZineText.tag(size: 12.5, color: Zine.inkSoft),
+                style: ADText.sectionLabel(c: AD.textSecondary),
               ),
             ]),
           ),
           if (isCurrent)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
               decoration: BoxDecoration(
-                color: Zine.mint,
-                borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: Zine.ink, width: Zine.bw),
+                color: AD.online,
+                borderRadius: Msg.brPill,
+                border: Border.all(color: AD.borderCard, width: 1),
               ),
               child: Text(
-                _currentStatus == 'canceled' ? 'ENDING' : 'YOUR PLAN',
-                style: ZineText.tag(size: 10.5, color: Zine.mintInk),
+                _currentStatus == 'canceled' ? 'Ending' : 'Your plan',
+                // Dark ink ON the green fill — NOT AD.online, which would be
+                // green-on-green and invisible.
+                style: ADText.sectionLabel(c: AD.textOnInput),
               ),
             ),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         for (final l in lines)
           Padding(
-            padding: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: Msg.s2),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 14, color: Zine.inkSoft),
-              const SizedBox(width: 8),
-              Expanded(child: Text(l, style: ZineText.value(size: 13.5))),
+              PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 14, color: AD.textSecondary),
+              const SizedBox(width: Msg.s2),
+              Expanded(child: Text(l, style: ADText.rowName())),
             ]),
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s2),
         if (!isCurrent && tier > 0) _cta(tier),
         if (tier == 0 && !isCurrent)
-          Text('Always available', style: ZineText.tag(size: 11.5, color: Zine.inkSoft)),
+          Text('Always available', style: ADText.sectionLabel(c: AD.textSecondary)),
       ]),
     );
   }
@@ -212,16 +221,16 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
       width: double.infinity,
       child: ZinePressable(
         onTap: busy ? null : () => _subscribe(tier),
-        color: Zine.ink,
-        radius: BorderRadius.circular(Zine.rSm),
-        boxShadow: Zine.shadowXs,
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        color: AD.textPrimary,
+        radius: BorderRadius.circular(Msg.rLg),
+        boxShadow: const <BoxShadow>[],
+        padding: const EdgeInsets.symmetric(vertical: Msg.s3),
         child: Center(
           child: busy
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.paper))
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AD.bg))
               : Text(
                   upgrade ? 'Upgrade to this plan' : 'Switch to this plan',
-                  style: ZineText.value(size: 14.5, color: Zine.paper),
+                  style: ADText.rowName(c: AD.bg),
                 ),
         ),
       ),
@@ -282,15 +291,15 @@ class _ErrorState extends StatelessWidget {
     return ListView(
       children: [
         const SizedBox(height: 80),
-        Center(child: Text(message, style: ZineText.sub(size: 14, color: Zine.inkSoft))),
-        const SizedBox(height: 14),
+        Center(child: Text(message, style: ADText.preview(c: AD.textSecondary))),
+        const SizedBox(height: Msg.s4),
         Center(
           child: ZinePressable(
             onTap: onRetry,
-            color: Zine.card,
-            radius: BorderRadius.circular(Zine.rSm),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Text('Retry', style: ZineText.value(size: 14)),
+            color: AD.card,
+            radius: BorderRadius.circular(Msg.rLg),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s3),
+            child: Text('Retry', style: ADText.rowName()),
           ),
         ),
       ],

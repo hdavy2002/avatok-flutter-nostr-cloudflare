@@ -32,7 +32,7 @@ Future<void> showAvatarViewer(
     transitionBuilder: (ctx, anim, _, child) =>
         FadeTransition(opacity: anim, child: ScaleTransition(
             scale: Tween(begin: 0.92, end: 1.0).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
+                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
             child: child)),
   );
 }

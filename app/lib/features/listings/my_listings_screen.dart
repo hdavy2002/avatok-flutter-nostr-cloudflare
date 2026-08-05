@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/listings_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
@@ -63,20 +65,20 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   }
 
   void _menu(ListingCard l) {
-    Widget item(IconData icon, String label, VoidCallback onTap, {Color color = Zine.ink}) => ListTile(
+    Widget item(IconData icon, String label, VoidCallback onTap, {Color color = AD.textPrimary}) => ListTile(
           leading: PhosphorIcon(icon, color: color),
-          title: Text(label, style: ZineText.value(size: 15, color: color, weight: FontWeight.w700)),
+          title: Text(label, style: ADText.rowName(c: color).copyWith(fontWeight: FontWeight.w700)),
           onTap: onTap,
         );
-    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    showModalBottomSheet(context: context, backgroundColor: AD.bg,
+        shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
         builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (l.status == 'draft')
         item(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold), 'Publish',
             () { Navigator.pop(s); _act(l, 'publish'); }),
       if (l.status == 'published' && l.kind == 'live_event')
         item(PhosphorIcons.broadcast(PhosphorIconsStyle.bold), 'Go live now',
-            () { Navigator.pop(s); _act(l, 'live'); }, color: Zine.coral),
+            () { Navigator.pop(s); _act(l, 'live'); }, color: AD.danger),
       if (l.status == 'live')
         item(PhosphorIcons.stopCircle(PhosphorIconsStyle.bold), 'End & mark completed',
             () { Navigator.pop(s); _act(l, 'complete'); }),
@@ -84,7 +86,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
           () { Navigator.pop(s); _act(l, 'duplicate'); }),
       if (l.status != 'cancelled' && l.status != 'completed')
         item(PhosphorIcons.xCircle(PhosphorIconsStyle.bold), 'Cancel listing',
-            () { Navigator.pop(s); _act(l, 'cancel'); }, color: Zine.coral),
+            () { Navigator.pop(s); _act(l, 'cancel'); }, color: AD.danger),
     ])));
   }
 
@@ -99,7 +101,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'My listings',
         markWord: 'listings',
@@ -120,51 +122,51 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
         onPressed: _create,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : _items.isEmpty
-              ? Center(child: Padding(padding: const EdgeInsets.all(24),
+              ? Center(child: Padding(padding: const EdgeInsets.all(Msg.s5),
                   child: ZineEmptyState(
                       icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
                       text: 'No listings yet — create a live event or consultation and it shows up in AvaExplore the moment you publish.')))
               : RefreshIndicator(
                   onRefresh: _load,
-                  color: Zine.blueInk,
+                  color: AD.primaryBadge,
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
                     itemCount: _items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
                     itemBuilder: (_, i) {
                       final l = _items[i];
                       return ZineCard(
-                        radius: Zine.rSm,
-                        padding: const EdgeInsets.all(10),
-                        boxShadow: Zine.shadowXs,
+                        radius: Msg.rLg,
+                        padding: const EdgeInsets.all(Msg.s3),
+                        boxShadow: const <BoxShadow>[],
                         onTap: l.status == 'draft' ? () => _menu(l)
                             : () => Navigator.push(context, MaterialPageRoute(builder: (_) => ListingDetailScreen(listingId: l.id))),
                         child: Row(children: [
                           CoverImage(url: l.coverUrl, seed: l.id.hashCode, width: 56, height: 56,
-                              radius: BorderRadius.circular(12)),
-                          const SizedBox(width: 11),
+                              radius: BorderRadius.circular(Msg.rMd)),
+                          const SizedBox(width: Msg.s3),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
-                            const SizedBox(height: 5),
+                                style: ADText.rowName().copyWith(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: Msg.s1),
                             Row(children: [
                               ZineSticker(l.status, kind: _stickerKind(l.status)),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: Msg.s2),
                               Flexible(child: Text(
                                 '${l.priceLabel}${l.startsAt != null ? ' · ${fmtWhen(l.startsAt)}' : ''}${l.joinedCount > 0 ? ' · ${l.joinedCount} joined' : ''}',
                                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: ZineText.sub(size: 11.5))),
+                                style: ADText.preview())),
                             ]),
                           ])),
                           GestureDetector(
                             onTap: () => _menu(l),
                             behavior: HitTestBehavior.opaque,
                             child: Padding(
-                              padding: const EdgeInsets.all(6),
+                              padding: const EdgeInsets.all(Msg.s2),
                               child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
-                                  size: 20, color: Zine.ink),
+                                  size: 20, color: AD.textPrimary),
                             ),
                           ),
                         ]),

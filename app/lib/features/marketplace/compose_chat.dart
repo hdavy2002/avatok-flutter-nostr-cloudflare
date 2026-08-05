@@ -8,6 +8,7 @@ import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../identity/identity_screen.dart';
 import '../identity/public_action_gate.dart';
 
@@ -176,7 +177,9 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   late final String _lang;
   final _openedAt = DateTime.now();
 
-  static const _avaGreen = Color(0xFF7BE08C);
+  // [UI-DS-SWEEP-1] was a bespoke 0xFF7BE08C; now the AD token already used
+  // for the affirmative/send action, so this pill matches the composer.
+  static const _avaGreen = AD.sendActiveBg;
   static const _maxPending = 10;
 
   @override
@@ -218,7 +221,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+            duration: Msg.base, curve: Msg.curve);
       }
     });
   }
@@ -876,7 +879,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Row(children: [
           _sparkleBadge(30),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Text('List with Ava', style: ADText.appTitle()),
         ]),
         bottom: _progress > 0
@@ -901,7 +904,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
                     Expanded(
                       child: ListView.builder(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
                         // The live Ava bubble now carries the "thinking" state
                         // itself, so the standalone typing row only shows in the
                         // gap before that bubble exists.
@@ -921,15 +924,15 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
 
   Widget _fatalState(String message) => Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 36),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s6),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             _sparkleBadge(54),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s4),
             Text(message,
                 textAlign: TextAlign.center,
                 style: ADText.preview(c: AD.textSecondary)),
-            const SizedBox(height: 16),
-            _pill('Try again', _avaGreen, const Color(0xFF10361C), _open),
+            const SizedBox(height: Msg.s4),
+            _pill('Try again', _avaGreen, AD.sendActiveInk, _open),
           ]),
         ),
       );
@@ -943,7 +946,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           borderRadius: BorderRadius.circular(size * 0.28),
         ),
         child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-            size: size * 0.55, color: const Color(0xFF10361C)),
+            size: size * 0.55, color: AD.sendActiveInk),
       );
 
   Widget _row(_Msg m) => switch (m.role) {
@@ -960,10 +963,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
+        margin: const EdgeInsets.symmetric(vertical: Msg.s1),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         decoration: BoxDecoration(
           color: mine ? AD.bubbleOutBg : AD.card,
           borderRadius: mine ? AD.bubbleOutRadius : AD.bubbleInRadius,
@@ -976,10 +979,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
                 CachedImage(u,
                     width: 78,
                     height: 78,
-                    radius: BorderRadius.circular(8),
+                    radius: BorderRadius.circular(Msg.rSm),
                     cachePx: 200),
             ]),
-            if (m.text.isNotEmpty) const SizedBox(height: 8),
+            if (m.text.isNotEmpty) const SizedBox(height: Msg.s2),
           ],
           // A streaming Ava bubble that has no text yet shows the "thinking"
           // placeholder; once deltas arrive it types out with a trailing cursor
@@ -998,8 +1001,8 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   Widget _typing() => Align(
         alignment: Alignment.centerLeft,
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          margin: const EdgeInsets.symmetric(vertical: Msg.s1),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           decoration: BoxDecoration(
             color: AD.card,
             borderRadius: AD.bubbleInRadius,
@@ -1010,8 +1013,8 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       );
 
   Widget _notice(String text) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        margin: const EdgeInsets.symmetric(vertical: Msg.s2),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -1020,7 +1023,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         child: Row(children: [
           PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.bold),
               size: 16, color: AD.danger),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Text(text, style: ADText.preview(c: AD.textSecondary))),
         ]),
       );
@@ -1031,10 +1034,10 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         border: _avaGreen,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(text, style: ADText.bubbleBody()),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           Row(children: [
-            _pill('Verify now', _avaGreen, const Color(0xFF10361C), _runIdentityFlow),
-            const SizedBox(width: 10),
+            _pill('Verify now', _avaGreen, AD.sendActiveInk, _runIdentityFlow),
+            const SizedBox(width: Msg.s3),
             GestureDetector(
               onTap: _openIdentityHelp,
               child: Text('How do I do this?',
@@ -1050,11 +1053,11 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       border: AD.borderControl,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(m.text, style: ADText.bubbleBody()),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Row(children: [
           if (r != null)
-            _pill('Carry on', _avaGreen, const Color(0xFF10361C), () => _carryOn(r)),
-          const SizedBox(width: 10),
+            _pill('Carry on', _avaGreen, AD.sendActiveInk, () => _carryOn(r)),
+          const SizedBox(width: Msg.s3),
           GestureDetector(
             onTap: _declineResume,
             child: Text('Start fresh', style: ADText.preview(c: AD.textSecondary)),
@@ -1070,7 +1073,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           Expanded(
               child: Text('Start a new listing?',
                   style: ADText.preview(c: AD.textSecondary))),
-          _pill('New listing', _avaGreen, const Color(0xFF10361C), _open),
+          _pill('New listing', _avaGreen, AD.sendActiveInk, _open),
         ]),
       );
 
@@ -1096,23 +1099,23 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         Row(children: [
           PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
               size: 16, color: _avaGreen),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s2),
           Text('Ready to publish', style: ADText.rowName()),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         if (cover != null && cover.isNotEmpty) ...[
           CachedImage(cover,
               width: double.infinity,
               height: 140,
-              radius: BorderRadius.circular(10),
+              radius: BorderRadius.circular(Msg.rMd),
               cachePx: 700),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
         ],
         if (title.isNotEmpty)
           Text(title, style: ADText.threadName().copyWith(fontSize: 16)),
         if (price != null)
           Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: Msg.s1),
             child: Text('$currency $price'.trim(),
                 style: ADText.rowName(c: _avaGreen)),
           ),
@@ -1121,7 +1124,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             padding: const EdgeInsets.only(top: 2),
             child: Text(location, style: ADText.preview(c: AD.textSecondary)),
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s2),
         Wrap(spacing: 6, runSpacing: 6, children: [
           if (photos > 0) _fact('$photos photo${photos == 1 ? '' : 's'}'),
           if (card['video'] != null) _fact('Video'),
@@ -1130,15 +1133,15 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           if (hasPrivate) _fact('1 note kept back'),
         ]),
         if (_missing.isNotEmpty) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           Text('Still needed: ${_missing.join(', ')}',
               style: ADText.preview(c: AD.danger)),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         _pill(
           _publishing ? 'Publishing…' : 'Publish it',
           _publishing ? AD.card : _avaGreen,
-          _publishing ? AD.textTertiary : const Color(0xFF10361C),
+          _publishing ? AD.textTertiary : AD.sendActiveInk,
           _publishing ? null : _publish,
         ),
       ]),
@@ -1146,18 +1149,18 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   }
 
   Widget _fact(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
         decoration: BoxDecoration(
           color: AD.bg,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Text(text, style: ADText.statCaption(c: AD.textSecondary)),
       );
 
   Widget _panel({required Color border, required Widget child}) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 7),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.symmetric(vertical: Msg.s2),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -1171,15 +1174,15 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
           ),
           child: Text(label,
               style: TextStyle(
                   fontFamily: ADText.family,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   fontSize: 13.5,
                   color: fg)),
         ),
@@ -1189,17 +1192,17 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   /// are just text the seller could have typed — tapping sends it as a turn.
   Widget _chipBar() => Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s1, Msg.s4, Msg.s2),
         child: Wrap(spacing: 8, runSpacing: 8, children: [
           for (final c in _chips)
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _send(c, fromChip: true),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                 decoration: BoxDecoration(
                   color: AD.card,
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brPill,
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Text(c, style: ADText.statCaption(c: AD.textPrimary)),
@@ -1212,24 +1215,24 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
   Widget _pendingStrip() => Container(
         height: 66,
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
         child: ListView(scrollDirection: Axis.horizontal, children: [
           for (var i = 0; i < _pending.length; i++)
             Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.only(right: Msg.s2),
               child: Stack(children: [
                 _pending[i].url != null
                     ? CachedImage(_pending[i].url!,
                         width: 58,
                         height: 58,
-                        radius: BorderRadius.circular(8),
+                        radius: BorderRadius.circular(Msg.rSm),
                         cachePx: 150)
                     : Container(
                         width: 58,
                         height: 58,
                         decoration: BoxDecoration(
                           color: AD.card,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(Msg.rSm),
                           border: Border.all(color: AD.borderControl, width: 1),
                         ),
                         child: PhosphorIcon(
@@ -1247,7 +1250,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => setState(() => _pending.removeAt(i)),
                     child: Padding(
-                      padding: const EdgeInsets.all(3),
+                      padding: const EdgeInsets.all(Msg.s1),
                       child: PhosphorIcon(
                           PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
                           size: 17,
@@ -1263,7 +1266,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
               height: 58,
               decoration: BoxDecoration(
                 color: AD.card,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(Msg.rSm),
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
               child: const Center(
@@ -1282,7 +1285,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         color: AD.headerFooter,
       ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
       child: Row(children: [
         GestureDetector(
           onTap: _uploading || _busy ? null : _pickPhoto,
@@ -1302,7 +1305,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
               borderRadius: BorderRadius.circular(AD.rInput),
               border: Border.all(color: AD.borderControl, width: 1),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
             child: TextField(
               controller: _input,
               minLines: 1,
@@ -1326,12 +1329,12 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
                     fontSize: 15,
                     color: AD.placeholderOnWhite),
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                contentPadding: EdgeInsets.symmetric(vertical: Msg.s3),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         GestureDetector(
           onTap: canSend ? () => _send(_input.text) : null,
           child: Container(
@@ -1343,7 +1346,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             ),
             child: PhosphorIcon(
                 PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                color: canSend ? const Color(0xFF10361C) : AD.textTertiary,
+                color: canSend ? AD.sendActiveInk : AD.textTertiary,
                 size: 20),
           ),
         ),

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/money_api.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] Migrated off `core/ui/zine.dart` tokens onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Money ops console (Phase 2, audit A2) — admin-only (`/admin/money`).
@@ -55,22 +57,22 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: Msg.brLg,
+          side: const BorderSide(color: AD.borderCard, width: 1),
         ),
-        title: Text('Manual refund', style: ZineText.cardTitle()),
+        title: Text('Manual refund', style: ADText.threadName()),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineField(controller: order, label: 'Order id'),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: amount, keyboardType: TextInputType.number, label: 'Amount (coins)'),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: reason, label: 'Reason (required, audited)'),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false),
-              child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
           ZineButton(label: 'Refund', fontSize: 15, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
@@ -87,20 +89,20 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: Msg.brLg,
+          side: const BorderSide(color: AD.borderCard, width: 1),
         ),
-        title: Text('Adjust $uid', style: ZineText.cardTitle()),
+        title: Text('Adjust $uid', style: ADText.threadName()),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           ZineField(controller: amount, keyboardType: const TextInputType.numberWithOptions(signed: true), label: 'Amount (coins, ± allowed)'),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           ZineField(controller: reason, label: 'Reason (required, audited)'),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false),
-              child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
           ZineButton(label: 'Apply', fontSize: 15, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
@@ -120,43 +122,43 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
   Widget build(BuildContext context) {
     final a = _account;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(
         title: 'Money ops',
         markWord: 'ops',
         tag: 'admin console',
       ),
-      body: ListView(padding: const EdgeInsets.fromLTRB(18, 16, 18, 32), children: [
+      body: ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s6), children: [
         ZineField(
           controller: _userCtrl,
           label: 'User id (Clerk uid)',
-          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
           onSubmitted: (_) => _lookup(),
           trailing: GestureDetector(
             onTap: _lookup,
-            child: PhosphorIcon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+            child: PhosphorIcon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold), size: 20, color: AD.textPrimary),
           ),
         ),
         if (_busy)
-          const Padding(padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator(color: Zine.blueInk))),
+          const Padding(padding: EdgeInsets.all(Msg.s4),
+              child: Center(child: CircularProgressIndicator(color: AD.primaryBadge))),
         if (a != null) ...[
-          const SizedBox(height: 18),
-          // Metric cards (§7.11) — accent rotation.
+          const SizedBox(height: Msg.s4),
+          // Metric cards — accent rotation.
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _stat('Balance', _usd((a['balance'] as num?) ?? 0),
-                PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint, money: true),
-            const SizedBox(width: 12),
+                PhosphorIcons.wallet(PhosphorIconsStyle.regular), AD.online, money: true),
+            const SizedBox(width: Msg.s3),
             _stat('Held', _usd((a['held'] as num?) ?? 0),
-                PhosphorIcons.lock(PhosphorIconsStyle.bold), Zine.blue),
+                PhosphorIcons.lock(PhosphorIconsStyle.regular), AD.newGroup),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _stat('KYC', '${a['kyc']}', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold), Zine.lilac),
-            const SizedBox(width: 12),
-            _stat('Strikes', '${a['strikes']}', PhosphorIcons.warning(PhosphorIconsStyle.bold), Zine.coral),
+            _stat('KYC', '${a['kyc']}', PhosphorIcons.identificationCard(PhosphorIconsStyle.regular), AD.micIdleBg),
+            const SizedBox(width: Msg.s3),
+            _stat('Strikes', '${a['strikes']}', PhosphorIcons.warning(PhosphorIconsStyle.regular), AD.danger),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           Row(children: [
             Expanded(
               child: ZineButton(
@@ -166,7 +168,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
                 onPressed: _refundDialog,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: ZineButton(
                 label: 'Adjust',
@@ -176,19 +178,19 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
               ),
             ),
           ]),
-          const SizedBox(height: 22),
-          Text('LEDGER', style: ZineText.kicker(size: 11.5)),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s5),
+          Text('Ledger', style: ADText.sectionLabel()),
+          const SizedBox(height: Msg.s2),
           for (final e in _ledger) _ledgerRow(e),
         ],
-        const SizedBox(height: 22),
-        Text('RECONCILIATION RUNS', style: ZineText.kicker(size: 11.5)),
-        const SizedBox(height: 8),
+        const SizedBox(height: Msg.s5),
+        Text('Reconciliation runs', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s2),
         if (_recon.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s3),
             child: ZineEmptyState(
-              icon: PhosphorIcons.scales(PhosphorIconsStyle.bold),
+              icon: PhosphorIcons.scales(PhosphorIconsStyle.regular),
               text: 'No runs yet',
             ),
           ),
@@ -197,54 +199,56 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     );
   }
 
-  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
+  /// Metric card: icon badge + Nunito number + caption.
   Widget _stat(String label, String value, IconData icon, Color accent, {bool money = false}) => Expanded(
         child: ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.all(14),
-          boxShadow: Zine.shadowXs,
+          radius: Msg.rLg,
+          padding: const EdgeInsets.all(Msg.s4),
+          boxShadow: const [],
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 30),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(value, style: ZineText.stat(size: 24, color: money ? Zine.mintInk : Zine.ink)),
+              child: Text(value,
+                  style: ADText.appTitle(c: money ? AD.online : AD.textPrimary)
+                      .copyWith(fontSize: 24)),
             ),
-            const SizedBox(height: 3),
-            Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+            const SizedBox(height: Msg.s1),
+            Text(label, style: ADText.sectionLabel()),
           ]),
         ),
       );
 
-  /// Ledger row (§7.10): label + dotted leader + Nunito 900 value.
+  /// Ledger row: label + dotted leader + value.
   Widget _ledgerRow(Map<String, dynamic> e) {
     final amount = ((e['amount'] as num?) ?? 0).toInt();
     final positive = amount >= 0;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
           Flexible(
             child: Text('${e['type']}', maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.value(size: 14, weight: FontWeight.w800)),
+                style: ADText.rowName().copyWith(fontSize: 14)),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13)),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s2),
           Text(_usd(amount),
-              style: ZineText.value(size: 14, weight: FontWeight.w900,
-                  color: positive ? Zine.mintInk : Zine.coral)),
+              style: ADText.rowName(c: positive ? AD.online : AD.danger)
+                  .copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
         ]),
         const SizedBox(height: 2),
         Text(
           '${e['debit']} → ${e['credit']} · ref ${e['ref'] ?? '—'} · '
           '${DateTime.fromMillisecondsSinceEpoch(((e['created_at'] as num?) ?? 0).toInt())}',
           maxLines: 2,
-          style: ZineText.kicker(size: 9, color: Zine.inkMute),
+          style: ADText.statCaption(),
         ),
       ]),
     );
@@ -253,16 +257,16 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
   Widget _reconRow(Map<String, dynamic> r) {
     final ok = r['ok'] == 1;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: Msg.s1),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineSticker(ok ? 'ok' : 'diff', kind: ok ? ZineStickerKind.ok : ZineStickerKind.no),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${r['date']}', style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
+            Text('${r['date']}', style: ADText.rowName().copyWith(fontSize: 14)),
             if (!ok)
               Text('${r['diff_json']}', maxLines: 3, overflow: TextOverflow.ellipsis,
-                  style: ZineText.kicker(size: 9, color: Zine.coral)),
+                  style: ADText.statCaption(c: AD.danger)),
           ]),
         ),
       ]),

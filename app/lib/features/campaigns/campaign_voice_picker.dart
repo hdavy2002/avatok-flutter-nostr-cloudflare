@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/audio_playback_service.dart';
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Voice picker for the campaign wizard's Goal step (AVA-CAMP-Q-WIZARD).
 /// Renders [voices] as a MALE/FEMALE/ALL-filterable list of rows, each with a
@@ -95,7 +96,7 @@ class _CampaignVoicePickerState extends State<CampaignVoicePicker> {
         AdChip(label: 'Male', active: _filter == _GenderFilter.male,
             onTap: () => setState(() => _filter = _GenderFilter.male)),
       ]),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s3),
       if (visible.isEmpty)
         Text('No voices in this filter.', style: ADText.preview(c: AD.textTertiary)),
       for (final v in visible) _voiceRow(v),
@@ -106,12 +107,12 @@ class _CampaignVoicePickerState extends State<CampaignVoicePicker> {
     final selected = widget.selectedId == v.id;
     final loading = _loadingId == v.id;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: Msg.s2),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.onSelected(v.id),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(Msg.s3),
           decoration: BoxDecoration(
             color: AD.card,
             borderRadius: BorderRadius.circular(AD.rListCard),
@@ -142,7 +143,7 @@ class _CampaignVoicePickerState extends State<CampaignVoicePicker> {
                 },
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(v.name, style: ADText.rowName()),
@@ -150,7 +151,7 @@ class _CampaignVoicePickerState extends State<CampaignVoicePicker> {
                   Text(v.description!, style: ADText.preview(c: AD.textTertiary)),
               ]),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             Container(
               width: 20, height: 20,
               alignment: Alignment.center,

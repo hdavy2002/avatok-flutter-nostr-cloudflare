@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../explore/listing_detail.dart';
 import 'intent_theme.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
@@ -77,7 +79,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   Widget _chipStyled({required String label, required bool selected, required ValueChanged<bool> onSelected}) =>
       ChoiceChip(
         label: Text(label),
-        labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+        labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
             color: selected ? Colors.white : AD.textSecondary),
         selected: selected,
         showCheckmark: false,
@@ -85,7 +87,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
         backgroundColor: AD.card,
         selectedColor: AD.primaryBadge,
         side: BorderSide(color: selected ? AD.primaryBadge : AD.borderControl, width: 1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+        shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
       );
 
   @override
@@ -100,7 +102,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       ),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
+          padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s4),
           child: TextField(
             controller: _search,
             textInputAction: TextInputAction.search,
@@ -108,18 +110,18 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             decoration: InputDecoration(
               hintText: 'Search the marketplace…',
               hintStyle: TextStyle(color: AD.placeholderOnWhite),
-              prefixIcon: Icon(Icons.search, color: AD.placeholderOnWhite),
+              prefixIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular), color: AD.placeholderOnWhite),
               filled: true,
               fillColor: AD.inputField,
               isDense: true,
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brMd,
                   borderSide: BorderSide(color: AD.borderControl, width: 1)),
               enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brMd,
                   borderSide: BorderSide(color: AD.borderControl, width: 1)),
               focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brMd,
                   borderSide: BorderSide(color: AD.iconSearch, width: 1)),
             ),
           ),
@@ -127,10 +129,10 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
         // Country toggle + category chips.
         SizedBox(
           height: 44,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Msg.s3), children: [
             if (_country.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: Msg.s2),
                 child: _chipStyled(
                   label: '${_flagOf(_country)} My country',
                   selected: _myCountryOnly,
@@ -138,21 +140,21 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.only(right: Msg.s2),
               child: _chipStyled(
-                label: '🌍 All',
+                label: 'All countries',
                 selected: !_myCountryOnly,
                 onSelected: (v) { _myCountryOnly = !v; _load(); },
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             _chipStyled(
               label: 'All categories',
               selected: _category == null,
               onSelected: (_) { _category = null; _load(); },
             ),
             for (final c in kMarketCategories) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: Msg.s2),
               _chipStyled(
                 label: c,
                 selected: _category == c,
@@ -161,7 +163,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             ],
           ]),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         Divider(height: 1, color: AD.borderHairline),
         Expanded(
           child: RefreshIndicator(
@@ -176,13 +178,13 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                 if (items.isEmpty) {
                   return ListView(children: [
                     const SizedBox(height: 120),
-                    Icon(Icons.storefront_outlined, size: 48, color: AD.textTertiary),
-                    const SizedBox(height: 8),
+                    PhosphorIcon(PhosphorIcons.storefront(PhosphorIconsStyle.regular), size: 48, color: AD.textTertiary),
+                    const SizedBox(height: Msg.s2),
                     Center(child: Text('No listings here yet — try All countries.', style: ADText.preview())),
                   ]);
                 }
                 return GridView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(Msg.s3),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     // Match the ListingCardTile family extent (MarketplaceCard
                     // mirrors it, and its 2-line one-liner + location row need

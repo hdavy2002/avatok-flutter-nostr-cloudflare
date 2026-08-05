@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 import 'link_created_sheet.dart';
@@ -73,11 +75,11 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(title: 'Pick a product', markWord: 'product', tag: 'promote & earn'),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s3),
           child: ZineField(
             hint: 'Search listings or creators…',
             leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
@@ -89,7 +91,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
         ),
         // App chips drive the existing TabController (§7.4).
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
           child: Row(children: [
             for (var i = 0; i < kAffApps.length; i++) ...[
               Expanded(child: ZineChip(
@@ -97,7 +99,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
                 active: _tabs.index == i,
                 onTap: () => _tabs.animateTo(i),
               )),
-              if (i != kAffApps.length - 1) const SizedBox(width: 9),
+              if (i != kAffApps.length - 1) const SizedBox(width: Msg.s2),
             ],
           ]),
         ),
@@ -113,7 +115,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
   Widget _list(String appKey) {
     final items = _byApp[appKey];
     if (items == null || _loadingApps.contains(appKey)) {
-      return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
+      return const Center(child: CircularProgressIndicator(color: AD.primaryBadge));
     }
     if (items.isEmpty) {
       return AffEmpty(_q.isEmpty
@@ -122,11 +124,11 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
     }
     return RefreshIndicator(
       onRefresh: () => _load(appKey),
-      color: Zine.blueInk,
+      color: AD.primaryBadge,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s5),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
         itemBuilder: (_, i) => ListingPickCard(
           listing: items[i],
           busy: _creatingId == items[i].id,

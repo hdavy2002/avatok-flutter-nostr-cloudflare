@@ -7,6 +7,7 @@ import '../../core/api_auth.dart';
 import '../../core/audio_playback_service.dart';
 import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avadial/avadial_theme.dart';
 import '../avatok/media.dart' show MediaService;
 
@@ -93,11 +94,11 @@ const _kAccent = AD.iconVideo; // 0xFFA78BFA — left accent bar + header glyph
 /// see this is a campaign result" affordance from the owner ask, on top of
 /// the background tint alone.
 Widget _campaignHeader() => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: Msg.s2),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.megaphone(PhosphorIconsStyle.fill), size: 13, color: _kAccent),
-        const SizedBox(width: 4),
-        Text('CAMPAIGN', style: ADText.statCaption(c: _kAccent)),
+        const SizedBox(width: Msg.s1),
+        Text('Campaign', style: ADText.statCaption(c: _kAccent)),
       ]),
     );
 
@@ -115,7 +116,7 @@ Widget _cardShell(Widget child) => Container(
           Container(width: 4, color: _kAccent),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(Msg.s3),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -279,14 +280,14 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
         Row(children: [
           if (_isTest) ...[
             AvaDialTheme.chip('Test Call', color: AD.iconSearch, icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold)),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s2),
           ],
           Expanded(
             child: Text(_contactName ?? _contactPhone ?? 'Unknown contact',
                 style: ADText.threadName(c: _kInk)),
           ),
           if (_durationSec > 0) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s2),
             AvaDialTheme.chip(_durationLabel(null), color: AD.iconVideo, icon: PhosphorIcons.clock(PhosphorIconsStyle.bold)),
           ],
         ]),
@@ -295,13 +296,13 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
           Text(_contactPhone!, style: ADText.statCaption(c: _kSubInk)),
         ],
         if (_summary != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s2),
           Text(_summary!, style: ADText.bubbleBody(c: _kInk)),
         ],
         // ---- Recording player — identical shared-service pattern to
         // `_VoicemailCard` (survives navigation, resumes in place). ----
         if (_hasRecording) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           ValueListenableBuilder<PlaybackState?>(
             valueListenable: AudioPlaybackService.I.state,
             builder: (context, st, _) {
@@ -324,7 +325,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
                           size: 30,
                           color: AD.bubbleOutPlay,
                         ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: Msg.s2),
                   Text(
                     _durationLabel(dur).isNotEmpty ? 'Recording · ${_durationLabel(dur)}' : 'Play recording',
                     style: ADText.rowName(c: AD.bubbleOutPlay),
@@ -337,7 +338,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
         // ---- Expandable transcript underneath, same idiom as
         // `_VoicemailCard`'s "Show/Hide transcript" toggle. ----
         if (_transcript != null) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
@@ -345,13 +346,13 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
           ),
           if (_expanded)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: Msg.s2),
               child: Text(_transcript!, style: ADText.preview(c: _kSubInk)),
             ),
         ],
         // ---- Language tag + outcome badges ----
         if (_lang != null || _booked || _handover) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Wrap(spacing: 6, runSpacing: 4, children: [
             if (_lang != null) AvaDialTheme.chip(_lang!.toUpperCase(), color: AD.iconSearch),
             if (_booked)
@@ -362,7 +363,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
         ],
         // ---- Token-cost line ----
         if (_tokens != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s2),
           Text('$_tokens tokens', style: ADText.statCaption(c: _kSubInk)),
         ],
       ]),
@@ -423,7 +424,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
       Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Icon(PhosphorIcons.phoneX(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text("Today's unreachable ($_count)", style: ADText.threadName(c: _kInk)),
           ),
@@ -433,17 +434,17 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
           Text(_date!, style: ADText.statCaption(c: _kSubInk)),
         ],
         if (_text != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s2),
           Text(_text!, style: ADText.bubbleBody(c: _kInk)),
         ],
         if (visible.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           for (final row in visible) _unreachedRow(row),
           if (unreached.length > 3)
             GestureDetector(
               onTap: () => setState(() => _expanded = !_expanded),
               child: Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: Msg.s1),
                 child: Text(
                   _expanded ? 'Show less ▲' : 'Show ${unreached.length - 3} more ▼',
                   style: ADText.statCaption(c: _kSubInk),
@@ -451,24 +452,24 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
               ),
             ),
         ],
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         Row(children: [
           if (widget.onRetry != null)
             GestureDetector(
               onTap: widget.onRetry,
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold), size: 15, color: AD.bubbleOutPlay),
-                const SizedBox(width: 4),
+                const SizedBox(width: Msg.s1),
                 Text('Retry', style: ADText.rowName(c: AD.bubbleOutPlay)),
               ]),
             ),
-          if (widget.onRetry != null && widget.onOpenDashboard != null) const SizedBox(width: 16),
+          if (widget.onRetry != null && widget.onOpenDashboard != null) const SizedBox(width: Msg.s4),
           if (widget.onOpenDashboard != null)
             GestureDetector(
               onTap: widget.onOpenDashboard,
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold), size: 15, color: AD.iconVideo),
-                const SizedBox(width: 4),
+                const SizedBox(width: Msg.s1),
                 Text('Open dashboard', style: ADText.rowName(c: AD.iconVideo)),
               ]),
             ),
@@ -484,7 +485,7 @@ class _CampaignMissedDigestCardState extends State<CampaignMissedDigestCard> {
     final attempts = (row['attempts'] as num?)?.toInt();
     final label = (name != null && name.trim().isNotEmpty) ? name : (e164 ?? 'Unknown');
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: Msg.s1),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: RichText(
@@ -554,7 +555,7 @@ class CampaignStatusCard extends StatelessWidget {
     return _cardShell(
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(_iconFor(_event), size: 18, color: AD.iconVideo),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(
@@ -562,7 +563,7 @@ class CampaignStatusCard extends StatelessWidget {
               style: ADText.rowName(c: _kInk),
             ),
             if (stats.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: Msg.s1),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,

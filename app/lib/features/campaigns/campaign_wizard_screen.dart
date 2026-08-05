@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/apps_service.dart';
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'campaign_voice_picker.dart';
 
 /// Multi-step outbound-campaign creation wizard (Specs/
@@ -432,13 +433,13 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
             controlsBuilder: (context, details) {
               final isLast = _step == 5;
               return Padding(
-                padding: const EdgeInsets.only(top: 14, bottom: 4),
+                padding: const EdgeInsets.only(top: Msg.s4, bottom: Msg.s1),
                 child: Row(children: [
                   if (!isLast)
                     Expanded(
                       child: AdButton(label: 'Continue', fullWidth: true, onPressed: details.onStepContinue),
                     ),
-                  if (!isLast && _step > 0) const SizedBox(width: 10),
+                  if (!isLast && _step > 0) const SizedBox(width: Msg.s3),
                   if (_step > 0)
                     Expanded(
                       child: AdButton(
@@ -506,10 +507,10 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s3, Msg.s4, Msg.s3),
             child: Row(children: [
               const AdBackButton(),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s2),
               Expanded(
                 child: Text('New campaign', style: ADText.appTitle(),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -531,14 +532,14 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         hint: 'e.g. Diwali Sale Outreach',
         textCapitalization: TextCapitalization.sentences,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       AdField(
         controller: _agentName,
         label: 'AI agent name',
         hint: 'e.g. Ava, Riya, Priya',
         textCapitalization: TextCapitalization.words,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       AdField(
         controller: _businessName,
         label: 'Business name (used in the greeting)',
@@ -546,9 +547,9 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         textCapitalization: TextCapitalization.words,
         onChanged: (_) => setState(() {}),
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s3),
       _disclosurePreview(),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       AdField(
         controller: _goal,
         label: 'What should the agent do on this call?',
@@ -557,48 +558,48 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         maxLines: null,
         textCapitalization: TextCapitalization.sentences,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       Text('MORE DETAIL (OPTIONAL)', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       AdField(controller: _offer, label: 'Offer', hint: 'e.g. 20% off all appliances',
           textCapitalization: TextCapitalization.sentences),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s3),
       AdField(controller: _keyFacts, label: 'Key facts', hint: 'e.g. Sale runs Fri–Sun, store opens 10am',
           minLines: 2, maxLines: null, textCapitalization: TextCapitalization.sentences),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s3),
       AdField(controller: _objections, label: 'Objection answers',
           hint: 'e.g. If they ask about delivery, say we deliver free within the city',
           minLines: 2, maxLines: null, textCapitalization: TextCapitalization.sentences),
-      const SizedBox(height: 14),
-      Text('LANGUAGE', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s4),
+      Text('Language', style: ADText.sectionLabel()),
+      const SizedBox(height: Msg.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final (label, code) in _languages)
           AdChip(label: label, active: _languageHint == code, onTap: () => setState(() => _languageHint = code)),
       ]),
-      const SizedBox(height: 16),
-      Text('VOICE', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s4),
+      Text('Voice', style: ADText.sectionLabel()),
+      const SizedBox(height: Msg.s2),
       CampaignVoicePicker(
         voices: _voices,
         selectedId: _selectedVoiceId,
         onSelected: (id) => setState(() => _selectedVoiceId = id),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       AdField(
         controller: _persona,
         label: 'Persona notes (optional)',
         hint: 'e.g. Friendly, upbeat, keeps calls under 2 minutes',
         textCapitalization: TextCapitalization.sentences,
       ),
-      const SizedBox(height: 16),
-      Text('KNOWLEDGE FILES', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s4),
+      Text('Knowledge files', style: ADText.sectionLabel()),
+      const SizedBox(height: Msg.s2),
       _kbFilesList(),
-      const SizedBox(height: 8),
+      const SizedBox(height: Msg.s2),
       AdChip(label: 'Upload files (PDF, DOC, TXT, MD)', onTap: _pickKbFiles),
       Padding(
-        padding: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.only(top: Msg.s2),
         child: Text('Files upload once the campaign is created.', style: ADText.preview(c: AD.textTertiary)),
       ),
       if (_error != null) AdErrorMsg(_error!),
@@ -608,15 +609,15 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
   Widget _disclosurePreview() {
     final biz = _businessName.text.trim().isEmpty ? 'your business' : _businessName.text.trim();
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
         border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: Row(children: [
-        const Icon(Icons.info_outline, size: 16, color: AD.textSecondary),
-        const SizedBox(width: 8),
+        PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.regular), size: 16, color: AD.textSecondary),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Text('“Hello, this is Ava calling on behalf of $biz…”',
               style: ADText.preview(c: AD.textSecondary)),
@@ -632,10 +633,10 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     return Column(children: [
       for (var i = 0; i < _kbFiles.length; i++)
         Padding(
-          padding: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.only(bottom: Msg.s2),
           child: Row(children: [
             Icon(PhosphorIcons.fileText(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             Expanded(child: Text(_kbFiles[i].name, style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
             IconButton(
               icon: Icon(PhosphorIcons.trash(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
@@ -661,7 +662,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
     required String slug,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Msg.s3),
       decoration: BoxDecoration(
         color: AD.card,
         borderRadius: BorderRadius.circular(AD.rListCard),
@@ -669,10 +670,10 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
       ),
       child: Row(children: [
         Icon(icon, size: 20, color: color),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s3),
         Expanded(child: Text(label, style: ADText.rowName())),
         if (connected)
-          AdSticker('Connected', kind: AdStickerKind.ok, icon: Icons.check)
+          AdSticker('Connected', kind: AdStickerKind.ok, icon: PhosphorIcons.check(PhosphorIconsStyle.bold))
         else
           AdChip(
             label: _connectorsChecked ? 'Connect' : 'Checking…',
@@ -687,13 +688,13 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
   Widget _contactsStep() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Upload a spreadsheet of names/numbers to call, or link a Google Sheet.', style: ADText.preview()),
-      const SizedBox(height: 12),
+      const SizedBox(height: Msg.s3),
       if (_contactsFile != null)
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: Msg.s2),
           child: Row(children: [
             Icon(PhosphorIcons.fileText(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             Expanded(child: Text(_contactsFile!.name, style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
             IconButton(
               icon: Icon(PhosphorIcons.trash(PhosphorIconsStyle.bold), size: 16, color: AD.danger),
@@ -704,36 +705,36 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
           ]),
         ),
       AdChip(label: _contactsFile == null ? 'Upload Excel/CSV' : 'Change file', onTap: _pickContactsFile),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       Text('OR', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       AdField(
         controller: _sheetLink,
         label: 'Google Sheet link',
         hint: 'https://docs.google.com/spreadsheets/…',
         keyboardType: TextInputType.url,
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s3),
       Text(
         'Parsing and validation happen once the campaign is created — you’ll see '
         'a contact count on the campaign dashboard after upload.',
         style: ADText.preview(c: AD.textTertiary),
       ),
       if (_contactsNote != null) ...[
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         AdErrorMsg(_contactsNote!),
       ],
-      const SizedBox(height: 16),
-      Text('OR CONNECT GOOGLE SHEETS', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s4),
+      Text('Or connect Google Sheets', style: ADText.sectionLabel()),
+      const SizedBox(height: Msg.s2),
       _connectorRow(
-        icon: Icons.grid_on,
+        icon: PhosphorIcons.gridFour(PhosphorIconsStyle.regular),
         color: const Color(0xFF0F9D58), // matches kAvaApps' googlesheets tile
         label: 'Google Sheets',
         connected: _sheetsConnected,
         slug: 'googlesheets',
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: Msg.s2),
       Text(
         'Connecting lets Ava pull contacts straight from a sheet — coming soon; '
         'the link above keeps working in the meantime.',
@@ -758,13 +759,13 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
                     : '${_didOffers.length} number(s) available',
       ),
       if (_numberChoice == _NumberChoice.existing && _didSearchAvailable && _didOffers.isNotEmpty) ...[
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final d in _didOffers)
             AdChip(label: d.e164, active: _didE164 == d.e164, onTap: () => setState(() => _didE164 = d.e164)),
         ]),
       ],
-      const SizedBox(height: 12),
+      const SizedBox(height: Msg.s3),
       _numberChoiceTile(
         choice: _NumberChoice.fresh,
         title: 'Get a new number',
@@ -783,7 +784,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         if (choice == _NumberChoice.fresh) _didE164 = null;
       }),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -802,7 +803,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
                     decoration: const BoxDecoration(shape: BoxShape.circle, color: AD.primaryBadge))
                 : null,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: ADText.rowName()),
@@ -819,30 +820,30 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   Widget _scheduleStep() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('WINDOW', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      Text('Window', style: ADText.sectionLabel()),
+      const SizedBox(height: Msg.s2),
       Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(Msg.s3),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(children: [
-          const Icon(Icons.access_time, size: 16, color: AD.textSecondary),
-          const SizedBox(width: 8),
+          PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.regular), size: 16, color: AD.textSecondary),
+          const SizedBox(width: Msg.s2),
           Text('10:00–19:00 IST', style: ADText.rowName()),
         ]),
       ),
-      const SizedBox(height: 14),
-      Text('CONCURRENCY', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s4),
+      Text('Concurrency', style: ADText.sectionLabel()),
+      const SizedBox(height: Msg.s2),
       Row(children: [
-        _stepperButton(icon: Icons.remove, onTap: _concurrency > 1 ? () => setState(() => _concurrency -= 1) : null),
+        _stepperButton(icon: PhosphorIcons.minus(PhosphorIconsStyle.bold), onTap: _concurrency > 1 ? () => setState(() => _concurrency -= 1) : null),
         SizedBox(width: 50, child: Text('$_concurrency', textAlign: TextAlign.center, style: ADText.rowName())),
-        _stepperButton(icon: Icons.add, onTap: _concurrency < 10 ? () => setState(() => _concurrency += 1) : null),
+        _stepperButton(icon: PhosphorIcons.plus(PhosphorIconsStyle.bold), onTap: _concurrency < 10 ? () => setState(() => _concurrency += 1) : null),
       ]),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       AdField(
         controller: _estContacts,
         label: 'Estimated contacts (for the cost estimate)',
@@ -850,14 +851,14 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         onChanged: (_) => setState(() {}),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       AdField(
         controller: _spendCap,
         label: 'Spend cap (tokens) — required',
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: Msg.s2),
       Text('The campaign auto-pauses once this many tokens are spent.', style: ADText.preview(c: AD.textTertiary)),
       if (_error != null) AdErrorMsg(_error!),
     ]);
@@ -865,7 +866,7 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   Widget _stepperButton({required IconData icon, VoidCallback? onTap}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
@@ -897,25 +898,25 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
             ),
           ]),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         _WizToggle(
           value: _bookingEnabled && _calendarConnected,
           onChanged: _calendarConnected ? (v) => setState(() => _bookingEnabled = v) : null,
         ),
       ]),
       if (!_calendarConnected) ...[
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s3),
         _connectorRow(
-          icon: Icons.event,
+          icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular),
           color: const Color(0xFF4285F4), // matches kAvaApps' googlecalendar tile
           label: 'Google Calendar',
           connected: _calendarConnected,
           slug: 'googlecalendar',
         ),
       ],
-      const SizedBox(height: 20),
+      const SizedBox(height: Msg.s5),
       const Divider(color: AD.borderHairline),
-      const SizedBox(height: 16),
+      const SizedBox(height: Msg.s4),
       Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -924,11 +925,11 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
             Text('Transfer the call to a real person when the caller asks.', style: ADText.preview()),
           ]),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Msg.s2),
         _WizToggle(value: _handoverEnabled, onChanged: (v) => setState(() => _handoverEnabled = v)),
       ]),
       if (_handoverEnabled) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         AdField(
           controller: _handoverNumber,
           label: 'Handover number',
@@ -971,17 +972,17 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
             ? (_handoverNumber.text.trim().isEmpty ? 'Enabled (no number set)' : _handoverNumber.text.trim())
             : 'Off',
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s4),
       Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.primaryBadge.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(color: AD.primaryBadge.withValues(alpha: 0.40), width: 1),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('ESTIMATED COST', style: ADText.sectionLabel(c: AD.primaryBadge)),
-          const SizedBox(height: 6),
+          Text('Estimated cost', style: ADText.sectionLabel(c: AD.primaryBadge)),
+          const SizedBox(height: Msg.s2),
           Text(
             '~$_estimatedCostTokens tokens ($contacts contacts × ~$_estMinutesPerCall min × '
             '$_ratePerMinTokens tokens/min'
@@ -990,8 +991,8 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
           ),
         ]),
       ),
-      const SizedBox(height: 18),
-      if (_error != null) ...[AdErrorMsg(_error!), const SizedBox(height: 12)],
+      const SizedBox(height: Msg.s4),
+      if (_error != null) ...[AdErrorMsg(_error!), const SizedBox(height: Msg.s3)],
       AdButton(
         label: _launching ? 'Launching…' : 'Launch campaign',
         fullWidth: true,
@@ -1012,9 +1013,9 @@ class _CampaignWizardScreenState extends State<CampaignWizardScreen> {
 
   Widget _summaryRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: Msg.s2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: 110, child: Text(label.toUpperCase(), style: ADText.sectionLabel())),
+        SizedBox(width: 110, child: Text(label, style: ADText.sectionLabel())),
         Expanded(child: Text(value, style: ADText.rowName())),
       ]),
     );
@@ -1033,16 +1034,16 @@ class _WizToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
+        duration: Msg.fast,
         width: 52, height: 30,
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.all(Msg.s1),
         decoration: BoxDecoration(
           color: value ? AD.online : AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: AnimatedAlign(
-          duration: const Duration(milliseconds: 120),
+          duration: Msg.fast,
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 22, height: 22,

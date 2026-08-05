@@ -17,6 +17,7 @@ import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../shell/shell_v2.dart' show ShellScope;
 import '../../shell/v2/shell_chrome.dart' show ShellSidebar;
 import '../payout/payout_screen.dart';
@@ -46,14 +47,14 @@ PreferredSizeWidget _darkHeader({
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: Row(children: [
             if (showBack) ...[
               const AdBackButton(),
-              const SizedBox(width: 8),
+              const SizedBox(width: Msg.s2),
             ] else if (leading != null) ...[
               leading,
-              const SizedBox(width: 8),
+              const SizedBox(width: Msg.s2),
             ],
             Expanded(
               child: Column(
@@ -63,7 +64,8 @@ PreferredSizeWidget _darkHeader({
                   Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
                   if (tag != null) ...[
                     const SizedBox(height: 2),
-                    Text(tag.toUpperCase(), style: ADText.sectionLabel()),
+                    // [UI-DS-SWEEP-1] sentence case — the caps were shouting.
+                    Text(tag, style: ADText.sectionLabel()),
                   ],
                 ],
               ),
@@ -630,9 +632,9 @@ class _WalletScreenState extends State<WalletScreen> {
             padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Top up wallet', style: ADText.appTitle()),
-              const SizedBox(height: 4),
+              const SizedBox(height: Msg.s1),
               Text('Pay securely in-app. $rateCopy. Minimum $sym$minUnits.', style: ADText.preview()),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
               AdField(
                 controller: ctrl,
                 autofocus: true,
@@ -641,12 +643,12 @@ class _WalletScreenState extends State<WalletScreen> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onChanged: (_) => setSheet(() {}),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               Text(
                 valid ? '= ${_coins(previewCoins)} Tokens' : 'Enter $sym$minUnits – $sym${_coins(maxUnits)}',
                 style: ADText.rowName(c: valid ? AD.online : AD.textTertiary),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: Msg.s3),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final v in presets)
                   AdSticker('$sym$v · ${_coins(v * tokensPerUnit)} Tokens', onTap: () {
@@ -654,7 +656,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     setSheet(() => ctrl.text = inr ? '$v' : v.toStringAsFixed(2));
                   }),
               ]),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               AdButton(
                 label: 'Continue to payment',
                 fullWidth: true,
@@ -700,9 +702,9 @@ class _WalletScreenState extends State<WalletScreen> {
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Top up wallet', style: ADText.appTitle()),
-          const SizedBox(height: 4),
+          const SizedBox(height: Msg.s1),
           Text('Pay securely with Google Play. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ADText.preview()),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           for (final t in kTopupTiers) ...[
             AdButton(
               label: '\$${t.usd}   ·   ${_coins(t.tokens)} Tokens',
@@ -715,9 +717,9 @@ class _WalletScreenState extends State<WalletScreen> {
                 WalletTopupBilling.instance.buy(t.productId);
               },
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
           ],
-          const SizedBox(height: 4),
+          const SizedBox(height: Msg.s1),
           Text(regionNote ?? 'Charged in your local currency at Google Play’s rate.',
               style: ADText.preview(c: AD.textTertiary)),
         ]),
@@ -899,9 +901,10 @@ class _WalletScreenState extends State<WalletScreen> {
     final day = DateTime(d.year, d.month, d.day);
     final today = DateTime(now.year, now.month, now.day);
     final diff = today.difference(day).inDays;
-    if (diff == 0) return 'TODAY';
-    if (diff == 1) return 'YESTERDAY';
-    return '${_kMonShort[d.month - 1].toUpperCase()} ${d.day}';
+    // [UI-DS-SWEEP-1] sentence case — these are visible group headers.
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    return '${_kMonShort[d.month - 1]} ${d.day}';
   }
 
   static const List<String> _kDowLetter = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -1007,11 +1010,11 @@ class _WalletScreenState extends State<WalletScreen> {
         child: ListView(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 36),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s6),
           children: [
             // 1 — balance hero
             _balanceHero(),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s5),
 
             // 2 — period row
             Row(children: [
@@ -1029,7 +1032,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 },
               ),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
 
             // 3 — money in / money out
             WalletMoneyTilesRow(
@@ -1040,10 +1043,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
             // 4 — daily spend
             if (bars.isNotEmpty) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               WalletCard(
                 radius: 20,
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(Msg.s4),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Text('Daily spend', style: AWText.sectionHead()),
@@ -1058,7 +1061,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       ),
                     ),
                   ]),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: Msg.s4),
                   WalletBarChart(bars: bars),
                 ]),
               ),
@@ -1066,17 +1069,17 @@ class _WalletScreenState extends State<WalletScreen> {
 
             // 5 — where it went
             if (byCat.isNotEmpty) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               WalletCard(
                 radius: 20,
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(Msg.s4),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Text('Where it went', style: AWText.sectionHead()),
                     const Spacer(),
                     Text('last $_days days', style: AWText.cardMeta()),
                   ]),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Msg.s4),
                   Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                     WalletDonut(
                       segments: [
@@ -1085,13 +1088,13 @@ class _WalletScreenState extends State<WalletScreen> {
                       ],
                       centerValue: _coins(spent),
                     ),
-                    const SizedBox(width: 18),
+                    const SizedBox(width: Msg.s4),
                     Expanded(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           for (var i = 0; i < byCat.length; i++) ...[
-                            if (i > 0) const SizedBox(height: 9),
+                            if (i > 0) const SizedBox(height: Msg.s2),
                             WalletLegendRow(
                               color: _catColor('${byCat[i]['key']}'),
                               label: '${byCat[i]['label'] ?? _catLabel('${byCat[i]['key']}')}',
@@ -1107,7 +1110,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ],
 
             // 6 — history header
-            const SizedBox(height: 26),
+            const SizedBox(height: Msg.s5),
             Row(children: [
               Text('History', style: AWText.sectionTitle()),
               const Spacer(),
@@ -1122,7 +1125,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 },
               ),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
 
             // 7 — search + calendar + export
             Row(children: [
@@ -1135,12 +1138,12 @@ class _WalletScreenState extends State<WalletScreen> {
                       : () { _searchCtrl.clear(); setState(() => _query = ''); _applyFilters(); },
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Msg.s2),
               WalletCircleButton(
                 icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
                 onTap: () => setState(() => _showCal = !_showCal),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Msg.s2),
               WalletCircleButton(
                 icon: PhosphorIcons.export(PhosphorIconsStyle.bold),
                 onTap: _showExportSheet,
@@ -1150,7 +1153,7 @@ class _WalletScreenState extends State<WalletScreen> {
             // Inline day picker (deliberately NOT an absolute popover — a plain
             // ListView child always paints).
             if (_showCal) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: Msg.s3),
               Align(
                 alignment: Alignment.centerRight,
                 child: WalletCalendar(
@@ -1163,11 +1166,11 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
             ],
             if (_range != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s3),
               Row(children: [
                 Expanded(
                   child: Text(
-                    'SHOWING ${_dateShort(_range!.start.millisecondsSinceEpoch).toUpperCase()}',
+                    'Showing ${_dateShort(_range!.start.millisecondsSinceEpoch)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AWText.caption(c: AW.txSoft),
@@ -1179,25 +1182,25 @@ class _WalletScreenState extends State<WalletScreen> {
                     setState(() { _range = null; _selDay = null; });
                     _applyFilters();
                   },
-                  child: Text('CLEAR', style: AWText.caption(c: AW.coral)),
+                  child: Text('Clear', style: AWText.caption(c: AW.coral)),
                 ),
               ]),
             ],
 
             // 8 — transaction list
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Text(
               (_loading && rows.isEmpty) ? 'TRANSACTIONS · loading…' : 'TRANSACTIONS · ${rows.length}',
               style: AWText.caption(c: AW.txMute),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             if (rows.isEmpty && !_loading)
               _emptyState()
             else
               ..._dayGroups(rows),
             if (!_exhausted && rows.isNotEmpty)
               const Padding(
-                padding: EdgeInsets.all(16),
+                padding: EdgeInsets.all(Msg.s4),
                 child: Center(
                   child: SizedBox(
                     width: 20, height: 20,
@@ -1217,10 +1220,9 @@ class _WalletScreenState extends State<WalletScreen> {
     final usd = (_balance / kCoinsPerUsd).toStringAsFixed(2);
     return WalletCard(
       color: AW.mint,
-      radius: 24,
-      padding: const EdgeInsets.all(20),
+      radius: Msg.rLg,
+      padding: const EdgeInsets.all(Msg.s5),
       hardBorder: true,
-      shadow: const Offset(6, 7),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
@@ -1229,14 +1231,14 @@ class _WalletScreenState extends State<WalletScreen> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(Msg.rMd),
             ),
             child: Icon(PhosphorIcons.wallet(PhosphorIconsStyle.fill), size: 19, color: AW.glyph),
           ),
-          const SizedBox(width: 10),
-          Text('BALANCE', style: AWText.cardLabel()),
+          const SizedBox(width: Msg.s3),
+          Text('Balance', style: AWText.cardLabel()),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Flexible(
             child: FittedBox(
@@ -1245,13 +1247,13 @@ class _WalletScreenState extends State<WalletScreen> {
               child: Text(_coins(_balance), style: AWText.balanceHuge()),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: Msg.s2),
             child: Text('tokens', style: AWText.balanceUnit()),
           ),
         ]),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text(
           '≈ \$$usd value · refills monthly'
           '${_held > 0 ? ' · ${_coins(_held)} on hold' : ''}',
@@ -1259,7 +1261,7 @@ class _WalletScreenState extends State<WalletScreen> {
           overflow: TextOverflow.ellipsis,
           style: AWText.balanceSub(),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         // Android tops up via native Google Play Billing (fixed-price tiers),
         // independent of billingEnabled (that gates subscription paywalls). The
         // server-side playTopupEnabled flag + Play service account are the real
@@ -1268,11 +1270,11 @@ class _WalletScreenState extends State<WalletScreen> {
         if (!Platform.isAndroid && !RemoteConfig.billingEnabled)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
             decoration: BoxDecoration(
               color: AW.bg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AW.ink, width: 2),
+              borderRadius: Msg.brMd,
+              border: Border.all(color: AW.ink, width: 1),
             ),
             child: Text('Everything is free right now — no top-ups needed.',
                 style: AWText.rowTitle(c: AW.mint)),
@@ -1288,7 +1290,7 @@ class _WalletScreenState extends State<WalletScreen> {
         // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
         // Flip _kShowWithdraw back to true to restore the button.
         if (_kShowWithdraw) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           _heroButton(
             label: 'Withdraw',
             icon: PhosphorIcons.handCoins(PhosphorIconsStyle.fill),
@@ -1304,7 +1306,7 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  /// Full-width 54-high poster button (flat fill, black border, hard shadow).
+  /// Full-width 54-high primary button (flat fill, hairline border, soft lift).
   Widget _heroButton({
     required String label,
     required IconData icon,
@@ -1321,13 +1323,13 @@ class _WalletScreenState extends State<WalletScreen> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: AW.ink, width: 2.5),
-          boxShadow: const [BoxShadow(color: AW.ink, offset: Offset(4, 5), blurRadius: 0)],
+          borderRadius: Msg.brLg,
+          border: Border.all(color: AW.ink, width: 1),
+          boxShadow: Msg.lift,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 18, color: ink),
-          const SizedBox(width: 9),
+          const SizedBox(width: Msg.s2),
           Text(label, style: AWText.sectionHead(c: ink)),
         ]),
       ),
@@ -1337,8 +1339,8 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _moneyTile(bool isIn, int tokens) {
     final color = isIn ? AW.mint : AW.coral;
     return WalletCard(
-      radius: 18,
-      padding: const EdgeInsets.all(14),
+      radius: Msg.rLg,
+      padding: const EdgeInsets.all(Msg.s4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         WalletBadge(
           icon: isIn
@@ -1346,34 +1348,34 @@ class _WalletScreenState extends State<WalletScreen> {
               : PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold),
           color: color,
           size: 36,
-          radius: 11,
+          radius: Msg.rMd,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
           child: Text('${isIn ? '+' : '−'}${_coins(tokens)}', style: AWText.statBig(c: color)),
         ),
         const SizedBox(height: 2),
-        Text(isIn ? 'MONEY IN' : 'MONEY OUT', style: AWText.caption(c: AW.txMute)),
+        Text(isIn ? 'Money in' : 'Money out', style: AWText.caption(c: AW.txMute)),
       ]),
     );
   }
 
   Widget _emptyState() => Padding(
-        padding: const EdgeInsets.fromLTRB(0, 26, 0, 26),
+        padding: const EdgeInsets.fromLTRB(0, Msg.s5, 0, Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 64,
             height: 64,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AW.hair, width: 2),
+              borderRadius: Msg.brLg,
+              border: Border.all(color: AW.hair, width: 1),
             ),
-            child: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.bold), size: 28, color: AW.txMute),
+            child: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.regular), size: 28, color: AW.txMute),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           Text(
             _filtered
                 ? 'Nothing matches those filters.'
@@ -1400,7 +1402,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final out = <Widget>[];
     for (final g in groups) {
       out.add(Padding(
-        padding: const EdgeInsets.fromLTRB(0, 16, 0, 2),
+        padding: const EdgeInsets.fromLTRB(0, Msg.s4, 0, 2),
         child: Text(g.label, style: AWText.caption()),
       ));
       out.add(WalletCard(
@@ -1445,12 +1447,12 @@ class _WalletScreenState extends State<WalletScreen> {
       );
       final tokens = _tokensOf(e);
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s4),
         child: Row(children: [
           Expanded(
             child: Text(_titleOf(e), maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Text('${tokens >= 0 ? '+' : '−'}${_coins(tokens.abs())}',
               style: AWText.amount(c: tokens >= 0 ? AW.mint : AW.coral)),
         ]),
@@ -1530,9 +1532,7 @@ class _WalletScreenState extends State<WalletScreen> {
       // Android status-bar touch region.
       useSafeArea: true,
       backgroundColor: AW.bg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (c) => SafeArea(
         // Keep the close button below Android's status-bar hit region. With
         // top:false the X could be visible but taps were intercepted by System UI.
@@ -1540,7 +1540,7 @@ class _WalletScreenState extends State<WalletScreen> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.9),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 26),
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s5),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // The modal route already handles Android's system Back gesture /
               // button and swipe-down dismissal. Keep an explicit close control
@@ -1552,7 +1552,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Center(
                     child: Container(
                       width: 44, height: 5,
-                      decoration: BoxDecoration(color: AW.hair, borderRadius: BorderRadius.circular(100)),
+                      decoration: BoxDecoration(color: AW.hair, borderRadius: Msg.brPill),
                     ),
                   ),
                 ),
@@ -1570,23 +1570,23 @@ class _WalletScreenState extends State<WalletScreen> {
                   icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: AW.tx, size: 20),
                 ),
               ]),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s3),
               WalletBadge(icon: _catIcon(cat), color: _catColor(cat), size: 66, radius: 20, glyph: 32),
-              const SizedBox(height: 20),
+              const SizedBox(height: Msg.s5),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(amountLabel, style: AWText.detailAmount(c: isIn ? AW.mint : AW.coral)),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Msg.s1),
               Text('tokens · ${_catLabel(cat)}',
                   textAlign: TextAlign.center, style: AWText.sectionHead(c: AW.txMute)),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               WalletStatusPill(status: status.isEmpty ? 'completed' : status),
-              const SizedBox(height: 22),
+              const SizedBox(height: Msg.s5),
               Text(_titleOf(entry),
                   textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
                   style: AWText.rowTitle()),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
               if (durLabel != null && rate != null) ...[
                 WalletBreakdownBox(
                   duration: durLabel,
@@ -1594,7 +1594,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   total: _coins(tokens.abs()),
                   totalColor: isIn ? AW.mint : AW.coral,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s4),
               ],
               WalletCard(
                 radius: 18,
@@ -1611,7 +1611,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               _heroButton(
                 label: 'Get receipt',
                 icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
@@ -1624,7 +1624,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   _snack(r['sent'] == true ? 'Receipt sent to your email.' : 'Could not send the receipt.');
                 },
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: Msg.s2),
               Center(
                 child: TextButton(
                   onPressed: () {
@@ -1650,35 +1650,33 @@ class _WalletScreenState extends State<WalletScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AW.surf,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (c) => SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Center(
               child: Container(
                 width: 44, height: 5,
-                decoration: BoxDecoration(color: AW.hair, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AW.hair, borderRadius: Msg.brPill),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Text('Export statement', style: AWText.sectionTitle()),
-            const SizedBox(height: 4),
+            const SizedBox(height: Msg.s1),
             Text('Your ${_kMonLong[now.month - 1]} ${now.year} transaction history',
                 style: AWText.rowSub(c: AW.txMute)),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             _exportTile(c, 'share', 'Share', 'Send via AvaTalk or apps',
                 PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), AW.blue),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             _exportTile(c, 'save', 'Save to phone', 'Download CSV statement',
                 PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), AW.lime),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             _exportTile(c, 'email', 'Email', 'Send a copy to yourself',
                 PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold), AW.lilac),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s2),
             Center(
               child: TextButton(
                 onPressed: () => Navigator.pop(c),
@@ -1700,10 +1698,10 @@ class _WalletScreenState extends State<WalletScreen> {
         radius: 16,
         hardBorder: true,
         shadow: const Offset(3, 3),
-        padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
         child: Row(children: [
           WalletBadge(icon: icon, color: color, size: 38, radius: 11),
-          const SizedBox(width: 14),
+          const SizedBox(width: Msg.s4),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: AWText.rowTitle()),

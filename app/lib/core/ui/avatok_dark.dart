@@ -63,17 +63,37 @@ class AD {
       active ? accent : accent.withValues(alpha: tabInactiveTintAlpha);
 
   // ------------------------------------------------------------------- icons
-  static const iconSearch = Color(0xFF6FA8E8);
-  static const iconBell = Color(0xFFF2A65A);
-  static const iconShield = Color(0xFF6FCF97);
-  static const iconPhone = Color(0xFF4FD0BD);
-  static const iconVideo = Color(0xFFA78BFA);
-  static const iconCamera = Color(0xFFE58BB0);
-  static const iconCameraOnWhite = Color(0xFFC14E77);
-  static const iconClipOnWhite = Color(0xFF3E6CA6);
-  static const iconEmoji = Color(0xFFF2C94C);
-  static const iconMic = Color(0xFF5B3FB8);
-  static const iconStar = Color(0xFFE58BB0);
+  //
+  // [UI-PALETTE-1 2026-08-05] COLLAPSED to one neutral + one accent.
+  //
+  // There used to be eight unrelated icon hues here — search-blue, bell-orange,
+  // shield-green, phone-teal, video-purple, camera-pink, emoji-yellow,
+  // mic-purple — each picked in isolation. On screen that reads as a toybox:
+  // eight competing colours with no meaning attached to any of them, which was
+  // one of the concrete findings in UI-AUDIT-2026-08-05.md. Colour should mean
+  // something. Here it means exactly one thing: "this is the action".
+  //
+  // The eight names are KEPT AS ALIASES on purpose. They have ~100 call sites
+  // across the app, and rewriting every one of them by hand — with no local
+  // compiler to catch a typo — is a far bigger risk than pointing them at the
+  // right value. Anything that was decorative becomes neutral; the two things
+  // that genuinely are the primary action on their surface (search field
+  // affordance, mic) keep the accent. New code should use `iconNeutral` /
+  // `iconAccent` directly and NOT reach for the legacy names.
+  static const iconNeutral = Color(0xFFB9BCC4); // == textSecondary family
+  static const iconAccent = primaryBadge;       // the single accent, #E8833A
+
+  static const iconSearch = iconAccent;
+  static const iconBell = iconNeutral;
+  static const iconShield = iconNeutral;
+  static const iconPhone = iconNeutral;
+  static const iconVideo = iconNeutral;
+  static const iconCamera = iconNeutral;
+  static const iconCameraOnWhite = iconNeutral;
+  static const iconClipOnWhite = iconNeutral;
+  static const iconEmoji = iconNeutral;
+  static const iconMic = iconAccent;
+  static const iconStar = iconNeutral;
 
   // ----------------------------------------------------------------- buttons
   static const primaryBadge = Color(0xFFE8833A);

@@ -5,7 +5,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
-import '../../core/ui/zine.dart';
+// [UI-DS-SWEEP-1] migrated off core/ui/zine.dart onto AD / ADText / Msg.
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 
@@ -49,9 +51,9 @@ class _LinkSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.bg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg)),
+        border: Border(top: BorderSide(color: AD.borderCard, width: 1)),
       ),
       child: SafeArea(
         child: Padding(
@@ -59,8 +61,8 @@ class _LinkSheet extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Center(child: Container(width: 38, height: 5,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Zine.inkMute,
+                margin: const EdgeInsets.only(bottom: Msg.s4),
+                decoration: BoxDecoration(color: AD.textTertiary,
                     borderRadius: BorderRadius.circular(3)))),
             Center(
               child: ZineMarkTitle(
@@ -69,46 +71,46 @@ class _LinkSheet extends StatelessWidget {
                 fontSize: 26,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s2),
             Text(
               'Earn 10% of every payment your referrals ever make on this listing — for life.',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 12.5),
+              style: ADText.preview(),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             // QR in an ink-bordered card with a hard offset shadow.
             Center(
               child: Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(Msg.s4),
                 decoration: BoxDecoration(
-                  color: Zine.card,
-                  border: Zine.border,
-                  borderRadius: BorderRadius.circular(Zine.r),
-                  boxShadow: Zine.shadowSm,
+                  color: AD.card,
+                  border: Border.all(color: AD.borderCard, width: 1),
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  boxShadow: const <BoxShadow>[],
                 ),
                 child: QrImageView(
                   data: link.url,
                   size: 220,
-                  backgroundColor: Zine.card,
+                  backgroundColor: AD.card,
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             // URL pill + copy
             ZinePressable(
               onTap: () => _copy(context),
-              radius: BorderRadius.circular(Zine.rSm),
-              boxShadow: Zine.shadowXs,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              radius: BorderRadius.circular(Msg.rLg),
+              boxShadow: const <BoxShadow>[],
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
               child: Row(children: [
                 Expanded(child: Text(link.url, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.tag(size: 13))),
-                const SizedBox(width: 8),
+                    style: ADText.sectionLabel())),
+                const SizedBox(width: Msg.s2),
                 PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
-                    size: 18, color: Zine.inkSoft),
+                    size: 18, color: AD.textSecondary),
               ]),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: 'Share it',
               fullWidth: true,
@@ -117,8 +119,8 @@ class _LinkSheet extends StatelessWidget {
               trailingIcon: false,
               onPressed: _share,
             ),
-            const SizedBox(height: 12),
-            Center(child: ZineLink('DONE', onTap: () => Navigator.pop(context))),
+            const SizedBox(height: Msg.s3),
+            Center(child: ZineLink('Done', onTap: () => Navigator.pop(context))),
           ]),
         ),
       ),

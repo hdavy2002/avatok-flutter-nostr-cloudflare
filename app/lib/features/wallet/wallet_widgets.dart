@@ -1,16 +1,18 @@
 // [WALLET-REDESIGN-1] AvaWallet redesign — reusable widget kit.
 //
-// Every piece of chrome the redesigned wallet screens need, built on the tokens
-// in `wallet_theme.dart`. Design intent, in one line: flat saturated poster
-// fills, PURE-black hard borders (1.5 / 2 / 2.5px), HARD un-blurred offset
-// shadows (`blurRadius: 0`), pill geometry, Nunito w700/w800.
+// [UI-DS-SWEEP-1] 2026-08-05 — de-postered. The kit used to render PURE-black
+// borders at 1.5 / 2 / 2.5px and HARD un-blurred offset shadows
+// (`blurRadius: 0`), i.e. the sticker-book idiom the UI audit flagged. Every
+// one of those is now an `AD` hairline border plus, where an element genuinely
+// floats, a soft `Msg.lift` / `AD.overlayShadow`.
 //
 // Rules the whole kit follows, so screens stay consistent:
-//   * a shadow is ALWAYS `BoxShadow(color: Colors.black, offset: ..., blurRadius: 0)`
-//     — never a blur. Blur belongs to the `AD` dark system, not this one.
-//   * a "hard" element gets a black border; a "quiet" element gets `AW.hair`.
+//   * borders are `AD.borderCard` / `AW.hair` at 1px. Never black, never 2.5px.
+//   * shadows are soft and neutral, and only on things that float.
+//   * radii come from `Msg` (8 / 12 / 16); `Msg.brPill` is reserved for
+//     status pills, chips and day cells.
 //   * anything sitting on a bright accent uses `AW.glyph` ink, except coral,
-//     which is the one fill that takes white (inherited from the Zine rules).
+//     which is the one fill that takes white.
 //
 // Nothing here talks to the network or to app state — these are pure
 // presentation widgets, so the screen owns all data and callbacks.
@@ -20,12 +22,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'wallet_theme.dart';
-
-/// Hard offset shadow helper — the single place the blur-0 rule is expressed.
-List<BoxShadow> _hardShadow(Offset offset) => [
-      BoxShadow(color: Colors.black, offset: offset, blurRadius: 0),
-    ];
 
 /// The wallet's Money In / Money Out pair.
 ///
@@ -50,7 +49,7 @@ class WalletMoneyTilesRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: moneyIn),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Expanded(child: moneyOut),
         ],
       ),
@@ -65,30 +64,32 @@ class WalletMoneyTilesRow extends StatelessWidget {
 /// The base surface for every wallet block.
 ///
 /// Two modes:
-///  * quiet (default) — `AW.hair` 2px border, no shadow. For list containers
-///    and anything that shouldn't shout.
-///  * `hardBorder: true` — 2.5px pure-black border plus a hard offset shadow
-///    (default `Offset(6, 7)`). This is the poster treatment; reserve it for
-///    hero elements (balance card, featured stats) so it stays special.
+///  * quiet (default) — `AW.hair` hairline border, no shadow. For list
+///    containers and anything that shouldn't shout.
+///  * `hardBorder: true` — a slightly stronger `AD.borderCard` edge plus the
+///    single sanctioned soft lift. Reserve it for hero elements (balance card,
+///    featured stats) so it stays special.
 class WalletCard extends StatelessWidget {
   final Widget child;
   final double radius;
   final EdgeInsetsGeometry padding;
 
-  /// Fill. Defaults to [AW.surf]; pass an accent for a poster card.
+  /// Fill. Defaults to [AW.surf]; pass an accent for a feature card.
   final Color? color;
 
-  /// Poster treatment: black border + hard shadow.
+  /// Emphasis treatment: stronger border + soft lift.
   final bool hardBorder;
 
-  /// Hard-shadow offset. Only used when [hardBorder] is true.
+  /// [UI-DS-SWEEP-1] IGNORED. Was the hard offset-shadow displacement; the
+  /// shadow is now the neutral [Msg.lift]. Kept only so existing call sites
+  /// still compile — do not pass it in new code.
   final Offset? shadow;
 
   const WalletCard({
     super.key,
     required this.child,
-    this.radius = 18,
-    this.padding = const EdgeInsets.all(16),
+    this.radius = Msg.rLg,
+    this.padding = const EdgeInsets.all(Msg.s4),
     this.color,
     this.hardBorder = false,
     this.shadow,
@@ -102,10 +103,11 @@ class WalletCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color ?? AW.surf,
         borderRadius: BorderRadius.circular(radius),
-        border: hardBorder
-            ? Border.all(color: Colors.black, width: 2.5)
-            : Border.all(color: AW.hair, width: 2),
-        boxShadow: hardBorder ? _hardShadow(shadow ?? const Offset(6, 7)) : null,
+        border: Border.all(
+          color: hardBorder ? AD.borderCard : AW.hair,
+          width: 1,
+        ),
+        boxShadow: hardBorder ? Msg.lift : null,
       ),
       child: child,
     );
@@ -119,8 +121,8 @@ class WalletCard extends StatelessWidget {
 /// Rounded-square accent tile holding one glyph — the leading element of a
 /// transaction row and of most stat cards.
 ///
-/// Always flat fill + black outline; the ink flips to white on coral because
-/// dark glyph on coral fails contrast (same rule as the Zine system).
+/// Flat fill + hairline outline; the ink flips to white on coral because a
+/// dark glyph on coral fails contrast.
 class WalletBadge extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -135,7 +137,7 @@ class WalletBadge extends StatelessWidget {
     required this.icon,
     required this.color,
     this.size = 40,
-    this.radius = 12,
+    this.radius = Msg.rMd,
     this.glyph = 19,
   });
 
@@ -149,7 +151,7 @@ class WalletBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: Colors.black, width: 2),
+        border: Border.all(color: AD.borderCard, width: 1),
       ),
       child: Icon(icon, size: glyph, color: ink),
     );
@@ -179,11 +181,11 @@ class WalletChipTrack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(Msg.s1),
       decoration: BoxDecoration(
         color: AW.surf,
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: AW.hair, width: 1.5),
+        borderRadius: Msg.brPill,
+        border: Border.all(color: AW.hair, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -194,10 +196,10 @@ class WalletChipTrack extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: 5),
                 decoration: BoxDecoration(
                   color: i == activeIndex ? AW.lime : Colors.transparent,
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brPill,
                 ),
                 child: Text(
                   labels[i],
@@ -246,7 +248,7 @@ class WalletBarChart extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         for (var i = 0; i < bars.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
+          if (i > 0) const SizedBox(width: Msg.s2),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -259,21 +261,21 @@ class WalletBarChart extends StatelessWidget {
                   overflow: TextOverflow.clip,
                   style: AWText.barLabel(c: AW.txSoft),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s2),
                 SizedBox(
                   height: _barHeight(bars[i].value.toDouble(), max),
                   child: Container(
                     decoration: BoxDecoration(
                       color: AW.coral,
-                      border: Border.all(color: Colors.black, width: 2),
+                      border: Border.all(color: AD.borderCard, width: 1),
                       borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(7),
+                        top: Radius.circular(Msg.rSm),
                         bottom: Radius.circular(4),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s2),
                 Text(
                   bars[i].label,
                   textAlign: TextAlign.center,
@@ -341,7 +343,7 @@ class WalletDonut extends StatelessWidget {
             children: [
               Text(centerValue, style: AWText.donutCenter()),
               const SizedBox(height: 2),
-              Text('TOKENS', style: AWText.caption(c: AW.txMute)),
+              Text('Tokens', style: AWText.caption(c: AW.txMute)),
             ],
           ),
         ],
@@ -413,8 +415,8 @@ class _DonutPainter extends CustomPainter {
 
 /// One line of the donut legend: swatch, label, value.
 ///
-/// The swatch carries the same black outline as every other filled element so
-/// pale accents (blue, mint) don't dissolve into the dark surface.
+/// The swatch carries the same hairline outline as every other filled element
+/// so pale accents (blue, mint) don't dissolve into the dark surface.
 class WalletLegendRow extends StatelessWidget {
   final Color color;
   final String label;
@@ -437,10 +439,10 @@ class WalletLegendRow extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: Colors.black, width: 1.5),
+            border: Border.all(color: AD.borderCard, width: 1),
           ),
         ),
-        const SizedBox(width: 9),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Text(
             label,
@@ -461,8 +463,8 @@ class WalletLegendRow extends StatelessWidget {
 
 /// Quiet pill search field for the transaction list.
 ///
-/// Quiet on purpose — a black-bordered poster field here would compete with
-/// the balance card, which must stay the loudest thing on the screen.
+/// Quiet on purpose — a heavier field here would compete with the balance
+/// card, which must stay the loudest thing on the screen.
 class WalletSearchField extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onSubmitted;
@@ -480,20 +482,20 @@ class WalletSearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       decoration: BoxDecoration(
         color: AW.surf,
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: AW.hair, width: 1.5),
+        borderRadius: Msg.brMd,
+        border: Border.all(color: AW.hair, width: 1),
       ),
       child: Row(
         children: [
           PhosphorIcon(
-            PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+            PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
             size: 16,
             color: AW.txMute,
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: TextField(
               controller: controller,
@@ -514,12 +516,12 @@ class WalletSearchField extends StatelessWidget {
             ),
           ),
           if (onClear != null) ...[
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             GestureDetector(
               onTap: onClear,
               behavior: HitTestBehavior.opaque,
               child: PhosphorIcon(
-                PhosphorIcons.x(PhosphorIconsStyle.bold),
+                PhosphorIcons.x(PhosphorIconsStyle.regular),
                 size: 15,
                 color: AW.txMute,
               ),
@@ -558,7 +560,7 @@ class WalletCircleButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: AW.surf,
           shape: BoxShape.circle,
-          border: Border.all(color: AW.hair, width: 1.5),
+          border: Border.all(color: AW.hair, width: 1),
         ),
         child: Icon(icon, size: 18, color: AW.tx),
       ),
@@ -611,19 +613,19 @@ class WalletTxnRow extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(
               color: showDivider ? AW.hair : Colors.transparent,
-              width: 1.5,
+              width: 1,
             ),
           ),
         ),
         child: Row(
           children: [
             WalletBadge(icon: icon, color: color),
-            const SizedBox(width: 12),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,7 +647,7 @@ class WalletTxnRow extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
@@ -704,21 +706,30 @@ class WalletStatusPill extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Colors.black, width: 2),
+        borderRadius: Msg.brPill,
+        border: Border.all(color: AD.borderCard, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           PhosphorIcon(icon, size: 14, color: ink),
-          const SizedBox(width: 6),
-          Text(status.toUpperCase(), style: AWText.pillLabel(c: ink)),
+          const SizedBox(width: Msg.s1),
+          // [UI-DS-SWEEP-1] Sentence case, not SHOUTING CASE.
+          Text(_sentence(status), style: AWText.pillLabel(c: ink)),
         ],
       ),
     );
+  }
+
+  /// 'refunded' -> 'Refunded'. Display only — the status key itself is
+  /// lower-cased above for the switch, so comparisons are unaffected.
+  static String _sentence(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return t;
+    return t[0].toUpperCase() + t.substring(1).toLowerCase();
   }
 }
 
@@ -758,7 +769,7 @@ class WalletBreakdownBox extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AWText.breakdownValue(c: valueColor),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Msg.s1),
           Text(
             caption,
             maxLines: 1,
@@ -772,22 +783,22 @@ class WalletBreakdownBox extends StatelessWidget {
   }
 
   Widget _glyph(String g) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s1),
         child: Text(g, style: AWText.sectionHead(c: AW.txMute)),
       );
 
   @override
   Widget build(BuildContext context) {
     return WalletCard(
-      radius: 18,
-      padding: const EdgeInsets.all(16),
+      radius: Msg.rLg,
+      padding: const EdgeInsets.all(Msg.s4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _cell(duration, 'DURATION'),
+          _cell(duration, 'Duration'),
           _glyph('×'),
-          _cell(rate, 'PER MIN'),
+          _cell(rate, 'Per min'),
           _glyph('='),
           _cell(total, '', valueColor: totalColor),
         ],
@@ -816,12 +827,12 @@ class WalletInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
             color: showDivider ? AW.hair : Colors.transparent,
-            width: 1.5,
+            width: 1,
           ),
         ),
       ),
@@ -830,7 +841,7 @@ class WalletInfoRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: AWText.infoLabel(c: AW.txMute)),
-          const SizedBox(width: 12),
+          const SizedBox(width: Msg.s3),
           Flexible(
             child: Text(
               value,
@@ -852,9 +863,9 @@ class WalletInfoRow extends StatelessWidget {
 
 /// Compact month picker used as a popover over the transaction list.
 ///
-/// Gets the full poster treatment (black 2.5px border + hard shadow) because it
-/// floats above other content and needs to read as a physically separate card,
-/// not as another panel in the scroll.
+/// Gets the overlay treatment (hairline border + soft [AD.overlayShadow])
+/// because it floats above other content and needs to read as a physically
+/// separate card, not as another panel in the scroll.
 ///
 /// Fully controlled: it renders [month] and [selectedDay] and calls back — it
 /// keeps no state of its own, so the host screen owns the navigation.
@@ -917,12 +928,12 @@ class WalletCalendar extends StatelessWidget {
 
     return Container(
       width: 250,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Msg.s4),
       decoration: BoxDecoration(
         color: AW.surf2,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black, width: 2.5),
-        boxShadow: _hardShadow(const Offset(5, 6)),
+        borderRadius: Msg.brLg,
+        border: Border.all(color: AD.borderCard, width: 1),
+        boxShadow: AD.overlayShadow,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -934,7 +945,7 @@ class WalletCalendar extends StatelessWidget {
                 onTap: onPrev,
                 behavior: HitTestBehavior.opaque,
                 child: PhosphorIcon(
-                  PhosphorIcons.caretLeft(PhosphorIconsStyle.bold),
+                  PhosphorIcons.caretLeft(PhosphorIconsStyle.regular),
                   size: 14,
                   color: AW.txMute,
                 ),
@@ -951,14 +962,14 @@ class WalletCalendar extends StatelessWidget {
                 onTap: onNext,
                 behavior: HitTestBehavior.opaque,
                 child: PhosphorIcon(
-                  PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                  PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
                   size: 14,
                   color: AW.txMute,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           Row(
             children: [
               for (final d in _dow)
@@ -980,6 +991,8 @@ class WalletCalendar extends StatelessWidget {
   }
 
   Widget _dayCell(int? day) {
+    // NOT a spacing token: this must match the filled cell's 28px height
+    // exactly or the calendar grid goes ragged.
     if (day == null) return const SizedBox(height: 28);
     final selected = day == selectedDay;
     return GestureDetector(
@@ -990,7 +1003,7 @@ class WalletCalendar extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? AW.lime : Colors.transparent,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
         ),
         child: Text(
           '$day',

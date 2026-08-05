@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
@@ -10,6 +11,7 @@ import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'sell_listing_flow.dart'
     show kMarketCategories, kMarketCurrencies, kCountries, kCountryCodes, flagFor;
 
@@ -74,7 +76,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
         filled: true,
         fillColor: AD.inputField,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.borderControl, width: 1)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AD.rInput), borderSide: BorderSide(color: AD.iconSearch, width: 1)),
@@ -84,7 +86,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 6, top: 2),
+            padding: const EdgeInsets.only(bottom: Msg.s2, top: 2),
             child: Text(label, style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
           ),
           input,
@@ -158,42 +160,42 @@ class _EditListingScreenState extends State<EditListingScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
+          : ListView(padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s6), children: [
               _field('Title', TextField(controller: _title, decoration: _box(hint: 'What are you listing?'))),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _field('Description', TextField(controller: _desc, maxLines: 4, decoration: _box(hint: 'Add the details buyers need'))),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(child: _field('Price', TextField(
                   controller: _price, keyboardType: TextInputType.number, decoration: _box(hint: '0')))),
-                const SizedBox(width: 12),
+                const SizedBox(width: Msg.s3),
                 SizedBox(width: 120, child: _field('Currency', DropdownButtonFormField<String>(
                   value: _currency, isExpanded: true, decoration: _box(),
                   items: [for (final c in kMarketCurrencies) DropdownMenuItem(value: c, child: Text(c))],
                   onChanged: (v) => setState(() => _currency = v ?? 'USD'),
                 ))),
               ]),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _field('Category', DropdownButtonFormField<String>(
                 value: _category, isExpanded: true, decoration: _box(),
                 items: [for (final c in kMarketCategories) DropdownMenuItem(value: c, child: Text(c))],
                 onChanged: (v) => setState(() => _category = v ?? kMarketCategories.first),
               )),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _field('Country', DropdownButtonFormField<String>(
                 value: _country, isExpanded: true, decoration: _box(),
                 items: [for (final cc in kCountryCodes) DropdownMenuItem(value: cc, child: Text('${flagFor(cc)}  ${kCountries[cc]}'))],
                 onChanged: (v) => setState(() => _country = v ?? _country),
               )),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
               _field('Location', TextField(controller: _location, decoration: _box(hint: 'City or area'))),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
               Text('Photos — max 5', style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < _coverUrls.length; i++)
                   Stack(children: [
-                    CachedImage(_coverUrls[i], width: 84, height: 84, radius: BorderRadius.circular(8)),
+                    CachedImage(_coverUrls[i], width: 84, height: 84, radius: BorderRadius.circular(Msg.rSm)),
                     Positioned(
                       right: 0, top: 0,
                       child: GestureDetector(
@@ -201,7 +203,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
                         child: Container(
                           decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                           padding: const EdgeInsets.all(2),
-                          child: const Icon(Icons.close, size: 14, color: Colors.white)),
+                          child: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Colors.white)),
                       ),
                     ),
                   ]),
@@ -210,31 +212,31 @@ class _EditListingScreenState extends State<EditListingScreen> {
                     onTap: _uploading ? null : _pickCover,
                     child: Container(
                       width: 84, height: 84,
-                      decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl), borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl), borderRadius: BorderRadius.circular(Msg.rSm)),
                       child: Center(child: _uploading
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Icon(Icons.add_a_photo_outlined, color: AD.textSecondary)),
+                          : PhosphorIcon(PhosphorIcons.cameraPlus(PhosphorIconsStyle.regular), color: AD.textSecondary)),
                     ),
                   ),
               ]),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               Text('Renew expiry (optional)', style: TextStyle(fontFamily: ADText.family, fontSize: 15, fontWeight: FontWeight.w700, color: AD.textPrimary)),
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final dch in const [1, 5, 10, 20, 30])
                   ChoiceChip(
                     label: Text('$dch day${dch == 1 ? '' : 's'}'),
-                    labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                    labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         color: _expiryDays == dch ? Colors.white : AD.textSecondary),
                     selected: _expiryDays == dch,
                     showCheckmark: false,
                     onSelected: (_) => setState(() => _expiryDays = _expiryDays == dch ? null : dch),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: BorderSide(color: AD.borderControl, width: 1)),
+                    shape: RoundedRectangleBorder(borderRadius: Msg.brPill, side: BorderSide(color: AD.borderControl, width: 1)),
                     backgroundColor: AD.card,
                     selectedColor: AD.primaryBadge,
                   ),
               ]),
-              if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: AdErrorMsg(_error!)),
+              if (_error != null) Padding(padding: const EdgeInsets.only(top: Msg.s3), child: AdErrorMsg(_error!)),
             ]),
       // Save pinned in a safe-area bar so it's never cut off behind the nav bar (pic 8).
       bottomNavigationBar: _loading ? null : Container(
@@ -243,7 +245,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
         child: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          minimum: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
           child: AdButton(
             label: _busy ? 'Saving…' : 'Save changes',
             onPressed: _busy ? null : _save,

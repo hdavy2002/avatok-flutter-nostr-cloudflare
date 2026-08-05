@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/campaigns_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'campaign_analytics_screen.dart' show CampaignAnalyticsCards;
 import 'campaign_detail_screen.dart';
 import 'campaign_wizard_screen.dart';
@@ -82,7 +83,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(Msg.s5),
             child: CampaignAnalyticsCards(campaignId: campaignId),
           ),
         ),
@@ -115,9 +116,9 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
               onRefresh: _refresh,
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(Msg.s5),
                 itemCount: campaigns.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
                 itemBuilder: (_, i) => _campaignTile(campaigns[i]),
               ),
             );
@@ -128,7 +129,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
         backgroundColor: AD.primaryBadge,
         foregroundColor: Colors.white,
         onPressed: _openWizard,
-        child: const Icon(Icons.add),
+        child: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold)),
       ),
     );
   }
@@ -145,7 +146,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: Row(children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -163,7 +164,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s4),
               Expanded(
                 child: Text(title, style: ADText.appTitle(),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -185,11 +186,11 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
           constraints: BoxConstraints(minHeight: box.maxHeight),
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(Msg.s6),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(PhosphorIcons.megaphone(PhosphorIconsStyle.duotone),
                     size: 48, color: AD.textTertiary),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s4),
                 Text('No campaigns yet — tap + to create one',
                     textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
               ]),
@@ -208,13 +209,13 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
           constraints: BoxConstraints(minHeight: box.maxHeight),
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(Msg.s6),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.duotone),
                     size: 48, color: AD.danger),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s4),
                 Text(message, textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 _retryButton(),
               ]),
             ),
@@ -229,15 +230,15 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _future = CampaignsApi.listCampaigns()),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
-          const SizedBox(width: 8),
+          const SizedBox(width: Msg.s2),
           Text('Retry', style: ADText.rowName()),
         ]),
       ),
@@ -251,7 +252,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: () => _openDetail(c),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Msg.s4),
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
@@ -264,12 +265,12 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
                   style: ADText.rowName().copyWith(fontSize: 16),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             _statusChip(c.status),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
           _progressBar(c),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
           Row(children: [
             Expanded(
               child: Text('${c.nDone} of ${c.nTotal} called',
@@ -278,10 +279,10 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
             Text('${c.nAnswered} answered',
                 style: ADText.statCaption(c: AD.textTertiary)),
           ]),
-          const SizedBox(height: 4),
+          const SizedBox(height: Msg.s1),
           Row(children: [
             PhosphorIcon(PhosphorIcons.coin(PhosphorIconsStyle.bold), size: 13, color: AD.textTertiary),
-            const SizedBox(width: 4),
+            const SizedBox(width: Msg.s1),
             Text('${c.tokensSpent} tokens spent', style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ]),
@@ -292,7 +293,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
   Widget _progressBar(Campaign c) {
     final pct = c.nTotal <= 0 ? 0.0 : (c.nDone / c.nTotal).clamp(0.0, 1.0);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(Msg.rSm),
       child: LinearProgressIndicator(
         value: pct,
         minHeight: 6,
@@ -329,7 +330,7 @@ class _CampaignsHomeScreenState extends State<CampaignsHomeScreen> {
         color = AD.outgoingCall; // amber — ready/pausing/cancelling/window_wait
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(AD.rChip),
