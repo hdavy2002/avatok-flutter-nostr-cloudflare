@@ -682,7 +682,10 @@ class _CallScreenState extends State<CallScreen> {
     // Five secondary controls now occupy two rows above the isolated hang-up.
     // Reserve their real footprint so the avatar/status content scrolls above
     // the controls instead of being centred underneath them on short phones.
-    const controlPanelHeight = 222.0;
+    // [CALL-UI-GRID-2026-08-05] Was 222 for the old 3+2 circles + isolated
+    // hang-up. The labelled 2x3 panel is taller: 14 card margin + 18 pad +
+    // 2x(64 circle + 6 + ~15 label) + 18 row gap + 18 pad ≈ 238.
+    const controlPanelHeight = 250.0;
     // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] Keyboard height (0 when closed) — the
     // video outcome-menu overlay bottoms out at its top edge while typing.
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
@@ -731,7 +734,12 @@ class _CallScreenState extends State<CallScreen> {
           ),
         ],
 
-        // header: zine back circle + (video chrome) name + mono state/timer
+        // header: zine back circle + CENTRED peer name + encryption/state line
+        // [CALL-UI-GRID-2026-08-05] The name used to live in the header on
+        // VIDEO only, and a second, much larger copy sat under the avatar on
+        // audio. It is now one centred header title on both, so the audio
+        // screen reads as a call header rather than a profile card, and the
+        // avatar/status block below it has room to breathe.
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
@@ -740,25 +748,55 @@ class _CallScreenState extends State<CallScreen> {
                 // Back = MINIMIZE (keeps the call alive as a PiP/pill), not hang up.
                 AdBackButton(onTap: _minimize),
                 const SizedBox(width: 12),
-                if (showVideo)
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(widget.title,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: ADText.threadName(
+                              c: showVideo
+                                  ? Colors.white
+                                  : (dialerSkin
+                                      ? PhoneTheme.text
+                                      : AD.textPrimary))),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(widget.title,
+                          PhosphorIcon(
+                              PhosphorIcons.lock(PhosphorIconsStyle.fill),
+                              size: 11,
+                              color: showVideo
+                                  ? Colors.white70
+                                  : AD.textTertiary),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              // On video the timer has nowhere else to live
+                              // (the audio screen shows it on the sticker under
+                              // the avatar), so the subtitle carries it there.
+                              showVideo
+                                  ? (connected ? s.clock : s.statusText)
+                                  : 'End-to-end encrypted',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: ADText.threadName(c: Colors.white)),
-                          const SizedBox(height: 2),
-                          Text(
-                              connected ? s.clock : s.statusText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ADText.sectionLabel(c: Colors.white)),
-                        ]),
-                  )
-                else
-                  const Spacer(),
+                              style: ADText.sectionLabel(
+                                  c: showVideo
+                                      ? Colors.white70
+                                      : AD.textTertiary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
                 // Explicit ⌄ minimize control — shrink to the floating thumbnail
                 // (video) or the ongoing-call pill (audio) and return to the app.
                 _MinimizeButton(light: light, onTap: _minimize),
@@ -832,16 +870,11 @@ class _CallScreenState extends State<CallScreen> {
                                       ? null
                                       : widget.avatarUrl),
                         ),
-                        const SizedBox(height: 24),
-                        Text(widget.title,
-                            textAlign: TextAlign.center,
-                            style: ADText.appTitle(
-                                    c: dialerSkin
-                                        ? PhoneTheme.text
-                                        : AD.textPrimary)
-                                .copyWith(fontSize: 28)),
+                        // [CALL-UI-GRID-2026-08-05] The 28px name that used to
+                        // sit here is gone — it is now the centred header
+                        // title, exactly once, as on every other call UI.
                       ],
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 24),
                       // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
                       // for declined / no-answer / unreachable / busy while
                       // callMenuEnabled (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md).
@@ -1061,107 +1094,106 @@ class _CallScreenState extends State<CallScreen> {
             left: 0,
             right: 0,
             bottom: 0,
+            // [CALL-UI-GRID-2026-08-05] Labelled 2x3 control panel.
+            //
+            // Replaces [CALL-CTRL-GRID-1]'s two bare circle rows + an isolated
+            // hang-up. Three problems with that layout: the circles were
+            // unlabelled, so "which one is the dialpad" was a guess; the rows
+            // were centred Rows with hard 28px gaps, so the geometry shifted
+            // whenever an optional control (camera flip, Translate) appeared or
+            // vanished mid-call; and up to six controls competed for the same
+            // level of attention.
+            //
+            // Now: one raised card, six FIXED slots on a 3-column grid, each an
+            // icon circle with a text label under it. Row one is the three
+            // controls people reach for constantly (Speaker / Video / Mute);
+            // row two is More / Translate / End. Every slot is an Expanded
+            // third, so a hidden Translate leaves its slot empty instead of
+            // re-centring the row under the user's thumb. The controls that
+            // lost their top-level slot — chat, dialpad, camera flip — live in
+            // the More sheet.
             child: Container(
-              color: light ? null : Colors.black.withValues(alpha: 0.45),
-              // [CALL-CTRL-GRID-1 2026-08-02] Two toggle rows + isolated hang-up.
-              //
-              // This was a single centred Row of up to SEVEN controls separated by
-              // hard-coded 14px gaps. Fixed gaps plus fixed 48–60px buttons is a
-              // fixed total width, so on a normal handset the row simply ran off
-              // the screen — the owner's screenshot shows the last control clipped
-              // by ~24px, and adding the camera-flip button (video calls) made it
-              // worse. It also read as one cramped huddle because hang-up sat
-              // inline with the toggles at almost the same size.
-              //
-              // Now the five ordinary controls are deliberately split 3 + 2
-              // (3 + 3 while camera-flip is visible), with larger circles/icons.
-              // Hang-up remains alone underneath, impossible to hit while reaching
-              // for mute. Explicit rows keep the layout stable across phone widths.
-              padding: EdgeInsets.fromLTRB(
-                  12, 8, 12, 16 + (bottomInset > 0 ? bottomInset : 12)),
+              margin: EdgeInsets.fromLTRB(
+                  12, 0, 12, 12 + (bottomInset > 0 ? bottomInset : 4)),
+              padding: const EdgeInsets.fromLTRB(8, 18, 8, 18),
+              decoration: BoxDecoration(
+                color: light ? AD.card : Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(AD.rSheet),
+                border: Border.all(color: AD.borderCard, width: 1),
+              ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                _controlRow([
-                  // Chat: minimize the call (keeps it alive as a pill/PiP) so the
-                  // user lands back on the thread and can read/send messages.
-                  _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                      onTap: _minimize),
-                  // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
-                  // guess (the one starting "dial") does NOT exist and fails at
-                  // kernel snapshot — i.e. only in CI, ~5 minutes into a release
-                  // build. Verify icon names against the package, not intuition.
-                  _btn(PhosphorIcons.numpad(PhosphorIconsStyle.bold),
-                      onTap: () => _showDtmfPad(s)),
-                  _btn(
-                      speaker
+                Row(children: [
+                  Expanded(
+                    child: _CallTile(
+                      icon: speaker
                           ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
                           : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
+                      label: 'Speaker',
                       active: speaker,
-                      onTap: s.toggleSpeaker),
-                ]),
-                const SizedBox(height: 10),
-                // [CALL-TRANSLATE-UI-1] Row two is wrapped in an outer Row so
-                // the Translate control can append itself WITHOUT going through
-                // `_controlRow`. That matters: `_controlRow` inserts a 28px
-                // spacer before every child after the first, unconditionally —
-                // and Translate is invisible on most calls (non-Android, flags
-                // off, or no native bridge). Passing it as a `_controlRow` child
-                // would leave a 28px phantom gap dangling off the mic button
-                // whenever it hides. Instead it carries its own leading gap and
-                // collapses to genuinely nothing.
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                _controlRow([
-                  _btn(
-                      video && camOn
+                      onTap: s.toggleSpeaker,
+                    ),
+                  ),
+                  Expanded(
+                    child: _CallTile(
+                      icon: video && camOn
                           ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                           : PhosphorIcons.videoCameraSlash(
                               PhosphorIconsStyle.bold),
+                      label: 'Video',
                       active: video && camOn,
-                      onTap: s.toggleCamera),
-                  // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
-                  // only shown) while a live camera feed is actually being sent.
-                  // It fills the middle slot in row two without shifting row one.
-                  if (video && camOn)
-                    _btn(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
-                        onTap: s.flipCamera),
-                  _btn(
-                      muted
+                      onTap: s.toggleCamera,
+                    ),
+                  ),
+                  Expanded(
+                    child: _CallTile(
+                      icon: muted
                           ? PhosphorIcons.microphoneSlash(
                               PhosphorIconsStyle.bold)
                           : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                      active: !muted,
-                      onTap: s.toggleMute),
-                ]),
-                    // Translate. Styles ITSELF to match `_btn` exactly (56x56,
-                    // AD tokens, 25px bold Phosphor icon) rather than being
-                    // wrapped here, because it owns its own active/preparing
-                    // state and the session caption shown while translating.
-                    if (connected && !s.isReceptDuo)
-                      CallTranslateOverlay(callRef: s.room),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ZinePressable(
-                  onTap: _hangup,
-                  color: AD.destructiveBg,
-                  radius: Msg.brPill,
-                  boxShadow: const [],
-                  borderWidth: 1,
-                  borderColor: AD.destructiveBg,
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: Center(
-                      child: PhosphorIcon(
-                          PhosphorIcons.phoneDisconnect(
-                              PhosphorIconsStyle.bold),
-                          size: 29,
-                          color: Colors.white),
+                      label: 'Mute',
+                      // Inverted vs the old row: the tile lights up when the mic
+                      // is CUT, because that is the state you need to notice.
+                      active: muted,
+                      onTap: s.toggleMute,
                     ),
                   ),
-                ),
+                ]),
+                const SizedBox(height: 18),
+                Row(children: [
+                  Expanded(
+                    child: _CallTile(
+                      icon: PhosphorIcons.dotsThree(PhosphorIconsStyle.bold),
+                      label: 'More',
+                      onTap: () => _showMoreSheet(s,
+                          canFlipCamera: video && camOn),
+                    ),
+                  ),
+                  Expanded(
+                    // Translate styles ITSELF to match `_CallTile` (same 64px
+                    // circle, same AD tokens, same label slot) because it owns
+                    // its own active/preparing state and the per-minute cost
+                    // caption. When it is unavailable — non-Android, flags off,
+                    // no native bridge — it collapses to nothing and this third
+                    // of the row is simply empty; the neighbouring tiles do not
+                    // move.
+                    child: (connected && !s.isReceptDuo)
+                        ? Center(
+                            child:
+                                CallTranslateOverlay(callRef: s.room, tile: true))
+                        : const SizedBox.shrink(),
+                  ),
+                  Expanded(
+                    child: _CallTile(
+                      icon: PhosphorIcons.phoneDisconnect(
+                          PhosphorIconsStyle.fill),
+                      label: 'End',
+                      onTap: _hangup,
+                      bg: AD.destructiveBg,
+                      border: AD.destructiveBg,
+                      ink: AD.destructiveInk,
+                    ),
+                  ),
+                ]),
               ]),
             ),
           ),
@@ -1360,37 +1392,131 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  // Dark v2 control circle — card fill, hairline border; active = orange badge.
-  Widget _controlRow(List<Widget> controls) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < controls.length; i++) ...[
-          if (i > 0) const SizedBox(width: 28),
-          controls[i],
-        ],
-      ],
+  // [CALL-UI-GRID-2026-08-05] Overflow for the controls that lost a top-level
+  // slot when the panel became a fixed 2x3 grid. Chat and dialpad are things
+  // you use once, deliberately, mid-call; camera flip only exists while a
+  // camera is actually sending. None of them earn a permanent tile next to
+  // mute.
+  //
+  // `_controlRow` / `_btn` (the old bare 56px circles) are gone with the rows
+  // that used them — every control on this screen is now a `_CallTile`.
+  void _showMoreSheet(CallSession session, {required bool canFlipCamera}) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 20, 8, 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _CallTile(
+                icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                label: 'Chat',
+                // Minimizes the call (it stays alive as a pill/PiP) so the user
+                // lands back on the thread and can read/send messages.
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _minimize();
+                },
+              ),
+              _CallTile(
+                // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
+                // guess (the one starting "dial") does NOT exist and fails at
+                // kernel snapshot — i.e. only in CI, ~5 minutes into a release
+                // build. Verify icon names against the package, not intuition.
+                icon: PhosphorIcons.numpad(PhosphorIconsStyle.bold),
+                label: 'Keypad',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _showDtmfPad(session);
+                },
+              ),
+              // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
+              // only shown) while a live camera feed is actually being sent.
+              if (canFlipCamera)
+                _CallTile(
+                  icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                  label: 'Flip',
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    // flipCamera is a Future<void>; nothing here needs its
+                    // completion, and an un-awaited call trips the analyzer.
+                    unawaited(session.flipCamera());
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
 
-  Widget _btn(IconData icon,
-      {bool active = false, required VoidCallback onTap}) {
-    return ZinePressable(
-      onTap: onTap,
-      color: active ? AD.primaryBadge : AD.card,
-      pressedColor: AD.primaryBadge,
-      radius: Msg.brPill,
-      boxShadow: const [],
-      borderWidth: 1,
-      borderColor: active ? AD.primaryBadge : AD.borderControl,
-      child: SizedBox(
-        width: 56,
-        height: 56,
-        child: Center(
-            child: PhosphorIcon(icon,
-                size: 25, color: active ? AD.textOnInput : AD.textPrimary)),
-      ),
+/// [CALL-UI-GRID-2026-08-05] One cell of the call control panel: a 64px icon
+/// circle with a text label under it.
+///
+/// This is the ONLY control primitive on the call screen — the control panel,
+/// the More sheet and `CallTranslateOverlay` all render this exact geometry, so
+/// a change here must be mirrored in the translate control (which builds its
+/// own copy because it owns extra per-session state).
+///
+/// [active] lights the circle in the single accent (`AD.primaryBadge`) and
+/// darkens the icon, the same engaged-toggle language used everywhere else in
+/// the app. [bg] / [border] / [ink] override the palette outright, which only
+/// the destructive End tile does.
+class _CallTile extends StatelessWidget {
+  const _CallTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+    this.bg,
+    this.border,
+    this.ink,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+  final Color? bg;
+  final Color? border;
+  final Color? ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = bg ?? (active ? AD.primaryBadge : AD.cardHover);
+    final edge = border ?? (active ? AD.primaryBadge : AD.borderControl);
+    final foreground = ink ?? (active ? AD.textOnInput : AD.textPrimary);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ZinePressable(
+          onTap: onTap,
+          color: fill,
+          pressedColor: bg ?? AD.primaryBadge,
+          radius: Msg.brPill,
+          boxShadow: const [],
+          borderWidth: 1,
+          borderColor: edge,
+          child: SizedBox(
+            width: 64,
+            height: 64,
+            child: Center(
+                child: PhosphorIcon(icon, size: 27, color: foreground)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          maxLines: 1,
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+          style: ADText.sectionLabel(c: AD.textSecondary),
+        ),
+      ],
     );
   }
 }

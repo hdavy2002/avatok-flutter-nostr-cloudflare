@@ -45,8 +45,20 @@ import 'translation_langs.dart';
 /// because this is a metered feature; hiding the meter behind a tap would be
 /// the wrong trade for something that bills per minute.
 class CallTranslateOverlay extends StatefulWidget {
-  const CallTranslateOverlay({super.key, required this.callRef});
+  const CallTranslateOverlay({
+    super.key,
+    required this.callRef,
+    this.tile = false,
+  });
   final String callRef;
+
+  /// [CALL-UI-GRID-2026-08-05] Render as a cell of the call screen's 2x3
+  /// control grid: a 64px circle with a "Translate" label under it, and NO
+  /// leading gap (the grid owns its own spacing via equal Expanded thirds).
+  ///
+  /// False keeps the pre-grid geometry — a 56px circle carrying its own 28px
+  /// leading gap — for any caller still appending this to a centred Row.
+  final bool tile;
   @override State<CallTranslateOverlay> createState() => _CallTranslateOverlayState();
 }
 
@@ -464,6 +476,14 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     //   idle       -> open the language sheet, then start
     //   active     -> stop immediately (no confirm; it is billed by the minute)
     //   preparing  -> inert, so a double tap can't start two sessions
+    // [CALL-UI-GRID-2026-08-05] In `tile` mode this mirrors `_CallTile` in
+    // call_screen.dart exactly: 64px circle, 27px icon, AD.cardHover fill on
+    // the raised control panel, and a label underneath. The two are deliberate
+    // copies rather than a shared widget because this one also owns the
+    // preparing/active state and the billed-minutes caption — but they must be
+    // changed together or Translate will visibly not belong in the row.
+    final double diameter = widget.tile ? 64 : 56;
+    final double iconSize = widget.tile ? 27 : 25;
     final button = Semantics(
       button: true,
       label: label, // 'Translate' / 'Stop translation' / 'Switching to X…'
@@ -471,21 +491,23 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
         message: label,
         child: ZinePressable(
           onTap: preparing ? null : (active ? controller.stop : _pick),
-          color: active ? AD.primaryBadge : AD.card,
+          color: active
+              ? AD.primaryBadge
+              : (widget.tile ? AD.cardHover : AD.card),
           pressedColor: AD.primaryBadge,
-          // A round icon button is genuinely round. Same 56px circle as `_btn`
+          // A round icon button is genuinely round. Same circle as `_CallTile`
           // in call_screen.dart — Msg.brPill is identical geometry, just named.
           radius: Msg.brPill,
           boxShadow: Msg.none,
           borderWidth: 1,
           borderColor: active ? AD.primaryBadge : AD.borderControl,
           child: SizedBox(
-            width: 56,
-            height: 56,
+            width: diameter,
+            height: diameter,
             child: Center(
               child: PhosphorIcon(
                 PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                size: 25,
+                size: iconSize,
                 color: active ? AD.textOnInput : AD.textPrimary,
               ),
             ),
@@ -494,10 +516,28 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
       ),
     );
 
-    // The 28px leading gap is OURS, not the row's — call_screen deliberately
-    // appends this widget outside `_controlRow` so that when translation is
-    // unavailable (every `SizedBox.shrink()` return above) it collapses to
-    // genuinely nothing, with no phantom gap left hanging off the mic button.
+    // In the grid the label slot under the circle is not optional — an unlabelled
+    // circle between "More" and "End" is the exact ambiguity the grid removed.
+    if (widget.tile && !session) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button,
+          const SizedBox(height: 6),
+          Text('Translate',
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: ADText.sectionLabel(c: AD.textSecondary)),
+        ],
+      );
+    }
+
+    // Legacy (non-tile) geometry: the 28px leading gap is OURS, not the row's —
+    // the old call_screen deliberately appended this widget outside
+    // `_controlRow` so that when translation is unavailable (every
+    // `SizedBox.shrink()` return above) it collapsed to genuinely nothing, with
+    // no phantom gap left hanging off the mic button.
     if (!session) return Padding(padding: const EdgeInsets.only(left: 28), child: button);
 
     // Session detail. Only while translating, so an idle call shows a bare
@@ -506,7 +546,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     // control row: the Row that hosts this centres its children, so a taller
     // child grows the row symmetrically rather than shoving the others.
     return Padding(
-      padding: const EdgeInsets.only(left: 28),
+      padding: EdgeInsets.only(left: widget.tile ? 0 : 28),
       child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
