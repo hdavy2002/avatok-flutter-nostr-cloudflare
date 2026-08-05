@@ -414,46 +414,29 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 ### Tooling
 
 - Use **Desktop Commander** for all file and shell operations.
-- **Local Flutter builds now WORK on the emulator (set up 2026-07-31).** This
-  REPLACES the old "No local build tools — they will fail" rule, which was true only
-  because no toolchain was installed. Hot reload is ~150–250 ms, versus a 40–80 min
-  CI round trip, so **UI/design iteration belongs on the emulator, not in CI.**
+- **🚫 NO LOCAL BUILD TOOLCHAIN — DO NOT INSTALL ONE (owner decision 2026-08-05).**
+  The entire local toolchain was **deleted on 2026-08-05** at the owner's instruction:
+  Android SDK, Gradle caches, Android Studio.app, the Flutter SDK, `~/.pub-cache`,
+  Temurin 17 and the Pixel AVD — about 25 GB. It had left the boot disk at **100 %
+  full with 119 MB free**, and the owner does not have the space to keep it.
 
-  ```bash
-  scripts/dev-emulator.sh            # boot emulator + run app (hot reload live)
-  scripts/dev-emulator.sh reload     # push Dart changes, keeps app state
-  scripts/dev-emulator.sh restart    # full Dart restart
-  scripts/dev-emulator.sh log        # tail the run log
-  ```
+  **ALL builds happen in GitHub Actions.** `flutter`, `dart`, `adb`, `gradle` and
+  `sdkmanager` are not on this machine and are not coming back.
 
-  Release/Play builds still run ONLY in GitHub Actions — never build a release
-  locally, and the "never trigger a build unless the owner asks" rule below is
-  unchanged.
+  **Do NOT re-install any of it** — not `flutter`, not the Android SDK, not
+  Android Studio, not an emulator, not a JDK, and do not run `flutter pub get`,
+  `dart run build_runner build`, `scripts/dev-emulator.sh`, or `python3
+  tool/postcreate.py` locally. If a task seems to need a local build, **stop and ask
+  the owner** rather than downloading 25 GB onto a disk that has no room for it.
+  The 2026-07-31 "local emulator hot reload" section that used to live here is
+  **void**; earlier revisions of this file described a setup that no longer exists.
 
-  **Four things that will break a local build if you touch them:**
+  What this costs you: no hot reload, and **you cannot compile-check your own Dart
+  changes.** Compensate by reading carefully and keeping diffs small — CI
+  (`verify.yml`) is now the only compile net, and it is a 40–80 min round trip.
 
-  1. **JDK must be 17, not Android Studio's bundled JBR.** The bundled JBR is JDK 25
-     and Gradle rejects it with the useless message `* What went wrong: 25.0.2`.
-     Temurin 17 lives at `~/Library/Java/JavaVirtualMachines/temurin-17`, wired via
-     `flutter config --jdk-dir` and `~/.gradle/gradle.properties`
-     (`org.gradle.java.home`). 17 matches CI, and `flutter_callkit_incoming` demands
-     a JDK-17 toolchain specifically.
-  2. **Run `python3 tool/postcreate.py` after any `android/` change.** CI runs it
-     every build; it bumps AGP 8.7.0 → 8.9.1 and Gradle 8.10.2 → 8.11.1. The
-     committed `android/` is the UN-patched state, so without it
-     `androidx.browser:1.9.0` fails `checkDebugAarMetadata`.
-  3. **Run `dart run build_runner build`.** The committed `db.g.dart` is stale
-     (missing `senderPub`); CI regenerates it on every build.
-  4. **`app/android/local.properties` and `app/android/app/google-services.json` are
-     gitignored** — a fresh clone has neither, and the build fails without them.
-
-  Local builds are DEBUG builds, signed with the committed `avatok-debug.keystore`.
-  Google sign-in works in debug as of 2026-07-31 via the "AvaTOK Android (debug
-  keystore)" OAuth client (SHA-1 `13:D9:F7:C1:…:ED:3C`) in `avatok-e19ef`; before
-  that, every debug build died with `ApiException: 10` (DEVELOPER_ERROR) because only
-  the Play and upload keys had OAuth clients. Adding a SHA-1 in Firebase does NOT
-  create the OAuth client — this project's credentials are managed by hand in the
-  Google Cloud console.
+  `scripts/dev-emulator.sh` remains in the repo but will fail; it is kept only so the
+  toolchain can be rebuilt deliberately if the owner ever buys the disk space back.
 
 - **REPO LOCATION — `/Users/davy/Documents/websites/avaTOK-2-Flutter` (verified 2026-08-02).**
   This is a REAL directory holding the real `.git`, not a symlink. There is no
