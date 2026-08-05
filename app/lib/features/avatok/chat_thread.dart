@@ -63,6 +63,7 @@ import '../../core/local_brain/local_brain.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/bubble_theme.dart'; // [AVAGRP-BUBBLE-1] per-sender pale bubble theming contract
 import '../../core/group_store.dart';
@@ -294,11 +295,11 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
           ),
           Positioned(
             top: 40, right: 8,
-            child: _btn(Icons.close, 'Close', () => Navigator.of(context).maybePop()),
+            child: _btn(PhosphorIcons.x(PhosphorIconsStyle.bold), 'Close', () => Navigator.of(context).maybePop()),
           ),
           Positioned(
             top: 40, left: 8,
-            child: _btn(Icons.copy, 'Copy', widget.onCopy),
+            child: _btn(PhosphorIcons.copy(PhosphorIconsStyle.bold), 'Copy', widget.onCopy),
           ),
         ]),
       ),
@@ -1943,7 +1944,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   void _pickBurstEmoji() {
     showModalBottomSheet(
       context: context, backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
@@ -3639,7 +3640,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             shape: BoxShape.circle,
             boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))],
           ),
-          child: Icon(Icons.keyboard_arrow_down_rounded, color: AD.sendActiveInk, size: 26),
+          child: Icon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), color: AD.sendActiveInk, size: 26),
         ),
         Positioned(
           right: -4,
@@ -4450,7 +4451,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       context: context,
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
@@ -4640,7 +4641,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     final contacts = await ContactsStore().load();
     if (!mounted) return;
     showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Share a contact', style: ADText.threadName()),
@@ -4665,7 +4666,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       context: context,
       isScrollControlled: true,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: SafeArea(child: Padding(
@@ -4682,9 +4683,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               decoration: InputDecoration(hintText: 'Ask a question…',
                 hintStyle: ADText.preview(c: AD.textSecondary),
                 filled: true, fillColor: AD.card,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AD.borderControl, width: 2)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AD.borderControl, width: 2)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AD.borderControl, width: 2)))),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: BorderSide(color: AD.borderControl, width: 2)))),
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView(shrinkWrap: true, children: [
               for (var i = 0; i < opts.length; i++)
@@ -4694,9 +4695,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     decoration: InputDecoration(hintText: 'Option ${i + 1}',
                       hintStyle: ADText.preview(c: AD.textSecondary),
                       isDense: true, filled: true, fillColor: AD.card,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AD.borderControl, width: 2)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AD.borderControl, width: 2)),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AD.borderControl, width: 2))))),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rSm), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rSm), borderSide: BorderSide(color: AD.borderControl, width: 2)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rSm), borderSide: BorderSide(color: AD.borderControl, width: 2))))),
                   if (opts.length > 2)
                     IconButton(
                       icon: Icon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), size: 20, color: AD.textSecondary),
@@ -4713,7 +4714,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             const SizedBox(height: 4),
             InkWell(
               onTap: () => setSheet(() => multi = !multi),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(Msg.rSm),
               child: Padding(padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(children: [
                   Icon(multi ? PhosphorIcons.checkSquare(PhosphorIconsStyle.fill) : PhosphorIcons.square(PhosphorIconsStyle.bold),
@@ -4725,7 +4726,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             const SizedBox(height: 12),
             SizedBox(width: double.infinity, child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AD.textPrimary, foregroundColor: AD.overlaySheet,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Msg.rMd))),
               onPressed: () => Navigator.pop(ctx, true),
               child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text('Create poll', style: ADText.statCaption(c: AD.overlaySheet))),
             )),
@@ -4748,7 +4749,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   void _stickerPicker() {
     const stickers = ['😀','😂','🥳','😍','😎','🤩','😭','🙏','👍','👏','🔥','❤️','🎉','💯','🚀','🌈','🍕','☕','⚡','✨'];
     showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
         child: Wrap(spacing: 10, runSpacing: 10, children: [
           for (final s in stickers)
@@ -4865,9 +4866,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     margin: const EdgeInsets.only(bottom: 6),
                     decoration: BoxDecoration(
                         border: Border.all(color: mine ? AD.primaryBadge : t.border, width: 2),
-                        borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(Msg.rSm)),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(Msg.rSm),
                       child: Stack(children: [
                         // Percentage bar fill.
                         Positioned.fill(child: FractionallySizedBox(
@@ -4879,7 +4880,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                             if (mine) Padding(padding: const EdgeInsets.only(right: 6),
                               child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 15, color: AD.primaryBadge)),
                             Expanded(child: Text(options[i],
-                              style: ADText.bubbleBody(c: fg).copyWith(fontWeight: mine ? FontWeight.w700 : FontWeight.w500))),
+                              style: ADText.bubbleBody(c: fg).copyWith(fontWeight: mine ? FontWeight.w600 : FontWeight.w400))),
                             Text('$pct%', style: ADText.bubbleMeta(c: t.meta)),
                           ]),
                         ),
@@ -4990,14 +4991,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (head != null) {
         out.add(Padding(
           padding: const EdgeInsets.only(top: 2, bottom: 3),
-          child: _avaInline(head.group(1)!, base.copyWith(fontWeight: FontWeight.w800, fontSize: 16)),
+          child: _avaInline(head.group(1)!, base.copyWith(fontWeight: FontWeight.w600, fontSize: 16)),
         ));
       } else if (num != null) {
         out.add(Padding(
           padding: const EdgeInsets.only(bottom: 3),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             SizedBox(width: 22, child: Text('${num.group(1)}.',
-                style: base.copyWith(fontWeight: FontWeight.w800, color: AD.iconSearch))),
+                style: base.copyWith(fontWeight: FontWeight.w600, color: AD.iconSearch))),
             Expanded(child: _avaInline(num.group(2)!, base)),
           ]),
         ));
@@ -5006,7 +5007,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           padding: const EdgeInsets.only(bottom: 3),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Padding(padding: const EdgeInsets.only(left: 2, right: 8, top: 1),
-                child: Text('•', style: base.copyWith(fontWeight: FontWeight.w800, color: AD.iconSearch))),
+                child: Text('•', style: base.copyWith(fontWeight: FontWeight.w600, color: AD.iconSearch))),
             Expanded(child: _avaInline(bul.group(1)!, base)),
           ]),
         ));
@@ -5025,7 +5026,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     for (final mt in re.allMatches(text)) {
       if (mt.start > i) spans.add(TextSpan(text: text.substring(i, mt.start)));
       if (mt.group(1) != null) {
-        spans.add(TextSpan(text: mt.group(1), style: base.copyWith(fontWeight: FontWeight.w800)));
+        spans.add(TextSpan(text: mt.group(1), style: base.copyWith(fontWeight: FontWeight.w600)));
       } else {
         spans.add(TextSpan(text: ' ${mt.group(2)} ',
             style: base.copyWith(fontFeatures: const [], backgroundColor: AD.mediaPlaceholderBg)));
@@ -5068,7 +5069,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: AD.bubbleInBg,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: BorderRadius.circular(Msg.rSm),
           border: Border.all(color: AD.bubbleInInk, width: 1),
           boxShadow: const [],
         ),
@@ -5115,7 +5116,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         height: 200,
         decoration: BoxDecoration(
           color: AD.bubbleInBg,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(Msg.rMd),
           border: Border.all(color: AD.bubbleInInk, width: 1),
           boxShadow: const [],
         ),
@@ -5142,7 +5143,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (body.isNotEmpty)
         Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
       ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(Msg.rMd),
         child: Stack(children: [
           GestureDetector(
             onTap: () => _openImageFull(mediaRef),
@@ -5156,7 +5157,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
               child: PopupMenuButton<String>(
                 tooltip: 'Image options',
-                icon: const Icon(Icons.more_vert, size: 18, color: Colors.white),
+                icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
                 padding: EdgeInsets.zero,
                 onSelected: (v) {
                   if (v == 'open') _openImageFull(mediaRef);
@@ -5198,7 +5199,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           Positioned(
             top: 8, right: 8,
             child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
+              icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.bold), color: Colors.white),
               onPressed: () => Navigator.of(dctx).maybePop(),
             ),
           ),
@@ -5843,7 +5844,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         height: height,
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(Msg.rMd),
           border: Border.all(color: AD.borderControl, width: 2),
         ),
         alignment: Alignment.center,
@@ -6417,7 +6418,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(Msg.rMd),
             child: Image.memory(bytes,
                 width: double.infinity,
                 height: 280,
@@ -6608,7 +6609,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AD.card,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(color: AD.borderControl, width: 2),
             ),
             child: Row(children: [
@@ -7203,7 +7204,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
                     color: AD.overlaySheet,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: BorderRadius.circular(Msg.rMd),
                     border: Border.all(color: AD.borderControl, width: 2),
                     boxShadow: const [],
                   ),
@@ -7238,7 +7239,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 Container(
                   decoration: BoxDecoration(
                     color: AD.overlaySheet,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(Msg.rLg),
                     border: Border.all(color: AD.borderControl, width: 2),
                     boxShadow: const [],
                   ),
@@ -7282,7 +7283,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // child. isScrollControlled lets it size up, the ListView scrolls, and
       // SafeArea keeps the last items clear of the phone's nav bar.
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
@@ -7420,7 +7421,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         context: context,
         backgroundColor: AD.overlaySheet,
         shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
         builder: (ctx) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
@@ -7576,7 +7577,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.6),
@@ -7637,7 +7638,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
@@ -7688,7 +7689,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
@@ -7774,7 +7775,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
@@ -8063,7 +8064,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       isScrollControlled: true,
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 16, right: 16, top: 16,
@@ -8081,7 +8082,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             Row(children: [
               if (m.localBytes != null && m.media!.kind == MediaKind.image)
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(Msg.rSm),
                   child: Image.memory(m.localBytes!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                 )
               else
@@ -8606,7 +8607,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         context: context,
         backgroundColor: AD.overlaySheet,
         shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
         builder: (ctx) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
@@ -8698,7 +8699,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -8905,7 +8906,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   void _pickDisappear() {
     showModalBottomSheet(
       context: context, backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(padding: const EdgeInsets.all(14),
             child: Text('Disappearing messages', style: ADText.threadName())),
@@ -8945,7 +8946,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -9461,7 +9462,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
           side: BorderSide(color: AD.borderControl, width: 1),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
         Future<void> run(Future<void> Function() action, String verb) async {
           if (busy) return;
@@ -9539,7 +9540,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   }) => ZinePressable(
         onTap: busy ? null : onTap,
         color: bg,
-        radius: BorderRadius.circular(14),
+        radius: BorderRadius.circular(Msg.rMd),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           PhosphorIcon(icon, size: 18, color: fg),
@@ -9600,7 +9601,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           decoration: BoxDecoration(
             color: AD.popover,
             border: Border.all(color: AD.borderControl, width: 1),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(Msg.rLg),
             boxShadow: AD.dialogShadow,
           ),
           padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
@@ -9641,7 +9642,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AD.sendActiveBg,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(Msg.rSm),
                 ),
                 child: Text('Got it',
                     style: ADText.rowName(c: AD.sendActiveInk)),
@@ -9964,7 +9965,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 decoration: BoxDecoration(
                     color: AD.danger, shape: BoxShape.circle,
                     border: Border.all(color: AD.borderControl, width: 1), boxShadow: const []),
-                child: Icon(Icons.stop_rounded, color: Colors.white, size: 22)),
+                child: Icon(PhosphorIcons.stop(PhosphorIconsStyle.fill), color: Colors.white, size: 22)),
           )
         else
           // Mic is now a pure voice-note record button (owner request
@@ -10047,10 +10048,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               TextSpan(children: [
                 const TextSpan(text: 'Type '),
                 TextSpan(text: '@ava', style: ADText.preview(c: const Color(0xFF8FC0F5))
-                    .copyWith(fontWeight: FontWeight.w800)),
+                    .copyWith(fontWeight: FontWeight.w600)),
                 const TextSpan(text: ' for a private reply, or '),
                 TextSpan(text: '#ava', style: ADText.preview(c: const Color(0xFF7BD98C))
-                    .copyWith(fontWeight: FontWeight.w800)),
+                    .copyWith(fontWeight: FontWeight.w600)),
                 const TextSpan(text: ' to ask Ava in the chat.'),
               ]),
               // White base text (was grey) so the hint reads clearly on dark.
@@ -10107,7 +10108,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
             color: busy ? AD.primaryBadge : AD.card,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: BorderRadius.circular(Msg.rMd),
             border: Border.all(color: AD.borderControl, width: 1),
             boxShadow: const [],
           ),
@@ -10196,7 +10197,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         child: Container(
           decoration: BoxDecoration(
             color: busy ? AD.primaryBadge : AD.online,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: BorderRadius.circular(Msg.rMd),
             border: Border.all(color: AD.borderControl, width: 1),
             boxShadow: const [],
           ),
@@ -10411,7 +10412,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       context: context,
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
@@ -10459,7 +10460,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       context: context,
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
@@ -10489,7 +10490,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: AD.card,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(Msg.rMd),
                     border: Border.all(color: AD.borderControl, width: 1),
                     boxShadow: const [],
                   ),
@@ -10820,7 +10821,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: _sysPillBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Msg.rMd),
         border: Border.all(color: tappable ? _canvasInk : _canvasTertiary, width: tappable ? 2 : 1),
       ),
       child: Row(children: [
@@ -10960,7 +10961,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   void _pickWallpaper() {
     showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Chat wallpaper', style: ADText.threadName()),
@@ -10975,7 +10976,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 child: Container(
                   width: 64, height: 64,
                   decoration: BoxDecoration(
-                      gradient: _gradientFor(id), borderRadius: BorderRadius.circular(14),
+                      gradient: _gradientFor(id), borderRadius: BorderRadius.circular(Msg.rMd),
                       border: Border.all(
                           color: _wallpaperId == id ? AD.textPrimary : AD.textTertiary,
                           width: _wallpaperId == id ? 3 : 2)),
@@ -11237,7 +11238,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   child: Text(o.token,
                       overflow: TextOverflow.ellipsis,
                       style: ADText.rowName(c: tokenColour)
-                          .copyWith(fontWeight: FontWeight.w800)),
+                          .copyWith(fontWeight: FontWeight.w600)),
                 ),
                 if (o.trailing != null) ...[
                   const SizedBox(width: 6),
@@ -11355,7 +11356,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: AD.card,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: BorderRadius.circular(Msg.rSm),
                 border: Border.all(color: AD.borderControl, width: 2),
               ),
               child: Text('Save', style: ADText.statCaption()),
@@ -11377,7 +11378,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.voicemail, size: 15, color: AD.textTertiary),
+          Icon(PhosphorIcons.voicemail(PhosphorIconsStyle.fill), size: 15, color: AD.textTertiary),
           const SizedBox(width: 8),
           Flexible(child: Text(
               _callerSaved
@@ -11461,7 +11462,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 14, color: AD.bubbleInInk),
             const SizedBox(width: 5),
             Text('AVA · HUMAN CHECK', style: TextStyle(color: AD.bubbleInInk, fontSize: 9.5,
-                fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                fontWeight: FontWeight.w600, letterSpacing: 0.6)),
           ]),
           const SizedBox(height: 4),
           Text(m.text, style: TextStyle(color: AD.bubbleInInk, fontSize: 13.5, height: 1.3,
@@ -11473,7 +11474,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               style: FilledButton.styleFrom(
                 backgroundColor: AD.bubbleInInk, foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Msg.rSm)),
               ),
               onPressed: () async {
                 Analytics.capture('verify_human_started', {'trigger': 'chat_prompt'});
@@ -11527,7 +11528,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         decoration: BoxDecoration(
           color: _sysPillBg,
           border: Border.all(color: _sysPillBorder, width: 1.5),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(Msg.rMd),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: _sysPillMeta),
@@ -11571,7 +11572,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
               const SizedBox(width: 5),
               Text(label, style: const TextStyle(color: Colors.white, fontSize: 9.5,
-                  fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                  fontWeight: FontWeight.w600, letterSpacing: 0.6)),
             ]),
             const SizedBox(height: 4),
             Text(m.text, style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.3,
@@ -11663,7 +11664,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               const SizedBox(width: 5),
               Flexible(child: Text(_safetyCategoryLabel(category),
                   style: const TextStyle(color: Colors.white, fontSize: 9.5,
-                      fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+                      fontWeight: FontWeight.w600, letterSpacing: 0.5))),
             ]),
             const SizedBox(height: 4),
             Text(m.text, style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.3,
@@ -11690,7 +11691,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
@@ -11708,7 +11709,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
                 color: AD.headerFooter,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
               child: Text(_safetyCategoryExplain(category), style: ADText.preview()),
@@ -12048,7 +12049,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       decoration: BoxDecoration(
                           color: t.bg.withValues(alpha: 0.6),
                           border: Border(left: BorderSide(color: t.play, width: 3)),
-                          borderRadius: BorderRadius.circular(6)),
+                          borderRadius: BorderRadius.circular(Msg.rSm)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                         Text((m.replyTo!['who'] ?? '').toString().toUpperCase(),
                             style: ADText.bubbleMeta(c: t.play)),
@@ -12618,7 +12619,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
           return GestureDetector(
             onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType, heroTag: heroTag),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               // [CHAT-UI-MEDIA-1] cacheWidth bounds the decoded bitmap to ~2x the
               // 220dp layout width (DPR-aware) instead of decoding at full source
               // resolution — a scrolling thread of full-res photos was a memory
@@ -12667,7 +12668,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 return GestureDetector(
                   onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType, heroTag: heroTag),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(Msg.rMd),
                     // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the local-bytes
                     // branch above.
                     child: Hero(
@@ -12969,7 +12970,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
       decoration: BoxDecoration(
         color: bg,
         border: Border.all(color: AD.bubbleInInk, width: 2),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Msg.rMd),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -12986,10 +12987,10 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: _audioKey.isEmpty ? AD.bubbleInMeta : AD.bubbleInInk,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: BorderRadius.circular(Msg.rMd),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_loading ? Icons.hourglass_top : _playing ? Icons.stop : Icons.play_arrow,
+                Icon(_loading ? PhosphorIcons.hourglass(PhosphorIconsStyle.bold) : _playing ? PhosphorIcons.stop(PhosphorIconsStyle.fill) : PhosphorIcons.play(PhosphorIconsStyle.fill),
                     color: Colors.white, size: 18),
                 const SizedBox(width: 6),
                 Text(_audioKey.isEmpty ? 'No audio' : _playing ? 'Stop' : 'Play conversation',
@@ -13006,10 +13007,10 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
                 decoration: BoxDecoration(
                   color: AD.mediaPlaceholderBg,
                   border: Border.all(color: AD.bubbleInInk, width: 1.5),
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: BorderRadius.circular(Msg.rMd),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(_sharing ? Icons.hourglass_top : Icons.ios_share, color: AD.bubbleInInk, size: 16),
+                  Icon(_sharing ? PhosphorIcons.hourglass(PhosphorIconsStyle.bold) : PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: AD.bubbleInInk, size: 16),
                   const SizedBox(width: 5),
                   const Text('Share', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w600)),
                 ]),
@@ -13282,7 +13283,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     final dur = _durationLabel;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.phone_callback, size: 18, color: AD.bubbleInBg),
+        Icon(PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill), size: 18, color: AD.bubbleInBg),
         const SizedBox(width: 6),
         Flexible(child: Text('$_caller called', style: ADText.rowName(c: AD.bubbleInInk))),
       ]),
@@ -13293,7 +13294,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       if (_phone.isNotEmpty) ...[
         const SizedBox(height: 4),
         Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.phone, size: 13, color: AD.bubbleInMeta),
+          Icon(PhosphorIcons.phone(PhosphorIconsStyle.fill), size: 13, color: AD.bubbleInMeta),
           const SizedBox(width: 5),
           Flexible(child: Text(formatTelDisplay(_phone),
               style: ADText.bubbleMeta(c: AD.bubbleInMeta))),
@@ -13310,11 +13311,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: AD.mediaPlaceholderBg,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(color: AD.bubbleInInk, width: 2),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.person_add_alt, size: 15, color: AD.bubbleInInk),
+              Icon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 15, color: AD.bubbleInInk),
               const SizedBox(width: 5),
               Text('Save contact', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
             ]),
@@ -13330,13 +13331,13 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: AD.mediaPlaceholderBg,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 border: Border.all(color: AD.bubbleInInk, width: 2),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 _loadingAudio
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(_playing ? Icons.stop : Icons.play_arrow, size: 16, color: AD.bubbleInInk),
+                    : Icon(_playing ? PhosphorIcons.stop(PhosphorIconsStyle.fill) : PhosphorIcons.play(PhosphorIconsStyle.fill), size: 16, color: AD.bubbleInInk),
                 const SizedBox(width: 5),
                 Text(_playing ? 'Stop' : 'Play recording', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ]),
@@ -13354,13 +13355,13 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: AD.mediaPlaceholderBg,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 border: Border.all(color: AD.bubbleInInk, width: 2),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 _sharing
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(Icons.ios_share, size: 15, color: AD.bubbleInInk),
+                    : Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), size: 15, color: AD.bubbleInInk),
                 const SizedBox(width: 4),
                 Text('Share', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
               ]),

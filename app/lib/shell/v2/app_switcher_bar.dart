@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/ui/messenger_theme.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/remote_config.dart';
@@ -113,16 +116,17 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // drives analytics, persisted order and restoration IDs, so the rename is safe.
   // NOTE: this map is duplicated in shell/v2/app_order_screen.dart and
   // shell/v2/shell_chrome.dart — all three must be kept in sync.
-  static const Map<RootId, (IconData, IconData, String)> _meta = {
-    RootId.avaDial: (Icons.phone_outlined, Icons.phone, 'AvaDialer'),
-    RootId.avaTalk: (Icons.chat_bubble_outline, Icons.chat_bubble, 'AvaTalk'),
-    RootId.services: (Icons.storefront_outlined, Icons.storefront, 'Services'),
+  // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
+  static final Map<RootId, (IconData, IconData, String)> _meta = {
+    RootId.avaDial: (PhosphorIcons.phone(PhosphorIconsStyle.regular), PhosphorIcons.phone(PhosphorIconsStyle.fill), 'AvaDialer'),
+    RootId.avaTalk: (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'AvaTalk'),
+    RootId.services: (PhosphorIcons.storefront(PhosphorIconsStyle.regular), PhosphorIcons.storefront(PhosphorIconsStyle.fill), 'Services'),
   };
 
   /// [AFF-NAV-1] Footer display for the AvaAffiliate slot that takes over the
   /// Services position while the affiliate kill switch is ON.
-  static const (IconData, IconData, String) _affiliateMeta =
-      (Icons.handshake_outlined, Icons.handshake, 'Affiliate');
+  static final (IconData, IconData, String) _affiliateMeta =
+      (PhosphorIcons.handshake(PhosphorIconsStyle.regular), PhosphorIcons.handshake(PhosphorIconsStyle.fill), 'Affiliate');
 
   /// [AFF-NAV-1] (owner 2026-08-05) Services is DEFERRED, not deleted: while
   /// `avaAffiliateEnabled` is on, the Services footer slot renders AvaAffiliate
@@ -270,8 +274,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       behavior: HitTestBehavior.opaque,
       onTap: widget.onOpenInbox,
       child: _labelledIcon(
-        icon: Icons.voicemail_outlined,
-        selectedIcon: Icons.voicemail,
+        icon: PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
+        selectedIcon: PhosphorIcons.voicemail(PhosphorIconsStyle.fill),
         label: 'Inbox',
         // Selected while the pushed Inbox route is on top ([inboxActive]) —
         // the slot is not a root, but the user IS "in" Inbox, so the footer
@@ -286,8 +290,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       behavior: HitTestBehavior.opaque,
       onTap: widget.onAskAva,
       child: _labelledIcon(
-        icon: Icons.auto_awesome_outlined,
-        selectedIcon: Icons.auto_awesome,
+        icon: PhosphorIcons.sparkle(PhosphorIconsStyle.regular),
+        selectedIcon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
         label: 'AvaBrain',
         selected: widget.askAvaActive,
       ),
@@ -330,7 +334,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: selected ? _indicator : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(Msg.rMd),
       ),
       // Active icon sits on the orange pill (white glyph); inactive icons are
       // white too (owner request 2026-07-13, pic 5) — not greyed.
@@ -355,7 +359,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                   // Dark backing keeps the red digits readable over the orange
                   // active pill and the dark bar alike.
                   color: AD.headerFooter,
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(Msg.rSm),
                   border: Border.all(
                       color: const Color(0xFFFF453A), width: 1),
                 ),
@@ -364,7 +368,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                   style: const TextStyle(
                     color: Color(0xFFFF453A), // RED count — owner spec
                     fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     height: 1.2,
                   ),
                 ),

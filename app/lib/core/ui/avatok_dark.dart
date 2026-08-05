@@ -221,8 +221,28 @@ class AvatarFamily {
   const AvatarFamily({required this.chipBg, required this.chipInk, required this.solid});
 }
 
-/// Nunito type scale for the dark v2 system. All weights are bundled
-/// (400/600/700/800/900 — see app/pubspec.yaml).
+/// Nunito type scale for the dark v2 system.
+///
+/// [UI-MSG-TYPE-1] 2026-08-05 — REWEIGHTED. Nunito stays (the design contract
+/// mandates it and forbids Inter); what changed is how it is used.
+///
+/// Until Regular (400) and Medium (500) were bundled, the lightest weight the
+/// app could render was SemiBold, and this scale asked for w800 on top of that
+/// — so contact name, message preview and timestamp were all effectively the
+/// same weight and nothing on screen could be emphasised. Hierarchy now comes
+/// from CONTRAST: light body against a heavier name, not everything shouting.
+///
+/// The rules, from the owner's messenger spec:
+///   body          → 400
+///   secondary     → 400/500, muted colour
+///   contact names → 600
+///   screen titles → 600/700
+///   timestamps    → 400, small and muted
+///
+/// **w800 and w900 are no longer used anywhere in this scale.** Do not
+/// reintroduce them; if something needs more emphasis, use size or colour.
+/// Sizes are whole numbers only — the old half-pixel values (13.5/12.5/10.5/
+/// 9.5) were eyeball-tuning, not a scale.
 class ADText {
   ADText._();
   static const String family = 'Nunito';
@@ -232,42 +252,44 @@ class ADText {
       TextStyle(fontFamily: family, fontSize: size, fontWeight: w,
           color: c, letterSpacing: spacing, height: height);
 
-  /// App wordmark / screen title — 22 / 900.
+  /// App wordmark / screen title — 22 / 700. The heaviest weight in the app.
   static TextStyle appTitle({Color c = AD.textPrimary}) =>
-      _s(22, FontWeight.w900, c, spacing: -0.01 * 22, height: 1.05);
-  /// Thread name in header — 15 / 800.
+      _s(22, FontWeight.w700, c, spacing: -0.01 * 22, height: 1.05);
+  /// Thread name in header — 16 / 600.
   static TextStyle threadName({Color c = AD.textPrimary}) =>
-      _s(15, FontWeight.w800, c);
-  /// Chat-row name — 14 / 800.
+      _s(16, FontWeight.w600, c);
+  /// Chat-row contact name — 15 / 600.
   static TextStyle rowName({Color c = AD.textPrimary}) =>
-      _s(14, FontWeight.w800, c);
-  /// Chat bubble body — 13.5 / 600.
+      _s(15, FontWeight.w600, c);
+  /// Chat bubble body — 15 / 400. Body copy is Regular, full stop.
   static TextStyle bubbleBody({Color c = AD.textPrimary}) =>
-      _s(13.5, FontWeight.w600, c, height: 1.35);
-  /// Message preview line — 12.5 / 600.
+      _s(15, FontWeight.w400, c, height: 1.35);
+  /// Message preview line — 14 / 400, muted. Sits UNDER rowName in weight,
+  /// size and colour, which is what makes the name read as the heading.
   static TextStyle preview({Color c = AD.textSecondary}) =>
-      _s(12.5, FontWeight.w600, c);
-  /// Colored tab label — 13 / 800.
+      _s(14, FontWeight.w400, c);
+  /// Colored tab label — 13 / 600.
   static TextStyle tabLabel({Color c = AD.textPrimary}) =>
-      _s(13, FontWeight.w800, c);
-  /// Bottom-nav label (active) — 11.5 / 800.
+      _s(13, FontWeight.w600, c);
+  /// Bottom-nav label (active) — 11 / 600.
   static TextStyle navLabelPrimary({Color c = AD.textPrimary}) =>
-      _s(11.5, FontWeight.w800, c);
-  /// Bottom-nav label — 11 / 700.
+      _s(11, FontWeight.w600, c);
+  /// Bottom-nav label (inactive) — 11 / 500.
   static TextStyle navLabel({Color c = AD.textTertiary}) =>
-      _s(11, FontWeight.w700, c);
-  /// Section header (PINNED / MESSAGES) — 11 / 800 uppercase.
+      _s(11, FontWeight.w500, c);
+  /// Section header (Pinned / Messages) — 11 / 600, lightly tracked.
+  /// Sentence case at the call site; the caps were part of the shouting.
   static TextStyle sectionLabel({Color c = AD.textTertiary}) =>
-      _s(11, FontWeight.w800, c, spacing: 0.08 * 11);
-  /// Timestamp — 10.5 / 700.
+      _s(11, FontWeight.w600, c, spacing: 0.06 * 11);
+  /// Timestamp — 12 / 400, muted.
   static TextStyle timestamp({Color c = AD.textTertiary}) =>
-      _s(10.5, FontWeight.w700, c);
-  /// Bubble meta (time/ticks) — 9.5 / 700.
+      _s(12, FontWeight.w400, c);
+  /// Bubble meta (time/ticks) — 11 / 400.
   static TextStyle bubbleMeta({Color c = AD.bubbleOutMeta}) =>
-      _s(9.5, FontWeight.w700, c);
-  /// Stat caption — 9 / 700.
+      _s(11, FontWeight.w400, c);
+  /// Stat caption — 11 / 400.
   static TextStyle statCaption({Color c = AD.textTertiary}) =>
-      _s(9, FontWeight.w700, c);
+      _s(11, FontWeight.w400, c);
 }
 
 // =============================================================================
@@ -331,7 +353,7 @@ class AdButton extends StatelessWidget {
           Flexible(
             child: Text(label,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: fontSize, color: fg)),
           ),
           if (icon != null && trailingIcon) ...[
@@ -420,8 +442,8 @@ class AdChip extends StatelessWidget {
             Icon(icon, size: 14, color: AD.textSecondary),
             const SizedBox(width: 6),
           ],
-          Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
-              fontSize: 12.5, color: active ? Colors.white : AD.textSecondary)),
+          Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+              fontSize: 13, color: active ? Colors.white : AD.textSecondary)),
         ]),
       ),
     );
@@ -458,10 +480,10 @@ class AdSticker extends StatelessWidget {
           const SizedBox(width: 6),
         ],
         Flexible(
-          child: Text(text.toUpperCase(),
+          child: Text(text,
               maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
-                  fontSize: 11, letterSpacing: 0.4, color: fg)),
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                  fontSize: 11, letterSpacing: 0.2, color: fg)),
         ),
       ]),
     );
@@ -601,7 +623,7 @@ class _AdFieldState extends State<AdField> {
                 ),
                 child: widget.leadText != null
                     ? Text(widget.leadText!, style: TextStyle(fontFamily: ADText.family,
-                        fontWeight: FontWeight.w800, fontSize: 20, color: AD.textOnInput))
+                        fontWeight: FontWeight.w600, fontSize: 20, color: AD.textOnInput))
                     : Icon(widget.leadIcon, size: 20, color: AD.textOnInput),
               ),
             Expanded(

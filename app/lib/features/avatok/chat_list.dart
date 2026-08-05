@@ -26,6 +26,7 @@ import '../../core/update_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
@@ -629,7 +630,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           alignment: Alignment.center,
           child: dot ? null : Text(label,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w900, height: 1.0)),
+              style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w700, height: 1.0)),
         ),
       ),
     ]);
@@ -1654,14 +1655,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               onTap: _openNewChatMenu,
               child: Container(
                 width: 54, height: 54,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AD.primaryBadge,
                   shape: BoxShape.circle,
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x66E8833A), offset: Offset(0, 8), blurRadius: 20),
-                  ],
+                  // [UI-MSG-GLOW-1] 2026-08-05 — was a hardcoded translucent
+                  // orange halo (Color(0x66E8833A), blur 20). A coloured blur
+                  // behind a control is a mobile-game signal; the FAB now gets
+                  // the same neutral lift every floating element uses.
+                  boxShadow: Msg.lift,
                 ),
-                child: const Center(child: Icon(Icons.add_rounded, size: 26, color: Colors.white)),
+                child: Center(child: Icon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 26, color: Colors.white)),
               ),
             )
           : null,
@@ -1698,7 +1701,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   child: Container(
                     width: 38, height: 38,
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-                    child: const Icon(Icons.menu_rounded, size: 22, color: AD.textPrimary),
+                    child: Icon(PhosphorIcons.list(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -1759,8 +1762,25 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   ),
                 ),
                 Expanded(
-                  child: ListView(
-                    children: [
+                  // [UI-MSG-PERF-1] 2026-08-05 — was a plain `ListView(children:
+                  // [...])`, which is NOT lazy: it constructs a `_ChatRow` for
+                  // every thread the user has on every single rebuild, and a
+                  // rebuild happens on each keystroke in the search box, each
+                  // filter change and each incoming message. A user with 300
+                  // chats built 300 rows to show 8.
+                  //
+                  // Now: headers stay in an eager sliver (there are at most a
+                  // handful and they're conditional), and the rows go through
+                  // `SliverFixedExtentList.builder` — lazy, so only visible rows
+                  // are built, and extent-based, so the viewport never has to
+                  // measure a child to know where it sits. The fixed
+                  // `Msg.rowHeight` on `_ChatRow` is what makes the second half
+                  // legal; if row height ever becomes variable again, this must
+                  // go back to `SliverList.builder`.
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverList(
+                        delegate: SliverChildListDelegate([
                   // [SAFE-GATE-2] "Message requests (N)" — pending stranger-gate
                   // threads, collapsed at the very top (only on the All filter).
                   // [ISSUE-CHAT-SEARCH-1] Deliberately NOT suppressed while
@@ -1820,19 +1840,28 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                         ]),
                       ),
                     ),
-                  for (final c in rows)
-                    _ChatRow(
-                      chat: c,
-                      pinned: pinned.contains(_keyOf(c)),
-                      muted: _flags['muted']!.contains(_keyOf(c)),
-                      onTap: () => _openChat(c),
-                      onLongPress: () => _chatRowFlags(c),
-                      // [STATUS-FANOUT-1] The state owns the live-status set and
-                      // the navigation; _ChatRow is a StatelessWidget and can't
-                      // reach either, so both are handed in here.
-                      hasStatus: _hasStatus(c.seed),
-                      onStatusTap: () => _openStatuses(focusAuthor: c.seed),
-                    ),
+                        ]),
+                      ),
+                      SliverFixedExtentList.builder(
+                        itemExtent: Msg.rowHeight,
+                        itemCount: rows.length,
+                        itemBuilder: (_, i) {
+                          final c = rows[i];
+                          return _ChatRow(
+                            chat: c,
+                            pinned: pinned.contains(_keyOf(c)),
+                            muted: _flags['muted']!.contains(_keyOf(c)),
+                            onTap: () => _openChat(c),
+                            onLongPress: () => _chatRowFlags(c),
+                            // [STATUS-FANOUT-1] The state owns the live-status
+                            // set and the navigation; _ChatRow is a
+                            // StatelessWidget and can't reach either, so both
+                            // are handed in here.
+                            hasStatus: _hasStatus(c.seed),
+                            onStatusTap: () => _openStatuses(focusAuthor: c.seed),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -1966,7 +1995,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         padding: const EdgeInsets.fromLTRB(11, 7, 8, 7),
         decoration: BoxDecoration(
           color: _filter == 'all' ? AD.card : AD.unreadAccent.withValues(alpha: 0.22),
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: BorderRadius.circular(Msg.rSm),
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1995,15 +2024,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// [_glowRing] is the STATIC glow used on the header (my own status). For a
   /// contact's row we use the ANIMATED [StatusRing] below (owner spec 2026-07-15:
   /// "display a round animated circle around a users profile icon").
+  /// [UI-MSG-GLOW-1] 2026-08-05 — the green glow behind this ring is gone.
+  /// A solid 2px ring already says "this person has a status"; the blurred
+  /// halo on top of it was decoration, and it sat on every visible row of a
+  /// scrolling list (a blur is the most expensive thing you can ask a row to
+  /// paint). The ring itself is unchanged, so the affordance is intact.
   Widget _glowRing(Widget avatar) => Container(
         padding: const EdgeInsets.all(2.5),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           shape: BoxShape.circle,
           color: AD.online,
-          border: Border.all(color: AD.borderAvatar, width: 2),
-          boxShadow: [
-            BoxShadow(color: AD.online.withValues(alpha: 0.6), blurRadius: 11, spreadRadius: 1),
-          ],
+          border: Border.fromBorderSide(
+              BorderSide(color: AD.borderAvatar, width: 2)),
         ),
         child: avatar,
       );
@@ -2043,10 +2075,11 @@ class _AvaTokTabStrip extends StatelessWidget {
   });
 
   // Dark v2 colored tabs: Chats (orange) · Groups (teal) · Calls (purple).
-  static const _items = [
-    (Icons.chat_bubble_outline, Icons.chat_bubble, 'Chats', AD.tabChats),
-    (Icons.groups_outlined, Icons.groups, 'Groups', AD.tabGroups),
-    (Icons.history_outlined, Icons.history, 'Calls', AD.tabCalls),
+  // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
+  static final _items = <(IconData, IconData, String, Color)>[
+    (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'Chats', AD.tabChats),
+    (PhosphorIcons.usersThree(PhosphorIconsStyle.regular), PhosphorIcons.usersThree(PhosphorIconsStyle.fill), 'Groups', AD.tabGroups),
+    (PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), 'Calls', AD.tabCalls),
   ];
 
   @override
@@ -2137,8 +2170,16 @@ class _ChatRow extends StatelessWidget {
       onTap: onTap ?? () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat))),
       onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      // [UI-MSG-ROWS-1] 2026-08-05 — fixed row height. Every row is now
+      // exactly Msg.rowHeight tall, which (a) makes the list read as a single
+      // even column instead of rows that breathe differently depending on
+      // whether a badge or a pin happens to be present, and (b) lets the
+      // ListView use a cheap extent-based layout (see the itemExtent on the
+      // builder) instead of measuring every child.
+      child: SizedBox(
+        height: Msg.rowHeight,
+        child: Padding(
+        padding: Msg.rowPadding,
         child: Row(
           children: [
             Stack(children: [
@@ -2149,7 +2190,8 @@ class _ChatRow extends StatelessWidget {
               // enlarged-avatar viewer (owner spec 2026-07-15). Without a status
               // the tap keeps its existing meaning.
               Builder(builder: (_) {
-                final avatar = Avatar(seed: chat.seed, name: chat.name, size: 50,
+                final avatar = Avatar(seed: chat.seed, name: chat.name,
+                    size: Msg.rowAvatar,
                     avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl);
                 return GestureDetector(
                   onTap: () {
@@ -2163,7 +2205,7 @@ class _ChatRow extends StatelessWidget {
                     }
                   },
                   child: hasStatus
-                      ? StatusRing(size: 50, child: avatar)
+                      ? StatusRing(size: Msg.rowAvatar, child: avatar)
                       : Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
@@ -2184,9 +2226,10 @@ class _ChatRow extends StatelessWidget {
                   ),
                 ),
             ]),
-            const SizedBox(width: 12),
+            const SizedBox(width: Msg.rowAvatarGap),
             Expanded(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
@@ -2203,7 +2246,7 @@ class _ChatRow extends StatelessWidget {
                         child: PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill),
                             size: 13, color: AD.textTertiary)),
                   ]),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: Msg.rowTextGap),
                   Text(chat.last,
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.preview(
@@ -2211,14 +2254,17 @@ class _ChatRow extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(chat.time.toUpperCase(),
+                // Sentence case, not `.toUpperCase()`. An all-caps timestamp on
+                // every row was part of the shouting the audit flagged.
+                Text(chat.time,
                     style: ADText.timestamp(
                         c: chat.unread > 0 ? AD.unreadAccent : AD.textTertiary)),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 if (chat.unread > 0)
                   // Unread badge — orange accent circle, white count.
                   Container(
@@ -2238,6 +2284,7 @@ class _ChatRow extends StatelessWidget {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

@@ -9,91 +9,82 @@ import '../../core/ui/avatok_dark.dart';
 /// animated circle around a users profile icon in the avatok chat threads. This
 /// way, other users will know that he has some status."
 ///
-/// A slowly rotating sweep gradient rather than a pulsing scale: the chat list
-/// can show many of these at once, and anything that changes SIZE would reflow
-/// every row on each frame. Rotation repaints inside a fixed box, so layout is
-/// untouched — only the ring's own [CustomPaint] repaints.
+/// ## [UI-MSG-PERF-1] 2026-08-05 — THE RING NO LONGER SPINS. Do not re-add it.
 ///
-/// The ticker is owned by this widget, so it stops the moment the row scrolls out
-/// of the list (Flutter disposes it) — there is no global animation left running
-/// behind the chat list.
-class StatusRing extends StatefulWidget {
+/// This used to run `AnimationController(3s)..repeat()`, i.e. one permanently
+/// looping ticker **per visible chat row**. Two problems, and the first is the
+/// one the owner actually noticed:
+///
+///  1. **It looked restless.** A chat list is a reading surface. Something
+///     rotating forever next to every name says "loading", not "there's a
+///     status here" — and it was the single most animated thing in the app.
+///  2. **It cost real frames.** Every ring drives its own ticker and repaints a
+///     `SweepGradient` shader each frame. Ten visible rows meant ten shaders
+///     rebuilt 60 times a second, forever, on the busiest screen in the
+///     product. The old `RepaintBoundary` limited the damage to the ring's own
+///     layer; it did not make the work go away.
+///
+/// The ring is now a **static** gradient arc. It still reads unmistakably as
+/// "this person has a status" — same colour, same thickness, same tap target —
+/// it just stops moving. The widget stays `StatelessWidget` so there is no
+/// ticker to leak and nothing to dispose.
+///
+/// If a status ring ever needs motion again, animate it **once on appear** and
+/// stop; never `repeat()` inside a list row.
+class StatusRing extends StatelessWidget {
   /// Diameter of the avatar this wraps (the ring is drawn OUTSIDE it).
   final double size;
   final Widget child;
-  /// Ring thickness. 2.5 matches the static header glow ([_glowRing]).
+  /// Ring thickness. 2.5 matches the static ring in the chat-list header.
   final double stroke;
   const StatusRing({super.key, required this.size, required this.child, this.stroke = 2.5});
 
   @override
-  State<StatusRing> createState() => _StatusRingState();
-}
-
-class _StatusRingState extends State<StatusRing> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    // Slow on purpose. This sits in a scrolling list next to text the user is
-    // trying to read; a fast spin reads as a loading spinner ("is it stuck?")
-    // rather than an ambient "there's something here".
-    duration: const Duration(seconds: 3),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     // Gap between the ring and the avatar, so the photo isn't crowded.
-    final pad = widget.stroke + 2;
+    final pad = stroke + 2;
     return SizedBox(
-      width: widget.size + pad * 2,
-      height: widget.size + pad * 2,
+      width: size + pad * 2,
+      height: size + pad * 2,
       child: Stack(alignment: Alignment.center, children: [
-        // RepaintBoundary: without it, every frame of the rotation would mark the
-        // whole row (avatar, name, preview text) dirty. With it, only the ring's
-        // own layer repaints.
+        // RepaintBoundary kept: the ring is static now, so this lets the raster
+        // cache hold it and skip re-rasterising the arc while the list scrolls.
         RepaintBoundary(
-          child: AnimatedBuilder(
-            animation: _c,
-            builder: (_, __) => CustomPaint(
-              size: Size.square(widget.size + pad * 2),
-              painter: _RingPainter(turns: _c.value, stroke: widget.stroke),
-            ),
+          child: CustomPaint(
+            size: Size.square(size + pad * 2),
+            painter: _RingPainter(stroke: stroke),
           ),
         ),
-        SizedBox(width: widget.size, height: widget.size, child: widget.child),
+        SizedBox(width: size, height: size, child: child),
       ]),
     );
   }
 }
 
 class _RingPainter extends CustomPainter {
-  final double turns; // 0..1
   final double stroke;
-  _RingPainter({required this.turns, required this.stroke});
+  const _RingPainter({required this.stroke});
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final centre = rect.center;
     final radius = (size.width / 2) - (stroke / 2);
-    // Sweep gradient rotated by `turns`. AD.online is the same green the static
-    // header glow uses, so a status reads identically in both places; the
-    // transparent stop is what makes the travelling "comet" head visible.
+    // Static sweep, fixed at a 45° start. The gradient is kept (it gives the
+    // ring a little depth so it doesn't read as a flat border) but it no longer
+    // rotates, and the fully-transparent stop is gone — a "comet head" only
+    // makes sense on something that moves. The ring now reads as a solid arc
+    // that fades slightly at one end.
     final shader = SweepGradient(
       startAngle: 0,
       endAngle: math.pi * 2,
-      transform: GradientRotation(turns * 2 * math.pi),
+      transform: const GradientRotation(math.pi / 4),
       colors: [
-        AD.online.withValues(alpha: 0.0),
         AD.online.withValues(alpha: 0.55),
         AD.online,
-        AD.online.withValues(alpha: 0.0),
+        AD.online.withValues(alpha: 0.55),
       ],
-      stops: const [0.0, 0.45, 0.75, 1.0],
+      stops: const [0.0, 0.5, 1.0],
     ).createShader(rect);
     canvas.drawCircle(
       centre,
@@ -106,7 +97,7 @@ class _RingPainter extends CustomPainter {
     );
   }
 
-  // Repaint only when the rotation actually advances.
+  // Nothing animates any more; only a stroke change can require a repaint.
   @override
-  bool shouldRepaint(_RingPainter old) => old.turns != turns || old.stroke != stroke;
+  bool shouldRepaint(_RingPainter old) => old.stroke != stroke;
 }

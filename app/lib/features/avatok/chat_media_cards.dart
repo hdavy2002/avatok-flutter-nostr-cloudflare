@@ -20,6 +20,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/bubble_theme.dart';
 import '../messaging/widgets/media_download_placeholder.dart';
 import 'media.dart';
@@ -672,7 +673,7 @@ class ChatImageCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(Msg.rMd),
         child: Stack(children: [
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxHeight),
@@ -920,7 +921,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
     final c = _ctrl;
     if (c != null && c.value.isInitialized) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(Msg.rMd),
         child: Stack(alignment: Alignment.center, children: [
           GestureDetector(
             onTap: () => setState(
@@ -951,7 +952,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
     return GestureDetector(
       onTap: _playInline,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(Msg.rMd),
         child: Stack(alignment: Alignment.center, children: [
           if (_thumb != null)
             Image.memory(_thumb!, width: widget.width, fit: BoxFit.cover,
@@ -1152,7 +1153,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
       return GestureDetector(
         onTap: widget.onOpen,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(Msg.rMd),
           child: Stack(children: [
             Image.memory(_pdfThumb!, width: widget.width, fit: BoxFit.cover,
                 // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the other list thumbs.
@@ -1370,7 +1371,7 @@ class _YouTubeCardState extends State<YouTubeCard> {
                     border: Border.all(color: Colors.white, width: 2),
                     boxShadow: const [],
                   ),
-                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 30),
+                  child: Icon(PhosphorIcons.play(PhosphorIconsStyle.fill), color: Colors.white, size: 30),
                 ),
                 Positioned(
                   left: 8,

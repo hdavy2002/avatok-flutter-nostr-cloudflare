@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'messenger_theme.dart';
+
 /// Chat bubble theming contract — the SINGLE source of truth for what colour a
 /// message bubble is painted, for BOTH 1:1 and group threads, and for EVERY
 /// bubble kind (text, image, video, audio/voice note, file, link preview,
@@ -76,18 +78,18 @@ const Color kChatSysPillBg = Color(0xFFF1F2F5);
 
 /// Tail-on-right (my messages).
 const BorderRadius kBubbleRadiusOut = BorderRadius.only(
-  topLeft: Radius.circular(14),
+  topLeft: Radius.circular(Msg.rMd),
   topRight: Radius.circular(4),
-  bottomLeft: Radius.circular(14),
-  bottomRight: Radius.circular(14),
+  bottomLeft: Radius.circular(Msg.rMd),
+  bottomRight: Radius.circular(Msg.rMd),
 );
 
 /// Tail-on-left (their messages).
 const BorderRadius kBubbleRadiusIn = BorderRadius.only(
   topLeft: Radius.circular(4),
-  topRight: Radius.circular(14),
-  bottomLeft: Radius.circular(14),
-  bottomRight: Radius.circular(14),
+  topRight: Radius.circular(Msg.rMd),
+  bottomLeft: Radius.circular(Msg.rMd),
+  bottomRight: Radius.circular(Msg.rMd),
 );
 
 /// My own bubbles — pale green, in every thread type.
