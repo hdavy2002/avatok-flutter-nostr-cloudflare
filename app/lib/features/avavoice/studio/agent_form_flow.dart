@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/config.dart';
-import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../explore/widgets.dart' show CoverImage;
 import 'voice_picker.dart';
@@ -181,12 +182,12 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     });
     if (r.isEmpty) {
       showDialog(context: context, builder: (d) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        titleTextStyle: ZineText.cardTitle(size: 20),
-        contentTextStyle: ZineText.sub(size: 14),
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
+        contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
         title: const Text('🎉 Your agent is live!'),
         content: Text('${_name.text.trim()} is now in the AvaVoice marketplace. '
             'Check your dashboard each morning for bookings, calls and earnings.'),
@@ -230,7 +231,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: widget.existing == null ? 'New voice agent' : 'Edit ${widget.existing!.name}',
         markWord: 'voice',
@@ -261,7 +262,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             _stepDot(i, state),
             if (!last)
               Expanded(
-                child: Container(width: 2.5, color: Zine.ink.withValues(alpha: 0.25),
+                child: Container(width: 2.5, color: AD.borderHairline,
                     margin: const EdgeInsets.symmetric(vertical: 4)),
               ),
           ]),
@@ -280,8 +281,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Text(_titles[i],
-                      style: ZineText.cardTitle(
-                          color: state == _WizState.todo ? Zine.inkMute : Zine.ink)),
+                      style: ADText.threadName(c: state == _WizState.todo ? AD.textTertiary : AD.textPrimary).copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
                 ),
               ),
               if (state == _WizState.active) ...[
@@ -345,23 +345,23 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
 
   Widget _stepDot(int i, _WizState state) {
     final (fill, fg) = switch (state) {
-      _WizState.active => (Zine.lime, Zine.ink),
-      _WizState.done => (Zine.ink, Zine.paper),
-      _WizState.todo => (Zine.card, Zine.inkMute),
+      _WizState.active => (AD.primaryBadge, Colors.white),
+      _WizState.done => (AD.online, Colors.white),
+      _WizState.todo => (AD.card, AD.textTertiary),
     };
     return Container(
       width: 34, height: 34,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: fill,
-        border: Border.all(color: state == _WizState.todo ? Zine.inkMute : Zine.ink, width: Zine.bw),
-        boxShadow: state == _WizState.active ? Zine.shadowXs : null,
+        border: Border.all(color: state == _WizState.todo ? AD.borderHairline : AD.borderControl, width: 1),
+        boxShadow: state == _WizState.active ? Msg.none : null,
       ),
       child: Center(
         child: state == _WizState.done
             ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 16, color: fg)
             : Text('${i + 1}',
-                style: TextStyle(fontFamily: ZineText.display, fontWeight: FontWeight.w600,
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 16, color: fg)),
       ),
     );
@@ -406,19 +406,19 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         const SizedBox(height: 8),
         Text(
           '💡 The better you describe the personality, tone and tasks, the better your agent performs. Time-keeping and polite wrap-up are handled automatically by the platform.',
-          style: ZineText.sub(size: 12),
+          style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
         ),
         const SizedBox(height: 16),
-        Text('LISTING PHOTOS (1–5)', style: ZineText.kicker()),
+        Text('Listing photos (1–5)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
         const SizedBox(height: 9),
         Wrap(spacing: 12, runSpacing: 12, children: [
           for (var i = 0; i < _images.length; i++)
             Stack(clipBehavior: Clip.none, children: [
               Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderControl, width: 1),
+                  boxShadow: Msg.none,
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: CoverImage(url: _images[i], seed: i, width: 88, height: 88),
@@ -430,10 +430,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                   child: Container(
                     width: 26, height: 26,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: Zine.coral,
-                      border: Border.all(color: Zine.ink, width: 2),
+                      shape: BoxShape.circle, color: AD.danger,
+                      border: Border.all(color: AD.borderControl, width: 1),
                     ),
-                    child: const Icon(Icons.close, size: 14, color: Colors.white),
+                    child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Colors.white),
                   ),
                 ),
               ),
@@ -444,21 +444,21 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
               child: Container(
                 width: 88, height: 88,
                 decoration: BoxDecoration(
-                  color: Zine.paper2,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Border.all(color: Zine.ink.withValues(alpha: 0.45), width: 2),
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: _imgUploading
                     ? const Center(child: SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)))
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AD.tabGroups)))
                     : PhosphorIcon(PhosphorIcons.cameraPlus(PhosphorIconsStyle.bold),
-                        size: 26, color: Zine.inkSoft),
+                        size: 26, color: AD.textSecondary),
               ),
             ),
         ]),
         const SizedBox(height: 8),
         Text('At least one photo is required to publish. Shown on your marketplace card and agent page.',
-            style: ZineText.sub(size: 11.5)),
+            style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
       ]);
 
   // ── Step 2: voice ─────────────────────────────────────────────────────
@@ -466,11 +466,11 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Row(children: [
           ZineIconBadge(
               icon: PhosphorIcons.waveform(PhosphorIconsStyle.bold),
-              color: Zine.lilac, size: 30),
+              color: AD.tabCalls, size: 30),
           const SizedBox(width: 10),
           Expanded(
             child: Text('Choose how your agent sounds. Tap ▶ to hear a sample.',
-                style: ZineText.sub(size: 13)),
+                style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           ),
         ]),
         const SizedBox(height: 14),
@@ -481,7 +481,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Widget _stepBrain() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(
           'Upload documents your agent should know — FAQs, scripts, product info, schedules. During calls it consults these files to answer accurately instead of guessing.',
-          style: ZineText.sub(size: 13),
+          style: ADText.preview().copyWith(fontSize: 13, height: 1.42),
         ),
         const SizedBox(height: 16),
         ZineButton(
@@ -496,7 +496,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         const SizedBox(height: 14),
         if (_files.isEmpty)
           Text('No files yet — that\'s OK, you can add them anytime. Agents work without files too.',
-              style: ZineText.sub(size: 12))
+              style: ADText.preview().copyWith(fontSize: 12, height: 1.42))
         else
           for (final f in _files)
             Padding(
@@ -504,24 +504,23 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
               child: Container(
                 padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
                 decoration: BoxDecoration(
-                  color: Zine.card,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderControl, width: 1),
+                  boxShadow: Msg.none,
                 ),
                 child: Row(children: [
                   ZineIconBadge(
                       icon: PhosphorIcons.fileText(PhosphorIconsStyle.bold),
-                      color: Zine.lilac, size: 30),
+                      color: AD.tabCalls, size: 30),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(f.filename, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ZineText.value(size: 13.5)),
+                          style: ADText.rowName().copyWith(fontSize: 14, height: 1.3)),
                       const SizedBox(height: 2),
-                      Text(f.indexed ? 'INDEXED — READY' : 'INDEXING…',
-                          style: ZineText.tag(size: 10,
-                              color: f.indexed ? Zine.mintInk : Zine.inkSoft)),
+                      Text(f.indexed ? 'Indexed — ready' : 'Indexing…',
+                          style: ADText.tabLabel(c: f.indexed ? AD.online : AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4)),
                     ]),
                   ),
                   const SizedBox(width: 8),
@@ -531,11 +530,11 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                       width: 28, height: 28,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Zine.card,
-                        border: Border.all(color: Zine.ink, width: 2),
+                        color: AD.card,
+                        border: Border.all(color: AD.borderControl, width: 1),
                       ),
                       child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold),
-                          size: 13, color: Zine.ink),
+                          size: 13, color: AD.textPrimary),
                     ),
                   ),
                 ]),
@@ -547,7 +546,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Widget _stepPricing() {
     final userPays = _payerMode == 'user_pays';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('WHO PAYS FOR CALLS?', style: ZineText.kicker()),
+      Text('Who pays for calls?', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 9),
       _payerCard('user_pays', 'Callers pay you',
           'You set an hourly rate. Callers are billed per minute; you earn 50% after the platform fee.'),
@@ -569,31 +568,31 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Zine.mint,
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Zine.border,
-            boxShadow: Zine.shadowXs,
+            color: AD.card,
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.none,
           ),
           child: Row(children: [
-            PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-                size: 18, color: Zine.ink),
+            PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.regular),
+                size: 18, color: AD.online),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _rateCoins >= 100
                     ? 'Callers pay ${fmtCoins(perMinuteCoins(_rateCoins))}/min · You earn ${fmtCoins(creatorNetPerHour(_rateCoins))}/hr after the 50% platform fee'
                     : 'Enter your hourly rate to see what you\'ll earn',
-                style: ZineText.value(size: 12.5),
+                style: ADText.rowName().copyWith(fontSize: 13, height: 1.3),
               ),
             ),
           ]),
         ),
         const SizedBox(height: 18),
       ],
-      Text('MAXIMUM SESSION LENGTH', style: ZineText.kicker()),
+      Text('Maximum session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 4),
       Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
-          style: ZineText.sub(size: 12)),
+          style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
       const SizedBox(height: 9),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in kSessionLimitChoices)
@@ -607,11 +606,11 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Vision (screen & camera)', style: ZineText.value(size: 14.5)),
+            Text('Vision (screen & camera)', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
             const SizedBox(height: 3),
             Text(
                 'Let callers share their screen or camera so the agent can see and help — e.g. step-by-step tech support.',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
         const SizedBox(width: 10),
@@ -624,30 +623,30 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     final sel = _payerMode == mode;
     return ZinePressable(
       onTap: () => setState(() => _payerMode = mode),
-      color: sel ? Zine.blue : Zine.card,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: sel ? Zine.shadowSm : const <BoxShadow>[],
+      color: sel ? AD.tabGroups : AD.card,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(14),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           width: 22, height: 22,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Zine.card,
-            border: Border.all(color: Zine.ink, width: Zine.bw),
+            color: AD.card,
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: sel
               ? Center(
                   child: Container(width: 9, height: 9,
-                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Zine.ink)))
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: AD.primaryBadge)))
               : null,
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.cardTitle(size: 15.5)),
+            Text(title, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 3),
-            Text(body, style: ZineText.sub(size: 12, color: sel ? Zine.ink : Zine.inkSoft)),
+            Text(body, style: ADText.preview(c: sel ? AD.textPrimary : AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
       ]),

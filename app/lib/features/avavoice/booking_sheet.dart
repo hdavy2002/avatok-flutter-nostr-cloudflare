@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/avavoice_api.dart';
-import '../../core/theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../wallet/wallet_screen.dart';
 import 'widgets.dart';
@@ -14,9 +15,9 @@ Future<bool?> showBookingSheet(BuildContext context, VoiceAgent agent) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
     builder: (_) => _BookingSheet(agent: agent),
   );
 }
@@ -125,7 +126,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Book ${a.name}', style: ZineText.cardTitle(size: 21)),
+            Text('Book ${a.name}', style: ADText.threadName().copyWith(fontSize: 21, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 16),
             Row(children: [
               Expanded(child: _picker(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
@@ -134,7 +135,7 @@ class _BookingSheetState extends State<_BookingSheet> {
               Expanded(child: _picker(PhosphorIcons.clock(PhosphorIconsStyle.bold), _time.format(context), _pickTime)),
             ]),
             const SizedBox(height: 16),
-            Text('SESSION LENGTH', style: ZineText.kicker()),
+            Text('Session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
             const SizedBox(height: 9),
             Wrap(spacing: 8, runSpacing: 8, children: _durationChoices.map((m) {
               return ZineChip(
@@ -149,28 +150,28 @@ class _BookingSheetState extends State<_BookingSheet> {
             const SizedBox(height: 18),
             // Itemized total.
             ZineCard(
-              color: Zine.paper2,
-              radius: Zine.rSm,
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              radius: Msg.rLg,
+              boxShadow: Msg.none,
               padding: const EdgeInsets.all(14),
               child: Column(children: [
                 if (a.isFreeForCallers)
                   Row(children: [
-                    PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), size: 18, color: Zine.mintInk),
+                    PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), size: 18, color: AD.online),
                     const SizedBox(width: 8),
                     Expanded(child: Text("Free — this agent's creator covers the call.",
-                        style: ZineText.value(size: 13, weight: FontWeight.w800))),
+                        style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600))),
                   ])
                 else ...[
                   _row('${a.name} · $_minutes min × ${fmtCoins(perMin)}/min', fmtCoins(_totalCoins)),
                   const SizedBox(height: 8),
-                  const Divider(height: 1, color: Color(0x40231B14)),
+                  const Divider(height: 1, color: AD.borderHairline),
                   const SizedBox(height: 8),
                   _row('Held in escrow now', fmtCoins(_totalCoins), bold: true),
                   const SizedBox(height: 6),
                   Align(alignment: Alignment.centerLeft, child: Text(
                       "You're only charged for minutes you actually talk — unused minutes are refunded after the call.",
-                      style: ZineText.sub(size: 11, color: Zine.inkMute))),
+                      style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11, height: 1.42))),
                 ],
               ]),
             ),
@@ -190,22 +191,20 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   Widget _picker(IconData icon, String label, VoidCallback onTap) => ZinePressable(
         onTap: onTap,
-        radius: BorderRadius.circular(Zine.rField),
-        boxShadow: Zine.shadowXs,
+        radius: BorderRadius.circular(Msg.rLg),
+        boxShadow: Msg.none,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
         child: Row(children: [
-          PhosphorIcon(icon, size: 17, color: Zine.blueInk),
+          PhosphorIcon(icon, size: 17, color: AD.tabGroups),
           const SizedBox(width: 9),
           Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.value(size: 13, weight: FontWeight.w800))),
-          PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+              style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600))),
+          PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
         ]),
       );
 
   Widget _row(String l, String r, {bool bold = false}) => Row(children: [
-        Expanded(child: Text(l, style: ZineText.value(size: 12.5,
-            weight: bold ? FontWeight.w900 : FontWeight.w700))),
-        Text(r, style: ZineText.value(size: 13.5,
-            color: bold ? Zine.mintInk : Zine.ink, weight: FontWeight.w900)),
+        Expanded(child: Text(l, style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: bold ? FontWeight.w700 : FontWeight.w400))),
+        Text(r, style: ADText.rowName(c: bold ? AD.online : AD.textPrimary).copyWith(fontSize: 14, height: 1.3, fontWeight: FontWeight.w700)),
       ]);
 }

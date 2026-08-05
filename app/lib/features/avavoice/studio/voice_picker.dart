@@ -2,9 +2,10 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/analytics.dart';
 import '../../../core/avavoice_api.dart';
-import '../../../core/theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
 
@@ -75,17 +76,17 @@ class _VoicePickerState extends State<VoicePicker> {
         padding: const EdgeInsets.only(bottom: 10),
         child: ZinePressable(
           onTap: () => widget.onSelected(v.name),
-          color: sel ? Zine.lilac : Zine.card,
-          radius: BorderRadius.circular(Zine.rSm),
-          boxShadow: sel ? Zine.shadowXs : const <BoxShadow>[],
+          color: sel ? AD.tabCalls : AD.card,
+          radius: BorderRadius.circular(Msg.rLg),
+          boxShadow: Msg.none,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(children: [
             PhosphorIcon(
                 sel ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),
-                color: sel ? Zine.ink : Zine.inkMute, size: 22),
+                color: sel ? Colors.white : AD.textTertiary, size: 22),
             const SizedBox(width: 11),
             Expanded(child: Text(v.label,
-                style: ZineText.value(size: 14.5, weight: sel ? FontWeight.w900 : FontWeight.w800))),
+                style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: sel ? FontWeight.w700 : FontWeight.w600))),
             ZineBackButton(
               icon: playing
                   ? PhosphorIcons.stop(PhosphorIconsStyle.fill)

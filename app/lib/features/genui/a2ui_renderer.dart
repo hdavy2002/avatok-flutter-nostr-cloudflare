@@ -15,11 +15,19 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/config.dart';
-import '../../core/ui/zine.dart';
+
+
+/// Sentence case for a display label. Replaces the `.toUpperCase()` the legacy
+/// zine stickers applied to everything; call sites pass lowercase strings, so
+/// simply dropping the transform would render them lowercase.
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
 class AvaA2uiSurface extends StatefulWidget {
   final Map<String, dynamic> surface;
@@ -168,7 +176,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       case 'card': return _card(n, scope);
       case 'pill': return _pill(n, scope);
       case 'button': return _button(n, scope);
-      case 'divider': return const Divider(color: Zine.inkMute, height: 1, thickness: 1);
+      case 'divider': return const Divider(color: AD.borderHairline, height: 1, thickness: 1);
       case 'spacer': return SizedBox(height: (n['size'] as num?)?.toDouble() ?? 8);
       case 'icon': return PhosphorIcon(_icon(n['name']?.toString()),
           size: (n['size'] as num?)?.toDouble() ?? 16, color: _tok(n['color']?.toString()));
@@ -244,10 +252,10 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
           width: w, height: h,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Zine.paper2,
+            color: AD.card,
             borderRadius: BorderRadius.circular(radius),
-            border: Zine.border),
-          child: PhosphorIcon(_icon(fallbackIcon), size: w * 0.5, color: Zine.inkSoft),
+            border: Border.all(color: AD.borderControl, width: 1)),
+          child: PhosphorIcon(_icon(fallbackIcon), size: w * 0.5, color: AD.textSecondary),
         );
 
     if (!url.startsWith('http')) return fallback();
@@ -278,30 +286,30 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
 
   Widget _text(Map<String, dynamic> n, Map scope) {
     final v = _resolve(n['value'], scope);
-    final color = _tok(n['color']?.toString(), fallback: Zine.ink);
+    final color = _tok(n['color']?.toString(), fallback: AD.textPrimary);
     // Optional truncation: long values (e.g. Drive backup filenames) shouldn't
     // blow up the card — maxLines clamps with an ellipsis.
     final ml = (n['maxLines'] as num?)?.toInt();
     final max = ml != null && ml > 0 ? ml : null;
     final ov = max != null ? TextOverflow.ellipsis : TextOverflow.clip;
     switch ((n['variant'] ?? 'body').toString()) {
-      case 'display': return Text(v, maxLines: max, overflow: ov, style: ZineText.cardTitle(size: 19, color: color));
-      case 'title': return Text(v, maxLines: max, overflow: ov, style: ZineText.value(size: 16, color: color));
-      case 'tag': return Text(v.toUpperCase(), maxLines: max, overflow: ov, style: ZineText.tag(size: 9.5, color: color));
-      case 'sub': return Text(v, maxLines: max, overflow: ov, style: ZineText.sub(size: 12.5, color: color));
-      default: return Text(v, maxLines: max, overflow: ov, style: ZineText.sub(size: 13.5, color: color));
+      case 'display': return Text(v, maxLines: max, overflow: ov, style: ADText.threadName(c: color).copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2));
+      case 'title': return Text(v, maxLines: max, overflow: ov, style: ADText.rowName(c: color).copyWith(fontSize: 16, height: 1.3));
+      case 'tag': return Text(v, maxLines: max, overflow: ov, style: ADText.tabLabel(c: color).copyWith(fontSize: 10, letterSpacing: 0.4));
+      case 'sub': return Text(v, maxLines: max, overflow: ov, style: ADText.preview(c: color).copyWith(fontSize: 13, height: 1.42));
+      default: return Text(v, maxLines: max, overflow: ov, style: ADText.preview(c: color).copyWith(fontSize: 14, height: 1.42));
     }
   }
 
   Widget _card(Map<String, dynamic> n, Map scope) {
-    final fill = _tok(n['fill']?.toString(), fallback: Zine.card);
+    final fill = _tok(n['fill']?.toString(), fallback: AD.card);
     final pad = (n['pad'] as num?)?.toDouble();
     final accent = n['accent'] != null ? _tok(n['accent'].toString()) : null;
     final child = _render(n['child']?.toString(), scope);
     final inner = Padding(padding: EdgeInsets.all(pad ?? 11), child: child);
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(color: fill, border: Zine.border, borderRadius: BorderRadius.circular(14), boxShadow: Zine.shadowXs),
+      decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rLg), boxShadow: Msg.none),
       clipBehavior: Clip.antiAlias,
       child: accent == null
           ? inner
@@ -319,22 +327,22 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   }
 
   Widget _pill(Map<String, dynamic> n, Map scope) {
-    final fill = _tok(n['fill']?.toString(), fallback: Zine.paper);
-    final fg = _tok(n['fg']?.toString(), fallback: Zine.ink);
+    final fill = _tok(n['fill']?.toString(), fallback: AD.cardHover);
+    final fg = _tok(n['fg']?.toString(), fallback: AD.textPrimary);
     final icon = n['icon']?.toString();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-      decoration: BoxDecoration(color: fill, border: Zine.border, borderRadius: BorderRadius.circular(100)),
+      decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rPill)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[PhosphorIcon(_icon(icon), size: 13, color: fg), const SizedBox(width: 6)],
-        Flexible(child: Text(_resolve(n['label'], scope).toUpperCase(),
-            maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.tag(size: 9.5, color: fg))),
+        Flexible(child: Text(_resolve(n['label'], scope),
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.tabLabel(c: fg).copyWith(fontSize: 10, letterSpacing: 0.4))),
       ]),
     );
   }
 
   Widget _button(Map<String, dynamic> n, Map scope) {
-    final fill = _tok(n['fill']?.toString(), fallback: Zine.card);
+    final fill = _tok(n['fill']?.toString(), fallback: AD.card);
     final icon = n['icon']?.toString();
     final full = n['full'] == true;
     final iconOnly = n['iconOnly'] == true;
@@ -351,9 +359,9 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
             width: 42, height: 42,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: fill, border: Zine.border,
-              borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
-            child: PhosphorIcon(_icon(icon ?? 'dots-three'), size: 19, color: Zine.ink),
+              color: fill, border: Border.all(color: AD.borderControl, width: 1),
+              borderRadius: BorderRadius.circular(Msg.rPill), boxShadow: Msg.none),
+            child: PhosphorIcon(_icon(icon ?? 'dots-three'), size: 19, color: AD.textPrimary),
           ),
         ),
       );
@@ -362,11 +370,11 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     final inner = Container(
       height: full ? 46 : null,
       padding: full ? null : const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-      decoration: BoxDecoration(color: fill, border: Zine.border, borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
+      decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd), boxShadow: Msg.none),
       alignment: Alignment.center,
       child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-        if (icon != null) ...[PhosphorIcon(_icon(icon), size: 17, color: Zine.ink), const SizedBox(width: 7)],
-        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.button(size: 15))),
+        if (icon != null) ...[PhosphorIcon(_icon(icon), size: 17, color: AD.textPrimary), const SizedBox(width: 7)],
+        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.0, letterSpacing: -0.2))),
       ]),
     );
     final btn = GestureDetector(onTap: () => _dispatch(n['action'], scope), child: inner);
@@ -376,27 +384,27 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   Widget _openDay(Map<String, dynamic> n, Map scope) => Row(children: [
         Container(
           width: 42, height: 42,
-          decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd)),
           alignment: Alignment.center,
-          child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 24, color: Zine.ink),
+          child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 24, color: AD.textPrimary),
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(_resolve(n['title'], scope), style: ZineText.cardTitle(size: 19)),
-          Text(_resolve(n['subtitle'], scope), style: ZineText.sub(size: 12.5, color: Zine.ink)),
+          Text(_resolve(n['title'], scope), style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
+          Text(_resolve(n['subtitle'], scope), style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 13, height: 1.42)),
         ])),
       ]);
 
   Widget _eventRow(Map<String, dynamic> n, Map scope) {
-    final accent = n['accent'] != null ? _tok(n['accent'].toString()) : Zine.lime;
+    final accent = n['accent'] != null ? _tok(n['accent'].toString()) : AD.primaryBadge;
     final start = _resolve(n['start'], scope);
     final end = _resolve(n['end'], scope);
     final meta = <Widget>[];
     final loc = _resolve(n['location'], scope);
-    if (loc.isNotEmpty) meta.add(_metaChip(PhosphorIcons.mapPin(PhosphorIconsStyle.fill), loc, Zine.inkSoft));
-    if (n['video'] == true) meta.add(_metaChip(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), 'Video call', Zine.blueInk));
+    if (loc.isNotEmpty) meta.add(_metaChip(PhosphorIcons.mapPin(PhosphorIconsStyle.fill), loc, AD.textSecondary));
+    if (n['video'] == true) meta.add(_metaChip(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), 'Video call', AD.tabGroups));
     final guests = (n['guests'] as num?)?.toInt() ?? 0;
-    if (guests > 0) meta.add(_metaChip(PhosphorIcons.usersThree(PhosphorIconsStyle.fill), '$guests', Zine.inkSoft));
+    if (guests > 0) meta.add(_metaChip(PhosphorIcons.usersThree(PhosphorIconsStyle.fill), '$guests', AD.textSecondary));
     // IntrinsicHeight is REQUIRED here: the coloured date strip and the 1px
     // divider are childless/height-less Containers. In Row(stretch) under the
     // chat ListView's UNBOUNDED height they'd stretch to infinite height —
@@ -408,15 +416,15 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       Container(
         width: 64, color: accent, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(start, textAlign: TextAlign.center, style: ZineText.value(size: 12.5)),
-          if (end.isNotEmpty) Text(end, textAlign: TextAlign.center, style: ZineText.tag(size: 8.5, color: Zine.ink)),
+          Text(start, textAlign: TextAlign.center, style: ADText.rowName().copyWith(fontSize: 13, height: 1.3)),
+          if (end.isNotEmpty) Text(end, textAlign: TextAlign.center, style: ADText.tabLabel(c: AD.textPrimary).copyWith(fontSize: 9, letterSpacing: 0.36)),
         ]),
       ),
-      Container(width: Zine.bw, color: Zine.ink),
+      Container(width: 1, color: AD.borderHairline),
       Expanded(child: Padding(
         padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(_resolve(n['title'], scope), maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 15)),
+          Text(_resolve(n['title'], scope), maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
           if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 10, runSpacing: 4, children: meta)),
         ]),
       )),
@@ -426,7 +434,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   Widget _metaChip(IconData icon, String label, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
         PhosphorIcon(icon, size: 12, color: color),
         const SizedBox(width: 4),
-        Text(label, style: ZineText.sub(size: 11.5, color: color)),
+        Text(label, style: ADText.preview(c: color).copyWith(fontSize: 12, height: 1.42)),
       ]);
 
   // ---- inline inputs + form (used when the composer emits an explicit form;
@@ -452,7 +460,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   Widget _inlineInput(Map<String, dynamic> n, Map scope) {
     final spec = _inputSpec(n, scope);
     if (spec == null) return const SizedBox.shrink();
-    return _FieldLabel(label: spec.label, child: Text(spec.initial ?? spec.placeholder ?? '', style: ZineText.sub(size: 13, color: Zine.inkSoft)));
+    return _FieldLabel(label: spec.label, child: Text(spec.initial ?? spec.placeholder ?? '', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42)));
   }
 
   Widget _form(Map<String, dynamic> n, Map scope) {
@@ -599,13 +607,13 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   Future<bool?> _confirmDialog(String message, {bool destructive = false}) => showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: Zine.paper,
-          content: Text(message, style: ZineText.value(size: 15)),
+          backgroundColor: AD.overlaySheet,
+          content: Text(message, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ZineText.button(size: 14, color: Zine.inkSoft))),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2))),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(destructive ? 'Delete' : 'Confirm', style: ZineText.button(size: 14, color: destructive ? Zine.coralMark : Zine.ink)),
+              child: Text(destructive ? 'Delete' : 'Confirm', style: ADText.rowName(c: destructive ? AD.danger : AD.textPrimary).copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
             ),
           ],
         ),
@@ -645,8 +653,8 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: _ComposioForm(title: title.isEmpty ? 'Details' : title, fields: fields),
@@ -655,22 +663,25 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   }
 
   // ---- token + icon resolution (the catalog's look) ----
-  Color _tok(String? t, {Color fallback = Zine.card}) {
+  // The case labels are the WIRE PROTOCOL — the server sends these strings in
+  // A2UI payloads, so they must not be renamed. Only the colours they resolve to
+  // moved from the legacy light palette to the dark-v2 `AD` tokens.
+  Color _tok(String? t, {Color fallback = AD.card}) {
     switch (t) {
-      case 'paper': return Zine.paper;
-      case 'paper2': return Zine.paper2;
-      case 'card': return Zine.card;
-      case 'ink': return Zine.ink;
-      case 'inkSoft': return Zine.inkSoft;
-      case 'inkMute': return Zine.inkMute;
-      case 'blue': return Zine.blue;
-      case 'blueInk': return Zine.blueInk;
-      case 'lime': return Zine.lime;
-      case 'coral': return Zine.coral;
-      case 'coralMark': return Zine.coralMark;
-      case 'lilac': return Zine.lilac;
-      case 'mint': return Zine.mint;
-      case 'mintInk': return Zine.mintInk;
+      case 'paper': return AD.bg;
+      case 'paper2': return AD.cardHover;
+      case 'card': return AD.card;
+      case 'ink': return AD.textPrimary;
+      case 'inkSoft': return AD.textSecondary;
+      case 'inkMute': return AD.textTertiary;
+      case 'blue': return AD.tabGroups;
+      case 'blueInk': return AD.tabGroups;
+      case 'lime': return AD.primaryBadge;
+      case 'coral': return AD.danger;
+      case 'coralMark': return AD.danger;
+      case 'lilac': return AD.tabCalls;
+      case 'mint': return AD.online;
+      case 'mintInk': return AD.online;
       default: return fallback;
     }
   }
@@ -757,7 +768,7 @@ class _FieldLabel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label.toUpperCase(), style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+          Text(_sentence(label), style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4)),
           const SizedBox(height: 4),
           child,
         ],
@@ -853,12 +864,12 @@ class _ComposioFormState extends State<_ComposioForm> {
           children: [
             if (widget.title.isNotEmpty) Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(widget.title, style: ZineText.cardTitle(size: 18)),
+              child: Text(widget.title, style: ADText.threadName().copyWith(fontSize: 18, height: 1.1, letterSpacing: -0.2)),
             ),
             ...editors,
             if (_error != null) Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(_error!, style: ZineText.sub(size: 12, color: Zine.coralMark)),
+              child: Text(_error!, style: ADText.preview(c: AD.danger).copyWith(fontSize: 12, height: 1.42)),
             ),
             SizedBox(
               width: double.infinity,
@@ -866,11 +877,11 @@ class _ComposioFormState extends State<_ComposioForm> {
                 onTap: _busy ? null : _submit,
                 child: Container(
                   height: 46,
-                  decoration: BoxDecoration(color: Zine.lime, border: Zine.border, borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
+                  decoration: BoxDecoration(color: AD.primaryBadge, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd), boxShadow: Msg.none),
                   alignment: Alignment.center,
                   child: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
-                      : Text(widget.inlineSubmitLabel ?? 'Confirm', style: ZineText.button(size: 15)),
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(widget.inlineSubmitLabel ?? 'Confirm', style: ADText.rowName().copyWith(fontSize: 15, height: 1.0, letterSpacing: -0.2)),
                 ),
               ),
             ),
@@ -884,10 +895,10 @@ class _ComposioFormState extends State<_ComposioForm> {
     switch (f.kind) {
       case 'checkbox':
         return Row(children: [
-          Expanded(child: Text(f.label, style: ZineText.value(size: 14))),
+          Expanded(child: Text(f.label, style: ADText.rowName().copyWith(fontSize: 14, height: 1.3))),
           Switch(
             value: _values[f.name] == true,
-            activeColor: Zine.lime,
+            activeColor: AD.primaryBadge,
             onChanged: (v) => setState(() => _values[f.name] = v),
           ),
         ]);
@@ -898,12 +909,12 @@ class _ComposioFormState extends State<_ComposioForm> {
           label: f.label,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd)),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 isExpanded: true,
                 value: sel,
-                items: f.options.map((o) => DropdownMenuItem(value: o.value, child: Text(o.label, style: ZineText.value(size: 14)))).toList(),
+                items: f.options.map((o) => DropdownMenuItem(value: o.value, child: Text(o.label, style: ADText.rowName().copyWith(fontSize: 14, height: 1.3)))).toList(),
                 onChanged: (v) => setState(() => _values[f.name] = v),
               ),
             ),
@@ -920,10 +931,10 @@ class _ComposioFormState extends State<_ComposioForm> {
               height: 44,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               alignment: Alignment.centerLeft,
-              decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(color: AD.card, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd)),
               child: Text(
                 (_values[f.name] ?? '').toString().isEmpty ? (f.placeholder ?? 'Pick…') : _values[f.name].toString(),
-                style: ZineText.value(size: 14, color: (_values[f.name] ?? '').toString().isEmpty ? Zine.inkSoft : Zine.ink),
+                style: ADText.rowName(c: (_values[f.name] ?? '').toString().isEmpty ? AD.textSecondary : AD.textPrimary).copyWith(fontSize: 14, height: 1.3),
               ),
             ),
           ),
@@ -944,16 +955,16 @@ class _ComposioFormState extends State<_ComposioForm> {
         controller: _controllers[f.name],
         maxLines: maxLines,
         keyboardType: keyboardType,
-        style: ZineText.value(size: 14),
+        style: ADText.rowName().copyWith(fontSize: 14, height: 1.3),
         decoration: InputDecoration(
           hintText: f.placeholder,
-          hintStyle: ZineText.sub(size: 13, color: Zine.inkMute),
+          hintStyle: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13, height: 1.42),
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           filled: true,
-          fillColor: Zine.card,
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Zine.ink, width: Zine.bw)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Zine.ink, width: Zine.bw)),
+          fillColor: AD.card,
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: const BorderSide(color: AD.borderControl, width: 1)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Msg.rMd), borderSide: const BorderSide(color: AD.borderControl, width: 1)),
         ),
       );
 

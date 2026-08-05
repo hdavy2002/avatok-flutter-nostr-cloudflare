@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/analytics.dart';
 import '../../../core/avatar.dart';
 import '../../../core/avavoice_api.dart';
-import '../../../core/theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
 
@@ -43,14 +44,14 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     return Scaffold(
       appBar: ZineAppBar(
         title: a.name,
-        tag: 'DASHBOARD · EARNINGS',
+        tag: 'Dashboard · earnings',
         showBack: Navigator.of(context).canPop(),
       ),
       body: ZinePaper(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.lilac))
+            ? const Center(child: CircularProgressIndicator(color: AD.tabCalls))
             : RefreshIndicator(
-                color: Zine.blueInk,
+                color: AD.tabGroups,
                 onRefresh: _load,
                 child: ListView(
                   padding: const EdgeInsets.all(20),
@@ -59,66 +60,66 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                       Avatar(seed: a.id, name: a.name, size: 56, avatarUrl: a.avatarUrl),
                       const SizedBox(width: 14),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(a.name, style: ZineText.cardTitle(size: 19)),
+                        Text(a.name, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
                         Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: ZineText.sub(size: 12.5)),
+                            style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
                       ])),
                     ]),
                     const SizedBox(height: 22),
-                    Text('LAST 24 HOURS', style: ZineText.kicker()),
+                    Text('Last 24 hours', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                     const SizedBox(height: 10),
                     if (s == null)
                       Padding(padding: const EdgeInsets.all(24), child: Center(
                           child: Text('No stats yet — they appear after your first booking or call.',
-                              textAlign: TextAlign.center, style: ZineText.sub(size: 13))))
+                              textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 13, height: 1.42))))
                     else ...[
                       Row(children: [
-                        _stat('Bookings', '${s.bookings}', PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), Zine.blue),
+                        _stat('Bookings', '${s.bookings}', PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), AD.tabGroups),
                         const SizedBox(width: 10),
-                        _stat('Calls', '${s.calls}', PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.lilac),
+                        _stat('Calls', '${s.calls}', PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.tabCalls),
                       ]),
                       const SizedBox(height: 10),
                       Row(children: [
-                        _stat('Minutes talked', '${s.minutes}', PhosphorIcons.timer(PhosphorIconsStyle.bold), Zine.mint),
+                        _stat('Minutes talked', '${s.minutes}', PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.online),
                         const SizedBox(width: 10),
-                        _stat('Refunds', fmtCoins(s.refundsCoins), PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), Zine.coral),
+                        _stat('Refunds', fmtCoins(s.refundsCoins), PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), AD.danger),
                       ]),
                       const SizedBox(height: 16),
                       // Earnings hero — money = mint (§7.10/§7.11).
                       ZineCard(
-                        color: Zine.mint,
+                        color: AD.card,
                         padding: const EdgeInsets.all(18),
-                        boxShadow: Zine.shadow,
+                        boxShadow: Msg.lift,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('YOU EARNED', style: ZineText.kicker(color: Zine.ink)),
+                          Text('You earned', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                           const SizedBox(height: 6),
-                          Text(fmtCoins(s.netCoins), style: ZineText.stat(size: 38)),
+                          Text(fmtCoins(s.netCoins), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: -0.76)),
                           const SizedBox(height: 6),
                           Text(a.isFreeForCallers
                               ? 'Sponsored agent — callers talk free; usage billed to your AvaWallet.'
                               : 'Gross ${fmtCoins(s.grossCoins)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
-                              style: ZineText.sub(size: 12, color: Zine.ink)),
+                              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
                         ]),
                       ),
                       // ── Audience (last 30 days) — who's looking at this agent ──
                       const SizedBox(height: 22),
-                      Text('AUDIENCE — LAST 30 DAYS', style: ZineText.kicker()),
+                      Text('Audience — last 30 days', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
                       const SizedBox(height: 10),
                       Row(children: [
-                        _stat('Page views', '${s.views30d}', PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.blue),
+                        _stat('Page views', '${s.views30d}', PhosphorIcons.eye(PhosphorIconsStyle.bold), AD.tabGroups),
                         const SizedBox(width: 10),
-                        _stat('Unique viewers', '${s.uniqueViewers30d}', PhosphorIcons.users(PhosphorIconsStyle.bold), Zine.lilac),
+                        _stat('Unique viewers', '${s.uniqueViewers30d}', PhosphorIcons.users(PhosphorIconsStyle.bold), AD.tabCalls),
                       ]),
                       if (s.viewsByCountry.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        Text('Top countries', style: ZineText.cardTitle(size: 15)),
+                        Text('Top countries', style: ADText.threadName().copyWith(fontSize: 15, height: 1.1, letterSpacing: -0.2)),
                         const SizedBox(height: 8),
                         for (final c in s.viewsByCountry) _rank(c.key, c.value,
                             s.viewsByCountry.first.value),
                       ],
                       if (s.viewsByAgeGroup.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        Text('Age groups', style: ZineText.cardTitle(size: 15)),
+                        Text('Age groups', style: ADText.threadName().copyWith(fontSize: 15, height: 1.1, letterSpacing: -0.2)),
                         const SizedBox(height: 8),
                         for (final g in s.viewsByAgeGroup) _rank(g.key, g.value, s.views30d),
                       ],
@@ -126,7 +127,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                     const SizedBox(height: 18),
                     Text(
                       "📬 You'll also get a morning digest with these numbers for all your agents.",
-                      style: ZineText.sub(size: 12),
+                      style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
                     ),
                   ],
                 ),
@@ -146,32 +147,32 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
           SizedBox(width: 90, child: Text(
               label.length == 2 ? '${_flag(label)}  $label' : label,
               maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.value(size: 12.5, weight: FontWeight.w800))),
+              style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600))),
           Expanded(child: ClipRRect(
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: BorderRadius.circular(Msg.rPill),
             child: LinearProgressIndicator(
               value: max > 0 ? value / max : 0, minHeight: 9,
-              backgroundColor: Zine.paper2,
-              valueColor: const AlwaysStoppedAnimation(Zine.lilac),
+              backgroundColor: AD.card,
+              valueColor: const AlwaysStoppedAnimation(AD.tabCalls),
             ),
           )),
           const SizedBox(width: 8),
           SizedBox(width: 32, child: Text('$value', textAlign: TextAlign.right,
-              style: ZineText.value(size: 12.5, weight: FontWeight.w900))),
+              style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w700))),
         ]),
       );
 
   Widget _stat(String label, String value, IconData icon, Color accent) => Expanded(
         child: ZineCard(
-          radius: Zine.rSm,
-          boxShadow: Zine.shadowXs,
+          radius: Msg.rLg,
+          boxShadow: Msg.none,
           padding: const EdgeInsets.all(14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
             const SizedBox(height: 10),
-            Text(value, style: ZineText.stat(size: 26)),
+            Text(value, style: ADText.appTitle().copyWith(fontSize: 26, height: 1.0, letterSpacing: -0.52)),
             const SizedBox(height: 2),
-            Text(label.toUpperCase(), style: ZineText.kicker(size: 10)),
+            Text(label, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
           ]),
         ),
       );

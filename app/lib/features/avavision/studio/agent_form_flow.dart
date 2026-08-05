@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
 import '../../../core/avavision_api.dart';
 import '../../../core/config.dart';
-import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../explore/widgets.dart' show CoverImage;
 import '../widgets.dart';
@@ -322,12 +323,12 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       showDialog(
           context: context,
           builder: (d) => AlertDialog(
-                backgroundColor: Zine.card,
+                backgroundColor: AD.card,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-                titleTextStyle: ZineText.cardTitle(size: 20),
-                contentTextStyle: ZineText.sub(size: 14),
+                    borderRadius: BorderRadius.circular(Msg.rLg),
+                    side: const BorderSide(color: AD.borderControl, width: 1)),
+                titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
+                contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
                 title: const Text('🎉 Your vision agent is live!'),
                 content: Text('${_name.text.trim()} is now in the AvaVision marketplace. '
                     'Check your dashboard each morning for sessions, scores and earnings.'),
@@ -341,7 +342,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                 ],
               ));
     } else {
-      // Server returns {error:'VALIDATION', field, detail} — surface the detail.
+      // Server returns {error:'Validation', field, detail} — surface the detail.
       _snack(r['detail']?.toString() ?? r['error']?.toString() ?? 'Publish failed — saved as draft.');
     }
   }
@@ -349,7 +350,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: widget.existing == null ? 'New vision agent' : 'Edit ${widget.existing!.name}',
         markWord: 'vision',
@@ -378,7 +379,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
               Expanded(
                 child: Container(
                     width: 2.5,
-                    color: Zine.ink.withValues(alpha: 0.25),
+                    color: AD.borderHairline,
                     margin: const EdgeInsets.symmetric(vertical: 4)),
               ),
           ]),
@@ -394,7 +395,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Text(_titles[i],
-                      style: ZineText.cardTitle(color: state == _WizState.todo ? Zine.inkMute : Zine.ink)),
+                      style: ADText.threadName(c: state == _WizState.todo ? AD.textTertiary : AD.textPrimary).copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
                 ),
               ),
               if (state == _WizState.active) ...[
@@ -455,9 +456,9 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
 
   Widget _stepDot(int i, _WizState state) {
     final (fill, fg) = switch (state) {
-      _WizState.active => (Zine.lime, Zine.ink),
-      _WizState.done => (Zine.ink, Zine.paper),
-      _WizState.todo => (Zine.card, Zine.inkMute),
+      _WizState.active => (AD.primaryBadge, Colors.white),
+      _WizState.done => (AD.online, Colors.white),
+      _WizState.todo => (AD.card, AD.textTertiary),
     };
     return Container(
       width: 34,
@@ -465,15 +466,15 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: fill,
-        border: Border.all(color: state == _WizState.todo ? Zine.inkMute : Zine.ink, width: Zine.bw),
-        boxShadow: state == _WizState.active ? Zine.shadowXs : null,
+        border: Border.all(color: state == _WizState.todo ? AD.borderHairline : AD.borderControl, width: 1),
+        boxShadow: state == _WizState.active ? Msg.none : null,
       ),
       child: Center(
         child: state == _WizState.done
             ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 16, color: fg)
             : Text('${i + 1}',
                 style: TextStyle(
-                    fontFamily: ZineText.display, fontWeight: FontWeight.w600, fontSize: 16, color: fg)),
+                    fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 16, color: fg)),
       ),
     );
   }
@@ -492,7 +493,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Every vision agent starts from a use-case template — it sets the camera capability, '
             'the on-screen overlay and the score so you don\'t have to.',
-            style: ZineText.sub(size: 13)),
+            style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         const SizedBox(height: 16),
         ZineButton(
           label: 'Choose a template',
@@ -508,17 +509,17 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Zine.paper2,
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Zine.border,
-          boxShadow: Zine.shadowXs,
+          color: AD.card,
+          borderRadius: BorderRadius.circular(Msg.rLg),
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
         child: Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), color: Zine.lilac, size: 40),
+          ZineIconBadge(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), color: AD.tabCalls, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_templateName.isEmpty ? _templateId : _templateName, style: ZineText.cardTitle(size: 16)),
+              Text(_templateName.isEmpty ? _templateId : _templateName, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
               const SizedBox(height: 6),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 CapabilityBadge(_capability),
@@ -568,19 +569,19 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Text(
           '💡 Platform safety rules (technique-only, no appearance scoring, camera consent) are added '
           'automatically and can\'t be edited. Time-keeping and polite wrap-up are handled for you.',
-          style: ZineText.sub(size: 12),
+          style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
         ),
         const SizedBox(height: 16),
-        Text('LISTING PHOTOS (1–5)', style: ZineText.kicker()),
+        Text('Listing photos (1–5)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
         const SizedBox(height: 9),
         Wrap(spacing: 12, runSpacing: 12, children: [
           for (var i = 0; i < _images.length; i++)
             Stack(clipBehavior: Clip.none, children: [
               Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderControl, width: 1),
+                  boxShadow: Msg.none,
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: CoverImage(url: _images[i], seed: i, width: 88, height: 88),
@@ -595,10 +596,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                     height: 26,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Zine.coral,
-                      border: Border.all(color: Zine.ink, width: 2),
+                      color: AD.danger,
+                      border: Border.all(color: AD.borderControl, width: 1),
                     ),
-                    child: const Icon(Icons.close, size: 14, color: Colors.white),
+                    child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Colors.white),
                   ),
                 ),
               ),
@@ -610,31 +611,31 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                 width: 88,
                 height: 88,
                 decoration: BoxDecoration(
-                  color: Zine.paper2,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Border.all(color: Zine.ink.withValues(alpha: 0.45), width: 2),
+                  color: AD.card,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: _imgUploading
                     ? const Center(
                         child: SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)))
-                    : PhosphorIcon(PhosphorIcons.cameraPlus(PhosphorIconsStyle.bold), size: 26, color: Zine.inkSoft),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AD.tabGroups)))
+                    : PhosphorIcon(PhosphorIcons.cameraPlus(PhosphorIconsStyle.bold), size: 26, color: AD.textSecondary),
               ),
             ),
         ]),
         const SizedBox(height: 8),
         Text('At least one photo is required to publish. Shown on your marketplace card and agent page.',
-            style: ZineText.sub(size: 11.5)),
+            style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
       ]);
 
   // ── Step 2: voice ─────────────────────────────────────────────────────
   Widget _stepVoice() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: PhosphorIcons.waveform(PhosphorIconsStyle.bold), color: Zine.lilac, size: 30),
+          ZineIconBadge(icon: PhosphorIcons.waveform(PhosphorIconsStyle.bold), color: AD.tabCalls, size: 30),
           const SizedBox(width: 10),
-          Expanded(child: Text('Choose how your coach sounds. Tap ▶ to hear a sample.', style: ZineText.sub(size: 13))),
+          Expanded(child: Text('Choose how your coach sounds. Tap ▶ to hear a sample.', style: ADText.preview().copyWith(fontSize: 13, height: 1.42))),
         ]),
         const SizedBox(height: 14),
         VoicePicker(selected: _voice, onSelected: (v) => setState(() => _voice = v)),
@@ -658,10 +659,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Show the ${overlayLabel(_overlayStyle).toLowerCase()} overlay', style: ZineText.value(size: 14.5)),
+              Text('Show the ${overlayLabel(_overlayStyle).toLowerCase()} overlay', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
               const SizedBox(height: 3),
               Text('Draws a live ${overlayLabel(_overlayStyle).toLowerCase()} on the user\'s camera so they see exactly what to fix.',
-                  style: ZineText.sub(size: 12)),
+                  style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
             ]),
           ),
           const SizedBox(width: 10),
@@ -672,11 +673,11 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Padding(
           padding: const EdgeInsets.only(bottom: 18),
           child: Text('This capability reads the whole frame with AI — there\'s no on-screen overlay.',
-              style: ZineText.sub(size: 12.5)),
+              style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         ),
 
       // Scoring
-      Text('LIVE SCORE', style: ZineText.kicker()),
+      Text('Live score', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 9),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in scoringOpts)
@@ -699,11 +700,11 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('"Analyze my form" deep snapshot', style: ZineText.value(size: 14.5)),
+            Text('"Analyze my form" deep snapshot', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
             const SizedBox(height: 3),
             Text('Lets the user tap once for a precise, pixel-grounded breakdown of a single hi-res frame. '
                 'Bundled into the session cost.',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
         const SizedBox(width: 10),
@@ -711,7 +712,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       ]),
       if (_agenticSnapshot) ...[
         const SizedBox(height: 12),
-        Text('FREE SNAPSHOTS PER SESSION', style: ZineText.kicker()),
+        Text('Free snapshots per session', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
         const SizedBox(height: 9),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final n in _freeSnapshotChoices)
@@ -724,10 +725,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Save snapshots to the agent', style: ZineText.value(size: 14.5)),
+            Text('Save snapshots to the agent', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
             const SizedBox(height: 3),
             Text('Off by default. Snapshots are analyzed and discarded unless you keep them. Keep off unless you have a clear reason.',
-                style: ZineText.sub(size: 12)),
+                style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
         const SizedBox(width: 10),
@@ -737,25 +738,25 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
       // Platform-enforced safety notes (read-only).
       if (_safetyNotes.isNotEmpty) ...[
         const SizedBox(height: 18),
-        Text('PLATFORM SAFETY (ENFORCED)', style: ZineText.kicker()),
+        Text('Platform safety (enforced)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
         const SizedBox(height: 9),
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final s in _safetyNotes)
             MiniPill(s.replaceAll('_', ' '),
-                fill: Zine.paper2, fg: Zine.inkSoft, icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), shadow: false),
+                fill: AD.card, fg: AD.textSecondary, icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), shadow: false),
         ]),
       ],
       // Platform availability for the chosen capability.
       const SizedBox(height: 14),
       Row(children: [
-        PhosphorIcon(PhosphorIcons.monitor(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+        PhosphorIcon(PhosphorIcons.monitor(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             _capSupportsIos(_capability)
                 ? 'Runs on Android, iOS and Web.'
                 : 'Runs on Android and Web (no free iOS engine for this capability yet).',
-            style: ZineText.sub(size: 12),
+            style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
           ),
         ),
       ]),
@@ -766,7 +767,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Widget _stepPricing() {
     final userPays = _payerMode == 'user_pays';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('WHO PAYS FOR SESSIONS?', style: ZineText.kicker()),
+      Text('Who pays for sessions?', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 9),
       _payerCard('user_pays', 'Users pay you',
           'You set an hourly rate. Users are billed per minute; you earn 50% after the platform fee.'),
@@ -787,30 +788,30 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Zine.mint,
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Zine.border,
-            boxShadow: Zine.shadowXs,
+            color: AD.card,
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.none,
           ),
           child: Row(children: [
-            PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+            PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.regular), size: 18, color: AD.online),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _rateCoins >= 100
                     ? 'Users pay ${fmtCoins(perMinuteCoins(_rateCoins))}/min · You earn ${fmtCoins(creatorNetPerHour(_rateCoins))}/hr after the 50% platform fee'
                     : 'Enter your hourly rate to see what you\'ll earn',
-                style: ZineText.value(size: 12.5),
+                style: ADText.rowName().copyWith(fontSize: 13, height: 1.3),
               ),
             ),
           ]),
         ),
         const SizedBox(height: 18),
       ],
-      Text('MAXIMUM SESSION LENGTH', style: ZineText.kicker()),
+      Text('Maximum session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 4),
       Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
-          style: ZineText.sub(size: 12)),
+          style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
       const SizedBox(height: 9),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in kSessionLimitChoices)
@@ -823,9 +824,9 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     final sel = _payerMode == mode;
     return ZinePressable(
       onTap: () => setState(() => _payerMode = mode),
-      color: sel ? Zine.blue : Zine.card,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: sel ? Zine.shadowSm : const <BoxShadow>[],
+      color: sel ? AD.tabGroups : AD.card,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(14),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
@@ -833,21 +834,21 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           height: 22,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Zine.card,
-            border: Border.all(color: Zine.ink, width: Zine.bw),
+            color: AD.card,
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: sel
               ? Center(
                   child: Container(
-                      width: 9, height: 9, decoration: const BoxDecoration(shape: BoxShape.circle, color: Zine.ink)))
+                      width: 9, height: 9, decoration: const BoxDecoration(shape: BoxShape.circle, color: AD.primaryBadge)))
               : null,
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ZineText.cardTitle(size: 15.5)),
+            Text(title, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 3),
-            Text(body, style: ZineText.sub(size: 12, color: sel ? Zine.ink : Zine.inkSoft)),
+            Text(body, style: ADText.preview(c: sel ? AD.textPrimary : AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
       ]),
@@ -872,33 +873,33 @@ class _VisionPreviewPlaceholder extends StatelessWidget {
     return Container(
       height: 168,
       decoration: BoxDecoration(
-        color: Zine.ink,
-        borderRadius: BorderRadius.circular(Zine.rSm),
-        border: Zine.border,
-        boxShadow: Zine.shadowXs,
+        color: AD.card,
+        borderRadius: BorderRadius.circular(Msg.rLg),
+        border: Border.all(color: AD.borderControl, width: 1),
+        boxShadow: Msg.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(children: [
         Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), size: 34, color: Zine.paper2),
+            PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.regular), size: 34, color: AD.textSecondary),
             const SizedBox(height: 8),
-            Text('LIVE CAMERA PREVIEW', style: ZineText.tag(size: 10.5, color: Zine.paper2)),
+            Text('Live camera preview', style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.44)),
             const SizedBox(height: 2),
             Text(overlayStyle == 'none' ? capabilityLabel(capability) : '${overlayLabel(overlayStyle)} · ${capabilityLabel(capability)}',
-                style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
         if (scoreLabel != null && scoreLabel!.isNotEmpty)
           Positioned(
             left: 10,
             top: 10,
-            child: MiniPill('${scoreLabel!}  88', fill: Zine.mint, fg: Zine.ink),
+            child: MiniPill('${scoreLabel!}  88', fill: AD.online, fg: Colors.white),
           ),
         Positioned(
           right: 10,
           bottom: 10,
-          child: MiniPill('preview', fill: Zine.lilac, fg: Zine.ink, icon: PhosphorIcons.eye(PhosphorIconsStyle.bold)),
+          child: MiniPill('preview', fill: AD.tabCalls, fg: Colors.white, icon: PhosphorIcons.eye(PhosphorIconsStyle.regular)),
         ),
       ]),
     );

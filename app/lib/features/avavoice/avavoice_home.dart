@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 import 'agent_detail.dart';
@@ -87,7 +88,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     if (!RemoteConfig.avavoiceEnabled) {
       return Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         appBar: const ZineAppBar(title: 'AvaVoice', markWord: 'Voice'),
         body: ZinePaper(
           child: Center(
@@ -102,7 +103,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
       );
     }
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'AvaVoice',
         markWord: 'Voice',
@@ -112,14 +113,14 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
           ZinePressable(
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const MyAgentsScreen())).then((_) => _load()),
-            color: Zine.lime,
-            radius: BorderRadius.circular(100),
-            boxShadow: Zine.shadowXs,
+            color: AD.primaryBadge,
+            radius: Msg.brPill,
+            boxShadow: Msg.none,
             child: SizedBox(
               width: 42, height: 42,
               child: Center(
                 child: PhosphorIcon(PhosphorIcons.robot(PhosphorIconsStyle.bold),
-                    size: 20, color: Zine.ink),
+                    size: 20, color: Colors.white),
               ),
             ),
           ),
@@ -159,7 +160,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
   Widget _marketplace() {
     return RefreshIndicator(
       onRefresh: _load,
-      color: Zine.blueInk,
+      color: AD.tabGroups,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
@@ -177,19 +178,19 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Zine.lilac,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Zine.border,
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              borderRadius: BorderRadius.circular(Msg.rLg),
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: Msg.none,
             ),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.robot(PhosphorIconsStyle.fill),
-                  size: 28, color: Zine.ink),
+              PhosphorIcon(PhosphorIcons.robot(PhosphorIconsStyle.regular),
+                  size: 28, color: AD.tabCalls),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Talk to AI voice agents built by creators — interview practice, tech help, tutoring & more. Pay per minute, max 1 hour.',
-                  style: ZineText.sub(size: 12.5, color: Zine.ink),
+                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42),
                 ),
               ),
             ]),
@@ -210,7 +211,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
           const SizedBox(height: 16),
           if (_loading)
             const Padding(padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator(color: Zine.blueInk)))
+                child: Center(child: CircularProgressIndicator(color: AD.tabGroups)))
           else if (_agents.isEmpty)
             Padding(
               padding: const EdgeInsets.all(40),
@@ -233,14 +234,14 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
   Widget _agentCard(VoiceAgent a) {
     return ZinePressable(
       onTap: () => _openAgent(a),
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(12),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Zine.ink, width: 2),
+            borderRadius: BorderRadius.circular(Msg.rMd),
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
           clipBehavior: Clip.antiAlias,
           child: a.images.isNotEmpty
@@ -253,29 +254,29 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
             Row(children: [
               Expanded(
                 child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.cardTitle(size: 16)),
+                    style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
               ),
               const SizedBox(width: 8),
               ZineIconBadge(
                   icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
-                  color: Zine.lilac, size: 26),
+                  color: AD.tabCalls, size: 26),
             ]),
             const SizedBox(height: 2),
             Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.sub(size: 12.5)),
+                style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
               if (a.activeCalls != null)
                 a.busy
-                    ? _miniSticker('busy', Zine.coral, Colors.white)
-                    : _miniSticker('call now', Zine.mint, Zine.ink),
-              if (a.isFreeForCallers) _miniSticker('free', Zine.mint, Zine.ink),
-              if (a.visionEnabled) _miniSticker('vision', Zine.lilac, Zine.ink),
+                    ? _miniSticker('busy', AD.danger, Colors.white)
+                    : _miniSticker('call now', AD.online, Colors.white),
+              if (a.isFreeForCallers) _miniSticker('free', AD.online, Colors.white),
+              if (a.visionEnabled) _miniSticker('vision', AD.tabCalls, Colors.white),
               _miniSticker(
                   a.isFreeForCallers
                       ? 'up to ${a.sessionLimitMin} min'
                       : '${a.rateLabel} · ${a.sessionLimitMin} min',
-                  Zine.card, Zine.inkSoft),
+                  AD.card, AD.textSecondary),
             ]),
           ]),
         ),
@@ -287,15 +288,15 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
+          borderRadius: BorderRadius.circular(Msg.rPill),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
-        child: Text(text.toUpperCase(), style: ZineText.tag(size: 9.5, color: fg)),
+        child: Text(_sentence(text), style: ADText.tabLabel(c: fg).copyWith(fontSize: 10, letterSpacing: 0.4)),
       );
 
   Widget _myBookings() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
+      return const Center(child: CircularProgressIndicator(color: AD.tabGroups));
     }
     if (_bookings.isEmpty) {
       return Center(
@@ -309,7 +310,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
     }
     return RefreshIndicator(
       onRefresh: _load,
-      color: Zine.blueInk,
+      color: AD.tabGroups,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _bookings.length,
@@ -322,14 +323,14 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
             onTap: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => AgentDetailScreen(agentId: b.agentId)))
                 .then((_) => _load()),
-            radius: BorderRadius.circular(Zine.rSm),
-            boxShadow: Zine.shadowXs,
+            radius: BorderRadius.circular(Msg.rLg),
+            boxShadow: Msg.none,
             padding: const EdgeInsets.all(12),
             child: Row(children: [
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Zine.ink, width: 2),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Avatar(seed: b.agentId, name: b.agentName, size: 44, avatarUrl: b.agentAvatar),
               ),
@@ -337,14 +338,13 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 15)),
+                      style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                   const SizedBox(height: 3),
                   Text(
-                    ('${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
-                            '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}')
-                        .toUpperCase(),
+                    '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
+                    '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}',
                     maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: ZineText.tag(size: 10, color: Zine.inkSoft),
+                    style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4),
                   ),
                 ]),
               ),
@@ -354,11 +354,11 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                   onTap: () => Navigator.push(context, MaterialPageRoute(
                           builder: (_) => AgentDetailScreen(agentId: b.agentId, bookingId: b.id)))
                       .then((_) => _load()),
-                  color: Zine.mint,
-                  radius: BorderRadius.circular(100),
-                  boxShadow: Zine.shadowXs,
+                  color: AD.online,
+                  radius: BorderRadius.circular(Msg.rPill),
+                  boxShadow: Msg.none,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  child: Text('Join', style: ZineText.button(size: 14)),
+                  child: Text('Join', style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
                 ),
               ],
             ]),
@@ -368,3 +368,9 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
     );
   }
 }
+
+/// Sentence case for a display label. Replaces the `.toUpperCase()` the legacy
+/// zine stickers applied to everything; call sites pass lowercase strings, so
+/// simply dropping the transform would render them lowercase.
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';

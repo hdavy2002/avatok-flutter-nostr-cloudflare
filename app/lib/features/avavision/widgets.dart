@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/avatar.dart';
 import '../../core/avavision_api.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 
 /// AvaVision brand accent — like AvaVoice, AI/magic = lilac (design system §AI),
 /// with coral as the "eyes/vision" highlight.
-const Color kAvaVisionPurple = Zine.lilac;
+const Color kAvaVisionPurple = AD.tabCalls;
 
 String fmtWhenMs(int ms) {
   if (ms <= 0) return '';
@@ -26,6 +27,13 @@ String fmtWhenMs(int ms) {
   return '${months[d.month - 1]} ${d.day}, $hh:$mm';
 }
 
+
+/// Sentence case for a display label. Replaces the `.toUpperCase()` the legacy
+/// zine stickers applied to everything; call sites pass lowercase strings, so
+/// simply dropping the transform would render them lowercase.
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
 /// Generic zine pill (rounded sticker with ink border + xs hard shadow).
 class MiniPill extends StatelessWidget {
   final String text;
@@ -33,22 +41,22 @@ class MiniPill extends StatelessWidget {
   final IconData? icon;
   final bool shadow;
   const MiniPill(this.text,
-      {super.key, this.fill = Zine.card, this.fg = Zine.ink, this.icon, this.shadow = true});
+      {super.key, this.fill = AD.card, this.fg = AD.textPrimary, this.icon, this.shadow = true});
   @override
   Widget build(BuildContext context) => Container(
         padding: EdgeInsets.symmetric(horizontal: icon == null ? 8 : 7, vertical: 3),
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: shadow ? Zine.shadowXs : null,
+          borderRadius: Msg.brPill,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: shadow ? Msg.none : null,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[
             PhosphorIcon(icon!, size: 11, color: fg),
             const SizedBox(width: 4),
           ],
-          Text(text.toUpperCase(), style: ZineText.tag(size: 9.5, color: fg)),
+          Text(_sentence(text), style: ADText.tabLabel(c: fg).copyWith(fontSize: 10, letterSpacing: 0.4)),
         ]),
       );
 }
@@ -60,21 +68,21 @@ class AvailabilityChip extends StatelessWidget {
   const AvailabilityChip({super.key, required this.busy, this.compact = false});
   @override
   Widget build(BuildContext context) {
-    final fill = busy ? Zine.coral : Zine.mint;
-    final fg = busy ? Colors.white : Zine.ink;
-    final dot = busy ? Colors.white : Zine.mintInk;
+    final fill = busy ? AD.danger : AD.online;
+    const fg = Colors.white;
+    const dot = Colors.white;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 11, vertical: compact ? 3 : 5),
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Zine.ink, width: Zine.bw),
-        boxShadow: Zine.shadowXs,
+        borderRadius: Msg.brPill,
+        border: Border.all(color: AD.borderControl, width: 1),
+        boxShadow: Msg.none,
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+        Container(width: 7, height: 7, decoration: const BoxDecoration(color: dot, shape: BoxShape.circle)),
         const SizedBox(width: 5),
-        Text(busy ? 'AGENT BUSY' : 'CALL NOW', style: ZineText.tag(size: compact ? 10 : 11.5, color: fg)),
+        Text(busy ? 'Agent busy' : 'Call now', style: ADText.tabLabel(c: fg).copyWith(fontSize: compact ? 10 : 12, letterSpacing: 0.44)),
       ]),
     );
   }
@@ -85,13 +93,13 @@ class VisionBadge extends StatelessWidget {
   const VisionBadge({super.key});
   @override
   Widget build(BuildContext context) => MiniPill('vision',
-      fill: Zine.lilac, fg: Zine.ink, icon: PhosphorIcons.eye(PhosphorIconsStyle.bold));
+      fill: AD.tabCalls, fg: Colors.white, icon: PhosphorIcons.eye(PhosphorIconsStyle.regular));
 }
 
 class FreeBadge extends StatelessWidget {
   const FreeBadge({super.key});
   @override
-  Widget build(BuildContext context) => const MiniPill('free', fill: Zine.mint, fg: Zine.ink);
+  Widget build(BuildContext context) => const MiniPill('free', fill: AD.online, fg: Colors.white);
 }
 
 /// Capability badge — e.g. "BODY POSE" with a target icon.
@@ -101,9 +109,9 @@ class CapabilityBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MiniPill(
         capabilityLabel(capability),
-        fill: Zine.blue,
-        fg: Zine.ink,
-        icon: PhosphorIcons.personSimpleRun(PhosphorIconsStyle.bold),
+        fill: AD.tabGroups,
+        fg: Colors.white,
+        icon: PhosphorIcons.personSimpleRun(PhosphorIconsStyle.regular),
       );
 }
 
@@ -114,9 +122,9 @@ class OverlayBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MiniPill(
         overlayLabel(overlayStyle),
-        fill: Zine.lilac,
-        fg: Zine.ink,
-        icon: PhosphorIcons.scribbleLoop(PhosphorIconsStyle.bold),
+        fill: AD.tabCalls,
+        fg: Colors.white,
+        icon: PhosphorIcons.scribbleLoop(PhosphorIconsStyle.regular),
       );
 }
 
@@ -127,9 +135,9 @@ class ScoreBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MiniPill(
         label,
-        fill: Zine.mint,
-        fg: Zine.ink,
-        icon: PhosphorIcons.gauge(PhosphorIconsStyle.bold),
+        fill: AD.online,
+        fg: Colors.white,
+        icon: PhosphorIcons.gauge(PhosphorIconsStyle.regular),
       );
 }
 
@@ -141,7 +149,7 @@ class PlatformBadges extends StatelessWidget {
   Widget build(BuildContext context) {
     final labels = platforms.labels;
     if (labels.isEmpty) return const SizedBox.shrink();
-    return MiniPill(labels.join(' · '), fill: Zine.paper2, fg: Zine.inkSoft, shadow: false);
+    return MiniPill(labels.join(' · '), fill: AD.card, fg: AD.textSecondary, shadow: false);
   }
 }
 
@@ -150,8 +158,8 @@ List<Widget> visionStickers(VisionAgent a, {bool includeAvailability = true, boo
   return [
     if (includeAvailability && a.activeCalls != null)
       a.busy
-          ? const MiniPill('busy', fill: Zine.coral, fg: Colors.white)
-          : const MiniPill('call now', fill: Zine.mint, fg: Zine.ink),
+          ? const MiniPill('busy', fill: AD.danger, fg: Colors.white)
+          : const MiniPill('call now', fill: AD.online, fg: Colors.white),
     if (a.isFreeForCallers) const FreeBadge(),
     CapabilityBadge(a.capability),
     if (a.hasOverlay) OverlayBadge(a.overlayStyle),
@@ -171,14 +179,14 @@ class AgentCard extends StatelessWidget {
     final a = agent;
     return ZinePressable(
       onTap: onTap,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(12),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Zine.ink, width: 2),
+            borderRadius: BorderRadius.circular(Msg.rMd),
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
           clipBehavior: Clip.antiAlias,
           child: a.images.isNotEmpty
@@ -191,20 +199,20 @@ class AgentCard extends StatelessWidget {
             Row(children: [
               Expanded(
                 child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.cardTitle(size: 16)),
+                    style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
               ),
               const SizedBox(width: 8),
-              ZineIconBadge(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), color: Zine.lilac, size: 26),
+              ZineIconBadge(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), color: AD.tabCalls, size: 26),
             ]),
             const SizedBox(height: 2),
-            Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+            Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
               ...visionStickers(a, compact: true),
               MiniPill(
                 a.isFreeForCallers ? 'up to ${a.sessionLimitMin} min' : '${a.rateLabel} · ${a.sessionLimitMin} min',
-                fill: Zine.card,
-                fg: Zine.inkSoft,
+                fill: AD.card,
+                fg: AD.textSecondary,
                 shadow: false,
               ),
             ]),
@@ -220,8 +228,8 @@ Future<String?> pickLanguage(BuildContext context, {String? selected}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
+    backgroundColor: AD.overlaySheet,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
     builder: (s) => _LanguageSheet(selected: selected),
   );
 }
@@ -248,7 +256,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
-              child: Text('Which language should the agent speak?', style: ZineText.cardTitle()),
+              child: Text('Which language should the agent speak?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -268,9 +276,9 @@ class _LanguageSheetState extends State<_LanguageSheet> {
                     dense: true,
                     leading: PhosphorIcon(
                         sel ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),
-                        color: sel ? Zine.lilac : Zine.inkMute, size: 22),
+                        color: sel ? AD.tabCalls : AD.textTertiary, size: 22),
                     title: Text(e.value,
-                        style: ZineText.value(size: 14.5, weight: sel ? FontWeight.w900 : FontWeight.w700)),
+                        style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: sel ? FontWeight.w700 : FontWeight.w400)),
                     onTap: () => Navigator.pop(context, e.key),
                   );
                 },

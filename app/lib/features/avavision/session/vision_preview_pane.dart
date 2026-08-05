@@ -16,7 +16,8 @@ import 'package:flutter/gestures.dart' show OneSequenceGestureRecognizer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'overlay_painters.dart';
 import 'pose_channel.dart';
 
@@ -40,10 +41,10 @@ class VisionCameraView extends StatelessWidget {
       );
     }
     return Container(
-      color: Zine.ink,
+      color: AD.bg,
       alignment: Alignment.center,
       child: Text('Camera preview is Android-only for now',
-          style: ZineText.sub(size: 13, color: Zine.paper)),
+          style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 13, height: 1.42)),
     );
   }
 }
@@ -99,12 +100,12 @@ class _VisionPreviewPaneState extends State<VisionPreviewPane> {
   Widget build(BuildContext context) {
     final painter = overlayPainterFor(widget.overlayStyle, _frame);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(Zine.r),
+      borderRadius: BorderRadius.circular(Msg.rLg),
       child: Container(
         decoration: BoxDecoration(
-          color: Zine.ink,
-          border: Zine.border,
-          borderRadius: BorderRadius.circular(Zine.r),
+          color: AD.bg,
+          border: Border.all(color: AD.borderControl, width: 1),
+          borderRadius: BorderRadius.circular(Msg.rLg),
         ),
         child: Stack(fit: StackFit.expand, children: [
           VisionCameraView(creationParams: {
@@ -116,7 +117,7 @@ class _VisionPreviewPaneState extends State<VisionPreviewPane> {
           if (_started && painter != null)
             CustomPaint(painter: painter),
           if (!_started)
-            const Center(child: CircularProgressIndicator(color: Zine.lime)),
+            const Center(child: CircularProgressIndicator(color: AD.primaryBadge)),
         ]),
       ),
     );

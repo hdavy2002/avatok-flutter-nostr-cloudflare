@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 import '../wallet/wallet_screen.dart';
@@ -127,11 +128,11 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Widget build(BuildContext context) {
     final a = _agent;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(title: a?.name ?? 'Voice agent', tag: 'ai voice agent'),
       body: ZinePaper(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            ? const Center(child: CircularProgressIndicator(color: AD.tabGroups))
             : a == null
                 ? Center(
                     child: ZineEmptyState(
@@ -158,8 +159,8 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, i) => Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Zine.border,
+                  borderRadius: BorderRadius.circular(Msg.rLg),
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: CoverImage(
@@ -175,42 +176,42 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Zine.border,
-              boxShadow: Zine.shadowXs,
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: Msg.none,
             ),
             child: Avatar(seed: a.id, name: a.name, size: 72, avatarUrl: a.avatarUrl),
           ),
           const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(a.name, style: ZineText.cardTitle(size: 20)),
+            Text(a.name, style: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 4),
-            Text(a.role, style: ZineText.sub(size: 13.5)),
+            Text(a.role, style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
               busy
-                  ? _sticker('agent busy', Zine.coral, Colors.white)
-                  : _sticker('call now', Zine.mint, Zine.ink),
-              if (a.visionEnabled) _sticker('vision', Zine.lilac, Zine.ink),
+                  ? _sticker('agent busy', AD.danger, Colors.white)
+                  : _sticker('call now', AD.online, Colors.white),
+              if (a.visionEnabled) _sticker('vision', AD.tabCalls, Colors.white),
             ]),
           ])),
         ]),
         const SizedBox(height: 20),
-        _infoTile(PhosphorIcons.coins(PhosphorIconsStyle.bold), Zine.mint, 'Price',
+        _infoTile(PhosphorIcons.coins(PhosphorIconsStyle.bold), AD.online, 'Price',
             a.isFreeForCallers
                 ? 'Free — the creator covers this agent\'s calls'
                 : '${a.rateLabel}\nBilled per minute (rounded up). Held in escrow; unused minutes refunded.'),
-        _infoTile(PhosphorIcons.timer(PhosphorIconsStyle.bold), Zine.blue, 'Session length',
+        _infoTile(PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.tabGroups, 'Session length',
             'Up to ${a.sessionLimitMin} minutes. The agent wraps up politely before time runs out.'),
-        _infoTile(PhosphorIcons.translate(PhosphorIconsStyle.bold), Zine.lilac, 'Languages',
+        _infoTile(PhosphorIcons.translate(PhosphorIconsStyle.bold), AD.tabCalls, 'Languages',
             'Choose the language the agent speaks when you start the call — ${kVoiceLanguages.length}+ available.'),
         if (a.visionEnabled)
-          _infoTile(PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.coral, 'Vision',
+          _infoTile(PhosphorIcons.eye(PhosphorIconsStyle.bold), AD.danger, 'Vision',
               'This agent can see your screen or camera (with your permission) and help with what it sees.'),
         if (a.files.isNotEmpty)
-          _infoTile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'Knowledge',
+          _infoTile(PhosphorIcons.brain(PhosphorIconsStyle.bold), AD.tabCalls, 'Knowledge',
               'Trained on ${a.files.length} document${a.files.length == 1 ? '' : 's'} provided by the creator.'),
         if (a.creatorName != null)
-          _infoTile(PhosphorIcons.user(PhosphorIconsStyle.bold), Zine.blue, 'Creator', a.creatorName!),
+          _infoTile(PhosphorIcons.user(PhosphorIconsStyle.bold), AD.tabGroups, 'Creator', a.creatorName!),
         const SizedBox(height: 8),
         if (a.systemProfile.isNotEmpty)
           ZineCard(
@@ -218,10 +219,10 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ZineCardHead(
                   icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
-                  accent: Zine.lilac,
+                  accent: AD.tabCalls,
                   title: 'About this agent'),
               const SizedBox(height: 10),
-              Text(a.systemProfile, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+              Text(a.systemProfile, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 14, height: 1.42)),
             ]),
           ),
       ],
@@ -232,26 +233,26 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          borderRadius: BorderRadius.circular(Msg.rPill),
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
-        child: Text(text.toUpperCase(), style: ZineText.tag(size: 10.5, color: fg)),
+        child: Text(_sentence(text), style: ADText.tabLabel(c: fg).copyWith(fontSize: 11, letterSpacing: 0.44)),
       );
 
   Widget _infoTile(IconData icon, Color accent, String title, String body) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: ZineCard(
           padding: const EdgeInsets.all(14),
-          radius: Zine.rSm,
-          boxShadow: Zine.shadowXs,
+          radius: Msg.rLg,
+          boxShadow: Msg.none,
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 32),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title.toUpperCase(), style: ZineText.kicker()),
+              Text(title, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
               const SizedBox(height: 3),
-              Text(body, style: ZineText.sub(size: 12.5)),
+              Text(body, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             ])),
           ]),
         ),
@@ -261,8 +262,8 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
     final busy = _avail?.busy ?? a.busy;
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.card,
+        border: Border(top: BorderSide(color: AD.borderControl, width: 1)),
       ),
       child: SafeArea(
         child: Padding(
@@ -308,3 +309,9 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
     );
   }
 }
+
+/// Sentence case for a display label. Replaces the `.toUpperCase()` the legacy
+/// zine stickers applied to everything; call sites pass lowercase strings, so
+/// simply dropping the transform would render them lowercase.
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';

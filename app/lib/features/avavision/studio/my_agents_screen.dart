@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/analytics.dart';
 import '../../../core/avatar.dart';
 import '../../../core/avavision_api.dart';
-import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
 import 'agent_dashboard.dart';
@@ -75,59 +76,59 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
   void _menu(VisionAgent a) {
     showModalBottomSheet(
         context: context,
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.overlaySheet,
         builder: (s) => SafeArea(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 ListTile(
-                    leading: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), color: Zine.ink),
-                    title: Text('Edit agent', style: ZineText.value(size: 15)),
+                    leading: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), color: AD.textPrimary),
+                    title: Text('Edit agent', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                     onTap: () {
                       Navigator.pop(s);
                       _edit(a);
                     }),
                 ListTile(
-                    leading: PhosphorIcon(PhosphorIcons.chartLineUp(PhosphorIconsStyle.bold), color: Zine.ink),
-                    title: Text('Dashboard & earnings', style: ZineText.value(size: 15)),
+                    leading: PhosphorIcon(PhosphorIcons.chartLineUp(PhosphorIconsStyle.bold), color: AD.textPrimary),
+                    title: Text('Dashboard & earnings', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                     onTap: () {
                       Navigator.pop(s);
                       Navigator.push(context, MaterialPageRoute(builder: (_) => AgentDashboardScreen(agent: a)));
                     }),
                 if (a.status == 'draft')
                   ListTile(
-                      leading: PhosphorIcon(PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), color: Zine.mintInk),
-                      title: Text('Publish to marketplace', style: ZineText.value(size: 15)),
+                      leading: PhosphorIcon(PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), color: AD.online),
+                      title: Text('Publish to marketplace', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                       onTap: () {
                         Navigator.pop(s);
                         _act(a, 'publish');
                       }),
                 if (a.status == 'published')
                   ListTile(
-                      leading: PhosphorIcon(PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold), color: Zine.ink),
-                      title: Text('Unpublish (back to draft)', style: ZineText.value(size: 15)),
+                      leading: PhosphorIcon(PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold), color: AD.textPrimary),
+                      title: Text('Unpublish (back to draft)', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                       onTap: () {
                         Navigator.pop(s);
                         _act(a, 'unpublish');
                       }),
                 ListTile(
-                    leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: Zine.coral),
-                    title: Text('Delete agent', style: ZineText.value(size: 15, color: Zine.coral)),
+                    leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.danger),
+                    title: Text('Delete agent', style: ADText.rowName(c: AD.danger).copyWith(fontSize: 15, height: 1.3)),
                     onTap: () async {
                       Navigator.pop(s);
                       final ok = await showDialog<bool>(
                           context: context,
                           builder: (d) => AlertDialog(
-                                backgroundColor: Zine.card,
-                                title: Text('Delete ${a.name}?', style: ZineText.cardTitle()),
+                                backgroundColor: AD.card,
+                                title: Text('Delete ${a.name}?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
                                 content: Text(
                                     'Its listing, knowledge files and availability are removed. Past earnings are kept in your ledger.',
-                                    style: ZineText.sub(size: 14)),
+                                    style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
                                 actions: [
                                   TextButton(
                                       onPressed: () => Navigator.pop(d, false),
-                                      child: Text('Keep', style: ZineText.tag(size: 13, color: Zine.inkSoft))),
+                                      child: Text('Keep', style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 13, letterSpacing: 0.52))),
                                   TextButton(
                                       onPressed: () => Navigator.pop(d, true),
-                                      child: Text('Delete', style: ZineText.tag(size: 13, color: Zine.coral))),
+                                      child: Text('Delete', style: ADText.tabLabel(c: AD.danger).copyWith(fontSize: 13, letterSpacing: 0.52))),
                                 ],
                               ));
                       if (ok == true) _act(a, 'delete');
@@ -137,9 +138,9 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
   }
 
   Color _statusColor(String s) => switch (s) {
-        'published' => Zine.mint,
-        'suspended' => Zine.coral,
-        _ => Zine.paper2,
+        'published' => AD.online,
+        'suspended' => AD.danger,
+        _ => AD.card,
       };
 
   @override
@@ -148,7 +149,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
       appBar: ZineAppBar(
         title: 'My vision agents',
         markWord: 'vision',
-        tag: 'AVAVISION STUDIO',
+        tag: 'AvaVision studio',
         showBack: Navigator.of(context).canPop(),
       ),
       floatingActionButton: ZineButton(
@@ -159,11 +160,11 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
       ),
       body: ZinePaper(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.lilac))
+            ? const Center(child: CircularProgressIndicator(color: AD.tabCalls))
             : _agents.isEmpty
                 ? _empty()
                 : RefreshIndicator(
-                    color: Zine.blueInk,
+                    color: AD.tabGroups,
                     onRefresh: _load,
                     child: ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
@@ -174,8 +175,8 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                         final suspended = a.status == 'suspended';
                         return ZinePressable(
                           onTap: () => _menu(a),
-                          radius: BorderRadius.circular(Zine.rSm),
-                          boxShadow: Zine.shadowXs,
+                          radius: BorderRadius.circular(Msg.rLg),
+                          boxShadow: Msg.none,
                           padding: const EdgeInsets.all(12),
                           child: Row(children: [
                             Avatar(seed: a.id, name: a.name, size: 52, avatarUrl: a.avatarUrl),
@@ -185,18 +186,18 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                               Text(a.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: ZineText.value(size: 15, weight: FontWeight.w800)),
+                                  style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: FontWeight.w600)),
                               const SizedBox(height: 5),
                               Row(children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: _statusColor(a.status),
-                                    borderRadius: BorderRadius.circular(100),
-                                    border: Border.all(color: Zine.ink, width: 2),
+                                    borderRadius: BorderRadius.circular(Msg.rPill),
+                                    border: Border.all(color: AD.borderControl, width: 1),
                                   ),
-                                  child: Text(a.status.toUpperCase(),
-                                      style: ZineText.tag(size: 9.5, color: suspended ? Colors.white : Zine.ink)),
+                                  child: Text(_sentence(a.status),
+                                      style: ADText.tabLabel(c: suspended ? Colors.white : AD.textPrimary).copyWith(fontSize: 10, letterSpacing: 0.4)),
                                 ),
                                 const SizedBox(width: 6),
                                 CapabilityBadge(a.capability),
@@ -208,12 +209,12 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                                       : '${fmtCoins(a.ratePerHourCoins)}/hr · earn ${fmtCoins(creatorNetPerHour(a.ratePerHourCoins))}/hr',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: ZineText.sub(size: 12),
+                                  style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
                                 )),
                               ]),
                             ])),
                             const SizedBox(width: 6),
-                            PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 22, color: Zine.inkSoft),
+                            PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 22, color: AD.textSecondary),
                           ]),
                         );
                       },
@@ -231,20 +232,20 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: Zine.lilac,
-                borderRadius: BorderRadius.circular(Zine.r),
-                border: Zine.border,
-                boxShadow: Zine.shadowSm,
+                color: AD.tabCalls,
+                borderRadius: BorderRadius.circular(Msg.rLg),
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: Msg.none,
               ),
-              child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 36, color: Zine.ink)),
+              child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 36, color: Colors.white)),
             ),
             const SizedBox(height: 20),
-            Text('Create your first AI vision agent', style: ZineText.hero(size: 26), textAlign: TextAlign.center),
+            Text('Create your first AI vision agent', style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: -0.52), textAlign: TextAlign.center),
             const SizedBox(height: 10),
             Text(
               'Pick a use-case template, give it a personality, choose a voice and vision overlay, set your rate — and publish. You earn 50% of every minute people train with it.',
               textAlign: TextAlign.center,
-              style: ZineText.sub(size: 14),
+              style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
             ),
             const SizedBox(height: 20),
             ZineButton(
@@ -258,3 +259,9 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
         ),
       );
 }
+
+/// Sentence case for a display label. Replaces the `.toUpperCase()` the legacy
+/// zine stickers applied to everything; call sites pass lowercase strings, so
+/// simply dropping the transform would render them lowercase.
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';

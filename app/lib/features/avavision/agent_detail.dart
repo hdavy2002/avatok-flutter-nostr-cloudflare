@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavision_api.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 import '../wallet/wallet_screen.dart';
@@ -140,11 +141,11 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Widget build(BuildContext context) {
     final a = _agent;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(title: a?.name ?? 'Vision agent', tag: 'ai vision coach'),
       body: ZinePaper(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            ? const Center(child: CircularProgressIndicator(color: AD.tabGroups))
             : a == null
                 ? Center(child: ZineEmptyState(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), text: 'Agent not found'))
                 : _body(a),
@@ -166,7 +167,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
               itemCount: a.images.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, i) => Container(
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(Zine.rSm), border: Zine.border),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(Msg.rLg), border: Border.all(color: AD.borderControl, width: 1)),
                 clipBehavior: Clip.antiAlias,
                 child: CoverImage(
                     url: a.images[i],
@@ -180,18 +181,18 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
         ],
         Row(children: [
           Container(
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border, boxShadow: Zine.shadowXs),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderControl, width: 1), boxShadow: Msg.none),
             child: Avatar(seed: a.id, name: a.name, size: 72, avatarUrl: a.avatarUrl),
           ),
           const SizedBox(width: 16),
           Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(a.name, style: ZineText.cardTitle(size: 20)),
+            Text(a.name, style: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2)),
             const SizedBox(height: 4),
-            Text(a.role, style: ZineText.sub(size: 13.5)),
+            Text(a.role, style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              busy ? const MiniPill('agent busy', fill: Zine.coral, fg: Colors.white) : const MiniPill('call now', fill: Zine.mint, fg: Zine.ink),
+              busy ? const MiniPill('agent busy', fill: AD.danger, fg: Colors.white) : const MiniPill('call now', fill: AD.online, fg: Colors.white),
               CapabilityBadge(a.capability),
             ]),
           ])),
@@ -199,43 +200,43 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
         const SizedBox(height: 20),
         _infoTile(
             PhosphorIcons.coins(PhosphorIconsStyle.bold),
-            Zine.mint,
+            AD.online,
             'Price',
             a.isFreeForCallers
                 ? 'Free — the creator covers this agent\'s sessions'
                 : '${a.rateLabel}\nBilled per minute (rounded up). Held in escrow; unused minutes refunded.'),
-        _infoTile(PhosphorIcons.timer(PhosphorIconsStyle.bold), Zine.blue, 'Session length',
+        _infoTile(PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.tabGroups, 'Session length',
             'Up to ${a.sessionLimitMin} minutes. The agent wraps up politely before time runs out.'),
         // Vision setup tile.
         _infoTile(
             PhosphorIcons.eye(PhosphorIconsStyle.bold),
-            Zine.lilac,
+            AD.tabCalls,
             'Vision',
             'Tracks ${capabilityLabel(a.capability).toLowerCase()} via your camera (on-device, with your permission).'
                 '${a.hasOverlay ? ' Draws a live ${overlayLabel(a.overlayStyle).toLowerCase()} overlay.' : ''}'
                 '${a.hasScore && a.scoreLabel != null ? ' Shows a live ${a.scoreLabel} score.' : ''}'),
         if (a.agenticSnapshotEnabled)
-          _infoTile(PhosphorIcons.camera(PhosphorIconsStyle.bold), Zine.coral, 'Analyze my form',
+          _infoTile(PhosphorIcons.camera(PhosphorIconsStyle.bold), AD.danger, 'Analyze my form',
               'Tap once for a precise, annotated breakdown of a single frame — ${a.freeSnapshotsPerSession} free per session.'),
-        _infoTile(PhosphorIcons.monitor(PhosphorIconsStyle.bold), Zine.blue, 'Runs on', a.platforms.labels.join(' · ')),
-        _infoTile(PhosphorIcons.translate(PhosphorIconsStyle.bold), Zine.lilac, 'Languages',
+        _infoTile(PhosphorIcons.monitor(PhosphorIconsStyle.bold), AD.tabGroups, 'Runs on', a.platforms.labels.join(' · ')),
+        _infoTile(PhosphorIcons.translate(PhosphorIconsStyle.bold), AD.tabCalls, 'Languages',
             'Choose the language the agent speaks when you start — ${kVoiceLanguages.length}+ available.'),
         if (a.files.isNotEmpty)
-          _infoTile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'Knowledge',
+          _infoTile(PhosphorIcons.brain(PhosphorIconsStyle.bold), AD.tabCalls, 'Knowledge',
               'Trained on ${a.files.length} document${a.files.length == 1 ? '' : 's'} provided by the creator.'),
         if (a.creatorName != null)
-          _infoTile(PhosphorIcons.user(PhosphorIconsStyle.bold), Zine.blue, 'Creator', a.creatorName!),
+          _infoTile(PhosphorIcons.user(PhosphorIconsStyle.bold), AD.tabGroups, 'Creator', a.creatorName!),
         // Safety note — platform-enforced (master §10).
-        _infoTile(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.mint, 'Safe by design',
+        _infoTile(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), AD.online, 'Safe by design',
             'Coaches technique only — never rates appearance, never identifies people, not medical advice. Camera consent is asked each session.'),
         const SizedBox(height: 8),
         if (a.systemProfile.isNotEmpty)
           ZineCard(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              ZineCardHead(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), accent: Zine.lilac, title: 'About this agent'),
+              ZineCardHead(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), accent: AD.tabCalls, title: 'About this agent'),
               const SizedBox(height: 10),
-              Text(a.systemProfile, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+              Text(a.systemProfile, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 14, height: 1.42)),
             ]),
           ),
       ],
@@ -246,16 +247,16 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
         padding: const EdgeInsets.only(bottom: 12),
         child: ZineCard(
           padding: const EdgeInsets.all(14),
-          radius: Zine.rSm,
-          boxShadow: Zine.shadowXs,
+          radius: Msg.rLg,
+          boxShadow: Msg.none,
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 32),
             const SizedBox(width: 12),
             Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title.toUpperCase(), style: ZineText.kicker()),
+              Text(title, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
               const SizedBox(height: 3),
-              Text(body, style: ZineText.sub(size: 12.5)),
+              Text(body, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             ])),
           ]),
         ),
@@ -265,8 +266,8 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
     final busy = _avail?.busy ?? a.busy;
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.card,
+        border: Border(top: BorderSide(color: AD.borderControl, width: 1)),
       ),
       child: SafeArea(
         child: Padding(

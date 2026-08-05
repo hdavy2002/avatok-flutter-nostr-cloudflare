@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
-import '../../core/theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 
 /// AvaVoice brand accent — AI/magic = lilac (design system §AI).
-const Color kAvaVoicePurple = Zine.lilac;
+const Color kAvaVoicePurple = AD.tabCalls;
 
 String fmtWhenMs(int ms) {
   if (ms <= 0) return '';
@@ -32,22 +33,22 @@ class AvailabilityChip extends StatelessWidget {
   const AvailabilityChip({super.key, required this.busy, this.compact = false});
   @override
   Widget build(BuildContext context) {
-    final fill = busy ? Zine.coral : Zine.mint;
-    final fg = busy ? Colors.white : Zine.ink;
-    final dot = busy ? Colors.white : Zine.mintInk;
+    final fill = busy ? AD.danger : AD.online;
+    const fg = Colors.white;
+    const dot = Colors.white;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 11, vertical: compact ? 3 : 5),
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Zine.ink, width: Zine.bw),
-        boxShadow: Zine.shadowXs,
+        borderRadius: Msg.brPill,
+        border: Border.all(color: AD.borderControl, width: 1),
+        boxShadow: Msg.none,
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+        Container(width: 7, height: 7, decoration: const BoxDecoration(color: dot, shape: BoxShape.circle)),
         const SizedBox(width: 5),
-        Text(busy ? 'AGENT BUSY' : 'CALL NOW',
-            style: ZineText.tag(size: compact ? 10 : 11.5, color: fg)),
+        Text(busy ? 'Agent busy' : 'Call now',
+            style: ADText.tabLabel(c: fg).copyWith(fontSize: compact ? 10 : 12, letterSpacing: 0.44)),
       ]),
     );
   }
@@ -59,15 +60,15 @@ class VisionBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Zine.lilac,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          color: AD.tabCalls,
+          borderRadius: Msg.brPill,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.bold), size: 12, color: Zine.ink),
+          PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular), size: 12, color: Colors.white),
           const SizedBox(width: 4),
-          Text('VISION', style: ZineText.tag(size: 10, color: Zine.ink)),
+          Text('Vision', style: ADText.tabLabel(c: Colors.white).copyWith(fontSize: 10, letterSpacing: 0.4)),
         ]),
       );
 }
@@ -78,12 +79,12 @@ class FreeBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Zine.mint,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          color: AD.online,
+          borderRadius: Msg.brPill,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
-        child: Text('FREE', style: ZineText.tag(size: 10, color: Zine.ink)),
+        child: Text('Free', style: ADText.tabLabel(c: Colors.white).copyWith(fontSize: 10, letterSpacing: 0.4)),
       );
 }
 
@@ -97,14 +98,14 @@ class AgentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return ZinePressable(
       onTap: onTap,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowXs,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(12),
       child: Row(children: [
         // Listing photo (first of 1–5) when present; identicon fallback.
         if (agent.images.isNotEmpty)
           CoverImage(url: agent.images.first, seed: agent.id.hashCode, width: 52, height: 52,
-              radius: BorderRadius.circular(12))
+              radius: BorderRadius.circular(Msg.rMd))
         else
           Avatar(seed: agent.id, name: agent.name, size: 52, avatarUrl: agent.avatarUrl),
         const SizedBox(width: 12),
@@ -112,12 +113,12 @@ class AgentCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(agent.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ZineText.value(size: 15, weight: FontWeight.w800))),
+                  style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: FontWeight.w600))),
               if (agent.activeCalls != null) AvailabilityChip(busy: agent.busy, compact: true),
             ]),
             const SizedBox(height: 2),
             Text(agent.role, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.sub(size: 12.5)),
+                style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             const SizedBox(height: 7),
             Row(children: [
               if (agent.isFreeForCallers) ...[const FreeBadge(), const SizedBox(width: 6)],
@@ -127,7 +128,7 @@ class AgentCard extends StatelessWidget {
                     ? 'Up to ${agent.sessionLimitMin} min'
                     : '${agent.rateLabel} · up to ${agent.sessionLimitMin} min',
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.sub(size: 11.5),
+                style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
               )),
             ]),
           ]),
@@ -142,9 +143,9 @@ Future<String?> pickLanguage(BuildContext context, {String? selected}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Zine.paper,
+    backgroundColor: AD.overlaySheet,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
     builder: (s) => _LanguageSheet(selected: selected),
   );
 }
@@ -171,7 +172,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
-              child: Text('Which language should the agent speak?', style: ZineText.cardTitle()),
+              child: Text('Which language should the agent speak?', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -191,9 +192,9 @@ class _LanguageSheetState extends State<_LanguageSheet> {
                     dense: true,
                     leading: PhosphorIcon(
                         sel ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),
-                        color: sel ? Zine.lilac : Zine.inkMute, size: 22),
+                        color: sel ? AD.tabCalls : AD.textTertiary, size: 22),
                     title: Text(e.value,
-                        style: ZineText.value(size: 14.5, weight: sel ? FontWeight.w900 : FontWeight.w700)),
+                        style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: sel ? FontWeight.w700 : FontWeight.w400)),
                     onTap: () => Navigator.pop(context, e.key),
                   );
                 },

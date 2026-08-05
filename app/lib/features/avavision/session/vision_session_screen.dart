@@ -24,15 +24,23 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/avatar.dart';
 import '../../../identity/identity.dart';
-import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import 'overlay_painters.dart';
 import 'pose_channel.dart';
 import '../../../core/avavision_api.dart';
 import 'vision_engine.dart';
 import 'vision_preview_pane.dart';
+
+
+/// Sentence case for a display label. Replaces the `.toUpperCase()` the legacy
+/// zine stickers applied to everything; call sites pass lowercase strings, so
+/// simply dropping the transform would render them lowercase.
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
 class VisionSessionScreen extends StatefulWidget {
   final VisionAgent agent;
@@ -205,12 +213,12 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       context: context,
       barrierDismissible: false,
       builder: (d) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        titleTextStyle: ZineText.cardTitle(size: 20),
-        contentTextStyle: ZineText.sub(size: 14),
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
+        contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
         title: const Text('Session ended'),
         content: Text(a.isFreeForCallers
             ? 'You trained with ${a.name} for ${_fmt(_elapsedSec)}. This session was free — the creator covered it.'
@@ -260,13 +268,13 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _Sheet(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ZineIconBadge(icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), color: Zine.lilac),
+        ZineIconBadge(icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), color: AD.tabCalls),
         const SizedBox(height: 14),
-        Text('Deep analyses used up', style: ZineText.cardTitle(size: 19)),
+        Text('Deep analyses used up', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
         const SizedBox(height: 8),
         Text(
           'You\'ve used all ${_snapCap == 1 ? 'your' : 'the $_snapCap'} free "Analyze my form" check${_snapCap == 1 ? '' : 's'} for this session — no charge. Your coach keeps guiding you live with the on-screen score.',
-          textAlign: TextAlign.center, style: ZineText.sub(size: 13.5),
+          textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
         ),
         const SizedBox(height: 18),
         ZineButton(label: 'Keep training', fullWidth: true,
@@ -286,7 +294,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         return _Sheet(child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
-              Text('Form analysis', style: ZineText.cardTitle(size: 19)),
+              Text('Form analysis', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
               const Spacer(),
               if (res.score != null)
                 _Badge('${a.scoreLabel ?? 'Score'} ${res.score!.round()}'),
@@ -294,19 +302,19 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
             const SizedBox(height: 14),
             if (bytes != null)
               ClipRRect(
-                borderRadius: BorderRadius.circular(Zine.r),
+                borderRadius: BorderRadius.circular(Msg.rLg),
                 child: Container(
-                  decoration: BoxDecoration(border: Zine.border, borderRadius: BorderRadius.circular(Zine.r)),
+                  decoration: BoxDecoration(border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rLg)),
                   child: Image.memory(bytes, fit: BoxFit.cover),
                 ),
               ),
             const SizedBox(height: 14),
             if (res.breakdown.isNotEmpty)
-              Text(res.breakdown, style: ZineText.sub(size: 13.5)),
+              Text(res.breakdown, style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             const SizedBox(height: 16),
             // Saving is OFF by default and per-account scoped (rulebook #1/#3).
             Row(children: [
-              Expanded(child: Text('Save to my device', style: ZineText.tag(size: 12.5))),
+              Expanded(child: Text('Save to my device', style: ADText.tabLabel().copyWith(fontSize: 13, letterSpacing: 0.52))),
               ZineToggle(
                 value: saved,
                 onChanged: bytes == null ? null : (v) async {
@@ -353,10 +361,10 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
     final remaining = (_limitMinutes * 60 - _elapsedSec).clamp(0, kMaxSessionMinutes * 60);
     final live = _state == 'live' || _state == 'wrapup';
     return Scaffold(
-      backgroundColor: Zine.ink,
+      backgroundColor: AD.bg,
       body: Stack(fit: StackFit.expand, children: [
         // 1) Camera + overlay (the "main" view).
-        if (live) _cameraLayer() else Container(color: Zine.ink),
+        if (live) _cameraLayer() else Container(color: AD.bg),
 
         // 2) Top chips: language + countdown.
         SafeArea(
@@ -414,16 +422,16 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: Zine.card,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(color: Zine.ink, width: 2),
-            boxShadow: Zine.shadowXs,
+            color: AD.card,
+            borderRadius: BorderRadius.circular(Msg.rPill),
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.none,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 13, color: Zine.coral),
+            PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 13, color: AD.danger),
             const SizedBox(width: 6),
-            Text('${a.name.toUpperCase()} CAN SEE YOU',
-                style: ZineText.tag(size: 10.5, color: Zine.ink)),
+            Text('${a.name} can see you',
+                style: ADText.tabLabel(c: AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
           ]),
         ),
       );
@@ -437,20 +445,20 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
-            color: Zine.card.withValues(alpha: .92),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Zine.ink, width: Zine.bw),
-            boxShadow: Zine.shadowSm,
+            color: AD.card.withValues(alpha: .92),
+            borderRadius: BorderRadius.circular(Msg.rMd),
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.none,
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text((a.scoreLabel ?? 'Score').toUpperCase(), style: ZineText.kicker(size: 10)),
+            Text(a.scoreLabel ?? 'Score', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
             const SizedBox(height: 2),
             Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-              Text(score?.toString() ?? '—', style: ZineText.hero(size: 30)),
+              Text(score?.toString() ?? '—', style: ADText.appTitle().copyWith(fontSize: 30, height: 1.08, letterSpacing: -0.6)),
               if (a.scoringMode == 'hybrid' && showAgent == false)
                 Padding(
                   padding: const EdgeInsets.only(left: 6, bottom: 4),
-                  child: Text('live', style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+                  child: Text('live', style: ADText.sectionLabel(c: AD.textTertiary).copyWith(fontSize: 9, letterSpacing: 0.72)),
                 ),
             ]),
           ]),
@@ -463,9 +471,9 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Zine.lilac,
-          border: Border.all(color: Zine.ink, width: Zine.bwLg),
-          boxShadow: Zine.shadowSm,
+          color: AD.tabCalls,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
         child: Stack(alignment: Alignment.bottomCenter, children: [
           Avatar(seed: a.id, name: a.name, size: 64, avatarUrl: a.avatarUrl),
@@ -479,12 +487,12 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Zine.lime,
-                        borderRadius: BorderRadius.circular(100),
-                        border: Border.all(color: Zine.ink, width: 1.5),
+                        color: AD.primaryBadge,
+                        borderRadius: BorderRadius.circular(Msg.rPill),
+                        border: Border.all(color: AD.borderControl, width: 1),
                       ),
                       child: PhosphorIcon(PhosphorIcons.waveform(PhosphorIconsStyle.bold),
-                          size: 12, color: Zine.ink),
+                          size: 12, color: Colors.white),
                     ),
                   ),
           ),
@@ -526,25 +534,25 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       );
 
   Widget _statusOverlay(String msg) => Container(
-        color: Zine.ink,
+        color: AD.bg,
         alignment: Alignment.center,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const CircularProgressIndicator(color: Zine.lime),
+          const CircularProgressIndicator(color: AD.primaryBadge),
           const SizedBox(height: 18),
-          Text(msg, style: ZineText.sub(size: 14, color: Zine.paper)),
+          Text(msg, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 14, height: 1.42)),
         ]),
       );
 
   Widget _errorOverlay() => Container(
-        color: Zine.ink,
+        color: AD.bg,
         alignment: Alignment.center,
         child: Padding(
           padding: const EdgeInsets.all(28),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineIconBadge(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), color: Zine.coral),
+            ZineIconBadge(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), color: AD.danger),
             const SizedBox(height: 16),
             Text(_error ?? 'Something went wrong',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 14.5, color: Zine.paper)),
+                textAlign: TextAlign.center, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 15, height: 1.42)),
             const SizedBox(height: 22),
             ZineButton(
               label: 'Back',
@@ -558,16 +566,16 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
   Widget _chip(IconData icon, String label, {bool alert = false}) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         decoration: BoxDecoration(
-          color: alert ? Zine.coral : Zine.card,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          color: alert ? AD.danger : AD.card,
+          borderRadius: BorderRadius.circular(Msg.rPill),
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(icon, size: 14, color: alert ? Colors.white : Zine.ink),
+          PhosphorIcon(icon, size: 14, color: alert ? Colors.white : AD.textPrimary),
           const SizedBox(width: 6),
-          Text(label.toUpperCase(),
-              style: ZineText.tag(size: 11, color: alert ? Colors.white : Zine.ink)),
+          Text(label,
+              style: ADText.tabLabel(c: alert ? Colors.white : AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
         ]),
       );
 
@@ -575,13 +583,13 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
           {bool large = false, bool danger = false, bool active = false}) =>
       ZinePressable(
         onTap: onTap,
-        color: danger ? Zine.coral : (active ? Zine.lime : Zine.card),
-        radius: BorderRadius.circular(100),
-        boxShadow: large ? Zine.shadowSm : Zine.shadowXs,
+        color: danger ? AD.danger : (active ? AD.primaryBadge : AD.card),
+        radius: BorderRadius.circular(Msg.rPill),
+        boxShadow: Msg.none,
         child: SizedBox(
           width: large ? 64 : 52, height: large ? 64 : 52,
           child: Center(
-            child: PhosphorIcon(icon, size: large ? 28 : 22, color: danger ? Colors.white : Zine.ink),
+            child: PhosphorIcon(icon, size: large ? 28 : 22, color: danger ? Colors.white : AD.textPrimary),
           ),
         ),
       );
@@ -611,12 +619,12 @@ class _Badge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: Zine.lime,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          color: AD.primaryBadge,
+          borderRadius: BorderRadius.circular(Msg.rPill),
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
-        child: Text(text.toUpperCase(), style: ZineText.tag(size: 12)),
+        child: Text(_sentence(text), style: ADText.tabLabel().copyWith(fontSize: 12, letterSpacing: 0.48)),
       );
 }
 
@@ -627,12 +635,12 @@ class _Sheet extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: EdgeInsets.fromLTRB(20, 18, 20, 20 + MediaQuery.of(context).padding.bottom),
         decoration: const BoxDecoration(
-          color: Zine.card,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          color: AD.card,
+          borderRadius: Msg.brSheetTop,
           border: Border(
-            top: BorderSide(color: Zine.ink, width: Zine.bwLg),
-            left: BorderSide(color: Zine.ink, width: Zine.bw),
-            right: BorderSide(color: Zine.ink, width: Zine.bw),
+            top: BorderSide(color: AD.borderControl, width: 1),
+            left: BorderSide(color: AD.borderControl, width: 1),
+            right: BorderSide(color: AD.borderControl, width: 1),
           ),
         ),
         child: child,
@@ -678,13 +686,13 @@ class _ConsentSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Center(child: ZineIconBadge(
-              icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: Zine.lilac)),
+              icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: AD.tabCalls)),
           const SizedBox(height: 14),
-          Text('Turn on your camera?', textAlign: TextAlign.center, style: ZineText.cardTitle(size: 20)),
+          Text('Turn on your camera?', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2)),
           const SizedBox(height: 10),
           Text(
             '$agentName is a vision coach. While you train, it sees a low-resolution view (about one frame a second) and hears you, so it can guide your technique. An on-device overlay tracks your movement — that part never leaves your phone. It only coaches technique, never judges your appearance, and you can stop anytime.',
-            textAlign: TextAlign.center, style: ZineText.sub(size: 13.5),
+            textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
           ),
           const SizedBox(height: 20),
           ZineButton(

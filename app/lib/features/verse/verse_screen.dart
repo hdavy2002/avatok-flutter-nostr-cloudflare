@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../listings/my_listings_screen.dart';
@@ -43,19 +44,19 @@ class _VerseScreenState extends State<VerseScreen> {
   Widget build(BuildContext context) {
     final s = _s;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(
         title: 'AvaVerse',
         markWord: 'Verse',
         tag: 'creator earnings',
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.tabGroups))
           : s == null
               ? _error()
               : RefreshIndicator(
                   onRefresh: () => _load(fresh: true),
-                  color: Zine.blueInk,
+                  color: AD.tabGroups,
                   child: ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8), children: [
                     _periodChips(),
                     const SizedBox(height: 14),
@@ -105,21 +106,21 @@ class _VerseScreenState extends State<VerseScreen> {
   Widget _card({
     required String title,
     required IconData icon,
-    Color accent = Zine.blue,
+    Color accent = AD.tabGroups,
     Color? fill,
     Widget? trailing,
     required List<Widget> children,
     VoidCallback? onTap,
   }) {
     return ZineCard(
-      color: fill ?? Zine.card,
+      color: fill ?? AD.card,
       padding: const EdgeInsets.all(16),
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: icon, color: accent),
           const SizedBox(width: 11),
-          Expanded(child: Text(title, style: ZineText.cardTitle())),
+          Expanded(child: Text(title, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2))),
           if (trailing != null) trailing,
         ]),
         const SizedBox(height: 12),
@@ -142,27 +143,27 @@ class _VerseScreenState extends State<VerseScreen> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Flexible(
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.sub(size: 13)),
+                style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           ),
           const SizedBox(width: 6),
           Expanded(
             child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
-                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+                style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13, height: 1.42)),
           ),
           const SizedBox(width: 6),
           if (pill)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
               decoration: BoxDecoration(
-                color: Zine.mint,
-                borderRadius: BorderRadius.circular(100),
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
+                color: AD.online,
+                borderRadius: BorderRadius.circular(Msg.rPill),
+                border: Border.all(color: AD.borderControl, width: 1),
+                boxShadow: Msg.none,
               ),
-              child: Text(value, style: ZineText.value(size: 13, weight: FontWeight.w900)),
+              child: Text(value, style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w700)),
             )
           else
-            Text(value, style: ZineText.value(size: 13.5, weight: FontWeight.w900, color: color ?? Zine.ink)),
+            Text(value, style: ADText.rowName(c: color ?? AD.textPrimary).copyWith(fontSize: 14, height: 1.3, fontWeight: FontWeight.w700)),
         ]),
       );
 
@@ -171,18 +172,18 @@ class _VerseScreenState extends State<VerseScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: ZineCard(
-              color: Zine.paper2,
-              radius: Zine.rSm,
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              radius: Msg.rLg,
+              boxShadow: Msg.none,
               padding: const EdgeInsets.all(12),
               child: Row(children: [
-                ZineIconBadge(icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold), color: Zine.lilac, size: 30),
+                ZineIconBadge(icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold), color: AD.tabCalls, size: 30),
                 const SizedBox(width: 10),
                 Expanded(child: Text(
                     '"${n['title']}" starts soon and joins are below your average — remind your followers?',
-                    style: ZineText.sub(size: 12.5))),
+                    style: ADText.preview().copyWith(fontSize: 13, height: 1.42))),
                 const SizedBox(width: 8),
-                ZineLink('REMIND',
+                ZineLink('Remind',
                     onTap: () => _announce(n['listing_id'].toString(), n['title'].toString())),
               ]),
             ),
@@ -194,18 +195,17 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Earnings',
       icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-      accent: Zine.card,
-      fill: Zine.mint,
+      accent: AD.online,
       trailing: _delta(s.n(e, 'delta_vs_yesterday') ~/ 100, suffix: ' vs yday'),
       onTap: () => _push(const WalletScreen()),
       children: [
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Text(verseUsd(s.n(e, 'settled')), style: ZineText.stat(size: 40)),
+          child: Text(verseUsd(s.n(e, 'settled')), style: ADText.appTitle().copyWith(fontSize: 40, height: 1.0, letterSpacing: -0.8)),
         ),
         const SizedBox(height: 2),
-        Text('SETTLED THIS PERIOD', style: ZineText.kicker(size: 10, color: Zine.ink)),
+        Text('Settled this period', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
         const SizedBox(height: 10),
         _kv('Pending in escrow (your 80%)', verseUsd(s.n(e, 'pending_escrow_net'))),
         _kv('Maturing (7-day hold)', verseUsd(s.n(e, 'maturing'))),
@@ -231,16 +231,16 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Projected',
       icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
-      accent: Zine.blue,
+      accent: AD.tabGroups,
       onTap: () => _push(const MyListingsScreen()),
       children: [
         if (ev.isEmpty && (ct['sessions'] as num? ?? 0) == 0)
-          Text('No upcoming events or consults yet.', style: ZineText.sub(size: 13)),
+          Text('No upcoming events or consults yet.', style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         for (final p in ev.take(4))
           _kv('${p['title']} — ${p['joined']} joined', '≈ ${verseUsd((p['projected_net'] as num?) ?? 0)}'),
         if ((ct['sessions'] as num? ?? 0) > 0)
           _kv('Today: ${ct['sessions']} consult(s) booked', '≈ ${verseUsd((ct['projected_net'] as num?) ?? 0)} by tonight',
-              color: Zine.mintInk),
+              color: AD.online),
       ],
     );
   }
@@ -250,11 +250,11 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Live momentum',
       icon: PhosphorIcons.lightning(PhosphorIconsStyle.bold),
-      accent: Zine.lime,
+      accent: AD.primaryBadge,
       trailing: _delta(s.n(m, 'delta_vs_prev_24h'), suffix: ' vs prev 24h'),
       children: [
         Text('${s.n(m, 'joins_24h')} joins in the last 24 h',
-            style: ZineText.value(size: 15, weight: FontWeight.w800)),
+            style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         for (final e in s.momentumByEvent.take(4))
           _kv('${e['title']}', '+${e['joins_24h']} · ${e['joined_count']} waiting'),
@@ -268,19 +268,19 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Top events',
       icon: PhosphorIcons.trophy(PhosphorIconsStyle.bold),
-      accent: Zine.coral,
+      accent: AD.danger,
       onTap: () => _push(const MyListingsScreen()),
       children: [
-        if (top.isEmpty) Text('No sales in this period yet.', style: ZineText.sub(size: 13)),
+        if (top.isEmpty) Text('No sales in this period yet.', style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         for (final e in top)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text('${e['title']}', maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 13))),
+                    style: ADText.preview().copyWith(fontSize: 13, height: 1.42))),
                 Text('${verseUsd((e['revenue'] as num?) ?? 0)} · ${e['orders']} orders',
-                    style: ZineText.value(size: 12.5, weight: FontWeight.w800, color: Zine.mintInk)),
+                    style: ADText.rowName(c: AD.online).copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600)),
               ]),
               const SizedBox(height: 4),
               // mini bar (no chart package) — flat poster fill + ink edge
@@ -289,9 +289,9 @@ class _VerseScreenState extends State<VerseScreen> {
                 child: Container(
                   height: 8,
                   decoration: BoxDecoration(
-                    color: Zine.blue,
-                    borderRadius: BorderRadius.circular(3),
-                    border: Border.all(color: Zine.ink, width: 1.5),
+                    color: AD.tabGroups,
+                    borderRadius: BorderRadius.circular(Msg.rSm),
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                 ),
               ),
@@ -308,11 +308,11 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Audience',
       icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-      accent: Zine.lilac,
+      accent: AD.tabCalls,
       children: [
         _kv('Followers', '${s.n(a, 'followers')}'),
         if (views != null) _kv('Views → opens → joins (30 d)', '$views → $opens → $joins')
-        else Text('Funnel data warming up — check back soon.', style: ZineText.sub(size: 12.5)),
+        else Text('Funnel data warming up — check back soon.', style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         if (countries.isNotEmpty)
           _kv('Top countries', countries.take(3).map((c) => '${c['code']} (${c['n']})').join('  ')),
       ],
@@ -326,7 +326,7 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Reach',
       icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
-      accent: Zine.blue,
+      accent: AD.tabGroups,
       children: [
         _kv('Followers', '${s.n(r, 'followers')}'),
         _kv('Announcements left today', '$left of ${s.n(r, 'announce_daily_cap')}'),
@@ -346,7 +346,7 @@ class _VerseScreenState extends State<VerseScreen> {
         if (events.isEmpty && left > 0)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('Publish an upcoming listing to announce it.', style: ZineText.sub(size: 12)),
+            child: Text('Publish an upcoming listing to announce it.', style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ),
       ],
     );
@@ -355,14 +355,14 @@ class _VerseScreenState extends State<VerseScreen> {
   Future<Map<String, dynamic>?> _pickListing(List<Map<String, dynamic>> events) =>
       showModalBottomSheet<Map<String, dynamic>>(
         context: context,
-        backgroundColor: Zine.paper,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        backgroundColor: AD.overlaySheet,
+        shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
         builder: (s) => SafeArea(
           child: ListView(shrinkWrap: true, children: [
             for (final e in events)
               ListTile(
-                  title: Text('${e['title']}', style: ZineText.value(size: 15)),
-                  subtitle: Text('${e['joined']} JOINED', style: ZineText.kicker(size: 10, color: Zine.inkMute)),
+                  title: Text('${e['title']}', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
+                  subtitle: Text('${e['joined']} joined', style: ADText.sectionLabel(c: AD.textTertiary).copyWith(fontSize: 10, letterSpacing: 0.8)),
                   onTap: () => Navigator.pop(s, e)),
           ]),
         ),
@@ -373,21 +373,21 @@ class _VerseScreenState extends State<VerseScreen> {
     final go = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.circular(Msg.rLg),
+          side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Notify followers', style: ZineText.cardTitle()),
+        title: Text('Notify followers', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('"$title" — followers with notifications on will get a push.',
-              style: ZineText.sub(size: 13)),
+              style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           const SizedBox(height: 12),
           ZineField(controller: ctl, maxLength: 200, hint: 'Optional message'),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false),
-              child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14))),
           ZineButton(label: 'Send', fontSize: 15, onPressed: () => Navigator.pop(d, true)),
         ],
       ),
@@ -406,9 +406,9 @@ class _VerseScreenState extends State<VerseScreen> {
     return _card(
       title: 'Reviews to reply',
       icon: PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
-      accent: Zine.lime,
+      accent: AD.primaryBadge,
       children: [
-        if (rs.isEmpty) Text('All caught up 🎉', style: ZineText.sub(size: 13)),
+        if (rs.isEmpty) Text('All caught up 🎉', style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         for (final r in rs.take(5))
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 5),
@@ -418,23 +418,23 @@ class _VerseScreenState extends State<VerseScreen> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Zine.lilac,
-                  border: Border.all(color: Zine.ink, width: 2),
+                  color: AD.tabCalls,
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
-                child: Text('${r['rating']}★', style: ZineText.tag(size: 9)),
+                child: Text('${r['rating']}★', style: ADText.tabLabel().copyWith(fontSize: 9, letterSpacing: 0.36)),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${r['author_name'] ?? 'A buyer'} on ${r['listing_title']}',
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 13, weight: FontWeight.w800)),
+                      style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600)),
                   Text('${r['body'] ?? ''}', maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: ZineText.sub(size: 12)),
+                      style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
                 ]),
               ),
               const SizedBox(width: 8),
-              ZineLink('REPLY', onTap: () => _reply(r)),
+              ZineLink('Reply', onTap: () => _reply(r)),
             ]),
           ),
       ],
@@ -446,22 +446,22 @@ class _VerseScreenState extends State<VerseScreen> {
     final go = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.circular(Msg.rLg),
+          side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('Reply to ${review['author_name'] ?? 'review'}', style: ZineText.cardTitle(size: 18)),
+        title: Text('Reply to ${review['author_name'] ?? 'review'}', style: ADText.threadName().copyWith(fontSize: 18, height: 1.1, letterSpacing: -0.2)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('"${review['body'] ?? ''}"', maxLines: 3, overflow: TextOverflow.ellipsis,
-              style: ZineText.sub(size: 13)),
+              style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           const SizedBox(height: 12),
           ZineField(controller: ctl, maxLines: 3, maxLength: 1000, autofocus: true,
               hint: 'Your public reply'),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false),
-              child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+              child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14))),
           ZineButton(label: 'Post reply', fontSize: 15, onPressed: () => Navigator.pop(d, true)),
         ],
       ),
@@ -489,7 +489,7 @@ class StatementsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(
         title: 'Statements',
         markWord: 'Statements',
@@ -500,13 +500,13 @@ class StatementsScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: ZineCard(
-              radius: Zine.rSm,
+              radius: Msg.rLg,
               padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-              boxShadow: Zine.shadowXs,
+              boxShadow: Msg.none,
               child: Row(children: [
-                ZineIconBadge(icon: PhosphorIcons.receipt(PhosphorIconsStyle.bold), color: Zine.mint, size: 30),
+                ZineIconBadge(icon: PhosphorIcons.receipt(PhosphorIconsStyle.bold), color: AD.online, size: 30),
                 const SizedBox(width: 12),
-                Expanded(child: Text(m, style: ZineText.value(size: 15))),
+                Expanded(child: Text(m, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3))),
                 ZineBackButton(
                   icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
                   onTap: () async {

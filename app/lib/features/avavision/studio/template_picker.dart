@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/analytics.dart';
 import '../../../core/avavision_api.dart';
-import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
+
+/// Category-card accent rotation. Replaces the legacy `Zine.accents` poster
+/// rotation with the dark-system tokens that read on a near-black canvas.
+const List<Color> _kTemplateAccents = [
+  AD.tabGroups, AD.primaryBadge, AD.danger, AD.tabCalls, AD.online,
+];
 
 /// Pick-a-template — the FIRST step of creating a vision agent and the key
 /// difference from AvaVoice. The creator picks a Category (7 from the catalog),
@@ -51,7 +58,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
         _ => PhosphorIcons.eye(PhosphorIconsStyle.bold),
       };
 
-  Color _accentFor(int i) => Zine.accents[i % Zine.accents.length];
+  Color _accentFor(int i) => _kTemplateAccents[i % _kTemplateAccents.length];
 
   void _pickTemplate(VisionTemplate t) {
     Analytics.capture('avavision_template_picked', {
@@ -67,7 +74,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
   Widget build(BuildContext context) {
     final open = _open;
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: open == null ? 'Pick a template' : open.name,
         markWord: open == null ? 'template' : null,
@@ -79,7 +86,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
       ),
       body: ZinePaper(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: Zine.lilac))
+            ? const Center(child: CircularProgressIndicator(color: AD.tabCalls))
             : _categories.isEmpty
                 ? Center(
                     child: Padding(
@@ -105,18 +112,18 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Zine.lilac,
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            border: Zine.border,
-            boxShadow: Zine.shadowXs,
+            color: AD.card,
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.none,
           ),
           child: Row(children: [
-            PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 28, color: Zine.ink),
+            PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular), size: 28, color: AD.tabCalls),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Start from a use-case. We prefill the camera capability, overlay, score and a starter prompt — you just edit the text and set your rate.',
-                style: ZineText.sub(size: 12.5, color: Zine.ink),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42),
               ),
             ),
           ]),
@@ -136,8 +143,8 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
         Analytics.capture('avavision_category_opened', {'category': c.id, 'templates': c.templates.length});
         setState(() => _open = c);
       },
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowSm,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(14),
       child: Row(children: [
         ZineIconBadge(icon: _categoryIcon(c.capability), color: accent, size: 46),
@@ -145,15 +152,15 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(child: Text(c.name, style: ZineText.cardTitle(size: 17))),
-              MiniPill('${c.templates.length}', fill: Zine.card, fg: Zine.inkSoft, shadow: false),
+              Expanded(child: Text(c.name, style: ADText.threadName().copyWith(fontSize: 17, height: 1.1, letterSpacing: -0.2))),
+              MiniPill('${c.templates.length}', fill: AD.card, fg: AD.textSecondary, shadow: false),
             ]),
             const SizedBox(height: 4),
-            Text(c.tagline, style: ZineText.sub(size: 12.5)),
+            Text(c.tagline, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           ]),
         ),
         const SizedBox(width: 8),
-        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 20, color: Zine.inkSoft),
+        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 20, color: AD.textSecondary),
       ]),
     );
   }
@@ -171,26 +178,26 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
   Widget _templateCard(VisionTemplate t) {
     return ZinePressable(
       onTap: () => _pickTemplate(t),
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: Zine.shadowSm,
+      radius: BorderRadius.circular(Msg.rLg),
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          ZineIconBadge(icon: _categoryIcon(t.capability), color: Zine.lilac, size: 38),
+          ZineIconBadge(icon: _categoryIcon(t.capability), color: AD.tabCalls, size: 38),
           const SizedBox(width: 12),
-          Expanded(child: Text(t.name, style: ZineText.cardTitle(size: 16))),
-          PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 26, color: Zine.lilac),
+          Expanded(child: Text(t.name, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2))),
+          PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 26, color: AD.tabCalls),
         ]),
         const SizedBox(height: 10),
         Text(t.starterPrompt,
-            maxLines: 3, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+            maxLines: 3, overflow: TextOverflow.ellipsis, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         const SizedBox(height: 12),
         Wrap(spacing: 6, runSpacing: 6, children: [
           CapabilityBadge(t.capability),
           if (t.hasOverlay) OverlayBadge(t.overlayStyle),
           if (t.hasScore && t.scoreLabel != null) ScoreBadge(t.scoreLabel!),
           if (t.agenticSnapshotEnabled)
-            MiniPill('analyze', fill: Zine.coral, fg: Colors.white, icon: PhosphorIcons.camera(PhosphorIconsStyle.bold)),
+            MiniPill('analyze', fill: AD.danger, fg: Colors.white, icon: PhosphorIcons.camera(PhosphorIconsStyle.bold)),
           PlatformBadges(t.platforms),
         ]),
       ]),

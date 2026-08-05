@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// In-call UI for a voice agent session.
@@ -131,12 +132,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     if (!mounted) return;
     final billed = (_elapsedSec / 60).ceil();
     showDialog(context: context, barrierDismissible: false, builder: (d) => AlertDialog(
-      backgroundColor: Zine.card,
+      backgroundColor: AD.card,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-      titleTextStyle: ZineText.cardTitle(size: 20),
-      contentTextStyle: ZineText.sub(size: 14),
+          borderRadius: BorderRadius.circular(Msg.rLg),
+          side: const BorderSide(color: AD.borderControl, width: 1)),
+      titleTextStyle: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2),
+      contentTextStyle: ADText.preview().copyWith(fontSize: 14, height: 1.42),
       title: const Text('Call ended'),
       content: Text(a.isFreeForCallers
           ? 'You talked with ${a.name} for ${_fmt(_elapsedSec)}. This call was free — the creator covered it.'
@@ -158,7 +159,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     // Voice-agent call = paper screen: lilac AI crest, mono state stickers,
     // zine bordered control circles, coral hang-up.
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: ZinePaper(
         child: SafeArea(
           child: Column(children: [
@@ -183,19 +184,19 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 padding: const EdgeInsets.all(6),
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Zine.lilac,
-                  border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
-                  boxShadow: Zine.shadow,
+                  color: AD.tabCalls,
+                  border: Border.fromBorderSide(BorderSide(color: AD.borderControl, width: 1)),
+                  boxShadow: Msg.lift,
                 ),
                 child: Avatar(seed: a.id, name: a.name, size: 116, avatarUrl: a.avatarUrl),
               ),
             ),
             const SizedBox(height: 22),
-            Text(a.name, textAlign: TextAlign.center, style: ZineText.hero(size: 28)),
+            Text(a.name, textAlign: TextAlign.center, style: ADText.appTitle().copyWith(fontSize: 28, height: 1.08, letterSpacing: -0.56)),
             const SizedBox(height: 6),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(a.role, textAlign: TextAlign.center, style: ZineText.sub(size: 13)),
+              child: Text(a.role, textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             ),
             const SizedBox(height: 16),
             if (_state == 'error')
@@ -203,7 +204,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(_error ?? 'Connection failed',
                     textAlign: TextAlign.center,
-                    style: ZineText.tag(size: 12, color: Zine.coral)),
+                    style: ADText.tabLabel(c: AD.danger).copyWith(fontSize: 12, letterSpacing: 0.48)),
               )
             else
               ZineSticker(
@@ -221,7 +222,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 child: Text(
                     'Time is almost up — the agent will wrap up politely. You can book another session to continue.',
                     textAlign: TextAlign.center,
-                    style: ZineText.sub(size: 12)),
+                    style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
               ),
             const Spacer(),
             // Controls — bordered circles; hang-up = coral.
@@ -260,16 +261,16 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   Widget _chip(IconData icon, String label, {bool alert = false}) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         decoration: BoxDecoration(
-          color: alert ? Zine.coral : Zine.card,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
+          color: alert ? AD.danger : AD.card,
+          borderRadius: BorderRadius.circular(Msg.rPill),
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.none,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(icon, size: 14, color: alert ? Colors.white : Zine.ink),
+          PhosphorIcon(icon, size: 14, color: alert ? Colors.white : AD.textPrimary),
           const SizedBox(width: 6),
-          Text(label.toUpperCase(),
-              style: ZineText.tag(size: 11, color: alert ? Colors.white : Zine.ink)),
+          Text(label,
+              style: ADText.tabLabel(c: alert ? Colors.white : AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
         ]),
       );
 
@@ -278,14 +279,14 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           {bool large = false, bool danger = false, bool active = false}) =>
       ZinePressable(
         onTap: onTap,
-        color: danger ? Zine.coral : (active ? Zine.lime : Zine.card),
-        radius: BorderRadius.circular(100),
-        boxShadow: large ? Zine.shadowSm : Zine.shadowXs,
+        color: danger ? AD.danger : (active ? AD.primaryBadge : AD.card),
+        radius: BorderRadius.circular(Msg.rPill),
+        boxShadow: Msg.none,
         child: SizedBox(
           width: large ? 64 : 52, height: large ? 64 : 52,
           child: Center(
             child: PhosphorIcon(icon,
-                size: large ? 28 : 22, color: danger ? Colors.white : Zine.ink),
+                size: large ? 28 : 22, color: danger ? Colors.white : AD.textPrimary),
           ),
         ),
       );
@@ -321,7 +322,7 @@ class _PulsingRingState extends State<_PulsingRing>
           shape: BoxShape.circle,
           border: Border.all(
             // Flat lilac ring (AI accent), alpha-pulsed — no gradients.
-            color: Zine.lilac.withValues(alpha: .25 + .45 * (1 - (_c.value - .5).abs() * 2)),
+            color: AD.tabCalls.withValues(alpha: .25 + .45 * (1 - (_c.value - .5).abs() * 2)),
             width: 3 + 3 * (1 - (_c.value - .5).abs() * 2),
           ),
         ),

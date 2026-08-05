@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavision_api.dart';
 import '../../core/remote_config.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'agent_detail.dart';
 import 'studio/agent_form_flow.dart';
@@ -89,7 +90,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
   Widget build(BuildContext context) {
     if (!RemoteConfig.avavisionEnabled) {
       return Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         appBar: const ZineAppBar(title: 'AvaVision', markWord: 'Vision'),
         body: ZinePaper(
           child: Center(
@@ -104,7 +105,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
       );
     }
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: ZineAppBar(
         title: 'AvaVision',
         markWord: 'Vision',
@@ -112,13 +113,13 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
         actions: [
           ZinePressable(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyAgentsScreen())).then((_) => _load()),
-            color: Zine.lime,
-            radius: BorderRadius.circular(100),
-            boxShadow: Zine.shadowXs,
+            color: AD.primaryBadge,
+            radius: Msg.brPill,
+            boxShadow: Msg.none,
             child: SizedBox(
               width: 42,
               height: 42,
-              child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.bold), size: 20, color: Zine.ink)),
+              child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.bold), size: 20, color: Colors.white)),
             ),
           ),
         ],
@@ -144,7 +145,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
   Widget _marketplace() {
     return RefreshIndicator(
       onRefresh: _load,
-      color: Zine.blueInk,
+      color: AD.tabGroups,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
@@ -161,18 +162,18 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Zine.lilac,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Zine.border,
-              boxShadow: Zine.shadowXs,
+              color: AD.card,
+              borderRadius: BorderRadius.circular(Msg.rLg),
+              border: Border.all(color: AD.borderControl, width: 1),
+              boxShadow: Msg.none,
             ),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 28, color: Zine.ink),
+              PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular), size: 28, color: AD.tabCalls),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'AI coaches that SEE you — form, technique and skill, live on camera. A skeleton overlay + live score, and "Analyze my form" for a deep look. Pay per minute, max 1 hour.',
-                  style: ZineText.sub(size: 12.5, color: Zine.ink),
+                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13, height: 1.42),
                 ),
               ),
             ]),
@@ -191,7 +192,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
           ),
           const SizedBox(height: 16),
           if (_loading)
-            const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: Zine.blueInk)))
+            const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: AD.tabGroups)))
           else if (_agents.isEmpty)
             Padding(
               padding: const EdgeInsets.all(40),
@@ -209,7 +210,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
   }
 
   Widget _myBookings() {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
+    if (_loading) return const Center(child: CircularProgressIndicator(color: AD.tabGroups));
     if (_bookings.isEmpty) {
       return Center(
         child: Padding(
@@ -222,7 +223,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
     }
     return RefreshIndicator(
       onRefresh: _load,
-      color: Zine.blueInk,
+      color: AD.tabGroups,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _bookings.length,
@@ -232,26 +233,25 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
           final upcoming = b.status == 'booked' && b.scheduledAt > DateTime.now().millisecondsSinceEpoch - 10 * 60 * 1000;
           return ZinePressable(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AgentDetailScreen(agentId: b.agentId))).then((_) => _load()),
-            radius: BorderRadius.circular(Zine.rSm),
-            boxShadow: Zine.shadowXs,
+            radius: BorderRadius.circular(Msg.rLg),
+            boxShadow: Msg.none,
             padding: const EdgeInsets.all(12),
             child: Row(children: [
               Container(
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderControl, width: 1)),
                 child: Avatar(seed: b.agentId, name: b.agentName, size: 44, avatarUrl: b.agentAvatar),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 15)),
+                  Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
                   const SizedBox(height: 3),
                   Text(
-                    ('${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
-                            '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}')
-                        .toUpperCase(),
+                    '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
+                    '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: ZineText.tag(size: 10, color: Zine.inkSoft),
+                    style: ADText.tabLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.4),
                   ),
                 ]),
               ),
@@ -259,11 +259,11 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
                 const SizedBox(width: 8),
                 ZinePressable(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AgentDetailScreen(agentId: b.agentId, bookingId: b.id))).then((_) => _load()),
-                  color: Zine.mint,
-                  radius: BorderRadius.circular(100),
-                  boxShadow: Zine.shadowXs,
+                  color: AD.online,
+                  radius: BorderRadius.circular(Msg.rPill),
+                  boxShadow: Msg.none,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  child: Text('Join', style: ZineText.button(size: 14)),
+                  child: Text('Join', style: ADText.rowName().copyWith(fontSize: 14, height: 1.0, letterSpacing: -0.2)),
                 ),
               ],
             ]),
