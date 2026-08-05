@@ -55,3 +55,25 @@ jobs:
       - name: Type-check consumers
         working-directory: consumers
         run: npm run typecheck
+
+  # [UI-DS-GUARD-1] Design-system drift guard (raw colour literals + bare
+  # Material icons in app/lib). Lives HERE, not only in verify.yml, because
+  # verify.yml is workflow_dispatch-only and nobody runs it by hand before a
+  # merge — pull_request is the trigger that actually catches drift while the
+  # change is still a diff. Costs ~15s: plain python3, no pub/npm deps, no
+  # Flutter SDK, and it builds and deploys nothing.
+  #
+  # Baselined against tool/design_guard_baseline.json, so it was green the day
+  # it landed and only fails on NEW violations. If it fails, USE A TOKEN —
+  # do not run --update-baseline. See CLAUDE.md "Design-system guard".
+  design-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Step names carry the EXACT local reproduce command on purpose: a dev
+      # who trips this can copy it straight out of the Actions log.
+      - name: No raw colours outside the token files -- run locally with `python3 tool/check_design_guard.py --check colours`
+        run: python3 tool/check_design_guard.py --check colours
+      - name: No bare Material Icons.* in feature code -- run locally with `python3 tool/check_design_guard.py --check icons`
+        if: always()
+        run: python3 tool/check_design_guard.py --check icons

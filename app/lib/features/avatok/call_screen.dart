@@ -772,7 +772,7 @@ class _CallScreenState extends State<CallScreen> {
                               PhosphorIcons.lock(PhosphorIconsStyle.fill),
                               size: 11,
                               color: showVideo
-                                  ? Colors.white70
+                                  ? AD.textSecondary
                                   : AD.textTertiary),
                           const SizedBox(width: 4),
                           Flexible(
@@ -787,7 +787,7 @@ class _CallScreenState extends State<CallScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: ADText.sectionLabel(
                                   c: showVideo
-                                      ? Colors.white70
+                                      ? AD.textSecondary
                                       : AD.textTertiary),
                             ),
                           ),

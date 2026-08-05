@@ -361,6 +361,50 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 
 ---
 
+## Design-system guard — TWO AUTOMATED CHECKS (added 2026-08-05)
+
+The 2026-08-04/05 cleanup folded ~1,600 legacy design-system references, ~1,900
+Material icons and ~220 stray radii onto the token files. `tool/check_design_guard.py`
+stops the next new screen re-introducing them:
+
+1. **No raw colour literals under `app/lib`** — `Color(0x…)`, `Color.fromARGB/fromRGBO`,
+   non-sentinel `Colors.<name>`, bare `0xAARRGGBB` ints and `'#rrggbb'` strings.
+   Exempt: the three token files (`core/ui/avatok_dark.dart`, `messenger_theme.dart`,
+   `bubble_theme.dart`), comments, and the sentinels `Colors.transparent/white/black`
+   (they carry no design decision; tighten with `--strict-material`).
+2. **No bare Material `Icons.*`** under `features/**` and `shell/**` — the app is on
+   Phosphor: `PhosphorIcons.<name>(PhosphorIconsStyle.regular)`. The regex uses a
+   negative lookbehind so `PhosphorIcons.` can't match; a naive `grep 'Icons\.'`
+   reports ~1,855 phantom hits and has already misled someone.
+
+```bash
+python3 tool/check_design_guard.py --check colours   # check 1
+python3 tool/check_design_guard.py --check icons     # check 2
+python3 tool/check_design_guard.py --check all       # both
+python3 tool/check_design_guard.py --check colours --list   # show every hit
+```
+
+Plain `python3`, no pub/npm deps, no Flutter toolchain — safe on this machine.
+Wired into **`typecheck.yml`** (runs on every `pull_request` — the trigger that
+actually catches drift) and **`verify.yml`** (on demand), both as a `design-guard`
+job. Neither builds nor deploys anything, and **no `push:` trigger was added** —
+adding one would break `scripts/git_safe_push.py` for everyone.
+
+Both checks are **baselined** against `tool/design_guard_baseline.json` (colours:
+218 pre-existing occurrences across 43 files; icons: 0), so they were green on day
+one and fail ONLY on violations that are new.
+
+> **When it fails, USE A TOKEN. Do NOT run `--update-baseline`.** The baseline is a
+> record of leftover debt, not an allowlist; growing it undoes the cleanup one commit
+> at a time. Reach for an `AD.*` token in `core/ui/avatok_dark.dart` (add one there if
+> none fits), or `Msg.*`/`MsgColors.*`/`BubbleTheme`. For the rare value a token
+> genuinely cannot hold (a native API that wants a literal hex string), use the inline
+> `// design-guard: allow — <reason>` hatch; a reason is mandatory.
+> `--update-baseline` is only for a large deliberate refactor, e.g. after a big file
+> split moves existing violations to new paths.
+
+---
+
 ## Per-session workflow (READ AND FOLLOW EVERY SESSION)
 
 ### Search & context (do this first)

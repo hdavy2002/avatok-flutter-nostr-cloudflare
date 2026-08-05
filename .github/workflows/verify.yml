@@ -69,6 +69,30 @@ jobs:
         working-directory: consumers
         run: npx vitest run
 
+  # [UI-DS-GUARD-1] Design-system drift guard. Pure python3, NO Flutter
+  # toolchain, no pub deps — runs in ~1s in a bare container, which is why it
+  # is its own job rather than a step inside the 20-minute flutter-analyze job
+  # below (a design regression should not wait on a Flutter SDK download).
+  #
+  # It is baselined: tool/design_guard_baseline.json records the violations
+  # that existed when the guard landed, so it is green on day one and only
+  # fires on NEW drift. The correct response to a failure is to use a token,
+  # NOT to run --update-baseline. See CLAUDE.md "Design-system guard".
+  #
+  # Also runs on every PR via typecheck.yml (pull_request) — that is the
+  # trigger that actually catches drift early; this copy is the on-demand one.
+  design-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Step names carry the EXACT local reproduce command on purpose: a dev
+      # who trips this can copy it straight out of the Actions log.
+      - name: No raw colours outside the token files -- run locally with `python3 tool/check_design_guard.py --check colours`
+        run: python3 tool/check_design_guard.py --check colours
+      - name: No bare Material Icons.* in feature code -- run locally with `python3 tool/check_design_guard.py --check icons`
+        if: always()
+        run: python3 tool/check_design_guard.py --check icons
+
   flutter-analyze:
     runs-on: ubuntu-latest
     steps:

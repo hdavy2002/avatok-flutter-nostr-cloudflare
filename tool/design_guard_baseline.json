@@ -1,0 +1,184 @@
+{
+  "_readme": "Violations that existed when tool/check_design_guard.py was introduced. The guard fails only on violations NOT recorded here. This is a record of DEBT, not an allowlist: fix a new violation with a token, do not run --update-baseline to silence it.",
+  "version": 1,
+  "colours": {
+    "description": "raw colour literals outside the token files",
+    "policy": {
+      "material_allow": [
+        "black",
+        "transparent",
+        "white"
+      ]
+    },
+    "total": 218,
+    "entries": {
+      "app/lib/core/admin_tools.dart": {
+        "Color(0x…)": 15
+      },
+      "app/lib/core/app_registry.dart": {
+        "Color(0x…)": 31
+      },
+      "app/lib/core/apps.dart": {
+        "Color(0x…)": 19
+      },
+      "app/lib/core/apps_service.dart": {
+        "Color(0x…)": 5
+      },
+      "app/lib/core/calls/callkit_params.dart": {
+        "'#rrggbb' string": 2
+      },
+      "app/lib/core/logo.dart": {
+        "Color(0x…)": 2
+      },
+      "app/lib/core/wallpaper.dart": {
+        "Color(0x…)": 10
+      },
+      "app/lib/features/askava/askava_screen.dart": {
+        "Color(0x…)": 3
+      },
+      "app/lib/features/ava/ava_lane.dart": {
+        "Color(0x…)": 3
+      },
+      "app/lib/features/avadial/avadial_setup_sheet.dart": {
+        "Colors.white24": 1,
+        "Colors.white38": 1,
+        "Colors.white60": 1,
+        "Colors.white70": 2
+      },
+      "app/lib/features/avadial/avadial_theme.dart": {
+        "Colors.black54": 1
+      },
+      "app/lib/features/avadial/contact_groups.dart": {
+        "bare 0xAARRGGBB": 5
+      },
+      "app/lib/features/avadial/inbox/inbox_list_screen.dart": {
+        "Color(0x…)": 6
+      },
+      "app/lib/features/avadial/inbox/inbox_thread_screen.dart": {
+        "Color(0x…)": 5
+      },
+      "app/lib/features/avatok/ava_email.dart": {
+        "Color(0x…)": 2
+      },
+      "app/lib/features/avatok/call_screen.dart": {
+        "Color(0x…)": 1,
+        "Colors.amber": 1,
+        "Colors.greenAccent": 1
+      },
+      "app/lib/features/avatok/chat_media_cards.dart": {
+        "Color(0x…)": 9,
+        "Colors.black12": 1,
+        "Colors.white70": 2
+      },
+      "app/lib/features/avatok/chat_thread.dart": {
+        "Color(0x…)": 2,
+        "Colors.black26": 1
+      },
+      "app/lib/features/avatok/chat_thread/bubbles.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/avatok/chat_thread/cards.dart": {
+        "Color(0x…)": 2
+      },
+      "app/lib/features/avatok/chat_thread/composer.dart": {
+        "Color(0x…)": 3
+      },
+      "app/lib/features/avatok/chat_thread/guardian.dart": {
+        "Color(0x…)": 2,
+        "Colors.white70": 3
+      },
+      "app/lib/features/avatok/chat_thread/special_content.dart": {
+        "Colors.black54": 1
+      },
+      "app/lib/features/avatok/chat_thread/widgets_small.dart": {
+        "Colors.black54": 1
+      },
+      "app/lib/features/avatok/file_viewer_screen.dart": {
+        "Colors.white54": 1,
+        "Colors.white70": 2
+      },
+      "app/lib/features/avatok/invite_screen.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/avatok/live_location.dart": {
+        "Color(0x…)": 2,
+        "Colors.black54": 1
+      },
+      "app/lib/features/avatok/widgets/ai_media_job_card.dart": {
+        "Colors.black54": 1
+      },
+      "app/lib/features/calendar/calendar_data.dart": {
+        "Color(0x…)": 7
+      },
+      "app/lib/features/campaigns/campaign_inbox_cards.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/campaigns/campaign_wizard_screen.dart": {
+        "Color(0x…)": 2
+      },
+      "app/lib/features/explore/listing_detail.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/identity/liveness_v2/expression_step.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/identity/liveness_v2/head_circle_step.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/identity/liveness_v2/live_theme.dart": {
+        "Color(0x…)": 4
+      },
+      "app/lib/features/identity/liveness_v2/stage_chrome.dart": {
+        "Color(0x…)": 5
+      },
+      "app/lib/features/library/avalibrary_screen.dart": {
+        "Color(0x…)": 2,
+        "Colors.white24": 1
+      },
+      "app/lib/features/library/library_picker.dart": {
+        "Colors.white70": 1
+      },
+      "app/lib/features/marketplace/edit_listing_screen.dart": {
+        "Colors.black54": 1
+      },
+      "app/lib/features/marketplace/intent_theme.dart": {
+        "Color(0x…)": 20
+      },
+      "app/lib/features/marketplace/sell_listing_flow.dart": {
+        "Colors.black54": 1
+      },
+      "app/lib/features/messaging/widgets/link_viewer_sheet.dart": {
+        "Color(0x…)": 1,
+        "Colors.white60": 1,
+        "Colors.white70": 1
+      },
+      "app/lib/features/messaging/widgets/mention_text_controller.dart": {
+        "Color(0x…)": 2
+      },
+      "app/lib/features/onboarding/onboarding_flow.dart": {
+        "Color(0x…)": 1
+      },
+      "app/lib/features/status/status_viewer_screen.dart": {
+        "Color(0x…)": 2
+      },
+      "app/lib/push/push_service.dart": {
+        "Color.fromARGB(…)": 2
+      },
+      "app/lib/shell/ava_sidebar.dart": {
+        "Colors.white70": 3
+      },
+      "app/lib/shell/v2/app_switcher_bar.dart": {
+        "Color(0x…)": 3
+      },
+      "app/lib/shell/v2/avadial_root.dart": {
+        "Color(0x…)": 1
+      }
+    }
+  },
+  "icons": {
+    "description": "bare Material Icons.* in feature code",
+    "policy": {},
+    "total": 0,
+    "entries": {}
+  }
+}
