@@ -53,6 +53,18 @@ export interface PlatformConfig {
   translationEnabled: boolean;       // master switch for /api/translate/*
   /** 1:1 P2P call translation. Independent gate: remains dark by default. */
   callTranslationEnabled: boolean;
+  /**
+   * [CALL-TRANSLATE-FREE-1] OWNER DECISION 2026-08-05 — REVERSES the 2026-08-04
+   * paid-only ruling. Testers hold only the 100-token welcome grant plus the daily
+   * free grant, so a paid-only gate made live translation untestable by everyone
+   * except the owner. When true, `/start` gates on `spendable` (free + bonus +
+   * paid) and every per-minute charge passes `allow_free: true`.
+   *
+   * The gate and the charge MUST agree — both read this one flag, which is why it
+   * is a flag and not two hardcoded constants. Flip it to false to restore
+   * paid-only without shipping a build.
+   */
+  callTranslationAllowFreeTokens: boolean;
   // [CALL-TRANSLATE-2D-3] Call-translation abuse ceilings, per payer per hour.
   // These MUST stay tunable from KV: the client's speculative warm-up (Phase C)
   // creates REAL /start rows that are frequently discarded, so a ceiling written
@@ -899,6 +911,10 @@ const DEFAULTS: PlatformConfig = {
   // phone OTP is gone app-wide; the flag gated an unrouted, 410'd endpoint.
   translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
   callTranslationEnabled: false,   // [CALL-TRANSLATE-1] dark until CI + two-device verification
+  // [CALL-TRANSLATE-FREE-1] ON per owner 2026-08-05, reversing the 2026-08-04
+  // paid-only ruling: testers hold only welcome/daily grants, so paid-only made
+  // the feature untestable. Gate and per-minute charge both read this one flag.
+  callTranslationAllowFreeTokens: true,
   // [CALL-TRANSLATE-2D-3] Abuse ceilings, not product limits. Sized off worst-case
   // legitimate behaviour with ~2x headroom: back-to-back short calls ≈30 starts/h,
   // 2–3 language-sheet opens per call ≈60 warm-ups/h, ≈15 switches/h × 3 requests

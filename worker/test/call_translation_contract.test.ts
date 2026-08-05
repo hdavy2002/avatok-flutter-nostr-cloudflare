@@ -209,15 +209,28 @@ type Harness = {
   db: FakeDb;
   events: Array<{ event: string; uid: string; props: Record<string, unknown> }>;
   charges: Array<{ op_id: string; rowAtCharge: Row | undefined }>;
+  /** [CALL-TRANSLATE-FREE-1] Full spend bodies — `charges` deliberately keeps only
+   *  the op id and the row snapshot, but the wallet POLICY (`allow_free`) has to be
+   *  assertable too, because it is the half of the gate/charge pair that is easy to
+   *  change alone. */
+  spends: Array<Record<string, unknown>>;
   outcomes: () => Array<Record<string, unknown>>;
   named: (name: string) => Array<Record<string, unknown>>;
 };
 
-function harness(opts: { spendOk?: boolean; inCall?: boolean; paidBalance?: number } = {}): Harness {
+function harness(opts: { spendOk?: boolean; inCall?: boolean; paidBalance?: number; allowFree?: boolean } = {}): Harness {
   const db = new FakeDb();
   const events: Harness["events"] = [];
-  const kv = new Map<string, string>([["platform_config", JSON.stringify({ translationEnabled: true, callTranslationEnabled: true })]]);
+  // [CALL-TRANSLATE-FREE-1] `allowFree` undefined means "write no override", so
+  // the route falls through to DEFAULTS — which is the thing worth testing: the
+  // shipped default must let free tokens pay.
+  const kv = new Map<string, string>([["platform_config", JSON.stringify({
+    translationEnabled: true,
+    callTranslationEnabled: true,
+    ...(opts.allowFree === undefined ? {} : { callTranslationAllowFreeTokens: opts.allowFree }),
+  })]]);
   const charges: Harness["charges"] = [];
+  const spends: Harness["spends"] = [];
   const spendOk = opts.spendOk ?? true;
   const inCall = opts.inCall ?? true;
 
@@ -231,7 +244,8 @@ function harness(opts: { spendOk?: boolean; inCall?: boolean; paidBalance?: numb
   };
   const wallet = {
     fetch: async (_u: string, init: { body: string }) => {
-      const op = JSON.parse(init.body) as { op: string; op_id?: string; ref?: string };
+      const op = JSON.parse(init.body) as { op: string; op_id?: string; ref?: string } & Record<string, unknown>;
+      if (op.op !== "balance") spends.push(op);
       if (op.op === "balance") {
         const paid = opts.paidBalance ?? 100;
         return new Response(JSON.stringify({ balance: paid, spendable: paid + 25 }), { status: 200 });
@@ -260,7 +274,7 @@ function harness(opts: { spendOk?: boolean; inCall?: boolean; paidBalance?: numb
   } as unknown as Env;
 
   const named = (name: string) => events.filter((e) => e.event === name).map((e) => e.props);
-  return { env, db, events, charges, outcomes: () => named("call_translation_outcome"), named };
+  return { env, db, events, charges, spends, outcomes: () => named("call_translation_outcome"), named };
 }
 
 function post(body: unknown): Request {
@@ -535,5 +549,70 @@ describe("[CALL-TRANSLATE-OBS-3] telemetry never carries an unbounded client str
     }), h.env);
     expect(res.status).toBe(412);
     expect(String(h.named("call_translation_start_failed")[0].call_ref)).toHaveLength(128);
+  });
+});
+
+/**
+ * [CALL-TRANSLATE-FREE-1] OWNER 2026-08-05 — free/bonus tokens pay for translation.
+ *
+ * The bug this locks down: every tester holds only the 100-token welcome grant and
+ * the daily free grant, so a gate on the PAID balance 402'd all of them on the
+ * first tap ("your remaining 67 Tokens are free/bonus Tokens, which it cannot
+ * use"). The harness wallet reports `spendable = paid + 25`, i.e. a user with
+ * paid 0 still holds 25 non-paid tokens — exactly the shape that used to fail.
+ *
+ * The invariant under test is NOT just "0 paid now passes". It is that the /start
+ * GATE and the per-minute CHARGE read the same flag. If they ever diverge you get
+ * a user who passes /start and fails /activate: charged expectations, no
+ * translation. Hence the `allow_free` assertion on the spend op below.
+ */
+const startWith = (h: Harness, callRef: string) => callTranslationStart(
+  post({ call_ref: callRef, target_lang: "fr", source_capability: "webrtc_same_capture_pcm16_v1" }), h.env,
+);
+
+describe("[CALL-TRANSLATE-FREE-1] free/bonus tokens pay for call translation", () => {
+  it("by DEFAULT lets a payer with zero PAID tokens past the /start gate", async () => {
+    // No KV override: this asserts the shipped DEFAULTS value, which is what
+    // actually reaches production users.
+    const h = harness({ paidBalance: 0 });
+    const res = await startWith(h, "c_free");
+    // 502 is the provider mint short-circuiting (no GEMINI_API_KEY in tests) —
+    // i.e. execution got PAST the money gate, which is the whole point. A 402
+    // here is the regression.
+    expect(res.status).toBe(502);
+    expect(h.named("call_translation_start_failed").map((e) => e.reason))
+      .not.toContain("insufficient_tokens");
+  });
+
+  it("still refuses when even the non-paid buckets cannot cover the minimum", async () => {
+    // spendable = paid + 25, so -25 puts total spendable at 0.
+    const h = harness({ paidBalance: -25 });
+    const res = await startWith(h, "c_empty");
+    expect(res.status).toBe(402);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toBe("insufficient_tokens");
+    // Free tokens ARE allowed, so this refusal is NOT about the wrong bucket.
+    // Telling an empty wallet to "top up, your tokens are the wrong kind" is the
+    // visibly-wrong copy this field exists to prevent.
+    expect(body.paid_only).toBe(false);
+  });
+
+  it("restores paid-only when the flag is turned off, and says so in the 402", async () => {
+    const h = harness({ paidBalance: 0, allowFree: false });
+    const res = await startWith(h, "c_paidonly");
+    expect(res.status).toBe(402);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.paid_only).toBe(true);
+    expect(body.balance).toBe(0);
+    expect(body.spendable).toBe(25);
+  });
+
+  it("charges with allow_free matching the gate, so /start and /activate agree", async () => {
+    const h = harness({ paidBalance: 0 });
+    h.db.seed(row({ id: "s_free", call_ref: "c_act", status: "pending", source_lease: "lease-free" }));
+    await callTranslationActivate(post({ source_lease: "lease-free", source_ready: true }), h.env, "s_free");
+    const spend = h.spends.at(-1);
+    expect(spend).toBeDefined();
+    expect(spend!.allow_free).toBe(true);
   });
 });

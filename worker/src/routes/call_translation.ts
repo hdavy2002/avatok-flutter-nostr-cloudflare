@@ -123,20 +123,20 @@ async function participantInActiveCall(env: Env, callRef: string, uid: string): 
 }
 
 /**
- * [CALL-TRANSLATE-2D-3] OWNER DECISION 2026-08-04 — call translation is PAID-ONLY.
+ * [CALL-TRANSLATE-FREE-1] OWNER DECISION 2026-08-05 — REVERSES the 2026-08-04
+ * paid-only ruling recorded here previously.
  *
- * `.balance` is the PAID wallet balance. It deliberately excludes `free` (the
- * daily AI grant) and `bonus` (the 100-token welcome grant), which is why a user
- * whose only tokens are the welcome grant is refused here. That is INTENDED, not
- * a bug: this is a metered third-party provider lane, not an in-house AI feature.
+ * `.balance` is the PAID wallet balance; `.spendable` is `free + bonus + paid`.
+ * The 2026-08-04 rule gated on `.balance`, which meant every tester — all of whom
+ * hold only the 100-token welcome grant and the daily free grant — got a 402 the
+ * moment they tapped Translate. The owner asked (2026-08-05) that free tokens pay
+ * for translation so the feature can actually be tested, so the choice is now the
+ * flag `callTranslationAllowFreeTokens` (DEFAULTS: true).
  *
- * Do NOT "fix" this by switching the gate to `.spendable` or by adding
- * `allow_free: true` to `chargeMinute` — the two must always agree, and the owner
- * has ruled that welcome-grant tokens are not spendable on call translation.
- * The CLAUDE-adjacent note "no premium gating, 100 free tokens at signup" is about
- * AI features generally; THIS feature is the documented exception.
- *
- * `spendable` is still read so the 402 can say WHY (see `insufficientTokens`).
+ * THE INVARIANT THAT STILL HOLDS: the `/start` gate and `chargeMinute` must always
+ * agree. If they disagree you create a user who passes /start and fails /activate —
+ * charged expectations, no translation. That is why BOTH read `allowFreeTokens()`
+ * rather than hardcoding a bucket. Never change one without the other.
  */
 async function balance(env: Env, uid: string): Promise<{ paid: number; spendable: number }> {
   const r = await walletOp(env, uid, { op: "balance", uid });
@@ -147,18 +147,30 @@ async function balance(env: Env, uid: string): Promise<{ paid: number; spendable
 }
 
 /**
- * [CALL-TRANSLATE-2D-3] PAID-ONLY — see `balance()` above (owner, 2026-08-04).
- *
- * `allow_free` is OMITTED on purpose, which the WalletDO reads as `false`:
- * headroom and drawdown come from the PAID `balance` only, never from
- * `free + bonus`. This must stay in lockstep with the `/start` gate, which
- * checks `.balance`. Adding `allow_free: true` here without changing that gate
- * (or vice versa) creates a user who passes /start and fails /activate — charged
- * expectations, no translation.
+ * [CALL-TRANSLATE-FREE-1] The single source of truth for which wallet buckets pay
+ * for call translation. Read by the `/start` gate, by `chargeMinute`, and by the
+ * `paid_only` field of the 402 body, so all three can never drift apart.
+ */
+async function allowFreeTokens(env: Env): Promise<boolean> {
+  const cfg = await readConfig(env);
+  return cfg.callTranslationAllowFreeTokens !== false;
+}
+
+/** Tokens usable for translation under the current flag. Pair with `allowFreeTokens`. */
+function usableBalance(bal: { paid: number; spendable: number }, allowFree: boolean): number {
+  return allowFree ? bal.spendable : bal.paid;
+}
+
+/**
+ * [CALL-TRANSLATE-FREE-1] `allow_free` mirrors the `/start` gate exactly — see
+ * `balance()` above. When true the WalletDO draws free → bonus → paid; when false
+ * headroom and drawdown come from the PAID `balance` only.
  */
 async function chargeMinute(env: Env, s: CallSession, minute: number): Promise<boolean> {
+  const allowFree = await allowFreeTokens(env);
   const r = await walletOp(env, s.payer_uid, {
     op: "spend", uid: s.payer_uid, amount: CALL_TRANSLATION_RATE, type: "spend",
+    allow_free: allowFree,
     app_name: APP, ref: s.id, op_id: `call-translation:${s.id}:minute:${minute}`,
     ledger: {
       debit: acctUser(s.payer_uid), credit: ACCT_PLATFORM_FEES,
@@ -512,18 +524,20 @@ async function nonceRejection(env: Env, s: CallSession, route: string): Promise<
  * HTTP status stays 402, which is what the current Dart client actually branches
  * on. Delete `error_legacy` once no pre-rename build is in the field.
  *
- * [CALL-TRANSLATE-2D-3] `paid_only: true` is always present so the client can
- * write accurate copy. It means: this refusal is about PAID balance, and free /
- * bonus (welcome-grant) tokens can never satisfy it (owner decision — see
- * `balance()`). When `spendable > balance` the user genuinely holds tokens that
- * simply do not apply here, and the copy must say "top up" rather than
- * "you have no tokens", which would be visibly wrong next to their wallet.
+ * [CALL-TRANSLATE-FREE-1] `paid_only` is always present so the client can write
+ * accurate copy, but it is no longer hardcoded true. It means: this refusal is
+ * about PAID balance specifically, and free / bonus (welcome-grant) tokens cannot
+ * satisfy it. It is now simply `!callTranslationAllowFreeTokens` — with the flag
+ * ON (the 2026-08-05 default) free tokens DO pay, so a 402 means the wallet is
+ * genuinely empty and the client must NOT say "top up, your tokens are the wrong
+ * kind" (which would be visibly wrong next to a zero wallet). Callers pass the
+ * value they already resolved, so the body can never contradict the gate.
  */
-function insufficientTokens(extra: Record<string, unknown> = {}): Response {
+function insufficientTokens(paidOnly: boolean, extra: Record<string, unknown> = {}): Response {
   return json({
     error: "insufficient_tokens",
     error_legacy: "insufficient_avacoins",
-    paid_only: true,
+    paid_only: paidOnly,
     rate_per_min: CALL_TRANSLATION_RATE,
     ...extra,
   }, 402);
@@ -650,15 +664,21 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     return limited;
   }
   const bal = await balance(env, ctx.uid);
-  if (bal.paid < CALL_TRANSLATION_MIN_START) {
+  // [CALL-TRANSLATE-FREE-1] Same flag `chargeMinute` reads. Gating on `.paid` here
+  // while the charge spends `spendable` (or vice versa) is the "passes /start,
+  // fails /activate" bug — see the note on `balance()`.
+  const allowFree = await allowFreeTokens(env);
+  const usable = usableBalance(bal, allowFree);
+  if (usable < CALL_TRANSLATION_MIN_START) {
     await startFailed(env, ctx.uid, callRef, "insufficient_tokens", {
-      warm_up: warmUp, balance: bal.paid, spendable: bal.spendable, needed: CALL_TRANSLATION_MIN_START,
+      warm_up: warmUp, balance: bal.paid, spendable: bal.spendable,
+      needed: CALL_TRANSLATION_MIN_START, allow_free: allowFree, usable,
     });
-    return insufficientTokens({
+    return insufficientTokens(!allowFree, {
       needed: CALL_TRANSLATION_MIN_START,
       balance: bal.paid,
-      // Non-paid tokens the user DOES hold. > balance means "you have tokens,
-      // but not the kind this feature spends" — see the paid-only note above.
+      // Non-paid tokens the user DOES hold. Only meaningful when paid_only is
+      // true; with free tokens allowed, `usable` is what actually ran out.
       spendable: bal.spendable,
       call_ref: callRef,
     });
@@ -814,10 +834,11 @@ export async function callTranslationActivate(req: Request, env: Env, id: string
   }
   if (!(await chargeMinute(env, s, 1))) {
     await metaDb(env).prepare("UPDATE translation_call_sessions SET status='pending',updated_at=?2 WHERE id=?1 AND status='activating'").bind(id, Date.now()).run();
-    // PAID-ONLY refusal (owner 2026-08-04). `spendable` is included so the client
-    // can distinguish "no tokens at all" from "tokens, but not paid ones".
+    // [CALL-TRANSLATE-FREE-1] `spendable` is included so the client can distinguish
+    // "no tokens at all" from "tokens, but not the kind this feature spends" — the
+    // latter only exists while `callTranslationAllowFreeTokens` is false.
     const bal = await balance(env, ctx.uid);
-    return insufficientTokens({
+    return insufficientTokens(!(await allowFreeTokens(env)), {
       reason: "paid_balance_required", needed: CALL_TRANSLATION_MIN_START, billable: false,
       balance: bal.paid, spendable: bal.spendable, call_ref: s.call_ref,
     });
@@ -866,11 +887,11 @@ export async function callTranslationRenew(req: Request, env: Env, id: string): 
     if (fundsStopped.meta.changes === 1) {
       await emitOutcome(env, s, "insufficient_funds", { stopped_at_minute: minute });
     }
-    // PAID-ONLY (owner 2026-08-04): the wallet refused against paid `balance`.
-    // `spendable` lets the client say "your remaining tokens are free/bonus
-    // tokens, which translation cannot spend" instead of a misleading "empty".
+    // [CALL-TRANSLATE-FREE-1] The wallet refused against whichever bucket the flag
+    // selects. `spendable` lets the client say "your remaining tokens are free/bonus
+    // tokens, which translation cannot spend" — but ONLY when paid_only is true.
     const bal = await balance(env, ctx.uid);
-    return insufficientTokens({
+    return insufficientTokens(!(await allowFreeTokens(env)), {
       reason: "balance_exhausted", billable: true,
       balance: bal.paid, spendable: bal.spendable,
       billed_minute: s.last_billed_minute, billed_tokens: s.billed_tokens, call_ref: s.call_ref,
