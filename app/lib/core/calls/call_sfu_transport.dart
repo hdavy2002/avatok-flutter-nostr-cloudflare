@@ -1,0 +1,358 @@
+/// [CALL-SFU-1 2026-08-06] The 1:1 media transport that runs through the
+/// Cloudflare Realtime SFU instead of directly to the other phone.
+///
+/// WHAT THIS REPLACES, AND WHY
+/// ---------------------------
+/// On the P2P path the two phones negotiate with EACH OTHER over the CallRoom
+/// socket: offer, answer, trickled candidates, an elected offerer, glare
+/// detection, and — when the network changes — an ICE restart that both sides
+/// must agree on and both must independently prove worked. On 2026-08-05 that
+/// last part failed 12 times out of 12 on real devices.
+///
+/// Here there is no negotiation between phones at all. Each phone has exactly one
+/// conversation, with a server, at a fixed publicly-routable address:
+///
+///     me --publish--> Cloudflare <--publish-- peer
+///     me <---pull---- Cloudflare ----pull---> peer
+///
+/// When my network changes, only MY leg breaks. The peer keeps sending to a
+/// server that has not moved. Recovery is "reconnect to a server", not "two
+/// phones behind two NATs re-find each other over a signalling path that may
+/// itself be broken".
+///
+/// THE ONE INVERSION TO REMEMBER
+/// -----------------------------
+/// PUBLISH: we offer, the SFU answers.
+/// PULL:    the SFU offers, WE answer (delivered via PUT /renegotiate).
+///
+/// That is Cloudflare's contract, not ours, and it is the reason no part of the
+/// P2P recovery machinery ports over: every piece of it assumes we can re-offer
+/// whenever we like. On this transport there is no client-initiated re-offer at
+/// all — which is also why a mid-call camera-on is a second PUBLISH here rather
+/// than the renegotiation `_restartWithVideo` does on P2P.
+///
+/// SEQUENCE FIDELITY
+/// -----------------
+/// The connect/publish/pull ordering below deliberately mirrors
+/// `features/conference/cloudflare_conference_controller.dart`, which has been
+/// carrying group conferences in production since the LiveKit cutover. Where the
+/// two differ, that one is right and this one is wrong — it is the reference, and
+/// it is why (for example) the offer is published immediately after
+/// `setLocalDescription` without waiting for ICE gathering to complete. Do not
+/// "improve" that ordering from first principles without a two-device test.
+library;
+
+import 'dart:async';
+
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+
+import '../ava_log.dart';
+import 'call_sfu_api.dart';
+
+/// Why a connect attempt gave up. Carried into `call_sfu_fallback` so a bad day
+/// at Cloudflare shows up as a chart rather than as "calls are broken".
+enum SfuFailure {
+  /// Server said the SFU is off or unconfigured. Expected, not alarming.
+  unavailable,
+
+  /// `/join` failed — no session, nothing to build on.
+  joinFailed,
+
+  /// We built a peer connection but could not publish our own audio.
+  publishFailed,
+
+  /// The peer never registered a seat inside the window. Usually means the other
+  /// side went to P2P, or never got as far as joining.
+  peerNeverPublished,
+
+  /// The peer was published but pulling their track failed.
+  pullFailed,
+
+  /// Anything unexpected. The message is carried separately.
+  unknown,
+}
+
+class CallSfuResult {
+  CallSfuResult.ok(this.pc, {required this.sessionId, required this.relayDegraded})
+      : failure = null,
+        detail = null;
+  CallSfuResult.failed(this.failure, {this.detail})
+      : pc = null,
+        sessionId = null,
+        relayDegraded = false;
+
+  final RTCPeerConnection? pc;
+  final String? sessionId;
+  final bool relayDegraded;
+  final SfuFailure? failure;
+  final String? detail;
+
+  bool get connected => pc != null;
+}
+
+class CallSfuTransport {
+  CallSfuTransport({
+    required this.room,
+    required this.onPeerConnection,
+  });
+
+  /// The same room id the P2P signalling uses. Both transports are keyed on it,
+  /// so `CallRoom` stays the single authority on who is on this call.
+  final String room;
+
+  /// Invoked with the freshly-created peer connection BEFORE any track is added
+  /// or any SDP is exchanged.
+  ///
+  /// This exists so `CallSession` installs its OWN `onTrack`,
+  /// `onConnectionState` and stats wiring, exactly as it does for P2P. The
+  /// transport deliberately does not own those: the renderer, the health
+  /// sampler, the media-health telemetry, mute, DTMF and the translate audio
+  /// bridge all already read `_pc`, and every one of them keeps working
+  /// unchanged if the SFU simply hands back a peer connection. Duplicating that
+  /// wiring here would have created a second, silently diverging copy.
+  final void Function(RTCPeerConnection pc) onPeerConnection;
+
+  String? _sessionId;
+  RTCPeerConnection? _pc;
+  bool _disposed = false;
+
+  /// Mids we have opened, for the close call on teardown.
+  final List<String> _openMids = <String>[];
+
+  /// Track names are ours to choose. Namespacing by session id keeps them unique
+  /// across a reconnect that mints a new session, so a peer that is briefly
+  /// holding a stale seat cannot pull a name that now means something else.
+  String _audioTrackName(String sid) => 'audio-$sid';
+  String _videoTrackName(String sid) => 'video-$sid';
+
+  String? get sessionId => _sessionId;
+
+  /// How long to wait for the other phone to register its seat.
+  ///
+  /// Both phones join concurrently, so finding no peer on the first read is
+  /// NORMAL, not an error. 6s is comfortably longer than a join round trip and
+  /// comfortably shorter than a caller's patience; past it we assume the peer is
+  /// not coming to the SFU and fall back rather than leave someone on a
+  /// connected-looking call with silence.
+  static const Duration _peerWait = Duration(seconds: 6);
+  static const Duration _peerPoll = Duration(milliseconds: 400);
+
+  /// Build the peer connection, publish our tracks, pull the peer's.
+  ///
+  /// Returns a failure rather than throwing: every caller's correct response is
+  /// to fall back to P2P, and an exception crossing the call-setup path is a
+  /// dropped call. `video` is a request — the server may refuse it when
+  /// `callSfuAudioOnly` is on, and the returned result is still a success.
+  Future<CallSfuResult> connect({
+    required MediaStream localStream,
+    required List<Map<String, dynamic>> fallbackIceServers,
+    required bool video,
+  }) async {
+    try {
+      final join = await CallSfuApi.join(room);
+      if (join.sessionId.isEmpty) {
+        return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
+      }
+      _sessionId = join.sessionId;
+      if (join.relayDegraded) {
+        // Loud on purpose. On the P2P path the identical condition was dropped
+        // silently by ice_cache.dart and a TURN outage was indistinguishable
+        // from a healthy deployment for weeks.
+        AvaLog.I.log('call', 'relay degraded on join: ${join.relayReason ?? "unknown"}');
+      }
+
+      final wantVideo = video && join.videoAllowed;
+
+      _pc = await createPeerConnection({
+        // Cloudflare's own ICE servers from /join. The fallback exists only for
+        // the pathological case of an empty list; a peer connection with no ICE
+        // servers at all cannot reach anything.
+        'iceServers': join.iceServers.isNotEmpty ? join.iceServers : fallbackIceServers,
+        'sdpSemantics': 'unified-plan',
+        // Same NetEq bounds as the P2P path (`_newPC`) and the conference
+        // controller. Prod calls showed jitter-buffer delay sitting at 600-745ms
+        // on flappy cellular with no cap; 50 packets is a ~1s ceiling and
+        // fastAccelerate drains it once the network recovers. These three
+        // transports must agree or the same call sounds different depending on
+        // which one carried it.
+        'audioJitterBufferMaxPackets': 50,
+        'audioJitterBufferFastAccelerate': true,
+        'iceCandidatePoolSize': 2,
+      });
+      if (_disposed) {
+        await _pc?.close();
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_during_setup');
+      }
+
+      // Hand it over before any track exists, so the caller's onTrack is armed
+      // before the pull below can deliver remote media.
+      onPeerConnection(_pc!);
+
+      // Track order defines the mids: audio first is mid '0', video is mid '1'.
+      // The conference controller relies on the same convention. It is an
+      // assumption about flutter_webrtc's addTrack ordering, not a guarantee
+      // from the spec — if remote video ever lands on the wrong renderer, look
+      // here first.
+      final tracks = <Map<String, dynamic>>[];
+      final audio = localStream.getAudioTracks();
+      if (audio.isEmpty) {
+        return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_local_audio_track');
+      }
+      await _pc!.addTrack(audio.first, localStream);
+      tracks.add({'mid': '0', 'kind': 'audio', 'trackName': _audioTrackName(join.sessionId)});
+
+      if (wantVideo) {
+        final cam = localStream.getVideoTracks();
+        if (cam.isNotEmpty) {
+          await _pc!.addTrack(cam.first, localStream);
+          tracks.add({'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(join.sessionId)});
+        }
+      }
+
+      // PUBLISH — we offer, the SFU answers.
+      final offer = await _pc!.createOffer();
+      await _pc!.setLocalDescription(offer);
+      final answer = await CallSfuApi.publish(room, join.sessionId, offer.sdp ?? '', tracks);
+      if (answer == null || answer['sdp'] == null) {
+        return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_answer_sdp');
+      }
+      await _pc!.setRemoteDescription(
+        RTCSessionDescription(answer['sdp'].toString(), 'answer'),
+      );
+      for (final t in tracks) {
+        _openMids.add(t['mid'].toString());
+      }
+      if (_disposed) return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_after_publish');
+
+      // Wait for the peer's seat. Not an error until the window expires.
+      final peer = await _awaitPeerAudio();
+      if (peer == null) {
+        return CallSfuResult.failed(SfuFailure.peerNeverPublished);
+      }
+
+      // PULL audio — the SFU offers, we answer.
+      final pulledAudio = await _pull('audio');
+      if (!pulledAudio) {
+        return CallSfuResult.failed(SfuFailure.pullFailed, detail: 'audio');
+      }
+
+      // Video is best-effort even when we want it: the peer may simply not have
+      // their camera on yet. A failure here must never fail the CALL — an
+      // audio-only connection is a working call, and camera-on later is just
+      // another pull.
+      if (wantVideo && peer.hasVideo) {
+        await _pull('video');
+      }
+
+      return CallSfuResult.ok(_pc!, sessionId: join.sessionId, relayDegraded: join.relayDegraded);
+    } on CallSfuException catch (e) {
+      await _closePc();
+      return CallSfuResult.failed(
+        e.unavailable ? SfuFailure.unavailable : SfuFailure.joinFailed,
+        detail: e.error,
+      );
+    } catch (e) {
+      await _closePc();
+      return CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
+    }
+  }
+
+  /// Poll until the peer has registered an audio track, or the window expires.
+  Future<CallSfuPeer?> _awaitPeerAudio() async {
+    final deadline = DateTime.now().add(_peerWait);
+    while (!_disposed && DateTime.now().isBefore(deadline)) {
+      try {
+        final p = await CallSfuApi.peer(room);
+        if (p.hasAudio) return p;
+      } catch (_) {/* transient; keep polling until the deadline */}
+      await Future<void>.delayed(_peerPoll);
+    }
+    return null;
+  }
+
+  /// One pull + the answer it requires. Returns false on any failure so the
+  /// caller can decide whether that kind was load-bearing (audio) or not (video).
+  Future<bool> _pull(String kind) async {
+    final sid = _sessionId;
+    final pc = _pc;
+    if (sid == null || pc == null) return false;
+    try {
+      final r = await CallSfuApi.pull(room, sessionId: sid, kind: kind);
+      final sdp = r.offer?['sdp']?.toString();
+      if (sdp == null) return false;
+      if (!r.renegotiate) {
+        // The SFU says nothing needs answering. Nothing to do, and answering
+        // anyway would desynchronise the session.
+        return true;
+      }
+      await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+      final answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await CallSfuApi.renegotiate(room, sid, answer.sdp ?? '');
+      for (final t in r.tracks) {
+        final mid = (t as Map?)?['mid']?.toString();
+        if (mid != null) _openMids.add(mid);
+      }
+      return true;
+    } catch (e) {
+      AvaLog.I.log('call', 'pull $kind failed: $e');
+      return false;
+    }
+  }
+
+  /// Mid-call camera-on.
+  ///
+  /// On P2P this is `_restartWithVideo`: add the track, create an offer, send it.
+  /// There is no equivalent here because the SFU accepts no client-initiated
+  /// re-offer — so it is a SECOND publish of the new mid, followed by a pull of
+  /// the peer's video if they have any. Everything else about the call is
+  /// untouched; the audio connection is not renegotiated or interrupted.
+  Future<bool> publishVideo(MediaStreamTrack videoTrack, MediaStream stream) async {
+    final sid = _sessionId;
+    final pc = _pc;
+    if (sid == null || pc == null) return false;
+    try {
+      await pc.addTrack(videoTrack, stream);
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      final answer = await CallSfuApi.publish(room, sid, offer.sdp ?? '', [
+        {'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(sid)},
+      ]);
+      if (answer == null || answer['sdp'] == null) return false;
+      await pc.setRemoteDescription(RTCSessionDescription(answer['sdp'].toString(), 'answer'));
+      _openMids.add('1');
+      // The peer may already be sending video; pull it now rather than waiting
+      // for something else to notice.
+      unawaited(_pull('video'));
+      return true;
+    } catch (e) {
+      AvaLog.I.log('call', 'publishVideo failed: $e');
+      return false;
+    }
+  }
+
+  /// Pull the peer's video when they turn their camera on mid-call.
+  Future<bool> pullPeerVideo() => _pull('video');
+
+  Future<void> _closePc() async {
+    try { await _pc?.close(); } catch (_) {}
+    _pc = null;
+  }
+
+  /// Teardown. Clearing the seat matters as much as closing the tracks: a stale
+  /// seat leaves the peer pulling a dead session id, which produces silence with
+  /// no error on either side.
+  Future<void> dispose() async {
+    _disposed = true;
+    final sid = _sessionId;
+    if (sid != null) {
+      await CallSfuApi.close(room, sid, List<String>.from(_openMids));
+    }
+    _openMids.clear();
+    _sessionId = null;
+    // The peer connection itself belongs to CallSession once handed over — it
+    // closes it in its own teardown, in its own order. Closing it here too would
+    // race that.
+    _pc = null;
+  }
+}
