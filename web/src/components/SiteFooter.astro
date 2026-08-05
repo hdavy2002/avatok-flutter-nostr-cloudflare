@@ -1,123 +1,239 @@
 ---
-// Universal site footer — the marketing-site footer, ported into the Astro app
-// so every PUBLIC page (sign-in/up, marketplace, blogs, etc.) shares it. It is
-// rendered by Base.astro only when `chrome` is true; the dashboard mounts Base
-// with `chrome={false}`, so this footer never appears inside /dashboard.
+// Universal site footer — used by BOTH layouts:
+//   • Base.astro      (marketing / app pages, when `chrome` is true)
+//   • Content.astro   (editorial legal + policy pages)
+// Before 2026-08-05 these were two different footers listing different links,
+// so the legal pages exposed only 4 of ~19 policies. One component now, so a
+// new policy gets added in exactly one place.
 //
-// Self-contained: the styles are scoped to this component and define the few
-// marketing design tokens they need locally, so nothing leaks into app pages.
-// Fonts (Fredoka / Nunito / Space Mono) are already @font-face'd in global.css.
+// Self-contained: styles are scoped and define their own tokens locally, so
+// nothing leaks into app pages. Fonts are @font-face'd in global.css.
 //
-// In-page anchors from the marketing markup are rewritten to root-absolute
-// (/#section) so they resolve to the home page's sections from any route.
+// [AVA-IDGATE-1] /biometric-retention MUST stay linked here. BIPA §15(a)
+// requires the retention schedule to be PUBLICLY AVAILABLE; a page reachable
+// only by direct URL is a weak reading of that. Do not remove that link.
+//
+// Mobile: each column becomes a <details> accordion so ~19 links stay usable
+// on a phone instead of turning the footer into an endless scroll.
+
+const year = new Date().getFullYear();
+
+const columns = [
+  {
+    title: 'Product',
+    links: [
+      { href: '/#messaging', label: 'AI Messaging' },
+      { href: '/#receptionist', label: 'AI Receptionist' },
+      { href: '/#number', label: 'Private Number' },
+      { href: '/#pricing', label: 'Pricing' },
+    ],
+  },
+  {
+    title: 'Money',
+    links: [
+      { href: '/pricing-fees', label: 'Pricing & Fees' },
+      { href: '/tokens', label: 'Tokens & Wallet' },
+      { href: '/payouts', label: 'Payouts & Withdrawals' },
+      { href: '/refunds', label: 'Refunds & Cancellations' },
+    ],
+  },
+  {
+    title: 'Marketplace',
+    links: [
+      { href: '/marketplace-terms', label: 'Marketplace Terms' },
+      { href: '/consultation-terms', label: 'Consultation Terms' },
+      { href: '/acceptable-use', label: 'Acceptable Use' },
+      { href: '/recording', label: 'Recording & Consent' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { href: '/terms', label: 'Terms of Service' },
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/cookies', label: 'Cookie Policy' },
+      { href: '/dmca', label: 'DMCA / Copyright' },
+      { href: '/biometric-retention', label: 'Biometric Data Schedule' },
+    ],
+  },
+  {
+    title: 'Safety & Support',
+    links: [
+      { href: '/community-guidelines', label: 'Community Guidelines' },
+      { href: '/child-safety', label: 'Child Safety Standards' },
+      { href: '/grievance', label: 'Grievance Redressal' },
+      { href: '/contact', label: 'Contact & Report' },
+      { href: '/about', label: 'About us' },
+      { href: '/careers', label: 'Careers' },
+    ],
+  },
+];
 ---
 
-<footer class="mkt-footer">
+<footer class="ava-footer">
   <div class="wrap">
-    <div class="foot-top">
-      <div class="foot-brand">
+
+    <div class="top">
+      <div class="brand-col">
         <a class="brand" href="/">
-          <img class="logo-mark" src="/app-logo2.png" alt="" width="36" height="36" />
+          <img src="/app-logo2.png" alt="" width="38" height="38" />
           <span class="wm">ava<span class="tok">TOK</span></span>
         </a>
-        <p class="foot-desc">A modern AI-powered messenger for real life, with memory, help, safety, and a private number in every conversation.</p>
-        <div class="foot-social">
-          <a class="soc tw" href="/" aria-label="AvaTweet" data-tip="AvaTweet"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7.5L7 21.4V17H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg></a>
-          <a class="soc in" href="/" aria-label="AvaLinked" data-tip="AvaLinked"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="7" width="20" height="12.5" rx="2"></rect><path d="M8.5 7V5.6a1.6 1.6 0 0 1 1.6-1.6h3.8a1.6 1.6 0 0 1 1.6 1.6V7h-1.8V5.8h-3.4V7H8.5z"></path></svg></a>
-          <a class="soc yt" href="/" aria-label="AvaTube" data-tip="AvaTube"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm5.5 3.5v7l6-3.5-6-3.5z"></path></svg></a>
-          <a class="soc fb" href="/" aria-label="AvaBook" data-tip="AvaBook"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="8" r="3.3"></circle><path d="M9 12.5c-3.3 0-6 2.2-6 5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5c0-2.8-2.7-5-6-5z"></path><circle cx="17.2" cy="8.8" r="2.5"></circle><path d="M17.2 12.8c-.5 0-1 .08-1.45.22A7.2 7.2 0 0 1 17.5 17.5V20H21a1 1 0 0 0 1-1v-1c0-2.6-2.2-4.7-4.8-4.7z"></path></svg></a>
-          <a class="soc ig" href="/" aria-label="AvaGram" data-tip="AvaGram"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M9.2 3l-1.3 2.2H4.5A2.5 2.5 0 0 0 2 7.7V18a2.5 2.5 0 0 0 2.5 2.5h15A2.5 2.5 0 0 0 22 18V7.7a2.5 2.5 0 0 0-2.5-2.5h-3.4L14.8 3H9.2zm2.8 4.8a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4zm0 2.2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z"></path></svg></a>
-        </div>
+        <p class="desc">
+          AI-powered messaging, calling, and a marketplace for digital services — built for real life.
+        </p>
       </div>
-      <div class="foot-col"><h4>Product</h4><a href="/#receptionist">AI Receptionist</a><a href="/#number">Private Number</a><a href="/#messaging">AI Messaging</a><a href="/#apps">Connected apps</a><a href="/#pricing">Pricing</a></div>
-      <div class="foot-col"><h4>Company</h4><a href="/about">About us</a><a href="/careers">Careers</a><a href="/about#press">Press</a><a href="/blog">Blog</a><a href="/contact">Contact</a></div>
-      <div class="foot-col"><h4>Support</h4><a href="/#faq">Help center</a><a href="/#faq">FAQ</a><a href="/contact">Report a problem</a><a href="/community-guidelines">Trust &amp; Safety</a><a href="/contact">Status</a></div>
-      <!-- [AVA-IDGATE-1] /biometric-retention must stay linked here. BIPA §15(a) requires
-           the retention schedule to be PUBLICLY AVAILABLE; a page reachable only by direct
-           URL is a weak reading of that. Do not remove this link. -->
-      <div class="foot-col"><h4>Legal</h4><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/community-guidelines">Community Guidelines</a><a href="/biometric-retention">Biometric Data Schedule</a><a href="/dmca">DMCA / Copyright</a><a href="/cookies">Cookie Policy</a></div>
+
+      {columns.map((col) => (
+        <nav class="col" aria-label={col.title}>
+          <h4>{col.title}</h4>
+          {col.links.map((l) => <a href={l.href}>{l.label}</a>)}
+        </nav>
+      ))}
+
+      {columns.map((col) => (
+        <details class="acc">
+          <summary>{col.title}</summary>
+          <div>{col.links.map((l) => <a href={l.href}>{l.label}</a>)}</div>
+        </details>
+      ))}
     </div>
 
-    <div class="foot-mid">
-      <span class="flags">🇮🇳 🇮🇳 🇮🇳</span>
-      <span>AI-powered messaging, made in India for real life.</span>
+    <div class="entities">
+      <div class="ent">
+        <h5>India</h5>
+        <p>
+          <strong>Ava Global International Pvt Ltd</strong>, Mumbai, India.<br />
+          Serves customers, transactions and payouts in India. GST compliant. Payouts are made to a
+          verified UPI address linked to your Indian bank account.
+        </p>
+      </div>
+      <div class="ent">
+        <h5>International</h5>
+        <p>
+          <strong>Ava Global International, Inc.</strong>, Delaware, USA.<br />
+          Serves international customers, transactions and payouts outside India.
+        </p>
+      </div>
+      <div class="ent">
+        <h5>Good to know</h5>
+        <p>
+          Top-ups are converted into tokens. Tokens are non-refundable except where the law or your
+          app store requires. Unused tokens can be withdrawn — a transfer fee and, in India, GST
+          apply, shown before you confirm. See <a href="/tokens">Tokens</a>,
+          <a href="/refunds">Refunds</a> and <a href="/payouts">Payouts</a>.
+        </p>
+      </div>
     </div>
 
-    <div class="foot-bottom">
-      <span>© 2026 <b>Ava Global International Pvt Ltd</b>, Mumbai, India.</span>
-      <span class="legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/cookies">Cookies</a><a href="/dmca">DMCA</a></span>
+    <div class="bottom">
+      <span>© {year} Ava Global International Pvt Ltd &amp; Ava Global International, Inc. All rights reserved.</span>
+      <span class="mini">
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/cookies">Cookies</a>
+        <a href="/grievance">Grievance</a>
+      </span>
     </div>
+
+    <p class="made">Made in India <span class="heart" role="img" aria-label="with love">♥</span></p>
   </div>
 </footer>
 
 <style>
-  .mkt-footer {
-    /* local marketing tokens — kept on the footer root so nothing leaks out */
-    --paper: oklch(0.975 0.013 95);
-    --paper-2: oklch(0.955 0.018 92);
-    --card: oklch(0.995 0.004 95);
-    --ink: oklch(0.23 0.018 60);
-    --ink-soft: oklch(0.42 0.02 62);
-    --blue: oklch(0.92 0.085 190);
-    --blue-ink: oklch(0.52 0.12 196);
-    --coral: oklch(0.70 0.19 32);
-    --lime: oklch(0.88 0.18 124);
-    --shadow-sm: 3px 3px 0 var(--ink);
-    --maxw: 1180px;
+  .ava-footer {
+    --paper: #f3efe3;
+    --ink: #181816;
+    --ink-soft: #5c5f66;
+    --rule: rgba(24, 24, 22, 0.16);
+    --accent: #16aeb4;
 
-    border-top: 2.5px solid var(--ink);
-    background: var(--paper-2);
-    padding: 60px 0 34px;
-    font-family: 'Nunito', sans-serif;
+    border-top: 2px solid var(--ink);
+    background: var(--paper);
     color: var(--ink);
+    padding: 56px 0 30px;
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
   }
-  .mkt-footer a { text-decoration: none; transition: color .15s ease; }
+  .ava-footer .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 26px; }
+  .ava-footer a { color: inherit; text-decoration: none; }
+  .ava-footer a:hover { color: var(--accent); text-decoration: underline; }
 
-  .mkt-footer .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 26px; }
-
-  .mkt-footer .foot-top { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 34px; }
-
-  .mkt-footer .foot-brand { max-width: 320px; }
-  .mkt-footer .brand { display: flex; align-items: center; gap: 9px; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 16px; }
-  .mkt-footer .brand .tok { color: var(--blue-ink); }
-  .mkt-footer .brand .logo-mark { width: 36px; height: 36px; flex: none; display: block; border-radius: 50%; object-fit: cover; }
-
-  .mkt-footer .foot-desc { font-size: 17px; font-weight: 700; color: var(--ink-soft); line-height: 1.5; text-wrap: pretty; }
-
-  .mkt-footer .foot-social { display: flex; gap: 12px; margin-top: 22px; }
-  .mkt-footer .foot-social a { width: 46px; height: 46px; border-radius: 13px; border: 2.5px solid var(--ink); background: var(--card); display: grid; place-items: center; box-shadow: var(--shadow-sm); transition: transform .12s ease, box-shadow .12s ease, background .15s ease; position: relative; color: var(--ink); }
-  .mkt-footer .foot-social a svg { width: 21px; height: 21px; display: block; }
-  .mkt-footer .foot-social a:hover { transform: translate(-2px,-2px); box-shadow: 4px 5px 0 var(--ink); background: var(--lime); }
-  .mkt-footer .foot-social a.tw:hover, .mkt-footer .foot-social a.in:hover, .mkt-footer .foot-social a.fb:hover { background: var(--blue); }
-  .mkt-footer .foot-social a.yt:hover, .mkt-footer .foot-social a.ig:hover { background: var(--coral); color: #fff; }
-  .mkt-footer .foot-social a::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%) translateY(4px); background: var(--ink); color: var(--paper); font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px; letter-spacing: 0.02em; padding: 5px 10px; border-radius: 8px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s ease, transform .15s ease; z-index: 5; }
-  .mkt-footer .foot-social a::before { content: ""; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink); opacity: 0; transition: opacity .15s ease; }
-  .mkt-footer .foot-social a:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
-  .mkt-footer .foot-social a:hover::before { opacity: 1; }
-
-  .mkt-footer .foot-col { display: flex; flex-direction: column; gap: 12px; }
-  .mkt-footer .foot-col h4 { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 21px; letter-spacing: -0.01em; color: var(--ink); margin: 0 0 6px; }
-  .mkt-footer .foot-col a { font-weight: 700; font-size: 17px; color: var(--ink-soft); }
-  .mkt-footer .foot-col a:hover { color: var(--blue-ink); }
-
-  .mkt-footer .foot-mid { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 44px 0; padding-top: 32px; border-top: 2px dashed var(--ink); font-size: 18px; font-weight: 800; color: var(--ink); flex-wrap: wrap; text-align: center; }
-  .mkt-footer .foot-mid .flags { font-size: 22px; letter-spacing: 2px; }
-
-  .mkt-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; font-size: 16px; font-weight: 700; color: var(--ink-soft); }
-  .mkt-footer .foot-bottom b { color: var(--ink); }
-  .mkt-footer .foot-bottom .legal { display: flex; gap: 22px; }
-  .mkt-footer .foot-bottom .legal a { color: var(--ink-soft); }
-  .mkt-footer .foot-bottom .legal a:hover { color: var(--blue-ink); }
-
-  @media (max-width: 900px) {
-    .mkt-footer .foot-top { grid-template-columns: 1fr 1fr 1fr; }
-    .mkt-footer .foot-brand { grid-column: 1 / -1; max-width: 460px; }
+  /* ---------- top ---------- */
+  .ava-footer .top {
+    display: grid;
+    grid-template-columns: 1.4fr repeat(5, 1fr);
+    gap: 30px;
+    padding-bottom: 34px;
+    border-bottom: 1px solid var(--rule);
   }
-  @media (max-width: 560px) {
-    .mkt-footer { padding: 44px 0 28px; }
-    .mkt-footer .wrap { padding: 0 18px; }
-    .mkt-footer .foot-top { grid-template-columns: 1fr 1fr; gap: 22px; }
-    .mkt-footer .foot-col { min-width: 44%; }
-    .mkt-footer .foot-bottom { font-size: 15.5px; }
+  .ava-footer .brand { display: flex; align-items: center; gap: 9px; }
+  .ava-footer .brand img { width: 38px; height: 38px; border-radius: 50%; }
+  .ava-footer .wm { font-size: 23px; font-weight: 800; letter-spacing: -.04em; }
+  .ava-footer .tok { color: var(--accent); }
+  .ava-footer .desc { margin: 12px 0 0; max-width: 290px; color: var(--ink-soft); font-size: 14px; }
+
+  .ava-footer .col { display: flex; flex-direction: column; gap: 9px; }
+  .ava-footer .col h4 {
+    margin: 0 0 4px; font-size: 12px; font-weight: 800;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
+  }
+  .ava-footer .col a { font-size: 14px; color: var(--ink-soft); }
+
+  .ava-footer .acc { display: none; }
+
+  /* ---------- entities ---------- */
+  .ava-footer .entities {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px;
+    padding: 28px 0; border-bottom: 1px solid var(--rule);
+  }
+  .ava-footer .ent h5 {
+    margin: 0 0 7px; font-size: 12px; font-weight: 800;
+    letter-spacing: .1em; text-transform: uppercase;
+  }
+  .ava-footer .ent p { margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-soft); }
+  .ava-footer .ent a { color: var(--ink); font-weight: 700; text-decoration: underline; }
+
+  /* ---------- bottom ---------- */
+  .ava-footer .bottom {
+    display: flex; flex-wrap: wrap; gap: 12px 22px;
+    align-items: center; justify-content: space-between;
+    padding-top: 22px; font-size: 13px; color: var(--ink-soft);
+  }
+  .ava-footer .mini { display: flex; flex-wrap: wrap; gap: 18px; }
+  .ava-footer .mini a { font-weight: 700; }
+  .ava-footer .made { margin: 16px 0 0; text-align: center; font-size: 13px; color: var(--ink-soft); }
+  .ava-footer .heart { color: #e53935; }
+
+  /* ---------- tablet ---------- */
+  @media (max-width: 1020px) {
+    .ava-footer .top { grid-template-columns: 1fr 1fr 1fr; gap: 26px; }
+    .ava-footer .brand-col { grid-column: 1 / -1; }
+    .ava-footer .desc { max-width: none; }
+  }
+
+  /* ---------- phone: columns become accordions ---------- */
+  @media (max-width: 720px) {
+    .ava-footer { padding: 40px 0 26px; }
+    .ava-footer .wrap { padding: 0 18px; }
+    .ava-footer .top { display: block; padding-bottom: 8px; border-bottom: 0; }
+    .ava-footer .brand-col { margin-bottom: 20px; }
+    .ava-footer .col { display: none; }
+
+    .ava-footer .acc { display: block; border-top: 1px solid var(--rule); }
+    .ava-footer .acc summary {
+      list-style: none; cursor: pointer; padding: 14px 2px;
+      font-size: 14px; font-weight: 800; letter-spacing: .04em;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .ava-footer .acc summary::-webkit-details-marker { display: none; }
+    .ava-footer .acc summary::after { content: '+'; font-size: 19px; font-weight: 600; }
+    .ava-footer .acc[open] summary::after { content: '–'; }
+    .ava-footer .acc div { display: flex; flex-direction: column; gap: 12px; padding: 2px 2px 16px; }
+    .ava-footer .acc a { font-size: 15px; color: var(--ink-soft); }
+
+    .ava-footer .entities { grid-template-columns: 1fr; gap: 20px; padding: 22px 0; border-top: 1px solid var(--rule); }
+    .ava-footer .bottom { flex-direction: column; align-items: flex-start; gap: 12px; }
   }
 </style>

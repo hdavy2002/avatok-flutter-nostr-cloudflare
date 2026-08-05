@@ -1,5 +1,6 @@
 ---
 import Base from './Base.astro';
+import SiteFooter from '../components/SiteFooter.astro';
 
 export interface Props {
   title: string;
@@ -88,12 +89,10 @@ const routeTone = tone ?? (
       </article>
     </main>
 
-    <footer class="editorial-footer">
-      <a class="footer-brand" href="/"><img src="/app-logo2.png" alt="" width="38" height="38" /><span>avaTOK</span></a>
-      <p>AI-powered messenger for real life, made in India.</p>
-      <nav aria-label="Footer navigation"><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></nav>
-      <small>Made in India <span class="love-icon" role="img" aria-label="with love">♥</span><br />© 2026 Ava Global International Pvt Ltd, Mumbai, India.</small>
-    </footer>
+    {/* Shared with Base.astro — the legal pages used to carry a cut-down footer
+        listing only 4 policies. One component now, so every policy is reachable
+        from every page. */}
+    <SiteFooter />
   </div>
 </Base>
 
