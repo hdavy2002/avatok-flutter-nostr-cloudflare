@@ -51,7 +51,9 @@ class MentionTextController extends TextEditingController {
         text: m.group(0),
         style: base.copyWith(
           color: sigil == '#' ? shareGreen : mentionBlue,
-          fontWeight: FontWeight.w800,
+          // [UI-MSG-TYPE-1] w800 is out of the scale; a mention is emphasis
+          // inside body copy, not a heading.
+          fontWeight: FontWeight.w600,
         ),
       ));
       cursor = m.end;

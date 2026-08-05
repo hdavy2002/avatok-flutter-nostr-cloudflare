@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'contacts.dart';
 
 /// Just-in-time @handle prompt. We no longer collect a handle during onboarding
@@ -110,7 +111,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
             Center(
               child: Container(
                 width: 44, height: 5, margin: const EdgeInsets.only(bottom: 18),
-                decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AD.textFaint, borderRadius: Msg.brPill),
               ),
             ),
             // Accent glyph badge (@).
@@ -183,7 +184,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AD.primaryBadge,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brMd,
                   ),
                   child: _saving
                       ? const SizedBox(width: 20, height: 20,

@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'live_theme.dart';
 
 /// Liveness V2 — PHRASE / READ-ALOUD challenge step (Specs/LIVENESS-V2-PLAN.md
@@ -68,32 +70,26 @@ const _kLangs = <({String code, String label})>[
   (code: 'de', label: 'Deutsch'),
 ];
 
-class _PhraseStepState extends State<PhraseStep>
-    with SingleTickerProviderStateMixin {
+class _PhraseStepState extends State<PhraseStep> {
   static const _minMs = 4000; // must read for ≥4s before we auto-complete
 
-  late final AnimationController _anim;
   Timer? _gate;
   bool _reading = false;
   bool _done = false;
   int _startMs = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _anim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-  }
 
   void _start() {
     if (_reading) return;
     setState(() => _reading = true);
     _startMs = DateTime.now().millisecondsSinceEpoch;
     widget.onStart(); // orchestrator starts recording
-    // Respect reduced motion: only animate the waveform when animations are on.
-    if (!LiveTheme.reducedMotion(context)) _anim.repeat(reverse: true);
+    // [UI-LIVE-LOOPS-1 2026-08-05] LOOP REMOVED. `_anim` used to drive the
+    // waveform on a 700ms `repeat(reverse: true)` for the whole read-aloud.
+    // It was NEVER a real audio level (see the LIVE-V2 NOTE above — the repo has
+    // no amplitude source), so it was an animation that looked like data and
+    // wasn't. Completion is gated by `_gate`, never by the animation, so nothing
+    // functional changed. The blinking dot on the "Listening" pill is the one
+    // loop that keeps saying "the mic is live".
     _gate = Timer(const Duration(milliseconds: _minMs), _complete);
   }
 
@@ -112,7 +108,6 @@ class _PhraseStepState extends State<PhraseStep>
   @override
   void dispose() {
     _gate?.cancel();
-    _anim.dispose();
     super.dispose();
   }
 
@@ -122,14 +117,14 @@ class _PhraseStepState extends State<PhraseStep>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LiveTheme.stageHeadline('Now read this ', markWord: 'aloud'),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         Text('Pick your language, then read the line in one go.',
             style: LiveTheme.subStyle),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         // Language chips (disabled once reading has started, or while re-fetching).
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: Msg.s2,
+          runSpacing: Msg.s2,
           children: [
             for (final l in _kLangs)
               LiveTheme.chip(
@@ -141,26 +136,26 @@ class _PhraseStepState extends State<PhraseStep>
               ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         // Taped phrase card.
         _phraseCard(),
         const Spacer(),
         if (!_reading)
           LiveTheme.limeButton(
             label: "I'm ready — start",
-            icon: Icons.mic,
+            icon: PhosphorIcons.microphone(PhosphorIconsStyle.bold),
             onPressed: widget.langBusy ? null : _start,
           )
         else
           _listening(),
-        const SizedBox(height: 4),
+        const SizedBox(height: Msg.s1),
       ],
     );
   }
 
   Widget _phraseCard() => Container(
-        margin: const EdgeInsets.only(top: 10),
-        padding: const EdgeInsets.fromLTRB(20, 26, 20, 20),
+        margin: const EdgeInsets.only(top: Msg.s3),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s6, Msg.s5, Msg.s5),
         decoration: LiveTheme.taperedCardDecoration,
         child: Stack(
           clipBehavior: Clip.none,
@@ -175,9 +170,10 @@ class _PhraseStepState extends State<PhraseStep>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('READ ALOUD · ${widget.langLabel}',
+                // [UI-CASE-1] Sentence case — the shouted kicker was noise.
+                Text('Read aloud · ${widget.langLabel}',
                     style: LiveTheme.kickerOnCardStyle),
-                const SizedBox(height: 8),
+                const SizedBox(height: Msg.s2),
                 Text(
                   widget.langBusy ? '…' : '“${widget.phrase}”',
                   style: LiveTheme.phraseStyle,
@@ -196,25 +192,28 @@ class _PhraseStepState extends State<PhraseStep>
             textOnFill: Colors.white,
             leadingDotBlink: true,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Msg.s3),
+          // Static waveform. Same footprint as before (160x40) so the layout is
+          // unchanged — it just no longer pretends to react to your voice.
           SizedBox(
             height: 40,
-            child: AnimatedBuilder(
-              animation: _anim,
-              builder: (_, __) => CustomPaint(
-                painter: _WavePainter(phase: _anim.value),
-                size: const Size(160, 40),
-              ),
+            child: CustomPaint(
+              painter: _WavePainter(phase: 0),
+              size: const Size(160, 40),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s3),
           Text('Keep going — I can hear you clearly.',
               style: LiveTheme.subStyle),
         ],
       );
 }
 
-/// Animated waveform bars (indicator only — see LIVE-V2 NOTE, not a real level).
+/// Waveform bars (decoration only — see LIVE-V2 NOTE, never a real level).
+///
+/// [UI-LIVE-LOOPS-1 2026-08-05] Still takes a [phase] so the shape maths is
+/// unchanged, but it is now painted once at phase 0 instead of being driven by
+/// an infinite controller.
 class _WavePainter extends CustomPainter {
   _WavePainter({required this.phase});
   final double phase;

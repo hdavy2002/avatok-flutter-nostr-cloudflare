@@ -8,6 +8,7 @@ import '../../core/ava_ai_client.dart';
 import '../../core/brain_consent.dart';
 import '../../core/db.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avachat/discuss_seed.dart';
 import '../avachat/thread_context.dart';
@@ -470,8 +471,8 @@ class _CompanionHomeState extends State<CompanionHome> {
               onPressed: _newChat,
               backgroundColor: AD.primaryBadge,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(100)),
+              // Extended FAB — the one button shape that stays a pill.
+              shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
               icon: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Colors.white),
               label: Text('New chat', style: ADText.rowName(c: Colors.white)),
             ),
@@ -759,10 +760,10 @@ class _AdultChip extends StatelessWidget {
   const _AdultChip({required this.locked});
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
         decoration: BoxDecoration(
           color: locked ? AD.card : AD.online,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Text('18+', style: ADText.statCaption(c: locked ? AD.textSecondary : Colors.white)),

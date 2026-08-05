@@ -17,6 +17,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 const String _kAutoResponderUrl = '$kApiBase/auto-responder';
@@ -241,15 +242,17 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
   Widget _switch(bool v, ValueChanged<bool> cb) => GestureDetector(
         onTap: () => cb(!v),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
+          duration: Msg.fast,
+          curve: Curves.easeOutCubic,
           width: 52, height: 30, padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
             color: v ? AD.online : AD.card,
-            borderRadius: BorderRadius.circular(100),
+            // Toggle track — a genuine pill.
+            borderRadius: Msg.brPill,
             border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: AnimatedAlign(
-            duration: const Duration(milliseconds: 120),
+            duration: Msg.fast,
             alignment: v ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(width: 22, height: 22, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white)),
           ),
@@ -282,8 +285,8 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
         padding: const EdgeInsets.only(right: 8, bottom: 8),
         child: ZinePressable(
           onTap: onTap,
-          radius: BorderRadius.circular(100),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          radius: Msg.brPill,
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
           color: selected ? AD.primaryBadge : AD.card,
           pressedColor: AD.cardHover,
           borderColor: selected ? AD.primaryBadge : AD.borderControl,

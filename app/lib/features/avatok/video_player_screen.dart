@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'media.dart';
 
 /// Plays a chat video: fetches the encrypted blob, decrypts it to a temp file,
@@ -74,7 +75,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 : Column(mainAxisSize: MainAxisSize.min, children: [
                     const CircularProgressIndicator(color: AD.primaryBadge),
                     const SizedBox(height: 14),
-                    Text(_status.toUpperCase(),
+                    Text(_status,
                         textAlign: TextAlign.center,
                         // White text only inside dark bands over video areas.
                         style: ADText.sectionLabel(c: AD.textPrimary)),
@@ -115,7 +116,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       color: AD.card,
                       pressedColor: AD.primaryBadge,
                       borderColor: AD.borderControl,
-                      radius: BorderRadius.circular(100),
+                      radius: Msg.brPill,
                       boxShadow: const [],
                       child: SizedBox(
                         width: 46, height: 46,

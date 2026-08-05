@@ -9,6 +9,7 @@ import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 
@@ -129,7 +130,7 @@ class _CallsScreenState extends State<CallsScreen> {
                 onTap: _confirmClearAll,
                 color: AD.card,
                 pressedColor: AD.destructiveBg,
-                radius: BorderRadius.circular(100),
+                radius: Msg.brPill,
                 boxShadow: const [],
                 child: SizedBox(
                   width: 40, height: 40,
@@ -239,7 +240,7 @@ class _CallsScreenState extends State<CallsScreen> {
             Row(children: [
               PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
               const SizedBox(width: 5),
-              Flexible(child: Text('${_dirLabel(c.dir)} · ${c.timeLabel}'.toUpperCase(),
+              Flexible(child: Text('${_dirLabel(c.dir)} · ${c.timeLabel}',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.sectionLabel(c: AD.textTertiary))),
             ]),
@@ -250,7 +251,7 @@ class _CallsScreenState extends State<CallsScreen> {
           onTap: () => _callBack(c),
           color: AD.card,
           pressedColor: AD.primaryBadge,
-          radius: BorderRadius.circular(100),
+          radius: Msg.brPill,
           boxShadow: const [],
           child: SizedBox(
             width: 40, height: 40,

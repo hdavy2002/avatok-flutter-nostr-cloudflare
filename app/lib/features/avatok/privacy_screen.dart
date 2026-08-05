@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'ava_number.dart';
 import 'contacts.dart';
 
@@ -217,15 +218,15 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
     return GestureDetector(
       onTap: enabled ? () => onChanged(!value) : null,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
+        duration: Msg.fast,
         width: 52, height: 30,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: value ? AD.newGroup : AD.borderControl,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
         ),
         child: AnimatedAlign(
-          duration: const Duration(milliseconds: 160),
+          duration: Msg.fast,
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 24, height: 24,
@@ -352,11 +353,11 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 decoration: BoxDecoration(
                   color: AD.primaryBadge,
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brMd,
                 ),
                 alignment: Alignment.center,
                 child: Text('Save (${_picked.length})',
-                    style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+                    style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 16, color: Colors.white)),
               ),
             ),
           ),

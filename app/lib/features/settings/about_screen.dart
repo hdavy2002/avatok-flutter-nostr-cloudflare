@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/config.dart' show kSignalingHost;
 import '../../core/feature_flags.dart' show kAvatokEnv, kAppBuild, kAppVersion;
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// ACCOUNT & SETTINGS → About. Shows the app version, build, environment
 /// (prod/staging) and the exact git build — so a tester/owner can tell at a
@@ -80,15 +81,16 @@ class _AboutScreenState extends State<AboutScreen> {
             Text('AvaTOK', style: ADText.appTitle()),
             const SizedBox(width: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
               decoration: BoxDecoration(
                 color: isProd ? AD.online : AD.unreadAccent,
-                borderRadius: BorderRadius.circular(100),
+                // Environment tag — a genuine badge.
+                borderRadius: Msg.brPill,
               ),
-              child: Text(env, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+              child: Text(env, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
             ),
           ]),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s5),
           _row('Version', '$_version (build $_build)'),
           _row('Environment', env),
           _row('Backend', kSignalingHost),

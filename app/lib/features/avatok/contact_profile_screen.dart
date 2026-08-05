@@ -8,6 +8,7 @@ import '../../core/avatar.dart';
 import '../../core/group_store.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../identity/identity.dart';
 import '../profile/qr_share.dart';
 import 'contacts.dart';
@@ -198,7 +199,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                   color: AD.inputField,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: Msg.brMd,
                   border: Border.all(color: AD.borderControl, width: 1)),
               child: QrImageView(data: _addLink, size: 150, backgroundColor: AD.inputField),
             )),
@@ -254,7 +255,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
             child: Container(
               width: 38, height: 38,
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-              child: const Icon(Icons.arrow_back_rounded, size: 22, color: AD.textPrimary),
+              child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
             ),
           ),
           const SizedBox(width: 6),
@@ -275,7 +276,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(icon, size: 17, color: AD.textPrimary),
@@ -304,7 +305,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
               child: Icon(icon, size: 15, color: accent),
             ),
             const SizedBox(width: 9),
-            Expanded(child: Text(label.toUpperCase(), style: ADText.sectionLabel())),
+            Expanded(child: Text(label, style: ADText.sectionLabel())),
           ]),
           const SizedBox(height: 10),
           child,

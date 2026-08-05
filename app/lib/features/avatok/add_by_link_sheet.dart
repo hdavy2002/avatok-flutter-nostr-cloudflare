@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'ava_number.dart';
 import 'contacts.dart';
 
@@ -107,7 +108,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(
             width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)))),
+            decoration: BoxDecoration(color: AD.textFaint, borderRadius: Msg.brPill))),
           Text('Add by QR link', style: ADText.appTitle()),
           const SizedBox(height: 4),
           Text('Paste an AvaTOK add link, or scan a code that opens it.', style: ADText.preview()),
@@ -193,7 +194,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-              decoration: BoxDecoration(color: AD.danger.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10), border: Border.all(color: AD.borderControl, width: 1)),
+              decoration: BoxDecoration(color: AD.danger.withValues(alpha: 0.14), borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
               child: Text('No AvaTOK number yet — this contact shares a real phone number.', style: ADText.preview()),
             ),
           ],
@@ -242,7 +243,7 @@ class _PrimaryButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 15),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             if (loading)
@@ -276,7 +277,7 @@ class _GhostButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Text(label, style: ADText.rowName()),

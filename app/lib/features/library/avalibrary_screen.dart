@@ -12,6 +12,7 @@ import '../../core/apps.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'lib_thumbs.dart';
 import 'private_ingest.dart';
@@ -48,7 +49,7 @@ PreferredSizeWidget _darkHeader({
                   Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
                   if (tag != null) ...[
                     const SizedBox(height: 2),
-                    Text(tag.toUpperCase(), style: ADText.sectionLabel()),
+                    Text(tag, style: ADText.sectionLabel()),
                   ],
                 ],
               ),
@@ -227,8 +228,10 @@ class _ZineFab extends StatelessWidget {
         color: AD.primaryBadge,
         borderColor: AD.primaryBadge,
         boxShadow: const [],
-        radius: BorderRadius.circular(100),
-        padding: EdgeInsets.symmetric(horizontal: label == null ? 16 : 20, vertical: 15),
+        // Round / extended FAB — the one button shape that stays a pill.
+        radius: Msg.brPill,
+        padding: EdgeInsets.symmetric(
+            horizontal: label == null ? Msg.s4 : Msg.s5, vertical: Msg.s4),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 20, color: Colors.white),
           if (label != null) ...[
@@ -377,7 +380,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
                   Text('Your files across every AvaVerse app, by type.', style: ADText.preview()),
                   const SizedBox(height: 14),
                   if (roots.isNotEmpty) ...[
-                    Text('LIBRARY', style: ADText.sectionLabel()),
+                    Text('Library', style: ADText.sectionLabel()),
                     const SizedBox(height: 10),
                     for (final r in roots) _row(
                       icon: r.cat.icon, color: r.cat.color, title: r.cat.label,
@@ -386,7 +389,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
                     ),
                     const SizedBox(height: 18),
                   ],
-                  Text('FOLDERS', style: ADText.sectionLabel()),
+                  Text('Folders', style: ADText.sectionLabel()),
                   const SizedBox(height: 10),
                   if (folders.isEmpty)
                     Padding(padding: const EdgeInsets.symmetric(vertical: 8),
@@ -430,7 +433,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
                 const SizedBox(height: 2),
-                Text(sub.toUpperCase(), style: ADText.statCaption()),
+                Text(sub, style: ADText.statCaption()),
               ]),
             ),
             if (menu == null)
@@ -716,7 +719,7 @@ class _FolderViewState extends State<_FolderView> {
                           if (c.header != null) {
                             return Padding(
                               padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-                              child: Text(c.header!.toUpperCase(), style: ADText.sectionLabel()),
+                              child: Text(c.header!, style: ADText.sectionLabel()),
                             );
                           }
                           return _tileRow(c.tiles!);
@@ -735,9 +738,9 @@ class _FolderViewState extends State<_FolderView> {
             onTap: () => setState(() => _dayFilter = null),
             color: AD.primaryBadge,
             borderColor: AD.primaryBadge,
-            radius: BorderRadius.circular(100),
+            radius: Msg.brPill,
             boxShadow: const [],
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 15, color: Colors.white),
               const SizedBox(width: 7),
@@ -760,7 +763,7 @@ class _FolderViewState extends State<_FolderView> {
   Widget _chip(String label, String? key) => Padding(
         padding: const EdgeInsets.only(right: 9),
         child: AdChip(
-          label: label.toUpperCase(),
+          label: label,
           active: _typeFilter == key,
           onTap: () => setState(() => _typeFilter = key),
         ),
@@ -935,7 +938,9 @@ class _ThumbTileState extends State<_ThumbTile> {
             _typeTile(m),
           // Video glyph overlay on real frames.
           if (_file != null && LibThumbs.isVideo(m))
-            const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 34)),
+            Center(
+                child: PhosphorIcon(PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
+                    color: Colors.white, size: 34)),
           // Loading shimmer-ish: nothing fancy, the type tile is the placeholder.
           // Bottom name/ext chip.
           Positioned(
@@ -971,10 +976,10 @@ class _ThumbTileState extends State<_ThumbTile> {
           color: c.color == AD.danger ? Colors.white : AD.textOnInput, size: 30),
         const SizedBox(height: 6),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
           decoration: BoxDecoration(
             color: AD.card,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brPill,
             border: Border.all(color: AD.borderControl, width: 1),
           ),
           child: Text(_extOf(m), style: ADText.statCaption(c: AD.textSecondary)),
@@ -1297,7 +1302,8 @@ class _ImageViewerState extends State<_ImageViewer> {
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white24, width: 1),
               ),
-              child: const Icon(Icons.close, color: Colors.white, size: 24),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                  color: Colors.white, size: 24),
             ),
           ),
         ),
@@ -1307,10 +1313,10 @@ class _ImageViewerState extends State<_ImageViewer> {
           bottom: MediaQuery.of(context).padding.bottom + 14,
           child: Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: Msg.brPill,
               ),
               child: Text(m.name,
                   maxLines: 1, overflow: TextOverflow.ellipsis,

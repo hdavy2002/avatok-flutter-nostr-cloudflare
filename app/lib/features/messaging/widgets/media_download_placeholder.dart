@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../avatok/media.dart';
 
 /// Human-readable byte size (e.g. "2.4 MB"). Local copy so this widget has no
@@ -133,7 +134,7 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
     return GestureDetector(
       onTap: _download,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: Msg.brMd,
         child: Container(
           width: widget.width,
           height: h,
@@ -182,7 +183,7 @@ class _MediaDownloadPlaceholderState extends State<MediaDownloadPlaceholder> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                   ),
                   child: Text(sizeLabel,
                       style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,

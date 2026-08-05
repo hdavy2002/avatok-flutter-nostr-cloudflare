@@ -99,7 +99,8 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
               Container(
                 width: 120, height: 120,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: AD.primaryBadge, boxShadow: AD.overlayShadow),
-                child: const Icon(Icons.verified_rounded, size: 56, color: Colors.white),
+                child: PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill),
+                    size: 56, color: Colors.white),
               ),
               const SizedBox(height: 24),
               Text("It's yours!", style: ADText.appTitle().copyWith(fontSize: 34), textAlign: TextAlign.center),
@@ -184,7 +185,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                               TextSpan(
                                   text: 'yours to own.',
                                   style: ADText.preview(c: AD.textSecondary).copyWith(
-                                      fontWeight: FontWeight.w900, color: AD.textPrimary)),
+                                      fontWeight: FontWeight.w700, color: AD.textPrimary)),
                             ],
                           ),
                           style: ADText.preview(c: AD.textSecondary),

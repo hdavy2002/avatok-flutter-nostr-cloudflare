@@ -10,6 +10,7 @@ import '../../core/avatar.dart';
 import '../../core/blocking_api.dart';
 import '../../core/chat_state.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
 import 'call_screen.dart' show gIncomingRingingFrom, gIncomingRingingCallId;
@@ -576,7 +577,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
     final alsoBlock = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: AD.card,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
@@ -871,7 +872,7 @@ class _QuickReplySheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AD.card,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        borderRadius: Msg.brSheetTop,
       ),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 30),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -879,7 +880,7 @@ class _QuickReplySheet extends StatelessWidget {
           width: 44, height: 5,
           decoration: BoxDecoration(
             color: AD.textPrimary.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: Msg.brPill,
           ),
         ),
         const SizedBox(height: 16),
@@ -903,7 +904,7 @@ class _QuickReplySheet extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   decoration: BoxDecoration(
                     color: AD.textPrimary.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: Msg.brMd,
                   ),
                   child: Row(children: [
                     Text(r.emoji, style: const TextStyle(fontSize: 19)),

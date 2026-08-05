@@ -8,6 +8,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'link_preview_card.dart';
 
 /// In-app link viewer — the "draggable sheet + mini player" experience.
@@ -226,7 +227,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
           child: Material(
             color: Colors.black,
             elevation: 8,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: Msg.brMd,
             clipBehavior: Clip.antiAlias,
             child: Stack(children: [
               // While mini, the player must NOT eat pointer events: the whole
@@ -238,7 +239,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                 top: 2,
                 right: 2,
                 child: _RoundIconButton(
-                  icon: Icons.close_rounded,
+                  icon: PhosphorIcons.x(PhosphorIconsStyle.regular),
                   size: 26,
                   onTap: LinkViewer.close,
                 ),
@@ -281,7 +282,7 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
                   child: Row(children: [
                     _RoundIconButton(
-                      icon: Icons.keyboard_arrow_down_rounded,
+                      icon: PhosphorIcons.caretDown(PhosphorIconsStyle.regular),
                       onTap: _toMini,
                       tooltip: 'Minimize',
                       dark: false,
@@ -293,20 +294,20 @@ class _LinkViewerHostState extends State<_LinkViewerHost>
                           height: 4,
                           decoration: BoxDecoration(
                             color: AD.textFaint,
-                            borderRadius: BorderRadius.circular(100),
+                            borderRadius: Msg.brPill,
                           ),
                         ),
                       ),
                     ),
                     _RoundIconButton(
-                      icon: Icons.open_in_new_rounded,
+                      icon: PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.regular),
                       onTap: () => _openExternal(url),
                       tooltip: 'Open in app',
                       dark: false,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: Msg.s1),
                     _RoundIconButton(
-                      icon: Icons.close_rounded,
+                      icon: PhosphorIcons.x(PhosphorIconsStyle.regular),
                       onTap: LinkViewer.close,
                       tooltip: 'Close',
                       dark: false,
@@ -546,7 +547,8 @@ class _EmbedBlocked extends StatelessWidget {
               });
               _openExternal(preview.url);
             },
-            icon: const Icon(Icons.open_in_new_rounded, size: 17),
+            icon: Icon(PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.regular),
+                size: 17),
             label: const Text('Watch on YouTube'),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF0000),

@@ -58,7 +58,7 @@ Future<bool> showCallAgentSheet(
             20 + MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
-              decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)))),
+              decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
           Text('Call the seller’s agent', style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 19, color: AD.textPrimary)),
           const SizedBox(height: Msg.s2),
           Text('Your agent negotiates in the background — you can keep browsing. The result lands in your chat as a voice note.',

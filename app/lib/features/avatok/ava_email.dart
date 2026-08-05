@@ -22,6 +22,7 @@ import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// One inbox email as sent by the worker (lib/gmail.ts InboxEmail).
 class AvaInboxEmail {
@@ -203,19 +204,19 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
           decoration: BoxDecoration(
             color: _bubbleSurface,
             border: Border.all(color: _bubbleHair, width: 1),
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brPill,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.tray(PhosphorIconsStyle.fill), size: 13, color: _bubbleInk),
-            const SizedBox(width: 6),
-            Text('INBOX · ${visible.length} ${visible.length == 1 ? 'EMAIL' : 'EMAILS'}',
+            const SizedBox(width: Msg.s2),
+            Text('Inbox · ${visible.length} ${visible.length == 1 ? 'email' : 'emails'}',
                 style: _mono.copyWith(fontSize: 9.5, color: _bubbleInk)),
           ]),
         ),
         if (visible.isEmpty)
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: _bubbleSurface, border: Border.all(color: _bubbleHair, width: 1), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: _bubbleSurface, border: Border.all(color: _bubbleHair, width: 1), borderRadius: Msg.brMd),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: AD.online),
               const SizedBox(width: 8),
@@ -246,7 +247,7 @@ class _EmailCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: _bubbleSurface, border: Border.all(color: _bubbleHair, width: 1),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: Msg.brMd,
       ),
       padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -254,9 +255,9 @@ class _EmailCard extends StatelessWidget {
           // sender monogram
           Container(
             width: 34, height: 34,
-            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(11)),
+            decoration: BoxDecoration(color: accent, borderRadius: Msg.brMd),
             alignment: Alignment.center,
-            child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+            child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 16, color: Colors.white)),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -268,11 +269,11 @@ class _EmailCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(color: AD.danger, borderRadius: BorderRadius.circular(100)),
+                    decoration: BoxDecoration(color: AD.danger, borderRadius: Msg.brPill),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 9, color: Colors.white),
-                      const SizedBox(width: 3),
-                      Text(e.flag!.toUpperCase(), style: _mono.copyWith(fontSize: 8.5, color: Colors.white)),
+                      const SizedBox(width: Msg.s1),
+                      Text(e.flag!, style: _mono.copyWith(fontSize: 8.5, color: Colors.white)),
                     ]),
                   ),
                 ],
@@ -314,12 +315,12 @@ class _EmailCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: fill,
             border: ghost ? Border.all(color: _bubbleHair, width: 1) : null,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             PhosphorIcon(icon, size: 13, color: fg),
-            const SizedBox(width: 5),
-            Flexible(child: Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+            const SizedBox(width: Msg.s1),
+            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: _mono.copyWith(fontSize: 10, color: fg))),
           ]),
         ),
@@ -444,7 +445,9 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
           Container(
             width: 76, height: 76,
             decoration: const BoxDecoration(color: AD.online, shape: BoxShape.circle),
-            child: const Center(child: Icon(Icons.check_rounded, size: 40, color: Colors.white)),
+            child: Center(
+                child: Icon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                    size: 40, color: Colors.white)),
           ),
           const SizedBox(height: 16),
           Text('Message sent', style: ADText.appTitle().copyWith(fontSize: 26)),
@@ -494,9 +497,9 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
         Row(children: [
           Container(
             width: 46, height: 46,
-            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: accent, borderRadius: Msg.brMd),
             alignment: Alignment.center,
-            child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 21, color: Colors.white)),
+            child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 21, color: Colors.white)),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -550,12 +553,12 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
             decoration: BoxDecoration(
               color: fill,
               border: ghost ? Border.all(color: AD.borderControl, width: 1) : null,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               PhosphorIcon(icon, size: 20, color: fg),
-              const SizedBox(width: 8),
-              Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 16, color: fg)),
+              const SizedBox(width: Msg.s2),
+              Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 16, color: fg)),
             ]),
           ),
         ),

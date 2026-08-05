@@ -13,6 +13,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/analytics.dart';
 import '../../../core/receptionist_api.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 
 /// Inline dark v2 header band (same pattern as wallet_screen.dart's _darkHeader).
@@ -42,7 +43,7 @@ PreferredSizeWidget _darkHeader({required String title, String? tag}) {
                       overflow: TextOverflow.ellipsis),
                   if (tag != null) ...[
                     const SizedBox(height: 2),
-                    Text(tag.toUpperCase(), style: ADText.sectionLabel()),
+                    Text(tag, style: ADText.sectionLabel()),
                   ],
                 ],
               ),
@@ -212,7 +213,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
             child: Text(value, style: ADText.appTitle(c: accent)),
           ),
           const SizedBox(height: 3),
-          Text(label.toUpperCase(), style: ADText.statCaption()),
+          Text(label, style: ADText.statCaption()),
         ]),
       );
 
@@ -230,7 +231,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.iconSearch,
               size: 26),
           const SizedBox(width: 8),
-          Text('HOW AVA ANSWERED', style: ADText.sectionLabel()),
+          Text('How Ava answered', style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 10),
         _splitRow('AI Voice Agent', agent, agent / total, AD.online),
@@ -252,7 +253,8 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
 
   /// Thin horizontal gauge bar (wallet _bar family — plain Containers).
   Widget _bar(double f, Color c) => ClipRRect(
-        borderRadius: BorderRadius.circular(3),
+        // 5px gauge bar — a status indicator, so a pill.
+        borderRadius: Msg.brPill,
         child: Container(
           height: 5,
           color: AD.bg,
@@ -278,7 +280,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.danger,
               size: 26),
           const SizedBox(width: 8),
-          Text('BUSIEST HOURS · YOUR TIME', style: ADText.sectionLabel()),
+          Text('Busiest hours · your time', style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 12),
         SizedBox(
@@ -333,7 +335,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.iconSearch,
               size: 26),
           const SizedBox(width: 8),
-          Text('CALLS PER DAY', style: ADText.sectionLabel()),
+          Text('Calls per day', style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 12),
         SizedBox(
@@ -387,7 +389,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.online,
               size: 26),
           const SizedBox(width: 8),
-          Text('TOP CALLERS', style: ADText.sectionLabel()),
+          Text('Top callers', style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 6),
         for (final c in callers)
@@ -444,7 +446,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
               color: AD.iconSearch,
               size: 26),
           const SizedBox(width: 8),
-          Text('WHERE CALLS CAME FROM', style: ADText.sectionLabel()),
+          Text('Where calls came from', style: ADText.sectionLabel()),
         ]),
         const SizedBox(height: 6),
         for (final c in countries.take(12))

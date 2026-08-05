@@ -130,17 +130,34 @@ class AD {
   static const brandFacebook = Color(0xFF3E6CA6);
 
   // ------------------------------------------------------------------ radii
+  //
+  // [UI-RADII-1 2026-08-05] SNAPPED ONTO THE 8 / 12 / 16 SCALE.
+  //
+  // These eleven values used to be eleven different numbers — 44, 22, 18, 16,
+  // 14, 11, 11, 10, 10, 7, 9 — each eyeballed in isolation. Eleven corner radii
+  // on one surface is not a scale, it is noise, and it is a large part of why
+  // the product read as soft/toy in UI-AUDIT-2026-08-05.md.
+  //
+  // The names are KEPT (there are ~285 call sites and no local compiler to
+  // catch a rename typo) and only the NUMBERS moved, so every existing
+  // `AD.rListCard` etc. is snapped in one place with no call-site churn. They
+  // now mirror `Msg.rSm` / `rMd` / `rLg` exactly — the literals are repeated
+  // rather than imported because `messenger_theme.dart` imports THIS file, so
+  // referencing `Msg` here would be a circular import.
+  //
+  // New code should prefer `Msg.rSm/rMd/rLg` directly.
+  /// Device-frame mock only — not a UI surface, so it stays off the scale.
   static const double rPhone = 44;
-  static const double rSheet = 22;
-  static const double rMenu = 18;
-  static const double rDialog = 16;
-  static const double rListCard = 14;
-  static const double rStatCard = 11;
-  static const double rInput = 11;
-  static const double rIconButton = 10;
-  static const double rTab = 10;
-  static const double rChip = 7;
-  static const double rBadge = 9;
+  static const double rSheet = 16;      // was 22 — sheets are Msg.rLg
+  static const double rMenu = 16;       // was 18 — menus are Msg.rLg
+  static const double rDialog = 16;     // dialogs are Msg.rLg (unchanged)
+  static const double rListCard = 12;   // was 14 — list rows are Msg.rMd
+  static const double rStatCard = 12;   // was 11 — Msg.rMd
+  static const double rInput = 12;      // was 11 — inputs are Msg.rMd
+  static const double rIconButton = 8;  // was 10 — inline control, Msg.rSm
+  static const double rTab = 8;         // was 10 — inline control, Msg.rSm
+  static const double rChip = 8;        // was 7  — chips are Msg.rSm
+  static const double rBadge = 8;       // was 9  — small badge, Msg.rSm
 
   // ---------------------------------------------------------------- spacing
   static const double screenPad = 20;
@@ -175,11 +192,14 @@ class AD {
   static const bubbleOutInk = Color(0xFF1C3324);
   static const bubbleOutMeta = Color(0xFF567E63);
   static const bubbleOutPlay = Color(0xFF3E8E5A);
+  // [UI-RADII-1 2026-08-05] 14 → 12 (Msg.rMd) so these match the already-
+  // migrated `bubble_theme.dart`, which draws the same shape with `Msg.rMd`
+  // plus the 4px tail corner. The tail stays at 4 — that IS the tail.
   static const BorderRadius bubbleOutRadius = BorderRadius.only(
-    topLeft: Radius.circular(14),
+    topLeft: Radius.circular(12),
     topRight: Radius.circular(4),
-    bottomLeft: Radius.circular(14),
-    bottomRight: Radius.circular(14),
+    bottomLeft: Radius.circular(12),
+    bottomRight: Radius.circular(12),
   );
   static const bubbleInBg = Color(0xFFE6E3F6);
   static const bubbleInInk = Color(0xFF2A2640);
@@ -187,9 +207,9 @@ class AD {
   static const bubbleInPlay = Color(0xFF6A63B8);
   static const BorderRadius bubbleInRadius = BorderRadius.only(
     topLeft: Radius.circular(4),
-    topRight: Radius.circular(14),
-    bottomLeft: Radius.circular(14),
-    bottomRight: Radius.circular(14),
+    topRight: Radius.circular(12),
+    bottomLeft: Radius.circular(12),
+    bottomRight: Radius.circular(12),
   );
   static const mediaPlaceholderBg = Color(0xFFD9DCE6);
   static const mediaPlaceholderLabel = Color(0xFF70778C);
@@ -373,7 +393,7 @@ class AdButton extends StatelessWidget {
         else ...[
           if (icon != null && !trailingIcon) ...[
             Icon(icon, size: fontSize + 2, color: fg),
-            const SizedBox(width: 9),
+            const SizedBox(width: 8),
           ],
           Flexible(
             child: Text(label,
@@ -382,7 +402,7 @@ class AdButton extends StatelessWidget {
                     fontSize: fontSize, color: fg)),
           ),
           if (icon != null && trailingIcon) ...[
-            const SizedBox(width: 9),
+            const SizedBox(width: 8),
             Icon(icon, size: fontSize + 2, color: fg),
           ],
         ],
@@ -392,7 +412,8 @@ class AdButton extends StatelessWidget {
       onTap: disabled ? null : onPressed,
       child: Container(
         width: fullWidth ? double.infinity : null,
-        padding: EdgeInsets.symmetric(horizontal: 22, vertical: fontSize >= 17 ? 15 : 12),
+        // 4px grid (Msg.s1..s6): was 22 / 15|12.
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: fontSize >= 17 ? 16 : 12),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(100),
@@ -453,7 +474,7 @@ class AdChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: active ? AD.primaryBadge : AD.card,
           borderRadius: BorderRadius.circular(100),
@@ -462,10 +483,10 @@ class AdChip extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (active) ...[
             PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 13, color: Colors.white),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
           ] else if (icon != null) ...[
             Icon(icon, size: 14, color: AD.textSecondary),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
           ],
           Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
               fontSize: 13, color: active ? Colors.white : AD.textSecondary)),
@@ -493,7 +514,7 @@ class AdSticker extends StatelessWidget {
       AdStickerKind.plain => (AD.card, AD.textPrimary),
     };
     final core = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: fill,
         borderRadius: BorderRadius.circular(100),
@@ -502,7 +523,7 @@ class AdSticker extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
           Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
         ],
         Flexible(
           child: Text(text,
@@ -547,12 +568,14 @@ class AdErrorMsg extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.only(top: 8),
       child: Row(children: [
         PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold), size: 15, color: AD.danger),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
+        // [UI-MSG-TYPE-1] w700 is for titles; an inline error line is emphasis,
+        // not a heading — w600 at 12px.
         Expanded(child: Text(text, style: TextStyle(fontFamily: ADText.family,
-            fontWeight: FontWeight.w700, fontSize: 12, color: AD.danger))),
+            fontWeight: FontWeight.w600, fontSize: 12, color: AD.danger))),
       ]),
     );
   }
@@ -619,14 +642,17 @@ class _AdFieldState extends State<AdField> {
         Row(children: [
           if (widget.labelIcon != null) ...[
             Icon(widget.labelIcon, size: 14, color: AD.textSecondary),
-            const SizedBox(width: 7),
+            const SizedBox(width: 8),
           ],
           Flexible(
-            child: Text(widget.label!.toUpperCase(),
+            // [UI-CASE-1 2026-08-05] The forced `.toUpperCase()` is gone —
+            // shouted field labels were part of the "amateur UI" finding.
+            // Callers pass sentence case and it renders as written.
+            child: Text(widget.label!,
                 style: ADText.sectionLabel(c: AD.textSecondary), overflow: TextOverflow.ellipsis),
           ),
         ]),
-        const SizedBox(height: 9),
+        const SizedBox(height: 8),
       ],
       Container(
         decoration: BoxDecoration(
@@ -672,13 +698,15 @@ class _AdFieldState extends State<AdField> {
                 // the disabled theme color when enabled=false, which is black
                 // on the dark locked-card background. Use readOnly for fields
                 // that are known but immutable so the normal ink style remains.
-                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                // [UI-MSG-TYPE-1] What the user types is BODY copy → w400.
+                // It was w700, which made every input read like a headline.
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w400,
                     fontSize: 15, color: AD.textOnInput),
                 decoration: InputDecoration(
                   isDense: true,
                   counterText: '',
                   hintText: widget.hint,
-                  hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                  hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w400,
                       fontSize: 15, color: AD.placeholderOnWhite),
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
@@ -808,11 +836,11 @@ class _AdSearchDockState extends State<AdSearchDock> {
           ),
         ),
         if (widget.trailing != null) ...[
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           widget.trailing!,
         ],
         if (widget.showClear && hasText) ...[
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           InkWell(
             onTap: _clear,
             borderRadius: BorderRadius.circular(AD.rIconButton),

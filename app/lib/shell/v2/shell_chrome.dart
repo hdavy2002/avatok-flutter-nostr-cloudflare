@@ -131,7 +131,7 @@ class ShellSidebar extends StatelessWidget {
                 TextSpan(
                   style: TextStyle(
                       fontFamily: ADText.family,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                       fontSize: 19,
                       letterSpacing: -0.38,
                       color: AD.textPrimary),

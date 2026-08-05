@@ -26,12 +26,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// US states + DC. Used to route the user's retention track (spec §10.2).
 /// Deliberately a plain list — no geolocation, no IP inference.
@@ -129,18 +131,19 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-            icon: const Icon(Icons.close, color: AD.textPrimary), onPressed: _decline),
+            icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                color: AD.textPrimary),
+            onPressed: _decline),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s2, Msg.s5, Msg.s6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Quick check before you post',
-                  style: TextStyle(fontFamily: ADText.family, fontSize: 26,
-                      fontWeight: FontWeight.w800, height: 1.2, color: AD.textPrimary)),
-              const SizedBox(height: 20),
+                  style: ADText.appTitle().copyWith(fontSize: 26, height: 1.2)),
+              const SizedBox(height: Msg.s5),
 
               const _Para(
                 title: 'A real person',
@@ -148,7 +151,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                     'posting publicly. It takes a few seconds, and you will only be '
                     'asked again every few months.',
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
 
               // [AVA-IDGATE-1] Softened copy (owner 2026-07-10): gentle + informative,
               // no harsh/child-harm language. Still accurate about the lawful-request
@@ -160,19 +163,19 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                     'share it — the only exception is if a court or law enforcement ever '
                     'legally requires it.',
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: Msg.s6),
 
               // ---- State of residence. Drives the retention track (spec §10.2). ----
               Text('State of residence',
-                  style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                  style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                       color: AD.textSecondary)),
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               DropdownButtonFormField<String>(
                 initialValue: _state,
                 isExpanded: true,
                 dropdownColor: AD.menu,
                 iconEnabledColor: AD.textSecondary,
-                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w400,
                     fontSize: 15, color: AD.textPrimary),
                 decoration: InputDecoration(
                   filled: true,
@@ -189,7 +192,8 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                     borderRadius: BorderRadius.circular(AD.rInput),
                     borderSide: const BorderSide(color: AD.iconSearch, width: 1),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                   hintText: 'Select your state',
                   hintStyle: TextStyle(fontFamily: ADText.family, color: AD.textTertiary),
                 ),
@@ -199,7 +203,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                 ],
                 onChanged: _submitting ? null : (v) => setState(() => _state = v),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: Msg.s5),
 
               // ---- BIPA §15(b) consent. NEVER pre-ticked. ----
               InkWell(
@@ -226,14 +230,17 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                           'geometry to verify I am a real person, and may keep it for up '
                           'to $_kRetentionDays days after I delete my account.',
                           style: TextStyle(
-                              fontFamily: ADText.family, height: 1.4, color: AD.textPrimary),
+                              fontFamily: ADText.family,
+                              fontWeight: FontWeight.w400,
+                              height: 1.4,
+                              color: AD.textPrimary),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: Msg.s2),
               // [AVA-IDGATE-1] BIPA §15(a): the retention & destruction schedule must be
               // PUBLICLY AVAILABLE. Published at web/src/pages/biometric-retention.astro.
               // The periods on that page and _kRetentionDays above must never diverge —
@@ -248,15 +255,16 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                   child: Text(
                     'Read our biometric retention schedule',
                     style: TextStyle(fontFamily: ADText.family,
+                        fontWeight: FontWeight.w400,
                         decoration: TextDecoration.underline, fontSize: 13, color: AD.iconSearch),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: Msg.s4),
 
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: Msg.s3),
                   child: AdErrorMsg(_error!),
                 ),
 
@@ -266,7 +274,7 @@ class _BiometricConsentScreenState extends State<BiometricConsentScreen> {
                 loading: _submitting,
                 onPressed: _canSubmit ? _submit : null,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Msg.s2),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
@@ -292,11 +300,10 @@ class _Para extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: TextStyle(fontFamily: ADText.family,
-            fontWeight: FontWeight.w800, fontSize: 16, color: AD.textPrimary)),
-        const SizedBox(height: 6),
+        Text(title, style: ADText.threadName()),
+        const SizedBox(height: Msg.s2),
         Text(body, style: TextStyle(fontFamily: ADText.family,
-            height: 1.45, color: AD.textSecondary)),
+            fontWeight: FontWeight.w400, height: 1.45, color: AD.textSecondary)),
       ],
     );
   }

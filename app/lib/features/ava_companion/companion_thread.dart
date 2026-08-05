@@ -24,6 +24,7 @@ import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ava_ondevice_stt.dart';
 import '../settings/sections/voice_section.dart';
@@ -534,7 +535,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+            duration: Msg.base, curve: Curves.easeOutCubic);
       }
     });
   }
@@ -665,7 +666,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           Positioned(
             top: 8, right: 8,
             child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
+              icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                  color: Colors.white),
               onPressed: () => Navigator.of(dctx).maybePop(),
             ),
           ),
@@ -803,7 +805,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   const SizedBox(width: 6),
                   Text('Top up to unlock',
                       style: TextStyle(fontFamily: ADText.family,
-                          fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                          fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
                 ]),
               ),
             ),
@@ -939,7 +941,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           ZinePressable(
             onTap: _busy ? null : _send,
             color: AD.sendActiveBg,
-            radius: BorderRadius.circular(100),
+            // 48x48 round send button.
+            radius: Msg.brPill,
             child: SizedBox(
               width: 48,
               height: 48,

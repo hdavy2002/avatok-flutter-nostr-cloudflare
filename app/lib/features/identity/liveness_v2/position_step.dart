@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'face_gate.dart';
 import 'flash_fill.dart';
 import 'live_theme.dart';
@@ -149,9 +151,11 @@ class _PositionStepState extends State<PositionStep> {
                 else
                   const ColoredBox(color: LiveTheme.cameraCard),
 
-                // "Camera on" pill, top-centre.
+                // "Camera on" pill, top-centre. Its blinking dot is the ONE
+                // infinite loop this flow keeps — see `_BlinkDot` in
+                // live_theme.dart [UI-LIVE-LOOPS-1].
                 Positioned(
-                  top: 14,
+                  top: Msg.s4,
                   left: 0,
                   right: 0,
                   child: Center(
@@ -174,7 +178,7 @@ class _PositionStepState extends State<PositionStep> {
 
                 // Bottom status pill.
                 Positioned(
-                  bottom: 16,
+                  bottom: Msg.s4,
                   left: 0,
                   right: 0,
                   child: Center(
@@ -182,7 +186,7 @@ class _PositionStepState extends State<PositionStep> {
                         ? LiveTheme.pill(
                             label: 'Face locked',
                             filled: LiveTheme.lime,
-                            icon: Icons.check,
+                            icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
                           )
                         : LiveTheme.pill(
                             label: _shortHint(),
@@ -192,16 +196,20 @@ class _PositionStepState extends State<PositionStep> {
                   ),
                 ),
 
-                // Scanning line (searching only).
-                if (!_locked && !_status.allPass && !reduced)
-                  const Positioned.fill(child: _ScanLine()),
+                // [UI-LIVE-LOOPS-1 2026-08-05] LOOP REMOVED. A lime `_ScanLine`
+                // used to sweep top→bottom on a 2s `repeat(reverse: true)` for
+                // as long as the face was not yet found. It was the sci-fi
+                // "scanner" trope, not information: the dashed oval already
+                // shows where to put your face, the bottom pill already says
+                // what to fix, and the "Camera on" dot already says the camera
+                // is live. Three signals plus a sweeping bar is noise.
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         LiveTheme.stageHeadline('Fit your face in the ', markWord: 'oval'),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         Text(
           "Hold your phone at eye level — I'll lock on automatically.",
           style: LiveTheme.subStyle,
@@ -263,53 +271,6 @@ class _OvalPainter extends CustomPainter {
   bool shouldRepaint(_OvalPainter old) => old.locked != locked;
 }
 
-/// A lime scanning line that sweeps top→bottom while the face is being found.
-class _ScanLine extends StatefulWidget {
-  const _ScanLine();
-  @override
-  State<_ScanLine> createState() => _ScanLineState();
-}
-
-class _ScanLineState extends State<_ScanLine>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-        vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        return LayoutBuilder(builder: (context, box) {
-          final y = box.maxHeight * (0.06 + 0.74 * _c.value);
-          return Stack(children: [
-            Positioned(
-              left: box.maxWidth * 0.09,
-              right: box.maxWidth * 0.09,
-              top: y,
-              child: Container(
-                height: 22,
-                decoration: const BoxDecoration(
-                  color: Color(0x29E8833A), // primaryBadge @16%
-                  border: Border(top: BorderSide(color: LiveTheme.lime, width: 2.5)),
-                ),
-              ),
-            ),
-          ]);
-        });
-      },
-    );
-  }
-}
+// [UI-LIVE-LOOPS-1 2026-08-05] `_ScanLine` was deleted here — see the comment at
+// its old mount point in `build`. It owned an infinite 2s `repeat(reverse: true)`
+// controller and nothing else referenced it or depended on its value.

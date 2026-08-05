@@ -16,7 +16,9 @@
 // Save stays disabled until a clean verdict returns. Fails OPEN on network error.
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../moderation_service.dart';
+import 'avatok_dark.dart';
 
 class ModeratedTextField extends StatefulWidget {
   const ModeratedTextField({
@@ -123,7 +125,8 @@ class _ModeratedTextFieldState extends State<ModeratedTextField> {
                 child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               )
             : (_error == null && widget.controller.text.trim().isNotEmpty
-                ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+                ? PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.regular),
+                    color: AD.online, size: 20)
                 : null),
       ),
     );

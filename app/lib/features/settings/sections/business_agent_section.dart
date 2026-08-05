@@ -9,6 +9,7 @@ import '../../../core/business_agent_api.dart';
 import '../../../core/disk_cache.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avatok/my_ai_calls_screen.dart';
 import '../settings_registry.dart';
@@ -270,7 +271,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         _AdToggle(value: _settings.enabled, onChanged: _saving ? null : _toggleEnabled),
       ]),
       const SizedBox(height: 14),
-      Text('INSTRUCTIONS', style: ADText.sectionLabel()),
+      Text('Instructions', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
       AdField(
         controller: _instructions,
@@ -293,7 +294,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         onTap: _uploadingDoc ? null : () => _pickAndUploadDoc(),
       ),
       const SizedBox(height: 16),
-      Text('ROUTING', style: ADText.sectionLabel()),
+      Text('Routing', style: ADText.sectionLabel()),
       const SizedBox(height: 9),
       _routingPicker(_settings.routing, (r) => setState(() => _settings = _settings.copyWith(routing: r))),
       const SizedBox(height: 16),
@@ -575,7 +576,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Container(width: 40, height: 4,
-                  decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(100)))),
+                  decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
               const SizedBox(height: 14),
               Text(widget.existing == null ? 'Add a service' : 'Edit service', style: ADText.threadName()),
               const SizedBox(height: 4),
@@ -613,7 +614,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                   AdChip(label: '$m min', active: _lengths.contains(m), onTap: () => _toggleLength(m)),
               ]),
               const SizedBox(height: 14),
-              Text('INSTRUCTIONS', style: ADText.sectionLabel()),
+              Text('Instructions', style: ADText.sectionLabel()),
               const SizedBox(height: 9),
               AdField(
                 controller: _instructions,
@@ -623,7 +624,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 14),
-              Text('ROUTING', style: ADText.sectionLabel()),
+              Text('Routing', style: ADText.sectionLabel()),
               const SizedBox(height: 9),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 AdChip(label: 'Auto after 2 rings', active: _routing == AgentRouting.auto2Rings,
@@ -672,16 +673,17 @@ class _AdToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: AnimatedContainer(
-        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        duration: reduce ? Duration.zero : Msg.fast,
         width: 52, height: 30,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: value ? AD.online : AD.card,
-          borderRadius: BorderRadius.circular(100),
+          // Toggle track — a genuine pill.
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: AnimatedAlign(
-          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          duration: reduce ? Duration.zero : Msg.fast,
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 22, height: 22,

@@ -1,15 +1,22 @@
-import 'dart:math' as math;
-
+// NOTE `dart:math` was dropped with `_Confetti` — nothing here needs it now.
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'live_theme.dart';
 
 /// [LIVE-UI-3] Chrome + per-stage decorative widgets for the redesigned dark
 /// Liveness V2 flow. Kept out of the orchestrator so the orchestrator stays
 /// about flow logic. All animations honour reduced-motion.
+///
+/// [UI-LIVE-LOOPS-1 2026-08-05] This file used to own FOUR of the six infinite
+/// animation loops the identity flow ran simultaneously: the pulsing REC inset
+/// border, six staggered blink carets, two counter-rotating dashed analyse rings,
+/// and floating confetti. All four are gone. The only loop left in the whole
+/// flow is `_BlinkDot` in `live_theme.dart` (the "camera is live" pill dot).
 
-/// Top header: "LIVENESS CHECK" kicker + circular restart button.
+/// Top header: "Liveness check" kicker + circular restart button.
 class LivenessHeader extends StatelessWidget {
   const LivenessHeader({super.key, this.onRestart});
   final VoidCallback? onRestart;
@@ -19,12 +26,11 @@ class LivenessHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        // [UI-CASE-1] Sentence case — the shouted kicker was part of the
+        // "amateur UI" finding.
         Text(
-          'LIVENESS CHECK',
-          style: ADText.sectionLabel(c: AD.textSecondary).copyWith(
-            fontSize: 11,
-            letterSpacing: 1.1,
-          ),
+          'Liveness check',
+          style: ADText.sectionLabel(c: AD.textSecondary),
         ),
         if (onRestart != null)
           GestureDetector(
@@ -37,7 +43,10 @@ class LivenessHeader extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: LiveTheme.ink, width: 1),
               ),
-              child: const Icon(Icons.restart_alt_rounded, size: 18, color: LiveTheme.paper),
+              child: PhosphorIcon(
+                  PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.regular),
+                  size: 18,
+                  color: LiveTheme.paper),
             ),
           )
         else
@@ -56,17 +65,17 @@ class StepPips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       decoration: BoxDecoration(
         color: LiveTheme.card,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: LiveTheme.ink, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 1; i <= total; i++) ...[
-            if (i > 1) const SizedBox(width: 6),
+            if (i > 1) const SizedBox(width: Msg.s2),
             _pip(i == active, i < active),
           ],
         ],
@@ -75,14 +84,15 @@ class StepPips extends StatelessWidget {
   }
 
   Widget _pip(bool isActive, bool isDone) => AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: Msg.base,
+        curve: Msg.curve,
         width: isActive ? 18 : 8,
         height: 8,
         decoration: BoxDecoration(
           color: (isActive || isDone)
               ? LiveTheme.lime
               : LiveTheme.paper.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
         ),
       );
 }
@@ -95,16 +105,18 @@ class LivenessFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
-        Icon(Icons.lock_outline, size: 13, color: AD.textTertiary),
-        SizedBox(width: 7),
-        Flexible(
+      children: [
+        // NOT const: `PhosphorIcons.lock(...)` is a function call.
+        PhosphorIcon(PhosphorIcons.lock(PhosphorIconsStyle.regular),
+            size: 13, color: AD.textTertiary),
+        const SizedBox(width: Msg.s2),
+        const Flexible(
           child: Text(
             'End-to-end encrypted — clips are deleted when you close your account.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'Nunito',
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w400,
               fontSize: 11,
               color: AD.textTertiary,
             ),
@@ -115,44 +127,29 @@ class LivenessFooter extends StatelessWidget {
   }
 }
 
-/// Blinking coral inset border for the recording stage.
-class RecInsetBorder extends StatefulWidget {
+/// Static coral inset border for the recording stage.
+///
+/// [UI-LIVE-LOOPS-1 2026-08-05] LOOP REMOVED. This used to pulse 1.0 → 0.3 on a
+/// 1400ms `repeat(reverse: true)` for the entire recording. It said the same
+/// thing the "Rec" pill's blinking dot already says, so it was a second forever-
+/// loop competing with the one that means something. The border stays — a solid
+/// coral frame reads as "recording" perfectly well — it just no longer breathes.
+///
+/// [reducedMotion] is kept in the constructor so the ~1 call site compiles
+/// unchanged; with no animation left there is nothing for it to gate.
+class RecInsetBorder extends StatelessWidget {
   const RecInsetBorder({super.key, required this.reducedMotion});
   final bool reducedMotion;
-  @override
-  State<RecInsetBorder> createState() => _RecInsetBorderState();
-}
-
-class _RecInsetBorderState extends State<RecInsetBorder>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
-    if (!widget.reducedMotion) _c.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: FadeTransition(
-          opacity: widget.reducedMotion
-              ? const AlwaysStoppedAnimation(1.0)
-              : Tween<double>(begin: 1, end: 0.3).animate(_c),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: LiveTheme.coral, width: 3),
-            ),
+        padding: const EdgeInsets.all(Msg.s2),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: Msg.brLg,
+            border: Border.all(color: LiveTheme.coral, width: 3),
           ),
         ),
       ),
@@ -192,11 +189,11 @@ class _LiveProgressBarState extends State<LiveProgressBar>
       height: 18,
       decoration: BoxDecoration(
         color: const Color(0x24FFFFFF),
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: const Color(0x59FFFFFF), width: 1),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         child: AnimatedBuilder(
           animation: _c,
           builder: (context, _) => Align(
@@ -212,8 +209,15 @@ class _LiveProgressBarState extends State<LiveProgressBar>
   }
 }
 
-/// The turn-head guide: staggered-blink caret arrows (3 sizes) each side, lime on
-/// the active side + a dashed face circle in the middle.
+/// The turn-head guide: caret arrows (3 sizes) each side, lime on the active
+/// side + a face circle in the middle.
+///
+/// [UI-LIVE-LOOPS-1 2026-08-05] LOOP REMOVED. Each caret used to own its own
+/// `AnimationController` on a 900ms `repeat(reverse: true)` with a staggered
+/// start — SIX simultaneous forever-loops from this one widget, on top of the
+/// four others the flow was already running. Which side to turn is already said
+/// by colour (lime vs 22%-white) and by the caret sizes ramping outward, so the
+/// blink added nothing except six tickers. The arrows are now static.
 class TurnHeadGuide extends StatelessWidget {
   const TurnHeadGuide({super.key, required this.leftActive, required this.rightActive});
   final bool leftActive;
@@ -221,13 +225,13 @@ class TurnHeadGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reduced = LiveTheme.reducedMotion(context);
     return Center(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _carets(Icons.chevron_left, leftActive, reduced, reverse: true),
-          const SizedBox(width: 18),
+          _carets(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), leftActive,
+              reverse: true),
+          const SizedBox(width: Msg.s5),
           Container(
             width: 150,
             height: 150,
@@ -236,90 +240,26 @@ class TurnHeadGuide extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: LiveTheme.dimPaper, width: 2),
             ),
-            child: const Icon(Icons.person, size: 92, color: Color(0xD1FFFFFF)),
+            child: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.regular),
+                size: 92, color: const Color(0xD1FFFFFF)),
           ),
-          const SizedBox(width: 18),
-          _carets(Icons.chevron_right, rightActive, reduced),
+          const SizedBox(width: Msg.s5),
+          _carets(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), rightActive),
         ],
       ),
     );
   }
 
-  Widget _carets(IconData icon, bool active, bool reduced, {bool reverse = false}) {
+  Widget _carets(IconData icon, bool active, {bool reverse = false}) {
     final color = active ? LiveTheme.lime : const Color(0x38FFFFFF);
-    final sizes = [22.0, 30.0, 38.0];
+    const sizes = [22.0, 30.0, 38.0];
     final row = <Widget>[
       for (var i = 0; i < 3; i++)
-        _BlinkCaret(
-          icon: icon,
-          size: sizes[i],
-          color: color,
-          delayMs: i * 150,
-          animate: active && !reduced,
-        ),
+        PhosphorIcon(icon, size: sizes[i], color: color),
     ];
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: reverse ? row.reversed.toList() : row,
-    );
-  }
-}
-
-class _BlinkCaret extends StatefulWidget {
-  const _BlinkCaret({
-    required this.icon,
-    required this.size,
-    required this.color,
-    required this.delayMs,
-    required this.animate,
-  });
-  final IconData icon;
-  final double size;
-  final Color color;
-  final int delayMs;
-  final bool animate;
-  @override
-  State<_BlinkCaret> createState() => _BlinkCaretState();
-}
-
-class _BlinkCaretState extends State<_BlinkCaret>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-    if (widget.animate) {
-      Future.delayed(Duration(milliseconds: widget.delayMs), () {
-        if (mounted) _c.repeat(reverse: true);
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _BlinkCaret old) {
-    super.didUpdateWidget(old);
-    if (widget.animate && !_c.isAnimating) {
-      _c.repeat(reverse: true);
-    } else if (!widget.animate && _c.isAnimating) {
-      _c.stop();
-      _c.value = 1;
-    }
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = Icon(widget.icon, size: widget.size, color: widget.color);
-    if (!widget.animate) return icon;
-    return FadeTransition(
-      opacity: Tween<double>(begin: 1, end: 0.15).animate(_c),
-      child: icon,
     );
   }
 }
@@ -345,19 +285,19 @@ class AnalyzingStage extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _SpinningBadge(reducedMotion: reducedMotion),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline('Ava is ', markWord: 'checking'),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         Text('Face, motion and voice — all on your device.',
             textAlign: TextAlign.center, style: LiveTheme.subStyle),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
           child: Column(
             children: [
               for (final r in rows)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  padding: const EdgeInsets.symmetric(vertical: Msg.s1),
                   child: _row(r),
                 ),
             ],
@@ -379,7 +319,8 @@ class AnalyzingStage extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: LiveTheme.ink, width: 1),
           ),
-          child: const Icon(Icons.check, size: 12, color: LiveTheme.paper),
+          child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+              size: 12, color: LiveTheme.paper),
         );
         break;
       case RowState.active:
@@ -387,7 +328,10 @@ class AnalyzingStage extends StatelessWidget {
           width: 22,
           height: 22,
           child: reducedMotion
-              ? const Icon(Icons.autorenew, size: 20, color: LiveTheme.lilac)
+              ? PhosphorIcon(
+                  PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.regular),
+                  size: 20,
+                  color: LiveTheme.lilac)
               : const CircularProgressIndicator(strokeWidth: 2.5, color: LiveTheme.lilac),
         );
         break;
@@ -407,7 +351,7 @@ class AnalyzingStage extends StatelessWidget {
       child: Row(
         children: [
           marker,
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s3),
           Expanded(child: Text(r.label, style: LiveTheme.checkRowStyle)),
         ],
       ),
@@ -415,28 +359,20 @@ class AnalyzingStage extends StatelessWidget {
   }
 }
 
-class _SpinningBadge extends StatefulWidget {
+/// The analyse-stage badge: two concentric dashed rings around a lilac disc.
+///
+/// [UI-LIVE-LOOPS-1 2026-08-05] LOOP REMOVED. The two rings used to
+/// counter-rotate forever off a single 5s `repeat()` — a decorative "thinking"
+/// spinner sitting directly above a column of rows that ALREADY each show a real
+/// `CircularProgressIndicator` for the check actually in progress. Two spinners
+/// saying the same thing is one spinner too many, and only one of them was
+/// telling the truth about progress. The rings are now static; the per-row
+/// indicators are the live signal.
+///
+/// The name and [reducedMotion] parameter are kept so the call site is unchanged.
+class _SpinningBadge extends StatelessWidget {
   const _SpinningBadge({required this.reducedMotion});
   final bool reducedMotion;
-  @override
-  State<_SpinningBadge> createState() => _SpinningBadgeState();
-}
-
-class _SpinningBadgeState extends State<_SpinningBadge>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(seconds: 5));
-    if (!widget.reducedMotion) _c.repeat();
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -446,20 +382,8 @@ class _SpinningBadgeState extends State<_SpinningBadge>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          AnimatedBuilder(
-            animation: _c,
-            builder: (context, _) => Transform.rotate(
-              angle: _c.value * 2 * math.pi,
-              child: CustomPaint(size: const Size(170, 170), painter: _DashedRing(1)),
-            ),
-          ),
-          AnimatedBuilder(
-            animation: _c,
-            builder: (context, _) => Transform.rotate(
-              angle: -_c.value * 2 * math.pi,
-              child: CustomPaint(size: const Size(138, 138), painter: _DashedRing(0.45)),
-            ),
-          ),
+          CustomPaint(size: const Size(170, 170), painter: _DashedRing(1)),
+          CustomPaint(size: const Size(138, 138), painter: _DashedRing(0.45)),
           Container(
             width: 96,
             height: 96,
@@ -468,7 +392,8 @@ class _SpinningBadgeState extends State<_SpinningBadge>
               shape: BoxShape.circle,
               border: Border.all(color: LiveTheme.ink, width: 1),
             ),
-            child: const Icon(Icons.auto_awesome, size: 44, color: LiveTheme.paper),
+            child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.regular),
+                size: 44, color: LiveTheme.paper),
           ),
         ],
       ),
@@ -523,7 +448,8 @@ class _AcceptedStageState extends State<AcceptedStage>
   @override
   void initState() {
     super.initState();
-    _pop = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
+    // [UI-MSG-MOTION-1] 450ms → Msg.slow (320). One-shot entrance, not a loop.
+    _pop = AnimationController(vsync: this, duration: Msg.slow);
     if (widget.reducedMotion) {
       _pop.value = 1;
     } else {
@@ -546,12 +472,17 @@ class _AcceptedStageState extends State<AcceptedStage>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (!widget.reducedMotion) const _Confetti(),
+              // [UI-LIVE-LOOPS-1 2026-08-05] The floating `_Confetti` layer used
+              // to live here — six pieces bobbing on a 1600ms `repeat(reverse:
+              // true)` for as long as this screen stayed up. It was pure
+              // decoration on the LAST screen of a compliance flow, and it was
+              // the sixth simultaneous loop. The one-shot `_pop` scale on the
+              // tick below is the celebration now.
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ScaleTransition(
-                    scale: CurvedAnimation(parent: _pop, curve: Curves.easeOutCubic),
+                    scale: CurvedAnimation(parent: _pop, curve: Msg.curve),
                     child: Container(
                       width: 128,
                       height: 128,
@@ -560,34 +491,37 @@ class _AcceptedStageState extends State<AcceptedStage>
                         shape: BoxShape.circle,
                         border: Border.all(color: LiveTheme.ink, width: 1),
                       ),
-                      child: const Icon(Icons.check, size: 60, color: LiveTheme.paper),
+                      child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                          size: 60, color: LiveTheme.paper),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: Msg.s4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Msg.s4, vertical: Msg.s2),
                     decoration: BoxDecoration(
                       color: LiveTheme.mint,
-                      borderRadius: BorderRadius.circular(100),
+                      borderRadius: Msg.brPill,
                       border: Border.all(color: LiveTheme.ink, width: 1),
                     ),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.verified, size: 14, color: LiveTheme.paper),
-                      SizedBox(width: 6),
-                      Text('Verified',
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.regular),
+                          size: 14, color: LiveTheme.paper),
+                      const SizedBox(width: Msg.s2),
+                      const Text('Verified',
                           style: TextStyle(
                             fontFamily: 'Nunito',
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             fontSize: 12,
                             color: LiveTheme.paper,
                           )),
                     ]),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: Msg.s4),
                   LiveTheme.stageHeadline('Accepted — you are ', markWord: 'in'),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: Msg.s2),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
                     child: Text(
                       widget.listingContext
                           ? "Liveness passed. You're free to make a listing now."
@@ -601,10 +535,10 @@ class _AcceptedStageState extends State<AcceptedStage>
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         // Delete-mode storage card.
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(Msg.s4),
           decoration: LiveTheme.taperedCardDecoration,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -614,12 +548,13 @@ class _AcceptedStageState extends State<AcceptedStage>
                 height: 34,
                 decoration: BoxDecoration(
                   color: LiveTheme.mint,
-                  borderRadius: BorderRadius.circular(11),
+                  borderRadius: Msg.brMd,
                   border: Border.all(color: LiveTheme.ink, width: 1),
                 ),
-                child: const Icon(Icons.shield_outlined, size: 18, color: LiveTheme.paper),
+                child: PhosphorIcon(PhosphorIcons.shield(PhosphorIconsStyle.regular),
+                    size: 18, color: LiveTheme.paper),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Msg.s3),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,17 +562,17 @@ class _AcceptedStageState extends State<AcceptedStage>
                     Text('Delete-mode storage',
                         style: TextStyle(
                           fontFamily: 'Nunito',
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                           fontSize: 14,
                           color: AD.textPrimary,
                         )),
-                    SizedBox(height: 2),
+                    SizedBox(height: Msg.s1),
                     Text(
                       'Your video is erased automatically the moment you close your account with us.',
                       style: TextStyle(
                         fontFamily: 'Nunito',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
+                        fontWeight: FontWeight.w400,
+                        fontSize: 12,
                         height: 1.45,
                         color: AD.textSecondary,
                       ),
@@ -648,10 +583,12 @@ class _AcceptedStageState extends State<AcceptedStage>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: Msg.s4),
         LiveTheme.limeButton(
           label: widget.listingContext ? 'Create a listing' : 'Done',
-          icon: widget.listingContext ? Icons.storefront : Icons.check,
+          icon: widget.listingContext
+              ? PhosphorIcons.storefront(PhosphorIconsStyle.bold)
+              : PhosphorIcons.check(PhosphorIconsStyle.bold),
           onPressed: widget.onCta,
         ),
       ],
@@ -659,64 +596,8 @@ class _AcceptedStageState extends State<AcceptedStage>
   }
 }
 
-/// Simple floating confetti squares/dots for the accepted stage.
-class _Confetti extends StatefulWidget {
-  const _Confetti();
-  @override
-  State<_Confetti> createState() => _ConfettiState();
-}
-
-class _ConfettiState extends State<_Confetti> with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  final _pieces = <({double x, double y, Color color, bool square, double delay})>[
-    (x: 0.14, y: 0.12, color: LiveTheme.coral, square: true, delay: 0.0),
-    (x: 0.80, y: 0.06, color: LiveTheme.lilac, square: false, delay: 0.2),
-    (x: 0.08, y: 0.36, color: LiveTheme.mint, square: false, delay: 0.35),
-    (x: 0.90, y: 0.30, color: LiveTheme.blue, square: true, delay: 0.12),
-    (x: 0.24, y: 0.66, color: LiveTheme.lilac, square: true, delay: 0.5),
-    (x: 0.78, y: 0.60, color: LiveTheme.coral, square: false, delay: 0.28),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
-      ..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, box) {
-      return AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          return Stack(
-            children: [
-              for (final p in _pieces)
-                Positioned(
-                  left: box.maxWidth * p.x,
-                  top: box.maxHeight * p.y - 9 * math.sin((_c.value + p.delay) * math.pi),
-                  child: Container(
-                    width: p.square ? 12 : 10,
-                    height: p.square ? 12 : 10,
-                    decoration: BoxDecoration(
-                      color: p.color,
-                      shape: p.square ? BoxShape.rectangle : BoxShape.circle,
-                      borderRadius: p.square ? BorderRadius.circular(3) : null,
-                      border: Border.all(color: LiveTheme.ink, width: 1),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      );
-    });
-  }
-}
+// [UI-LIVE-LOOPS-1 2026-08-05] `_Confetti` was deleted here. It bobbed six
+// coloured squares/dots forever on a 1600ms `repeat(reverse: true)` behind the
+// accepted screen. Nothing referenced it except `AcceptedStage`, and nothing
+// depended on its controller. If a celebration is ever wanted again, make it a
+// ONE-SHOT that settles — not another infinite loop.

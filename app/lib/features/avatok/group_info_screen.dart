@@ -14,6 +14,7 @@ import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import '../profile/avatar_crop_screen.dart';
@@ -300,24 +301,23 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AD.menu,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
           ListTile(
-            leading: const Icon(Icons.photo_camera_outlined, color: AD.textPrimary),
+            leading: Icon(PhosphorIcons.camera(PhosphorIconsStyle.regular), color: AD.textPrimary),
             title: Text('Take photo', style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.camera); },
           ),
           ListTile(
-            leading: const Icon(Icons.photo_library_outlined, color: AD.textPrimary),
+            leading: Icon(PhosphorIcons.images(PhosphorIconsStyle.regular), color: AD.textPrimary),
             title: Text('Choose from gallery', style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.gallery); },
           ),
           if (has)
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AD.danger),
+              leading: Icon(PhosphorIcons.trash(PhosphorIconsStyle.regular), color: AD.danger),
               title: Text('Remove photo', style: ADText.rowName(c: AD.danger)),
               onTap: () { Navigator.pop(ctx); _removeGroupPhoto(); },
             ),
@@ -520,7 +520,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         child: const Text('Added',
             style: TextStyle(
                 fontFamily: ADText.family,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 fontSize: 12.5,
                 color: Colors.white)),
       );
@@ -672,7 +672,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           shape: BoxShape.circle,
                           border: Border.all(color: AD.bg, width: 2),
                         ),
-                        child: const Icon(Icons.edit, size: 13, color: Colors.white),
+                        child: Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 13, color: Colors.white),
                       ),
                     ),
                 ]),
@@ -909,7 +909,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brMd,
         child: Opacity(
           opacity: enabled ? 1 : 0.5,
           child: Container(
@@ -917,7 +917,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
               color: fill,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
               border: borderColor == null ? null : Border.all(color: borderColor, width: 1),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [

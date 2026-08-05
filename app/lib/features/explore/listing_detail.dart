@@ -21,6 +21,7 @@ import '../../sync/sync_hub.dart';
 import '../avatok/contacts.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../avalive/live_viewer_screen.dart';
@@ -439,7 +440,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 color: AD.card,
                 borderColor: AD.borderControl,
                 boxShadow: const [],
-                radius: BorderRadius.circular(100),
+                // Genuinely a round icon button (52x52) — pill is correct here.
+                radius: Msg.brPill,
                 child: SizedBox(width: 52, height: 52, child: Center(
                   child: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                 )),
@@ -499,7 +501,7 @@ class ListingDetailView extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
                   color: card.price <= 0 ? AD.online : it.chipBg,
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brPill,
                   border: Border.all(color: it.tintBorder, width: 1),
                 ),
                 child: Text(priceStr,
@@ -511,8 +513,13 @@ class ListingDetailView extends StatelessWidget {
           // here too; dormant/0 until partyEnabled is on.
           if (viewers > 1) ...[
             const SizedBox(height: 6),
-            Text('👀 $viewers people viewing now',
-                style: ADText.preview(c: AD.textTertiary)),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular),
+                  size: 14, color: AD.textTertiary),
+              const SizedBox(width: Msg.s1),
+              Text('$viewers people viewing now',
+                  style: ADText.preview(c: AD.textTertiary)),
+            ]),
           ],
           const SizedBox(height: 12),
           // [UI-MKT-2] wired stats row: star reviews / eye views / posted-ago.
@@ -555,7 +562,12 @@ class ListingDetailView extends StatelessWidget {
           ]),
           if (card.joinedCount > 0) ...[
             const SizedBox(height: 10),
-            Text('🔥 ${card.joinedCount} joined', style: ADText.preview(c: AD.textSecondary)),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.fire(PhosphorIconsStyle.fill),
+                  size: 14, color: AD.textSecondary),
+              const SizedBox(width: Msg.s1),
+              Text('${card.joinedCount} joined', style: ADText.preview(c: AD.textSecondary)),
+            ]),
           ],
           const SizedBox(height: 16),
           if ((card.description ?? '').isNotEmpty) ...[
@@ -699,15 +711,17 @@ class _ListingHeroState extends State<_ListingHero> {
           behavior: HitTestBehavior.opaque,
           onTap: _toggleFav,
           child: Container(
-            padding: const EdgeInsets.all(7),
+            padding: const EdgeInsets.all(Msg.s2),
             decoration: BoxDecoration(
               color: const Color(0xF2FFFFFF),
               shape: BoxShape.circle,
               border: Border.all(color: AD.borderControl, width: 1),
               boxShadow: const [],
             ),
-            child: Icon(
-              card.favorited ? Icons.favorite : Icons.favorite_border,
+            child: PhosphorIcon(
+              PhosphorIcons.heart(card.favorited
+                  ? PhosphorIconsStyle.fill
+                  : PhosphorIconsStyle.regular),
               size: 20,
               color: card.favorited ? AD.danger : AD.textOnInput,
             ),
@@ -748,12 +762,13 @@ class _ListingHeroState extends State<_ListingHero> {
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               for (var i = 0; i < covers.length; i++)
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  duration: Msg.base,
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: Msg.s1),
                   width: i == _page ? 18 : 6, height: 6,
                   decoration: BoxDecoration(
                     color: i == _page ? Colors.white : AD.textFaint,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                     border: Border.all(color: AD.borderControl, width: 1),
                   ),
                 ),
@@ -827,7 +842,8 @@ class _YouTubeHeroState extends State<_YouTubeHero> {
               border: Border.all(color: Colors.white, width: 2),
               boxShadow: const [],
             ),
-            child: const Icon(Icons.play_arrow, color: Colors.white, size: 34),
+            child: PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill),
+                color: Colors.white, size: 34),
           ),
         ]),
       ),
@@ -1234,15 +1250,15 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
       child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)))),
+          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
+              decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
           Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking', style: ADText.appTitle()),
           const SizedBox(height: 4),
           Text(l.title, style: ADText.preview()),
           const SizedBox(height: 14),
           if (_isConsult) ...[
             Row(children: [
-              Text('PICK A TIME', style: ADText.sectionLabel()),
+              Text('Pick a time', style: ADText.sectionLabel()),
               const Spacer(),
               ZinePressable(
                 onTap: () async {
@@ -1252,9 +1268,9 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 },
                 color: AD.card,
                 borderColor: AD.borderControl,
-                radius: BorderRadius.circular(100),
+                radius: Msg.brMd,
                 boxShadow: const [],
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
                   const SizedBox(width: 6),
@@ -1291,7 +1307,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('🌐 Would you like this to be translated into the language of your choice?',
+                    Text('Would you like this to be translated into the language of your choice?',
                         style: ADText.rowName()),
                     const SizedBox(height: 4),
                     Text(
@@ -1382,7 +1398,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         decoration: BoxDecoration(
           color: sel ? AD.primaryBadge : (available ? AD.card : AD.headerFooter),
           border: Border.all(color: sel ? AD.primaryBadge : AD.borderControl, width: 1),
-          borderRadius: BorderRadius.circular(100),
+          // A time slot is a tappable BUTTON, not a badge.
+          borderRadius: Msg.brMd,
           boxShadow: const [],
         ),
         child: Text(label, style: ADText.preview(

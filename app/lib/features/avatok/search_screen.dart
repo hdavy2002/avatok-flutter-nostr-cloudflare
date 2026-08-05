@@ -14,6 +14,7 @@ import '../../core/remote_config.dart';
 import '../../sync/sync_hub.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../identity/identity.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
@@ -260,7 +261,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   child: Container(
                     width: 38, height: 38,
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-                    child: const Icon(Icons.arrow_back_rounded, size: 22, color: AD.textPrimary),
+                    child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -461,7 +462,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _section(String label) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
-        child: Text(label.toUpperCase(), style: ADText.sectionLabel()),
+        child: Text(label, style: ADText.sectionLabel()),
       );
 
   // An AvaTok contact (local or directory) row with status badges.
@@ -508,7 +509,7 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
             decoration: BoxDecoration(
               color: AD.newGroup,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brPill,
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),

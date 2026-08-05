@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'contacts.dart';
 
 /// STREAM I (FWD-1): a single multi-select Forward sheet.
@@ -153,7 +154,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
           height: 5,
           decoration: BoxDecoration(
               color: AD.textFaint,
-              borderRadius: BorderRadius.circular(100)),
+              borderRadius: Msg.brPill),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -266,8 +267,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
 
   Widget _sectionHeader(String label) => Padding(
         padding: const EdgeInsets.fromLTRB(2, 12, 0, 6),
-        child: Text(label.toUpperCase(),
-            style: ADText.sectionLabel()),
+        child: Text(label, style: ADText.sectionLabel()),
       );
 
   Widget _row({
@@ -304,7 +304,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
           const SizedBox(width: 8),
           // Multi-select checkmark.
           AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
+            duration: Msg.fast,
             width: 24,
             height: 24,
             decoration: BoxDecoration(
@@ -313,7 +313,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
               border: Border.all(color: on ? AD.online : AD.borderControl, width: 2),
             ),
             child: on
-                ? const Icon(Icons.check_rounded,
+                ? Icon(PhosphorIcons.check(PhosphorIconsStyle.bold),
                     size: 15, color: Colors.white)
                 : null,
           ),
@@ -333,14 +333,14 @@ class _SendButton extends StatelessWidget {
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 120),
+        duration: Msg.fast,
         opacity: enabled ? 1 : 0.4,
         child: Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 22),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text('Send',

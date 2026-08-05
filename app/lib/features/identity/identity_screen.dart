@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../profile/profile_screen.dart';
 import 'identity_api.dart';
@@ -251,16 +252,18 @@ class _IdentityScreenState extends State<IdentityScreen> {
                         ),
                         const SizedBox(width: 7),
                       ],
-                      const SizedBox(width: 4),
-                      Text('STEP $activePip / 3', style: ADText.sectionLabel()),
+                      const SizedBox(width: Msg.s1),
+                      // [UI-CASE-1] Sentence case — shouted labels were part of
+                      // the "amateur UI" finding.
+                      Text('Step $activePip of 3', style: ADText.sectionLabel()),
                     ]),
                   ]),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: Msg.s5),
 
                 // ── The ladder ────────────────────────────────────────────
-                Text('YOUR IDENTITY', style: ADText.sectionLabel()),
-                const SizedBox(height: 10),
+                Text('Your identity', style: ADText.sectionLabel()),
+                const SizedBox(height: Msg.s3),
                 _tick(true, PhosphorIcons.at(PhosphorIconsStyle.bold), AD.primaryBadge,
                     'Handle', 'Your unique @handle', null),
                 _tick(true, PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconSearch,
@@ -289,11 +292,11 @@ class _IdentityScreenState extends State<IdentityScreen> {
                         ? 'Verified by Stripe — cannot be removed (delete account to erase)'
                         : 'Government ID + selfie match — required for payouts',
                     _stripeDone ? null : _startStripe),
-                const SizedBox(height: 22),
+                const SizedBox(height: Msg.s5),
 
                 // ── Account actions ───────────────────────────────────────
-                Text('ACCOUNT', style: ADText.sectionLabel()),
-                const SizedBox(height: 10),
+                Text('Account', style: ADText.sectionLabel()),
+                const SizedBox(height: Msg.s3),
                 _row(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), AD.iconSearch,
                     'Profile & photo', 'Display name, bio, profile picture',
                     () => Navigator.of(context)

@@ -20,6 +20,7 @@ import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avaphone/phone_theme.dart';
 import 'busy_card.dart';
 import 'call_outcome_menu.dart';
@@ -750,8 +751,7 @@ class _CallScreenState extends State<CallScreen> {
                               style: ADText.threadName(c: Colors.white)),
                           const SizedBox(height: 2),
                           Text(
-                              (connected ? s.clock : s.statusText)
-                                  .toUpperCase(),
+                              connected ? s.clock : s.statusText,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: ADText.sectionLabel(c: Colors.white)),
@@ -1146,7 +1146,7 @@ class _CallScreenState extends State<CallScreen> {
                 ZinePressable(
                   onTap: _hangup,
                   color: AD.destructiveBg,
-                  radius: BorderRadius.circular(100),
+                  radius: Msg.brPill,
                   boxShadow: const [],
                   borderWidth: 1,
                   borderColor: AD.destructiveBg,
@@ -1257,8 +1257,7 @@ class _CallScreenState extends State<CallScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AD.card,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -1381,7 +1380,7 @@ class _CallScreenState extends State<CallScreen> {
       onTap: onTap,
       color: active ? AD.primaryBadge : AD.card,
       pressedColor: AD.primaryBadge,
-      radius: BorderRadius.circular(100),
+      radius: Msg.brPill,
       boxShadow: const [],
       borderWidth: 1,
       borderColor: active ? AD.primaryBadge : AD.borderControl,
@@ -1409,7 +1408,7 @@ class _MinimizeButton extends StatelessWidget {
     return ZinePressable(
       onTap: onTap,
       color: light ? AD.card : Colors.white.withValues(alpha: 0.16),
-      radius: BorderRadius.circular(100),
+      radius: Msg.brPill,
       boxShadow: const [],
       borderWidth: 1,
       borderColor: light ? AD.borderControl : Colors.transparent,
@@ -1623,7 +1622,7 @@ class _CallNetHudState extends State<_CallNetHud>
   void initState() {
     super.initState();
     _appear = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 420))
+        vsync: this, duration: Msg.slow)
       ..forward();
     _resolveTransport();
     _connSub =
@@ -1673,7 +1672,7 @@ class _CallNetHudState extends State<_CallNetHud>
       builder: (context, ns, _) {
         // Slide down + fade the whole strip on first appearance.
         return FadeTransition(
-          opacity: CurvedAnimation(parent: _appear, curve: Curves.easeOut),
+          opacity: CurvedAnimation(parent: _appear, curve: Msg.curve),
           child: SlideTransition(
             position: Tween<Offset>(
               begin: const Offset(0, -0.35),
@@ -1700,12 +1699,12 @@ class _CallNetHudState extends State<_CallNetHud>
       behavior: HitTestBehavior.opaque,
       onTap: () => _openDetail(ns),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
+        duration: Msg.slow,
+        curve: Msg.curve,
         padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
         decoration: BoxDecoration(
           color: _bg,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: widget.onVideo
               ? null
               : Border.all(color: AD.borderControl, width: 1),
@@ -1751,17 +1750,17 @@ class _CallNetHudState extends State<_CallNetHud>
             if (weak) ...[
               const SizedBox(width: 8),
               AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
+                duration: Msg.slow,
                 opacity: weak ? 1 : 0,
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
                     color: AD.danger,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                   ),
                   child:
-                  Text('WEAK', style: ADText.statCaption(c: Colors.white)),
+                  Text('Weak', style: ADText.statCaption(c: Colors.white)),
                 ),
               ),
             ],
@@ -1873,8 +1872,8 @@ class _QualityBars extends StatelessWidget {
         return Padding(
           padding: EdgeInsets.only(right: i == n - 1 ? 0 : 2),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOut,
+            duration: Msg.slow,
+            curve: Msg.curve,
             width: 3.2,
             height: h,
             decoration: BoxDecoration(

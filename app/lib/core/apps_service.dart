@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'analytics.dart';
 import 'api_auth.dart';
@@ -21,12 +22,14 @@ class AvaApp {
 
 /// The free Google set shipped by default in AvaApps (PREMIUM feature). Order +
 /// slugs mirror the Worker's GOOGLE_TOOLKITS.
-const List<AvaApp> kAvaApps = [
-  AvaApp('gmail', 'Gmail', Icons.mail_outline, Color(0xFFEA4335)),
-  AvaApp('googledocs', 'Google Docs', Icons.description_outlined, Color(0xFF4285F4)),
-  AvaApp('googlesheets', 'Google Sheets', Icons.grid_on, Color(0xFF0F9D58)),
-  AvaApp('googledrive', 'Google Drive', Icons.folder_open, Color(0xFF1FA463)),
-  AvaApp('googlecalendar', 'Google Calendar', Icons.event, Color(0xFF4285F4)),
+/// [UI-ICONS-1 2026-08-05] Phosphor glyphs — `PhosphorIcons.x(...)` is a function
+/// call, so this list is `final`, not `const`.
+final List<AvaApp> kAvaApps = [
+  AvaApp('gmail', 'Gmail', PhosphorIcons.envelopeSimple(PhosphorIconsStyle.regular), const Color(0xFFEA4335)),
+  AvaApp('googledocs', 'Google Docs', PhosphorIcons.fileText(PhosphorIconsStyle.regular), const Color(0xFF4285F4)),
+  AvaApp('googlesheets', 'Google Sheets', PhosphorIcons.table(PhosphorIconsStyle.regular), const Color(0xFF0F9D58)),
+  AvaApp('googledrive', 'Google Drive', PhosphorIcons.folderOpen(PhosphorIconsStyle.regular), const Color(0xFF1FA463)),
+  AvaApp('googlecalendar', 'Google Calendar', PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular), const Color(0xFF4285F4)),
 ];
 
 /// Connectors the user can actually connect in the pro/live launch. Everything

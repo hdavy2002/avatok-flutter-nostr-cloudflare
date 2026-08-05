@@ -15,6 +15,7 @@ import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../identity/identity.dart';
 import '../avatok/ava_number.dart';
@@ -181,7 +182,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final ctx = _keyFor(field).currentContext;
     if (ctx == null) return;
     Scrollable.ensureVisible(ctx,
-        duration: const Duration(milliseconds: 300), curve: Curves.ease, alignment: 0.1);
+        duration: Msg.slow, curve: Curves.easeOutCubic, alignment: 0.1);
   }
 
   /// Resolve the locked email from every source we have, newest-wins but never
@@ -850,7 +851,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }) {
     final has = value.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label.toUpperCase(), style: ADText.sectionLabel(c: AD.textSecondary)),
+      Text(label, style: ADText.sectionLabel(c: AD.textSecondary)),
       const SizedBox(height: 9),
       GestureDetector(
         onTap: onTap,
@@ -1100,7 +1101,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     backgroundColor: AD.card,
                     selectedColor: AD.primaryBadge,
                     side: BorderSide(color: _gender == opt[0] ? AD.primaryBadge : AD.borderControl, width: 1),
-                    labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                    labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         fontSize: 13, color: _gender == opt[0] ? Colors.white : AD.textSecondary),
                   ),
               ]),
@@ -1111,15 +1112,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             const SizedBox(height: 14),
             // ── About you (bio) — live AI moderation + "write my bio" sparkle ──
             Row(key: _bioKey, children: [
-              Expanded(child: Text('ABOUT YOU', style: ADText.sectionLabel())),
+              Expanded(child: Text('About you', style: ADText.sectionLabel())),
               // Sparkle: type 1–2 lines, tap to have Ava draft a short bio.
               GestureDetector(
                 onTap: _bioAiBusy ? null : _writeBioWithAi,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                   decoration: BoxDecoration(
                     color: AD.primaryBadge,
-                    borderRadius: BorderRadius.circular(100),
+                    // Inline action BUTTON, not a badge.
+                    borderRadius: Msg.brMd,
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_bioAiBusy)
@@ -1129,7 +1131,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Colors.white),
                     const SizedBox(width: 6),
                     Text(_bioAiBusy ? 'Writing…' : 'Write my bio',
-                        style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
+                        style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
                   ]),
                 ),
               ),

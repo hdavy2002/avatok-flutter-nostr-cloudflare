@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avabrain/brain_settings_screen.dart';
 
@@ -371,14 +372,14 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
 
   static String _typeLabel(String type) {
     switch (type) {
-      case 'preference': return 'PREFERENCES';
-      case 'goal': return 'GOALS';
-      case 'habit': return 'HABITS';
-      case 'deadline': return 'DEADLINES';
-      case 'decision': return 'DECISIONS';
-      case 'reminder': return 'REMINDERS';
-      case 'insight': return 'INSIGHTS';
-      default: return type.toUpperCase();
+      case 'preference': return 'Preferences';
+      case 'goal': return 'Goals';
+      case 'habit': return 'Habits';
+      case 'deadline': return 'Deadlines';
+      case 'decision': return 'Decisions';
+      case 'reminder': return 'Reminders';
+      case 'insight': return 'Insights';
+      default: return type;
     }
   }
 }
@@ -454,10 +455,10 @@ class _ConfirmedBadge extends StatelessWidget {
   const _ConfirmedBadge();
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 3),
         decoration: BoxDecoration(
           color: AD.online,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 10, color: Colors.white),

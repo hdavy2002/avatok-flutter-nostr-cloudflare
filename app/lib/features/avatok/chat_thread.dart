@@ -2909,11 +2909,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
               color: _sysPillBg,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brPill,
               border: Border.all(color: _sysPillBorder, width: 1.5),
               boxShadow: const [],
             ),
-            child: Text(label.toUpperCase(),
+            child: Text(label,
                 style: ADText.statCaption(c: _sysPillMeta)),
           ),
         ),
@@ -2941,7 +2941,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
               color: _sysPillBg,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
               border: Border.all(color: _sysPillBorder, width: 1),
               boxShadow: const [],
             ),
@@ -4592,9 +4592,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                           color: AD.danger,
-                          borderRadius: BorderRadius.circular(100),
+                          borderRadius: Msg.brPill,
                           border: Border.all(color: AD.bubbleInInk, width: 2)),
-                      child: Text('LIVE', style: ADText.bubbleMeta(c: Colors.white)),
+                      child: Text('Live', style: ADText.bubbleMeta(c: Colors.white)),
                     ),
                   ),
               ]),
@@ -4828,9 +4828,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                     color: AD.online,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                     border: Border.all(color: t.border, width: 2)),
-                child: Text('JOIN', style: ADText.bubbleMeta(c: t.meta)),
+                child: Text('Join', style: ADText.bubbleMeta(c: t.meta)),
               ),
             ],
           ]),
@@ -7594,7 +7594,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                       child: Align(alignment: Alignment.centerLeft,
-                          child: Text(cat.key.toUpperCase(), style: ADText.statCaption(c: AD.textSecondary))),
+                          child: Text(cat.key, style: ADText.statCaption(c: AD.textSecondary))),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -8985,7 +8985,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     boxShadow: const []),
                 child: Icon(icon, color: color == AD.danger ? Colors.white : AD.textPrimary, size: 24)),
             const SizedBox(height: 8),
-            Text(label.toUpperCase(), style: ADText.statCaption(c: AD.textSecondary)),
+            Text(label, style: ADText.statCaption(c: AD.textSecondary)),
           ]),
         ),
       );
@@ -9054,9 +9054,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                           style: ADText.threadName()),
                       Text(
                           (_peerTyping
-                              ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
+                              ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'Typing…')
                               : (c.group ? '${c.members} members · tap to manage'
-                                  : (_peerOnline ? 'online' : _relLastSeen()))).toUpperCase(),
+                                  : (_peerOnline ? 'Online' : _relLastSeen()))),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ADText.statCaption(c: (_peerTyping || _peerOnline)
                                   ? (_peerOnline && !_peerTyping ? AD.online : AD.iconSearch)
@@ -9737,7 +9737,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 color: AD.sendActiveBg, shape: BoxShape.circle,
                 border: Border.all(color: AD.borderControl, width: 1), boxShadow: const []),
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
+              duration: Msg.base,
               transitionBuilder: (child, anim) =>
                   ScaleTransition(scale: anim, child: FadeTransition(opacity: anim, child: child)),
               child: Icon(icon, key: ValueKey(icon), color: AD.sendActiveInk, size: 20),
@@ -9787,7 +9787,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               child: _recPaused
                   ? Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('Paused · tap ▶ to continue',
+                      child: Text('Paused · tap play to continue',
                           style: ADText.bubbleMeta(c: AD.textSecondary)),
                     )
                   : LiveWaveform(levels: _recLevels),
@@ -9998,7 +9998,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               ),
             ),
           ),
-          Text('TAP ■ TO INSERT', style: ADText.sectionLabel()),
+          Text('Tap stop to insert', style: ADText.sectionLabel()),
         ]),
       );
 
@@ -10513,7 +10513,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text((isEdit ? 'Editing' : 'Replying to ${_replyTo!.me ? "yourself" : (_replyTo!.senderLabel ?? widget.chat.name)}').toUpperCase(),
+            Text(isEdit ? 'Editing' : 'Replying to ${_replyTo!.me ? "yourself" : (_replyTo!.senderLabel ?? widget.chat.name)}',
                 style: ADText.sectionLabel(c: AD.iconSearch)),
             Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview()),
@@ -10847,7 +10847,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
               decoration: BoxDecoration(
                 color: AD.iconVideo,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: Msg.brMd,
                 border: Border.all(color: _sysPillBorder, width: 1),
                 boxShadow: const [],
               ),
@@ -10878,7 +10878,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Say hi 👋', style: ADText.threadName(c: _canvasInk)),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(PhosphorIcons.handWaving(PhosphorIconsStyle.regular),
+                size: 18, color: _canvasInk),
+            const SizedBox(width: Msg.s2),
+            Text('Say hi', style: ADText.threadName(c: _canvasInk)),
+          ]),
           const SizedBox(height: 8),
           Text(
             'Messages here are end-to-end encrypted. Nobody outside this chat — not even AvaTOK — can read them.',
@@ -10924,7 +10929,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             decoration: BoxDecoration(
               color: _sysPillBg,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
               border: Border.all(color: _sysPillBorder, width: 1),
               boxShadow: const [],
             ),
@@ -11635,8 +11640,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
 
   String _safetyCategoryLabel(String category) {
     final c = category.trim();
-    if (c.isEmpty) return 'FLAGGED BY AVA';
-    return '⚠ ${c.replaceAll('_', ' ').toUpperCase()} — FLAGGED BY AVA';
+    if (c.isEmpty) return 'Flagged by Ava';
+    return 'Flagged by Ava — ${c.replaceAll('_', ' ')}';
   }
 
   Widget _safetyFlagBubble(_Msg m, String category) {
@@ -12035,7 +12040,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   if (m.senderLabel != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(m.senderLabel!.toUpperCase(),
+                      child: Text(m.senderLabel!,
                           style: ADText.bubbleMeta(
                               c: (m.senderPub?.isNotEmpty ?? false)
                                   ? groupSenderNameColor(m.senderPub!)
@@ -12050,7 +12055,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                           border: Border(left: BorderSide(color: t.play, width: 3)),
                           borderRadius: BorderRadius.circular(Msg.rSm)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                        Text((m.replyTo!['who'] ?? '').toString().toUpperCase(),
+                        Text((m.replyTo!['who'] ?? '').toString(),
                             style: ADText.bubbleMeta(c: t.play)),
                         Text((m.replyTo!['preview'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: ADText.bubbleBody(c: t.ink)),
@@ -12119,7 +12124,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                           const SizedBox(width: 4),
                           Icon(st.icon, size: 13, color: st.color),
                           const SizedBox(width: 3),
-                          Text(st.label.toUpperCase(),
+                          Text(st.label,
                               style: ADText.bubbleMeta(c: st.color)), // status colour is semantic (danger/read/etc.), not theme-tinted
                         ]);
                         if (!m.failed) return row;
@@ -12179,7 +12184,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
                             color: m.reaction == e.key ? AD.primaryBadge : t.bg,
-                            borderRadius: BorderRadius.circular(100),
+                            borderRadius: Msg.brPill,
                             border: Border.all(color: t.border, width: 2),
                             boxShadow: const []),
                         child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
@@ -12195,7 +12200,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // Reaction sticker — themed border, no blur.
                 decoration: BoxDecoration(
                     color: t.bg,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                     border: Border.all(color: t.border, width: 2),
                     boxShadow: const []),
                 child: Text(m.reaction!, style: const TextStyle(fontSize: 14)),
@@ -12321,7 +12326,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                         const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
                         color: m.reaction == e.key ? AD.primaryBadge : t.bg,
-                        borderRadius: BorderRadius.circular(100),
+                        borderRadius: Msg.brPill,
                         border: Border.all(color: t.border, width: 2),
                         boxShadow: const []),
                     child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
@@ -13344,7 +13349,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           ),
         if (hasRec && dur.isNotEmpty) ...[
           const SizedBox(width: 8),
-          Text('⏱ $dur', style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
+          PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.regular),
+              size: 12, color: AD.bubbleInMeta),
+          const SizedBox(width: Msg.s1),
+          Text(dur, style: ADText.bubbleMeta(c: AD.bubbleInMeta)),
         ],
         if (hasRec) ...[
           const SizedBox(width: 8),

@@ -9,6 +9,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// Liveness V2 — EXPRESSION challenge step (Specs/LIVENESS-V2-PLAN.md §4 step
 /// 4b). ONE random expression from the server challenge list is asked; ML Kit
@@ -359,51 +360,46 @@ class _ExpressionStepState extends State<ExpressionStep> {
           right: 0,
           bottom: 44,
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 24),
-            padding: const EdgeInsets.all(18),
+            margin: const EdgeInsets.symmetric(horizontal: Msg.s5),
+            padding: const EdgeInsets.all(Msg.s4),
             decoration: BoxDecoration(
               color: const Color(0xE60B0B0D), // AD.bg @90%
-              borderRadius: BorderRadius.circular(AD.rDialog),
+              borderRadius: Msg.brLg,
               border: Border.all(color: AD.primaryBadge, width: 1),
             ),
             child: Text(
               _prompt,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: ADText.family,
-                fontWeight: FontWeight.w800,
-                fontSize: 24,
-                color: AD.textPrimary,
-              ),
+              style: ADText.appTitle().copyWith(fontSize: 24),
             ),
           ),
         ),
         if (_timedOut)
           Center(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 32),
-              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.symmetric(horizontal: Msg.s6),
+              padding: const EdgeInsets.all(Msg.s5),
               decoration: BoxDecoration(
                 color: AD.popover,
-                borderRadius: BorderRadius.circular(AD.rDialog),
+                borderRadius: Msg.brLg,
                 border: Border.all(color: AD.borderControl, width: 1),
-                boxShadow: const [],
+                boxShadow: Msg.none,
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text('Nearly there',
                     textAlign: TextAlign.center,
                     style: ADText.appTitle().copyWith(fontSize: 20)),
-                const SizedBox(height: 8),
+                const SizedBox(height: Msg.s2),
                 Text(_prompt,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: ADText.family,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                       fontSize: 14,
                       height: 1.42,
                       color: AD.textSecondary,
                     )),
-                const SizedBox(height: 16),
+                const SizedBox(height: Msg.s4),
                 SizedBox(
                   width: 200,
                   child: AdButton(label: 'Retry', fullWidth: true, onPressed: _retry),

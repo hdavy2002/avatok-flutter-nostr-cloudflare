@@ -14,6 +14,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Fixed sticker render size (WhatsApp-parity).
 const double kStickerRenderSize = 160;
@@ -45,7 +46,7 @@ class StickerMediaView extends StatelessWidget {
           fit: BoxFit.contain,
           gaplessPlayback: true,
           errorBuilder: (_, __, ___) =>
-              const Icon(Icons.emoji_emotions_outlined, size: 64),
+              Icon(PhosphorIcons.smiley(PhosphorIconsStyle.regular), size: 64),
         ),
       ),
     );

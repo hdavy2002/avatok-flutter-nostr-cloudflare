@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../listings/create_listing_flow.dart';
 import '../listings/my_listings_screen.dart';
@@ -135,13 +136,15 @@ class _ExploreHomeState extends State<ExploreHome> {
         ]),
       );
 
-  // Search bar pinned at top of AvaExplore (A1) — ink-bordered card pill.
+  // Search bar pinned at top of AvaExplore (A1) — ink-bordered card.
+  // [UI-RADII-1] Search is an INPUT affordance, so it takes the input radius,
+  // not a pill.
   Widget _search() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
         child: ZinePressable(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExploreSearchScreen())),
-          radius: BorderRadius.circular(100),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          radius: Msg.brMd,
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 19),
             const SizedBox(width: 10),
@@ -191,14 +194,14 @@ class _ExploreHomeState extends State<ExploreHome> {
                         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                         decoration: BoxDecoration(
                           color: AD.destructiveBg,
-                          borderRadius: BorderRadius.circular(100),
+                          borderRadius: Msg.brPill,
                           border: Border.all(color: AD.borderControl, width: 1),
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Container(width: 6, height: 6, decoration: const BoxDecoration(
                               color: Colors.white, shape: BoxShape.circle)),
                           const SizedBox(width: 4),
-                          Text('LIVE', style: ADText.statCaption(c: Colors.white)),
+                          Text('Live', style: ADText.statCaption(c: Colors.white)),
                         ]),
                       )),
                     ])),
@@ -221,9 +224,9 @@ class _ExploreHomeState extends State<ExploreHome> {
                           onTap: () => _joinLive(l),
                           color: AD.destructiveBg,
                           borderColor: AD.destructiveBg,
-                          radius: BorderRadius.circular(100),
+                          radius: Msg.brMd,
                           boxShadow: const [],
-                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                           child: Text('Join', style: ADText.rowName(c: Colors.white)),
                         ),
                       ]),
@@ -260,19 +263,22 @@ class _ExploreHomeState extends State<ExploreHome> {
   /// shadow). Banner taps open My Listings; the CTA jumps straight into the
   /// create-listing stepper (mockup behavior).
   Widget _drop() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s2),
         child: AdCard(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyListingsScreen())),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Icon(Icons.auto_awesome, color: AD.iconSearch, size: 14),
-              const SizedBox(width: 6),
-              Text('BECOME A CREATOR', style: ADText.sectionLabel(c: AD.iconSearch)),
+              PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.regular),
+                  color: AD.iconSearch, size: 14),
+              const SizedBox(width: Msg.s2),
+              // [UI-CASE-1] Sentence case — the shouted label was part of the
+              // "amateur UI" finding.
+              Text('Become a creator', style: ADText.sectionLabel(c: AD.iconSearch)),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s3),
             Text('Host live events & paid sessions,\nearn straight to your wallet',
                 style: ADText.threadName()),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s4),
             AdButton(
               label: 'Create a listing',
               fontSize: 17,

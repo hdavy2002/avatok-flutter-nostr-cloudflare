@@ -8,6 +8,7 @@ import '../../core/avatar.dart';
 import '../../core/device_contacts.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'add_by_link_sheet.dart';
 import 'contacts.dart';
 
@@ -142,7 +143,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             Center(
               child: Container(
                 width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AD.textFaint, borderRadius: Msg.brPill),
               ),
             ),
             Row(children: [
@@ -228,7 +229,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 decoration: BoxDecoration(
                   color: AD.card,
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brMd,
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [

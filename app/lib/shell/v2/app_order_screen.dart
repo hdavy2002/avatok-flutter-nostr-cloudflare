@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../shell_v2.dart';
 import 'root_order_store.dart';
 
@@ -17,12 +18,29 @@ import 'root_order_store.dart';
 class AppOrderScreen extends StatelessWidget {
   const AppOrderScreen({super.key});
 
-  static const Map<RootId, (IconData, String, String, Color)> _meta = {
-    RootId.avaDial: (Icons.phone, 'AvaDialer', 'Phone, spam shield & device contacts', AD.iconSearch),
+  // NOT const: `PhosphorIcons.x(...)` is a function call, so this map has to be
+  // `final`. The value type stays `IconData`, so every consumer is unaffected.
+  static final Map<RootId, (IconData, String, String, Color)> _meta = {
+    RootId.avaDial: (
+      PhosphorIcons.phone(PhosphorIconsStyle.regular),
+      'AvaDialer',
+      'Phone, spam shield & device contacts',
+      AD.iconSearch
+    ),
     // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only; RootId.key
     // stays 'avatalk'). Mirror of shell/v2/app_switcher_bar.dart `_meta`.
-    RootId.avaTalk: (Icons.chat_bubble, 'AvaTalk', 'Messages & in-network calls', AD.online),
-    RootId.services: (Icons.storefront, 'Services', 'Marketplace, wallet & more', AD.danger),
+    RootId.avaTalk: (
+      PhosphorIcons.chatCircle(PhosphorIconsStyle.regular),
+      'AvaTalk',
+      'Messages & in-network calls',
+      AD.online
+    ),
+    RootId.services: (
+      PhosphorIcons.storefront(PhosphorIconsStyle.regular),
+      'Services',
+      'Marketplace, wallet & more',
+      AD.danger
+    ),
   };
 
   @override
@@ -84,12 +102,12 @@ class AppOrderScreen extends StatelessWidget {
       key: ValueKey(root.key),
       padding: const EdgeInsets.only(bottom: 12),
       child: AdCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(children: [
           ReorderableDragStartListener(
             index: index,
             child: Padding(
-              padding: const EdgeInsets.only(right: 10),
+              padding: const EdgeInsets.only(right: Msg.s3),
               child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold),
                   size: 18, color: AD.textTertiary),
             ),
@@ -105,10 +123,10 @@ class AppOrderScreen extends StatelessWidget {
           ),
           if (isLanding)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
               decoration: BoxDecoration(
                 color: AD.primaryBadge,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: Msg.brPill,
                 border: Border.all(color: AD.borderControl, width: 1),
               ),
               child: Text('Opens at launch', style: ADText.statCaption(c: Colors.white)),

@@ -55,7 +55,7 @@ PreferredSizeWidget _darkHeader({required String title, String? tag}) {
                       overflow: TextOverflow.ellipsis),
                   if (tag != null) ...[
                     const SizedBox(height: 2),
-                    Text(tag.toUpperCase(), style: ADText.sectionLabel()),
+                    Text(tag, style: ADText.sectionLabel()),
                   ],
                 ],
               ),

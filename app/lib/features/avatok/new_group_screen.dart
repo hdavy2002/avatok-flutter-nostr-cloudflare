@@ -10,6 +10,7 @@ import '../../core/avatar_cache.dart';
 import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../sync/group_api.dart';
 import '../profile/avatar_crop_screen.dart';
 import 'chat_thread.dart';
@@ -67,18 +68,17 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AD.menu,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
           ListTile(
-            leading: const Icon(Icons.photo_camera_outlined, color: AD.textPrimary),
+            leading: Icon(PhosphorIcons.camera(PhosphorIconsStyle.regular), color: AD.textPrimary),
             title: Text('Take photo', style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.camera); },
           ),
           ListTile(
-            leading: const Icon(Icons.photo_library_outlined, color: AD.textPrimary),
+            leading: Icon(PhosphorIcons.images(PhosphorIconsStyle.regular), color: AD.textPrimary),
             title: Text('Choose from gallery', style: ADText.rowName()),
             onTap: () { Navigator.pop(ctx); _pickCropUpload(ImageSource.gallery); },
           ),
@@ -338,12 +338,12 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: enabled ? _create : null,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brMd,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           decoration: BoxDecoration(
             color: fill,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
             border: enabled ? null : Border.all(color: AD.borderControl, width: 1),
           ),
           child: Text(_creating ? '…' : 'Create', style: ADText.rowName(c: fg)),
@@ -430,7 +430,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                   shape: BoxShape.circle,
                   border: Border.all(color: AD.bg, width: 2),
                 ),
-                child: Icon(hasPhoto ? Icons.edit : Icons.add, size: 13, color: Colors.white),
+                child: Icon(hasPhoto ? PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold) : PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 13, color: Colors.white),
               ),
             ),
         ]),

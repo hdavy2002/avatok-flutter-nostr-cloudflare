@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/disk_cache.dart';
 import '../../core/platform_api.dart';
@@ -17,17 +18,29 @@ class SourceStyle {
   const SourceStyle(this.label, this.color, this.icon);
 }
 
-const kSourceStyles = <String, SourceStyle>{
-  'avacalendar': SourceStyle('AvaCalendar', Color(0xFFEAB308), Icons.calendar_month),
-  'avabooking': SourceStyle('AvaBooking', Color(0xFFE1306C), Icons.event_available),
-  'avalive': SourceStyle('AvaLive', Color(0xFFFF3B30), Icons.sensors),
-  'avaconsult': SourceStyle('AvaConsult', Color(0xFF22C9C0), Icons.video_camera_front),
-  'gcal': SourceStyle('Google Calendar', Color(0xFF4285F4), Icons.event),
-  'manual': SourceStyle('Manual block', Color(0xFF737A86), Icons.block),
+// [UI-ICONS-1 2026-08-05] Material glyphs → Phosphor. `PhosphorIcons.x(...)` is
+// a FUNCTION CALL, so this map can no longer be `const`; it is `final` instead.
+// Both consumers (`avacalendar_screen._legend`, `booking_card`) read it at
+// runtime, so nothing downstream needed to change.
+final kSourceStyles = <String, SourceStyle>{
+  'avacalendar': SourceStyle('AvaCalendar', const Color(0xFFEAB308),
+      PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular)),
+  'avabooking': SourceStyle('AvaBooking', const Color(0xFFE1306C),
+      PhosphorIcons.calendarCheck(PhosphorIconsStyle.regular)),
+  'avalive': SourceStyle('AvaLive', const Color(0xFFFF3B30),
+      PhosphorIcons.broadcast(PhosphorIconsStyle.regular)),
+  'avaconsult': SourceStyle('AvaConsult', const Color(0xFF22C9C0),
+      PhosphorIcons.videoCamera(PhosphorIconsStyle.regular)),
+  'gcal': SourceStyle('Google Calendar', const Color(0xFF4285F4),
+      PhosphorIcons.calendarDots(PhosphorIconsStyle.regular)),
+  'manual': SourceStyle('Manual block', const Color(0xFF737A86),
+      PhosphorIcons.prohibit(PhosphorIconsStyle.regular)),
 };
 
 SourceStyle styleFor(String? sourceApp) =>
-    kSourceStyles[sourceApp] ?? const SourceStyle('Busy', Color(0xFF737A86), Icons.event_busy);
+    kSourceStyles[sourceApp] ??
+    SourceStyle('Busy', const Color(0xFF737A86),
+        PhosphorIcons.calendarX(PhosphorIconsStyle.regular));
 
 class CalBlock {
   final String id;

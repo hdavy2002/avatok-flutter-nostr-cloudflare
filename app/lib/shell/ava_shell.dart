@@ -16,6 +16,7 @@ import '../core/remote_config.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine_widgets.dart';
 import '../core/ui/avatok_dark.dart';
+import '../core/ui/messenger_theme.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
 import '../features/ava_companion/companion_home.dart';
@@ -482,9 +483,9 @@ class _AvaShellState extends State<AvaShell> {
       context: context,
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 36),

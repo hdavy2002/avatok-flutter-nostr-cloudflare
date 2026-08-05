@@ -446,7 +446,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           color: AD.card,
           borderColor: AD.borderControl,
           borderWidth: 1,
-          radius: BorderRadius.circular(14),
+          radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
@@ -478,7 +478,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           color: AD.card,
           borderColor: AD.borderControl,
           borderWidth: 1,
-          radius: BorderRadius.circular(14),
+          radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
@@ -507,7 +507,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           color: AD.card,
           borderColor: AD.borderControl,
           borderWidth: 1,
-          radius: BorderRadius.circular(14),
+          radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
@@ -540,7 +540,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         color: AD.card,
         borderColor: AD.borderControl,
         borderWidth: 1,
-        radius: BorderRadius.circular(14),
+        radius: BorderRadius.circular(AD.rListCard),
         boxShadow: const <BoxShadow>[],
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(children: [
@@ -659,7 +659,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           color: AD.card,
           borderColor: AD.borderControl,
           borderWidth: 1,
-          radius: BorderRadius.circular(14),
+          radius: BorderRadius.circular(AD.rListCard),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [

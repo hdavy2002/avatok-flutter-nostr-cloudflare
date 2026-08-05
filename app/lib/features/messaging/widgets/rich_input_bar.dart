@@ -21,8 +21,10 @@
 // PickerRecentsStore.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'gif_api.dart';
 import 'mention_text_controller.dart';
 import 'picker_recents_store.dart';
@@ -193,7 +195,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                   padding: const EdgeInsets.only(left: 14, right: 2),
                   decoration: BoxDecoration(
                     color: widget.fieldColor,
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: Msg.brLg,
                     border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -226,21 +228,21 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                     // ── Controls, in reach order: emoji · @ · clip · camera · mic
                     _barIcon(
                       icon: _panelOpen && _tab == PickerTab.emoji
-                          ? Icons.keyboard_alt_outlined
-                          : Icons.emoji_emotions_outlined,
+                          ? PhosphorIcons.keyboard(PhosphorIconsStyle.regular)
+                          : PhosphorIcons.smiley(PhosphorIconsStyle.regular),
                       color: AD.iconEmoji,
                       tooltip: 'Emoji, GIFs & stickers',
                       onTap: _toggleEmoji,
                     ),
                     if (widget.onMention != null)
                       _barIcon(
-                        icon: Icons.alternate_email_rounded,
+                        icon: PhosphorIcons.at(PhosphorIconsStyle.regular),
                         color: MentionTextController.mentionBlue,
                         tooltip: 'Mention someone',
                         onTap: widget.onMention!,
                       ),
                     _barIcon(
-                      icon: Icons.attach_file_rounded,
+                      icon: PhosphorIcons.paperclip(PhosphorIconsStyle.regular),
                       color: AD.iconClipOnWhite,
                       tooltip: 'Attach a file',
                       onTap: widget.onAttach,
@@ -250,13 +252,13 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                     // keeps the field readable on a narrow phone.
                     if (!widget.hasText) ...[
                       _barIcon(
-                        icon: Icons.photo_camera_outlined,
+                        icon: PhosphorIcons.camera(PhosphorIconsStyle.regular),
                         color: AD.iconCameraOnWhite,
                         tooltip: 'Take a photo',
                         onTap: widget.onCamera,
                       ),
                       _barIcon(
-                        icon: Icons.mic_rounded,
+                        icon: PhosphorIcons.microphone(PhosphorIconsStyle.regular),
                         color: AD.micIdleInk,
                         tooltip: 'Record a voice note',
                         onTap: widget.onMic,
@@ -267,11 +269,11 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
               ),
               // Green send circle — only while there is something to send.
               AnimatedSize(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOut,
+                duration: Msg.fast,
+                curve: Msg.curve,
                 child: widget.hasText
                     ? Padding(
-                        padding: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.only(left: Msg.s2),
                         child: _greenButton(),
                       )
                     : const SizedBox(height: 46),
@@ -282,8 +284,8 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
       ),
       // Panel occupies the OS-keyboard slot when open.
       AnimatedSize(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
+        duration: Msg.base,
+        curve: Msg.curve,
         child: _panelOpen
             ? RichPickerPanel(
                 height: _panelHeight,
@@ -338,8 +340,9 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
             color: AD.sendActiveBg,
             shape: BoxShape.circle,
           ),
-          child: const Center(
-            child: Icon(Icons.send_rounded, color: AD.sendActiveInk, size: 22),
+          child: Center(
+            child: Icon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
+                color: AD.sendActiveInk, size: 22),
           ),
         ),
       );

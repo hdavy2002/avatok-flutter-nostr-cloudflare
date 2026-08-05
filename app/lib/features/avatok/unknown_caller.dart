@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/device_contacts.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'contacts.dart';
 
 /// Helpers + UI for "unknown number" threads — a caller the AI Receptionist
@@ -191,7 +192,7 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
             Center(
               child: Container(
                 width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: AD.textFaint, borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: AD.textFaint, borderRadius: Msg.brPill),
               ),
             ),
             Text('Save to contacts', style: ADText.appTitle()),
@@ -205,7 +206,7 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Icon(Icons.phone, size: 14, color: AD.iconPhone),
+                    Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), size: 14, color: AD.iconPhone),
                     const SizedBox(width: 5),
                     Flexible(child: Text(pretty, style: ADText.threadName())),
                   ]),
@@ -225,7 +226,7 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
               behavior: HitTestBehavior.opaque,
               onTap: () => setState(() => _alsoDevice = !_alsoDevice),
               child: Row(children: [
-                Icon(_alsoDevice ? Icons.check_box : Icons.check_box_outline_blank,
+                Icon(_alsoDevice ? PhosphorIcons.checkSquare(PhosphorIconsStyle.fill) : PhosphorIcons.square(PhosphorIconsStyle.regular),
                     size: 20, color: _alsoDevice ? AD.online : AD.textTertiary),
                 const SizedBox(width: 8),
                 Text('Also save to my phone contacts', style: ADText.preview()),

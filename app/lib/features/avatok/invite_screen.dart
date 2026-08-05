@@ -11,6 +11,7 @@ import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// AvaInvite — "invite your phone contacts to AvaTOK".
 ///
@@ -239,7 +240,7 @@ class _InviteScreenState extends State<InviteScreen> {
         child: Container(
           width: 38, height: 38,
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-          child: const Icon(Icons.arrow_back_rounded, size: 22, color: AD.textPrimary),
+          child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
         ),
       );
 
@@ -431,7 +432,7 @@ class _InviteScreenState extends State<InviteScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brMd,
           ),
           child: Text(label, style: ADText.rowName()),
         ),

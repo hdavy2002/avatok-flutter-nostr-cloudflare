@@ -453,7 +453,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: inkC.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brPill,
                   border: Border.all(
                       color: inkC.withValues(alpha: 0.30), width: 1),
                 ),
@@ -624,7 +624,7 @@ class MediaForwardedLabel extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brPill,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
@@ -1014,7 +1014,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
         padding: EdgeInsets.symmetric(horizontal: label == null ? 6 : 8, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 13, color: Colors.white),
@@ -1380,9 +1380,9 @@ class _YouTubeCardState extends State<YouTubeCard> {
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(100),
+                      borderRadius: Msg.brPill,
                     ),
-                    child: Text('YOUTUBE', style: ADText.statCaption(c: Colors.white)),
+                    child: Text('YouTube', style: ADText.statCaption(c: Colors.white)),
                   ),
                 ),
               ]),

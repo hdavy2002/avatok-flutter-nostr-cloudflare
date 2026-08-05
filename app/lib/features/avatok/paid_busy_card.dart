@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// [DIALPAD-BIZ-CALLS] Full-screen "busy" card shown to the CALLER when a PAID
@@ -112,7 +113,7 @@ Widget _adPillButton({
     borderColor: bc,
     borderWidth: 1,
     boxShadow: const <BoxShadow>[],
-    radius: BorderRadius.circular(100),
+    radius: Msg.brMd,
     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
     child: Row(
       mainAxisSize: MainAxisSize.max,

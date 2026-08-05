@@ -247,7 +247,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
           feedback: _dragFeedback(root, affiliate: affiliate),
           childWhenDragging: Opacity(opacity: 0.25, child: item),
           child: AnimatedScale(
-            duration: const Duration(milliseconds: 160),
+            duration: Msg.fast,
+            curve: Msg.curve,
             scale: isHover ? 1.12 : 1.0,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -328,7 +329,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     int badge = 0,
   }) {
     final iconCell = AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
+      duration: Msg.fast,
+      curve: Msg.curve,
       width: 46,
       height: 28,
       alignment: Alignment.center,

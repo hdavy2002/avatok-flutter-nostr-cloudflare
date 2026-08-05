@@ -63,7 +63,7 @@ class _LinkSheet extends StatelessWidget {
             Center(child: Container(width: 38, height: 5,
                 margin: const EdgeInsets.only(bottom: Msg.s4),
                 decoration: BoxDecoration(color: AD.textTertiary,
-                    borderRadius: BorderRadius.circular(3)))),
+                    borderRadius: Msg.brPill))),
             Center(
               child: ZineMarkTitle(
                 pre: justCreated ? 'Your link is ' : 'Share your ',

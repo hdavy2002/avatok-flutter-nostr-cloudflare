@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// [LIVE-UI-3] Shared styling for the redesigned Liveness V2 flow, re-skinned to
 /// the AvaTOK Dark v2 language (design port of `design/Liveliness Check
@@ -47,9 +48,12 @@ class LiveTheme {
       MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
   // ── Text styles ───────────────────────────────────────────────────────────
+  // [UI-MSG-TYPE-1] Body copy is Regular. This is the sub-line under every stage
+  // headline — it sat at w700, the same weight as the headline it explains, so
+  // nothing on the stage could read as the heading.
   static const TextStyle subStyle = TextStyle(
     fontFamily: 'Nunito',
-    fontWeight: FontWeight.w700,
+    fontWeight: FontWeight.w400,
     fontSize: 14,
     height: 1.45,
     color: subPaper,
@@ -57,15 +61,18 @@ class LiveTheme {
 
   static const TextStyle kickerOnCardStyle = TextStyle(
     fontFamily: 'Nunito',
-    fontWeight: FontWeight.w700,
-    fontSize: 10.5,
-    letterSpacing: 1,
+    fontWeight: FontWeight.w600,
+    fontSize: 11,
+    letterSpacing: 0.66,
     color: AD.textTertiary,
   );
 
+  // [UI-MSG-TYPE-1] w800 → w700. The read-aloud phrase is the loudest thing on
+  // the stage, so it keeps the heaviest weight the scale allows — but 800/900
+  // are gone from the app.
   static const TextStyle phraseStyle = TextStyle(
     fontFamily: 'Nunito',
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     fontSize: 21,
     height: 1.35,
     color: AD.textPrimary,
@@ -73,7 +80,7 @@ class LiveTheme {
 
   static const TextStyle checkRowStyle = TextStyle(
     fontFamily: 'Nunito',
-    fontWeight: FontWeight.w700,
+    fontWeight: FontWeight.w600,
     fontSize: 14,
     color: paper,
   );
@@ -99,10 +106,10 @@ class LiveTheme {
             child: Transform.rotate(
               angle: -0.021, // ~-1.2deg
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
                 decoration: BoxDecoration(
                   color: markFill,
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: Msg.brSm,
                 ),
                 child: Text(markWord,
                     style: TextStyle(
@@ -128,16 +135,16 @@ class LiveTheme {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: active ? lime : card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(color: active ? lime : ink, width: 1),
         ),
         child: Text(label,
             style: const TextStyle(
               fontFamily: 'Nunito',
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w600,
               fontSize: 13,
               color: paper,
             )),
@@ -157,10 +164,10 @@ class LiveTheme {
   }) {
     final fg = filled != null ? textOnFill : paper;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       decoration: BoxDecoration(
         color: filled,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(
             color: filled != null ? ink : dimPaper, width: 1),
       ),
@@ -169,18 +176,21 @@ class LiveTheme {
         children: [
           if (leadingDotBlink) ...[
             _BlinkDot(color: fg),
-            const SizedBox(width: 7),
+            const SizedBox(width: Msg.s2),
           ],
           if (icon != null) ...[
             Icon(icon, size: 12, color: fg),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s2),
           ],
-          Text(label.toUpperCase(),
+          // [UI-CASE-1] The forced `.toUpperCase()` is gone — 'CAMERA ON' /
+          // 'LISTENING' / 'FACE LOCKED' shouted at the user mid-capture. Callers
+          // already pass sentence case and it now renders as written.
+          Text(label,
               style: TextStyle(
                 fontFamily: 'Nunito',
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 fontSize: 11,
-                letterSpacing: 0.8,
+                letterSpacing: 0.2,
                 color: fg,
               )),
         ],
@@ -201,7 +211,7 @@ class LiveTheme {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: lime,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: Msg.brLg,
             border: Border.all(color: ink, width: 1),
           ),
           child: Row(
@@ -209,12 +219,12 @@ class LiveTheme {
             children: [
               if (icon != null) ...[
                 Icon(icon, size: 20, color: paper),
-                const SizedBox(width: 8),
+                const SizedBox(width: Msg.s2),
               ],
               Text(label,
                   style: const TextStyle(
                     fontFamily: 'Nunito',
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     fontSize: 18,
                     color: paper,
                   )),
@@ -228,9 +238,9 @@ class LiveTheme {
   /// White card with ink border + hard shadow (phrase card, delete-mode card).
   static BoxDecoration get taperedCardDecoration => BoxDecoration(
         color: card,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: Msg.brLg,
         border: Border.all(color: ink, width: 1),
-        boxShadow: const [],
+        boxShadow: Msg.none,
       );
 
   /// A little tape strip (rotated lime rectangle) that sits on card tops.
@@ -244,12 +254,13 @@ class LiveTheme {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: cameraCard,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: Msg.brLg,
         border: Border.all(color: ink, width: 1),
-        boxShadow: const [],
+        boxShadow: Msg.none,
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(19.5),
+        // One hairline inside the 16px outer radius so the border stays crisp.
+        borderRadius: BorderRadius.circular(Msg.rLg - 1),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -264,6 +275,16 @@ class LiveTheme {
 }
 
 /// Blinking indicator dot (coral REC / camera-on / listening pills).
+///
+/// [UI-LIVE-LOOPS-1 2026-08-05] **This is the ONE infinite animation loop the
+/// identity flow is allowed to run.** It is the only one that carries meaning:
+/// it says "the camera/mic is live right now". The other six repeating loops in
+/// this flow (the pulsing REC inset border, the six staggered blink carets, the
+/// two counter-rotating analyse rings, the confetti, the face-search scan line
+/// and the fake voice waveform) were removed on 2026-08-05 — they animated
+/// forever while saying nothing, and six of them ran at once. Do not add another
+/// `.repeat()` to this feature; if a new state needs signalling, express it with
+/// colour or a one-shot transition.
 class _BlinkDot extends StatefulWidget {
   const _BlinkDot({required this.color});
   final Color color;

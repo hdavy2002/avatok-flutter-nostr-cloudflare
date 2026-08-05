@@ -9,6 +9,7 @@ import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'listing_detail.dart';
 import 'widgets.dart';
@@ -164,7 +165,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
             text: 'Search the marketplace — events, sessions, creators.'));
       }
       return ListView(padding: const EdgeInsets.all(18), children: [
-        Text('RECENT SEARCHES', style: ADText.sectionLabel()),
+        Text('Recent searches', style: ADText.sectionLabel()),
         const SizedBox(height: 10),
         for (final r in _recent)
           GestureDetector(
@@ -234,9 +235,10 @@ class _FilterSheetState extends State<_FilterSheet> {
         onTap: onTap,
         color: AD.card,
         borderColor: AD.borderControl,
-        radius: BorderRadius.circular(100),
+        // [UI-RADII-1] A date picker is a BUTTON, not a pill.
+        radius: Msg.brMd,
         boxShadow: const [],
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
           PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 15, color: AD.textPrimary),
           const SizedBox(width: 7),
@@ -264,7 +266,7 @@ class _FilterSheetState extends State<_FilterSheet> {
             inactiveColor: AD.borderControl,
             onChanged: (v) => setState(() => _price = v),
           ),
-          Text('MINIMUM RATING', style: ADText.sectionLabel()),
+          Text('Minimum rating', style: ADText.sectionLabel()),
           const SizedBox(height: 9),
           Wrap(spacing: 9, runSpacing: 8, children: [
             for (final r in const [null, 3.0, 4.0, 4.5])

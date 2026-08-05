@@ -204,7 +204,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
                 [
                   '${c.followerCount} followers',
                   if (c.ratingAvg != null && c.ratingCount > 0) '★ ${c.ratingAvg!.toStringAsFixed(1)} (${c.ratingCount})',
-                ].join(' · ').toUpperCase(),
+                ].join(' · '),
                 style: ADText.sectionLabel(),
               ),
             ])),
@@ -251,7 +251,12 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
           ],
           const SizedBox(height: 22),
           if (pinned != null) ...[
-            Text('📌 PINNED', style: ADText.sectionLabel()),
+            Row(children: [
+              PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill),
+                  size: 12, color: AD.textTertiary),
+              const SizedBox(width: 4),
+              Text('Pinned', style: ADText.sectionLabel()),
+            ]),
             const SizedBox(height: 10),
             SizedBox(height: 250, child: Padding(
               padding: const EdgeInsets.only(right: 80),

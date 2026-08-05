@@ -11,6 +11,7 @@ import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/brain_consent.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avadial/block_list.dart';
 import 'askava_tools.dart';
 
@@ -118,7 +119,7 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+            duration: Msg.base, curve: Curves.easeOutCubic);
       }
     });
   }
@@ -514,10 +515,10 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[PhosphorIcon(icon, size: 14, color: Colors.white), const SizedBox(width: 6)],

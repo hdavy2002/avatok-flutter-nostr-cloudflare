@@ -431,7 +431,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _section(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 10, left: 4),
-        child: Text(t.toUpperCase(), style: ADText.sectionLabel()),
+        child: Text(t, style: ADText.sectionLabel()),
       );
 
   Widget _tile(IconData icon, Color accent, String title, String sub, VoidCallback onTap, {bool danger = false}) =>

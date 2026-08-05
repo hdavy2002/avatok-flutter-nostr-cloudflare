@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/bubble_theme.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'link_viewer_sheet.dart';
 
 /// Link previews + inline YouTube — AI Messenger Batch, STREAM C ([PREVIEW-3]).
@@ -292,7 +293,8 @@ class _PlayBadge extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
         ),
-        child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: d * 0.62),
+        child: Icon(PhosphorIcons.play(PhosphorIconsStyle.fill),
+            color: Colors.white, size: d * 0.62),
       );
 }
 
@@ -306,11 +308,12 @@ class _DurationPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.65),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: Msg.brSm,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.videocam_rounded, size: 11, color: Colors.white),
-          const SizedBox(width: 3),
+          Icon(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill),
+              size: 11, color: Colors.white),
+          const SizedBox(width: Msg.s1),
           Text(_fmtDuration(seconds),
               style: ADText.statCaption(c: Colors.white)),
         ]),
@@ -407,7 +410,7 @@ class LinkPreviewCard extends StatelessWidget {
       width: width ?? double.infinity,
       decoration: BoxDecoration(
         color: t?.bg ?? AD.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: Msg.brMd,
         border: Border.all(color: t?.border ?? AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
@@ -509,7 +512,7 @@ class ComposeLinkPreview extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
       decoration: BoxDecoration(
         color: t?.bg ?? AD.card,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: Msg.brMd,
         border: Border.all(color: t?.border ?? AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
@@ -566,7 +569,7 @@ class ComposeLinkPreview extends StatelessWidget {
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.close_rounded, size: 18),
+          icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), size: 18),
           color: t?.meta ?? AD.textTertiary,
           onPressed: onDismiss,
           tooltip: 'Remove preview',

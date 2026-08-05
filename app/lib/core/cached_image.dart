@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'avatar_cache.dart';
 
@@ -55,7 +56,8 @@ class CachedImage extends StatelessWidget {
   Widget _broken() => SizedBox(
         width: width,
         height: height ?? 120,
-        child: const Center(child: Icon(Icons.broken_image_outlined)),
+        child: Center(
+            child: PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.regular))),
       );
 
   Widget _network() => Image.network(

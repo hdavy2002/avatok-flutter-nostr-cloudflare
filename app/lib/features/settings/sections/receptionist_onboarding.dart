@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/wallet_entitlement.dart';
 import '../../avadial/pstn_forwarding_setup.dart' show PstnForwardingSetupScreen;
@@ -439,15 +440,15 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
   /// pinned to [AD.online] green — plan §B4 wants it unmissably "free".
   Widget _greenPill(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       decoration: BoxDecoration(
         color: AD.online,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: AD.online, width: 1),
       ),
       child: Text(label,
           style: TextStyle(fontFamily: ADText.family,
-              fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
+              fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white)),
     );
   }
 

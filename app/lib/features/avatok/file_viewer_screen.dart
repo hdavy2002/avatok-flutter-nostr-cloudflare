@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -125,7 +126,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
                 ? const SizedBox(
                     width: 18, height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.ios_share_rounded),
+                : Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
             onPressed: _sharing ? null : _share,
           ),
         ],
@@ -175,14 +176,14 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.error_outline_rounded, color: Colors.white54, size: 40),
+            Icon(PhosphorIcons.warningCircle(PhosphorIconsStyle.regular), color: Colors.white54, size: 40),
             const SizedBox(height: 12),
             Text(msg, textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 16),
             TextButton.icon(
               onPressed: _share,
-              icon: const Icon(Icons.ios_share_rounded, color: Colors.white),
+              icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular), color: Colors.white),
               label: const Text('Share / open elsewhere',
                   style: TextStyle(color: Colors.white)),
             ),

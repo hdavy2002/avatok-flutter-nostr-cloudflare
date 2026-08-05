@@ -9,6 +9,7 @@ import '../../core/db.dart';
 import '../../core/money_api.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../shell_v2.dart';
 import 'home_cards_api.dart';
 import 'home_cards_store.dart';
@@ -191,8 +192,10 @@ class _HomeCardsState extends State<HomeCards> {
       ZineIconBadge(icon: icon, color: accent),
       const SizedBox(width: 11),
       Expanded(child: Text(title, style: ADText.threadName())),
+      // Sentence case — the `toUpperCase()` that used to live here was part of
+      // the shouting the 2026-08-05 UI audit flagged.
       if (tag != null)
-        Text(tag.toUpperCase(), style: ADText.statCaption(c: AD.textTertiary)),
+        Text(tag, style: ADText.statCaption(c: AD.textTertiary)),
     ]);
   }
 
@@ -263,13 +266,13 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
-            title: 'Wallet', accent: AD.online, tag: 'TOKENS'),
+            title: 'Wallet', accent: AD.online, tag: 'Tokens'),
         const SizedBox(height: 14),
         if (_walletLoading)
           _skeletonLine(120)
         else
           Text('${_coins ?? '—'}',
-              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                   fontSize: 34, color: AD.textPrimary)),
         const SizedBox(height: 4),
         Text('Tap to open your wallet',
@@ -379,12 +382,11 @@ class _HomeCardsState extends State<HomeCards> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: active ? AD.primaryBadge : AD.card,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(color: active ? AD.primaryBadge : AD.borderControl, width: 1),
         ),
         child: Text(label,
-            style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
-                fontSize: 12.5, color: active ? Colors.white : AD.textSecondary)),
+            style: ADText.tabLabel(c: active ? Colors.white : AD.textSecondary)),
       ),
     );
   }
@@ -414,11 +416,11 @@ class _HomeCardsState extends State<HomeCards> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               color: AD.unreadAccent,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brPill,
               border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: Text('${m.count}',
-                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 11, color: Colors.white)),
           ),
         ]),
@@ -433,7 +435,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
-            title: 'Analytics', accent: AD.iconSearch, tag: 'TODAY'),
+            title: 'Analytics', accent: AD.iconSearch, tag: 'Today'),
         const SizedBox(height: 14),
         if (_analyticsLoading)
           _skeletonLine(160)
@@ -450,7 +452,7 @@ class _HomeCardsState extends State<HomeCards> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(value,
-              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                   fontSize: 30, color: AD.textPrimary)),
           const SizedBox(height: 2),
           Text(label, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
@@ -469,7 +471,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.trendUp(PhosphorIconsStyle.bold),
-            title: 'Earnings', accent: AD.online, tag: 'TOKENS'),
+            title: 'Earnings', accent: AD.online, tag: 'Tokens'),
         const SizedBox(height: 12),
         if (_aggLoading)
           _skeletonLine(200)
@@ -522,15 +524,15 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
-            title: 'Visitors', accent: AD.danger, tag: '7 DAYS'),
+            title: 'Visitors', accent: AD.danger, tag: '7 days'),
         const SizedBox(height: 12),
         Text('${v.total7d}',
-            style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+            style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                 fontSize: 30, color: AD.textPrimary)),
         Text('listing views', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
         if (v.byCountry.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('TOP COUNTRIES', style: ADText.sectionLabel(c: AD.textTertiary)),
+          Text('Top countries', style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 4),
           ...[for (final g in v.byCountry.take(5)) _geoRow(g.label, g.views)],
         ],
@@ -581,7 +583,7 @@ class _HomeCardsState extends State<HomeCards> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHead(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
-            title: 'Listings', accent: AD.primaryBadge, tag: 'TOP'),
+            title: 'Listings', accent: AD.primaryBadge, tag: 'Top'),
         const SizedBox(height: 10),
         ...[for (final l in list.take(3)) _listingRow(l)],
       ]),
@@ -607,7 +609,7 @@ class _HomeCardsState extends State<HomeCards> {
         height: 20,
         decoration: BoxDecoration(
           color: AD.card,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: Msg.brSm,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
       );

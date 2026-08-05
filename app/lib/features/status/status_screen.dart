@@ -9,6 +9,7 @@ import '../../core/avatar.dart';
 import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../identity/identity.dart';
 import '../../sync/dm.dart';
 import '../avatok/contacts.dart';
@@ -325,7 +326,7 @@ class _StatusScreenState extends State<StatusScreen> {
           const SizedBox(height: 18),
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 9),
-            child: Text('RECENT', style: ADText.sectionLabel()),
+            child: Text('Recent', style: ADText.sectionLabel()),
           ),
           if (_posts.isEmpty)
             Padding(
@@ -336,7 +337,7 @@ class _StatusScreenState extends State<StatusScreen> {
                     width: 72, height: 72,
                     decoration: BoxDecoration(
                       color: AD.card,
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(Msg.rLg),
                       border: Border.all(color: AD.borderControl, width: 1),
                     ),
                     child: Center(

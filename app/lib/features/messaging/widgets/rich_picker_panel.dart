@@ -19,9 +19,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import 'emoji_data.dart';
 import 'gif_api.dart';
 import 'giphy_controller.dart';
@@ -105,7 +107,10 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
       ),
       child: Row(children: [
         IconButton(
-          icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded,
+          icon: Icon(
+              _searching
+                  ? PhosphorIcons.x(PhosphorIconsStyle.regular)
+                  : PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
               color: AD.textPrimary, size: 22),
           visualDensity: VisualDensity.compact,
           onPressed: () => setState(() {
@@ -123,7 +128,8 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
                 ]),
         ),
         IconButton(
-          icon: const Icon(Icons.backspace_outlined, color: AD.textPrimary, size: 20),
+          icon: Icon(PhosphorIcons.backspace(PhosphorIconsStyle.regular),
+              color: AD.textPrimary, size: 20),
           visualDensity: VisualDensity.compact,
           onPressed: _tab == PickerTab.emoji ? widget.onBackspace : null,
         ),
@@ -155,12 +161,12 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: on ? AD.primaryBadge : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(Msg.rSm),
           border: Border.all(color: on ? AD.primaryBadge : Colors.transparent, width: 1),
         ),
         child: Text(label,
             style: TextStyle(fontFamily: ADText.family, fontSize: 13.5,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: on ? Colors.white : AD.textSecondary)),
       ),
     );
@@ -235,8 +241,7 @@ class _EmojiTabState extends State<_EmojiTab> {
         child: Padding(
           key: key,
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-          child: Text(label.toUpperCase(),
-              style: ADText.sectionLabel()),
+          child: Text(label, style: ADText.sectionLabel()),
         ),
       );
 
@@ -282,7 +287,7 @@ class _EmojiTabState extends State<_EmojiTab> {
                 final ctx = k?.currentContext;
                 if (ctx != null) {
                   Scrollable.ensureVisible(ctx,
-                      duration: const Duration(milliseconds: 250));
+                      duration: Msg.base, curve: Msg.curve);
                 }
               },
               child: Padding(
@@ -420,8 +425,11 @@ class _GifTabState extends State<_GifTab> {
           onTap: _openGiphy,
           behavior: HitTestBehavior.opaque,
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('Open full GIPHY ↗',
-                style: ADText.preview(c: AD.textTertiary).copyWith(fontWeight: FontWeight.w700)),
+            Text('Open full GIPHY',
+                style: ADText.preview(c: AD.textTertiary).copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(width: Msg.s1),
+            PhosphorIcon(PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.regular),
+                size: 13, color: AD.textTertiary),
           ]),
         ),
       );
@@ -503,7 +511,7 @@ class _GifTabState extends State<_GifTab> {
   Widget _tile(GifResult g) => GestureDetector(
         onTap: () => widget.onPick(g),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(Msg.rSm),
           child: Container(
             color: AD.card,
             child: Image.network(
@@ -512,8 +520,9 @@ class _GifTabState extends State<_GifTab> {
               g.preview,
               fit: BoxFit.cover,
               gaplessPlayback: true,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.gif_box_outlined, color: AD.textTertiary),
+              errorBuilder: (_, __, ___) => Icon(
+                  PhosphorIcons.gif(PhosphorIconsStyle.regular),
+                  color: AD.textTertiary),
               loadingBuilder: (c, w, p) =>
                   p == null ? w : Container(color: AD.card),
             ),
@@ -585,8 +594,7 @@ class _StickerTabState extends State<_StickerTab> {
   Widget _header(String label) => SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-          child: Text(label.toUpperCase(),
-              style: ADText.sectionLabel()),
+          child: Text(label, style: ADText.sectionLabel()),
         ),
       );
 
@@ -603,9 +611,9 @@ class _StickerTabState extends State<_StickerTab> {
               onTap: () => widget.onPick(assets[i]),
               child: Image.asset(assets[i],
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.emoji_emotions_outlined,
-                          color: AD.textTertiary)),
+                  errorBuilder: (_, __, ___) => Icon(
+                      PhosphorIcons.smiley(PhosphorIconsStyle.regular),
+                      color: AD.textTertiary)),
             ),
             childCount: assets.length,
           ),
@@ -626,9 +634,9 @@ class _StickerTabState extends State<_StickerTab> {
               child: Image.network(items[i].preview,
                   fit: BoxFit.contain,
                   gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.emoji_emotions_outlined,
-                          color: AD.textTertiary)),
+                  errorBuilder: (_, __, ___) => Icon(
+                      PhosphorIcons.smiley(PhosphorIconsStyle.regular),
+                      color: AD.textTertiary)),
             ),
             childCount: items.length,
           ),

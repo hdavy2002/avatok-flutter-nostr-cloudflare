@@ -12,6 +12,7 @@ import '../../core/avaapps_cache.dart';
 import '../../core/paid_feature.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/wallet_entitlement.dart';
 
 /// Inline dark v2 page header (AD.headerFooter bar + back button + title).
@@ -270,7 +271,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${app.name} is already connected ✓')));
+          content: Text('${app.name} is already connected')));
     }
   }
 
@@ -499,7 +500,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
               sliver: SliverList(delegate: SliverChildListDelegate([
-          Text('ASK AVA', style: ADText.sectionLabel()),
+          Text('Ask Ava', style: ADText.sectionLabel()),
           const SizedBox(height: 10),
           AdCard(
             radius: AD.rListCard, padding: const EdgeInsets.all(12),
@@ -599,7 +600,8 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                   shape: BoxShape.circle,
                   border: Border.all(color: AD.bg, width: 2),
                 ),
-                child: const Icon(Icons.check, size: 10, color: Colors.white),
+                child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                    size: 10, color: Colors.white),
               ),
             ),
           if (!enabled)
@@ -677,7 +679,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(8)),
       alignment: Alignment.center,
       child: Text(letter,
-          style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w900,
+          style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
               fontSize: 20, color: AD.textOnInput)),
     );
   }
@@ -687,20 +689,20 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   /// the topped-up green pill / ghost "PREMIUM" crown upsell automatically.
   Widget _premiumBadge() {
     if (!_premium) {
-      return AdSticker('PREMIUM', kind: AdStickerKind.hint,
+      return AdSticker('Premium', kind: AdStickerKind.hint,
           icon: PhosphorIcons.crown(PhosphorIconsStyle.fill));
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: AD.online, // money/success green
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
         const SizedBox(width: 6),
-        Text('BETA-FREE', style: ADText.sectionLabel(c: Colors.white)),
+        Text('Beta-free', style: ADText.sectionLabel(c: Colors.white)),
       ]),
     );
   }

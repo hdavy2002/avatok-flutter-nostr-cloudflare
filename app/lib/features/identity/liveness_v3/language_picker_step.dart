@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/ui/messenger_theme.dart';
 import '../liveness_v2/live_theme.dart';
 import 'voice_packs.dart';
 
@@ -44,32 +46,35 @@ class _LanguagePickerStepState extends State<LanguagePickerStep> {
               shape: BoxShape.circle,
               color: LiveTheme.mint,
               border: Border.all(color: LiveTheme.ink, width: 3),
-              boxShadow: const [BoxShadow(color: LiveTheme.ink, offset: Offset(6, 7))],
+              // [UI-MSG-ELEV-1] Hard offset "sticker" shadow removed — flat.
+              boxShadow: Msg.none,
             ),
-            child: const Icon(Icons.translate_rounded, size: 42, color: LiveTheme.ink),
+            child: PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.regular),
+                size: 42, color: LiveTheme.ink),
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline('Choose your ', markWord: 'language'),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Text(
           "I'll guide you by voice. Pick the language you'd like me to speak.",
           style: LiveTheme.subStyle,
         ),
-        const SizedBox(height: 24),
-        // Dropdown inside a zine card so it matches the dark stage chrome.
+        const SizedBox(height: Msg.s5),
+        // Dropdown inside a card so it matches the dark stage chrome.
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s1),
           decoration: LiveTheme.taperedCardDecoration,
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: _lang,
               isExpanded: true,
               dropdownColor: LiveTheme.card,
-              icon: const Icon(Icons.expand_more_rounded, color: LiveTheme.ink),
+              icon: PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.regular),
+                  color: LiveTheme.ink),
               style: const TextStyle(
                 fontFamily: 'Nunito',
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 fontSize: 17,
                 color: LiveTheme.ink,
               ),
@@ -89,7 +94,7 @@ class _LanguagePickerStepState extends State<LanguagePickerStep> {
         const Spacer(),
         LiveTheme.limeButton(
           label: 'Continue',
-          icon: Icons.arrow_forward_rounded,
+          icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
           onPressed: () => widget.onConfirm(_lang),
         ),
       ],

@@ -15,6 +15,7 @@ import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -256,8 +257,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 38, height: 5,
-            margin: const EdgeInsets.only(bottom: 14),
-            decoration: BoxDecoration(color: AD.borderControl, borderRadius: BorderRadius.circular(3)),
+            margin: const EdgeInsets.only(bottom: Msg.s4),
+            // Sheet drag handle — a genuine pill.
+            decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill),
           ),
           _sheetTile(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), AD.iconSearch, 'Take photo',
               () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
@@ -535,7 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       Text('Profile', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
-                      Text('YOUR PUBLIC CARD', style: ADText.sectionLabel()),
+                      Text('Your public card', style: ADText.sectionLabel()),
                     ],
                   ),
                 ),
@@ -645,7 +647,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               backgroundColor: AD.card,
               selectedColor: AD.primaryBadge,
               side: BorderSide(color: _gender == opt[0] ? AD.primaryBadge : AD.borderControl, width: 1),
-              labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+              labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                   fontSize: 13, color: _gender == opt[0] ? Colors.white : AD.textSecondary),
             ),
         ]),
@@ -716,7 +718,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        Text('ACCOUNT & SECURITY', style: ADText.sectionLabel()),
+        Text('Account & security', style: ADText.sectionLabel()),
         const SizedBox(height: 10),
         _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconSearch,
             'Change email', 'Verify the new address with a 6-digit code', _changeEmail),
@@ -729,7 +731,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.qrCode(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
               const SizedBox(width: 9),
-              Expanded(child: Text('ADD ME ON AVATOK', style: ADText.sectionLabel())),
+              Expanded(child: Text('Add me on AvaTOK', style: ADText.sectionLabel())),
             ]),
             const SizedBox(height: 12),
             if (_shareLink.isNotEmpty)

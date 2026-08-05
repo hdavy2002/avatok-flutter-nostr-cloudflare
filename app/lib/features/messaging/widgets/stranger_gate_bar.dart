@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../avatok/stranger_gate_api.dart';
 
 /// STREAM B (SAFE-GATE-2) — the stranger safety gate action bar.
@@ -119,8 +121,9 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
         if (_scored) const SizedBox(height: 10),
         // ── explainer line ──────────────────────────────────────────────────
         Row(children: [
-          const Icon(Icons.shield_outlined, size: 16, color: AD.textSecondary),
-          const SizedBox(width: 6),
+          Icon(PhosphorIcons.shield(PhosphorIconsStyle.regular),
+              size: 16, color: AD.textSecondary),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text(
               'This person is not in your contacts. Accept to reply, or block/report if it looks like spam.',
@@ -131,12 +134,15 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
         const SizedBox(height: 10),
         // ── action row ──────────────────────────────────────────────────────
         Row(children: [
-          _iconBtn(Icons.verified_user_outlined, 'Safety', AD.iconSearch, _busy ? null : _shield),
-          const SizedBox(width: 8),
-          _iconBtn(Icons.block, 'Block', AD.iconVideo, _busy ? null : _block),
-          const SizedBox(width: 8),
-          _iconBtn(Icons.report_gmailerrorred_outlined, 'Report', AD.danger, _busy ? null : _report),
-          const SizedBox(width: 8),
+          _iconBtn(PhosphorIcons.shieldCheck(PhosphorIconsStyle.regular), 'Safety',
+              AD.iconSearch, _busy ? null : _shield),
+          const SizedBox(width: Msg.s2),
+          _iconBtn(PhosphorIcons.prohibit(PhosphorIconsStyle.regular), 'Block',
+              AD.iconVideo, _busy ? null : _block),
+          const SizedBox(width: Msg.s2),
+          _iconBtn(PhosphorIcons.flag(PhosphorIconsStyle.regular), 'Report',
+              AD.danger, _busy ? null : _report),
+          const SizedBox(width: Msg.s2),
           Expanded(child: _acceptBtn()),
         ]),
       ]),
@@ -147,7 +153,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
     if (_score != null && !_score!.available) {
       return _bannerShell(
         AD.card,
-        Icons.info_outline,
+        PhosphorIcons.info(PhosphorIconsStyle.regular),
         AD.textSecondary,
         "Couldn't check this chat right now. Trust your instincts.",
         null,
@@ -156,19 +162,19 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
     if (scam) {
       return _bannerShell(
         AD.destructiveBg,
-        Icons.warning_amber_rounded,
+        PhosphorIcons.warning(PhosphorIconsStyle.regular),
         Colors.white,
         'Likely scam — this chat scored high risk.',
         TextButton(
           onPressed: _busy ? null : _block,
           style: TextButton.styleFrom(foregroundColor: Colors.white),
-          child: const Text('BLOCK'),
+          child: const Text('Block'),
         ),
       );
     }
     return _bannerShell(
       AD.online,
-      Icons.check_circle_outline,
+      PhosphorIcons.checkCircle(PhosphorIconsStyle.regular),
       Colors.white,
       'No strong scam signals — stay cautious with strangers.',
       null,
@@ -206,8 +212,8 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
               ),
               child: Icon(icon, size: 20, color: Colors.white),
             ),
-            const SizedBox(height: 4),
-            Text(label.toUpperCase(), style: ADText.statCaption(c: AD.textSecondary)),
+            const SizedBox(height: Msg.s1),
+            Text(label, style: ADText.statCaption(c: AD.textSecondary)),
           ]),
         ),
       );
@@ -226,8 +232,8 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
             ),
             child: _busy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text('ACCEPT',
-                    style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                : Text('Accept',
+                    style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
                         fontSize: 15, color: Colors.white)),
           ),
         ),

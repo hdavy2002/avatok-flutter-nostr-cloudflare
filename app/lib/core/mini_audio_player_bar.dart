@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'active_thread.dart';
 import 'analytics.dart';
 import 'audio_playback_service.dart';
 import 'ui/avatok_dark.dart';
+import 'ui/messenger_theme.dart';
 
 // Best-effort "shown" telemetry de-dupe — a top-level var (not a State field)
 // is deliberate: this widget is mounted exactly ONCE at the shell root and
@@ -75,11 +77,12 @@ class MiniAudioPlayerBar extends StatelessWidget {
                 AudioPlaybackService.onTapOrigin?.call(context, st.track);
               },
               child: Container(
-                margin: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                margin: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, 0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Msg.s3, vertical: Msg.s2),
                 decoration: BoxDecoration(
                   color: AD.headerFooter,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: Msg.brMd,
                   border: Border.all(color: AD.borderHairline, width: 1),
                   boxShadow: [
                     BoxShadow(
@@ -97,9 +100,10 @@ class MiniAudioPlayerBar extends StatelessWidget {
                       color: AD.primaryBadge.withValues(alpha: 0.16),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(Icons.graphic_eq, size: 18, color: AD.primaryBadge),
+                    child: PhosphorIcon(PhosphorIcons.waveform(PhosphorIconsStyle.regular),
+                        size: 18, color: AD.primaryBadge),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s3),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,9 +113,9 @@ class MiniAudioPlayerBar extends StatelessWidget {
                           st.track.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: ADText.threadName().copyWith(fontSize: 13.5),
+                          style: ADText.threadName().copyWith(fontSize: 14),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: Msg.s1),
                         Row(children: [
                           Expanded(
                             child: ClipRRect(
@@ -124,7 +128,7 @@ class MiniAudioPlayerBar extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: Msg.s2),
                           Text(
                             dur != null
                                 ? '${_fmt(st.position)} / ${_fmt(dur)}'
@@ -135,11 +139,16 @@ class MiniAudioPlayerBar extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: Msg.s1),
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    icon: Icon(st.playing ? Icons.pause : Icons.play_arrow, color: AD.textPrimary),
+                    // Play/pause is the primary action on this bar → bold weight.
+                    icon: PhosphorIcon(
+                        st.playing
+                            ? PhosphorIcons.pause(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.play(PhosphorIconsStyle.bold),
+                        color: AD.textPrimary),
                     onPressed: () => st.playing
                         ? AudioPlaybackService.I.pause()
                         : AudioPlaybackService.I.resume(),
@@ -147,7 +156,8 @@ class MiniAudioPlayerBar extends StatelessWidget {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    icon: Icon(Icons.close, size: 18, color: AD.textSecondary),
+                    icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                        size: 18, color: AD.textSecondary),
                     onPressed: () => AudioPlaybackService.I.stop(),
                   ),
                 ]),

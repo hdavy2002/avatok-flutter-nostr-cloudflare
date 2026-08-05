@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/font_scale.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Settings → Display & fonts. Lets the user make the whole app's text bigger or
 /// smaller (applied live at the app root via [FontScale]).
@@ -58,7 +59,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
         // Live preview card — text inside scales with the chosen value.
         AdCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PREVIEW', style: ADText.sectionLabel()),
+            Text('Preview', style: ADText.sectionLabel()),
             const SizedBox(height: 10),
             MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_v)),
@@ -74,7 +75,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
         ),
         const SizedBox(height: 20),
         Row(children: [
-          Text('TEXT SIZE', style: ADText.sectionLabel()),
+          Text('Text size', style: ADText.sectionLabel()),
           const Spacer(),
           Text(FontScale.labelFor(_v), style: ADText.statCaption(c: AD.iconSearch)),
         ]),
@@ -102,7 +103,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
               selectedColor: AD.primaryBadge,
               backgroundColor: AD.card,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: Msg.brPill,
                 side: const BorderSide(color: AD.borderControl, width: 1)),
               onSelected: (_) => _apply(p.$2),
             ),

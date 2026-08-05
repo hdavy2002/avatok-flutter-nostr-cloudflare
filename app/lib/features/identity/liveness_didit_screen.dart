@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 // [LIVE-DIDIT-2] (owner decision 2026-07-10) The Didit flow renders in an
 // IN-APP WebView styled with LiveTheme — the user never leaves the app and no
 // third-party branding chrome (browser bar, external tab) is visible. This is
@@ -30,6 +31,7 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'liveness_v2/live_theme.dart';
 
 class DiditLivenessScreen extends StatefulWidget {
@@ -230,20 +232,22 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
       backgroundColor: LiveTheme.stage,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
+                  // [UI-CASE-1] Sentence case; w800 + 2.2 tracking was a shout.
                   const Expanded(
-                    child: Text('LIVENESS CHECK',
+                    child: Text('Liveness check',
                         style: TextStyle(color: LiveTheme.subPaper, fontSize: 13,
-                            fontWeight: FontWeight.w800, letterSpacing: 2.2)),
+                            fontWeight: FontWeight.w600, letterSpacing: 0.2)),
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(Icons.close_rounded, color: LiveTheme.subPaper),
+                    icon: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                        color: LiveTheme.subPaper),
                   ),
                 ],
               ),
@@ -266,19 +270,21 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         return _waiting();
       case _Phase.passed:
         return _resultView(
-          icon: Icons.verified_rounded, color: LiveTheme.lime,
+          icon: PhosphorIcons.sealCheck(PhosphorIconsStyle.bold),
+          color: LiveTheme.lime,
           lead: "You're ", mark: 'verified!',
           sub: 'All set — you can carry on in the app.',
           button: LiveTheme.limeButton(
             label: widget.listingContext ? 'Create a listing' : 'Done',
-            icon: Icons.arrow_forward_rounded,
+            icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
             onPressed: () => Navigator.of(context).pop(true),
           ),
         );
       case _Phase.failed:
         final none = (_attemptsRemaining ?? 1) <= 0;
         return _resultView(
-          icon: Icons.replay_rounded, color: LiveTheme.coral,
+          icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold),
+          color: LiveTheme.coral,
           lead: none ? 'Out of ' : "That didn't ",
           mark: none ? 'tries' : 'work',
           sub: _error ??
@@ -288,18 +294,24 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
                       '${_attemptsRemaining != null ? ' You have $_attemptsRemaining tries left this month.' : ''}'),
           button: none
               ? LiveTheme.limeButton(
-                  label: 'Close', icon: Icons.close_rounded,
+                  label: 'Close',
+                  icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
                   onPressed: () => Navigator.of(context).pop(false))
               : LiveTheme.limeButton(
-                  label: 'Try again', icon: Icons.videocam_rounded, onPressed: _start),
+                  label: 'Try again',
+                  icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                  onPressed: _start),
         );
       case _Phase.unavailable:
         return _resultView(
-          icon: Icons.cloud_off_rounded, color: LiveTheme.lilac,
+          icon: PhosphorIcons.cloudSlash(PhosphorIconsStyle.bold),
+          color: LiveTheme.lilac,
           lead: 'Hit a ', mark: 'snag',
           sub: _error ?? 'Please try again in a moment.',
           button: LiveTheme.limeButton(
-              label: 'Try again', icon: Icons.refresh_rounded, onPressed: _start),
+              label: 'Try again',
+              icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+              onPressed: _start),
         );
     }
   }
@@ -316,14 +328,17 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle, color: LiveTheme.lilac,
               border: Border.all(color: LiveTheme.ink, width: 3),
-              boxShadow: const [BoxShadow(color: LiveTheme.ink, offset: Offset(6, 7))],
+              // [UI-MSG-ELEV-1] The hard 6x7 ink offset "sticker" shadow is gone
+              // — dark-v2 surfaces are flat.
+              boxShadow: Msg.none,
             ),
-            child: const Icon(Icons.videocam_rounded, size: 46, color: LiveTheme.ink),
+            child: PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.regular),
+                size: 46, color: LiveTheme.ink),
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline('Prove you are ', markWord: 'real'),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Text(
           'A quick face check — look at the camera for a few seconds and '
           "you're done. Nothing to line up, nothing to read. "
@@ -331,13 +346,13 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
           style: LiveTheme.subStyle,
         ),
         if (_error != null) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s4),
           Text(_error!, style: LiveTheme.subStyle),
         ],
         const Spacer(),
         LiveTheme.limeButton(
           label: busy ? 'Starting…' : 'Start',
-          icon: Icons.videocam_rounded,
+          icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
           onPressed: busy ? null : _start,
         ),
       ],
@@ -356,7 +371,7 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: LiveTheme.cameraCard,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: Msg.brLg,
               border: Border.all(color: LiveTheme.ink, width: 2.5),
             ),
             child: web == null
@@ -365,9 +380,9 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
                 : WebViewWidget(controller: web),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s4),
         LiveTheme.stageHeadline('Quick face ', markWord: 'check'),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s2),
         Text('Look at the camera and follow along — takes a few seconds.',
             style: LiveTheme.subStyle),
       ],
@@ -385,9 +400,9 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
             child: CircularProgressIndicator(color: LiveTheme.lime, strokeWidth: 5),
           ),
         ),
-        const SizedBox(height: 26),
+        const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline('Checking', markWord: '…'),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Text(
           'One moment — verifying your clip.',
           style: LiveTheme.subStyle,
@@ -416,14 +431,15 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle, color: color,
               border: Border.all(color: LiveTheme.ink, width: 3),
-              boxShadow: const [BoxShadow(color: LiveTheme.ink, offset: Offset(6, 7))],
+              // [UI-MSG-ELEV-1] Hard offset "sticker" shadow removed — flat.
+              boxShadow: Msg.none,
             ),
-            child: Icon(icon, size: 48, color: LiveTheme.ink),
+            child: PhosphorIcon(icon, size: 48, color: LiveTheme.ink),
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         LiveTheme.stageHeadline(lead, markWord: mark),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Text(sub, style: LiveTheme.subStyle),
         const Spacer(),
         button,

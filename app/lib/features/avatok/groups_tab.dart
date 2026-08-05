@@ -6,6 +6,7 @@ import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import 'chat_thread.dart';
@@ -239,17 +240,17 @@ class _GroupsTabState extends State<GroupsTab> {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: BoxDecoration(
               color: AD.newGroup,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
               boxShadow: AD.overlayShadow,
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(icon, size: 19, color: Colors.white),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s3),
               Text(label, style: ADText.rowName(c: Colors.white)),
             ]),
           ),
@@ -372,13 +373,13 @@ class _GroupsTabState extends State<GroupsTab> {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           child: Container(
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: Msg.s3),
             decoration: BoxDecoration(
               color: fill,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
               border: borderColor == null ? null : Border.all(color: borderColor, width: 1),
             ),
             child: Text(label, style: ADText.rowName(c: labelColor)),

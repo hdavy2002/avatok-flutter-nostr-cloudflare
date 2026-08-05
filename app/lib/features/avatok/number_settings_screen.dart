@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import 'ava_number.dart';
 
 /// Green used for number accents — reads clearly on the dark v2 surfaces.
@@ -361,7 +362,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         ],
         Flexible(
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w800, fontSize: fontSize, color: fg)),
+              style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: fontSize, color: fg)),
         ),
         if (icon != null && trailingIcon) ...[
           const SizedBox(width: 10),
@@ -377,7 +378,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         padding: EdgeInsets.symmetric(horizontal: 24, vertical: fontSize >= 21 ? 17 : 14),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           border: border == null ? null : Border.all(color: border, width: 1),
         ),
         child: content,

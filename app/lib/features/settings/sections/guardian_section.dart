@@ -12,6 +12,7 @@ import '../../../core/disk_cache.dart';
 import '../../../core/profile_store.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../ava_guardian/guardian_settings.dart';
 import '../settings_registry.dart';
@@ -240,16 +241,17 @@ class _AdToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: AnimatedContainer(
-        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        duration: reduce ? Duration.zero : Msg.fast,
         width: 52, height: 30,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: value ? AD.online : AD.card,
-          borderRadius: BorderRadius.circular(100),
+          // Toggle track — a genuine pill.
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: AnimatedAlign(
-          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          duration: reduce ? Duration.zero : Msg.fast,
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 22, height: 22,

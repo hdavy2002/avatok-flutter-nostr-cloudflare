@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/brain_recall.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Citation/source chips — [AVABRAIN-CLIENT-MEM-1] (Product Bible §P1.4).
 ///
@@ -59,10 +60,10 @@ class _SourceChip extends StatelessWidget {
     final hedged = citation.isLowConfidence;
     final label = citation.sourceDomain.isEmpty ? 'source' : citation.sourceDomain;
     final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: hedged ? Colors.transparent : AD.card,
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(
           color: hedged ? AD.textFaint : AD.borderControl,
           width: 1,

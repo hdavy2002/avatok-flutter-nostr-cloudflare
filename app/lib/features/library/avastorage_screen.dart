@@ -15,6 +15,7 @@ import '../../core/config.dart';
 import '../../core/drive_service.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../sync/sync_hub.dart';
 import '../ava_backup/backup_service.dart';
 import '../wallet/wallet_screen.dart';
@@ -74,7 +75,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   if (tag != null) ...[
                     const SizedBox(height: 2),
-                    Text(tag!.toUpperCase(), style: ADText.sectionLabel()),
+                    Text(tag!, style: ADText.sectionLabel()),
                   ],
                 ],
               ),
@@ -186,14 +187,14 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                   text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $coinsPerGb Tokens/GB per month.',
                 ),
                 const SizedBox(height: 24),
-                Text('BY TYPE', style: ADText.sectionLabel()),
+                Text('By type', style: ADText.sectionLabel()),
                 const SizedBox(height: 10),
                 _stackedBar(total, quota, byCat),
                 const SizedBox(height: 14),
                 for (final e in _catStyles.entries) _ledgerRow(e.key, e.value, byCat, total),
                 if (_trend.isNotEmpty) ...[
                   const SizedBox(height: 22),
-                  Text('LAST 6 MONTHS', style: ADText.sectionLabel()),
+                  Text('Last 6 months', style: ADText.sectionLabel()),
                   const SizedBox(height: 12),
                   _trendBars(quota),
                 ],
@@ -217,7 +218,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               child: Text(_fmt(total), style: ADText.appTitle().copyWith(fontSize: 30)),
             ),
             const SizedBox(height: 6),
-            Text('USED OF ${_fmt(quota).toUpperCase()}', style: ADText.sectionLabel()),
+            Text('Used of ${_fmt(quota)}', style: ADText.sectionLabel()),
           ]),
         ),
       ),
@@ -233,7 +234,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               child: Text(_fmt(left), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 30)),
             ),
             const SizedBox(height: 6),
-            Text('STILL FREE', style: ADText.sectionLabel()),
+            Text('Still free', style: ADText.sectionLabel()),
           ]),
         ),
       ),
@@ -248,12 +249,13 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AD.card,
-        borderRadius: BorderRadius.circular(100),
+        // A progress track is a status indicator — pill is correct.
+        borderRadius: Msg.brPill,
         border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: frac),
-        duration: const Duration(milliseconds: 600),
+        duration: Msg.slow,
         curve: Curves.easeOutCubic,
         builder: (_, v, __) => Align(
           alignment: Alignment.centerLeft,
@@ -284,7 +286,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
             Row(children: [
               PhosphorIcon(PhosphorIcons.lock(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
               const SizedBox(width: 8),
-              Text('READ-ONLY', style: ADText.sectionLabel(c: Colors.white)),
+              Text('Read-only', style: ADText.sectionLabel(c: Colors.white)),
             ]),
             const SizedBox(height: 8),
             Text(
@@ -330,7 +332,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
       height: 20,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brPill,
         border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: Row(children: segments.isEmpty ? [Expanded(child: Container(color: AD.card))] : segments),
@@ -363,7 +365,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
           ),
         ),
         Text('${_fmt(bytes)} · ${(pct * 100).toStringAsFixed(0)}%',
-            style: ADText.rowName().copyWith(fontWeight: FontWeight.w900)),
+            style: ADText.rowName()),
       ]),
     );
   }
@@ -384,7 +386,8 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                     style: ADText.statCaption(c: AD.textSecondary)),
                 const SizedBox(height: 4),
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 400),
+                  duration: Msg.slow,
+                  curve: Curves.easeOutCubic,
                   height: (54 * (((s['used_bytes'] as num?) ?? 0) / maxV)).clamp(4, 54).toDouble(),
                   margin: const EdgeInsets.symmetric(horizontal: 6),
                   decoration: BoxDecoration(
@@ -394,7 +397,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(_monthLabel((s['month'] ?? '').toString()).toUpperCase(),
+                Text(_monthLabel((s['month'] ?? '').toString()),
                     style: ADText.statCaption(c: AD.textSecondary)),
               ]),
             ),

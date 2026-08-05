@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'account_storage.dart';
 
@@ -34,41 +35,43 @@ class AdminTool {
 
 // ── Parent tools (custodial family accounts) ────────────────────────────────
 // Dummy destinations for now — wired to "coming soon" screens until built.
-const kParentTools = <AdminTool>[
+// [UI-ICONS-1 2026-08-05] Phosphor glyphs — `PhosphorIcons.x(...)` is a function
+// call, so these two lists are `final`, not `const`.
+final kParentTools = <AdminTool>[
   AdminTool('parent.add_child', 'Add child account', 'Create a managed account for your kid',
-      Icons.person_add_alt_1, Color(0xFF08C4C4)),
+      PhosphorIcons.userPlus(PhosphorIconsStyle.regular), const Color(0xFF08C4C4)),
   AdminTool('parent.children', 'My children', 'Manage each child & their apps',
-      Icons.family_restroom, Color(0xFF7C5CFC)),
+      PhosphorIcons.usersThree(PhosphorIconsStyle.regular), const Color(0xFF7C5CFC)),
   AdminTool('parent.activity', 'Activity overview', 'See posts, contacts & daily digest',
-      Icons.insights, Color(0xFF22C9C0)),
+      PhosphorIcons.chartLineUp(PhosphorIconsStyle.regular), const Color(0xFF22C9C0)),
   AdminTool('parent.app_controls', 'Block apps & sites', 'Allow or block apps per child',
-      Icons.block, Color(0xFFFF3B30)),
+      PhosphorIcons.prohibit(PhosphorIconsStyle.regular), const Color(0xFFFF3B30)),
   AdminTool('parent.contacts', 'Contact approvals', 'Approve who your child connects with',
-      Icons.how_to_reg, Color(0xFF10B981)),
+      PhosphorIcons.userCheck(PhosphorIconsStyle.regular), const Color(0xFF10B981)),
   AdminTool('parent.screen_time', 'Screen time', 'Set daily limits & quiet hours',
-      Icons.hourglass_bottom, Color(0xFFEAB308)),
+      PhosphorIcons.hourglass(PhosphorIconsStyle.regular), const Color(0xFFEAB308)),
   AdminTool('parent.safety', 'Safety alerts', 'Flagged content & stranger warnings',
-      Icons.shield_outlined, Color(0xFFFF6036)),
+      PhosphorIcons.shieldWarning(PhosphorIconsStyle.regular), const Color(0xFFFF6036)),
 ];
 
 // ── Enterprise tools (org-owned accounts; super-admin) ──────────────────────
-const kEnterpriseTools = <AdminTool>[
+final kEnterpriseTools = <AdminTool>[
   AdminTool('ent.add_user', 'Add employee', 'Provision an org-owned account',
-      Icons.person_add_alt_1, Color(0xFF0A66C2)),
+      PhosphorIcons.userPlus(PhosphorIconsStyle.regular), const Color(0xFF0A66C2)),
   AdminTool('ent.employees', 'Employees', 'Directory of your team',
-      Icons.groups_2, Color(0xFF6C5CE7)),
+      PhosphorIcons.users(PhosphorIconsStyle.regular), const Color(0xFF6C5CE7)),
   AdminTool('ent.teams', 'Teams & roles', 'Group employees & assign admins',
-      Icons.account_tree, Color(0xFF7C5CFC)),
+      PhosphorIcons.treeStructure(PhosphorIconsStyle.regular), const Color(0xFF7C5CFC)),
   AdminTool('ent.manage_apps', 'Manage apps', 'Grant or block apps per employee',
-      Icons.apps, Color(0xFF22C9C0)),
+      PhosphorIcons.squaresFour(PhosphorIconsStyle.regular), const Color(0xFF22C9C0)),
   AdminTool('ent.social_group', 'Company group', 'Internal social user group',
-      Icons.diversity_3, Color(0xFFE1306C)),
+      PhosphorIcons.usersFour(PhosphorIconsStyle.regular), const Color(0xFFE1306C)),
   AdminTool('ent.offboard', 'Offboard employee', 'Revoke access; data stays with you',
-      Icons.logout, Color(0xFFFF3B30)),
+      PhosphorIcons.signOut(PhosphorIconsStyle.regular), const Color(0xFFFF3B30)),
   AdminTool('ent.billing', 'Seats & billing', 'Manage licenses & plan',
-      Icons.credit_card, Color(0xFFEAB308)),
+      PhosphorIcons.creditCard(PhosphorIconsStyle.regular), const Color(0xFFEAB308)),
   AdminTool('ent.audit', 'Audit log', 'Who did what, when',
-      Icons.fact_check_outlined, Color(0xFF10B981)),
+      PhosphorIcons.listChecks(PhosphorIconsStyle.regular), const Color(0xFF10B981)),
 ];
 
 List<AdminTool> toolsFor(AccountKind kind) => switch (kind) {

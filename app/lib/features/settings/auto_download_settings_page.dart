@@ -192,7 +192,8 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
           color: selected ? AD.online : Colors.transparent,
         ),
         child: selected
-            ? const Icon(Icons.check, size: 14, color: Colors.white)
+            ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                size: 14, color: Colors.white)
             : null,
       );
 }

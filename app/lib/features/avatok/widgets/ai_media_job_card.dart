@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ai_media_jobs.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// [AVA-MEDIA-JOB-1] Reusable card for an [AiMediaJob] — image, document and
 /// audio kinds all render through this ONE widget so the four lifecycle states
@@ -207,7 +208,7 @@ Widget _pillButton({
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(100),
+        borderRadius: Msg.brSm,
         border: Border.all(color: color, width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -255,7 +256,7 @@ class _WorkingCard extends StatelessWidget {
         if (job.progress != null) ...[
           const SizedBox(height: 10),
           ClipRRect(
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brPill,
             child: LinearProgressIndicator(
               value: job.progress!.clamp(0.0, 1.0),
               minHeight: 4,
@@ -381,7 +382,7 @@ class _ReadyCard extends StatelessWidget {
                   decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                   child: PopupMenuButton<String>(
                     tooltip: 'Image options',
-                    icon: const Icon(Icons.more_vert, size: 18, color: Colors.white),
+                    icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
                     padding: EdgeInsets.zero,
                     onSelected: _onMenuSelected,
                     itemBuilder: (_) => menu,
@@ -392,7 +393,7 @@ class _ReadyCard extends StatelessWidget {
               left: 6, bottom: 6,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(100)),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: Msg.brPill),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 12, color: accent),
                   const SizedBox(width: 4),
@@ -430,14 +431,14 @@ class _ReadyCard extends StatelessWidget {
               Row(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(_kindIcon(job.kind), size: 12, color: AD.textTertiary),
                 const SizedBox(width: 4),
-                Text(job.kind.displayNoun.toUpperCase(), style: ADText.statCaption(c: AD.textTertiary)),
+                Text(job.kind.displayNoun, style: ADText.statCaption(c: AD.textTertiary)),
               ]),
             ]),
           ),
           if (menu.isNotEmpty)
             PopupMenuButton<String>(
               tooltip: 'Options',
-              icon: Icon(Icons.more_vert, size: 18, color: AD.textSecondary),
+              icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
               padding: EdgeInsets.zero,
               onSelected: _onMenuSelected,
               itemBuilder: (_) => menu,

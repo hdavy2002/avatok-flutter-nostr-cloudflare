@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Live-location shared state for ONE live-share bubble (WhatsApp-style).
 ///
@@ -200,7 +201,7 @@ class _MapPin extends StatelessWidget {
           height: 3,
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.25),
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: Msg.brPill,
           ),
         ),
       ],
@@ -297,7 +298,7 @@ class LiveMapScreen extends StatelessWidget {
                                 mode: LaunchMode.externalApplication,
                               );
                             },
-                            icon: const Icon(Icons.map, size: 16),
+                            icon: Icon(PhosphorIcons.mapTrifold(PhosphorIconsStyle.regular), size: 16),
                             label: const Text('Open in Google Maps'),
                           ),
                         ),
@@ -355,11 +356,11 @@ class _LiveDotState extends State<_LiveDot>
   @override
   Widget build(BuildContext context) {
     if (!widget.active) {
-      return Icon(Icons.circle, size: 11, color: AD.textSecondary);
+      return Icon(PhosphorIcons.circle(PhosphorIconsStyle.fill), size: 11, color: AD.textSecondary);
     }
     return FadeTransition(
       opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
-      child: const Icon(Icons.circle, size: 11, color: AD.online),
+      child: Icon(PhosphorIcons.circle(PhosphorIconsStyle.fill), size: 11, color: AD.online),
     );
   }
 }

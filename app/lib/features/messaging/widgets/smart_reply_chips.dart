@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 class SmartReplyChips extends StatelessWidget {
   final List<String> suggestions;
@@ -32,7 +33,7 @@ class SmartReplyChips extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AD.card,
                     border: Border.all(color: AD.borderControl, width: 1),
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                   ),
                   child: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
                 ),

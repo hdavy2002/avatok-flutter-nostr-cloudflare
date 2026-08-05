@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// "Tips for a good video" bottom sheet (Liveness V2 · plan §8, Agent E P4).
 /// Short, actionable zine bullets that map 1:1 to the most common client-side
@@ -18,7 +19,7 @@ class LivenessTipsSheet {
       backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+        borderRadius: Msg.brSheetTop,
         side: BorderSide(color: AD.borderHairline, width: 1),
       ),
       builder: (_) => const _TipsBody(),
@@ -66,7 +67,7 @@ class _TipsBody extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+        padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,23 +78,24 @@ class _TipsBody extends StatelessWidget {
                 height: 5,
                 decoration: BoxDecoration(
                   color: AD.borderControl,
-                  borderRadius: BorderRadius.circular(3),
+                  // A sheet drag handle is one of the shapes `rPill` is FOR.
+                  borderRadius: Msg.brPill,
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Text('Tips for a good video',
                 style: ADText.appTitle().copyWith(fontSize: 24)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s2),
             Text('A few seconds of setup makes the check pass first time.',
                 style: TextStyle(
                   fontFamily: ADText.family,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w400,
                   fontSize: 14,
                   height: 1.42,
                   color: AD.textSecondary,
                 )),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             for (final t in _tips) ...[
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Container(
@@ -106,14 +108,14 @@ class _TipsBody extends StatelessWidget {
                   ),
                   child: PhosphorIcon(t.$1, size: 18, color: AD.textPrimary),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: Msg.s3),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.only(top: Msg.s2),
                     child: Text(t.$2,
                         style: TextStyle(
                           fontFamily: ADText.family,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w400,
                           fontSize: 14,
                           height: 1.42,
                           color: AD.textSecondary,
@@ -121,9 +123,9 @@ class _TipsBody extends StatelessWidget {
                   ),
                 ),
               ]),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s4),
             ],
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s2),
             AdButton(
               label: 'Got it',
               fullWidth: true,

@@ -14,6 +14,7 @@ import '../../core/device_contacts.dart' as coredc;
 import '../../core/remote_config.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../features/avadial/ava_contact_book.dart';
 import '../../features/avadial/avadial_channel.dart';
 import '../../features/avadial/avadial_refresh.dart';
@@ -71,11 +72,18 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // left on this screen. The `avaSms`/`pstnVoicemail`-gated bodies and the
   // SmsUnreadStore badge are gone with them; the underlying sms/ and inbox/
   // feature folders are untouched for whoever still owns those surfaces.
-  static const _items = [
-    _CallsTabItem(Icons.person_outline, Icons.person, 'Contacts', AD.iconSearch),
-    _CallsTabItem(Icons.dialpad_outlined, Icons.dialpad, 'Dialpad', AD.primaryBadge),
-    _CallsTabItem(Icons.block_outlined, Icons.block, 'Block list', AD.danger),
-    _CallsTabItem(Icons.history_outlined, Icons.history, 'Call logs', AD.online),
+  //
+  // NOT const: `PhosphorIcons.x(...)` is a function call. The element type is
+  // unchanged, so `_CallsTabStrip` is unaffected.
+  static final _items = [
+    _CallsTabItem(PhosphorIcons.user(PhosphorIconsStyle.regular),
+        PhosphorIcons.user(PhosphorIconsStyle.fill), 'Contacts', AD.iconSearch),
+    _CallsTabItem(PhosphorIcons.numpad(PhosphorIconsStyle.regular),
+        PhosphorIcons.numpad(PhosphorIconsStyle.fill), 'Dialpad', AD.primaryBadge),
+    _CallsTabItem(PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
+        PhosphorIcons.prohibit(PhosphorIconsStyle.fill), 'Block list', AD.danger),
+    _CallsTabItem(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
+        PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.fill), 'Call logs', AD.online),
   ];
 
   @override
@@ -145,16 +153,16 @@ class _AvaDialRootState extends State<AvaDialRoot> {
               const DialpadSearchTab(),
               on
                   ? const _BlockTab()
-                  : const ShellEmptyState(
-                      icon: Icons.block_outlined,
+                  : ShellEmptyState(
+                      icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
                       title: 'Block list',
                       subtitle: 'Blocked numbers and one-tap spam reports — coming with AvaDial.',
                       color: AD.danger,
                     ),
               on
                   ? const _LogsTab()
-                  : const ShellEmptyState(
-                      icon: Icons.history_outlined,
+                  : ShellEmptyState(
+                      icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
                       title: 'Call logs',
                       subtitle:
                           'Your device call history with friend/spam labels — coming with AvaDial.',
@@ -238,11 +246,12 @@ class _CallsTabStrip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        duration: Msg.fast,
+        curve: Msg.curve,
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
           color: selected ? item.color : AvaDialTheme.surface2,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: Msg.brPill,
           border: Border.all(color: AvaDialTheme.border, width: 1),
           boxShadow: const [],
         ),
@@ -675,7 +684,7 @@ class _ContactsTabState extends State<_ContactsTab> {
       backgroundColor: AvaDialTheme.surface2,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: AvaDialTheme.border, width: 1),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: Msg.brSheetTop,
       ),
       builder: (ctx) => SafeArea(child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
@@ -693,7 +702,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
         ListTile(
-          leading: const Icon(Icons.call, color: AD.incomingCall),
+          leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
           title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
           onTap: () { Navigator.pop(ctx); _call(c); },
         ),
@@ -754,7 +763,8 @@ class _ContactsTabState extends State<_ContactsTab> {
             color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(children: [
-              Icon(Icons.circle, size: 12, color: _kAvatokOrange),
+              PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
+                  size: 12, color: _kAvatokOrange),
               const SizedBox(width: 8),
               Expanded(child: Text(
                   'Orange = already on AvaTOK (tap to call). Everyone else gets a one-tap invite.',
@@ -777,11 +787,12 @@ class _ContactsTabState extends State<_ContactsTab> {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: AvaDialTheme.searchFill,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: Msg.brMd,
               border: Border.all(color: AvaDialTheme.border, width: 1),
             ),
             child: Row(children: [
-              const Icon(Icons.search, color: AvaDialTheme.searchHint, size: 20),
+              PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+                  color: AvaDialTheme.searchHint, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
@@ -858,10 +869,12 @@ class _ContactsTabState extends State<_ContactsTab> {
               ),
               IconButton(
                 onPressed: () => _call(c),
-                icon: const Icon(Icons.call, color: AD.incomingCall),
+                icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                    color: AD.incomingCall),
               ),
               IconButton(
-                icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
+                icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),
+                    color: AvaDialTheme.textSoft),
                 onPressed: () => _openMenu(c),
               ),
             ]),
@@ -931,8 +944,9 @@ class _ContactsTabState extends State<_ContactsTab> {
   }
 
   Widget _sectionHeader(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
-        child: Text(label.toUpperCase(), style: ADText.statCaption(c: AvaDialTheme.textMute)),
+        padding: const EdgeInsets.fromLTRB(Msg.s1, Msg.s4, Msg.s1, Msg.s2),
+        // Sentence case — the caps were part of the shouting (2026-08-05 audit).
+        child: Text(label, style: ADText.sectionLabel(c: AvaDialTheme.textMute)),
       );
 
   /// A server-search (AvaTOK directory) result — someone not yet saved. Call or
@@ -967,7 +981,8 @@ class _ContactsTabState extends State<_ContactsTab> {
               tooltip: 'Call on AvaTOK',
               onPressed: () => place1to1Call(context, uid: c.uid,
                   name: c.name.isNotEmpty ? c.name : c.number, avatarUrl: c.avatarUrl, dialer: true),
-              icon: const Icon(Icons.call, color: AD.incomingCall),
+              icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                  color: AD.incomingCall),
             ),
             IconButton(
               tooltip: 'Add contact',
@@ -1020,7 +1035,8 @@ class _ContactsTabState extends State<_ContactsTab> {
                 icon: Container(
                   width: 34, height: 34,
                   decoration: const BoxDecoration(color: _kAvatokOrange, shape: BoxShape.circle),
-                  child: const Icon(Icons.call, size: 18, color: Colors.white),
+                  child: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      size: 18, color: Colors.white),
                 ),
               )
             else
@@ -1244,13 +1260,14 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          // [AVADIAL-SEARCH-2] White pill, black text (owner spec).
+          // [AVADIAL-SEARCH-2] White field, black text (owner spec).
           color: AvaDialTheme.searchFill,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: Msg.brMd,
           border: Border.all(color: AvaDialTheme.border, width: 1),
         ),
         child: Row(children: [
-          const Icon(Icons.search, color: AvaDialTheme.searchHint, size: 20),
+          PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+              color: AvaDialTheme.searchHint, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -1277,9 +1294,10 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
                 _controller.clear();
                 _emit('');
               },
-              child: const Padding(
-                padding: EdgeInsets.only(left: 6),
-                child: Icon(Icons.close, color: AvaDialTheme.searchHint, size: 18),
+              child: Padding(
+                padding: const EdgeInsets.only(left: Msg.s2),
+                child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular),
+                    color: AvaDialTheme.searchHint, size: 18),
               ),
             ),
         ]),
@@ -1448,9 +1466,9 @@ class _LogsTabState extends State<_LogsTab> {
   }
 
   IconData _iconFor(CallDir d) => switch (d) {
-        CallDir.outgoing => Icons.call_made,
-        CallDir.missed => Icons.call_missed,
-        CallDir.incoming => Icons.call_received,
+        CallDir.outgoing => PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular),
+        CallDir.missed => PhosphorIcons.phoneX(PhosphorIconsStyle.regular),
+        CallDir.incoming => PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular),
       };
 
   Color _colorFor(CallDir d) => switch (d) {
@@ -1469,7 +1487,7 @@ class _LogsTabState extends State<_LogsTab> {
       backgroundColor: AvaDialTheme.surface2,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: AvaDialTheme.border, width: 1),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: Msg.brSheetTop,
       ),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
@@ -1483,7 +1501,7 @@ class _LogsTabState extends State<_LogsTab> {
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
         ListTile(
-          leading: const Icon(Icons.call, color: AD.incomingCall),
+          leading: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
           title: Text('Call on AvaTOK', style: ADText.rowName(c: AvaDialTheme.text)),
           onTap: () { Navigator.pop(ctx); _call(c); },
         ),
@@ -1533,7 +1551,7 @@ class _LogsTabState extends State<_LogsTab> {
             ? const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent))
             : (_calls.isEmpty
                 ? _PermState(
-                    icon: Icons.history_outlined,
+                    icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.regular),
                     title: 'No call history',
                     subtitle: 'Calls you make and receive on AvaTOK will show up here.',
                     color: AD.online,
@@ -1599,7 +1617,8 @@ class _LogsTabState extends State<_LogsTab> {
                 color: AD.danger,
                 borderRadius: BorderRadius.circular(AD.rListCard),
               ),
-              child: const Icon(Icons.delete_outline, color: Colors.white),
+              child: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.regular),
+                  color: Colors.white),
             ),
             onDismissed: (_) async {
               if (e.id.isNotEmpty) await _store.removeById(e.id);
@@ -1624,11 +1643,14 @@ class _LogsTabState extends State<_LogsTab> {
                       ]),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.call, color: AD.incomingCall),
+                      icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                          color: AD.incomingCall),
                       onPressed: () => _call(e),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
+                      icon: PhosphorIcon(
+                          PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),
+                          color: AvaDialTheme.textSoft),
                       onPressed: openMenu,
                     ),
                   ]),
@@ -1749,8 +1771,8 @@ class _BlockTabState extends State<_BlockTab> {
           'avatok_scoped': all.length,
         });
         if (all.isEmpty) {
-          return const ShellEmptyState(
-            icon: Icons.block_outlined,
+          return ShellEmptyState(
+            icon: PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
             title: 'Nothing blocked',
             subtitle: 'AvaTOK contacts you block or report as spam show up here.',
             color: AD.danger,
@@ -1779,7 +1801,7 @@ class _BlockTabState extends State<_BlockTab> {
                   backgroundColor: AvaDialTheme.surface2,
                   shape: const RoundedRectangleBorder(
                     side: BorderSide(color: AvaDialTheme.border, width: 1),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: Msg.brSheetTop,
                   ),
                   builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
                     const SizedBox(height: 10),
@@ -1837,7 +1859,9 @@ class _BlockTabState extends State<_BlockTab> {
                       onPressed: () => _unblock(e.number),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.more_vert, color: AvaDialTheme.textSoft),
+                      icon: PhosphorIcon(
+                          PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),
+                          color: AvaDialTheme.textSoft),
                       onPressed: openMenu,
                     ),
                   ]),

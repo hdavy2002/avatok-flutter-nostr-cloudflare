@@ -419,7 +419,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
 
   Widget _sectionKicker(String s) => Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 4),
-        child: Text(s.toUpperCase(), style: ADText.sectionLabel()),
+        child: Text(s, style: ADText.sectionLabel()),
       );
 
   Widget _langDropdown() {

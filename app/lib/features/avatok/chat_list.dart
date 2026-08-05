@@ -298,7 +298,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                   color: AD.iconSearch.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(100)),
+                  borderRadius: Msg.brPill),
               child: Text('$n', style: ADText.statCaption(c: AD.iconSearch)),
             ),
             const Spacer(),
@@ -476,7 +476,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 margin: const EdgeInsets.only(top: 10, bottom: 4),
                 decoration: BoxDecoration(
                     color: AD.textFaint,
-                    borderRadius: BorderRadius.circular(100)),
+                    borderRadius: Msg.brPill),
               ),
               ...children(ctx),
               const SizedBox(height: 12),
@@ -651,7 +651,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
           decoration: BoxDecoration(
             color: AD.primaryBadge,
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: Msg.brPill,
             border: Border.all(color: AD.headerFooter, width: 2),
           ),
           alignment: Alignment.center,
@@ -2200,7 +2200,7 @@ class _AvaTokTabStrip extends StatelessWidget {
             const SizedBox(width: 5),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(color: AD.unreadAccent, borderRadius: BorderRadius.circular(100)),
+              decoration: BoxDecoration(color: AD.unreadAccent, borderRadius: Msg.brPill),
               child: Text('$communityInvites',
                   style: ADText.statCaption(c: Colors.white)),
             ),

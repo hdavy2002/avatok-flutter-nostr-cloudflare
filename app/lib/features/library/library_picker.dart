@@ -37,7 +37,7 @@ PreferredSizeWidget _darkHeader({
                   Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
                   if (tag != null) ...[
                     const SizedBox(height: 2),
-                    Text(tag.toUpperCase(), style: ADText.sectionLabel()),
+                    Text(tag, style: ADText.sectionLabel()),
                   ],
                 ],
               ),
@@ -142,7 +142,10 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
                     Image.network(AvatarCache.sizedUrl(thumb, 400), fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => _iconFor(it)),
                     if (it.category == 'video')
-                      const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
+                      Center(
+                          child: PhosphorIcon(
+                              PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
+                              color: Colors.white70, size: 30)),
                   ])
                 : _iconFor(it),
           ),

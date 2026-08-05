@@ -9,6 +9,7 @@ import '../../../core/ava_log.dart';
 import '../../../core/drive_service.dart';
 import '../../../core/paid_feature.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../ava_backup/backup_service.dart';
 import '../settings_registry.dart';
@@ -343,10 +344,11 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
   Widget _pillLabel(String text, IconData icon, Color fill) {
     final fg = fill == AD.card ? AD.textPrimary : Colors.white;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s3),
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(100),
+        // Full-width action BUTTON, not a badge.
+        borderRadius: Msg.brMd,
         border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
@@ -363,12 +365,12 @@ class _FreeChip extends StatelessWidget {
   const _FreeChip();
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 3),
         decoration: BoxDecoration(
           color: AD.primaryBadge,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
-        child: Text('FREE', style: ADText.statCaption(c: Colors.white)),
+        child: Text('Free', style: ADText.statCaption(c: Colors.white)),
       );
 }

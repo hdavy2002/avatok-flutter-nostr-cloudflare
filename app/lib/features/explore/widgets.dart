@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Country code → flag emoji ("IN" → 🇮🇳).
 String flagEmoji(String? cc) {
@@ -125,7 +126,7 @@ class ListingCardTile extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
                   color: live ? AD.destructiveBg : AD.card,
-                  borderRadius: BorderRadius.circular(100),
+                  borderRadius: Msg.brPill,
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -133,7 +134,7 @@ class ListingCardTile extends StatelessWidget {
                     Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                     const SizedBox(width: 4),
                   ],
-                  Text((live ? 'LIVE' : card.category).toUpperCase(),
+                  Text(live ? 'Live' : card.category,
                       style: ADText.statCaption(c: live ? Colors.white : AD.textPrimary)),
                 ]),
               )),
@@ -142,7 +143,7 @@ class ListingCardTile extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
                     color: AD.destructiveBg,
-                    borderRadius: BorderRadius.circular(100),
+                    borderRadius: Msg.brPill,
                     border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Text('18+', style: ADText.statCaption(c: Colors.white)),
@@ -180,11 +181,16 @@ class ListingCardTile extends StatelessWidget {
               const SizedBox(height: 2),
               Row(children: [
                 if (card.startsAt != null)
-                  Expanded(child: Text(fmtWhen(card.startsAt).toUpperCase(),
+                  Expanded(child: Text(fmtWhen(card.startsAt),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.statCaption(c: AD.textSecondary))),
                 if (card.joinedCount > 0)
-                  Text('🔥 ${card.joinedCount} joined', style: ADText.statCaption(c: AD.textSecondary)),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    PhosphorIcon(PhosphorIcons.fire(PhosphorIconsStyle.fill),
+                        size: 12, color: AD.textSecondary),
+                    const SizedBox(width: Msg.s1),
+                    Text('${card.joinedCount} joined', style: ADText.statCaption(c: AD.textSecondary)),
+                  ]),
               ]),
             ]),
           ),

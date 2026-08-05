@@ -560,7 +560,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final hasLead = leadText != null || leadIcon != null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (label != null) ...[
-        Text(label.toUpperCase(), style: ADText.sectionLabel(c: AD.textSecondary)),
+        Text(label, style: ADText.sectionLabel(c: AD.textSecondary)),
         const SizedBox(height: 9),
       ],
       Container(
@@ -582,7 +582,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               child: leadText != null
                   ? Text(leadText,
                       style: const TextStyle(
-                          fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                          fontFamily: ADText.family, fontWeight: FontWeight.w600,
                           fontSize: 20, color: AD.textOnInput))
                   : Icon(leadIcon, size: 20, color: AD.textOnInput),
             ),
@@ -855,7 +855,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
                 ),
                 const SizedBox(height: 6),
-                Text('PLEASE REVIEW BEFORE CONTINUING', style: ADText.sectionLabel(c: AD.textTertiary)),
+                Text('Please review before continuing', style: ADText.sectionLabel(c: AD.textTertiary)),
                 const SizedBox(height: 20),
                 _termSection('1. Your Account', '$para $para'),
                 _termSection('2. Content & Ownership', '$para $para'),

@@ -9,6 +9,7 @@ import '../../../core/disk_cache.dart';
 import '../../../core/moderation_service.dart';
 import '../../../core/receptionist_api.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/voice/google_voice.dart';
 import '../../wallet/wallet_balance_chip.dart' show WalletBalanceStore;
@@ -605,7 +606,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 // ── [RECEPT-SETTINGS-1] Group 1 — Cell (PSTN) calls ─────────
                 // Four INDEPENDENT toggles. Each alone decides whether Ava
                 // answers that scenario for cell calls.
-                Text('CELL (PSTN) CALLS', style: ADText.sectionLabel()),
+                Text('Cell (PSTN) calls', style: ADText.sectionLabel()),
                 const SizedBox(height: 6),
                 _receptToggle(
                   'Call not picked up',
@@ -640,7 +641,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 ),
                 const SizedBox(height: 16),
                 // ── [RECEPT-SETTINGS-1] Group 2 — AvaTOK-to-AvaTOK calls ────
-                Text('AVATOK CALLS', style: ADText.sectionLabel()),
+                Text('AvaTOK calls', style: ADText.sectionLabel()),
                 const SizedBox(height: 6),
                 _receptToggle(
                   'Call not picked up',
@@ -713,7 +714,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 ),
                 const SizedBox(height: 16),
                 // ── Expiry chips ───────────────────────────────────────────
-                Text('CLEAR THIS NOTE AFTER', style: ADText.sectionLabel()),
+                Text('Clear this note after', style: ADText.sectionLabel()),
                 const SizedBox(height: 9),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final o in _kExpiryOptions)
@@ -732,7 +733,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 ],
                 const SizedBox(height: 16),
                 // ── Greeting ───────────────────────────────────────────────
-                Text('GREETING', style: ADText.sectionLabel()),
+                Text('Greeting', style: ADText.sectionLabel()),
                 const SizedBox(height: 9),
                 _greetingDropdown(),
                 if (_greetingStyle == 'custom') ...[
@@ -762,7 +763,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 ),
                 const SizedBox(height: 16),
                 // ── Answering language ─────────────────────────────────────
-                Text('ANSWERING LANGUAGE', style: ADText.sectionLabel()),
+                Text('Answering language', style: ADText.sectionLabel()),
                 const SizedBox(height: 9),
                 ZinePressable(
                   onTap: _pickLanguage,
@@ -1054,18 +1055,18 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   style: ADText.preview(c: AD.iconSearch),
                 ),
               ),
-            Text('FEMALE', style: ADText.sectionLabel()),
+            Text('Female', style: ADText.sectionLabel()),
             const SizedBox(height: 8),
             _voiceWrap(GoogleVoiceCatalog.female, current),
             const SizedBox(height: 16),
-            Text('MALE', style: ADText.sectionLabel()),
+            Text('Male', style: ADText.sectionLabel()),
             const SizedBox(height: 8),
             _voiceWrap(GoogleVoiceCatalog.male, current),
           ]);
         },
       ),
       const SizedBox(height: 16),
-      Text('CALL LANGUAGE', style: ADText.sectionLabel()),
+      Text('Call language', style: ADText.sectionLabel()),
       const SizedBox(height: 4),
       Text('The language Ava speaks on a call. Auto follows whatever you speak.',
           style: ADText.preview()),
@@ -1191,7 +1192,8 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
               width: 40, height: 4,
               decoration: BoxDecoration(
                 color: AD.borderControl,
-                borderRadius: BorderRadius.circular(100),
+                // Sheet drag handle — a genuine pill.
+                borderRadius: Msg.brPill,
               ),
             ),
             Padding(
@@ -1307,16 +1309,17 @@ class _AdToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: AnimatedContainer(
-        duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+        duration: reduce ? Duration.zero : Msg.fast,
         width: 52, height: 30,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: value ? AD.online : AD.card,
-          borderRadius: BorderRadius.circular(100),
+          // Toggle track — a genuine pill.
+          borderRadius: Msg.brPill,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: AnimatedAlign(
-          duration: reduce ? Duration.zero : const Duration(milliseconds: 120),
+          duration: reduce ? Duration.zero : Msg.fast,
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 22, height: 22,
