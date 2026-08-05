@@ -18,7 +18,8 @@ import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/breakpoints.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
@@ -413,8 +414,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       pressedColor: AD.primaryBadge,
       borderColor: selected ? AD.primaryBadge : AD.borderControl,
       borderWidth: 1,
-      radius: BorderRadius.circular(Zine.rSm),
-      boxShadow: const [],
+      radius: Msg.brMd,
+      boxShadow: Msg.none,
       padding: const EdgeInsets.all(14),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(icon: icon, color: color, size: 42),
@@ -746,7 +747,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       behavior: HitTestBehavior.opaque,
       onTap: (on || _permBusy) ? null : () => _requestRow(r),
       child: AdCard(
-        radius: Zine.rSm,
+        radius: Msg.rMd,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: r.icon, color: r.color, size: 42),
@@ -1004,7 +1005,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               final on = _enabled.contains(a.key);
               const adAccents = [AD.iconSearch, AD.primaryBadge, AD.danger, AD.iconVideo, AD.online];
               return AdCard(
-                radius: Zine.rSm,
+                radius: Msg.rMd,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Row(children: [
                   ZineIconBadge(icon: a.icon, color: adAccents[i % adAccents.length], size: 40),

@@ -5,17 +5,85 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../font_scale.dart';
-import 'zine.dart';
+import 'avatok_dark.dart';
+import 'messenger_theme.dart';
 
 // =============================================================================
-// AvaTOK design system — component recipes (AVATOK-DESIGN-SYSTEM.md §5–§8).
-// Physics: objects press INTO the paper on tap (translate down-right, shadow
-// shrinks). Every contained element: ink border >= 2.5px + hard offset shadow.
+// Shared component recipes — DARK (AvaTOK Dark v2).
+//
+// [UI-ZINE-DARK-1 2026-08-05] These widgets keep their historical `Zine*` names
+// because ~700 call sites use them, but they are NO LONGER light-themed. Every
+// surface, border, shadow, radius and type style now comes from `AD` /
+// `ADText` / `Msg`.
+//
+// WHY: this file was the last thing still painting the old cream-paper design
+// system. Screens migrated to `AD.bg` (near-black) were drawing near-WHITE
+// `ZineCard`s with dark-brown borders and hard offset shadows on top of a
+// near-black page — a live, visible regression on every part-migrated screen.
+//
+// Rules followed here:
+//   * radii are Msg.rSm / rMd / rLg only; Msg.rPill is reserved for genuine
+//     pills (chips, tags, status dots, the toggle track, round icon buttons)
+//   * borders are 1px hairlines, never 2.5px ink
+//   * shadows are Msg.none by default, Msg.lift for genuinely floating things.
+//     The old HARD offset shadows are gone — they were a paper idiom
+//   * motion is Msg.fast / base / slow
+//   * icons are Phosphor
+//
+// PUBLIC API IS UNCHANGED. Every class name, constructor and parameter is the
+// same as before, so no call site had to move. This is a re-skin.
 // =============================================================================
 
-/// Press-into-the-paper interaction wrapper (§5).
-/// Renders [child] inside a bordered, hard-shadowed box; on press the box
-/// translates (2,2) and the shadow collapses to 1px.
+// ---------------------------------------------------------------- type helpers
+// Thin wrappers over ADText so nothing in this file reaches for the light
+// `ZineText` scale. Metrics (size/height/tracking) are deliberately kept close
+// to the originals: this file feeds FIXED-height bands (see ZineAppBar), so a
+// type change that grows a line box would throw a RenderFlex overflow.
+
+TextStyle _tHero(double size, [Color c = AD.textPrimary]) => ADText.appTitle(c: c)
+    .copyWith(fontSize: size, height: 1.08, letterSpacing: -0.02 * size);
+
+TextStyle _tTitle([Color c = AD.textPrimary]) => ADText.threadName(c: c);
+
+TextStyle _tButton(double size, Color c) =>
+    ADText.rowName(c: c).copyWith(fontSize: size, height: 1.0, letterSpacing: -0.2);
+
+TextStyle _tSub({double size = 15, Color c = AD.textSecondary}) =>
+    ADText.preview(c: c).copyWith(fontSize: size, height: 1.42);
+
+TextStyle _tInput({double size = 16, Color c = AD.textPrimary}) =>
+    ADText.bubbleBody(c: c).copyWith(fontSize: size, letterSpacing: -0.18);
+
+TextStyle _tKicker([Color c = AD.textTertiary]) => ADText.sectionLabel(c: c);
+
+TextStyle _tTag({double size = 12, Color c = AD.textPrimary}) =>
+    ADText.tabLabel(c: c).copyWith(fontSize: size, letterSpacing: 0.02 * size);
+
+TextStyle _tLink({double size = 13, Color c = Msg.accent}) =>
+    ADText.rowName(c: c).copyWith(fontSize: size);
+
+/// Readable ink for an arbitrary caller-supplied fill.
+///
+/// Call sites pass every kind of accent — the pale legacy poster colours
+/// (`Zine.lime`, `Zine.blue`, …) as well as the saturated dark-v2 tokens — so
+/// this cannot be a fixed colour. Luminance decides: dark ink on a light fill,
+/// white on a dark one.
+Color _inkOn(Color fill) =>
+    fill.computeLuminance() > 0.5 ? AD.textOnInput : Colors.white;
+
+/// Sentence case for a display label.
+///
+/// [UI-ZINE-DARK-1] Replaces the `.toUpperCase()` this file used to apply to
+/// every field label, tag and sticker. Call sites pass lowercase strings
+/// ('email', 'password', 'available'), so simply dropping the transform would
+/// render them lowercase; this capitalises the first letter and leaves the rest
+/// of the string exactly as the caller wrote it (so 'AI', 'SMS' and the like
+/// survive intact).
+String _sentence(String s) =>
+    s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+/// Tap wrapper. Renders [child] inside a bordered box; on press the box shifts
+/// 1px and swaps to its pressed fill.
 class ZinePressable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -30,12 +98,12 @@ class ZinePressable extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
-    this.color = Zine.card,
+    this.color = AD.card,
     this.pressedColor,
-    this.radius = const BorderRadius.all(Radius.circular(Zine.rSm)),
-    this.boxShadow = Zine.shadowSm,
-    this.borderWidth = Zine.bw,
-    this.borderColor = Zine.ink,
+    this.radius = const BorderRadius.all(Radius.circular(Msg.rMd)),
+    this.boxShadow = Msg.none,
+    this.borderWidth = 1,
+    this.borderColor = AD.borderControl,
     this.padding = EdgeInsets.zero,
   });
   @override
@@ -48,7 +116,7 @@ class _ZinePressableState extends State<ZinePressable> {
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null;
     final reduce = MediaQuery.of(context).disableAnimations;
-    final dx = _down && enabled ? 2.0 : 0.0;
+    final dx = _down && enabled ? 1.0 : 0.0;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: enabled ? (_) => setState(() => _down = true) : null,
@@ -56,15 +124,15 @@ class _ZinePressableState extends State<ZinePressable> {
       onTapUp: enabled ? (_) => setState(() => _down = false) : null,
       onTap: widget.onTap,
       child: AnimatedContainer(
-        duration: reduce ? Duration.zero : Zine.dur,
-        curve: Curves.ease,
+        duration: reduce ? Duration.zero : Msg.fast,
+        curve: Msg.curve,
         transform: Matrix4.translationValues(dx, dx, 0),
         padding: widget.padding,
         decoration: BoxDecoration(
           color: _down && enabled ? (widget.pressedColor ?? widget.color) : widget.color,
           borderRadius: widget.radius,
           border: Border.all(color: widget.borderColor, width: widget.borderWidth),
-          boxShadow: _down && enabled ? Zine.shadowPressed : widget.boxShadow,
+          boxShadow: _down && enabled ? Msg.none : widget.boxShadow,
         ),
         child: widget.child,
       ),
@@ -74,7 +142,7 @@ class _ZinePressableState extends State<ZinePressable> {
 
 enum ZineButtonVariant { lime, blue, coral, ghost }
 
-/// Primary button — lime pill (§7.1). ONE lime button per screen.
+/// Primary button. `lime` is the accent (orange) action — ONE per screen.
 class ZineButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -96,19 +164,21 @@ class ZineButton extends StatelessWidget {
     this.fontSize = 19,
   });
 
+  // The variant names are historical (they were poster-paint names). What each
+  // one MEANS is unchanged: lime = the primary action, blue = a secondary/
+  // grouping action, coral = destructive, ghost = outline.
   Color get _fill => switch (variant) {
-        ZineButtonVariant.lime => Zine.lime,
-        ZineButtonVariant.blue => Zine.blue,
-        ZineButtonVariant.coral => Zine.coral,
-        ZineButtonVariant.ghost => Zine.card,
+        ZineButtonVariant.lime => AD.primaryBadge,
+        ZineButtonVariant.blue => AD.newGroup,
+        ZineButtonVariant.coral => AD.destructiveBg,
+        ZineButtonVariant.ghost => AD.card,
       };
-  // White text is allowed ONLY on coral fills (§2).
-  Color get _fg => variant == ZineButtonVariant.coral ? Colors.white : Zine.ink;
+  Color get _fg => variant == ZineButtonVariant.ghost ? AD.textPrimary : Colors.white;
 
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null || loading;
-    final fg = disabled ? Zine.inkMute : _fg;
+    final fg = disabled ? AD.textTertiary : _fg;
     final content = Row(
       mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -116,20 +186,20 @@ class ZineButton extends StatelessWidget {
         if (loading)
           SizedBox(
             width: fontSize + 2, height: fontSize + 2,
-            child: CircularProgressIndicator(strokeWidth: 2.6, color: fg),
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: fg),
           )
         else ...[
           if (icon != null && !trailingIcon) ...[
             Icon(icon, size: fontSize + 2, color: fg),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
           ],
           Flexible(
             child: Text(label,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ZineText.button(size: fontSize, color: fg)),
+                style: _tButton(fontSize, fg)),
           ),
           if (icon != null && trailingIcon) ...[
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Icon(icon, size: fontSize + 2, color: fg),
           ],
         ],
@@ -140,9 +210,9 @@ class ZineButton extends StatelessWidget {
         width: fullWidth ? double.infinity : null,
         padding: EdgeInsets.symmetric(horizontal: 24, vertical: fontSize >= 21 ? 17 : 14),
         decoration: BoxDecoration(
-          color: Zine.paper2,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.inkMute, width: Zine.bw),
+          color: AD.card,
+          borderRadius: Msg.brMd,
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: content,
       );
@@ -150,14 +220,15 @@ class ZineButton extends StatelessWidget {
     return ZinePressable(
       onTap: onPressed,
       color: _fill,
-      radius: BorderRadius.circular(100),
+      borderColor: variant == ZineButtonVariant.ghost ? AD.borderControl : _fill,
+      radius: Msg.brMd,
       padding: EdgeInsets.symmetric(horizontal: 24, vertical: fontSize >= 21 ? 17 : 14),
       child: content,
     );
   }
 }
 
-/// Card (§7.3): card fill, 2.5px ink border, 22px radius, small hard shadow.
+/// Card: card surface, 1px hairline border, 16px radius, flat.
 class ZineCard extends StatelessWidget {
   final Widget child;
   final Color color;
@@ -168,10 +239,10 @@ class ZineCard extends StatelessWidget {
   const ZineCard({
     super.key,
     required this.child,
-    this.color = Zine.card,
-    this.padding = const EdgeInsets.all(18),
-    this.radius = Zine.r,
-    this.boxShadow = Zine.shadowSm,
+    this.color = AD.card,
+    this.padding = const EdgeInsets.all(Msg.s4),
+    this.radius = Msg.rLg,
+    this.boxShadow = Msg.none,
     this.onTap,
   });
   @override
@@ -179,6 +250,7 @@ class ZineCard extends StatelessWidget {
     if (onTap != null) {
       return ZinePressable(
         onTap: onTap, color: color, padding: padding,
+        pressedColor: color == AD.card ? AD.cardHover : null,
         radius: BorderRadius.circular(radius), boxShadow: boxShadow,
         child: child,
       );
@@ -188,7 +260,7 @@ class ZineCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: Zine.border,
+        border: Border.all(color: AD.borderControl, width: 1),
         boxShadow: boxShadow,
       ),
       child: child,
@@ -196,46 +268,46 @@ class ZineCard extends StatelessWidget {
   }
 }
 
-/// Icon badge preceding a card title (§6): 34px, accent fill, ink border.
+/// Icon badge preceding a card title: 34px, accent fill, hairline border.
 class ZineIconBadge extends StatelessWidget {
   final IconData icon;
   final Color color;
   final double size;
-  const ZineIconBadge({super.key, required this.icon, this.color = Zine.blue, this.size = 34});
+  const ZineIconBadge({super.key, required this.icon, this.color = AD.newGroup, this.size = 34});
   @override
   Widget build(BuildContext context) {
     return Container(
       width: size, height: size,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(Zine.rBadge),
-        border: Zine.border,
+        borderRadius: BorderRadius.circular(Msg.rSm),
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
-      child: Icon(icon, size: size * 0.53, color: color == Zine.coral ? Colors.white : Zine.ink),
+      child: Icon(icon, size: size * 0.53, color: _inkOn(color)),
     );
   }
 }
 
-/// Card head row: icon badge + Nunito title + optional right mono tag (§7.3).
+/// Card head row: icon badge + title + optional right-hand tag.
 class ZineCardHead extends StatelessWidget {
   final IconData icon;
   final Color accent;
   final String title;
   final String? tag;
-  const ZineCardHead({super.key, required this.icon, required this.title, this.accent = Zine.blue, this.tag});
+  const ZineCardHead({super.key, required this.icon, required this.title, this.accent = AD.newGroup, this.tag});
   @override
   Widget build(BuildContext context) {
     return Row(children: [
       ZineIconBadge(icon: icon, color: accent),
-      const SizedBox(width: 11),
-      Expanded(child: Text(title, style: ZineText.cardTitle())),
+      const SizedBox(width: Msg.s3),
+      Expanded(child: Text(title, style: _tTitle())),
       if (tag != null)
-        Text(tag!.toUpperCase(), style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+        Text(_sentence(tag!), style: _tTag(size: 11, c: AD.textTertiary)),
     ]);
   }
 }
 
-/// Text field (§7.2): pill-ish bordered box with optional lime leading cell.
+/// Text field: dark card surface, hairline border, optional accent lead cell.
 class ZineField extends StatefulWidget {
   final TextEditingController? controller;
   final String? label;
@@ -307,36 +379,37 @@ class _ZineFieldState extends State<ZineField> {
   @override
   Widget build(BuildContext context) {
     final focused = _focus.hasFocus;
-    final shadow = widget.error
-        ? Zine.shadowError
+    // The old design signalled focus/error with a coloured HARD offset shadow.
+    // On the dark surface that reads as a smear, so state now lives in the
+    // border colour — the standard dark-v2 idiom (see AdField).
+    final borderColor = widget.error
+        ? AD.danger
         : focused
-            ? Zine.shadowFocus
-            : Zine.shadowSm;
+            ? Msg.accent
+            : AD.borderControl;
     final reduce = MediaQuery.of(context).disableAnimations;
     final hasLead = widget.leadText != null || widget.leadIcon != null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (widget.label != null) ...[
         Row(children: [
           if (widget.labelIcon != null) ...[
-            Icon(widget.labelIcon, size: 14, color: Zine.inkSoft),
-            const SizedBox(width: 7),
+            Icon(widget.labelIcon, size: 14, color: AD.textSecondary),
+            const SizedBox(width: Msg.s2),
           ],
           Flexible(
-            child: Text(widget.label!.toUpperCase(),
-                style: ZineText.kicker(), overflow: TextOverflow.ellipsis),
+            child: Text(_sentence(widget.label!),
+                style: _tKicker(), overflow: TextOverflow.ellipsis),
           ),
         ]),
-        const SizedBox(height: 9),
+        const SizedBox(height: Msg.s2),
       ],
       AnimatedContainer(
-        duration: reduce ? Duration.zero : const Duration(milliseconds: 140),
-        curve: Curves.ease,
-        transform: Matrix4.translationValues(focused ? -1 : 0, focused ? -1 : 0, 0),
+        duration: reduce ? Duration.zero : Msg.fast,
+        curve: Msg.curve,
         decoration: BoxDecoration(
-          color: widget.enabled ? Zine.card : Zine.paper2,
-          borderRadius: BorderRadius.circular(Zine.rField),
-          border: Zine.border,
-          boxShadow: shadow,
+          color: widget.enabled ? AD.card : AD.headerFooter,
+          borderRadius: Msg.brMd,
+          border: Border.all(color: borderColor, width: 1),
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(crossAxisAlignment: (widget.maxLines == null || widget.maxLines! > 1) ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
@@ -345,14 +418,14 @@ class _ZineFieldState extends State<ZineField> {
               width: 50,
               constraints: const BoxConstraints(minHeight: 56),
               decoration: const BoxDecoration(
-                color: Zine.lime,
-                border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+                color: AD.primaryBadge,
+                border: Border(right: BorderSide(color: AD.borderControl, width: 1)),
               ),
               alignment: Alignment.center,
               child: widget.leadText != null
                   ? Text(widget.leadText!,
-                      style: const TextStyle(fontFamily: ZineText.display, fontWeight: FontWeight.w600, fontSize: 24, color: Zine.ink))
-                  : Icon(widget.leadIcon, size: 22, color: Zine.ink),
+                      style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 22, color: Colors.white))
+                  : Icon(widget.leadIcon, size: 22, color: Colors.white),
             ),
           Expanded(
             child: TextField(
@@ -371,19 +444,19 @@ class _ZineFieldState extends State<ZineField> {
               autocorrect: widget.autocorrect,
               inputFormatters: widget.inputFormatters,
               scrollPadding: widget.scrollPadding,
-              cursorColor: Zine.blueInk,
-              style: ZineText.input(),
+              cursorColor: Msg.accent,
+              style: _tInput(),
               decoration: InputDecoration(
                 isDense: true,
                 counterText: '',
                 hintText: widget.hint,
-                hintStyle: ZineText.input().copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+                hintStyle: _tInput(c: AD.textFaint),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 disabledBorder: InputBorder.none,
                 filled: false,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: Msg.s4),
               ),
             ),
           ),
@@ -392,7 +465,7 @@ class _ZineFieldState extends State<ZineField> {
               width: 52,
               constraints: const BoxConstraints(minHeight: 56),
               decoration: const BoxDecoration(
-                border: Border(left: BorderSide(color: Zine.ink, width: Zine.bw)),
+                border: Border(left: BorderSide(color: AD.borderControl, width: 1)),
               ),
               alignment: Alignment.center,
               child: widget.trailing,
@@ -403,24 +476,24 @@ class _ZineFieldState extends State<ZineField> {
   }
 }
 
-/// Error line under a field — Nunito coral with warning icon (§7.2).
+/// Error line under a field.
 class ZineErrorMsg extends StatelessWidget {
   final String text;
   const ZineErrorMsg(this.text, {super.key});
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.only(top: Msg.s2),
       child: Row(children: [
-        PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold), size: 15, color: Zine.coral),
-        const SizedBox(width: 6),
-        Expanded(child: Text(text, style: ZineText.tag(size: 12, color: Zine.coral))),
+        PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.regular), size: 15, color: AD.danger),
+        const SizedBox(width: Msg.s1),
+        Expanded(child: Text(text, style: _tTag(size: 12, c: AD.danger))),
       ]),
     );
   }
 }
 
-/// Filter / segmented chip (§7.4). Active = lime + check + shadow.
+/// Filter / segmented chip. Active = accent fill + check.
 class ZineChip extends StatelessWidget {
   final String label;
   final bool active;
@@ -430,16 +503,19 @@ class ZineChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ZinePressable(
       onTap: onTap,
-      color: active ? Zine.lime : Zine.card,
-      radius: BorderRadius.circular(100),
-      boxShadow: active ? Zine.shadowSm : const <BoxShadow>[],
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      color: active ? AD.primaryBadge : AD.card,
+      borderColor: active ? AD.primaryBadge : AD.borderControl,
+      // A chip IS one of the shapes Msg.rPill is reserved for.
+      radius: Msg.brPill,
+      boxShadow: Msg.none,
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (active) ...[
-          PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 13, color: Zine.ink),
-          const SizedBox(width: 6),
+          PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.regular), size: 13, color: Colors.white),
+          const SizedBox(width: Msg.s1),
         ],
-        Text(label, style: ZineText.tag(size: 12.5)),
+        Text(label,
+            style: _tTag(size: 12, c: active ? Colors.white : AD.textSecondary)),
       ]),
     );
   }
@@ -447,7 +523,7 @@ class ZineChip extends StatelessWidget {
 
 enum ZineStickerKind { ok, no, hint, plain }
 
-/// Sticker / tag pill (§7.5) — availability states, suggestion chips, eyebrows.
+/// Sticker / tag pill — availability states, suggestion chips, eyebrows.
 class ZineSticker extends StatelessWidget {
   final String text;
   final ZineStickerKind kind;
@@ -457,30 +533,29 @@ class ZineSticker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (fill, fg) = switch (kind) {
-      ZineStickerKind.ok => (Zine.lime, Zine.ink),
-      ZineStickerKind.no => (Zine.coral, Colors.white),
-      ZineStickerKind.hint => (Zine.card, Zine.inkSoft),
-      ZineStickerKind.plain => (Zine.card, Zine.ink),
+      ZineStickerKind.ok => (AD.online, Colors.white),
+      ZineStickerKind.no => (AD.destructiveBg, Colors.white),
+      ZineStickerKind.hint => (AD.card, AD.textSecondary),
+      ZineStickerKind.plain => (AD.card, AD.textPrimary),
     };
     final hint = kind == ZineStickerKind.hint;
     final core = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(100),
-        // Hint stickers read as "ghost": muted border, no shadow (§7.5).
-        border: Border.all(color: hint ? Zine.inkMute : Zine.ink, width: Zine.bw),
-        boxShadow: hint ? null : Zine.shadowXs,
+        // A tag IS one of the shapes Msg.rPill is reserved for.
+        borderRadius: Msg.brPill,
+        border: Border.all(color: hint ? AD.borderHairline : AD.borderControl, width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
           Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
         ],
         Flexible(
-          child: Text(text.toUpperCase(),
+          child: Text(_sentence(text),
               maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: ZineText.tag(size: 12, color: fg)),
+              style: _tTag(size: 12, c: fg)),
         ),
       ]),
     );
@@ -489,7 +564,7 @@ class ZineSticker extends StatelessWidget {
   }
 }
 
-/// Back / icon button (§7.7): 42px circle, ink border, card fill, hard shadow.
+/// Back / icon button: 42px circle, card fill, hairline border.
 class ZineBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final IconData? icon;
@@ -498,14 +573,15 @@ class ZineBackButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ZinePressable(
       onTap: onTap ?? () => Navigator.of(context).maybePop(),
-      pressedColor: Zine.lime,
-      radius: BorderRadius.circular(100),
+      pressedColor: AD.cardHover,
+      // A round icon button is genuinely round.
+      radius: Msg.brPill,
       child: SizedBox(
         width: 42, height: 42,
         child: Center(
           child: PhosphorIcon(
-            icon ?? PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
-            size: 20, color: Zine.ink,
+            icon ?? PhosphorIcons.arrowLeft(PhosphorIconsStyle.regular),
+            size: 20, color: AD.textPrimary,
           ),
         ),
       ),
@@ -513,7 +589,7 @@ class ZineBackButton extends StatelessWidget {
   }
 }
 
-/// Step indicator (§7.8): pip row + "STEP n / m" mono label.
+/// Step indicator: pip row + "Step n / m" label.
 class ZineStepPips extends StatelessWidget {
   final int total;
   final int active; // 1-based
@@ -526,19 +602,19 @@ class ZineStepPips extends StatelessWidget {
           width: 9, height: 9,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: i == active ? Zine.coral : Zine.card,
-            border: Border.all(color: Zine.ink, width: 2),
+            color: i == active ? AD.primaryBadge : AD.card,
+            border: Border.all(color: AD.borderControl, width: 1),
           ),
         ),
-        const SizedBox(width: 7),
+        const SizedBox(width: Msg.s2),
       ],
-      const SizedBox(width: 4),
-      Text('STEP $active / $total', style: ZineText.kicker()),
+      const SizedBox(width: Msg.s1),
+      Text('Step $active / $total', style: _tKicker()),
     ]);
   }
 }
 
-/// Halftone dot patch (§6) — decorative texture block.
+/// Halftone dot patch — decorative texture block.
 class ZineDotPatch extends StatelessWidget {
   final double width;
   final double height;
@@ -556,7 +632,8 @@ class ZineDotPatch extends StatelessWidget {
 class _DotsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Zine.ink;
+    // Dots must be LIGHTER than the page now, not darker.
+    final p = Paint()..color = AD.textFaint;
     const step = 15.0;
     for (double y = 2; y < size.height; y += step) {
       for (double x = 2; x < size.width; x += step) {
@@ -569,7 +646,7 @@ class _DotsPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
-/// Tape strip (§6): translucent lime, dashed edges, slight rotation. One per screen.
+/// Tape strip: translucent accent, slight rotation. One per screen.
 class ZineTape extends StatelessWidget {
   final double width;
   final double height;
@@ -582,10 +659,10 @@ class ZineTape extends StatelessWidget {
       child: Container(
         width: width, height: height,
         decoration: BoxDecoration(
-          color: Zine.tape,
+          color: AD.primaryBadge.withValues(alpha: 0.35),
           border: const Border(
-            left: BorderSide(color: Color(0x2E000000), width: 1),
-            right: BorderSide(color: Color(0x2E000000), width: 1),
+            left: BorderSide(color: AD.borderControl, width: 1),
+            right: BorderSide(color: AD.borderControl, width: 1),
           ),
         ),
       ),
@@ -593,7 +670,7 @@ class ZineTape extends StatelessWidget {
   }
 }
 
-/// The AvaTOK mark (Λ + coral dot) in ink — used inside the crest.
+/// The AvaTOK mark (Λ + accent dot) — used inside the crest.
 class ZineLogoMark extends StatelessWidget {
   final double size;
   const ZineLogoMark({super.key, this.size = 58});
@@ -611,7 +688,7 @@ class _ZineLogoPainter extends CustomPainter {
   void paint(Canvas canvas, Size s) {
     final stroke = s.width * 0.185;
     final p = Paint()
-      ..color = Zine.ink
+      ..color = AD.textPrimary
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeJoin = StrokeJoin.round
@@ -621,16 +698,18 @@ class _ZineLogoPainter extends CustomPainter {
       ..lineTo(s.width / 2, stroke * 0.7)
       ..lineTo(s.width - stroke * 0.6, s.height - stroke * 0.6);
     canvas.drawPath(path, p);
+    // NOTE: this dot was a hard-coded 0xFFFF5350 red. Re-pointed at the brand
+    // accent token so it can't drift from the rest of the app.
     canvas.drawCircle(
-        Offset(s.width / 2, s.height * 0.68), s.width * 0.07, Paint()..color = const Color(0xFFFF5350));
+        Offset(s.width / 2, s.height * 0.68), s.width * 0.07, Paint()..color = AD.primaryBadge);
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
-/// Hero crest (§7.9): circle badge (blue fill, 3px border, big shadow) holding
-/// the logo, with tape on top, dot patch behind a corner, coral star beside.
+/// Hero crest: circle badge holding the logo, with tape on top, a dot patch
+/// behind a corner, and an accent star beside it.
 class ZineCrest extends StatelessWidget {
   final double size;
   final Widget? child;
@@ -648,23 +727,23 @@ class ZineCrest extends StatelessWidget {
           width: size, height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Zine.blue,
-            border: Zine.borderLg,
-            boxShadow: Zine.shadow,
+            color: AD.newGroup,
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.lift,
           ),
           child: Center(child: child ?? ZineLogoMark(size: size * 0.5)),
         ),
         Positioned(top: -10, child: ZineTape(width: size * 0.8)),
         Positioned(
           left: 2, top: 10,
-          child: PhosphorIcon(PhosphorIcons.starFour(PhosphorIconsStyle.fill), size: 22, color: Zine.coral),
+          child: PhosphorIcon(PhosphorIcons.starFour(PhosphorIconsStyle.fill), size: 22, color: AD.primaryBadge),
         ),
       ]),
     );
   }
 }
 
-/// Title with the brand `.mark` highlighter stripe behind ONE word (§3).
+/// Title with the brand `.mark` highlighter stripe behind ONE word.
 /// Usage: ZineMarkTitle(pre: 'Pick your ', mark: 'handle').
 class ZineMarkTitle extends StatelessWidget {
   final String pre;
@@ -688,14 +767,14 @@ class ZineMarkTitle extends StatelessWidget {
     required this.mark,
     this.post = '',
     this.fontSize = 36,
-    this.markColor = Zine.lime,
+    this.markColor = AD.primaryBadge,
     this.textAlign = TextAlign.center,
     this.maxLines,
     this.overflow,
   });
   @override
   Widget build(BuildContext context) {
-    final style = ZineText.hero(size: fontSize);
+    final style = _tHero(fontSize);
     // RESPUI-13: when the mark word IS the whole title (pre and post both
     // empty — e.g. ZineAppBar's `title == markWord` case, such as Settings'
     // title:'Settings', markWord:'Settings'), do NOT wrap the mark in a
@@ -707,10 +786,10 @@ class ZineMarkTitle extends StatelessWidget {
     // "overflowed by 27 pixels" at every screen size/text scale, because the
     // app-bar band clamps its text scale to 1.15 in both test configs).
     // Returning the Stack directly sizes the title to the inner Text's own
-    // line height (fontSize * 1.08 * scale ≈ 33.5px at 27px/1.15x), which
-    // fits the band. The pre/post-populated hero-title case (e.g. "Pick your
-    // handle") keeps the original Text.rich + baseline WidgetSpan, which is
-    // the tested, working alignment against real surrounding text.
+    // line height (fontSize * 1.08 * scale), which fits the band. The
+    // pre/post-populated hero-title case (e.g. "Pick your handle") keeps the
+    // original Text.rich + baseline WidgetSpan, which is the tested, working
+    // alignment against real surrounding text.
     final soleSpan = pre.isEmpty && post.isEmpty;
     final markWidget = Stack(clipBehavior: Clip.none, children: [
       Positioned(
@@ -718,7 +797,13 @@ class ZineMarkTitle extends StatelessWidget {
         child: Transform.rotate(
           angle: -1.2 * math.pi / 180,
           child: Container(
-            decoration: BoxDecoration(color: markColor, borderRadius: BorderRadius.circular(3)),
+            // On the dark surface the title text is WHITE, so a full-strength
+            // accent stripe behind it drops contrast to ~2.4:1. Held at 45% so
+            // the highlight still reads as a highlight and the word stays
+            // legible.
+            decoration: BoxDecoration(
+                color: markColor.withValues(alpha: 0.45),
+                borderRadius: Msg.brSm),
           ),
         ),
       ),
@@ -748,13 +833,13 @@ class ZineMarkTitle extends StatelessWidget {
   }
 }
 
-/// Mono link (§7.6): Nunito, blue-ink, thick accent underline.
+/// Link: accent text with a thick accent underline.
 class ZineLink extends StatelessWidget {
   final String text;
   final VoidCallback? onTap;
   final Color underline;
   final double fontSize;
-  const ZineLink(this.text, {super.key, this.onTap, this.underline = Zine.blue, this.fontSize = 13});
+  const ZineLink(this.text, {super.key, this.onTap, this.underline = AD.primaryBadge, this.fontSize = 13});
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -763,15 +848,15 @@ class ZineLink extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.only(bottom: 1),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: underline, width: Zine.bw)),
+          border: Border(bottom: BorderSide(color: underline, width: 2)),
         ),
-        child: Text(text, style: ZineText.link(size: fontSize)),
+        child: Text(text, style: _tLink(size: fontSize)),
       ),
     );
   }
 }
 
-/// Toggle in the zine style — pill track, ink border, lime when on.
+/// Toggle — pill track, hairline border, accent when on.
 class ZineToggle extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
@@ -782,24 +867,26 @@ class ZineToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: AnimatedContainer(
-        duration: reduce ? Duration.zero : Zine.dur,
+        duration: reduce ? Duration.zero : Msg.fast,
+        curve: Msg.curve,
         width: 56, height: 32,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: value ? Zine.lime : Zine.paper2,
-          borderRadius: BorderRadius.circular(100),
-          border: Zine.border,
-          boxShadow: value ? Zine.shadowXs : null,
+          color: value ? AD.primaryBadge : AD.card,
+          // A switch track is genuinely a pill.
+          borderRadius: Msg.brPill,
+          border: Border.all(color: value ? AD.primaryBadge : AD.borderControl, width: 1),
         ),
         child: AnimatedAlign(
-          duration: reduce ? Duration.zero : Zine.dur,
+          duration: reduce ? Duration.zero : Msg.fast,
+          curve: Msg.curve,
           alignment: value ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
             width: 20, height: 20,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: value ? Zine.ink : Zine.card,
-              border: Border.all(color: Zine.ink, width: 2),
+              color: value ? Colors.white : AD.textTertiary,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
           ),
         ),
@@ -820,26 +907,25 @@ class ZineDropdown<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (label != null) ...[
-        Text(label!.toUpperCase(), style: ZineText.kicker()),
-        const SizedBox(height: 9),
+        Text(_sentence(label!), style: _tKicker()),
+        const SizedBox(height: Msg.s2),
       ],
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: Zine.card,
-          borderRadius: BorderRadius.circular(Zine.rField),
-          border: Zine.border,
-          boxShadow: Zine.shadowSm,
+          color: AD.card,
+          borderRadius: Msg.brMd,
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<T>(
             value: value,
             isExpanded: true,
-            hint: hint == null ? null : Text(hint!, style: ZineText.input().copyWith(color: Zine.placeholder)),
-            icon: PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
-            style: ZineText.input(size: 16),
-            dropdownColor: Zine.card,
-            borderRadius: BorderRadius.circular(Zine.rSm),
+            hint: hint == null ? null : Text(hint!, style: _tInput(c: AD.textFaint)),
+            icon: PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.regular), size: 18, color: AD.textSecondary),
+            style: _tInput(size: 16),
+            dropdownColor: AD.menu,
+            borderRadius: Msg.brMd,
             items: items,
             onChanged: onChanged,
           ),
@@ -849,8 +935,8 @@ class ZineDropdown<T> extends StatelessWidget {
   }
 }
 
-/// App bar band for dashboard screens (§8): paper-2 fill, ink bottom border,
-/// back button + Nunito title (with .mark) + mono tag underneath.
+/// App bar band for dashboard screens: header surface, hairline bottom border,
+/// back button + title (with .mark) + tag underneath.
 class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   /// Word inside [title] that takes the marker highlight (optional).
@@ -876,6 +962,11 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => Size.fromHeight(tag == null ? 76 : 92);
 
+  /// Title size inside the FIXED-height band. Dropped 27 -> 22 to match
+  /// ADText.appTitle; the band height is unchanged, so this only ever buys
+  /// headroom (never costs it) at high OS text scale.
+  static const double _titleSize = 22;
+
   @override
   Widget build(BuildContext context) {
     Widget titleW;
@@ -893,30 +984,30 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
         pre: title.substring(0, i),
         mark: mw,
         post: title.substring(i + mw.length),
-        fontSize: 27,
+        fontSize: _titleSize,
         textAlign: TextAlign.left,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       );
     } else {
-      titleW = Text(title, style: ZineText.appbar(), maxLines: 1, overflow: TextOverflow.ellipsis);
+      titleW = Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis);
     }
     return Container(
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
           child: Row(children: [
             if (leading != null) ...[
               leading!,
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s3),
             ] else if (showBack) ...[
               ZineBackButton(onTap: onBack),
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s3),
             ],
             // Big page title + kicker stay a FIXED size — the Display & fonts
             // slider only grows body/chat/contact/menu text, not headings
@@ -950,7 +1041,7 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
                         titleW,
                         if (tag != null) ...[
                           const SizedBox(height: 2),
-                          Text(tag!.toUpperCase(), style: ZineText.kicker()),
+                          Text(_sentence(tag!), style: _tKicker()),
                         ],
                       ],
                     ),
@@ -966,14 +1057,14 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Paper page background with the faint radial-dot texture (§6).
+/// Page background with the faint radial-dot texture.
 class ZinePaper extends StatelessWidget {
   final Widget child;
   const ZinePaper({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Zine.paper,
+      color: AD.bg,
       child: CustomPaint(
         painter: _PaperTexturePainter(),
         child: child,
@@ -985,7 +1076,8 @@ class ZinePaper extends StatelessWidget {
 class _PaperTexturePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Zine.ink.withValues(alpha: 0.05);
+    // Light dots on a near-black page (was dark ink on cream).
+    final p = Paint()..color = AD.textPrimary.withValues(alpha: 0.03);
     const step = 22.0;
     for (double y = 0; y < size.height; y += step) {
       for (double x = 0; x < size.width; x += step) {
@@ -998,10 +1090,14 @@ class _PaperTexturePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
-/// Full-screen success overlay (§7.13): paper bg, rotated lime seal, Nunito
-/// headline, short Nunito sub, optional CTA.
+/// Full-screen success overlay: dark page, rotated accent seal, headline,
+/// short sub, optional CTA.
 class ZineSuccessOverlay extends StatelessWidget {
-  final IconData icon;
+  /// Nullable ONLY because the default has to be resolved at build time:
+  /// `PhosphorIcons.check(...)` is a function call, so it cannot be a const
+  /// default parameter the way the old `Icons.check_rounded` could. Passing an
+  /// explicit icon behaves exactly as before.
+  final IconData? icon;
   final String headline;
   final String? accentLine;
   final String? sub;
@@ -1010,7 +1106,7 @@ class ZineSuccessOverlay extends StatelessWidget {
   const ZineSuccessOverlay({
     super.key,
     required this.headline,
-    this.icon = Icons.check_rounded,
+    this.icon,
     this.accentLine,
     this.sub,
     this.ctaLabel,
@@ -1022,7 +1118,7 @@ class ZineSuccessOverlay extends StatelessWidget {
       child: SafeArea(
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(40),
+            padding: const EdgeInsets.all(Msg.s6),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Transform.rotate(
                 angle: -4 * math.pi / 180,
@@ -1030,32 +1126,35 @@ class ZineSuccessOverlay extends StatelessWidget {
                   width: 120, height: 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Zine.lime,
-                    border: Zine.borderLg,
-                    boxShadow: Zine.shadow,
+                    color: AD.primaryBadge,
+                    border: Border.all(color: AD.borderControl, width: 1),
+                    boxShadow: Msg.lift,
                   ),
-                  child: Icon(icon, size: 56, color: Zine.ink),
+                  child: Icon(
+                    icon ?? PhosphorIcons.check(PhosphorIconsStyle.regular),
+                    size: 56, color: Colors.white,
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              Text(headline, style: ZineText.hero(size: 34), textAlign: TextAlign.center),
+              const SizedBox(height: Msg.s5),
+              Text(headline, style: _tHero(34), textAlign: TextAlign.center),
               if (accentLine != null) ...[
-                const SizedBox(height: 10),
-                Text(accentLine!, style: ZineText.link(size: 18)),
+                const SizedBox(height: Msg.s2),
+                Text(accentLine!, style: _tLink(size: 18)),
               ],
               if (sub != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: Msg.s3),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 280),
-                  child: Text(sub!, style: ZineText.sub(size: 15), textAlign: TextAlign.center),
+                  child: Text(sub!, style: _tSub(), textAlign: TextAlign.center),
                 ),
               ],
               if (ctaLabel != null) ...[
-                const SizedBox(height: 26),
+                const SizedBox(height: Msg.s5),
                 ZineButton(
                   label: ctaLabel!,
                   onPressed: onCta,
-                  icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+                  icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.regular),
                 ),
               ],
             ]),
@@ -1066,7 +1165,7 @@ class ZineSuccessOverlay extends StatelessWidget {
   }
 }
 
-/// Empty state (§7.12): dashed glyph tile + one short reassuring line.
+/// Empty state: dashed glyph tile + one short reassuring line.
 class ZineEmptyState extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -1077,13 +1176,13 @@ class ZineEmptyState extends StatelessWidget {
       Container(
         width: 64, height: 64,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(Zine.rSm),
-          border: Border.all(color: Zine.ink.withValues(alpha: 0.3), width: 2),
+          borderRadius: Msg.brMd,
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
-        child: Icon(icon, size: 30, color: Zine.inkMute),
+        child: Icon(icon, size: 30, color: AD.textTertiary),
       ),
-      const SizedBox(height: 12),
-      Text(text, style: ZineText.sub(size: 14.5), textAlign: TextAlign.center),
+      const SizedBox(height: Msg.s3),
+      Text(text, style: _tSub(size: 14), textAlign: TextAlign.center),
     ]);
   }
 }
@@ -1117,7 +1216,7 @@ class ZineScrollBody extends StatelessWidget {
   const ZineScrollBody({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(24),
+    this.padding = const EdgeInsets.all(Msg.s5),
     this.safeTop = true,
     this.safeBottom = true,
   });

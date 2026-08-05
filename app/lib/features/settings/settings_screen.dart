@@ -15,7 +15,7 @@ import '../../core/avaapps_cache.dart';
 import '../../core/config.dart';
 import '../../core/drive_service.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/breakpoints.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
@@ -295,7 +295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 4),
         // Owner request 2026-06-29: hide 'Your number' and 'AvaBrain' tiles (the
         // screens stay registered; only these Settings rows are suppressed).
-        // _tile(PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue, 'Your number',
+        // _tile(PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.newGroup, 'Your number',
         //     'Get a number that represents you, keep your real one private', () => _push(const NumberSettingsScreen())),
         _tile(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), AD.online, 'Privacy & discoverability',
             'Choose how people can find and add you', () => _push(const PrivacyScreen())),
@@ -329,14 +329,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // _backupToDrive / _runBackup methods stay for reference. Re-show by
         // un-commenting the _tile below.
         /*
-        _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Backup',
+        _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), AD.newGroup, 'Backup',
             'Export or back up your account', () => _push(_SettingsDetail(
                   title: 'Backup',
                   markWord: 'Backup',
                   children: [
-                    _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Back up account',
+                    _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), AD.newGroup, 'Back up account',
                         'Email yourself a download of your account (media excluded)', _backup),
-                    _tile(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), Zine.mint, 'Back up to Google Drive',
+                    _tile(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), AD.online, 'Back up to Google Drive',
                         'Save your account export to your AvaTOK Drive (Backups)', _backupToDrive),
                   ],
                 ))),

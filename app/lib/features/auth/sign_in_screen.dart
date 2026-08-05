@@ -11,7 +11,9 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/referral_service.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Auth sub-modes within the screen.
@@ -253,12 +255,12 @@ class _SignInScreenState extends State<SignInScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
+        backgroundColor: AD.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Zine.r),
-          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: Msg.brLg,
+          side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('This account is scheduled for deletion', style: ZineText.cardTitle()),
+        title: Text('This account is scheduled for deletion', style: ADText.threadName()),
         content: Text(
           whenStr != null
               ? 'Your account is set to be permanently deleted on $whenStr. Logging back in '
@@ -266,12 +268,13 @@ class _SignInScreenState extends State<SignInScreen> {
                   'Reactivate it and continue?'
               : 'Your account is scheduled for deletion. Logging back in will cancel the '
                   'deletion and reactivate your account.\n\nReactivate it and continue?',
-          style: ZineText.sub(size: 14),
+          style: ADText.preview(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+            child: Text('Not now',
+                style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
           ),
           ZineButton(
             label: 'Reactivate & continue',
@@ -301,9 +304,9 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     if (_done) {
-      return const Scaffold(
+      return Scaffold(
         body: ZineSuccessOverlay(
-          icon: Icons.waving_hand_rounded,
+          icon: PhosphorIcons.handWaving(PhosphorIconsStyle.regular),
           headline: "You're in!",
           sub: 'Setting up your account.',
         ),
@@ -321,13 +324,13 @@ class _SignInScreenState extends State<SignInScreen> {
               ? 'Sign in to ${widget.gateReason}'
               : 'Log in to your AvaTOK account — or create one below.',
           'Log in',
-          'log in'
+          'Log in'
         ),
-      _Mode.signUp => ('Create ', 'account', signUpSub, 'Create account', 'sign up'),
-      _Mode.verify => ('Verify ', 'email', 'Enter the 6-digit code we emailed you.', 'Verify', 'verify'),
-      _Mode.reset => ('Reset ', 'password', "We'll email you a reset code.", 'Send code', 'reset'),
+      _Mode.signUp => ('Create ', 'account', signUpSub, 'Create account', 'Sign up'),
+      _Mode.verify => ('Verify ', 'email', 'Enter the 6-digit code we emailed you.', 'Verify', 'Verify'),
+      _Mode.reset => ('Reset ', 'password', "We'll email you a reset code.", 'Send code', 'Reset'),
       _Mode.resetCode =>
-        ('New ', 'password', 'Enter the code we emailed + your new password.', 'Reset password', 'reset'),
+        ('New ', 'password', 'Enter the code we emailed + your new password.', 'Reset password', 'Reset'),
     };
     final showGoogle = _mode == _Mode.signIn || _mode == _Mode.signUp;
     final canPop = Navigator.of(context).canPop();
@@ -353,8 +356,8 @@ class _SignInScreenState extends State<SignInScreen> {
                 children: [
                   if (canPop) const ZineBackButton(),
                   Flexible(
-                    child: Text(tag.toUpperCase(),
-                        style: ZineText.kicker(), overflow: TextOverflow.ellipsis),
+                    child: Text(tag,
+                        style: ADText.sectionLabel(), overflow: TextOverflow.ellipsis),
                   ),
                 ],
               ),
@@ -373,7 +376,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 280),
-                        child: Text(sub, style: ZineText.sub(), textAlign: TextAlign.center),
+                        child: Text(sub, style: ADText.preview(), textAlign: TextAlign.center),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -409,11 +412,11 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 14),
                     Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
-                          size: 14, color: Zine.blueInk),
+                          size: 14, color: Msg.accent),
                       const SizedBox(width: 8),
                       Flexible(
-                        child: Text('secured by Clerk · one account for everything Ava',
-                            style: ZineText.kicker(), textAlign: TextAlign.center),
+                        child: Text('Secured by Clerk · one account for everything Ava',
+                            style: ADText.sectionLabel(), textAlign: TextAlign.center),
                       ),
                     ]),
                 ]),
@@ -426,12 +429,12 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   Widget _orDivider() => Row(children: [
-        const Expanded(child: Divider(color: Zine.ink, thickness: Zine.bw)),
+        const Expanded(child: Divider(color: AD.borderHairline, thickness: 1)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text('or', style: ZineText.kicker()),
+          child: Text('or', style: ADText.sectionLabel()),
         ),
-        const Expanded(child: Divider(color: Zine.ink, thickness: Zine.bw)),
+        const Expanded(child: Divider(color: AD.borderHairline, thickness: 1)),
       ]);
 
   List<Widget> _fields() {
@@ -535,7 +538,7 @@ class _SignInScreenState extends State<SignInScreen> {
           _obscure
               ? PhosphorIcons.eye(PhosphorIconsStyle.bold)
               : PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold),
-          size: 20, color: Zine.inkSoft,
+          size: 20, color: AD.textSecondary,
         ),
       );
 
@@ -549,13 +552,13 @@ class _SignInScreenState extends State<SignInScreen> {
     switch (_mode) {
       case _Mode.signIn:
         return Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('new here? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
+          Text('New here? ', style: ADText.preview().copyWith(fontSize: 14)),
           ZineLink('create account',
-              underline: Zine.coral, fontSize: 14, onTap: () => _switch(_Mode.signUp)),
+              underline: AD.danger, fontSize: 14, onTap: () => _switch(_Mode.signUp)),
         ]);
       case _Mode.signUp:
         return Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('have an account? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
+          Text('Have an account? ', style: ADText.preview().copyWith(fontSize: 14)),
           ZineLink('log in', fontSize: 14, onTap: () => _switch(_Mode.signIn)),
         ]);
       case _Mode.verify:

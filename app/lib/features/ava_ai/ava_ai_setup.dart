@@ -4,7 +4,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ava_ai_store.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Where the user mints a free key — the Google AI Studio "API Keys" page.
@@ -97,7 +99,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                color: Zine.lilac, size: 44),
+                color: AD.tabCalls, size: 44),
             const SizedBox(height: 16),
             ZineMarkTitle(
                 pre: 'Add ', mark: 'Ava', post: ', your AI',
@@ -108,7 +110,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                 'Ava can find files, summarize chats, translate, generate images and '
                 'more — right inside your conversations. She runs on your own free '
                 'Google Gemini key, so it stays free for you.',
-                style: ZineText.sub(size: 14.5)),
+                style: ADText.preview()),
             const SizedBox(height: 20),
 
             // 1-2-3 steps, each with the matching AI Studio screenshot.
@@ -134,8 +136,8 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             ),
             const SizedBox(height: 22),
 
-            Text('PASTE YOUR KEY', style: ZineText.kicker()),
-            const SizedBox(height: 9),
+            Text('Paste your key', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s2),
             _field(
               controller: _keyCtrl,
               hint: 'AQ.… or AIza…',
@@ -154,8 +156,8 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                   icon: PhosphorIcons.lockKey(PhosphorIconsStyle.fill)),
             const SizedBox(height: 18),
 
-            Text('GOOGLE ACCOUNT (OPTIONAL)', style: ZineText.kicker()),
-            const SizedBox(height: 9),
+            Text('Google account (optional)', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s2),
             _field(
               controller: _emailCtrl,
               hint: 'you@gmail.com',
@@ -166,12 +168,12 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             const SizedBox(height: 6),
             Text('So you remember which account this key belongs to. You can remove '
                 'it and connect another account anytime in Settings.',
-                style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+                style: ADText.statCaption()),
             const SizedBox(height: 14),
             Text('Heads up: Google may use free-tier requests to improve their '
                 'products, and the free tier is rate-limited. Keep sensitive chats '
                 'in a private chat.',
-                style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+                style: ADText.statCaption()),
           ]),
         ),
       ),
@@ -203,25 +205,26 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               width: 26, height: 26,
-              decoration: BoxDecoration(
-                color: Zine.lime, shape: BoxShape.circle, border: Zine.border,
+              decoration: const BoxDecoration(
+                color: AD.primaryBadge, shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Text('$n', style: ZineText.value(size: 13)),
+              child: Text('$n',
+                  style: ADText.rowName(c: Colors.white).copyWith(fontSize: 13)),
             ),
             const SizedBox(width: 12),
             Expanded(child: Padding(
               padding: const EdgeInsets.only(top: 3),
-              child: Text(text, style: ZineText.sub(size: 13.5)),
+              child: Text(text, style: ADText.preview()),
             )),
           ]),
           const SizedBox(height: 10),
           ClipRRect(
-            borderRadius: BorderRadius.circular(Zine.rSm),
+            borderRadius: Msg.brMd,
             child: Container(
               decoration: BoxDecoration(
-                border: Zine.border,
-                borderRadius: BorderRadius.circular(Zine.rSm),
+                border: Border.all(color: AD.borderControl, width: 1),
+                borderRadius: Msg.brMd,
               ),
               clipBehavior: Clip.antiAlias,
               child: Image.asset(asset, fit: BoxFit.fitWidth, width: double.infinity),
@@ -241,10 +244,9 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Zine.card,
-        borderRadius: BorderRadius.circular(Zine.rField),
-        border: Zine.border,
-        boxShadow: error ? Zine.shadowError : Zine.shadowSm,
+        color: AD.card,
+        borderRadius: Msg.brMd,
+        border: Border.all(color: error ? AD.danger : AD.borderControl, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(children: [
@@ -253,11 +255,11 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             width: 50,
             constraints: const BoxConstraints(minHeight: 56),
             decoration: const BoxDecoration(
-              color: Zine.lime,
-              border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+              color: AD.primaryBadge,
+              border: Border(right: BorderSide(color: AD.borderControl, width: 1)),
             ),
             alignment: Alignment.center,
-            child: Icon(leadIcon, size: 22, color: Zine.ink),
+            child: Icon(leadIcon, size: 22, color: Colors.white),
           ),
         Expanded(
           child: TextField(
@@ -266,12 +268,12 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             keyboardType: keyboardType,
             autocorrect: false,
             enableSuggestions: false,
-            cursorColor: Zine.blueInk,
-            style: ZineText.input(),
+            cursorColor: Msg.accent,
+            style: ADText.bubbleBody().copyWith(fontSize: 16, letterSpacing: -0.18),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: ZineText.input()
-                  .copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+              hintStyle: ADText.bubbleBody(c: AD.textFaint)
+                  .copyWith(fontSize: 16, letterSpacing: -0.18),
               border: InputBorder.none,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
@@ -292,7 +294,7 @@ class AvaAiSetupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(title: 'Ava AI', markWord: 'Ava'),
       body: SafeArea(
         child: AvaAiSetupBody(

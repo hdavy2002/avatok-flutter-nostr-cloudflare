@@ -3,11 +3,36 @@ import 'package:flutter/material.dart';
 import 'ui/avatok_dark.dart' show AD;
 import 'ui/zine.dart';
 
-export 'ui/zine.dart';
+// [UI-ZINE-SPLIT-1 2026-08-05] ⚠️ THIS RE-EXPORT IS A DELETION BLOCKER.
+//
+// It used to be a blanket `export 'ui/zine.dart';`, which silently put the
+// whole LIGHT palette in scope for anything that imported theme.dart — so a
+// screen could keep using `Zine.paper` forever without ever importing the light
+// design system. It is now narrowed to the two symbols that are genuinely still
+// needed, so nothing NEW can pick up the light tokens by accident.
+//
+// It cannot be removed outright yet. These EIGHT files use `Zine.*` / `ZineText.*`
+// and have NO direct `import 'core/ui/zine.dart'` — they resolve those names
+// purely through this line, so deleting it breaks the build:
+//
+//   features/avabrain/agent_inbox_screen.dart
+//   features/avabrain/brain_settings_screen.dart
+//   features/avavoice/booking_sheet.dart
+//   features/avavoice/studio/agent_dashboard.dart
+//   features/avavoice/studio/my_agents_screen.dart
+//   features/avavoice/studio/voice_picker.dart
+//   features/avavoice/widgets.dart
+//   features/consult/prejoin_screen.dart
+//
+// To finish the job: migrate those eight to AD/ADText/Msg (or, as a stopgap,
+// give each one its own `import '../../core/ui/zine.dart';`), THEN delete this
+// line. `ZineWidthClass` / `ZineBreakpoints` are deliberately NOT here — they
+// moved to `core/ui/breakpoints.dart` and are imported directly.
+export 'ui/zine.dart' show Zine, ZineText;
 
 /// Legacy color names, re-pointed at the AvaTOK design-system (zine) palette so
 /// every screen that still references AvaColors gets the new look. New code
-/// should use [Zine] / [ZineText] from core/ui/zine.dart directly.
+/// should use [AD] / [ADText] from core/ui/avatok_dark.dart directly.
 class AvaColors {
   /// Brand accent (was bright teal) → deep teal-blue accent ink.
   static const brand = Zine.blueInk;

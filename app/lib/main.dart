@@ -942,7 +942,8 @@ class _UpdateRequiredScreen extends StatelessWidget {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 ZineCrest(
                   size: 116,
-                  child: PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), size: 52, color: Zine.ink),
+                  child: PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.regular),
+                      size: 52, color: Colors.white),
                 ),
                 const SizedBox(height: 24),
                 const ZineMarkTitle(pre: 'Update ', mark: 'required', fontSize: 34),
@@ -953,7 +954,7 @@ class _UpdateRequiredScreen extends StatelessWidget {
                     'This version of AvaTOK is taking a rest. '
                     'Grab the latest update to pick up where you left off.',
                     textAlign: TextAlign.center,
-                    style: ZineText.sub(size: 14.5),
+                    style: ADText.preview(),
                   ),
                 ),
               ]),

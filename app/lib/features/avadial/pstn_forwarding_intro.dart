@@ -6,9 +6,10 @@ import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
-// zine.dart is retained ONLY for ZineBreakpoints (responsive width class);
-// every colour/type token on this screen now comes from AD / ADText / Msg.
-import '../../core/ui/zine.dart';
+// breakpoints.dart is the responsive width class ONLY (moved out of the old
+// zine.dart in [UI-ZINE-SPLIT-1]); every colour/type token on this screen comes
+// from AD / ADText / Msg.
+import '../../core/ui/breakpoints.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../shell/shell_v2.dart' show kPstnVoicemailDid;
 import 'avadial_theme.dart';

@@ -15,7 +15,7 @@ import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/breakpoints.dart';
 import '../../identity/identity.dart';
 import '../avatok/ava_number.dart';
 import '../avatok/contacts.dart';
