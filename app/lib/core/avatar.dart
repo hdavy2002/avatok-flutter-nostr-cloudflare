@@ -3,26 +3,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'avatar_cache.dart';
-import 'theme.dart';
-import 'ui/zine.dart';
+import 'ui/avatok_dark.dart';
 
 /// Avatar: shows the user's uploaded photo (cached, Cloudflare AVIF/q60) when
 /// [avatarUrl] is set, otherwise a deterministic flat accent fill with initials
-/// (zine: bordered circle, flat poster color — no gradients).
+/// (bordered circle, flat colour — no gradients).
 class Avatar extends StatelessWidget {
   final String seed;
   final String name;
   final double size;
   final String? avatarUrl; // canonical blossom URL; null/empty → initials
   const Avatar({super.key, required this.seed, required this.name, this.size = 44, this.avatarUrl});
-
-  int get _g {
-    var h = 0;
-    for (final c in seed.codeUnits) {
-      h = (h * 31 + c) & 0x7fffffff;
-    }
-    return h % AvaColors.thumbGradients.length;
-  }
 
   String get _initials {
     final parts = name.trim().split(' ').where((p) => p.isNotEmpty).toList();
@@ -32,22 +23,24 @@ class Avatar extends StatelessWidget {
   }
 
   Widget _initialsCircle() {
-    // thumbGradients are flat same-color stops — use the first color as a
-    // flat fill. White text only on coral; ink everywhere else.
-    final fill = AvaColors.thumbGradients[_g].colors.first;
+    // Deterministic dark-v2 avatar family for this seed — the SAME rotation the
+    // groups tab and the chat rows already use, so one person is one colour
+    // everywhere. The `solid` variants are mid-dark, so the initials are always
+    // white (the old "white only on coral" rule belonged to the pale palette).
+    final fill = AD.family(seed).solid;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: fill,
         shape: BoxShape.circle,
-        border: Border.all(color: Zine.ink, width: 2),
+        border: Border.all(color: AD.borderHairline, width: 2),
       ),
       alignment: Alignment.center,
       child: Text(_initials,
           style: TextStyle(
-              fontFamily: ZineText.display,
-              color: fill == Zine.coral ? Colors.white : Zine.ink,
+              fontFamily: ADText.family,
+              color: AD.selfAvatarInk,
               fontWeight: FontWeight.w600,
               fontSize: size * 0.38)),
     );

@@ -23,7 +23,6 @@ import '../../core/profile_store.dart';
 import '../../core/remote_config.dart';
 import '../../core/status_store.dart';
 import '../../core/update_service.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -1506,22 +1505,26 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   void _openNewChatMenu() {
     _showActionSheet(
       children: (ctx) => [
+        // NEUTRAL BADGES: these four used the pale poster palette (lilac / blue /
+        // lime / mint) on a near-black sheet — the exact mismatch `Msg` was
+        // written to stop. On a chat surface icons are neutral; colour is spent
+        // only on accent / error / online.
         ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac),
+          leading: ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.cardHover),
           title: Text('Chat with Ava', style: ADText.rowName()),
           subtitle: Text('Brainstorm, practise a language, or just talk', style: ADText.preview()),
           onTap: () { Navigator.pop(ctx); _openAvaChat(); }),
         ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.blue),
+          leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: AD.cardHover),
           title: Text('New chat', style: ADText.rowName()),
           subtitle: Text('Find someone by email or AvaTOK number', style: ADText.preview()),
           onTap: () { Navigator.pop(ctx); _openAddContact(); }),
         ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.lime),
+          leading: ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: AD.cardHover),
           title: Text('New group', style: ADText.rowName()),
           onTap: () { Navigator.pop(ctx); _openNewGroup(); }),
         ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: Zine.mint),
+          leading: ZineIconBadge(icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: AD.cardHover),
           title: Text('Invite friends to AvaTok', style: ADText.rowName()),
           subtitle: Text('Find people from your phone contacts', style: ADText.preview()),
           onTap: () { Navigator.pop(ctx); _openSearch(); }),

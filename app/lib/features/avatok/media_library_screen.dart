@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import 'media.dart';
@@ -160,7 +159,7 @@ class MediaLibraryScreen extends StatelessWidget {
               ),
               child: Row(children: [
                 ZineIconBadge(icon: PhosphorIcons.link(PhosphorIconsStyle.bold),
-                    color: Zine.accents[i % Zine.accents.length]),
+                    color: _rotatingAccent(i)),
                 const SizedBox(width: 11),
                 Expanded(child: Text(l.url, maxLines: 2, overflow: TextOverflow.ellipsis,
                     style: ADText.preview(c: AD.iconSearch))),
@@ -200,7 +199,7 @@ class MediaLibraryScreen extends StatelessWidget {
                   icon: isAudio
                       ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
                       : PhosphorIcons.file(PhosphorIconsStyle.bold),
-                  color: Zine.accents[i % Zine.accents.length],
+                  color: _rotatingAccent(i),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -209,7 +208,7 @@ class MediaLibraryScreen extends StatelessWidget {
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: ADText.rowName()),
                     if (_fmtSize(d.size).isNotEmpty)
-                      Text(_fmtSize(d.size).toUpperCase(), style: ADText.statCaption(c: AD.textSecondary)),
+                      Text(_fmtSize(d.size), style: ADText.statCaption(c: AD.textSecondary)),
                   ]),
                 ),
                 PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
@@ -236,6 +235,13 @@ class MediaLibraryScreen extends StatelessWidget {
       ),
     ));
   }
+
+  /// Per-row accent for the link / document badges. Replaces the old
+  /// `Zine.accents` rotation (pale poster colours that vanished on the dark
+  /// card) with the dark-v2 avatar-family `solid` rotation, whose fills are all
+  /// mid-dark so `ZineIconBadge`'s luminance rule renders a white glyph.
+  static Color _rotatingAccent(int i) =>
+      AD.familyByName(AD.familyOrder[i % AD.familyOrder.length]).solid;
 
   static String _fmtSize(int bytes) {
     if (bytes <= 0) return '';

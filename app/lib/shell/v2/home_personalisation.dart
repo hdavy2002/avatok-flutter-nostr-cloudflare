@@ -7,7 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/account_storage.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
 import '../../identity/identity.dart';
 
 /// Home personalisation (plan §3 / §D): font size, accent theme and wallpaper —
@@ -29,10 +29,14 @@ class HomePersonalisation {
   static const fontScales = <String, double>{'small': 0.9, 'default': 1.0, 'large': 1.18};
 
   // ── Accent presets (chrome only) ─────────────────────────────────────────────
+  //
+  // The KEYS are persisted per account, so they keep their historical names even
+  // though the colours behind them are now the dark-v2 tokens (a renamed key
+  // would silently reset every existing user to the default).
   static const accents = <String, Color>{
-    'lime': Zine.lime,
-    'blue': Zine.blue,
-    'coral': Zine.coral,
+    'lime': AD.primaryBadge, // brand accent — orange
+    'blue': AD.tabCalls,     // violet
+    'coral': AD.newGroup,    // teal
   };
 
   static String _fontKey = 'default';
@@ -43,7 +47,7 @@ class HomePersonalisation {
   static double get fontScale => fontScales[_fontKey] ?? 1.0;
   static String get fontKey => _fontKey;
   static String get accentKey => _accentKey;
-  static Color get accentColor => accents[_accentKey] ?? Zine.lime;
+  static Color get accentColor => accents[_accentKey] ?? AD.primaryBadge;
   static String? get wallpaperPath => _wallpaperPath;
 
   /// Load the per-account look. Idempotent; call from HomeRoot's initState.

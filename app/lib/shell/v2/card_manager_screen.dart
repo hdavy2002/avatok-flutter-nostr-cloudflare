@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'home_cards_store.dart';
 
@@ -32,14 +33,17 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
     'listings': () => PhosphorIcons.storefront(PhosphorIconsStyle.bold),
   };
 
+  // Dark-v2 accents. `ZineIconBadge` picks the glyph colour from the fill's
+  // luminance, and every value here is mid-dark, so all seven render a white
+  // glyph — no fill/ink collapse.
   static const Map<String, Color> _colors = {
-    'wallet': Zine.mint,
-    'calllogs': Zine.blue,
-    'messages': Zine.lilac,
-    'analytics': Zine.blue,
-    'earnings': Zine.mint,
-    'visitors': Zine.coral,
-    'listings': Zine.lime,
+    'wallet': AD.online,
+    'calllogs': AD.tabCalls,
+    'messages': AD.tabChats,
+    'analytics': AD.tabCalls,
+    'earnings': AD.online,
+    'visitors': AD.danger,
+    'listings': AD.newGroup,
   };
 
   @override
@@ -73,28 +77,28 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Cards', style: ZineText.appbar()),
+        shape: const Border(bottom: Msg.hairline),
+        title: Text('Cards', style: ADText.appTitle()),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+          ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
           : Column(children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s2),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text('Toggle cards on or off, and drag to reorder your Home dashboard.',
-                      style: ZineText.sub(size: 14)),
+                      style: ADText.preview()),
                 ),
               ),
               Expanded(
                 child: ReorderableListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s5),
                   itemCount: _order.length,
                   onReorder: _reorder,
                   proxyDecorator: (child, index, animation) =>
@@ -111,32 +115,36 @@ class _HomeCardsManagerScreenState extends State<HomeCardsManagerScreen> {
     final icon = _icons[id];
     return Padding(
       key: ValueKey(id),
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: Msg.s3),
       child: ZineCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(children: [
           ReorderableDragStartListener(
             index: index,
             child: Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.bold),
-                  size: 18, color: Zine.inkSoft),
+              padding: const EdgeInsets.only(right: Msg.s3),
+              child: PhosphorIcon(PhosphorIcons.dotsSixVertical(PhosphorIconsStyle.regular),
+                  size: 18, color: AD.textTertiary),
             ),
           ),
-          ZineIconBadge(icon: (icon ?? _fallbackIcon)(), color: _colors[id] ?? Zine.blue),
-          const SizedBox(width: 12),
+          ZineIconBadge(icon: (icon ?? _fallbackIcon)(), color: _colors[id] ?? AD.tabCalls),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(HomeCardPrefs.labels[id] ?? id, style: ZineText.cardTitle(size: 15.5)),
+              Text(HomeCardPrefs.labels[id] ?? id, style: ADText.rowName()),
               const SizedBox(height: 1),
               Text(HomeCardPrefs.subtitles[id] ?? '',
-                  style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                  style: ADText.statCaption(c: AD.textSecondary)),
             ]),
           ),
+          // Thumb goes near-black on the accent track — white-on-accent would
+          // have been ~2.5:1.
           Switch(
             value: on,
-            activeColor: Zine.ink,
-            activeTrackColor: Zine.lime,
+            activeColor: AD.textOnInput,
+            activeTrackColor: AD.primaryBadge,
+            inactiveThumbColor: AD.textSecondary,
+            inactiveTrackColor: AD.card,
             onChanged: (v) => _toggle(id, v),
           ),
         ]),

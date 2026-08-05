@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'avatar.dart';
-import 'ui/zine.dart';
+import 'ui/avatok_dark.dart';
+import 'ui/messenger_theme.dart';
 
 /// Full-screen enlarged view of someone's profile picture, opened by tapping any
 /// avatar. The picture is wrapped so the user CANNOT trivially lift it:
@@ -27,12 +28,12 @@ Future<void> showAvatarViewer(
     barrierLabel: 'Profile photo',
     barrierColor: Colors.black.withValues(alpha: 0.86),
     barrierDismissible: true,
-    transitionDuration: const Duration(milliseconds: 160),
+    transitionDuration: Msg.base,
     pageBuilder: (ctx, _, __) => _AvatarViewer(seed: seed, name: name, avatarUrl: avatarUrl),
     transitionBuilder: (ctx, anim, _, child) =>
         FadeTransition(opacity: anim, child: ScaleTransition(
             scale: Tween(begin: 0.92, end: 1.0).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+                CurvedAnimation(parent: anim, curve: Msg.curve)),
             child: child)),
   );
 }
@@ -62,10 +63,13 @@ class _AvatarViewer extends StatelessWidget {
               onLongPress: () {},
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(
+                  // INVERTED SURFACE: this sits on an opaque black barrier, so
+                  // the old `Zine.paper` here was the near-WHITE ring, not a
+                  // page surface — it maps to the white avatar ring, not AD.card.
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.fromBorderSide(BorderSide(color: Zine.paper, width: 3)),
-                    boxShadow: Zine.shadow,
+                    border: Border.fromBorderSide(BorderSide(color: AD.borderAvatar, width: 3)),
+                    boxShadow: Msg.lift,
                   ),
                   child: ClipOval(
                     child: SizedBox(
@@ -74,15 +78,15 @@ class _AvatarViewer extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 Text(name,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.cardTitle(size: 19, color: Zine.paper)),
+                    style: ADText.threadName().copyWith(fontSize: 19)),
               ]),
             ),
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top + 10, right: 14,
+            top: MediaQuery.of(context).padding.top + Msg.s3, right: Msg.s4,
             child: GestureDetector(
               onTap: () => Navigator.of(context).maybePop(),
               child: Container(
@@ -90,7 +94,7 @@ class _AvatarViewer extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.16), shape: BoxShape.circle),
                 child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold),
-                    size: 20, color: Zine.paper),
+                    size: 20, color: AD.textPrimary),
               ),
             ),
           ),

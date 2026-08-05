@@ -174,7 +174,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               Text.rich(
                 TextSpan(
                   style: const TextStyle(
-                      fontFamily: ADText.family, fontWeight: FontWeight.w800,
+                      fontFamily: ADText.family, fontWeight: FontWeight.w700,
                       fontSize: 19, letterSpacing: -0.38, color: AD.textPrimary),
                   children: const [
                     TextSpan(text: 'Ava'),
@@ -247,7 +247,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // tile is suppressed so users can't start a hands-free voice call
               // from here). Re-enable by un-commenting this tile.
               // _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
-              //     PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint, paid: true),
+              //     PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.online, paid: true),
               _special('library', 'Library', 'Saved media & files',
                   PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), AD.online),
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
@@ -271,7 +271,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.
               // _special('team', 'Team', 'AI receptionist & staff',
-              //     PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.lilac,
+              //     PhosphorIcons.usersThree(PhosphorIconsStyle.bold), AD.tabCalls,
               //     paid: true, paidHidden: _onPaidTeam),
               // Subscribe — moved to sit just below Contacts (was a top CTA).
               // FREE LAUNCH: hidden while billing is off (no paywalls).
@@ -287,9 +287,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
                   boxShadow: const [],
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(children: [
-                    // Pale fill so the badge's Zine.ink glyph stays legible against
-                    // the purple Subscribe tile (ZineIconBadge always draws its icon
-                    // in dark ink unless the fill is Zine.coral — see AD.card note below).
+                    // White fill so the badge's glyph stays legible against the
+                    // violet Subscribe tile. `ZineIconBadge` picks its glyph
+                    // colour from the fill's luminance, so a light fill here
+                    // gives a dark glyph.
                     ZineIconBadge(
                         icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Colors.white),
                     const SizedBox(width: 12),
@@ -313,7 +314,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               if (apps.isNotEmpty) ...[
                 Padding(
                     padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
-                    child: Text('APPS', style: ADText.sectionLabel())),
+                    child: Text('Apps', style: ADText.sectionLabel())),
                 for (final a in apps) _appRow(a),
               ],
               // Invite friends + Diagnostics moved into the ACCOUNT section
@@ -348,7 +349,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   Widget _planChip() {
     if (_premium) {
       return AdSticker(
-        'BETA-FREE',
+        'Beta free',
         kind: AdStickerKind.ok,
         icon: PhosphorIcons.sealCheck(PhosphorIconsStyle.fill),
       );
@@ -358,7 +359,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     // billingEnabled flips back on.
     final billingOn = RemoteConfig.billingEnabled;
     return AdSticker(
-      billingOn ? 'FREE PLAN · UPGRADE' : 'FREE PLAN',
+      billingOn ? 'Free plan · Upgrade' : 'Free plan',
       kind: AdStickerKind.hint,
       icon: PhosphorIcons.crown(PhosphorIconsStyle.fill),
       onTap: billingOn ? () => widget.onSelect('subscribe') : null,
@@ -464,7 +465,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     return [
       Padding(
         padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
-        child: Text(headerFor(widget.accountKind).toUpperCase(), style: ADText.sectionLabel()),
+        child: Text(headerFor(widget.accountKind), style: ADText.sectionLabel()),
       ),
       for (final t in tools) _toolRow(t),
     ];
@@ -598,10 +599,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _accountOpen = !_accountOpen),
           child: Row(children: [
-            Text('ACCOUNT & SETTINGS',
+            Text('Account & settings',
                 style: TextStyle(
-                    fontFamily: ADText.family, fontWeight: FontWeight.w800,
-                    fontSize: 13.5, letterSpacing: 0.6, color: AD.textPrimary)),
+                    fontFamily: ADText.family, fontWeight: FontWeight.w600,
+                    fontSize: 14, letterSpacing: 0.4, color: AD.textPrimary)),
             const SizedBox(width: 6),
             PhosphorIcon(
                 _accountOpen
@@ -662,9 +663,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
-            // ZineIconBadge always renders its glyph in Zine.ink (dark) unless the
-            // fill is Zine.coral — so a neutral badge needs a PALE fill to stay
-            // legible on the dark v2 surface (mirrors the old Zine.paper2 intent).
+            // ZineIconBadge picks the glyph colour from the fill's luminance, so
+            // a white fill gives a dark glyph — the neutral badge on the dark v2
+            // surface.
             ZineIconBadge(icon: icon, color: Colors.white, size: 30),
             const SizedBox(width: 11),
             Expanded(child: Text(name, style: ADText.rowName())),

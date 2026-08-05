@@ -4,13 +4,14 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import 'zine.dart';
+import 'avatok_dark.dart';
+import 'messenger_theme.dart';
 import 'zine_widgets.dart';
 
 /// Shared empty/error/offline conventions (creator-marketplace Phase 1, audit
 /// A3). RULE for every later phase: each new screen MUST define its empty-state
 /// copy and use these widgets — no blank bodies, no spinner-forever states.
-/// Visuals follow the zine design system (§7.12 empty states).
+/// Visuals follow the AvaTOK Dark v2 tokens (`AD` / `ADText` / `Msg`).
 
 class EmptyState extends StatelessWidget {
   final IconData icon;
@@ -31,26 +32,27 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Dashed-feel glyph tile (§7.12): muted ink border, no shadow.
+          // Outlined glyph tile: hairline border, no fill, no shadow.
           Container(
             width: 72, height: 72,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Border.all(color: Zine.ink.withValues(alpha: 0.3), width: 2),
+              borderRadius: Msg.brLg,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Icon(icon, color: Zine.inkMute, size: 32),
+            child: Icon(icon, color: AD.textTertiary, size: 32),
           ),
-          const SizedBox(height: 16),
-          Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 19)),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s4),
+          Text(title, textAlign: TextAlign.center,
+              style: ADText.threadName().copyWith(fontSize: 19)),
+          const SizedBox(height: Msg.s1),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 280),
-            child: Text(subtitle, textAlign: TextAlign.center, style: ZineText.sub(size: 13.5)),
+            child: Text(subtitle, textAlign: TextAlign.center, style: ADText.preview()),
           ),
           if (ctaLabel != null && onCta != null) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: ctaLabel!,
               onPressed: onCta,
@@ -73,27 +75,25 @@ class ErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 72, height: 72,
             decoration: BoxDecoration(
-              color: Zine.coral,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Zine.border,
-              boxShadow: Zine.shadowSm,
+              color: AD.destructiveBg,
+              borderRadius: Msg.brLg,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold),
-                color: Colors.white, size: 32),
+                color: AD.destructiveInk, size: 32),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: Msg.s4),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 280),
-            child: Text(message, textAlign: TextAlign.center,
-                style: ZineText.value(size: 15)),
+            child: Text(message, textAlign: TextAlign.center, style: ADText.rowName()),
           ),
           if (onRetry != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: 'Try again',
               onPressed: onRetry,
@@ -145,17 +145,17 @@ class _OfflineBannerState extends State<OfflineBanner> {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        color: Zine.paper2,
-        border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        color: AD.headerFooter,
+        border: Border(bottom: Msg.hairline),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        PhosphorIcon(PhosphorIcons.cloudSlash(PhosphorIconsStyle.bold),
-            color: Zine.inkSoft, size: 14),
-        const SizedBox(width: 8),
+        PhosphorIcon(PhosphorIcons.cloudSlash(PhosphorIconsStyle.regular),
+            color: AD.textSecondary, size: 14),
+        const SizedBox(width: Msg.s2),
         Flexible(
-          child: Text("you're offline — showing saved data",
-              style: ZineText.kicker(size: 11.5)),
+          child: Text("You're offline — showing saved data",
+              style: ADText.sectionLabel(c: AD.textSecondary)),
         ),
       ]),
     );

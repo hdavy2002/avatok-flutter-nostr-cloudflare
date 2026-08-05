@@ -10,7 +10,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import 'zine.dart';
+import 'avatok_dark.dart';
+import 'messenger_theme.dart';
 import 'zine_widgets.dart';
 
 /// One row in the mic menu.
@@ -39,14 +40,14 @@ Future<void> showMicInputSheet(
     builder: (sheetCtx) => SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s4),
         child: ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.all(10),
-          boxShadow: Zine.shadowSm,
+          radius: Msg.rLg,
+          padding: const EdgeInsets.all(Msg.s2),
+          boxShadow: Msg.lift,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             for (var i = 0; i < options.length; i++) ...[
-              if (i > 0) const SizedBox(height: 8),
+              if (i > 0) const SizedBox(height: Msg.s2),
               _MicOptionTile(
                 option: options[i],
                 onTap: () {
@@ -69,26 +70,27 @@ class _MicOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Colour + surface come from ZinePressable's dark defaults (AD.card +
+    // hairline) — the old forced `Zine.card` fill was a near-WHITE tile.
     return ZinePressable(
       onTap: onTap,
-      color: Zine.card,
-      radius: BorderRadius.circular(Zine.rBadge),
-      boxShadow: const <BoxShadow>[],
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      radius: Msg.brMd,
+      boxShadow: Msg.none,
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),
       child: Row(children: [
         ZineIconBadge(icon: option.icon, color: option.color, size: 38),
-        const SizedBox(width: 12),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(option.title, style: ZineText.value(size: 15)),
+                Text(option.title, style: ADText.rowName()),
                 const SizedBox(height: 2),
-                Text(option.subtitle, style: ZineText.sub(size: 12)),
+                Text(option.subtitle, style: ADText.timestamp(c: AD.textSecondary)),
               ]),
         ),
         PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-            size: 16, color: Zine.inkSoft),
+            size: 16, color: AD.textTertiary),
       ]),
     );
   }

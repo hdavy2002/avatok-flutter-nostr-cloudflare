@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'home_personalisation.dart';
 
@@ -24,29 +25,29 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: Zine.paper2,
+        backgroundColor: AD.headerFooter,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Appearance', style: ZineText.appbar()),
+        shape: const Border(bottom: Msg.hairline),
+        title: Text('Appearance', style: ADText.appTitle()),
       ),
       body: ValueListenableBuilder<int>(
         valueListenable: HomePersonalisation.revision,
         builder: (context, _, __) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
           children: [
-            Text('FONT SIZE', style: ZineText.kicker()),
-            const SizedBox(height: 8),
+            Text('Font size', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s2),
             _fontRow(),
-            const SizedBox(height: 22),
-            Text('ACCENT', style: ZineText.kicker()),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s5),
+            Text('Accent', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s2),
             _accentRow(),
-            const SizedBox(height: 22),
-            Text('WALLPAPER', style: ZineText.kicker()),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s5),
+            Text('Wallpaper', style: ADText.sectionLabel()),
+            const SizedBox(height: Msg.s2),
             _wallpaperCard(),
           ],
         ),
@@ -58,7 +59,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
     const labels = {'small': 'Small', 'default': 'Default', 'large': 'Large'};
     final cur = HomePersonalisation.fontKey;
     return ZineCard(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(Msg.s2),
       child: Row(children: [
         for (final e in labels.entries)
           Expanded(
@@ -66,18 +67,26 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
               behavior: HitTestBehavior.opaque,
               onTap: () => HomePersonalisation.setFont(e.key),
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                margin: const EdgeInsets.symmetric(horizontal: Msg.s1),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 alignment: Alignment.center,
+                // FILL/INK PAIR: the selected chip keeps DARK ink on the accent
+                // (7.1:1). White-on-orange would have been ~2.5:1.
                 decoration: BoxDecoration(
-                  color: cur == e.key ? Zine.lime : Zine.card,
-                  borderRadius: BorderRadius.circular(Zine.rSm),
-                  border: Border.all(color: Zine.ink, width: Zine.bw),
-                  boxShadow: cur == e.key ? Zine.shadowXs : const <BoxShadow>[],
+                  color: cur == e.key ? AD.primaryBadge : AD.card,
+                  borderRadius: Msg.brMd,
+                  border: Border.all(
+                      color: cur == e.key ? AD.primaryBadge : AD.borderControl, width: 1),
                 ),
                 child: Text(e.value,
-                    style: ZineText.value(
-                        size: e.key == 'small' ? 12.5 : e.key == 'large' ? 16.5 : 14.5)),
+                    style: ADText.rowName(
+                            c: cur == e.key ? AD.textOnInput : AD.textPrimary)
+                        .copyWith(
+                            fontSize: e.key == 'small'
+                                ? 13
+                                : e.key == 'large'
+                                    ? 17
+                                    : 15)),
               ),
             ),
           ),
@@ -90,21 +99,25 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
     return Row(children: [
       for (final e in HomePersonalisation.accents.entries)
         Padding(
-          padding: const EdgeInsets.only(right: 12),
+          padding: const EdgeInsets.only(right: Msg.s3),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => HomePersonalisation.setAccent(e.key),
             child: Container(
               width: 52,
               height: 52,
+              // Selection now reads as a WHITE ring — the old dark ink ring is
+              // invisible against the near-black page.
               decoration: BoxDecoration(
                 color: e.value,
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                border: Border.all(color: Zine.ink, width: cur == e.key ? Zine.bw + 1.5 : Zine.bw),
-                boxShadow: cur == e.key ? Zine.shadowXs : const <BoxShadow>[],
+                borderRadius: Msg.brMd,
+                border: Border.all(
+                    color: cur == e.key ? AD.borderAvatar : AD.borderControl,
+                    width: cur == e.key ? 2.5 : 1),
               ),
               child: cur == e.key
-                  ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.ink, size: 22)
+                  ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                      color: AD.textOnInput, size: 22)
                   : null,
             ),
           ),
@@ -118,7 +131,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (path != null)
           ClipRRect(
-            borderRadius: BorderRadius.circular(Zine.rSm),
+            borderRadius: Msg.brMd,
             child: Image.file(File(path), height: 140, width: double.infinity, fit: BoxFit.cover),
           )
         else
@@ -126,13 +139,13 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
             height: 120,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Zine.paper2,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Border.all(color: Zine.inkMute, width: 1),
+              color: AD.cardHover,
+              borderRadius: Msg.brMd,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Text('No wallpaper', style: ZineText.sub(size: 13.5)),
+            child: Text('No wallpaper', style: ADText.preview()),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Msg.s3),
         Row(children: [
           Expanded(
             child: ZineButton(
@@ -144,7 +157,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
             ),
           ),
           if (path != null) ...[
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s3),
             ZineButton(
               label: 'Remove',
               variant: ZineButtonVariant.ghost,

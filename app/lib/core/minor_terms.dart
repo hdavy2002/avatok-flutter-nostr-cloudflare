@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'account_storage.dart';
-import 'ui/zine.dart';
+import 'ui/avatok_dark.dart';
+import 'ui/messenger_theme.dart';
 import 'ui/zine_widgets.dart';
 
 /// Under-18 terms acceptance gate.
@@ -47,40 +48,42 @@ class MinorTerms {
   static Future<bool> _showSheet(BuildContext context) async {
     final res = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          side: BorderSide(color: AD.borderControl, width: 1),
+          borderRadius: Msg.brSheetTop),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.78,
         maxChildSize: 0.92,
         minChildSize: 0.5,
         builder: (ctx, scroll) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('TERMS FOR USERS UNDER 18', style: ZineText.kicker()),
-            const SizedBox(height: 8),
+            Text('Terms for users under 18', style: ADText.threadName()),
+            const SizedBox(height: Msg.s2),
             Text('Because your birth year says you are under 18, please read and '
-                'accept these terms before continuing.', style: ZineText.sub(size: 13)),
-            const SizedBox(height: 12),
+                'accept these terms before continuing.', style: ADText.preview()),
+            const SizedBox(height: Msg.s3),
             Expanded(
               child: SingleChildScrollView(
                 controller: scroll,
-                child: Text(_termsBody, style: ZineText.sub(size: 13)),
+                child: Text(_termsBody, style: ADText.preview()),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
             ZineButton(
               label: 'I have read and accept these terms',
               variant: ZineButtonVariant.blue,
               fullWidth: true, fontSize: 15, trailingIcon: false,
               onPressed: () => Navigator.pop(ctx, true),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s2),
             Center(child: TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+              child: Text('Not now',
+                  style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
             )),
           ]),
         ),

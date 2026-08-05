@@ -78,8 +78,8 @@ List<AdminTool> toolsFor(AccountKind kind) => switch (kind) {
     };
 
 String headerFor(AccountKind kind) => switch (kind) {
-      AccountKind.parent => 'PARENT',
-      AccountKind.enterprise => 'ENTERPRISE',
+      AccountKind.parent => 'Parent',
+      AccountKind.enterprise => 'Enterprise',
       AccountKind.personal => '',
     };
 

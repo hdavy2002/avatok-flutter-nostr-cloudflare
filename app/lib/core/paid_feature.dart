@@ -14,7 +14,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import 'ui/zine.dart';
+import 'ui/avatok_dark.dart';
+import 'ui/messenger_theme.dart';
 import 'ui/zine_widgets.dart';
 
 /// Minimum wallet top-up, in USD. $10 unlocks premium AI (owner decision 2026-06-18,
@@ -51,30 +52,33 @@ class _StubWallet implements AvaWalletHook {
   Future<bool> spend(int coins, {required String reason}) async => false;
   @override
   Future<bool> openTopUp(BuildContext context, {int? suggestedUsd}) async {
-    // Stub top-up sheet — Zine styled. The wallet phase replaces this with the
+    // Stub top-up sheet — dark v2. The wallet phase replaces this with the
     // live flow; the contract (returns true on successful top-up) is stable.
     if (!context.mounted) return false;
     final res = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.overlaySheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          side: BorderSide(color: AD.borderControl, width: 1),
+          borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.wallet(PhosphorIconsStyle.fill), color: Zine.mint, size: 36),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Top up to use this', style: ZineText.cardTitle(size: 18))),
+              ZineIconBadge(icon: PhosphorIcons.wallet(PhosphorIconsStyle.fill),
+                  color: AD.online, size: 36),
+              const SizedBox(width: Msg.s3),
+              Expanded(child: Text('Top up to use this',
+                  style: ADText.threadName().copyWith(fontSize: 18))),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: Msg.s3),
             Text('Premium Ava features run on Tokens. Add coins to your wallet '
                 '(minimum \$$kMinTopUpUsd) to unlock image and voice generation, '
                 'MCP tools, and always-on Guardian.',
-                style: ZineText.sub(size: 13.5)),
-            const SizedBox(height: 18),
+                style: ADText.preview()),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: 'Add \$$kMinTopUpUsd to wallet',
               variant: ZineButtonVariant.blue,
@@ -85,10 +89,11 @@ class _StubWallet implements AvaWalletHook {
               // TODO(wallet phase): wire to the real top-up flow, then pop(true).
               onPressed: () => Navigator.pop(ctx, false),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Msg.s2),
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+              child: Text('Not now',
+                  style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
             ),
           ]),
         ),
@@ -98,26 +103,34 @@ class _StubWallet implements AvaWalletHook {
   }
 }
 
-/// Reusable "PAID" badge — mint (money) sticker with the standard ink border.
-/// Drop it on any premium row/tile/button.
+/// Reusable "Paid" badge — a genuine pill, so `Msg.brPill` applies here.
+///
+/// FILL/INK: the old pair was a PALE mint fill with dark-green ink. Flipping the
+/// fill to `AD.online` and the ink to white would have landed at ~2.4:1 on 10px
+/// type, so this uses the dark-mode CHIP recipe instead (dark green ground, pale
+/// green ink — the `AvatarFamily` pairing, ~7.7:1).
 class PaidBadge extends StatelessWidget {
   final String label;
-  const PaidBadge({super.key, this.label = 'PAID'});
+  const PaidBadge({super.key, this.label = 'Paid'});
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: Zine.mint,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 2),
-          boxShadow: Zine.shadowXs,
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill), size: 11, color: Zine.mintInk),
-          const SizedBox(width: 4),
-          Text(label, style: ZineText.tag(size: 9.5, color: Zine.mintInk)),
-        ]),
-      );
+  Widget build(BuildContext context) {
+    final fam = AD.familyByName('mint');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 3),
+      decoration: BoxDecoration(
+        color: fam.chipBg,
+        borderRadius: Msg.brPill,
+        border: Border.all(color: AD.borderControl, width: 1),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill), size: 11, color: fam.chipInk),
+        const SizedBox(width: Msg.s1),
+        Text(label,
+            style: ADText.statCaption(c: fam.chipInk)
+                .copyWith(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
+      ]),
+    );
+  }
 }
 
 /// Wraps a premium action. Tapping [child] runs [onRun] only if the wallet can

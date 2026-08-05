@@ -10,7 +10,6 @@ import '../../core/feature_flags.dart';
 import '../../core/paid_call_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/wallet_entitlement.dart';
 
