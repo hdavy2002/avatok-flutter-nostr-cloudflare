@@ -17,7 +17,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.BlockedNumberContract
-import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
@@ -46,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Owns the single `avatok/avadial` MethodChannel used by the Flutter AvaDial
  * feature. Responsibilities:
- *   - request/inspect the ROLE_DIALER + ROLE_CALL_SCREENING roles (needs an
+ *   - request/inspect the ROLE_DIALER role (needs an
  *     Activity → this plugin is [ActivityAware] and forwards onActivityResult);
  *   - LIVE device reads: contacts + call log (no persistence here — the Dart side
  *     owns the device-data boundary, plan §4.7);
@@ -71,7 +70,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         // read natively. Native has no Clerk and no IdentityStore, but every call
         // event must carry the user's email so telemetry is retrievable per-tester
         // later. Same on-disk handshake as spam_snapshot.json / avatok_directory.json
-        // — the pattern AvaMissedCallOverlay already uses with no engine attached.
+        // — the pattern the native call surfaces already use with no engine attached.
         const val IDENTITY_FILE = "identity.json"
 
         // [AVADIAL-NATIVE-INCALL-1] Native mirror of the `nativeInCallUi` kill switch.
@@ -312,23 +311,22 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             return File(dir, SNAPSHOT_FILE)
         }
 
-        // ── [AVA-MISSEDCALL-1] Missed-call overlay snapshot + config ────────────────
+        // ── [AVA-RCPT-5] Long-lived HMAC device token ───────────────────────────────
+        // [PLAY-SCOPE-1 2026-08-05] This file was introduced for the missed-call
+        // overlay (hence the name, kept so devices that already have a valid token
+        // don't have to re-mint one). The overlay is GONE; the ONLY thing left in
+        // here is `{token, base}` — the 30-day HMAC device token minted by
+        // /api/missedcall/token, which the AI receptionist's native "expect" ping
+        // ([firePstnExpect]) needs to authenticate with NO Clerk session available.
+        // Without it /api/pstn/expect-native answers 401 and forwarded calls cannot
+        // be mapped back to their owner, so do NOT delete this with the overlay.
         const val MISSEDCALL_CONFIG_FILE = "missedcall_config.json"
-        const val AVATOK_DIR_FILE = "avatok_directory.json"
 
-        /** `{enabled:bool}` gate the [AvaMissedCallReceiver] reads before firing. */
+        /** `{token, base}` — the receptionist's device-token store. See above. */
         fun missedCallConfigFile(context: Context): File {
             val dir = File(context.filesDir, SNAPSHOT_DIR)
             if (!dir.exists()) dir.mkdirs()
             return File(dir, MISSEDCALL_CONFIG_FILE)
-        }
-
-        /** On-device AvaTOK directory the overlay reads for caller name + AvaTOK status.
-         *  Keyed by sha256(last-10-digits) → {name, ava, avatar_url, avatok_number}. */
-        fun avatokDirFile(context: Context): File {
-            val dir = File(context.filesDir, SNAPSHOT_DIR)
-            if (!dir.exists()) dir.mkdirs()
-            return File(dir, AVATOK_DIR_FILE)
         }
 
         // ── [AVADIAL-NATIVE-INCALL-1] Identity + native-UI gate ────────────────────
@@ -388,18 +386,8 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             emptyMap()
         }
 
-        // Cold-start / background "open this caller in AvaTOK" launch (overlay
-        // View-profile / AvaTOK action). Stored so Dart can DRAIN it on startup via
-        // getPendingOpenDial even when the launch beat the channel handler; also emitted
-        // for the already-running case.
-        @Volatile private var pendingOpenNumber: String? = null
-        @Volatile private var pendingOpenAvatok: String? = null
-
-        fun notifyOpenDial(number: String?, avatokNumber: String?) {
-            pendingOpenNumber = number
-            pendingOpenAvatok = avatokNumber
-            emit("onLaunchOpenDial", mapOf("number" to number, "avatok_number" to avatokNumber))
-        }
+        // [PLAY-SCOPE-1 2026-08-05] notifyOpenDial / pendingOpenNumber removed — they
+        // existed only for the missed-call overlay's "View profile" button.
 
         // ── [AVA-RCPT-5/6/7] PSTN voicemail forwarding — native mirror + expect
         // ping (Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md, Phase 2).
@@ -448,7 +436,7 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
          * which the OS holds the live/ringing call open for — a slow or hung HTTP
          * call here would visibly delay hanging up or screening. Wrapped fully in
          * try/catch; any failure (offline, DNS, 5xx, missing config) is invisible to
-         * the call path, matching [AvaMissedCallReceiver.confirmViaBackend]'s
+         * the call path, matching the receiver's
          * best-effort posture.
          *
          * [caller] is the E.164/raw number when known, or null (hidden caller ID /
@@ -699,12 +687,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             when (call.method) {
                 // ---- roles ----
                 "requestDialerRole" -> requestRole(RoleManager.ROLE_DIALER, result)
-                "requestScreeningRole" -> requestRole(RoleManager.ROLE_CALL_SCREENING, result)
                 "requestSmsRole" -> requestRole(RoleManager.ROLE_SMS, result)
                 "isDialerRoleHeld" ->
                     result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_DIALER))
-                "isScreeningRoleHeld" ->
-                    result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_CALL_SCREENING))
                 "isSmsRoleHeld" ->
                     result.success(AvaDialRoleHelper.isRoleHeld(ctx, RoleManager.ROLE_SMS))
                 "canBlockNumbers" -> result.success(canBlockNumbers(ctx))
@@ -754,7 +739,8 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
                 // ---- live device reads (no persistence) ----
                 "readContacts" -> result.success(readContacts(ctx))
-                "readCallLog" -> result.success(readCallLog(ctx, (call.argument<Int>("limit")) ?: 500))
+                // [PLAY-SCOPE-1 2026-08-05] "readCallLog" removed — READ_CALL_LOG is
+                // no longer declared and AvaTOK does not read the device call log.
 
                 // ---- device contact WRITES (WRITE_CONTACTS) ----
                 "writeContact" -> result.success(writeContact(ctx, call))
@@ -803,13 +789,17 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 "clearCallTelemetry" -> { CallTelemetryBuffer.clear(ctx); result.success(true) }
                 "callTelemetryPending" -> result.success(CallTelemetryBuffer.pendingCount(ctx))
 
-                // ---- [AVA-MISSEDCALL-1] missed-call overlay ----
-                "canDrawOverlay" -> result.success(AvaMissedCallOverlay.canDraw(ctx))
-                "requestOverlayPermission" -> { requestOverlayPermission(ctx); result.success(null) }
-                "setMissedCallEnabled" -> {
-                    val obj = JSONObject().put("enabled", call.argument<Boolean>("enabled") == true)
-                    // Device token + host for the receiver's cold-start membership lookup.
-                    // Preserve any previously-stored token if Dart couldn't mint a fresh one.
+                // ---- [AVA-RCPT-5] receptionist device token ----
+                // [PLAY-SCOPE-1 2026-08-05] Replaces the old "setMissedCallEnabled".
+                // The missed-call overlay is gone, so there is no `enabled` gate here
+                // any more (the receiver is gated purely by pstn_config.json). All
+                // that is stored is the HMAC device token + host that
+                // /api/pstn/expect-native authenticates against.
+                "setDeviceToken" -> {
+                    val obj = JSONObject()
+                    // Preserve any previously-stored value if Dart couldn't mint a
+                    // fresh one (offline / unauthenticated) — a stale-but-valid token
+                    // is far better than none, which would 401 the expect ping.
                     val token = call.argument<String>("token")
                     val base = call.argument<String>("base")
                     val prev = try {
@@ -850,40 +840,9 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
                 // ---- [INBOX-DOWNLOAD-2] real public-Downloads save ----
                 "saveToDownloads" -> saveToDownloads(ctx, call, result)
 
-                "writeAvatokDirectory" -> {
-                    val jsonStr = call.argument<String>("json") ?: "{}"
-                    writeFileAtomic(avatokDirFile(ctx), jsonStr)
-                    result.success(true)
-                }
-                "missedCallResolved" -> {
-                    AvaMissedCallOverlay.update(
-                        call.argument<String>("number"),
-                        call.argument<Boolean>("avatok") == true,
-                        call.argument<String>("name"),
-                    )
-                    result.success(null)
-                }
-                "showMissedCallPreview" -> {
-                    AvaMissedCallOverlay.show(
-                        ctx,
-                        AvaMissedCallOverlay.Info(
-                            number = call.argument<String>("number"),
-                            name = call.argument<String>("name"),
-                            ringSecs = call.argument<Int>("ring_secs") ?: 0,
-                            isAvatok = call.argument<Boolean>("is_avatok") == true,
-                            avatokNumber = call.argument<String>("avatok_number"),
-                        ),
-                    )
-                    result.success(null)
-                }
-                "getPendingOpenDial" -> {
-                    val out: Map<String, Any?>? = pendingOpenNumber?.let {
-                        mapOf("number" to it, "avatok_number" to pendingOpenAvatok)
-                    }
-                    pendingOpenNumber = null
-                    pendingOpenAvatok = null
-                    result.success(out)
-                }
+                // [PLAY-SCOPE-1 2026-08-05] writeAvatokDirectory / missedCallResolved /
+                // showMissedCallPreview / getPendingOpenDial removed with the
+                // missed-call overlay.
 
                 // ---- cold-start incoming-call drain (route extra "avadial/incoming") ----
                 "getPendingIncoming" -> {
@@ -1007,7 +966,6 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?): Boolean {
         val role = when (requestCode) {
             AvaDialRoleHelper.REQ_DIALER -> RoleManager.ROLE_DIALER
-            AvaDialRoleHelper.REQ_SCREENING -> RoleManager.ROLE_CALL_SCREENING
             AvaDialRoleHelper.REQ_SMS -> RoleManager.ROLE_SMS
             else -> return false
         }
@@ -1538,41 +1496,6 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         return null
     }
 
-    private fun readCallLog(ctx: Context, limit: Int): List<Map<String, Any?>> {
-        val out = ArrayList<Map<String, Any?>>()
-        val proj = arrayOf(
-            CallLog.Calls.NUMBER,
-            CallLog.Calls.TYPE,
-            CallLog.Calls.DATE,
-            CallLog.Calls.DURATION,
-            CallLog.Calls.CACHED_NAME,
-        )
-        ctx.contentResolver.query(
-            CallLog.Calls.CONTENT_URI, proj, null, null,
-            CallLog.Calls.DATE + " DESC"
-        )?.use { c ->
-            val iNum = c.getColumnIndex(proj[0])
-            val iType = c.getColumnIndex(proj[1])
-            val iDate = c.getColumnIndex(proj[2])
-            val iDur = c.getColumnIndex(proj[3])
-            val iName = c.getColumnIndex(proj[4])
-            var n = 0
-            while (c.moveToNext() && n < limit) {
-                out.add(
-                    mapOf(
-                        "number" to (if (iNum >= 0) c.getString(iNum) else null),
-                        "type" to (if (iType >= 0) c.getInt(iType) else 0),
-                        "date" to (if (iDate >= 0) c.getLong(iDate) else 0L),
-                        "duration" to (if (iDur >= 0) c.getLong(iDur) else 0L),
-                        "name" to (if (iName >= 0) c.getString(iName) else null),
-                    )
-                )
-                n++
-            }
-        }
-        return out
-    }
-
     /**
      * Deep-link to the OS "Default apps" screen (Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
      * so the user can pick AvaTOK — or hand a role back to another app (Truecaller / stock)
@@ -1693,24 +1616,8 @@ class AvaDialPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
      * fall back to an ACTION_DIAL intent for this attempt; the next tap (post-grant)
      * places the call directly.
      */
-    // ── [AVA-MISSEDCALL-1] helpers ──────────────────────────────────────────────
-    /** Open the system "Display over other apps" settings page for AvaTOK. */
-    private fun requestOverlayPermission(ctx: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        try {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:" + ctx.packageName),
-            )
-            val act = activityBinding?.activity
-            if (act != null) {
-                act.startActivity(intent)
-            } else {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                ctx.startActivity(intent)
-            }
-        } catch (_: Throwable) { /* settings page unavailable — best-effort */ }
-    }
+    // [PLAY-SCOPE-1 2026-08-05] requestOverlayPermission() removed —
+    // SYSTEM_ALERT_WINDOW is no longer declared and nothing draws over other apps.
 
     /** Write [content] to [file] atomically (temp + rename), mirroring how Dart writes
      *  the screening snapshot — a half-written directory must never be read. */

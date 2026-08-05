@@ -97,24 +97,8 @@ class AvaComposeLaunch {
   const AvaComposeLaunch(this.number);
 }
 
-/// [AVA-MISSEDCALL-1] A missed incoming call detected by the native
-/// [AvaMissedCallReceiver]. Raised AFTER the overlay is already on screen (painted
-/// from the on-device cache); [isAvatokCached] is the cache verdict, which
-/// [MissedCallService] may upgrade via a live backend confirm.
-class AvaMissedCall {
-  final String number;
-  final int ringSecs;
-  final bool isAvatokCached;
-  const AvaMissedCall(this.number, this.ringSecs, this.isAvatokCached);
-}
-
-/// A cold-start / background "open this caller in AvaTOK" launch, from the missed-call
-/// overlay's View-profile / AvaTOK action (MainActivity route `avadial/openDial`).
-class AvaOpenDialLaunch {
-  final String? number;
-  final String? avatokNumber;
-  const AvaOpenDialLaunch(this.number, this.avatokNumber);
-}
+// [PLAY-SCOPE-1 2026-08-05] AvaMissedCall / AvaOpenDialLaunch removed with the
+// missed-call overlay — AvaTOK is AvaTOK-to-AvaTOK calling only.
 
 /// Dart bridge to the AvaDial native telecom layer
 /// (Specs/SPIKE-2026-07-12-avadial-telecom.md). Thin + best-effort: every method
@@ -136,8 +120,6 @@ class AvaDialChannel {
   final _smsIn = StreamController<AvaSmsMessage>.broadcast();
   final _smsStatus = StreamController<AvaSmsSendStatus>.broadcast();
   final _compose = StreamController<AvaComposeLaunch>.broadcast();
-  final _missed = StreamController<AvaMissedCall>.broadcast();
-  final _openDial = StreamController<AvaOpenDialLaunch>.broadcast();
 
   /// Shared guard so the incoming-call screen never double-opens: the shell
   /// (cold-start/relaunch path) and [AvaDialRoot] (foreground ringing path) both
@@ -171,12 +153,6 @@ class AvaDialChannel {
 
   /// SMS-compose launches from a cold start / notification tap / ACTION_SENDTO.
   Stream<AvaComposeLaunch> get composeLaunch => _compose.stream;
-
-  /// [AVA-MISSEDCALL-1] Missed-call events from the native PHONE_STATE receiver.
-  Stream<AvaMissedCall> get missedCalls => _missed.stream;
-
-  /// "Open in AvaTOK" launches from the missed-call overlay (already-running case).
-  Stream<AvaOpenDialLaunch> get openDialLaunch => _openDial.stream;
 
   bool _wired = false;
 
@@ -470,21 +446,6 @@ class AvaDialChannel {
         case 'onLaunchCompose':
           _compose.add(AvaComposeLaunch(a['number'] as String?));
           break;
-        case 'onMissedCall':
-          final missedNumber = a['number'] as String?;
-          if (missedNumber != null && missedNumber.isNotEmpty) {
-            _missed.add(AvaMissedCall(
-              missedNumber,
-              (a['ring_secs'] as num?)?.toInt() ?? 0,
-              a['is_avatok_cached'] == true,
-            ));
-          }
-          // Telemetry carries NO raw number — only the ring duration + cache verdict.
-          Analytics.capture('missed_call_overlay_shown', {
-            'ring_secs': (a['ring_secs'] as num?)?.toInt() ?? 0,
-            'avatok_cached': a['is_avatok_cached'] == true,
-          });
-          break;
         case 'onIncomingLaunchDiag':
           // [AVADIAL-POPUP-1] Native breadcrumb for every incoming-call launch:
           // proves which leg surfaced (or failed to surface) the call UI on this
@@ -497,12 +458,8 @@ class AvaDialChannel {
             'sdk': (a['sdk'] as num?)?.toInt() ?? 0,
           });
           break;
-        case 'onLaunchOpenDial':
-          _openDial.add(AvaOpenDialLaunch(
-            a['number'] as String?,
-            a['avatok_number'] as String?,
-          ));
-          break;
+        // [PLAY-SCOPE-1 2026-08-05] 'onLaunchOpenDial' is no longer emitted — it
+        // came from the missed-call overlay's "View profile" button.
         case 'onCallDetails':
           // [AVADIAL-CNAP-1] A network (CNAP) caller name arrived after ring
           // start. The native screens already repainted; this is the live
@@ -527,7 +484,6 @@ class AvaDialChannel {
   /// verdict arrives on [roleResults]). Falls back to the current held-state on
   /// platforms without the plugin.
   Future<bool?> requestDialerRole() => _invokeNullableBool('requestDialerRole');
-  Future<bool?> requestScreeningRole() => _invokeNullableBool('requestScreeningRole');
 
   /// Request the default-SMS-app role (AVA-SMS). Same contract as
   /// [requestDialerRole]: `true` if already held, else `null` (a system prompt
@@ -535,7 +491,6 @@ class AvaDialChannel {
   Future<bool?> requestSmsRole() => _invokeNullableBool('requestSmsRole');
 
   Future<bool> isDialerRoleHeld() => _invokeBool('isDialerRoleHeld');
-  Future<bool> isScreeningRoleHeld() => _invokeBool('isScreeningRoleHeld');
   Future<bool> isSmsRoleHeld() => _invokeBool('isSmsRoleHeld');
 
   /// Deep-link to the OS "Default apps" settings screen so the user can set
@@ -640,8 +595,8 @@ class AvaDialChannel {
 
   // ── Device reads (LIVE — never persisted here; caller owns the boundary) ──
   Future<List<Map<String, dynamic>>> readContacts() => _invokeList('readContacts', null);
-  Future<List<Map<String, dynamic>>> readCallLog({int limit = 500}) =>
-      _invokeList('readCallLog', {'limit': limit});
+  // [PLAY-SCOPE-1 2026-08-05] readCallLog() removed — READ_CALL_LOG is no longer
+  // declared and AvaTOK does not read the device call log.
 
   // ── Device contact WRITES (WRITE_CONTACTS — writes the real OS phone book) ──
   /// Create a new contact in the device address book. Returns the new aggregated
@@ -814,83 +769,32 @@ class AvaDialChannel {
     }
   }
 
-  // ── [AVA-MISSEDCALL-1] Missed-call overlay ────────────────────────────────
-  /// True when AvaTOK may draw over other apps ("appear on top"). The overlay
-  /// cannot show without it.
-  Future<bool> canDrawOverlay() => _invokeBool('canDrawOverlay');
-
-  /// Open the system "Display over other apps" settings page for AvaTOK.
-  Future<void> requestOverlayPermission() => _invokeVoid('requestOverlayPermission');
-
-  /// Arm/disarm the native PHONE_STATE receiver by writing `{enabled, token, base}`
-  /// into the native config file. The receiver early-returns until `enabled` is true;
-  /// [token] + [base] let it confirm AvaTOK membership over the device-token lane while
-  /// the app is dead (both null → keep any previously-stored values).
-  Future<void> setMissedCallEnabled(bool enabled, {String? token, String? base}) =>
-      _invokeVoid('setMissedCallEnabled', {
-        'enabled': enabled,
+  // ── [AVA-RCPT-5] Receptionist device token ────────────────────────────────
+  /// Store the long-lived HMAC device token (minted by `/api/missedcall/token`)
+  /// plus the bare API host that the NATIVE receptionist "expect" ping
+  /// authenticates with. `POST /api/pstn/expect-native` is strictly
+  /// token-or-nothing — no token, 401, and a carrier-forwarded call can no
+  /// longer be mapped back to its owner — so this must be kept fresh even though
+  /// the missed-call overlay it was originally built for is gone
+  /// ([PLAY-SCOPE-1 2026-08-05], which replaced `setMissedCallEnabled`).
+  ///
+  /// Either argument may be null, in which case any previously-stored value is
+  /// preserved: an offline / unauthenticated mint failure must never wipe a
+  /// token that still works.
+  Future<void> setDeviceToken({String? token, String? base}) =>
+      _invokeVoid('setDeviceToken', {
         'token': token,
         'base': base,
       });
 
-  /// Atomically write the on-device AvaTOK directory the overlay reads for caller
-  /// name + AvaTOK status. [entries] maps `hashLast10(number) → {name, ava,
-  /// avatar_url, avatok_number}`.
-  Future<void> writeAvatokDirectory(Map<String, Map<String, dynamic>> entries) =>
-      _invokeVoid('writeAvatokDirectory', {
-        'json': jsonEncode({
-          'v': 1,
-          'updated': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          'entries': entries,
-        }),
-      });
-
-  /// Re-paint the currently-shown overlay after a late backend confirm (the
-  /// "cache then backend" upgrade). No-op if a different card is now showing.
-  Future<void> missedCallResolved(String number, bool avatok, String? name) =>
-      _invokeVoid('missedCallResolved', {
-        'number': number,
-        'avatok': avatok,
-        'name': name,
-      });
-
-  /// Debug/QA: show the overlay directly without a real call.
-  Future<void> showMissedCallPreview({
-    required String number,
-    String? name,
-    int ringSecs = 24,
-    bool isAvatok = true,
-    String? avatokNumber,
-  }) =>
-      _invokeVoid('showMissedCallPreview', {
-        'number': number,
-        'name': name,
-        'ring_secs': ringSecs,
-        'is_avatok': isAvatok,
-        'avatok_number': avatokNumber,
-      });
-
-  /// Drain a pending "open in AvaTOK" launch queued by the overlay before the
-  /// engine was ready (cold start).
-  Future<AvaOpenDialLaunch?> consumePendingOpenDial() async {
-    try {
-      final raw = await _ch.invokeMethod<Map<dynamic, dynamic>>('getPendingOpenDial');
-      if (raw == null) return null;
-      return AvaOpenDialLaunch(raw['number'] as String?, raw['avatok_number'] as String?);
-    } catch (e) {
-      AvaLog.I.log('avadial', 'getPendingOpenDial failed: $e');
-      return null;
-    }
-  }
-
   // ── [AVA-RCPT-5/6/7] PSTN voicemail forwarding ────────────────────────────
   /// Mirror `pstn_config.json` to disk — read with NO engine attached by
-  /// [AvaInCallService] (reject → expect ping), [AvaCallScreeningService]
-  /// (hidden-caller-ID auto-route) and [AvaMissedCallReceiver] (missed →
-  /// expect ping). [base] is the FULL origin including scheme
-  /// (`https://api.avatok.ai`) — unlike [setMissedCallEnabled]'s bare host,
-  /// native uses this verbatim as `$base/api/pstn/expect-native`. Written on
-  /// every wire-up so a KV flip of `pstnVoicemail` takes effect on the next
+  /// [AvaMissedCallReceiver] (unanswered incoming call → expect ping). [base] is
+  /// the FULL origin including scheme (`https://api.avatok.ai`) — unlike
+  /// [setDeviceToken]'s bare host, native uses this verbatim as
+  /// `$base/api/pstn/expect-native`. Written on every wire-up so a KV flip of
+  /// `pstnVoicemail` takes effect on the next app open, same pattern as
+  /// [setNativeInCallEnabled].
   /// app open, same pattern as [setNativeInCallEnabled].
   Future<void> setPstnConfig({
     required bool enabled,

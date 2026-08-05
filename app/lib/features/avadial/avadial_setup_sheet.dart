@@ -4,22 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/analytics.dart';
-import '../../core/remote_config.dart';
 import '../../core/voice/native_voice_audio.dart';
 import 'avadial_channel.dart';
-import 'missed_call_service.dart';
 
 /// [AVADIAL-SETUP-1] + [AVADIAL-SETUP-2] AvaDialer guided device-setup sheet.
 ///
-/// AvaDialer can only behave like a real phone app — incoming calls ringing
-/// FULL-SCREEN over the lock screen, texts & OTPs handled in-app, spam calls
-/// screened — once the user grants a few OS roles/permissions that NO app can
-/// grant itself. Android and OEM skins gate these behind Settings screens we
-/// can only DEEP-LINK to; we can never flip them programmatically.
+/// AvaTOK calls can only ring FULL-SCREEN over the lock screen, and reach your
+/// phone book, once the user grants a few OS permissions that NO app can grant
+/// itself. Android and OEM skins gate these behind Settings screens we can only
+/// DEEP-LINK to; we can never flip them programmatically.
 ///
-/// [AVADIAL-SETUP-2] (owner request 2026-07-14): the sheet is now a guided,
-/// SEQUENTIAL task list for beta testers. It pitches AvaTOK as the default
-/// dialer / SMS manager / spam call & message detector / phone book, explains
+/// [PLAY-SCOPE-1 2026-08-05] AvaTOK is AvaTOK-to-AvaTOK calling only, so this
+/// sheet no longer pitches the default dialer / SMS manager / spam detector /
+/// "appear on top" roles — none of them are requested or declared any more.
+///
+/// [AVADIAL-SETUP-2] (owner request 2026-07-14): the sheet is a guided,
+/// SEQUENTIAL task list for beta testers. It explains
 /// that during beta some switches must be flipped manually (once live they're
 /// auto-set on install from the Play Store), highlights ONE next task at a
 /// time, deep-links to the right Android settings screen when manual action is
@@ -28,21 +28,20 @@ import 'missed_call_service.dart';
 /// the next pending task with a confirmation snack.
 bool _shownThisSession = false;
 
-/// Show the setup sheet the first time AvaDialer opens in a session with any
-/// core capability still missing (phone role, SMS role, spam screening,
-/// contacts, or lock-screen calls). Safe no-op when everything is granted or
-/// it has already shown this session.
+/// Show the setup sheet the first time AvaDialer opens in a session with a core
+/// capability still missing (contacts, or lock-screen calls). Safe no-op when
+/// everything is granted or it has already shown this session.
 Future<void> maybeShowAvaDialSetup(BuildContext context) async {
   if (_shownThisSession) return;
   try {
-    // [ONBOARD-CLEANUP-1] Default dialer/SMS roles are no longer requested —
-    // AvaTOK does not become the OS default phone/SMS app. Only the still-valid
-    // device capabilities (lock-screen calls, spam screening, contacts) gate the
+    // [ONBOARD-CLEANUP-1] + [PLAY-SCOPE-1 2026-08-05] Default dialer/SMS roles
+    // and spam screening are no longer requested — AvaTOK does not become the OS
+    // default phone/SMS app and declares no CallScreeningService. Only the
+    // still-valid device capabilities (lock-screen calls, contacts) gate the
     // checklist now.
     final fsi = await NativeVoiceAudio.instance.canUseFullScreenIntent();
-    final screening = await AvaDialChannel.I.isScreeningRoleHeld();
     final contacts = await Permission.contacts.isGranted;
-    if (fsi && screening && contacts) {
+    if (fsi && contacts) {
       return; // nothing missing — don't nag
     }
   } catch (_) {
@@ -81,9 +80,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
 
   bool _fsi = false; // full-screen / lock-screen calls
   bool _battery = false; // ignore battery optimisation (reliable delivery)
-  bool _screening = false; // Caller ID & spam role (replaces Truecaller)
   bool _contacts = false; // phone book (READ/WRITE_CONTACTS group)
-  bool _overlay = false; // "appear on top" — the floating OTP card
   bool _loading = true;
 
   // Auto-detected rivals: known overlay apps (Truecaller etc.) that draw their
@@ -118,11 +115,11 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
         // [ONBOARD-CLEANUP-1] The "Make AvaTOK your phone app" (ROLE_DIALER) and
         // "Make AvaTOK your SMS manager" (ROLE_SMS) steps were REMOVED — AvaTOK
         // no longer becomes the OS default phone/SMS handler.
-        _SetupStep('screening', 'Spam call & message detector', _screening,
-            _screening
-                ? 'AvaTOK screens your calls for spam.'
-                : 'Let AvaTOK screen spam calls & messages for you.',
-            _openScreening),
+        // [PLAY-SCOPE-1 2026-08-05] The 'screening' (spam call & message detector),
+        // 'overlay' ("appear on top" / floating OTP card) and 'missedcall'
+        // (Truecaller-style missed-call pop-up) steps are all REMOVED. AvaTOK is
+        // AvaTOK-to-AvaTOK calling only: no ROLE_CALL_SCREENING and no
+        // SYSTEM_ALERT_WINDOW, so none of them can be granted any more.
         _SetupStep('contacts', 'Make AvaTOK your phone book', _contacts,
             _contacts
                 ? 'AvaTOK manages your contacts.'
@@ -133,22 +130,6 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
         _SetupStep('battery', 'Keep AvaTOK running', _battery,
             'Ignore battery optimisation so calls arrive instantly.',
             _openBattery),
-        _SetupStep('overlay', 'Show OTP pop-ups over apps', _overlay,
-            'Appear on top, so one-time codes float over any app with a '
-            'one-tap Copy — no need to open AvaTOK.',
-            _openOverlay),
-        // [AVA-MISSEDCALL-1] Truecaller-style missed-call pop-up. Uses the SAME
-        // "appear on top" permission as the OTP card, so _overlay/_openOverlay are
-        // reused; granting either lights this task too.
-        if (RemoteConfig.missedCallOverlay)
-          _SetupStep('missedcall', 'See who called (missed-call pop-up)', _overlay,
-              _overlay
-                  ? 'On — you\'ll see who called over any app, with one-tap call '
-                      'back, message, and whether they\'re on AvaTOK.'
-                  : 'Show a pop-up over any app when you miss a call: who it was, '
-                      'call back or reply in a tap, and a bright AvaTOK icon if '
-                      'they\'re on AvaTOK.',
-              _openOverlay),
       ];
 
   Future<void> _refresh() async {
@@ -159,11 +140,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     final firstLoad = _loading;
     final before = {for (final s in _steps) s.id: s.done};
 
-    var fsi = _fsi,
-        battery = _battery,
-        screening = _screening,
-        contacts = _contacts,
-        overlay = _overlay;
+    var fsi = _fsi, battery = _battery, contacts = _contacts;
     var rivals = _rivals;
     try {
       fsi = await NativeVoiceAudio.instance.canUseFullScreenIntent();
@@ -172,13 +149,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
       battery = await Permission.ignoreBatteryOptimizations.isGranted;
     } catch (_) {}
     try {
-      screening = await AvaDialChannel.I.isScreeningRoleHeld();
-    } catch (_) {}
-    try {
       contacts = await Permission.contacts.isGranted;
-    } catch (_) {}
-    try {
-      overlay = await Permission.systemAlertWindow.isGranted;
     } catch (_) {}
     try {
       rivals = await AvaDialChannel.I.detectRivalCallerApps();
@@ -187,19 +158,10 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     setState(() {
       _fsi = fsi;
       _battery = battery;
-      _screening = screening;
       _contacts = contacts;
-      _overlay = overlay;
       _rivals = rivals;
       _loading = false;
     });
-
-    // [AVA-MISSEDCALL-1] Arm/disarm the missed-call receiver in step with the "appear
-    // on top" grant (the user may have just returned from granting it). No-op unless the
-    // `missedCallOverlay` flag is on.
-    if (RemoteConfig.missedCallOverlay) {
-      unawaited(MissedCallService.I.ensureEnabled());
-    }
 
     // Announce the freshly completed task and prompt the next one.
     if (firstLoad) return;
@@ -237,23 +199,6 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'battery'});
     try {
       await Permission.ignoreBatteryOptimizations.request();
-    } catch (_) {}
-    _refresh();
-  }
-
-  Future<void> _openOverlay() async {
-    Analytics.capture('avadial_setup_tap', <String, Object>{'step': 'overlay'});
-    try {
-      await Permission.systemAlertWindow.request();
-    } catch (_) {}
-    _refresh();
-  }
-
-  Future<void> _openScreening() async {
-    Analytics.capture(
-        'avadial_setup_tap', <String, Object>{'step': 'screening'});
-    try {
-      await AvaDialChannel.I.requestScreeningRole();
     } catch (_) {}
     _refresh();
   }
@@ -313,7 +258,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
               ),
               const SizedBox(height: 18),
               const Text(
-                'Make AvaTOK your phone',
+                'Set AvaTOK up for calls',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -321,9 +266,9 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
               ),
               const SizedBox(height: 6),
               const Text(
-                'Would you like AvaTOK to be your default dialer, SMS manager, '
-                'spam call & message detector, and phone book? Work through '
-                'the tasks below — we highlight one at a time.',
+                'A couple of Android switches let AvaTOK ring you full-screen '
+                'and use your phone book. Work through the tasks below — we '
+                'highlight one at a time.',
                 style:
                     TextStyle(color: Colors.white70, fontSize: 14, height: 1.35),
               ),

@@ -3,35 +3,33 @@ package ai.avatok.avadial
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.provider.CallLog
 import android.telephony.TelephonyManager
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
 
 /**
- * [AVA-MISSEDCALL-1] Detects a MISSED incoming call and raises the Truecaller-style
- * [AvaMissedCallOverlay]. Registered for `android.intent.action.PHONE_STATE` — a
- * protected broadcast the OS delivers to a manifest receiver holding READ_PHONE_STATE,
- * and one of the few implicit broadcasts still allowed to a manifest receiver on
- * Android 8+.
+ * [AVA-RCPT-5] AI-receptionist PSTN "expect" ping.
  *
- * Missed = we saw RINGING and then went IDLE WITHOUT ever passing through OFFHOOK (an
- * OFFHOOK means the call was answered — or it was an outgoing call, which starts at
+ * [PLAY-SCOPE-1 2026-08-05] This receiver USED to raise a Truecaller-style missed-call
+ * overlay (AvaMissedCallOverlay) and fall back to reading the device call log to name
+ * the caller. Both are GONE: AvaTOK is AvaTOK-to-AvaTOK calling only, so there is no
+ * overlay, no SYSTEM_ALERT_WINDOW, no READ_CALL_LOG and no /api/missedcall/lookup
+ * confirm. The single remaining job is the receptionist ping described below.
+ *
+ * Registered for `android.intent.action.PHONE_STATE` — a protected broadcast the OS
+ * delivers to a manifest receiver holding READ_PHONE_STATE, and one of the few implicit
+ * broadcasts still allowed to a manifest receiver on Android 8+.
+ *
+ * Unanswered = we saw RINGING and then went IDLE WITHOUT ever passing through OFFHOOK
+ * (an OFFHOOK means the call was answered — or it was an outgoing call, which starts at
  * OFFHOOK and so is ignored). State is tracked in the companion because the OS spins up
  * a fresh receiver instance per broadcast.
  *
- * The number comes from EXTRA_INCOMING_NUMBER when the OS provides it (it does while we
- * hold READ_CALL_LOG); otherwise we read the most recent MISSED row from the call log.
- * Caller name + AvaTOK status come purely from the on-device directory snapshot Dart
- * maintains ([AvaDialPlugin.avatokDirFile]) — NEVER a network call on this path. A late
- * backend confirm (the "cache then backend" flow) rides the `onMissedCall` event to Dart,
- * which re-paints via [AvaMissedCallOverlay.update].
+ * When that happens, the carrier's own no-answer forwarding (CFNRy — armed by the
+ * receptionist setup's MMI dial) has ALREADY diverted the call to the receptionist DID.
+ * All we do is pre-register the caller with the worker so its answer route can map that
+ * forwarded leg back to this owner. Nothing is read, shown or stored on the device.
  *
- * Fully DARK until Dart writes `{enabled:true}` into the missed-call config file, which it
- * only does when the `missedCallOverlay` flag is on AND the user granted "appear on top".
+ * Fully DARK unless Dart wrote `{enabled:true}` into pstn_config.json — see
+ * [AvaDialPlugin.pstnVoicemailEnabled], which fails CLOSED.
  */
 class AvaMissedCallReceiver : BroadcastReceiver() {
 
@@ -39,12 +37,7 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
         @Volatile private var sawRinging = false
         @Volatile private var wasOffhook = false
         @Volatile private var incomingNumber: String? = null
-        @Volatile private var ringStartMs = 0L
         @Volatile private var lastState: String? = null
-
-        // [AVADIAL-HARDEN-3] Slack window for correlating a call-log-fallback MISSED
-        // row to the ringing session that just ended.
-        private const val MISSED_MATCH_SLACK_MS = 5_000L
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -59,8 +52,9 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
             TelephonyManager.EXTRA_STATE_RINGING -> {
                 sawRinging = true
                 wasOffhook = false
-                ringStartMs = System.currentTimeMillis()
-                // Best-effort — only present when we hold READ_CALL_LOG.
+                // Best-effort — the OS usually withholds this now that we no longer
+                // hold READ_CALL_LOG. The worker tolerates a null caller exactly the
+                // way it already did for hidden caller ID.
                 intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
                     ?.takeIf { it.isNotBlank() }?.let { incomingNumber = it }
             }
@@ -70,220 +64,16 @@ class AvaMissedCallReceiver : BroadcastReceiver() {
             }
 
             TelephonyManager.EXTRA_STATE_IDLE -> {
-                val missed = sawRinging && !wasOffhook
-                val ringSecs = if (ringStartMs > 0) {
-                    ((System.currentTimeMillis() - ringStartMs) / 1000L).toInt().coerceIn(0, 600)
-                } else 0
+                val unanswered = sawRinging && !wasOffhook
                 val number = incomingNumber
-                val ringStartAtCall = ringStartMs
-                // Reset before any heavy work so a re-entrant broadcast can't double-fire.
+                // Reset before any work so a re-entrant broadcast can't double-fire.
                 sawRinging = false
                 wasOffhook = false
                 incomingNumber = null
-                ringStartMs = 0L
-                if (missed) handleMissed(ctx, number, ringSecs, ringStartAtCall)
-            }
-        }
-    }
-
-    private fun handleMissed(ctx: Context, ringNumber: String?, ringSecs: Int, ringStartAtCall: Long) {
-        // [AVA-RCPT-5] PSTN expect ping — deliberately INDEPENDENT of the
-        // missed-call OVERLAY gate below ([isEnabled]/[AvaMissedCallOverlay
-        // .canDraw] are a different feature/flag). Carrier no-answer-forwarding
-        // (CFNRy) already diverted this call to the DID on its own by the time we
-        // see IDLE; this ping just lets the worker's answer route map that
-        // forwarded leg back to this owner. [ringNumber] may be null when the OS
-        // withheld it (common — see [showForNumber]'s call-log fallback below);
-        // the worker tolerates a null caller the same way the anonymous
-        // screening path does.
-        if (AvaDialPlugin.pstnVoicemailEnabled(ctx)) {
-            AvaDialPlugin.firePstnExpect(ctx, ringNumber)
-        }
-        if (!isEnabled(ctx)) return
-        if (!AvaMissedCallOverlay.canDraw(ctx)) return
-
-        // Fast path — the OS handed us the ring number directly (READ_CALL_LOG held),
-        // so there is nothing to correlate against.
-        if (!ringNumber.isNullOrBlank()) {
-            showForNumber(ctx, ringNumber, ringSecs)
-            return
-        }
-
-        // [AVADIAL-HARDEN-3] The OS withheld the ring number. We used to fall back to
-        // whatever the newest MISSED call-log row was, with NO check that it actually
-        // belongs to the call that just ended — on a phone with back-to-back missed
-        // calls that could paint the overlay with a PREVIOUS caller's name. Now we only
-        // accept a call-log row that is TYPE == MISSED_TYPE AND DATE >= (ringStartAtCall
-        // - 5s slack); anything older is rejected and we skip the overlay rather than
-        // show a wrong name. The call-log write can lag the RINGING→IDLE transition by a
-        // moment, so this runs off the main thread with a short retry/delay before
-        // giving up.
-        Thread {
-            var resolved: String? = null
-            var attempt = 0
-            while (attempt < 4 && resolved == null) {
-                resolved = latestMissedNumberSince(ctx, ringStartAtCall)
-                if (resolved == null) {
-                    try { Thread.sleep(300L) } catch (_: InterruptedException) { return@Thread }
+                if (unanswered && AvaDialPlugin.pstnVoicemailEnabled(ctx)) {
+                    AvaDialPlugin.firePstnExpect(ctx, number)
                 }
-                attempt++
             }
-            if (!resolved.isNullOrBlank()) {
-                showForNumber(ctx, resolved, ringSecs)
-            }
-            // else: caller unknown (no verifiably-matching call-log row) — skip the
-            // overlay entirely rather than risk naming the wrong caller.
-        }.start()
-    }
-
-    /** Look up + paint the overlay for a confirmed [number], then fire telemetry +
-     *  the best-effort backend confirm. Safe to call from a background thread — both
-     *  [AvaMissedCallOverlay.show] and [AvaDialPlugin.emit] post to the main thread. */
-    private fun showForNumber(ctx: Context, number: String, ringSecs: Int) {
-        val entry = lookupDirectory(ctx, number)
-        val info = AvaMissedCallOverlay.Info(
-            number = number,
-            name = entry?.optString("name")?.takeIf { it.isNotBlank() },
-            ringSecs = ringSecs,
-            isAvatok = entry?.optBoolean("ava", false) ?: false,
-            avatokNumber = entry?.optString("avatok_number")?.takeIf { it.isNotBlank() },
-        )
-        AvaMissedCallOverlay.show(ctx, info)
-
-        // Best-effort telemetry + live backend confirm hop (engine may be dead — no-op).
-        // No raw number crosses to Dart telemetry; the confirm carries the number so Dart
-        // can re-check membership and call AvaMissedCallOverlay.update.
-        AvaDialPlugin.emit(
-            "onMissedCall",
-            mapOf(
-                "number" to number,
-                "ring_secs" to ringSecs,
-                "is_avatok_cached" to info.isAvatok,
-            ),
-        )
-
-        // Live confirm even when the app is DEAD: the on-device cache only knew what the
-        // last sync saw, so if it said "not on AvaTOK" (or had no entry) do a tiny
-        // device-token lookup on a background thread and re-paint the badge bright on a
-        // hit. When the Flutter engine happens to be alive, MissedCallService does the
-        // same over Clerk auth — either path lands on AvaMissedCallOverlay.update.
-        if (!info.isAvatok) confirmViaBackend(ctx, number)
-    }
-
-    /** Read the native config `{enabled, token, base}` Dart writes. */
-    private fun readConfig(ctx: Context): JSONObject? {
-        val f = AvaDialPlugin.missedCallConfigFile(ctx)
-        if (!f.exists() || f.length() == 0L) return null
-        return try {
-            JSONObject(f.readText())
-        } catch (_: Throwable) {
-            null
         }
-    }
-
-    /** Is the feature switched on? Dart writes `{enabled:true}` only when the flag +
-     *  overlay permission are both satisfied. Missing/false → DARK. */
-    private fun isEnabled(ctx: Context): Boolean = readConfig(ctx)?.optBoolean("enabled", false) ?: false
-
-    /**
-     * Background-thread membership confirm via the device-token lane
-     * (/api/missedcall/lookup). Uses the long-lived HMAC token Dart minted + stored in the
-     * config, so it authenticates with NO Clerk JWT (unavailable cold-start). Best-effort:
-     * any error (offline, expired token, 401) leaves the cached grey badge untouched.
-     */
-    private fun confirmViaBackend(ctx: Context, number: String) {
-        val cfg = readConfig(ctx) ?: return
-        val token = cfg.optString("token", "")
-        val base = cfg.optString("base", "")
-        if (token.isEmpty() || base.isEmpty()) return
-        Thread {
-            var conn: HttpURLConnection? = null
-            try {
-                val url = URL("https://$base/api/missedcall/lookup")
-                conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    connectTimeout = 4000
-                    readTimeout = 5000
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
-                }
-                val body = JSONObject()
-                    .put("token", token)
-                    .put("numbers", JSONArray().put(number))
-                    .toString()
-                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                if (conn.responseCode != 200) return@Thread
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                val matched = JSONObject(text).optJSONArray("matched") ?: return@Thread
-                if (matched.length() == 0) return@Thread
-                val first = matched.optJSONObject(0)
-                val name = first?.optString("name")?.takeIf { it.isNotBlank() }
-                // Re-paint the still-showing card bright (update no-ops if it's gone).
-                AvaMissedCallOverlay.update(number, true, name)
-            } catch (_: Throwable) {
-                // best-effort — offline / expired token / provider hiccup
-            } finally {
-                try { conn?.disconnect() } catch (_: Throwable) {}
-            }
-        }.start()
-    }
-
-    /**
-     * [AVADIAL-HARDEN-3] Newest MISSED_TYPE call-log number, but ONLY if its DATE is
-     * at or after (ringStartAtCall - [MISSED_MATCH_SLACK_MS]) — i.e. it plausibly
-     * belongs to the ringing session that just ended, not some earlier missed call.
-     * `ringStartAtCall <= 0` (state tracking never saw RINGING, shouldn't happen on
-     * this path) is treated as "no lower bound" so we don't reject everything.
-     * Null if unreadable or nothing matches.
-     */
-    private fun latestMissedNumberSince(ctx: Context, ringStartAtCall: Long): String? {
-        val minDate = if (ringStartAtCall > 0) ringStartAtCall - MISSED_MATCH_SLACK_MS else 0L
-        return try {
-            ctx.contentResolver.query(
-                CallLog.Calls.CONTENT_URI,
-                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE),
-                "${CallLog.Calls.TYPE} = ? AND ${CallLog.Calls.DATE} >= ?",
-                arrayOf(CallLog.Calls.MISSED_TYPE.toString(), minDate.toString()),
-                "${CallLog.Calls.DATE} DESC",
-            )?.use { c ->
-                if (c.moveToFirst()) c.getString(0) else null
-            }
-        } catch (_: Throwable) {
-            null // no READ_CALL_LOG grant or provider hiccup
-        }
-    }
-
-    /**
-     * Look the caller up in the on-device directory snapshot. Keyed by
-     * `sha256(last-10-digits)` so a contact stored as "+1 (555) 010-2020" and a call-log
-     * number "5550102020" collide to the same key regardless of formatting — the same
-     * scheme Dart uses when it writes the snapshot.
-     */
-    private fun lookupDirectory(ctx: Context, number: String): JSONObject? {
-        val file = AvaDialPlugin.avatokDirFile(ctx)
-        if (!file.exists() || file.length() == 0L) return null
-        val entries = try {
-            JSONObject(file.readText()).optJSONObject("entries") ?: return null
-        } catch (_: Throwable) {
-            return null
-        }
-        val key = sha256Hex(last10(number))
-        return if (entries.has(key)) entries.optJSONObject(key) else null
-    }
-
-    private fun last10(number: String): String {
-        val digits = number.filter { it.isDigit() }
-        return if (digits.length > 10) digits.substring(digits.length - 10) else digits
-    }
-
-    private fun sha256Hex(s: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
-        val sb = StringBuilder(bytes.size * 2)
-        for (b in bytes) {
-            val v = b.toInt() and 0xff
-            if (v < 0x10) sb.append('0')
-            sb.append(Integer.toHexString(v))
-        }
-        return sb.toString()
     }
 }

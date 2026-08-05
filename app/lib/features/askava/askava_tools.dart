@@ -5,7 +5,6 @@ import '../../core/call_log_store.dart';
 import '../../core/config.dart';
 import '../../core/db.dart';
 import '../../core/remote_config.dart';
-import '../avadial/device_call_log.dart';
 import '../avadial/device_contacts.dart';
 
 /// A contact surfaced by a tool — carries just enough to render a Call/Message
@@ -104,26 +103,15 @@ class AskAvaTools {
     final needle = q.trim().toLowerCase();
     final lines = <String>[];
     final contacts = <AskAvaContact>[];
+    // [PLAY-SCOPE-1 2026-08-05] The device-call-log branch is GONE (READ_CALL_LOG
+    // is no longer declared). This tool now only ever searches AvaTOK's OWN call
+    // history — the in-network calls the app placed itself — via [CallLogStore].
     try {
-      if (RemoteConfig.avaDialer) {
-        final calls = await DeviceCallLog.I.load(limit: 300);
-        for (final c in calls) {
-          final name = c.cachedName ?? '';
-          if (needle.isEmpty ||
-              name.toLowerCase().contains(needle) ||
-              c.number.toLowerCase().contains(needle)) {
-            lines.add('- ${name.isEmpty ? c.number : name} · ${c.type.name} · ${c.date.toLocal()}');
-            contacts.add(AskAvaContact(name: name.isEmpty ? c.number : name, number: c.number));
-            if (lines.length >= _maxRows) break;
-          }
-        }
-      } else {
-        final calls = await CallLogStore().load();
-        for (final c in calls) {
-          if (needle.isEmpty || c.name.toLowerCase().contains(needle)) {
-            lines.add('- ${c.name.isEmpty ? 'Unknown' : c.name} · ${c.dir.name} · ${c.timeLabel}');
-            if (lines.length >= _maxRows) break;
-          }
+      final calls = await CallLogStore().load();
+      for (final c in calls) {
+        if (needle.isEmpty || c.name.toLowerCase().contains(needle)) {
+          lines.add('- ${c.name.isEmpty ? 'Unknown' : c.name} · ${c.dir.name} · ${c.timeLabel}');
+          if (lines.length >= _maxRows) break;
         }
       }
     } catch (_) {/* degrade */}

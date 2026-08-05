@@ -494,13 +494,13 @@ class RemoteConfig {
   /// Default OFF: this is the answer path that broke prod testers on 2026-07-14.
   static bool get nativeInCallUi => _b('nativeInCallUi', false);
 
-  /// [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay (owner request
-  /// 2026-07-14). Master kill switch, mirrors config.ts `missedCallOverlay`. While
-  /// false the native PHONE_STATE receiver/overlay stay inert and /api/contacts/match
-  /// returns nothing (the 2026-06-27 phone-presence privacy lock stays intact). Turning
-  /// it ON deliberately reverses that lock so AvaTOK membership is resolved from the
-  /// caller's real number. Default OFF.
-  static bool get missedCallOverlay => _b('missedCallOverlay', false);
+  // [PLAY-SCOPE-1 2026-08-05] The `missedCallOverlay` getter is REMOVED — the
+  // Truecaller-style missed-call overlay it gated is gone (AvaTOK is
+  // AvaTOK-to-AvaTOK calling only). The KV key itself is deliberately KEPT in
+  // worker/src/routes/config.ts: it is still the SERVER-side master kill switch
+  // for phone-presence matching (/api/contacts/match, /api/missedcall/token,
+  // /api/missedcall/lookup all check it), so the 2026-06-27 privacy lock can
+  // still be re-applied with one flag flip. Do not delete it there.
 
   /// AvaDial default-SMS-app layer (Specs/PLAN-2026-07-12-home-ava-tok-services-shell
   /// .md, AVA-SMS; owner decision 2026-07-12). Ships DARK (default false): while off

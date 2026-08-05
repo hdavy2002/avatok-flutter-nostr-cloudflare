@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/analytics.dart';
+import '../core/api_auth.dart';
 import '../core/mini_audio_player_bar.dart'; // [AVAVM-PLAYER-1]
 import '../core/config.dart';
 import '../core/profile_store.dart';
@@ -16,10 +18,8 @@ import '../features/affiliate/affiliate_home.dart'; // [AFF-NAV-1] footer slot
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
 import '../features/avadial/block_list.dart';
-import '../features/avadial/contact_detail_screen.dart';
 import '../features/avadial/in_call_screen.dart';
 import '../features/avadial/inbox/inbox_list_screen.dart';
-import '../features/avadial/missed_call_service.dart';
 import '../features/avadial/pstn_call_screen.dart';
 import '../features/avadial/sms/sms_thread_screen.dart';
 import '../identity/identity.dart';
@@ -161,7 +161,6 @@ class ShellV2 extends StatefulWidget {
       case 'avadial':
       case 'dial':
       case 'pstn':
-      case 'missedcall':
         return RootId.avaDial;
       case 'services':
       case 'marketplace':
@@ -240,7 +239,6 @@ class _ShellV2State extends State<ShellV2> {
 
   StreamSubscription<AvaIncomingLaunch>? _incomingSub;
   StreamSubscription<AvaComposeLaunch>? _composeSub;
-  StreamSubscription<AvaOpenDialLaunch>? _openDialSub;
 
   @override
   void initState() {
@@ -248,7 +246,6 @@ class _ShellV2State extends State<ShellV2> {
     _initRootState();
     _wireIncomingCalls();
     _wireCompose();
-    _wireMissedCall();
     // [ONBOARD-STREAMLINE-1] The post-login "Make AvaTOK your phone app?"
     // re-prompt is GONE — AvaTOK no longer asks to become the default
     // dialer/SMS app anywhere. The consolidated onboarding permissions page
@@ -268,7 +265,6 @@ class _ShellV2State extends State<ShellV2> {
   void dispose() {
     _incomingSub?.cancel();
     _composeSub?.cancel();
-    _openDialSub?.cancel();
     super.dispose();
   }
 
@@ -287,18 +283,23 @@ class _ShellV2State extends State<ShellV2> {
     // so a KV flip takes effect on the next app open. Absent/corrupt reads as OFF.
     unawaited(AvaDialChannel.I.setNativeInCallEnabled(RemoteConfig.nativeInCallUi));
     // [AVA-RCPT-5/6/7] Mirror PSTN voicemail forwarding config to disk — read
-    // with NO engine attached by AvaInCallService (reject → expect ping),
-    // AvaCallScreeningService (hidden-caller-ID auto-route) and
-    // AvaMissedCallReceiver (missed → expect ping). Written on every wire-up
-    // so flipping `pstnVoicemail` in KV takes effect on the next app open,
-    // exactly like the nativeInCallUi mirror just above. `base` carries the
-    // scheme (unlike setMissedCallEnabled's bare host) because native uses it
-    // verbatim as `$base/api/pstn/expect-native`.
+    // with NO engine attached by AvaMissedCallReceiver (unanswered incoming call
+    // → expect ping). Written on every wire-up so flipping `pstnVoicemail` in KV
+    // takes effect on the next app open, exactly like the nativeInCallUi mirror
+    // just above. `base` carries the scheme (unlike setDeviceToken's bare host)
+    // because native uses it verbatim as `$base/api/pstn/expect-native`.
     unawaited(AvaDialChannel.I.setPstnConfig(
       enabled: RemoteConfig.pstnVoicemail,
       base: 'https://$kSignalingHost',
       did: kPstnVoicemailDid,
     ));
+    // [AVA-RCPT-5 / PLAY-SCOPE-1 2026-08-05] Keep the receptionist's HMAC device
+    // token fresh. This USED to be minted by MissedCallService, which is gone with
+    // the missed-call overlay — but /api/pstn/expect-native is strictly
+    // token-or-nothing (no token → 401 → a carrier-forwarded call can no longer be
+    // mapped back to its owner), so the mint has to live on. Only worth doing when
+    // the feature is actually armed.
+    if (RemoteConfig.pstnVoicemail) unawaited(_syncReceptionistDeviceToken());
     // [AVADIAL-CALL-INTEL-1] Tell native who is signed in, so calls that happen with
     // the app closed still carry the user's email — the only way to work out whose
     // device a call problem was on once there are many testers.
@@ -323,6 +324,24 @@ class _ShellV2State extends State<ShellV2> {
         } catch (_) {/* best-effort */}
       }
     });
+  }
+
+  /// [AVA-RCPT-5] Mint the 30-day HMAC device token the NATIVE receptionist
+  /// "expect" ping authenticates with, and hand it to the plugin.
+  ///
+  /// The ping fires from a BroadcastReceiver with no Flutter engine and therefore
+  /// no Clerk session, so this Clerk-authed mint is the only way it can ever have
+  /// credentials. Best-effort: on any failure the plugin keeps whatever token it
+  /// already had (a stale-but-valid token still authenticates; null would 401).
+  Future<void> _syncReceptionistDeviceToken() async {
+    try {
+      final res = await ApiAuth.postJson(
+          'https://$kSignalingHost/api/missedcall/token', const {});
+      if (res.statusCode != 200) return;
+      final token = ((jsonDecode(res.body) as Map<String, dynamic>)['token'] as String?)?.trim();
+      if (token == null || token.isEmpty) return;
+      await AvaDialChannel.I.setDeviceToken(token: token, base: kSignalingHost);
+    } catch (_) {/* best-effort — never worth an exception on app entry */}
   }
 
   /// [AVADIAL-CALL-INTEL-1] Hand the signed-in user's identity to native.
@@ -365,30 +384,11 @@ class _ShellV2State extends State<ShellV2> {
     });
   }
 
-  /// [AVA-MISSEDCALL-1] Truecaller-style missed-call overlay. Boots [MissedCallService]
-  /// (which arms the native PHONE_STATE receiver + keeps the caller directory fresh) and
-  /// routes the overlay's "View profile" / AvaTOK action back into the app — both for a
-  /// launch that beat us (drained via consumePendingOpenDial) and one arriving while
-  /// running (the openDialLaunch stream). All DARK behind `missedCallOverlay`.
-  void _wireMissedCall() {
-    if (!RemoteConfig.missedCallOverlay) return;
-    AvaDialChannel.I.ensureWired();
-    unawaited(MissedCallService.I.init());
-    _openDialSub = AvaDialChannel.I.openDialLaunch.listen((l) => _openDialContact(l.number));
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final l = await AvaDialChannel.I.consumePendingOpenDial();
-      if (l != null) _openDialContact(l.number);
-    });
-  }
-
-  void _openDialContact(String? number) {
-    if (!mounted) return;
-    final n = (number ?? '').trim();
-    if (n.isEmpty) return;
-    setState(() => _root = RootId.avaDial);
-    final nav = _navKeys[RootId.avaDial]?.currentState ?? Navigator.of(context);
-    nav.push(MaterialPageRoute<void>(builder: (_) => ContactDetailScreen(number: n)));
-  }
+  // [PLAY-SCOPE-1 2026-08-05] _wireMissedCall() / _openDialContact() are REMOVED
+  // along with the Truecaller-style missed-call overlay. AvaTOK is
+  // AvaTOK-to-AvaTOK calling only: no overlay, no SYSTEM_ALERT_WINDOW, no
+  // device call log. The receptionist's PSTN "expect" ping survives and is
+  // wired in _wireIncomingCalls() above.
 
   void _openCompose(String? number) {
     if (!mounted) return;

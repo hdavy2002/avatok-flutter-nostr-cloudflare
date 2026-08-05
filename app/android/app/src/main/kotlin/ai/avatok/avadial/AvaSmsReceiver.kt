@@ -159,7 +159,7 @@ class AvaSmsReceiver : BroadcastReceiver() {
 
     /**
      * Local, zero-network spam check against the shared snapshot. Mirrors
-     * [AvaCallScreeningService]'s hashing (SHA-256 of the raw number, lowercase hex).
+     * the removed screening service's hashing (SHA-256 of the raw number, lowercase hex).
      * Missing/corrupt snapshot → not spam (fail-open). Warn-threshold and above
      * counts as spam-labelled (label only — the message is always delivered).
      */

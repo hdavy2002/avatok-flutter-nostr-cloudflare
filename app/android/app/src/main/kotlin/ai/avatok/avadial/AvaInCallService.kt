@@ -394,7 +394,10 @@ class AvaInCallService : InCallService() {
         // stashed for this same number (moments earlier, in the OS's pre-answer
         // screening window) so PstnCallScreen can paint the red spam UI instead of
         // it being unreachable.
-        val verdict = number?.let { AvaCallScreeningService.takeVerdict(it) }
+        // [PLAY-SCOPE-1 2026-08-05] Spam call screening is REMOVED (no CallScreeningService,
+        // no ROLE_CALL_SCREENING), so there is never a stashed verdict for this call.
+        val verdictScore: Int? = null
+        val verdictBucket: String? = null
 
         // [AVADIAL-CALL-INTEL-1] Open the intelligence record for this call. Everything
         // below is a local read — no network, no engine — because the OS is holding a
@@ -407,8 +410,8 @@ class AvaInCallService : InCallService() {
             contactName = callerName
             contactExists = callerName != null
             cnapName = cnap
-            spamScore = verdict?.score
-            spamBucket = verdict?.bucket
+            spamScore = verdictScore
+            spamBucket = verdictBucket
             captureTelephony(this@AvaInCallService)
         }
         if (cnap != null) noteAction(id, "cnap_name_at_add")
@@ -417,14 +420,14 @@ class AvaInCallService : InCallService() {
             "onCallAdded",
             mapOf(
                 "id" to id, "number" to number, "state" to stateName(call.state), "direction" to direction,
-                "spam_score" to verdict?.score, "spam_bucket" to verdict?.bucket,
+                "spam_score" to verdictScore, "spam_bucket" to verdictBucket,
                 "call_uuid" to records[id]?.uuid,
                 "cnap_name" to cnap,
             )
         )
         if (call.state == Call.STATE_RINGING || direction == "incoming") {
             incomingIds.add(id)
-            launchIncoming(id, number, verdict?.score, verdict?.bucket, cnap)
+            launchIncoming(id, number, verdictScore, verdictBucket, cnap)
         }
     }
 

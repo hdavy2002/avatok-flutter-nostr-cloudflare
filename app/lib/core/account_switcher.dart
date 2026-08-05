@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import '../features/avadial/contact_backup_role.dart' show ContactBackupRoles;
-import '../features/avadial/device_call_log.dart' show DeviceCallLog;
 import '../features/avadial/device_contacts.dart' show DeviceContacts;
 import '../features/avatok/call_screen.dart' show clearCallState;
 import '../shell/v2/home_cards_api.dart' show HomeCardsApi;
@@ -89,14 +88,14 @@ class AccountSwitcher {
     // 4. Close the drift DB handle so the next Db.I reopens the target's file.
     try { await Db.reset(); } catch (e) { failed.add('db:$e'); }
 
-    // 4b. Drop OS-derived in-memory caches (device contacts, device call log)
-    //     and per-account API caches (Home card aggregates) IMMEDIATELY, per the
+    // 4b. Drop OS-derived in-memory caches (device contacts — the device CALL LOG
+    //     cache is gone as of [PLAY-SCOPE-1 2026-08-05], READ_CALL_LOG is no longer
+    //     declared) and per-account API caches (Home card aggregates), per the
     //     device-data boundary (PLAN-2026-07-12 §4.7: "account switching
     //     immediately clears in-memory OS-derived data"). These stores also
     //     self-guard by AccountScope on every read, so this is defense-in-depth:
     //     without it the departing account's data lingers in RAM until next use.
     try { DeviceContacts.I.clear(); } catch (e) { failed.add('devcontacts:$e'); }
-    try { DeviceCallLog.I.clear(); } catch (e) { failed.add('devcalllog:$e'); }
     try { HomeCardsApi.clear(); } catch (e) { failed.add('homecards:$e'); }
 
     // 5. Flip the scope — DiskCache, media cache and IdentityStore all re-scope

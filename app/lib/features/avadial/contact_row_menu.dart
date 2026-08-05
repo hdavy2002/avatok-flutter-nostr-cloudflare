@@ -10,7 +10,6 @@ import '../avatok/invite_screen.dart';
 import '../avatok/place_1to1_call.dart';
 import 'avadial_theme.dart';
 import 'block_list.dart';
-import 'contact_call_history_screen.dart';
 import 'contact_detail_screen.dart';
 import 'contact_edit_screen.dart';
 import 'contact_groups.dart';
@@ -178,16 +177,8 @@ Future<void> showAvaDialRowMenu(
               onChanged?.call();
             },
           ),
-        _row(
-          icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
-          color: AD.incomingCall,
-          label: 'Call history',
-          onTap: () {
-            Navigator.pop(sheetCtx);
-            Navigator.push(navContext, MaterialPageRoute<void>(
-                builder: (_) => ContactCallHistoryScreen(number: number, name: name)));
-          },
-        ),
+        // [PLAY-SCOPE-1 2026-08-05] The "Call history" row is REMOVED — it opened the
+        // DEVICE call log, and READ_CALL_LOG is no longer declared.
         _row(
           icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
           color: AD.iconVideo,

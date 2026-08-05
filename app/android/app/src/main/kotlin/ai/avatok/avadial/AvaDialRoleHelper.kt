@@ -8,10 +8,7 @@ import android.content.Context
  * Thin wrapper over [RoleManager] for the two AvaDial roles (spike §1, §3):
  *   - ROLE_DIALER          — "Phone app" / default dialer (grants InCallService +
  *                            READ_CALL_LOG + BlockedNumberContract write).
- *   - ROLE_CALL_SCREENING  — "Caller ID & spam app" — independently requestable, so
- *                            the spam shield works even when the user declines the
- *                            full dialer role.
- *   - ROLE_SMS             — "SMS app" / default messages app (AVA-SMS). Grants the
+ *   - ROLE_SMS            — "SMS app" / default messages app (AVA-SMS). Grants the
  *                            SMS provider write + the four SMS role components (see
  *                            the manifest). Independently requestable from the dialer
  *                            role — a user can make AvaTOK their SMS app without making
@@ -22,11 +19,11 @@ import android.content.Context
  */
 object AvaDialRoleHelper {
     const val REQ_DIALER = 42101
-    const val REQ_SCREENING = 42102
+    // [PLAY-SCOPE-1 2026-08-05] REQ_SCREENING / ROLE_CALL_SCREENING removed — AvaTOK
+    // no longer ships a CallScreeningService, so the role can never be granted.
     const val REQ_SMS = 42103
 
     private fun requestCodeFor(roleName: String): Int = when (roleName) {
-        RoleManager.ROLE_CALL_SCREENING -> REQ_SCREENING
         RoleManager.ROLE_SMS -> REQ_SMS
         else -> REQ_DIALER
     }

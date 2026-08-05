@@ -26,11 +26,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- [AVADIAL-OTP-1] Draw the Truecaller-style floating OTP card OVER other apps
-         so the user copies a one-time code without opening AvaTOK. User-granted via
-         the setup sheet ("appear on top"); the OTP falls back to a heads-up copy
-         notification until it's granted. -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -48,16 +43,27 @@
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- AvaDial PSTN dialer (Specs/SPIKE-2026-07-12-avadial-telecom.md). All DARK
-         behind the Flutter `avaDialer` flag. READ_CALL_LOG + READ_CONTACTS power the
-         Logs/Contacts tabs + the green/red screen paint; CALL_PHONE places carrier
-         calls via TelecomManager.placeCall; ANSWER_PHONE_CALLS + READ_PHONE_STATE
-         drive the InCallService. MANAGE_OWN_CALLS is already declared above (used by
-         the in-network VoIP path) and is NOT what makes us the default dialer — the
-         ROLE_DIALER role does that at runtime. -->
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- [PLAY-SCOPE-1 2026-08-05] AvaTOK is AvaTOK-to-AvaTOK calling only. It is NOT
+         a dialer replacement: no default-dialer role, no call-log reading, no SMS, no
+         spam call screening, no missed-call overlay. READ_CALL_LOG, ANSWER_PHONE_CALLS
+         and SYSTEM_ALERT_WINDOW are therefore all REMOVED.
+
+         The two that REMAIN are used solely by the AI receptionist's carrier
+         call-forwarding setup:
+           • CALL_PHONE      — dials the carrier MMI/USSD forwarding codes
+                               (*61*<DID>#) via AvaDialPlugin.placeMmiCall, so the
+                               user's unanswered calls divert to the receptionist DID.
+                               See app/lib/features/avadial/pstn_forwarding_*.dart.
+           • READ_PHONE_STATE — names the default voice SIM + reads the SIM operator
+                               code so we pick the RIGHT carrier's forwarding syntax,
+                               and lets AvaMissedCallReceiver notice an unanswered
+                               incoming call so it can pre-register the forwarded leg
+                               with the worker (PSTN "expect" ping). No call content,
+                               no call log, no number history is read.
+         MANAGE_OWN_CALLS is declared above for the in-network VoIP path and is NOT
+         what makes an app the default dialer — the ROLE_DIALER role does that at
+         runtime, and AvaTOK never requests it. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
-    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <!-- [ONBOARD-STREAMLINE-1 2026-07-23] The default-SMS-app layer (AVA-SMS) is
@@ -186,43 +192,10 @@
                 <data android:scheme="avatok"/>
             </intent-filter>
         </activity>
-        <!-- [AVADIAL-NATIVE-RING-1] Dedicated native incoming-PSTN-call screen.
-             Lives in its OWN task (taskAffinity) so ringing NEVER opens the app's
-             task/landing page/setup sheet; excludeFromRecents + autoRemoveFromRecents
-             so no ghost card lingers after the call; showWhenLocked + turnScreenOn so
-             it rings over the lock screen. Launched only by AvaInCallService / the
-             full-screen-intent notification — never exported. -->
-        <activity
-            android:name="ai.avatok.avadial.IncomingCallActivity"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:taskAffinity="ai.avatok.avadial.incoming"
-            android:excludeFromRecents="true"
-            android:autoRemoveFromRecents="true"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
-        <!-- [AVADIAL-NATIVE-INCALL-1] Native ACTIVE-call screen (owner decision
-             2026-07-15). Takes Flutter out of the call path entirely: answering no
-             longer cold-boots the Dart VM + every pubspec plugin just to draw
-             mute/keypad/speaker/end over native functions that already exist.
-             Shares IncomingCallActivity's task affinity so ring -> in-call is a swap
-             WITHIN one task rather than a jump between tasks, and so the call never
-             drags the app's task (chat, marketplace, landing page) into view.
-             excludeFromRecents: a live call belongs in the call UI, not the recents
-             list. Ships dark behind the `nativeInCallUi` flag. -->
-        <activity
-            android:name="ai.avatok.avadial.InCallActivity"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:taskAffinity="ai.avatok.avadial.incoming"
-            android:excludeFromRecents="true"
-            android:autoRemoveFromRecents="true"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!-- [PLAY-SCOPE-1 2026-08-05] The native PSTN call screens
+             (ai.avatok.avadial.IncomingCallActivity / InCallActivity) are REMOVED
+             along with the default-dialer story. AvaTOK does not host carrier calls;
+             AvaTOK-to-AvaTOK VoIP rings through CallkitIncomingActivity below. -->
         <!-- [ISSUE-DUPTASK] Merge-override of flutter_callkit_incoming's ring
              activity. We do NOT change its launchMode or taskAffinity (singleInstance
              on a dedicated affinity is what lets it show over the lock screen), we
@@ -299,17 +272,10 @@
              an eligible ROLE_DIALER candidate. The spam call-screening service is a
              SEPARATE role (ROLE_CALL_SCREENING) and is kept. -->
 
-        <!-- Spam call-screening. Granted via ROLE_CALL_SCREENING (independent of the
-             dialer role), so the shield works even when the user keeps another phone
-             app. Reads the local snapshot only — never the network. -->
-        <service
-            android:name="ai.avatok.avadial.AvaCallScreeningService"
-            android:exported="true"
-            android:permission="android.permission.BIND_SCREENING_SERVICE">
-            <intent-filter>
-                <action android:name="android.telecom.CallScreeningService" />
-            </intent-filter>
-        </service>
+        <!-- [PLAY-SCOPE-1 2026-08-05] Spam call-screening (AvaCallScreeningService /
+             ROLE_CALL_SCREENING) is REMOVED. AvaTOK no longer screens carrier calls,
+             so it declares no CallScreeningService and is not an eligible
+             ROLE_CALL_SCREENING candidate. -->
 
         <!-- [ONBOARD-STREAMLINE-1 2026-07-23] The ACTION_DIAL / tel: activity-alias
              (DialAlias) is REMOVED — it existed only to satisfy the ROLE_DIALER
@@ -323,21 +289,20 @@
              compose alias (SmsComposeAlias) are all gone. AvaTOK is not an eligible
              ROLE_SMS candidate. -->
 
-        <!-- [AVADIAL-HARDEN-1] Handles the Answer/Decline actions on the incoming-call
-             notification (AvaInCallService.launchIncoming). Not exported — only our
-             own notification actions trigger it. -->
-        <receiver
-            android:name="ai.avatok.avadial.AvaCallActionReceiver"
-            android:exported="false" />
+        <!-- [PLAY-SCOPE-1 2026-08-05] AvaCallActionReceiver (the Answer/Decline actions
+             on the native PSTN incoming-call notification) is REMOVED along with the
+             rest of the default-dialer surface. -->
 
-        <!-- [AVA-MISSEDCALL-1] Truecaller-style missed-call detector. Listens for the
-             system PHONE_STATE broadcast (RINGING→IDLE without OFFHOOK = missed) and
-             raises AvaMissedCallOverlay. exported=true because the OS is the broadcaster;
-             READ_PHONE_STATE (declared above) is what authorises delivery. Fully DARK
-             until Dart writes {enabled:true} into missedcall_config.json, which it only
-             does when the `missedCallOverlay` flag is on AND "appear on top" is granted —
-             so onReceive early-returns on every device until the owner ships the feature.
-             Uses SYSTEM_ALERT_WINDOW + READ_CALL_LOG (both already declared). -->
+        <!-- [AVA-RCPT-5 / PLAY-SCOPE-1] AI-receptionist PSTN "expect" ping ONLY.
+             Listens for the system PHONE_STATE broadcast and, when an incoming call
+             rings out unanswered (RINGING→IDLE without OFFHOOK), fires a single
+             fire-and-forget POST to /api/pstn/expect-native so the worker can map the
+             leg the carrier has ALREADY forwarded to the receptionist DID back to this
+             owner. It reads no call log, shows no overlay/popup, and stores nothing —
+             the missed-call overlay that used to live here is gone.
+             exported=true because the OS is the broadcaster; READ_PHONE_STATE
+             (declared above) is what authorises delivery. Fully DARK unless Dart has
+             written {enabled:true} into pstn_config.json (the `pstnVoicemail` flag). -->
         <receiver
             android:name="ai.avatok.avadial.AvaMissedCallReceiver"
             android:exported="true">

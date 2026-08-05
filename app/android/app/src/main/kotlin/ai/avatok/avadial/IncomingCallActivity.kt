@@ -284,7 +284,7 @@ class IncomingCallActivity : Activity() {
     private fun applyCnapName(cnap: String) {
         if (!intent.getStringExtra("name").isNullOrEmpty()) return // contact label wins
         if (intent.hasExtra("spam_score")) {
-            val warn = AvaCallScreeningService.warnThresholdOf(this)
+            val warn = AvaCallTheme.WARN_THRESHOLD_FALLBACK
             if (intent.getIntExtra("spam_score", 0) >= warn) return // spam paint wins
         }
         intent.putExtra("cnap_name", cnap)
@@ -372,7 +372,7 @@ class IncomingCallActivity : Activity() {
 
     private fun buildUi(name: String?, spamScore: Int?): View {
         // [AVADIAL-NATIVE-INCALL-1] The CONFIGURED threshold, not a hardcoded 70.
-        val warn = AvaCallScreeningService.warnThresholdOf(this)
+        val warn = AvaCallTheme.WARN_THRESHOLD_FALLBACK
         val bucket = when {
             spamScore != null && spamScore >= warn -> Bucket.SPAM
             !name.isNullOrEmpty() -> Bucket.CONTACT
@@ -642,7 +642,7 @@ class IncomingCallActivity : Activity() {
     private fun recreateActions() {
         val name = intent.getStringExtra("name")
         val spamScore = if (intent.hasExtra("spam_score")) intent.getIntExtra("spam_score", 0) else null
-        val warn = AvaCallScreeningService.warnThresholdOf(this)
+        val warn = AvaCallTheme.WARN_THRESHOLD_FALLBACK
         val bucket = when {
             spamScore != null && spamScore >= warn -> Bucket.SPAM
             !name.isNullOrEmpty() -> Bucket.CONTACT

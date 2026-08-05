@@ -51,7 +51,7 @@ internal object AvaCallTheme {
 
     /**
      * Fallback spam threshold. The REAL value is read from spam_snapshot.json's
-     * `warn_threshold` (see [AvaCallScreeningService.warnThresholdOf]) — this is only
+     * `warn_threshold` (removed with the screening service, [PLAY-SCOPE-1]) — this is only
      * used when the snapshot is missing or unreadable. Previously the ring screen
      * hardcoded 70 and ignored the snapshot entirely, so tuning the threshold
      * server-side silently did nothing to the UI.

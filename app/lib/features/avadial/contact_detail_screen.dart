@@ -13,7 +13,6 @@ import '../avatok/invite_screen.dart';
 import '../avatok/place_1to1_call.dart';
 import 'avadial_theme.dart';
 import 'block_list.dart';
-import 'contact_call_history_screen.dart';
 import 'contact_edit_screen.dart';
 import 'contact_overrides.dart';
 import 'contact_row_menu.dart';
@@ -289,16 +288,8 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       label: f.label.isEmpty ? 'Field' : f.label,
                       value: f.value,
                     ),
-                const SizedBox(height: 10),
-                _fieldTile(
-                  icon: PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold),
-                  color: AD.incomingCall,
-                  label: 'Call history',
-                  value: 'View calls with this number',
-                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
-                      builder: (_) => ContactCallHistoryScreen(number: widget.number, name: _title))),
-                  trailing: 'Open',
-                ),
+                // [PLAY-SCOPE-1 2026-08-05] The "Call history" tile is REMOVED — it
+                // showed the DEVICE call log, and READ_CALL_LOG is no longer declared.
               ],
             ),
     );

@@ -16,7 +16,6 @@ import 'ava_log.dart';
 import 'config.dart';
 import 'db.dart';
 import 'referral_service.dart';
-import 'remote_config.dart';
 
 /// Normalize a raw phone to the Worker's E.164-ish shape (digits/+ only, leading
 /// +). Top-level so it can run inside a background isolate.
@@ -367,17 +366,13 @@ class DeviceContactsService {
       // there is ONE kill switch for all phone-presence matching. The raw number
       // never leaves the device as plaintext: only sha256(E.164) hashes are sent.
       final phones = normSet.toList();
-      if (!RemoteConfig.missedCallOverlay) {
-        // Gate OFF: behave exactly as the 2026-06-27 privacy build did — never
-        // probe, and clear any stale badge so nothing lingers when the switch flips.
-        await Db.I.clearDeviceMatches();
-        matchedCount = 0;
-        Analytics.capture('contacts_presence_probe_skipped', {
-          'source': source,
-          'sent_count': phones.length,
-          'reason': 'flag_off',
-        });
-      } else {
+      // [PLAY-SCOPE-1 2026-08-05] The client-side `missedCallOverlay` gate is gone
+      // (the flag's Dart getter went with the missed-call overlay). The kill
+      // switch is NOT lost: /api/contacts/match itself checks `missedCallOverlay`
+      // server-side and returns an empty match set while it is off, so flipping
+      // the flag still disables phone-presence matching everywhere — it just
+      // costs one round trip instead of being short-circuited on device.
+      {
         final matchT0 = DateTime.now().millisecondsSinceEpoch;
         try {
           // hash(E.164) → phoneNorm, so a returned match maps back to its row.
