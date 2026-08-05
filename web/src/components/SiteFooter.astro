@@ -218,34 +218,64 @@ const columns = [
   .ava-footer .made { margin: 16px 0 0; text-align: center; font-size: 13px; color: var(--ink-soft); }
   .ava-footer .heart { color: #e53935; }
 
-  /* ---------- tablet ---------- */
-  @media (max-width: 1020px) {
-    .ava-footer .top { grid-template-columns: 1fr 1fr 1fr; gap: 26px; }
+  /* Long labels ("Payouts & Withdrawals") must never force a column wider than
+     its track and blow out the grid. */
+  .ava-footer .col a,
+  .ava-footer .acc a { overflow-wrap: anywhere; }
+
+  /* ---------- tablet ----------
+     Breakpoint is 1180px, NOT 1020px. iPad landscape and the 12.9" iPad Pro in
+     portrait are both exactly 1024px CSS px — at a 1020px breakpoint they fell
+     into the six-column desktop grid, leaving ~128px per column and wrapping
+     every two-word link onto three lines. 1180px puts every iPad on the
+     three-column layout. iPad portrait (768/834) and iPad mini (744) also land
+     here, above the 720px accordion breakpoint, which is what we want: tablets
+     get real columns, phones get accordions. */
+  @media (max-width: 1180px) {
+    .ava-footer .top { grid-template-columns: 1fr 1fr 1fr; gap: 26px 22px; }
     .ava-footer .brand-col { grid-column: 1 / -1; }
-    .ava-footer .desc { max-width: none; }
+    .ava-footer .desc { max-width: 520px; }
+  }
+
+  /* Entity block gets cramped at three-up well before the columns do. */
+  @media (max-width: 900px) {
+    .ava-footer .entities { grid-template-columns: 1fr 1fr; gap: 22px; }
   }
 
   /* ---------- phone: columns become accordions ---------- */
+  /* Phone type is deliberately much larger than desktop. At the previous
+     13–15px the footer read as fine print next to the 18px body copy on the
+     policy pages, which is the wrong signal for links people are meant to
+     actually use. Tap targets are sized with it. */
   @media (max-width: 720px) {
-    .ava-footer { padding: 40px 0 26px; }
+    .ava-footer { padding: 40px 0 30px; font-size: 18px; }
     .ava-footer .wrap { padding: 0 18px; }
     .ava-footer .top { display: block; padding-bottom: 8px; border-bottom: 0; }
-    .ava-footer .brand-col { margin-bottom: 20px; }
+    .ava-footer .brand-col { margin-bottom: 22px; }
     .ava-footer .col { display: none; }
+    .ava-footer .wm { font-size: 27px; }
+    .ava-footer .desc { font-size: 17px; line-height: 1.5; }
 
     .ava-footer .acc { display: block; border-top: 1px solid var(--rule); }
     .ava-footer .acc summary {
-      list-style: none; cursor: pointer; padding: 14px 2px;
-      font-size: 14px; font-weight: 800; letter-spacing: .04em;
+      list-style: none; cursor: pointer; padding: 17px 2px;
+      font-size: 19px; font-weight: 800; letter-spacing: .02em;
       display: flex; align-items: center; justify-content: space-between;
     }
     .ava-footer .acc summary::-webkit-details-marker { display: none; }
-    .ava-footer .acc summary::after { content: '+'; font-size: 19px; font-weight: 600; }
+    .ava-footer .acc summary::after { content: '+'; font-size: 26px; font-weight: 600; line-height: 1; }
     .ava-footer .acc[open] summary::after { content: '–'; }
-    .ava-footer .acc div { display: flex; flex-direction: column; gap: 12px; padding: 2px 2px 16px; }
-    .ava-footer .acc a { font-size: 15px; color: var(--ink-soft); }
+    .ava-footer .acc div { display: flex; flex-direction: column; gap: 4px; padding: 2px 2px 14px; }
+    /* padding, not gap, so each row is a ≥44px tap target */
+    .ava-footer .acc a { font-size: 19px; line-height: 1.35; padding: 9px 0; color: var(--ink-soft); }
 
-    .ava-footer .entities { grid-template-columns: 1fr; gap: 20px; padding: 22px 0; border-top: 1px solid var(--rule); }
-    .ava-footer .bottom { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .ava-footer .entities { grid-template-columns: 1fr; gap: 24px; padding: 24px 0; border-top: 1px solid var(--rule); }
+    .ava-footer .ent h5 { font-size: 15px; }
+    .ava-footer .ent p { font-size: 16px; line-height: 1.6; }
+
+    .ava-footer .bottom { flex-direction: column; align-items: flex-start; gap: 14px; font-size: 16px; }
+    .ava-footer .mini { gap: 14px 22px; }
+    .ava-footer .mini a { font-size: 17px; padding: 4px 0; }
+    .ava-footer .made { font-size: 16px; }
   }
 </style>
