@@ -74,6 +74,31 @@ class Msg {
   static const double rowHeight = 72;
   /// Avatar diameter in a chat-list row.
   static const double rowAvatar = 48;
+
+  /// [UI-COLDSTART-1 2026-08-05] Width of the whole leading slot in a chat-list
+  /// row — the avatar PLUS whatever decoration surrounds it.
+  ///
+  /// WHY THIS EXISTS: the leading widget has two forms. With an unseen status
+  /// it is a `StatusRing`, which measures `rowAvatar + 2*(stroke + 2)` = 57.
+  /// Without one it is a bordered circle, which measures `rowAvatar + 2*2` = 52.
+  /// Statuses resolve asynchronously AFTER the first frame, so every row with a
+  /// status silently grew 5px wider the moment they landed — nudging that row's
+  /// name and preview sideways. That is part of the "rows adjust themselves"
+  /// the owner reported on launch. Both forms are now centred inside a slot of
+  /// this fixed width, so the text column starts at the same x on every row
+  /// whether or not a status ever arrives.
+  static const double rowLeading = 57;
+
+  /// [UI-COLDSTART-1 2026-08-05] Width of the trailing slot in a chat-list row
+  /// (timestamp above, unread badge below).
+  ///
+  /// This is a MINIMUM, not a fixed width, and that is deliberate. The longest
+  /// string the list renders is 'Yesterday' — 9 glyphs of 12px Nunito 400,
+  /// about 56px — and the app applies a user-controlled FontScale on top, so a
+  /// hard width would clip or overflow for anyone running large text. Reserving
+  /// a floor is enough to stop the cold-start reflow (the real problem is '' at
+  /// 0px becoming '14:32' at ~40px) while still letting the column grow.
+  static const double rowTrailing = 64;
   /// Avatar diameter in a thread header / bubble gutter.
   static const double smallAvatar = 32;
   /// Row padding — 16 horizontal keeps the avatar aligned with the header.

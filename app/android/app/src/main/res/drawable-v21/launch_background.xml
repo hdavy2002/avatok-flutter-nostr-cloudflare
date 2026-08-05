@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modify this file to customize your launch splash screen -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="?android:colorBackground" />
+    <!-- [UI-COLDSTART-1] was ?android:colorBackground, which follows the SYSTEM
+         light/dark setting. AvaTOK's UI is dark always, so on a light-mode phone
+         that produced a white launch window in front of a #0B0B0D app. -->
+    <item android:drawable="@color/avatok_launch_bg" />
 
     <!-- You can insert your own image assets here -->
     <!-- <item>

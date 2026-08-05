@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- [UI-COLDSTART-1 2026-08-05] The Android launch window colour.
+         MUST stay in step with AD.bg in app/lib/core/ui/avatok_dark.dart.
+
+         AvaTOK's UI is dark ALWAYS — it does not follow the system light/dark
+         setting. The launch splash did: values/styles.xml parented
+         Theme.Light.NoTitleBar and drawable/launch_background.xml hardcoded
+         @android:color/white. So on a phone in light mode every cold start
+         painted a WHITE window, then Flutter's first frame at #0B0B0D — a
+         full-screen white-to-black step that reads as a flash. -->
+    <color name="avatok_launch_bg">#FF0B0B0D</color>
+</resources>

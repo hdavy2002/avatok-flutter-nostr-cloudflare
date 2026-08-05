@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <!-- [UI-COLDSTART-1 2026-08-05] Theme.Light -> Theme.Black. AvaTOK's UI does
+         not follow the system light/dark setting; it is dark always. Parenting
+         the light-mode launch theme to Theme.Light meant a light-mode phone got
+         a white system window before Flutter's first dark frame. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>

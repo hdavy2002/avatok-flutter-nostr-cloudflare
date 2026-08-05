@@ -106,6 +106,34 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   final _previewStore = ChatPreviewStore();
   Map<String, ({String text, int ts, bool me})> _previews = {};
 
+  // [UI-COLDSTART-1 2026-08-05] Coalesced preview reload.
+  //
+  // WHY: on a cold start SyncHub reconnects and the InboxDO replays the whole
+  // backlog after the persisted cursor. Every replayed frame used to do
+  //   record(...) -> load() -> setState(_previews = p)
+  // i.e. a full read-modify-write of the previews blob, a second full read, and
+  // a WHOLE-SCREEN setState — per message. Because build() re-sorts the rows by
+  // preview timestamp, each one also RE-ORDERED the list. N replayed messages =
+  // N re-sorts, which is exactly the "messages adjust themselves one by one"
+  // the owner sees on launch.
+  //
+  // Now every call marks the previews dirty and restarts a short timer; the
+  // reload+setState happens ONCE after the burst goes quiet. A trailing debounce
+  // is right here (not leading): the last frame of a backlog is the one whose
+  // ordering we actually want to paint, and nothing is lost because `record`
+  // still writes each frame to disk immediately.
+  Timer? _previewReloadTimer;
+
+  void _schedulePreviewReload() {
+    if (!mounted) return;
+    _previewReloadTimer?.cancel();
+    _previewReloadTimer = Timer(const Duration(milliseconds: 200), () async {
+      if (!mounted) return;
+      final p = await _previewStore.load();
+      if (mounted) setState(() => _previews = p);
+    });
+  }
+
   // [SAFE-GATE-2] "Message requests (N)" section: SERVER conv ids (`dm_…`) whose
   // stranger-gate accept_state is 'pending'. Grouped in a collapsed section at
   // the very top of the list (gated on RemoteConfig.strangerGateEnabled). Loaded
@@ -881,6 +909,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _inboxSub?.cancel(); // stop listening, but leave the shared SyncHub socket alive
     _contactsSub?.cancel();
     _groupChangeSub?.cancel(); // [GRP-W3-REACTIVE]
+    _previewReloadTimer?.cancel(); // [UI-COLDSTART-1] no setState after unmount
     super.dispose();
   }
 
@@ -1180,7 +1209,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           if (u.createdAt >= (_previews[key]?.ts ?? 0)) {
             final preview = (env['text'] ?? '📞 Ava took a message').toString();
             _previewStore.record(key, preview, u.createdAt, false).then((_) {
-              if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+              if (mounted) _schedulePreviewReload();
             });
           }
           if (isReceptTelConv(key)) {
@@ -1203,7 +1232,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                     ? '🤝 Your agents reached a deal'
                     : '🤝 Your agents finished negotiating';
                 _previewStore.record(key, preview, u.createdAt, false).then((_) {
-                  if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+                  if (mounted) _schedulePreviewReload();
                 });
               }
               _ensureContact(u.senderPub);
@@ -1251,7 +1280,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           // Skip stale history replays we already reflect to avoid storage churn.
           if (u.createdAt >= (_previews[key]?.ts ?? 0)) {
             _previewStore.record(key, _previewFor(env), u.createdAt, false).then((_) {
-              if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+              if (mounted) _schedulePreviewReload();
             });
           }
           if (env['gid'] == null) _ensureContact(u.senderPub);
@@ -1848,6 +1877,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                         itemBuilder: (_, i) {
                           final c = rows[i];
                           return _ChatRow(
+                            // [UI-COLDSTART-1 2026-08-05] Identity key.
+                            //
+                            // build() re-sorts the rows by last-message time, so
+                            // without a key the framework matches widgets to
+                            // elements POSITIONALLY: after a reorder, slot 3
+                            // keeps its element and is simply rebuilt with a
+                            // different chat's data. Everything in that subtree
+                            // restarts — including the Avatar's FutureBuilder,
+                            // which re-fires AvatarCache.get and drops the row
+                            // back to an initials circle before popping to the
+                            // photo again. Keying by conversation lets the
+                            // element MOVE with its row instead, so a reorder
+                            // stops re-triggering avatar loads.
+                            key: ValueKey(_keyOf(c)),
                             chat: c,
                             pinned: pinned.contains(_keyOf(c)),
                             muted: _flags['muted']!.contains(_keyOf(c)),
@@ -2160,7 +2203,8 @@ class _ChatRow extends StatelessWidget {
   /// owns the status set and the navigation.
   final bool hasStatus;
   final VoidCallback? onStatusTap;
-  const _ChatRow({required this.chat, this.onTap, this.onLongPress,
+  // [UI-COLDSTART-1] super.key added so the list can key rows by conversation.
+  const _ChatRow({super.key, required this.chat, this.onTap, this.onLongPress,
       this.pinned = false, this.muted = false,
       this.hasStatus = false, this.onStatusTap});
 
@@ -2204,15 +2248,25 @@ class _ChatRow extends StatelessWidget {
                           avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl);
                     }
                   },
-                  child: hasStatus
-                      ? StatusRing(size: Msg.rowAvatar, child: avatar)
-                      : Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AD.borderAvatar, width: 2),
-                          ),
-                          child: avatar,
-                        ),
+                  // [UI-COLDSTART-1] Fixed-width slot. StatusRing is 57 wide and
+                  // the plain bordered circle is 52; statuses resolve after the
+                  // first frame, so without this the row's text column shifted
+                  // 5px sideways the moment a status landed. See Msg.rowLeading.
+                  child: SizedBox(
+                    width: Msg.rowLeading,
+                    height: Msg.rowLeading,
+                    child: Center(
+                      child: hasStatus
+                          ? StatusRing(size: Msg.rowAvatar, child: avatar)
+                          : Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AD.borderAvatar, width: 2),
+                              ),
+                              child: avatar,
+                            ),
+                    ),
+                  ),
                 );
               }),
               if (chat.online)
@@ -2255,7 +2309,22 @@ class _ChatRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: Msg.s2),
-            Column(
+            // [UI-COLDSTART-1 2026-08-05] Width-reserved trailing slot.
+            //
+            // This column was unconstrained, so it measured its contents. On a
+            // cold start `chat.time` is '' until the previews load (0px wide)
+            // and the unread badge's placeholder is a zero-WIDTH SizedBox. When
+            // previews landed, '' became '14:32' (~40px) and the badge appeared
+            // (~20px) — the trailing column grew, which squeezed the Expanded
+            // name/preview column, which re-laid-out and re-ellipsised the text
+            // on EVERY row at once. Reserving a floor means late-arriving
+            // timestamps and badges paint into space that was already there.
+            // minWidth rather than a fixed width: 'Yesterday' plus a large user
+            // FontScale can legitimately exceed the floor, and clipping the
+            // timestamp would be a worse bug than the one being fixed.
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: Msg.rowTrailing),
+              child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -2282,6 +2351,7 @@ class _ChatRow extends StatelessWidget {
                 else
                   const SizedBox(height: 20),
               ],
+              ),
             ),
           ],
         ),
