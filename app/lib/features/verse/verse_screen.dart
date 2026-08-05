@@ -59,20 +59,20 @@ class _VerseScreenState extends State<VerseScreen> {
                   color: AD.tabGroups,
                   child: ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8), children: [
                     _periodChips(),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     ..._nudgeBanners(s),
                     _earningsCard(s),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     _projectionsCard(s),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     _momentumCard(s),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     _topEventsCard(s),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     _audienceCard(s),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     _reachCard(s),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     _reviewsCard(s),
                     const SizedBox(height: 24),
                   ]),
@@ -86,7 +86,7 @@ class _VerseScreenState extends State<VerseScreen> {
             icon: PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold),
             text: 'Could not load your dashboard',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
               fontSize: 16, onPressed: _load),
         ]),
@@ -119,7 +119,7 @@ class _VerseScreenState extends State<VerseScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: icon, color: accent),
-          const SizedBox(width: 11),
+          const SizedBox(width: Msg.s3),
           Expanded(child: Text(title, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2))),
           if (trailing != null) trailing,
         ]),
@@ -145,12 +145,12 @@ class _VerseScreenState extends State<VerseScreen> {
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Expanded(
             child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
                 style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 13, height: 1.42)),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           if (pill)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -178,7 +178,7 @@ class _VerseScreenState extends State<VerseScreen> {
               padding: const EdgeInsets.all(12),
               child: Row(children: [
                 ZineIconBadge(icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold), color: AD.tabCalls, size: 30),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(child: Text(
                     '"${n['title']}" starts soon and joins are below your average — remind your followers?',
                     style: ADText.preview().copyWith(fontSize: 13, height: 1.42))),
@@ -206,11 +206,11 @@ class _VerseScreenState extends State<VerseScreen> {
         ),
         const SizedBox(height: 2),
         Text('Settled this period', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         _kv('Pending in escrow (your 80%)', verseUsd(s.n(e, 'pending_escrow_net'))),
         _kv('Maturing (7-day hold)', verseUsd(s.n(e, 'maturing'))),
         _kv('Ready to pay out', verseUsd(s.n(e, 'payoutable')), pill: true),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Row(children: [
           ZineButton(
             label: 'Statements',
@@ -255,7 +255,7 @@ class _VerseScreenState extends State<VerseScreen> {
       children: [
         Text('${s.n(m, 'joins_24h')} joins in the last 24 h',
             style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         for (final e in s.momentumByEvent.take(4))
           _kv('${e['title']}', '+${e['joins_24h']} · ${e['joined_count']} waiting'),
       ],
@@ -423,7 +423,7 @@ class _VerseScreenState extends State<VerseScreen> {
                 ),
                 child: Text('${r['rating']}★', style: ADText.tabLabel().copyWith(fontSize: 9, letterSpacing: 0.36)),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${r['author_name'] ?? 'A buyer'} on ${r['listing_title']}',

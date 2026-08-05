@@ -7,6 +7,7 @@ import '../../core/ui/zine_widgets.dart';
 import 'avadial_theme.dart';
 import 'contact_overrides.dart';
 import 'device_contacts.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// "Add contact" / "Edit contact" screen for a Calls-app (device/PSTN) contact.
 ///
@@ -340,7 +341,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                         style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 Text(
                   'Saved to your phone\'s contacts. Extra AvaTOK details (AvaTOK '
                   'number, custom fields) are kept in AvaTOK.',

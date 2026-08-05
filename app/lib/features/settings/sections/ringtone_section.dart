@@ -11,6 +11,7 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../avavision/widgets.dart' show MiniPill;
 import '../settings_registry.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// Settings → "Ringback tone" — phone-style picker over the bundled catalog.
 /// Spec: Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md.
@@ -203,7 +204,7 @@ class _RingtoneCardState extends State<_RingtoneCard> {
         Expanded(
           child: Text(t.name, style: ADText.rowName(), maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: Msg.s1),
         if (isDefault)
           const MiniPill('Default', fill: AD.online, fg: Colors.white)
         else

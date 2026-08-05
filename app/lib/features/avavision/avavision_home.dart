@@ -130,7 +130,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
             child: Row(children: [
               Expanded(child: ZineChip(label: 'Marketplace', active: _tabs.index == 0, onTap: () => _tabs.animateTo(0))),
-              const SizedBox(width: 9),
+              const SizedBox(width: Msg.s2),
               Expanded(child: ZineChip(label: 'My bookings', active: _tabs.index == 1, onTap: () => _tabs.animateTo(1))),
             ]),
           ),
@@ -158,7 +158,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
               _load();
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -227,7 +227,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _bookings.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
         itemBuilder: (_, i) {
           final b = _bookings[i];
           final upcoming = b.status == 'booked' && b.scheduledAt > DateTime.now().millisecondsSinceEpoch - 10 * 60 * 1000;
@@ -245,7 +245,7 @@ class _AvaVisionHomeState extends State<AvaVisionHome> with SingleTickerProvider
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: Msg.s1),
                   Text(
                     '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
                     '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}',

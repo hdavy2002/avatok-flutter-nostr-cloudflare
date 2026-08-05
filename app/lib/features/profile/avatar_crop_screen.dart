@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Lightweight, dependency-free circular crop editor. The user pans/zooms/rotates
 /// the picked image inside a circular viewport; we capture exactly that circle,
@@ -125,7 +126,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
               padding: const EdgeInsets.fromLTRB(10, 8, 18, 12),
               child: Row(children: [
                 const AdBackButton(),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
                 Expanded(
                   child: Text.rich(
                     const TextSpan(children: [
@@ -170,9 +171,9 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: Msg.s5),
           const AdSticker('pinch to zoom · drag to move · twist to rotate', kind: AdStickerKind.hint),
-          const SizedBox(height: 26),
+          const SizedBox(height: Msg.s5),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: AdButton(

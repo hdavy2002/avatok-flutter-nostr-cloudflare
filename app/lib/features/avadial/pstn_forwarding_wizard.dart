@@ -417,7 +417,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
     return Column(children: [
       for (final kind in _order) ...[
         _stepCard(kind),
-        if (kind != _order.last) const SizedBox(height: 10),
+        if (kind != _order.last) const SizedBox(height: Msg.s2),
       ],
     ]);
   }
@@ -475,18 +475,18 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
                     ).copyWith(fontSize: 12)),
               ]),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             _trailing(kind, s),
           ]),
           if (detail != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(detail,
                 style: ADText.preview(
                   c: s == _StepState.failed ? AD.danger : AD.textSecondary,
                 ).copyWith(fontSize: 12)),
           ],
           if (s == _StepState.needsVisibleDial) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(
               'Your phone won\'t let AvaTOK do this quietly in the background, '
               'so your phone app will open with the code '
@@ -516,7 +516,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
             ]),
           ],
           if (s == _StepState.awaitReturn) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             if (detail == null)
               Text(
                 'Your phone app showed your phone company\'s reply to the '

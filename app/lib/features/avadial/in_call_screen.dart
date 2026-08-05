@@ -170,14 +170,14 @@ class _InCallScreenState extends State<InCallScreen> {
           child: Column(children: [
             const Spacer(),
             _avatar(name),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             Text(name ?? widget.number,
                 textAlign: TextAlign.center, style: AvaDialTheme.title(size: 30, color: AvaDialTheme.text)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text(_statusLine, style: AvaDialTheme.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
             if (_keypad) _keypadGrid() else _controls(),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             _endButton(),
           ]),
         ),
@@ -246,7 +246,7 @@ class _InCallScreenState extends State<InCallScreen> {
         padding: const EdgeInsets.all(18),
         child: Icon(icon, size: 26, color: active ? Colors.white : AvaDialTheme.text),
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: Msg.s1),
       Text(label, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
     ]);
   }
@@ -272,7 +272,7 @@ class _InCallScreenState extends State<InCallScreen> {
             ),
         ],
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       AdButton(
         label: 'Hide keypad',
         variant: AdButtonVariant.ghost,

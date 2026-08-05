@@ -100,12 +100,12 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
           ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
           : ListView(padding: const EdgeInsets.all(20), children: [
               Text('HOW PEOPLE CAN FIND YOU', style: ADText.sectionLabel()),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               // AvaTOK number — always on, locked.
               _card(
                 child: Row(children: [
                   _iconBadge(PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(_me?.hasNumber == true ? 'Your AvaTOK number' : 'AvaTOK number', style: ADText.rowName()),
                     Text(_me?.hasNumber == true ? (_me!.display ?? '') : 'Always discoverable', style: ADText.preview(c: AD.textSecondary)),
@@ -113,26 +113,26 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                   PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
                 ]),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               // Owner request 2026-06-29: hide "Find me by my real phone number".
               // Exposing a private number now lives in Profile (the private-number
               // field + the "Show my private number" switch), so we never imply we
               // surface someone's real number from this discoverability toggle.
               // _toggleRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Find me by my real phone number',
               //     'Off keeps your real number private', p.phoneDiscoverable, (v) => _save(phone: v)),
-              // const SizedBox(height: 10),
+              // const SizedBox(height: Msg.s2),
               _toggleRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), 'Find me by my email',
                   'People who know your email can add you', p.emailDiscoverable, (v) => _save(email: v)),
-              const SizedBox(height: 22),
+              const SizedBox(height: Msg.s5),
               Text('WHO CAN ADD ME', style: ADText.sectionLabel()),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               _whoOption('everyone', 'Everyone', 'Anyone who searches your AvaTOK number or email'),
               _whoOption('number_only', 'Only with my AvaTOK number', 'People must know your exact number'),
               _whoOption('nobody', 'Nobody', 'You won’t appear in search or QR adds'),
-              const SizedBox(height: 22),
+              const SizedBox(height: Msg.s5),
               // [LASTSEEN-PRIVACY-1] WhatsApp-style last-seen visibility.
               Text('WHO CAN SEE MY LAST SEEN', style: ADText.sectionLabel()),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               _lastSeenOption('everyone', 'Everyone', 'Anyone you chat with sees when you were last online'),
               _lastSeenOption('contacts', 'My contacts', 'Only people in your contact list'),
               _lastSeenOption('list', 'Only these people…',
@@ -176,7 +176,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
               ],
               Expanded(
                 child: Text(title, style: ADText.appTitle(),
@@ -240,9 +240,9 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
   Widget _toggleRow(IconData icon, String title, String sub, bool value, ValueChanged<bool> onChanged) => _card(
         child: Row(children: [
           _iconBadge(icon, color: AD.online, size: 28),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ADText.rowName().copyWith(fontSize: 14.5)),
+            Text(title, style: ADText.rowName().copyWith(fontSize: 14)),
             Text(sub, style: ADText.preview(c: AD.textSecondary)),
           ])),
           _toggle(value, _saving ? null : onChanged),
@@ -257,7 +257,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
         onTap: _saving ? null : () => _save(who: key),
         child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ADText.rowName().copyWith(fontSize: 14.5)),
+            Text(title, style: ADText.rowName().copyWith(fontSize: 14)),
             Text(sub, style: ADText.preview(c: AD.textSecondary)),
           ])),
           PhosphorIcon(
@@ -277,7 +277,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
         onTap: _saving ? null : () => _chooseLastSeen(key),
         child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ADText.rowName().copyWith(fontSize: 14.5)),
+            Text(title, style: ADText.rowName().copyWith(fontSize: 14)),
             Text(sub, style: ADText.preview(c: AD.textSecondary)),
           ])),
           PhosphorIcon(
@@ -333,7 +333,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
                       onChanged: (v) => setState(() =>
                           v == true ? _picked.add(c.uid) : _picked.remove(c.uid)),
                       title: Text(c.name.isNotEmpty ? c.name : c.subtitle,
-                          style: ADText.rowName().copyWith(fontSize: 14.5)),
+                          style: ADText.rowName().copyWith(fontSize: 14)),
                       subtitle: c.subtitle.isEmpty
                           ? null
                           : Text(c.subtitle, style: ADText.preview(c: AD.textSecondary)),
@@ -396,7 +396,7 @@ class _LastSeenListPickerState extends State<_LastSeenListPicker> {
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s3),
               Expanded(
                 child: Text(title, style: ADText.appTitle(),
                     maxLines: 1, overflow: TextOverflow.ellipsis),

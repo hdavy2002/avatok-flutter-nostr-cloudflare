@@ -158,7 +158,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             Text(
                 'Find someone by their email or AvaTOK number.',
                 style: ADText.preview()),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // White dark-v2 resolve field.
             Container(
               decoration: BoxDecoration(
@@ -169,7 +169,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     size: 18, color: AD.placeholderOnWhite),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(
                   child: TextField(
                     controller: _ctrl,
@@ -187,13 +187,13 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 ),
               ]),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             if (_resolving)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(children: [
                   const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Text('Looking up on AvaTOK…', style: ADText.preview()),
                 ]),
               ),
@@ -208,7 +208,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               ),
             // Saved AvaTOK contacts as quick-picks (never the phone book).
             if (saved.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Text('YOUR AVATOK CONTACTS', style: ADText.sectionLabel()),
               const SizedBox(height: 4),
               ConstrainedBox(
@@ -220,7 +220,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                 ),
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // Invite is a separate, explicit, DEVICE-LOCAL action (OS share sheet).
             GestureDetector(
               onTap: _inviting ? null : _invite,
@@ -239,7 +239,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   else
                     PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textPrimary),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Text(_inviting ? 'Opening…' : 'Invite friends to AvaTok',
                       style: ADText.rowName()),
                 ]),

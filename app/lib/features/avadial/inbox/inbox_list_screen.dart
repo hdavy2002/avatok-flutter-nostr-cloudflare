@@ -685,13 +685,13 @@ class _InboxListScreenState extends State<InboxListScreen> {
       ),
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Container(
             width: 40, height: 4,
             decoration:
                 BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           if (phone != null)
             _ThreadMenuRow(
               icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),

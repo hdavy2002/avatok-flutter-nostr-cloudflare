@@ -371,7 +371,7 @@ class _AutoResponderSettingsPageState extends State<AutoResponderSettingsPage> {
               const SizedBox(width: 12),
               Expanded(child: _timeField('End', _fmtMins(_schedEnd), () => _pickTime(false))),
             ]),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Times are in UTC on the server.', style: ADText.statCaption()),
           ],
         ]),

@@ -151,7 +151,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
             child: ZineButton(
               label: 'Choose image',
               variant: ZineButtonVariant.blue,
-              fontSize: 14.5,
+              fontSize: 14,
               trailingIcon: false,
               onPressed: _busy ? null : _pick,
             ),
@@ -161,7 +161,7 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
             ZineButton(
               label: 'Remove',
               variant: ZineButtonVariant.ghost,
-              fontSize: 14.5,
+              fontSize: 14,
               trailingIcon: false,
               onPressed: _busy ? null : () => HomePersonalisation.clearWallpaper(),
             ),

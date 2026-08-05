@@ -79,7 +79,7 @@ class _AboutScreenState extends State<AboutScreen> {
           const SizedBox(height: 8),
           Row(children: [
             Text('AvaTOK', style: ADText.appTitle()),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s1),
               decoration: BoxDecoration(
@@ -95,7 +95,7 @@ class _AboutScreenState extends State<AboutScreen> {
           _row('Environment', env),
           _row('Backend', kSignalingHost),
           _row('Build (git)', Analytics.release),
-          const SizedBox(height: 28),
+          const SizedBox(height: Msg.s5),
           Text(
             'Tip: testers should install the prod build to use live features. '
             'A STAGING badge means this device is talking to the staging backend.',
@@ -112,7 +112,7 @@ class _AboutScreenState extends State<AboutScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: ADText.sectionLabel(c: AD.textTertiary)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             SelectableText(value, style: ADText.rowName()),
           ],
         ),

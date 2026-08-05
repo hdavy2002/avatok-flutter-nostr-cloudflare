@@ -163,7 +163,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       body: ZinePaper(
         child: SafeArea(
           child: Column(children: [
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // Top bar: language + timer mono stickers.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -191,9 +191,9 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 child: Avatar(seed: a.id, name: a.name, size: 116, avatarUrl: a.avatarUrl),
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: Msg.s5),
             Text(a.name, textAlign: TextAlign.center, style: ADText.appTitle().copyWith(fontSize: 28, height: 1.08, letterSpacing: -0.56)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Text(a.role, textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
@@ -234,7 +234,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                         content: Text('Screen sharing arrives with the live audio engine (Phase 4).')));
                   }),
-                  const SizedBox(width: 18),
+                  const SizedBox(width: Msg.s4),
                 ],
                 _roundBtn(
                     _muted
@@ -242,7 +242,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
                     () => setState(() => _muted = !_muted),
                     active: _muted),
-                const SizedBox(width: 18),
+                const SizedBox(width: Msg.s4),
                 _roundBtn(
                     PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
                     _state == 'error' || _state == 'ended'
@@ -268,7 +268,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(icon, size: 14, color: alert ? Colors.white : AD.textPrimary),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Text(label,
               style: ADText.tabLabel(c: alert ? Colors.white : AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
         ]),

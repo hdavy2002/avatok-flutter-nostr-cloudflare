@@ -608,7 +608,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
             icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
             color: AD.iconVideo,
             size: 40),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Ava', style: ADText.threadName(c: AD.textPrimary)),
@@ -720,7 +720,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.duotone),
                       size: 34, color: AD.mediaPlaceholderLabel),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Msg.s3),
                   const SizedBox(
                       width: 20, height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.mediaPlaceholderLabel)),
@@ -753,7 +753,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                           : PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold),
                       size: 14,
                       color: AD.iconSearch),
-                  const SizedBox(width: 5),
+                  const SizedBox(width: Msg.s1),
                   Text(_playingId == m.id ? 'Stop' : 'Listen',
                       style: ADText.preview(c: AD.iconSearch)),
                 ]),
@@ -771,7 +771,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
                           size: 14, color: AD.iconSearch),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: Msg.s1),
                       Text('Use in chat', style: ADText.preview(c: AD.iconSearch)),
                     ]),
                   ),
@@ -782,7 +782,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
                         size: 14, color: AD.iconSearch),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: Msg.s1),
                     Text('Copy', style: ADText.preview(c: AD.iconSearch)),
                   ]),
                 ),
@@ -802,7 +802,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill),
                       size: 14, color: Colors.white),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   Text('Top up to unlock',
                       style: TextStyle(fontFamily: ADText.family,
                           fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white)),
@@ -907,7 +907,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
             tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
           ),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         // Bottom row — full-width rectangular field + send button.
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Expanded(

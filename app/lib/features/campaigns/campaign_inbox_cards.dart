@@ -353,7 +353,7 @@ class _CampaignCallCardState extends State<CampaignCallCard> {
         // ---- Language tag + outcome badges ----
         if (_lang != null || _booked || _handover) ...[
           const SizedBox(height: Msg.s2),
-          Wrap(spacing: 6, runSpacing: 4, children: [
+          Wrap(spacing: Msg.s1, runSpacing: 4, children: [
             if (_lang != null) AvaDialTheme.chip(_lang!.toUpperCase(), color: AD.iconSearch),
             if (_booked)
               AvaDialTheme.chip('Booked', color: AD.online, icon: PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold)),
@@ -565,7 +565,7 @@ class CampaignStatusCard extends StatelessWidget {
             if (stats.isNotEmpty) ...[
               const SizedBox(height: Msg.s1),
               Wrap(
-                spacing: 6,
+                spacing: Msg.s1,
                 runSpacing: 4,
                 children: [
                   for (final entry in stats.entries)

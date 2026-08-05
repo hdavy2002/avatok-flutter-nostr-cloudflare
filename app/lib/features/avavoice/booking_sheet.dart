@@ -131,12 +131,12 @@ class _BookingSheetState extends State<_BookingSheet> {
             Row(children: [
               Expanded(child: _picker(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
                   '${_date.day}/${_date.month}/${_date.year}', _pickDate)),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: _picker(PhosphorIcons.clock(PhosphorIconsStyle.bold), _time.format(context), _pickTime)),
             ]),
             const SizedBox(height: 16),
             Text('Session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-            const SizedBox(height: 9),
+            const SizedBox(height: Msg.s2),
             Wrap(spacing: 8, runSpacing: 8, children: _durationChoices.map((m) {
               return ZineChip(
                 label: '$m min',
@@ -147,7 +147,7 @@ class _BookingSheetState extends State<_BookingSheet> {
             const SizedBox(height: 16),
             _picker(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                 'Agent speaks: ${languageLabel(_language)}', _pickLang),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             // Itemized total.
             ZineCard(
               color: AD.card,
@@ -168,14 +168,14 @@ class _BookingSheetState extends State<_BookingSheet> {
                   const Divider(height: 1, color: AD.borderHairline),
                   const SizedBox(height: 8),
                   _row('Held in escrow now', fmtCoins(_totalCoins), bold: true),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: Msg.s1),
                   Align(alignment: Alignment.centerLeft, child: Text(
                       "You're only charged for minutes you actually talk — unused minutes are refunded after the call.",
                       style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11, height: 1.42))),
                 ],
               ]),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: a.isFreeForCallers ? 'Confirm booking' : 'Pay ${fmtCoins(_totalCoins)} & book',
               fullWidth: true,
@@ -196,7 +196,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
         child: Row(children: [
           PhosphorIcon(icon, size: 17, color: AD.tabGroups),
-          const SizedBox(width: 9),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: ADText.rowName().copyWith(fontSize: 13, height: 1.3, fontWeight: FontWeight.w600))),
           PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),

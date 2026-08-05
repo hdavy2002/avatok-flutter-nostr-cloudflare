@@ -358,7 +358,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                     const SizedBox(width: Msg.s1),
                     Text('$_bitrateKbps kbps', style: ADText.sectionLabel(c: AD.textPrimary)),
                   ]),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: Msg.s1),
                   Row(children: [
                     LiveInkPill('${fmtClock(elapsed)} · ${fmtClock(remaining)} left', icon: PhosphorIcons.timer(PhosphorIconsStyle.regular)),
                     const SizedBox(width: Msg.s2),
@@ -448,13 +448,13 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
                 ZineBackButton(onTap: () => Navigator.of(context).maybePop()),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
                 Expanded(child: ZineMarkTitle(pre: 'Go ', mark: 'live', fontSize: 30, textAlign: TextAlign.left)),
                 const ZineSticker('AvaLive', kind: ZineStickerKind.hint),
               ]),
-              const SizedBox(height: 6),
+              const SizedBox(height: Msg.s1),
               Text(widget.title, style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Expanded(
                 child: Container(
                   clipBehavior: Clip.antiAlias,
@@ -477,9 +477,9 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Center(child: ZineSticker(_status, kind: isError ? ZineStickerKind.no : ZineStickerKind.hint)),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               ZineButton(
                 label: "Go live",
                 fullWidth: true,
@@ -487,7 +487,7 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                 icon: PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
                 onPressed: _ready ? _goLive : null,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Center(child: Text('Your 80% · straight to your wallet',
                   style: ADText.sectionLabel())),
             ]),

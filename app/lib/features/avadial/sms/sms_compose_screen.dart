@@ -9,6 +9,7 @@ import '../avadial_channel.dart';
 import '../avadial_theme.dart';
 import '../device_contacts.dart';
 import 'sms_thread_screen.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// New SMS message → recipient chooser (AVA-SMS / AVA-SMS-4). Replaces the old
 /// bare "type a number" sheet: a searchable LIVE device-contact picker PLUS manual
@@ -236,7 +237,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             icon: PhosphorIcons.addressBook(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
             size: 52),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         Text('Contacts are off',
             textAlign: TextAlign.center, style: AvaDialTheme.title(size: 17, color: AD.textPrimary)),
         const SizedBox(height: 8),
@@ -257,7 +258,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
           icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
           trailingIcon: false,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         TextButton(
           onPressed: _load,
           child: Text('Try again', style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
@@ -274,7 +275,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
             size: 52),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         Text(
           _search.text.trim().isEmpty ? 'No contacts found' : 'No matches',
           textAlign: TextAlign.center,

@@ -111,7 +111,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                 'more — right inside your conversations. She runs on your own free '
                 'Google Gemini key, so it stays free for you.',
                 style: ADText.preview()),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
 
             // 1-2-3 steps, each with the matching AI Studio screenshot.
             _shot(1, 'assets/ai_studio/step1.png',
@@ -123,7 +123,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             _shot(3, 'assets/ai_studio/step3.png',
                 'Tap "Copy key" (your key starts with "AQ.…"), come back here, '
                 'and paste it below.'),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
 
             ZineButton(
               label: _opened ? 'Open AI Studio again' : 'Open Google AI Studio',
@@ -134,7 +134,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
               icon: PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.bold),
               trailingIcon: true,
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: Msg.s5),
 
             Text('Paste your key', style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
@@ -146,7 +146,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
               error: _error != null,
               trailing: ZineLink('paste', fontSize: 13, onTap: _paste),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             if (_error != null)
               ZineSticker(_error!, kind: ZineStickerKind.no,
                   icon: PhosphorIcons.xCircle(PhosphorIconsStyle.fill))
@@ -154,7 +154,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
               ZineSticker('Your key is stored encrypted on your device only.',
                   kind: ZineStickerKind.hint,
                   icon: PhosphorIcons.lockKey(PhosphorIconsStyle.fill)),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
 
             Text('Google account (optional)', style: ADText.sectionLabel()),
             const SizedBox(height: Msg.s2),
@@ -165,11 +165,11 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
               onChanged: (_) {},
               keyboardType: TextInputType.emailAddress,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('So you remember which account this key belongs to. You can remove '
                 'it and connect another account anytime in Settings.',
                 style: ADText.statCaption()),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('Heads up: Google may use free-tier requests to improve their '
                 'products, and the free tier is rate-limited. Keep sensitive chats '
                 'in a private chat.',
@@ -189,7 +189,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
           ),
           if (widget.onSkip != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             ZineLink('Skip — use AvaTOK without AI', fontSize: 14, onTap: widget.onSkip!),
           ],
         ]),
@@ -218,7 +218,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
               child: Text(text, style: ADText.preview()),
             )),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           ClipRRect(
             borderRadius: Msg.brMd,
             child: Container(

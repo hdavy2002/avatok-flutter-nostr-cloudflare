@@ -839,7 +839,7 @@ class _CallScreenState extends State<CallScreen> {
                                   s.myAvatar.isEmpty ? null : s.myAvatar),
                           myLabel: s.myName,
                         ),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: Msg.s5),
                         Text('Ava',
                             textAlign: TextAlign.center,
                             style: ADText.appTitle().copyWith(fontSize: 28)),
@@ -1043,7 +1043,7 @@ class _CallScreenState extends State<CallScreen> {
                       // gave us a redial hook.
                       if (phase == 'network-error' &&
                           widget.onRetry != null) ...[
-                        const SizedBox(height: 20),
+                        const SizedBox(height: Msg.s4),
                         AdButton(
                           label: 'Retry',
                           icon: PhosphorIcons.arrowClockwise(
@@ -1158,7 +1158,7 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                   ),
                 ]),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 Row(children: [
                   Expanded(
                     child: _CallTile(
@@ -1508,7 +1508,7 @@ class _CallTile extends StatelessWidget {
                 child: PhosphorIcon(icon, size: 27, color: foreground)),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Text(
           label,
           maxLines: 1,
@@ -1852,7 +1852,7 @@ class _CallNetHudState extends State<_CallNetHud>
                           : Colors.greenAccent,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
             ],
             PhosphorIcon(
                 _transport == 'Wi-Fi'
@@ -1860,17 +1860,17 @@ class _CallNetHudState extends State<_CallNetHud>
                     : PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
                 size: 15,
                 color: _fg),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             Text(_transport, style: ADText.timestamp(c: _fg)),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             _QualityBars(quality: ns.quality, color: _fg),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             _rateChip(PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold),
                 ns.downKbps),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             _rateChip(
                 PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), ns.upKbps),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Text('${ns.dataMb.toStringAsFixed(ns.dataMb < 10 ? 1 : 0)} MB',
                 style: ADText.timestamp(c: _fg)),
             if (weak) ...[
@@ -2035,11 +2035,11 @@ class _AgentCallPanel extends StatelessWidget {
     return Column(mainAxisSize: MainAxisSize.min, children: [
       AdSticker(_line,
           kind: status == 'failed' ? AdStickerKind.no : AdStickerKind.plain),
-      const SizedBox(height: 6),
+      const SizedBox(height: Msg.s1),
       Text('AI assistant · this call is transcribed',
           style: ADText.preview(), textAlign: TextAlign.center),
       if (status == 'connecting' || status == 'connected') ...[
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         AdButton(
           label: 'End agent call',
           icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold),

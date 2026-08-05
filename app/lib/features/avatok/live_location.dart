@@ -303,7 +303,7 @@ class LiveMapScreen extends StatelessWidget {
                           ),
                         ),
                         if (onStop != null && session.isActive) ...[
-                          const SizedBox(width: 10),
+                          const SizedBox(width: Msg.s2),
                           Expanded(
                             child: FilledButton.icon(
                               style: FilledButton.styleFrom(

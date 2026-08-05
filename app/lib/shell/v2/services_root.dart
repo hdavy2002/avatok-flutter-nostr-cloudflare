@@ -6,6 +6,7 @@ import '../../features/marketplace/marketplace_browse.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 import 'shell_destinations.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Services root (plan §6) — landing is the existing marketplace browse; the
 /// sidebar carries Home, the Marketplace submenus (My Listings / Sell /
@@ -66,7 +67,7 @@ class ServicesRoot extends StatelessWidget {
               openShellDestination(context, 'archived');
             },
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           if (walletEntryVisible)
             ShellMenuRow(
               icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),

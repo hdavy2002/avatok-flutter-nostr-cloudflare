@@ -8,6 +8,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import 'media.dart';
 import 'video_player_screen.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// One shared link found in the conversation.
 class LinkItem {
@@ -79,7 +80,7 @@ class MediaLibraryScreen extends StatelessWidget {
   Widget _empty(IconData icon, String label) => Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(icon, size: 40, color: AD.textFaint),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           Text(label, textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textTertiary)),
         ]),
@@ -142,7 +143,7 @@ class MediaLibraryScreen extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       itemCount: links.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
       itemBuilder: (_, i) {
         final l = links[i];
         return Material(
@@ -160,7 +161,7 @@ class MediaLibraryScreen extends StatelessWidget {
               child: Row(children: [
                 ZineIconBadge(icon: PhosphorIcons.link(PhosphorIconsStyle.bold),
                     color: _rotatingAccent(i)),
-                const SizedBox(width: 11),
+                const SizedBox(width: Msg.s3),
                 Expanded(child: Text(l.url, maxLines: 2, overflow: TextOverflow.ellipsis,
                     style: ADText.preview(c: AD.iconSearch))),
               ]),
@@ -178,7 +179,7 @@ class MediaLibraryScreen extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       itemCount: docs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
       itemBuilder: (_, i) {
         final d = docs[i];
         final isAudio = d.kind == MediaKind.audio;
@@ -201,7 +202,7 @@ class MediaLibraryScreen extends StatelessWidget {
                       : PhosphorIcons.file(PhosphorIconsStyle.bold),
                   color: _rotatingAccent(i),
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: Msg.s3),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(d.name.isNotEmpty ? d.name : (isAudio ? 'Voice note' : 'File'),

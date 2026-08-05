@@ -147,7 +147,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         // Grab handle.
         Container(
           width: 44,
@@ -196,7 +196,7 @@ class _ForwardSheetState extends State<_ForwardSheet> {
             ]),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Flexible(
           child: _loading
               ? const Padding(
@@ -345,7 +345,7 @@ class _SendButton extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text('Send',
                 style: ADText.rowName(c: Colors.white)),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             Icon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
                 size: 17, color: Colors.white),
           ]),

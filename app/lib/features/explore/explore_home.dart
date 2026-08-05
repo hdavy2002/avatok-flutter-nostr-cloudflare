@@ -147,7 +147,7 @@ class _ExploreHomeState extends State<ExploreHome> {
           padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 19),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Text('Search events, sessions, creators…', style: ADText.preview(c: AD.placeholderOnWhite)),
           ]),
         ),
@@ -247,7 +247,7 @@ class _ExploreHomeState extends State<ExploreHome> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         itemCount: labels.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 9),
+        separatorBuilder: (_, __) => const SizedBox(width: Msg.s2),
         itemBuilder: (c, i) => Center(
           child: AdChip(
             label: labels[i],

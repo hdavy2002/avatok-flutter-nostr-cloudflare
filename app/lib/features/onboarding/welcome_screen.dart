@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// "Everything you do, one account." — pre-auth welcome hero in the AvaTOK
 /// zine style: paper background, crest, marker-highlighted headline, sticker
@@ -55,7 +56,7 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text.rich(
                 TextSpan(children: [
                   const TextSpan(text: 'Meet '),
@@ -65,12 +66,12 @@ class WelcomeScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: ADText.appTitle().copyWith(fontSize: 40, height: 1.08),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Center(
                 child: Text('Way more than an assistant.',
                     style: ADText.threadName().copyWith(fontSize: 17), textAlign: TextAlign.center),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 320),
@@ -83,7 +84,7 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: Msg.s4),
               Center(
                 child: AdSticker(
                   'PRIVATE @ava · PUBLIC #ava',

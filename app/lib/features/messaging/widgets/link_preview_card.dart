@@ -348,7 +348,7 @@ class _DomainFooter extends StatelessWidget {
         else
           PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
               size: 11, color: metaC),
-        const SizedBox(width: 5),
+        const SizedBox(width: Msg.s1),
         Flexible(
           child: Text(d,
               maxLines: 1,

@@ -163,7 +163,7 @@ class _CallsScreenState extends State<CallsScreen> {
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
                             size: 40, color: AD.textFaint),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: Msg.s3),
                         Text('No calls yet — start one from a chat',
                             textAlign: TextAlign.center,
                             style: ADText.preview(c: AD.textTertiary)),
@@ -181,7 +181,7 @@ class _CallsScreenState extends State<CallsScreen> {
                                 PhosphorIcon(
                                     PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                                     size: 40, color: AD.textFaint),
-                                const SizedBox(height: 14),
+                                const SizedBox(height: Msg.s3),
                                 Text('No calls match "$_query"',
                                     textAlign: TextAlign.center,
                                     style: ADText.preview(c: AD.textTertiary)),
@@ -190,7 +190,7 @@ class _CallsScreenState extends State<CallsScreen> {
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                               itemCount: visible.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
                               // [ISSUE-CALLS-SEARCH-1] _row no longer takes an
                               // index: deletion is by STABLE ID, so a filtered
                               // view can't misaddress the backing log.
@@ -236,10 +236,10 @@ class _CallsScreenState extends State<CallsScreen> {
             Text(c.name,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.rowName(c: missed ? AD.missedCall : AD.textPrimary)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Row(children: [
               PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
-              const SizedBox(width: 5),
+              const SizedBox(width: Msg.s1),
               Flexible(child: Text('${_dirLabel(c.dir)} · ${c.timeLabel}',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.sectionLabel(c: AD.textTertiary))),

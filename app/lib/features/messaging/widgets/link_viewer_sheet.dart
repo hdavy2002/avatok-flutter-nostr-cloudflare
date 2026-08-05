@@ -531,7 +531,7 @@ class _EmbedBlocked extends StatelessWidget {
             textAlign: TextAlign.center,
             style: ADText.rowName(c: Colors.white),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Text(
             'The uploader turned off playback outside YouTube.',
             textAlign: TextAlign.center,

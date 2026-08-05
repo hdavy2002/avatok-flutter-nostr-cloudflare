@@ -195,7 +195,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
                   size: 46, color: AD.textPrimary),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           Text.rich(
             TextSpan(children: [
               const TextSpan(text: 'Your Ava '),
@@ -235,14 +235,14 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
               });
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s4),
           AdCard(
             color: AD.card,
             radius: Msg.rMd,
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                   size: 18, color: AD.online),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(
                 child: Text(
                   'A row only turns green after your carrier confirms the '
@@ -252,7 +252,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
               ),
             ]),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: Msg.s5),
           AdButton(
             label: _allDone ? 'Continue' : 'Finish the steps above',
             onPressed: _allDone ? _continue : null,
@@ -260,14 +260,14 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
             fontSize: 21,
             icon: _allDone ? PhosphorIcons.arrowRight(PhosphorIconsStyle.bold) : null,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           ZineLink(
             'Not now',
             fontSize: 14,
             onTap: _skip,
             underline: AD.iconSearch,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Text('You can turn this on later in Settings → Voicemail.',
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11)),

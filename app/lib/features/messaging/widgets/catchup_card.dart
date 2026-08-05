@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
 import '../ai_chat_api.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 class CatchupCard extends StatelessWidget {
   final List<CatchupBullet> bullets;
@@ -28,7 +29,7 @@ class CatchupCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: AD.iconVideo),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Expanded(
             child: Text('WHAT YOU MISSED · $msgCount messages',
                 style: ADText.statCaption(c: AD.textSecondary)),

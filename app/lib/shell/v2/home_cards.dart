@@ -190,7 +190,7 @@ class _HomeCardsState extends State<HomeCards> {
   }) {
     return Row(children: [
       ZineIconBadge(icon: icon, color: accent),
-      const SizedBox(width: 11),
+      const SizedBox(width: Msg.s3),
       Expanded(child: Text(title, style: ADText.threadName())),
       // Sentence case — the `toUpperCase()` that used to live here was part of
       // the shouting the 2026-08-05 UI audit flagged.
@@ -237,11 +237,11 @@ class _HomeCardsState extends State<HomeCards> {
           padding: const EdgeInsets.symmetric(horizontal: 36),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 52),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('No cards on Home', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 17)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Turn cards on from the menu → Cards.',
-                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
+                textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           ]),
         ),
       );
@@ -250,7 +250,7 @@ class _HomeCardsState extends State<HomeCards> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       itemCount: cards.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      separatorBuilder: (_, __) => const SizedBox(height: Msg.s3),
       itemBuilder: (_, i) => cards[i],
     );
   }
@@ -267,7 +267,7 @@ class _HomeCardsState extends State<HomeCards> {
         _cardHead(
             icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
             title: 'Wallet', accent: AD.online, tag: 'Tokens'),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         if (_walletLoading)
           _skeletonLine(120)
         else
@@ -298,7 +298,7 @@ class _HomeCardsState extends State<HomeCards> {
           _skeletonLine(180)
         else if (_calls.isEmpty)
           Text('No recent calls yet.',
-              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5))
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))
         else
           ...[for (final c in _calls) _callRow(c)],
       ]),
@@ -326,7 +326,7 @@ class _HomeCardsState extends State<HomeCards> {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(children: [
         PhosphorIcon(icon, size: 16, color: color),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Text(c.name.isEmpty ? 'Unknown' : c.name,
               maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
@@ -357,7 +357,7 @@ class _HomeCardsState extends State<HomeCards> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text('SMS available once Ava is your SMS app.',
-                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           )
         else if (_messagesLoading)
           _skeletonLine(200)
@@ -365,7 +365,7 @@ class _HomeCardsState extends State<HomeCards> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text('You are all caught up.',
-                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
           )
         else
           ...[for (final m in _unread) _unreadRow(context, m)],
@@ -408,7 +408,7 @@ class _HomeCardsState extends State<HomeCards> {
               if (m.preview.isNotEmpty)
                 Text(m.preview,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             ]),
           ),
           const SizedBox(width: 8),
@@ -436,7 +436,7 @@ class _HomeCardsState extends State<HomeCards> {
         _cardHead(
             icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
             title: 'Analytics', accent: AD.iconSearch, tag: 'Today'),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         if (_analyticsLoading)
           _skeletonLine(160)
         else
@@ -455,7 +455,7 @@ class _HomeCardsState extends State<HomeCards> {
               style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                   fontSize: 30, color: AD.textPrimary)),
           const SizedBox(height: 2),
-          Text(label, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
+          Text(label, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
         ],
       );
 
@@ -477,14 +477,14 @@ class _HomeCardsState extends State<HomeCards> {
           _skeletonLine(200)
         else if (e == null)
           Text(_aggFailed ? 'Earnings are unavailable right now.' : 'No earnings yet.',
-              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5))
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13))
         else ...[
           Row(children: [
             Expanded(child: _stat('Today', '${e.today}')),
             Expanded(child: _stat('Week', '${e.week}')),
             Expanded(child: _stat('Month', '${e.month}')),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           SizedBox(
             height: 44,
             child: CustomPaint(
@@ -493,7 +493,7 @@ class _HomeCardsState extends State<HomeCards> {
             ),
           ),
           const SizedBox(height: 4),
-          Text('Last 7 days', style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10.5)),
+          Text('Last 7 days', style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10)),
         ],
       ]),
     );
@@ -529,7 +529,7 @@ class _HomeCardsState extends State<HomeCards> {
         Text('${v.total7d}',
             style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
                 fontSize: 30, color: AD.textPrimary)),
-        Text('listing views', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
+        Text('listing views', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
         if (v.byCountry.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text('Top countries', style: ADText.sectionLabel(c: AD.textTertiary)),
@@ -537,7 +537,7 @@ class _HomeCardsState extends State<HomeCards> {
           ...[for (final g in v.byCountry.take(5)) _geoRow(g.label, g.views)],
         ],
         if (v.byCity.isNotEmpty) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Text('TOP CITIES', style: ADText.sectionLabel(c: AD.textTertiary)),
           const SizedBox(height: 4),
           ...[for (final g in v.byCity.take(5)) _geoRow(g.label, g.views)],
@@ -552,7 +552,7 @@ class _HomeCardsState extends State<HomeCards> {
           Expanded(
             child: Text(label.isEmpty ? 'Unknown' : label,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ADText.rowName().copyWith(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                style: ADText.rowName().copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
           ),
           Text('$views', style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 11)),
         ]),
@@ -584,7 +584,7 @@ class _HomeCardsState extends State<HomeCards> {
         _cardHead(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
             title: 'Listings', accent: AD.primaryBadge, tag: 'Top'),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         ...[for (final l in list.take(3)) _listingRow(l)],
       ]),
     );
@@ -598,7 +598,7 @@ class _HomeCardsState extends State<HomeCards> {
               Text(l.title.isEmpty ? 'Untitled listing' : l.title,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
               Text('${l.views7d} views · ${l.joinedCount} joined',
-                  style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10.5)),
+                  style: ADText.statCaption(c: AD.textTertiary).copyWith(fontSize: 10)),
             ]),
           ),
         ]),

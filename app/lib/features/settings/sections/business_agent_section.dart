@@ -213,20 +213,20 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _header(),
               if (_notAvailable) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 Text(
                   'Ava Business Agent is rolling out — not available on your account yet.',
                   style: ADText.preview(c: AD.textTertiary),
                 ),
               ] else ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 _primarySection(),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 _myAiCallsTile(),
                 if (RemoteConfig.serviceNumbers) ...[
-                  const SizedBox(height: 22),
+                  const SizedBox(height: Msg.s5),
                   const Divider(color: AD.borderHairline),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Msg.s3),
                   _servicesSection(),
                 ],
               ],
@@ -270,9 +270,9 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         const SizedBox(width: 8),
         _AdToggle(value: _settings.enabled, onChanged: _saving ? null : _toggleEnabled),
       ]),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s3),
       Text('Instructions', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       AdField(
         controller: _instructions,
         label: 'What should Ava do when you can’t answer?',
@@ -286,7 +286,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       ),
       const SizedBox(height: 16),
       Text('KNOWLEDGE (DOCUMENTS)', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       _docsList(serviceId: null),
       const SizedBox(height: 8),
       AdChip(
@@ -295,11 +295,11 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       ),
       const SizedBox(height: 16),
       Text('Routing', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       _routingPicker(_settings.routing, (r) => setState(() => _settings = _settings.copyWith(routing: r))),
       const SizedBox(height: 16),
       Text('BUSINESS HOURS (OPTIONAL)', style: ADText.sectionLabel()),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       _hoursEditor(_settings.hours, (h) => setState(() => _settings = _settings.copyWith(hours: h))),
       const SizedBox(height: 16),
       AdButton(
@@ -322,7 +322,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Row(children: [
         Icon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('My AI calls', style: ADText.rowName()),
@@ -386,7 +386,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                 onChanged(BusinessHours(days));
               },
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             if (hours.days[i].enabled) ...[
               Expanded(
                 child: _hourField(hours.days[i].start, (v) {
@@ -395,9 +395,9 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
                   onChanged(BusinessHours(days));
                 }),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               Text('–', style: ADText.preview()),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               Expanded(
                 child: _hourField(hours.days[i].end, (v) {
                   final days = List<BusinessHoursDay>.from(hours.days);
@@ -487,7 +487,7 @@ class _BusinessAgentCardState extends State<_BusinessAgentCard> {
         padding: const EdgeInsets.all(12),
         child: Row(children: [
           ZineIconBadge(icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), color: AD.online, size: 34),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${s.name} by ${s.ownerName.isEmpty ? 'you' : s.ownerName}',
@@ -577,7 +577,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Center(child: Container(width: 40, height: 4,
                   decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text(widget.existing == null ? 'Add a service' : 'Edit service', style: ADText.threadName()),
               const SizedBox(height: 4),
               Text(
@@ -587,9 +587,9 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
               ),
               const SizedBox(height: 16),
               AdField(controller: _name, label: 'Service name', hint: 'e.g. US visa interview practice'),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text('RATE (TOKENS / MIN, CALLER PAYS — MIN $kMinServiceRate)', style: ADText.sectionLabel()),
-              const SizedBox(height: 9),
+              const SizedBox(height: Msg.s2),
               Row(children: [
                 Expanded(
                   child: Slider(
@@ -606,16 +606,16 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
               ]),
               Text('You net ${(_rate - 13).clamp(0, 999)} tokens/min after platform + line fees.',
                   style: ADText.preview()),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text('LENGTH OPTIONS (MINUTES)', style: ADText.sectionLabel()),
-              const SizedBox(height: 9),
+              const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final m in const [10, 15, 20, 30, 45, 60, 90])
                   AdChip(label: '$m min', active: _lengths.contains(m), onTap: () => _toggleLength(m)),
               ]),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text('Instructions', style: ADText.sectionLabel()),
-              const SizedBox(height: 9),
+              const SizedBox(height: Msg.s2),
               AdField(
                 controller: _instructions,
                 label: 'What does this service do?',
@@ -623,9 +623,9 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                 maxLines: null,
                 textCapitalization: TextCapitalization.sentences,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text('Routing', style: ADText.sectionLabel()),
-              const SizedBox(height: 9),
+              const SizedBox(height: Msg.s2),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 AdChip(label: 'Auto after 2 rings', active: _routing == AgentRouting.auto2Rings,
                     onTap: () => setState(() => _routing = AgentRouting.auto2Rings)),
@@ -635,7 +635,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                     onTap: () => setState(() => _routing = AgentRouting.off)),
               ]),
               if (widget.existing != null) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 AdChip(
                   label: 'Upload knowledge document',
                   onTap: () async {
@@ -647,7 +647,7 @@ class _AddServiceSheetState extends State<_AddServiceSheet> {
                 ),
               ],
               if (_error != null) AdErrorMsg(_error!),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               AdButton(
                 label: _saving ? 'Saving…' : (widget.existing == null ? 'Add service' : 'Save changes'),
                 fullWidth: true,

@@ -13,6 +13,7 @@ import '../avatok/chat_thread.dart';
 import '../avatok/data.dart';
 import 'listing_detail.dart';
 import 'widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Creator channel page (Phase 6): profile card, public details, listings grid,
 /// all reviews, Follow + Message buttons, A7 polish (banner, link chips, pinned).
@@ -192,7 +193,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
                 Flexible(child: Text(c.name ?? 'Creator', maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.appTitle())),
                 if (c.kycVerified) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   Tooltip(message: 'ID verified',
                       child: PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 19, color: AD.iconSearch)),
                 ],
@@ -238,7 +239,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
                 fontSize: 16,
                 onPressed: _followBusy ? null : _toggleFollow,
               )),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: AdButton(
                 label: 'Message',
                 variant: AdButtonVariant.teal,
@@ -249,7 +250,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
               )),
             ]),
           ],
-          const SizedBox(height: 22),
+          const SizedBox(height: Msg.s5),
           if (pinned != null) ...[
             Row(children: [
               PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill),
@@ -257,15 +258,15 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
               const SizedBox(width: 4),
               Text('Pinned', style: ADText.sectionLabel()),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             SizedBox(height: 250, child: Padding(
               padding: const EdgeInsets.only(right: 80),
               child: ListingCardTile(card: pinned, onTap: () => _open(pinned.id)),
             )),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
           ],
           Text('Listings', style: ADText.appTitle()),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           if (rest.isEmpty && pinned == null)
             Padding(padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Text('No listings yet — check back soon.', style: ADText.preview())),
@@ -276,7 +277,7 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             itemCount: rest.length,
             itemBuilder: (_, i) => ListingCardTile(card: rest[i], onTap: () => _open(rest[i].id)),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: Msg.s5),
           Text('Reviews', style: ADText.appTitle()),
           if (c.reviews.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(vertical: 10),
@@ -346,9 +347,9 @@ class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('My channel', style: ADText.appTitle()),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           AdField(controller: _bio, maxLines: 3, label: 'Bio', hint: 'Tell people what you do'),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           AdField(controller: _links, maxLines: 4,
               label: 'Links (one per line: Label|https://…)', hint: 'My site|https://…'),
           if (_error != null) AdErrorMsg(_error!),

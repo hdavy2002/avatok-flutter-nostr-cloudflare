@@ -65,7 +65,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
           padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
           child: Row(children: [
             const AdBackButton(),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,11 +170,11 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                 const _DriveSection(),
                 const SizedBox(height: 12),
                 const _BackupRestoreSection(),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
                 _metricCards(total, quota, frac),
                 const SizedBox(height: 16),
                 _meterBar(frac, state),
-                const SizedBox(height: 10),
+                const SizedBox(height: Msg.s2),
                 Text('${(frac * 100).toStringAsFixed(frac >= 0.1 ? 0 : 1)}% OF YOUR PLAN USED',
                     style: ADText.sectionLabel()),
                 if (state == 'read_only') _readOnlyCard()
@@ -188,12 +188,12 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                 ),
                 const SizedBox(height: 24),
                 Text('By type', style: ADText.sectionLabel()),
-                const SizedBox(height: 10),
+                const SizedBox(height: Msg.s2),
                 _stackedBar(total, quota, byCat),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 for (final e in _catStyles.entries) _ledgerRow(e.key, e.value, byCat, total),
                 if (_trend.isNotEmpty) ...[
-                  const SizedBox(height: 22),
+                  const SizedBox(height: Msg.s5),
                   Text('Last 6 months', style: ADText.sectionLabel()),
                   const SizedBox(height: 12),
                   _trendBars(quota),
@@ -217,12 +217,12 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               fit: BoxFit.scaleDown,
               child: Text(_fmt(total), style: ADText.appTitle().copyWith(fontSize: 30)),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Used of ${_fmt(quota)}', style: ADText.sectionLabel()),
           ]),
         ),
       ),
-      const SizedBox(width: 14),
+      const SizedBox(width: Msg.s3),
       Expanded(
         child: AdCard(
           padding: const EdgeInsets.all(16),
@@ -233,7 +233,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               fit: BoxFit.scaleDown,
               child: Text(_fmt(left), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 30)),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Still free', style: ADText.sectionLabel()),
           ]),
         ),
@@ -293,7 +293,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up Tokens to add more.',
               style: ADText.preview(c: Colors.white),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdButton(
               label: 'Top up wallet',
               fullWidth: true,
@@ -313,7 +313,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             AdSticker(sticker, kind: AdStickerKind.no),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(text, style: ADText.preview()),
           ]),
         ),
@@ -356,7 +356,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
             border: Border.all(color: AD.borderControl, width: 1),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Text('${style.label} · $count', style: ADText.preview()),
         Expanded(
           child: Padding(
@@ -597,7 +597,7 @@ class _DriveSectionState extends State<_DriveSection> {
           ),
         ] else ...[
           if (_s.totalLimit > 0) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text('Drive: ${_fmt(_s.totalUsage)} of ${_fmt(_s.totalLimit)} used', style: ADText.preview(c: AD.textTertiary)),
           ],
           const SizedBox(height: 8),
@@ -613,7 +613,7 @@ class _DriveSectionState extends State<_DriveSection> {
                     Text(_fmt(f.size), style: ADText.preview(c: AD.textTertiary)),
                   ]),
                 ))),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           ZineLink('Refresh', fontSize: 13, onTap: () {
             Analytics.capture('drive_refresh_tapped', const {});
             setState(() => _loading = true);
@@ -774,7 +774,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
             Text('Encrypted backup to your Google Drive', style: ADText.preview()),
           ])),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Text(
           'Your chats are encrypted on this device before upload, so neither '
           'AvaTOK nor Google can read them. Survives reinstalling the app.',
@@ -792,7 +792,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2, color: AD.iconSearch)),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Text('Checking Google Drive…', style: ADText.preview()),
         ]),
       );
@@ -822,7 +822,7 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
           onPressed: _busy ? null : _backup,
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       Expanded(
         child: AdButton(
           label: 'Restore',

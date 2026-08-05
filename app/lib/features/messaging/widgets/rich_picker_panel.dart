@@ -142,12 +142,12 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
         autofocus: true,
         onChanged: (_) => setState(() {}),
         style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w700,
-            fontSize: 14.5, color: AD.textPrimary),
+            fontSize: 14, color: AD.textPrimary),
         decoration: InputDecoration(
           isDense: true,
           hintText: _tab == PickerTab.gif ? 'Search GIFs' : 'Search emoji',
           hintStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
-              fontSize: 14.5, color: AD.textTertiary),
+              fontSize: 14, color: AD.textTertiary),
           border: InputBorder.none,
         ),
       );
@@ -165,7 +165,7 @@ class _RichPickerPanelState extends State<RichPickerPanel> {
           border: Border.all(color: on ? AD.primaryBadge : Colors.transparent, width: 1),
         ),
         child: Text(label,
-            style: TextStyle(fontFamily: ADText.family, fontSize: 13.5,
+            style: TextStyle(fontFamily: ADText.family, fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: on ? Colors.white : AD.textSecondary)),
       ),

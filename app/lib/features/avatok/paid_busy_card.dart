@@ -59,20 +59,20 @@ class PaidBusyCard extends StatelessWidget {
           children: [
             Text('$displayName is busy',
                 textAlign: TextAlign.center, style: ADText.appTitle()),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(
               message.trim().isEmpty ? 'This line is busy. Please try again later.' : message,
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: Msg.s5),
             _adPillButton(
               label: 'Try again',
               fill: AD.primaryBadge,
               fontSize: 16,
               onPressed: onTryAgain,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             _adPillButton(
               label: 'Close',
               fill: AD.card,

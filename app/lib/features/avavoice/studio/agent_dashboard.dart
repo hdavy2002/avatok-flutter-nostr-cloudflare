@@ -58,16 +58,16 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                   children: [
                     Row(children: [
                       Avatar(seed: a.id, name: a.name, size: 56, avatarUrl: a.avatarUrl),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: Msg.s3),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(a.name, style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
                         Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
                       ])),
                     ]),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: Msg.s5),
                     Text('Last 24 hours', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: Msg.s2),
                     if (s == null)
                       Padding(padding: const EdgeInsets.all(24), child: Center(
                           child: Text('No stats yet — they appear after your first booking or call.',
@@ -75,13 +75,13 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                     else ...[
                       Row(children: [
                         _stat('Bookings', '${s.bookings}', PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), AD.tabGroups),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: Msg.s2),
                         _stat('Calls', '${s.calls}', PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.tabCalls),
                       ]),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: Msg.s2),
                       Row(children: [
                         _stat('Minutes talked', '${s.minutes}', PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.online),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: Msg.s2),
                         _stat('Refunds', fmtCoins(s.refundsCoins), PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), AD.danger),
                       ]),
                       const SizedBox(height: 16),
@@ -92,9 +92,9 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         boxShadow: Msg.lift,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('You earned', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: Msg.s1),
                           Text(fmtCoins(s.netCoins), style: ADText.appTitle(c: AD.online).copyWith(fontSize: 38, height: 1.0, letterSpacing: -0.76)),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: Msg.s1),
                           Text(a.isFreeForCallers
                               ? 'Sponsored agent — callers talk free; usage billed to your AvaWallet.'
                               : 'Gross ${fmtCoins(s.grossCoins)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
@@ -102,12 +102,12 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         ]),
                       ),
                       // ── Audience (last 30 days) — who's looking at this agent ──
-                      const SizedBox(height: 22),
+                      const SizedBox(height: Msg.s5),
                       Text('Audience — last 30 days', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: Msg.s2),
                       Row(children: [
                         _stat('Page views', '${s.views30d}', PhosphorIcons.eye(PhosphorIconsStyle.bold), AD.tabGroups),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: Msg.s2),
                         _stat('Unique viewers', '${s.uniqueViewers30d}', PhosphorIcons.users(PhosphorIconsStyle.bold), AD.tabCalls),
                       ]),
                       if (s.viewsByCountry.isNotEmpty) ...[
@@ -124,7 +124,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         for (final g in s.viewsByAgeGroup) _rank(g.key, g.value, s.views30d),
                       ],
                     ],
-                    const SizedBox(height: 18),
+                    const SizedBox(height: Msg.s4),
                     Text(
                       "📬 You'll also get a morning digest with these numbers for all your agents.",
                       style: ADText.preview().copyWith(fontSize: 12, height: 1.42),
@@ -169,7 +169,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
           padding: const EdgeInsets.all(14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(icon: icon, color: accent, size: 34),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(value, style: ADText.appTitle().copyWith(fontSize: 26, height: 1.0, letterSpacing: -0.52)),
             const SizedBox(height: 2),
             Text(label, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 10, letterSpacing: 0.8)),

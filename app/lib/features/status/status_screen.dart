@@ -204,7 +204,7 @@ class _StatusScreenState extends State<StatusScreen> {
         padding: const EdgeInsets.all(18),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(p.authorName, style: ADText.threadName().copyWith(fontSize: 18)),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           if (p.kind == 'image' && p.media != null)
             FutureBuilder<Uint8List>(
               future: MediaService.downloadAndDecrypt(ChatMedia.fromEnvelope(p.media!)),
@@ -256,7 +256,7 @@ class _StatusScreenState extends State<StatusScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
               ],
               Expanded(
                 child: Column(
@@ -315,15 +315,15 @@ class _StatusScreenState extends State<StatusScreen> {
                   ),
                 ),
               ]),
-              const SizedBox(width: 14),
+              const SizedBox(width: Msg.s3),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text('My status', style: ADText.threadName().copyWith(fontSize: 17)),
-                const SizedBox(height: 3),
+                const SizedBox(height: Msg.s1),
                 Text('Tap to add to your status (24h)', style: ADText.preview(c: AD.textTertiary)),
               ])),
             ]),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 9),
             child: Text('Recent', style: ADText.sectionLabel()),
@@ -345,7 +345,7 @@ class _StatusScreenState extends State<StatusScreen> {
                           size: 30, color: AD.textTertiary),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Msg.s3),
                   Text('No updates yet — share your first one.',
                       textAlign: TextAlign.center,
                       style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
@@ -367,11 +367,11 @@ class _StatusScreenState extends State<StatusScreen> {
                   ),
                   child: Avatar(seed: p.authorPub, name: p.authorName, size: 42),
                 ),
-                const SizedBox(width: 13),
+                const SizedBox(width: Msg.s3),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   Text(p.authorName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ADText.rowName().copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 3),
+                      style: ADText.rowName().copyWith(fontSize: 14)),
+                  const SizedBox(height: Msg.s1),
                   Text(p.kind == 'image' ? '📷 Photo' : p.kind == 'video' ? '🎬 Video' : (p.text ?? ''),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.preview(c: AD.textTertiary)),
@@ -381,7 +381,7 @@ class _StatusScreenState extends State<StatusScreen> {
                     size: 15, color: AD.textFaint),
               ]),
             ),
-            const SizedBox(height: 11),
+            const SizedBox(height: Msg.s3),
           ],
         ],
       ),

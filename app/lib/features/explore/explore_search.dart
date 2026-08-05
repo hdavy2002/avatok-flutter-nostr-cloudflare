@@ -166,7 +166,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
       }
       return ListView(padding: const EdgeInsets.all(18), children: [
         Text('Recent searches', style: ADText.sectionLabel()),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         for (final r in _recent)
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -175,7 +175,7 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
               padding: const EdgeInsets.symmetric(vertical: 9),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: AD.textSecondary),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(child: Text(r, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.rowName())),
                 PhosphorIcon(PhosphorIcons.arrowUpLeft(PhosphorIconsStyle.bold), size: 15, color: AD.textTertiary),
@@ -241,7 +241,7 @@ class _FilterSheetState extends State<_FilterSheet> {
         padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s3),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
           PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 15, color: AD.textPrimary),
-          const SizedBox(width: 7),
+          const SizedBox(width: Msg.s2),
           Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: ADText.preview(c: AD.textPrimary))),
         ]),
@@ -267,8 +267,8 @@ class _FilterSheetState extends State<_FilterSheet> {
             onChanged: (v) => setState(() => _price = v),
           ),
           Text('Minimum rating', style: ADText.sectionLabel()),
-          const SizedBox(height: 9),
-          Wrap(spacing: 9, runSpacing: 8, children: [
+          const SizedBox(height: Msg.s2),
+          Wrap(spacing: Msg.s2, runSpacing: 8, children: [
             for (final r in const [null, 3.0, 4.0, 4.5])
               AdChip(
                 label: r == null ? 'Any' : '★ $r+',
@@ -283,7 +283,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                   firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
               if (d != null) setState(() => _from = d);
             })),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(child: _dateBtn('To: ${_fmtDay(_to)}', () async {
               final d = await showDatePicker(context: context, initialDate: _to ?? DateTime.now().add(const Duration(days: 30)),
                   firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
@@ -299,7 +299,7 @@ class _FilterSheetState extends State<_FilterSheet> {
             textCapitalization: TextCapitalization.characters,
             leadIcon: PhosphorIcons.globeHemisphereEast(PhosphorIconsStyle.bold),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           Row(children: [
             Expanded(child: AdButton(
               label: 'Clear all',
@@ -307,7 +307,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               fontSize: 16,
               onPressed: () { widget.onApply(null, null, null, '', null, null); Navigator.pop(context); },
             )),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(flex: 2, child: AdButton(
               label: 'Apply filters',
               fontSize: 17,

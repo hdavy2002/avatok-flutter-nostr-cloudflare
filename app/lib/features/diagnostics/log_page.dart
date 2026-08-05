@@ -6,6 +6,7 @@ import '../../core/ava_log.dart';
 import '../../core/ice_cache.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Diagnostics / logs screen reachable from the sidebar. Shows the latest
 /// in-app log and lets the user copy it to paste back for debugging.
@@ -40,7 +41,7 @@ class _LogPageState extends State<LogPage> {
               padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
               child: Row(children: [
                 AdBackButton(onTap: () => Navigator.of(context).maybePop()),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -93,12 +94,12 @@ class _LogPageState extends State<LogPage> {
             child: Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Force TURN relay on calls',
-                    style: ADText.rowName().copyWith(fontSize: 13.5)),
+                    style: ADText.rowName().copyWith(fontSize: 13)),
                 const SizedBox(height: 2),
                 Text('Test the worst-case path: media is forced through the relay',
-                    style: ADText.preview().copyWith(fontSize: 11.5)),
+                    style: ADText.preview().copyWith(fontSize: 11)),
               ])),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               ZineToggle(
                 value: CallDiag.turnOnly,
                 onChanged: (v) async {
@@ -141,7 +142,7 @@ class _LogPageState extends State<LogPage> {
                         child: SelectableText(
                           text,
                           style: const TextStyle(
-                              fontFamily: ADText.family, fontSize: 11.5,
+                              fontFamily: ADText.family, fontSize: 11,
                               height: 1.45, color: AD.textPrimary),
                         ),
                       ),

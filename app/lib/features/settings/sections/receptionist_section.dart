@@ -607,7 +607,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 // Four INDEPENDENT toggles. Each alone decides whether Ava
                 // answers that scenario for cell calls.
                 Text('Cell (PSTN) calls', style: ADText.sectionLabel()),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 _receptToggle(
                   'Call not picked up',
                   'You didn’t answer before it stopped ringing.',
@@ -642,7 +642,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(height: 16),
                 // ── [RECEPT-SETTINGS-1] Group 2 — AvaTOK-to-AvaTOK calls ────
                 Text('AvaTOK calls', style: ADText.sectionLabel()),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 _receptToggle(
                   'Call not picked up',
                   'You didn’t answer before it stopped ringing.',
@@ -674,14 +674,14 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   'avatok_redirect_all',
                   (v) => _avatokRedirectAll = v,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 Text(
                   'Each toggle works on its own. If nothing here is on, an '
                   'unanswered call is simply a missed call. Ava costs 3 tokens '
                   'per minute, capped at 3 minutes.',
                   style: ADText.preview(),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 // ── The note: tell Ava your availability ───────────────────
                 AdField(
                   controller: _note,
@@ -693,7 +693,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   textCapitalization: TextCapitalization.sentences,
                   onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 // Live character counter against the 500-char server cap.
                 Align(
                   alignment: Alignment.centerRight,
@@ -715,7 +715,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(height: 16),
                 // ── Expiry chips ───────────────────────────────────────────
                 Text('Clear this note after', style: ADText.sectionLabel()),
-                const SizedBox(height: 9),
+                const SizedBox(height: Msg.s2),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final o in _kExpiryOptions)
                     AdChip(
@@ -734,10 +734,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(height: 16),
                 // ── Greeting ───────────────────────────────────────────────
                 Text('Greeting', style: ADText.sectionLabel()),
-                const SizedBox(height: 9),
+                const SizedBox(height: Msg.s2),
                 _greetingDropdown(),
                 if (_greetingStyle == 'custom') ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: Msg.s2),
                   AdField(
                     controller: _greeting,
                     label: 'Your greeting',
@@ -747,7 +747,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                     onChanged: (_) => setState(() {}),
                   ),
                 ],
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 Text(
                   'Ava opens with this, then the caller’s name — e.g. '
                   '“${_greetingPreview()} Anita, you can’t take the call right now…”.',
@@ -764,7 +764,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(height: 16),
                 // ── Answering language ─────────────────────────────────────
                 Text('Answering language', style: ADText.sectionLabel()),
-                const SizedBox(height: 9),
+                const SizedBox(height: Msg.s2),
                 ZinePressable(
                   onTap: _pickLanguage,
                   color: AD.card,
@@ -775,19 +775,19 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   child: Row(children: [
                     Icon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Msg.s2),
                     Expanded(child: Text(_langLabel(), style: ADText.rowName())),
                     Icon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
                         size: 16, color: AD.textTertiary),
                   ]),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 Text(
                   'Ava opens in this language, then follows the caller if they speak '
                   'another.',
                   style: ADText.preview(),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 const Divider(height: 1, color: AD.borderHairline),
                 const SizedBox(height: 16),
                 // ── [AVARECEPT-LANES-1] Ava's voice (folded in from the old
@@ -802,7 +802,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   loading: _saving,
                   onPressed: _saving ? null : () => _save(enabled: true),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: Msg.s2),
                 // ── [DYNW-RULES-UI-1] Call Rules entry ──────────────────────
                 ZinePressable(
                   onTap: () {
@@ -819,7 +819,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   child: Row(children: [
                     Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Msg.s2),
                     Expanded(
                         child: Text('Call Rules — tell Ava what to say',
                             style: ADText.rowName())),
@@ -827,7 +827,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                         size: 16, color: AD.textTertiary),
                   ]),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: Msg.s2),
                 // ── [RECEPT-STATS-1] Call analytics entry (plan §C3) ───────
                 ZinePressable(
                   onTap: () {
@@ -844,7 +844,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   child: Row(children: [
                     Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Msg.s2),
                     Expanded(
                         child:
                             Text('View call analytics', style: ADText.rowName())),
@@ -1040,7 +1040,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       const SizedBox(height: 4),
       Text('The voice Ava speaks with on a hands-free call.',
           style: ADText.preview()),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       ValueListenableBuilder<String>(
         valueListenable: GoogleVoicePref.voice,
         builder: (context, current, _) {
@@ -1070,7 +1070,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       const SizedBox(height: 4),
       Text('The language Ava speaks on a call. Auto follows whatever you speak.',
           style: ADText.preview()),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       ValueListenableBuilder<String>(
         valueListenable: AvaVoiceLangPref.lang,
         builder: (context, code, _) => Wrap(
@@ -1187,7 +1187,7 @@ class _LangPickerSheetState extends State<_LangPickerSheet> {
             maxHeight: MediaQuery.of(context).size.height * 0.72,
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Container(
               width: 40, height: 4,
               decoration: BoxDecoration(
@@ -1278,7 +1278,7 @@ class _TokenGateBanner extends StatelessWidget {
                 style: ADText.rowName()),
           ),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Text(
           'You have $tokens token${tokens == 1 ? '' : 's'}. Ava talks to callers '
           'on your tokens (3/min), so she can’t answer until you top up. Turning '

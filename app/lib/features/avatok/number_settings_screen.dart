@@ -131,7 +131,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           const SizedBox(height: 12),
           Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 16, color: AD.online),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             Expanded(child: Text('Your real number stays private and is never shown.', style: ADText.preview(c: AD.textSecondary))),
           ]),
         ]),
@@ -284,7 +284,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
               ],
               Expanded(
                 child: Text(title, style: ADText.appTitle(),
@@ -358,14 +358,14 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       children: [
         if (icon != null && !trailingIcon) ...[
           Icon(icon, size: fontSize + 2, color: fg),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
         ],
         Flexible(
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: fontSize, color: fg)),
         ),
         if (icon != null && trailingIcon) ...[
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Icon(icon, size: fontSize + 2, color: fg),
         ],
       ],
@@ -405,19 +405,19 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
               'Pick any available number below.', style: _bodyStyle),
         ]),
       ));
-      widgets.add(const SizedBox(height: 14));
+      widgets.add(const SizedBox(height: Msg.s3));
     }
     if (me.hasNumber && !_picking) {
       widgets.add(
         _card(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('YOUR AVATOK NUMBER', style: ADText.sectionLabel()),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(me.display ?? '', style: ADText.appTitle(c: _numGreen).copyWith(fontSize: 24, letterSpacing: 0)),
             const SizedBox(height: 8),
             Row(children: [
               PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 15, color: AD.online),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               Expanded(child: Text('Your real number is hidden — people see this instead.', style: ADText.preview(c: AD.textSecondary))),
             ]),
           ]),
@@ -426,11 +426,11 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       if (me.canGenerate) {
         // Paid: regenerate / release freely.
         widgets.addAll([
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           _button(label: 'Change number', ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
               onPressed: _busy ? null : () { setState(() => _picking = true); _loadAvailable(); }),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           _button(label: 'Release number', ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), trailingIcon: false,
               onPressed: _busy ? null : _release),
@@ -438,12 +438,12 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       } else {
         // Free: this is their one free number — locked. Upgrade to change it.
         widgets.addAll([
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           _accentCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 _iconBadge(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 28),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(child: Text('Your number is locked', style: ADText.threadName().copyWith(fontSize: 17))),
               ]),
               const SizedBox(height: 8),
@@ -467,10 +467,10 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               _iconBadge(PhosphorIcons.hash(PhosphorIconsStyle.bold), color: AD.primaryBadge, size: 30),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: Text('Generate a new number', style: ADText.threadName().copyWith(fontSize: 18))),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text('Your free number generation is used up. Upgrade to a paid plan to generate a new number that represents you and hides your real phone.', style: _bodyStyle),
           ]),
         ),
@@ -491,7 +491,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         onTap: _busy ? null : _pickCountry,
         child: Row(children: [
           Text(_country?.flag ?? '🌍', style: const TextStyle(fontSize: 22)),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Text(_country?.name ?? 'Choose country', style: ADText.rowName(), overflow: TextOverflow.ellipsis)),
           PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: AD.textTertiary),
         ]),
@@ -499,7 +499,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       const SizedBox(height: 12),
       // Pattern field (no cramped inline button — Search is its own button below).
       _patternField(),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       Row(children: [
         Expanded(
           child: _button(
@@ -507,7 +507,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: _busy || _loadingAvail ? null : _loadAvailable),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: _button(
             label: 'Shuffle', ghost: true, fullWidth: true, fontSize: 15,
@@ -517,7 +517,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       ]),
       const SizedBox(height: 12),
       Text('AVAILABLE NUMBERS', style: ADText.sectionLabel()),
-      const SizedBox(height: 6),
+      const SizedBox(height: Msg.s1),
     ]);
     if (_loadingAvail) {
       widgets.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AD.iconSearch))));
@@ -532,7 +532,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             onTap: _busy ? null : () => _confirm(n),
             child: Row(children: [
               Expanded(child: Text(n.display, style: ADText.rowName().copyWith(fontSize: 16), overflow: TextOverflow.ellipsis)),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               Flexible(
                 child: Text('available', style: ADText.statCaption(c: _numGreen),
                     overflow: TextOverflow.ellipsis, maxLines: 1),

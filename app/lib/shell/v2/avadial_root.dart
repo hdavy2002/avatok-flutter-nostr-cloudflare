@@ -257,7 +257,7 @@ class _CallsTabStrip extends StatelessWidget {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(selected ? item.selectedIcon : item.icon, size: 17, color: fg),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Text(item.label, style: ADText.tabLabel(c: fg)),
         ]),
       ),
@@ -690,7 +690,7 @@ class _ContactsTabState extends State<_ContactsTab> {
         constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         ListTile(
           leading: Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
@@ -799,10 +799,10 @@ class _ContactsTabState extends State<_ContactsTab> {
                   controller: _searchCtrl,
                   onChanged: _onQueryChanged,
                   cursorColor: AvaDialTheme.searchText,
-                  style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
+                  style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14),
                   decoration: const InputDecoration(
                     hintText: 'Search name, number, email or company',
-                    hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
+                    hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -859,10 +859,10 @@ class _ContactsTabState extends State<_ContactsTab> {
                   Text(c.name.isNotEmpty ? c.name : c.number,
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.threadName(c: AvaDialTheme.text)),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: Msg.s1),
                   Row(children: [
                     PhosphorIcon(PhosphorIcons.hash(PhosphorIconsStyle.bold), size: 12, color: AD.online),
-                    const SizedBox(width: 3),
+                    const SizedBox(width: Msg.s1),
                     Text(c.subtitle, style: ADText.preview(c: AD.online)),
                   ]),
                 ]),
@@ -927,7 +927,7 @@ class _ContactsTabState extends State<_ContactsTab> {
             child: Row(children: [
               const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: AvaDialTheme.accent)),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Text('Searching AvaTOK…', style: ADText.preview(c: AvaDialTheme.textSoft)),
             ]),
           );
@@ -972,7 +972,7 @@ class _ContactsTabState extends State<_ContactsTab> {
                 Text(c.name.isNotEmpty ? c.name : c.number,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.threadName(c: AvaDialTheme.text)),
-                const SizedBox(height: 3),
+                const SizedBox(height: Msg.s1),
                 Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.preview(c: AD.online)),
               ]),
@@ -1022,7 +1022,7 @@ class _ContactsTabState extends State<_ContactsTab> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.threadName(c: AvaDialTheme.text)),
-                const SizedBox(height: 3),
+                const SizedBox(height: Msg.s1),
                 Text(c.rawPhone.isNotEmpty ? c.rawPhone : c.phoneNorm,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: ADText.preview(c: on ? _kAvatokOrange : AvaDialTheme.textSoft)),
@@ -1060,7 +1060,7 @@ class _ContactsTabState extends State<_ContactsTab> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 20, color: AD.iconSearch),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: Text('See all your contacts here',
                   style: ADText.threadName(c: AvaDialTheme.text))),
             ]),
@@ -1277,10 +1277,10 @@ class _AvaDialSearchBarState extends State<_AvaDialSearchBar> {
               // The app-wide cursor/selection colours are tuned for the dark
               // surface and vanish on white — pin them to the input's own ink.
               cursorColor: AvaDialTheme.searchText,
-              style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
+              style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14),
               decoration: InputDecoration(
                 hintText: widget.hint,
-                hintStyle: const TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
+                hintStyle: const TextStyle(color: AvaDialTheme.searchHint, fontSize: 14),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -1412,7 +1412,7 @@ class _LogsTabState extends State<_LogsTab> {
         title: Text('Clear call history?', style: ADText.threadName(c: AvaDialTheme.text)),
         content: Text(
           'This clears your AvaTOK call history on every device signed into this account.',
-          style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 13.5),
+          style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 13),
         ),
         actions: [
           TextButton(
@@ -1490,7 +1490,7 @@ class _LogsTabState extends State<_LogsTab> {
         borderRadius: Msg.brSheetTop,
       ),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         ListTile(
           leading: Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AD.borderAvatar, width: 2)),
@@ -1804,7 +1804,7 @@ class _BlockTabState extends State<_BlockTab> {
                     borderRadius: Msg.brSheetTop,
                   ),
                   builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const SizedBox(height: 10),
+                    const SizedBox(height: Msg.s2),
                     ListTile(
                       title: Text(label, style: ADText.rowName(c: AvaDialTheme.text)),
                       subtitle: Text(e.number, style: ADText.preview(c: AvaDialTheme.textSoft)),
@@ -1904,7 +1904,7 @@ class _PermState extends StatelessWidget {
         Text(title, textAlign: TextAlign.center, style: ADText.threadName(c: AvaDialTheme.text).copyWith(fontSize: 18)),
         const SizedBox(height: 8),
         Text(subtitle, textAlign: TextAlign.center, style: ADText.preview(c: AvaDialTheme.textSoft).copyWith(fontSize: 14)),
-        const SizedBox(height: 20),
+        const SizedBox(height: Msg.s4),
         Center(
           child: AdButton(
             label: 'Try again',

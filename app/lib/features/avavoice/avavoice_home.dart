@@ -137,7 +137,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                     active: _tabs.index == 0,
                     onTap: () => _tabs.animateTo(0)),
               ),
-              const SizedBox(width: 9),
+              const SizedBox(width: Msg.s2),
               Expanded(
                 child: ZineChip(
                     label: 'My bookings',
@@ -173,7 +173,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
               _load();
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           // Hero strip — lilac (AI accent), flat fill, ink border, hard shadow.
           Container(
             padding: const EdgeInsets.all(14),
@@ -265,7 +265,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
             Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
+            Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
               if (a.activeCalls != null)
                 a.busy
                     ? _miniSticker('busy', AD.danger, Colors.white)
@@ -314,7 +314,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _bookings.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
         itemBuilder: (_, i) {
           final b = _bookings[i];
           final upcoming = b.status == 'booked' &&
@@ -339,7 +339,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: Msg.s1),
                   Text(
                     '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
                     '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}',

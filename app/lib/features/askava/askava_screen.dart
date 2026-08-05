@@ -381,7 +381,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Row(children: [
           _sparkleBadge(30),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Text('Ask Ava', style: ADText.appTitle()),
         ]),
         actions: [
@@ -420,7 +420,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
           padding: const EdgeInsets.symmetric(horizontal: 36),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             _sparkleBadge(54),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('Ask me anything', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
             const SizedBox(height: 8),
             Text(
@@ -450,7 +450,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(t.text, style: ADText.bubbleBody(c: mine ? AD.bubbleOutInk : AD.textPrimary)),
           if (t.contacts.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final c in t.contacts.take(4)) ..._contactChips(c),
             ]),
@@ -521,7 +521,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
           borderRadius: Msg.brPill,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[PhosphorIcon(icon, size: 14, color: Colors.white), const SizedBox(width: 6)],
+          if (icon != null) ...[PhosphorIcon(icon, size: 14, color: Colors.white), const SizedBox(width: Msg.s1)],
           Text(label, style: ADText.statCaption(c: Colors.white)),
         ]),
       ),
@@ -579,7 +579,7 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         GestureDetector(
           onTap: _busy ? null : _send,
           child: Container(

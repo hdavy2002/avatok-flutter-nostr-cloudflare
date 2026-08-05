@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 class TranslatedText extends StatefulWidget {
   /// The original bubble content (already styled by the caller / Stream K bubble).
@@ -50,7 +51,7 @@ class _TranslatedTextState extends State<TranslatedText> {
       _showTranslated
           ? Text(t, style: widget.translatedStyle ?? ADText.bubbleBody())
           : widget.original,
-      const SizedBox(height: 3),
+      const SizedBox(height: Msg.s1),
       GestureDetector(
         onTap: () => setState(() => _showTranslated = !_showTranslated),
         behavior: HitTestBehavior.opaque,

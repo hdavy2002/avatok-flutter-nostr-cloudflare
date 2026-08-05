@@ -334,7 +334,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rPill)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[PhosphorIcon(_icon(icon), size: 13, color: fg), const SizedBox(width: 6)],
+        if (icon != null) ...[PhosphorIcon(_icon(icon), size: 13, color: fg), const SizedBox(width: Msg.s1)],
         Flexible(child: Text(_resolve(n['label'], scope),
             maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.tabLabel(c: fg).copyWith(fontSize: 10, letterSpacing: 0.4))),
       ]),
@@ -373,7 +373,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       decoration: BoxDecoration(color: fill, border: Border.all(color: AD.borderControl, width: 1), borderRadius: BorderRadius.circular(Msg.rMd), boxShadow: Msg.none),
       alignment: Alignment.center,
       child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-        if (icon != null) ...[PhosphorIcon(_icon(icon), size: 17, color: AD.textPrimary), const SizedBox(width: 7)],
+        if (icon != null) ...[PhosphorIcon(_icon(icon), size: 17, color: AD.textPrimary), const SizedBox(width: Msg.s2)],
         Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.0, letterSpacing: -0.2))),
       ]),
     );
@@ -425,7 +425,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
         padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(_resolve(n['title'], scope), maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-          if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 10, runSpacing: 4, children: meta)),
+          if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: Msg.s2, runSpacing: 4, children: meta)),
         ]),
       )),
     ]));

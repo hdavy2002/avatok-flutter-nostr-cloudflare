@@ -369,7 +369,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                   badge > 99 ? '99+' : '$badge',
                   style: const TextStyle(
                     color: Color(0xFFFF453A), // RED count — owner spec
-                    fontSize: 10.5,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                     height: 1.2,
                   ),
@@ -377,7 +377,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
               ),
             ),
           ]),
-        const SizedBox(height: 3),
+        const SizedBox(height: Msg.s1),
         Text(
           label,
           maxLines: 1,
@@ -412,7 +412,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(m.$2, size: 22, color: AD.textPrimary),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(m.$3, style: ADText.navLabelPrimary()),
           ]),
         ),

@@ -46,7 +46,7 @@ const String kAgentScopeAll = 'all';
 // full-screen onboarding step. Same family/weights, bigger sizes; the step
 // counter label deliberately stays at ADText.sectionLabel size.
 TextStyle _wizBody({Color? c}) =>
-    ADText.preview(c: c ?? AD.textSecondary).copyWith(fontSize: 16.5, height: 1.4);
+    ADText.preview(c: c ?? AD.textSecondary).copyWith(fontSize: 16, height: 1.4);
 TextStyle _wizTitle() => ADText.rowName().copyWith(fontSize: 19, height: 1.2);
 
 /// Opens the multi-step AI Voice Agent wizard. Returns the chosen scope
@@ -248,7 +248,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
                         child: Text('STEP ${_idx + 1} OF ${_steps.length}',
                             style: ADText.sectionLabel()),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: Msg.s3),
                       _buildStep(),
                     ],
                   ),
@@ -309,7 +309,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           Row(children: [
             const SizedBox(width: 16, height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Text('Checking your wallet…', style: _wizBody()),
           ])
         else ...[
@@ -332,7 +332,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
             style: _wizBody(),
           ),
           if (!_balanceUnavailable && !_balanceOk) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdButton(
               label: 'Top up your wallet',
               variant: AdButtonVariant.teal,
@@ -346,7 +346,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
               },
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           GestureDetector(
             onTap: _fetchBalance,
             child: Text('Refresh balance',
@@ -392,12 +392,12 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: ADText.rowName().copyWith(fontSize: 17)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(sub,
-                style: ADText.preview().copyWith(fontSize: 14.5, height: 1.35)),
+                style: ADText.preview().copyWith(fontSize: 14, height: 1.35)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Icon(
           active
               ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
@@ -429,7 +429,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
                     decoration: TextDecoration.lineThrough,
                     decorationColor: AD.textTertiary),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           _greenPill('Free in Beta'),
         ]),
       ],
@@ -465,7 +465,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
           'carrier code and only turns green once your carrier confirms it.',
           style: _wizBody(c: AD.textPrimary),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         AdButton(
           label: 'Set up call forwarding',
           variant: AdButtonVariant.teal,
@@ -477,7 +477,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
                 builder: (_) => const PstnForwardingSetupScreen()));
           },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Text(
           'You can change these any time in Settings → AI receptionist.',
           style: _wizBody(),
@@ -547,7 +547,7 @@ class _AgentOnboardingScreenState extends State<_AgentOnboardingScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: icon, color: AD.iconVideo, size: 44),
-          const SizedBox(width: 14),
+          const SizedBox(width: Msg.s3),
           Expanded(child: Text(title, style: _wizTitle())),
         ]),
         const SizedBox(height: 16),

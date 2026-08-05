@@ -98,7 +98,7 @@ class LiveInkPill extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
           Icon(icon, color: AD.textPrimary, size: 13),
-          const SizedBox(width: 5),
+          const SizedBox(width: Msg.s1),
         ],
         Text(text, style: ADText.sectionLabel(c: AD.textPrimary)),
       ]),
@@ -238,7 +238,7 @@ class DonationBannerWidget extends StatelessWidget {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.regular), size: 17, color: AD.bg),
-          const SizedBox(width: 7),
+          const SizedBox(width: Msg.s2),
           Text('${banner.name} donated \$${(banner.amount / 100).toStringAsFixed(2)}',
               style: ADText.rowName(c: AD.bg)),
         ]),
@@ -293,7 +293,7 @@ class LiveTopBar extends StatelessWidget {
               ),
             const SizedBox(width: Msg.s2),
             LiveInkPill('$watching', icon: PhosphorIcons.eye(PhosphorIconsStyle.regular)),
-            if (remainingMs != null) ...[const SizedBox(width: 6), LiveInkPill(fmtClock(remainingMs!), icon: PhosphorIcons.timer(PhosphorIconsStyle.regular))],
+            if (remainingMs != null) ...[const SizedBox(width: Msg.s1), LiveInkPill(fmtClock(remainingMs!), icon: PhosphorIcons.timer(PhosphorIconsStyle.regular))],
             const SizedBox(width: Msg.s2),
             LiveCircleButton(icon: PhosphorIcons.x(PhosphorIconsStyle.regular), size: 36, onTap: onClose),
           ]),

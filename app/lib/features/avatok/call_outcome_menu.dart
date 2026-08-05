@@ -16,6 +16,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../sync/outbox.dart';
 import 'media.dart';
 import 'voice_note_waveform.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// [CALL-OUTCOME-MENU-1] The unified caller-facing menu shown when a call ends
 /// without a human answer (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md). ONE
@@ -299,7 +300,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             const SizedBox(height: 8),
             Text("Here's what you can do:",
                 textAlign: TextAlign.center, style: ADText.preview()),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
 
             // [AVACALL-MENU-1] Call again — redial the callee (audio). Top of the
             // menu because it's the most common follow-up to a declined/busy call.
@@ -311,7 +312,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 fontSize: 16,
                 onPressed: (_sending || _recording) ? null : widget.onCallAgain,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
             ],
 
             // [AVACALL-MENU-1] Message — open the DM thread with the callee.
@@ -323,7 +324,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 fontSize: 16,
                 onPressed: (_sending || _recording) ? null : widget.onMessage,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
             ],
 
             // 1) Talk to Ava — audio calls only, and ONLY when the callee actually
@@ -348,7 +349,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                         s.menuTalkToAva();
                       },
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
             ],
 
             // [RECEPT-SETTINGS-1] The classic recorded voicemail option was
@@ -370,7 +371,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               onPressed: _sending ? null : _toggleRecord,
             ),
             if (_recording) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -400,7 +401,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 ]),
               ),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
 
             // 4) Text note — a box slides open underneath.
             AdButton(
@@ -413,7 +414,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                   : () => setState(() => _textOpen = !_textOpen),
             ),
             if (_textOpen) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               TextField(
                 controller: _textCtrl,
                 autofocus: true,
@@ -455,7 +456,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                 onPressed: _sending ? null : _sendText,
               ),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
 
             // [NOANSWER-LEAVE-NOTE-1] Save contact — parity with the phone-style
             // no-answer card so the caller can save the callee without leaving.
@@ -472,7 +473,7 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                         widget.onSaveContact!.call();
                       },
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
             ],
 
             // 4) See Listings — intentionally NOT rendered yet: gated behind

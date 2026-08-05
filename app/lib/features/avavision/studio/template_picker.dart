@@ -148,7 +148,7 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
       padding: const EdgeInsets.all(14),
       child: Row(children: [
         ZineIconBadge(icon: _categoryIcon(c.capability), color: accent, size: 46),
-        const SizedBox(width: 14),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
@@ -188,11 +188,11 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
           Expanded(child: Text(t.name, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2))),
           PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 26, color: AD.tabCalls),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Text(t.starterPrompt,
             maxLines: 3, overflow: TextOverflow.ellipsis, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
         const SizedBox(height: 12),
-        Wrap(spacing: 6, runSpacing: 6, children: [
+        Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
           CapabilityBadge(t.capability),
           if (t.hasOverlay) OverlayBadge(t.overlayStyle),
           if (t.hasScore && t.scoreLabel != null) ScoreBadge(t.scoreLabel!),

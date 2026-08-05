@@ -974,7 +974,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (m.photoUrls.isNotEmpty) ...[
-            Wrap(spacing: 6, runSpacing: 6, children: [
+            Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
               for (final u in m.photoUrls)
                 CachedImage(u,
                     width: 78,
@@ -1125,7 +1125,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
             child: Text(location, style: ADText.preview(c: AD.textSecondary)),
           ),
         const SizedBox(height: Msg.s2),
-        Wrap(spacing: 6, runSpacing: 6, children: [
+        Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
           if (photos > 0) _fact('$photos photo${photos == 1 ? '' : 's'}'),
           if (card['video'] != null) _fact('Video'),
           for (final t in tags.take(4)) _fact(t),
@@ -1183,7 +1183,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
               style: TextStyle(
                   fontFamily: ADText.family,
                   fontWeight: FontWeight.w600,
-                  fontSize: 13.5,
+                  fontSize: 13,
                   color: fg)),
         ),
       );

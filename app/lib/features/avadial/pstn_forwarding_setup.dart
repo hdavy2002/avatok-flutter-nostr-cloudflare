@@ -17,6 +17,7 @@ import '../settings/settings_registry.dart';
 import 'avadial_channel.dart';
 import 'avadial_theme.dart';
 import 'pstn_forwarding_wizard.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// [AVA-RCPT-7] → REPLACED 2026-07-16 (owner decision, PLAN-2026-07-16
 /// receptionist/guardian doc): AvaTOK will never be the Android default
@@ -784,7 +785,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
               child: Row(children: [
                 Icon(PhosphorIcons.deviceMobile(PhosphorIconsStyle.bold),
                     size: 16, color: AvaDialTheme.textMute),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Expanded(
                   child: Text(
                     (_simLabel == null || _simLabel!.isEmpty)
@@ -800,7 +801,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           // optimistic toggles — same widget the consent intro embeds, with
           // the Settings-only "Turn off" affordance on verified rows.
           PstnForwardingWizard(did: _did, storage: _sec, showTurnOff: true),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s4),
           Text('What this does not do', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
           const SizedBox(height: 8),
           _bullet('No spam filtering here — that needs the call-screening role, which '

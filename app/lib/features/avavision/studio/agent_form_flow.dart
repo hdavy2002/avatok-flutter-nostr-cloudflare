@@ -441,7 +441,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                       ),
                     ]),
                     if (i == _lastStep) ...[
-                      const SizedBox(height: 14),
+                      const SizedBox(height: Msg.s3),
                       Center(child: ZineLink('save as draft', fontSize: 13, onTap: _working ? null : _next)),
                     ],
                   ]),
@@ -520,8 +520,8 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_templateName.isEmpty ? _templateId : _templateName, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
-              const SizedBox(height: 6),
-              Wrap(spacing: 6, runSpacing: 6, children: [
+              const SizedBox(height: Msg.s1),
+              Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
                 CapabilityBadge(_capability),
                 if (_overlayEnabled) OverlayBadge(_overlayStyle),
                 if (_scoringMode != 'none' && _scoreLabel.text.trim().isNotEmpty)
@@ -531,7 +531,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           ),
         ]),
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       ZineLink('change template', onTap: _chooseTemplate),
     ]);
   }
@@ -573,7 +573,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         ),
         const SizedBox(height: 16),
         Text('Listing photos (1–5)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-        const SizedBox(height: 9),
+        const SizedBox(height: Msg.s2),
         Wrap(spacing: 12, runSpacing: 12, children: [
           for (var i = 0; i < _images.length; i++)
             Stack(clipBehavior: Clip.none, children: [
@@ -634,10 +634,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Widget _stepVoice() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.waveform(PhosphorIconsStyle.bold), color: AD.tabCalls, size: 30),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Text('Choose how your coach sounds. Tap ▶ to hear a sample.', style: ADText.preview().copyWith(fontSize: 13, height: 1.42))),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         VoicePicker(selected: _voice, onSelected: (v) => setState(() => _voice = v)),
       ]);
 
@@ -660,15 +660,15 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Show the ${overlayLabel(_overlayStyle).toLowerCase()} overlay', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text('Draws a live ${overlayLabel(_overlayStyle).toLowerCase()} on the user\'s camera so they see exactly what to fix.',
                   style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           ZineToggle(value: _overlayEnabled, onChanged: (v) => setState(() => _overlayEnabled = v)),
         ]),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ] else
         Padding(
           padding: const EdgeInsets.only(bottom: 18),
@@ -678,7 +678,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
 
       // Scoring
       Text('Live score', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in scoringOpts)
           ZineChip(label: _scoringLabel(m), active: m == _scoringMode, onTap: () => setState(() => _scoringMode = m)),
@@ -694,60 +694,60 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           onChanged: (_) => setState(() {}),
         ),
       ],
-      const SizedBox(height: 18),
+      const SizedBox(height: Msg.s4),
 
       // Agentic snapshot
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('"Analyze my form" deep snapshot', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text('Lets the user tap once for a precise, pixel-grounded breakdown of a single hi-res frame. '
                 'Bundled into the session cost.',
                 style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         ZineToggle(value: _agenticSnapshot, onChanged: (v) => setState(() => _agenticSnapshot = v)),
       ]),
       if (_agenticSnapshot) ...[
         const SizedBox(height: 12),
         Text('Free snapshots per session', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-        const SizedBox(height: 9),
+        const SizedBox(height: Msg.s2),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final n in _freeSnapshotChoices)
             ZineChip(label: '$n', active: n == _freeSnapshots, onTap: () => setState(() => _freeSnapshots = n)),
         ]),
       ],
-      const SizedBox(height: 18),
+      const SizedBox(height: Msg.s4),
 
       // Save snapshots — OFF by default (master §10 / platform safety default).
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Save snapshots to the agent', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text('Off by default. Snapshots are analyzed and discarded unless you keep them. Keep off unless you have a clear reason.',
                 style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         ZineToggle(value: _saveSnapshots, onChanged: (v) => setState(() => _saveSnapshots = v)),
       ]),
 
       // Platform-enforced safety notes (read-only).
       if (_safetyNotes.isNotEmpty) ...[
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         Text('Platform safety (enforced)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-        const SizedBox(height: 9),
-        Wrap(spacing: 6, runSpacing: 6, children: [
+        const SizedBox(height: Msg.s2),
+        Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
           for (final s in _safetyNotes)
             MiniPill(s.replaceAll('_', ' '),
                 fill: AD.card, fg: AD.textSecondary, icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), shadow: false),
         ]),
       ],
       // Platform availability for the chosen capability.
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s3),
       Row(children: [
         PhosphorIcon(PhosphorIcons.monitor(PhosphorIconsStyle.bold), size: 16, color: AD.textSecondary),
         const SizedBox(width: 8),
@@ -768,13 +768,13 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     final userPays = _payerMode == 'user_pays';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Who pays for sessions?', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       _payerCard('user_pays', 'Users pay you',
           'You set an hourly rate. Users are billed per minute; you earn 50% after the platform fee.'),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       _payerCard('creator_pays', 'You cover the sessions (free for users)',
           'Great for brand/clinic coaches. You pay a flat ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hour of session time from your AvaWallet. Snapshots are bundled in.'),
-      const SizedBox(height: 18),
+      const SizedBox(height: Msg.s4),
       if (userPays) ...[
         ZineField(
           controller: _rate,
@@ -784,7 +784,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -795,7 +795,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           ),
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.regular), size: 18, color: AD.online),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(
               child: Text(
                 _rateCoins >= 100
@@ -806,13 +806,13 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             ),
           ]),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ],
       Text('Maximum session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 4),
       Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
           style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in kSessionLimitChoices)
           ZineChip(label: m == 60 ? '1 hour' : '$m min', active: m == _sessionLimit, onTap: () => setState(() => _sessionLimit = m)),
@@ -847,7 +847,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(body, style: ADText.preview(c: sel ? AD.textPrimary : AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),

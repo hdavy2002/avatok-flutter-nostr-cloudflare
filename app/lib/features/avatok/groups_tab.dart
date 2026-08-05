@@ -152,11 +152,11 @@ class _GroupsTabState extends State<GroupsTab> {
               child: Row(children: [
                 if (widget.onMenu != null) ...[
                   _hdrBtn(PhosphorIcons.list(PhosphorIconsStyle.bold), widget.onMenu!),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: Msg.s3),
                 ] else if (canPop) ...[
                   _hdrBtn(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
                       () => Navigator.of(context).maybePop()),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: Msg.s3),
                 ],
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,12 +198,12 @@ class _GroupsTabState extends State<GroupsTab> {
                         // header never survives alone when its rows are filtered out.
                         if (visibleInvites.isNotEmpty) ...[
                           Text('PENDING INVITES', style: ADText.sectionLabel()),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: Msg.s2),
                           for (final inv in visibleInvites)
                             Padding(padding: const EdgeInsets.only(bottom: 12), child: _inviteCard(inv)),
                           const SizedBox(height: 4),
                           if (visibleGroups.isNotEmpty) Text('YOUR GROUPS', style: ADText.sectionLabel()),
-                          if (visibleGroups.isNotEmpty) const SizedBox(height: 10),
+                          if (visibleGroups.isNotEmpty) const SizedBox(height: Msg.s2),
                         ],
                         // NOTE: _groupCard's index seeds its badge colour
                         // (AD.family('${g.id}$i')). Pass the index in _groups, not in
@@ -317,14 +317,14 @@ class _GroupsTabState extends State<GroupsTab> {
             fallbackIcon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
             size: 48,
           ),
-          const SizedBox(width: 13),
+          const SizedBox(width: Msg.s3),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(g.description.isNotEmpty ? g.description : 'Tap to open · calls inside',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview()),
           ])),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Text('${g.members.length} MEMBERS', style: ADText.statCaption()),
         ]),
       );
@@ -343,7 +343,7 @@ class _GroupsTabState extends State<GroupsTab> {
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(inv.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text("You've been invited to join${inv.memberCount > 0 ? ' · ${inv.memberCount} members' : ''}",
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.preview()),
             ])),
@@ -353,7 +353,7 @@ class _GroupsTabState extends State<GroupsTab> {
             Expanded(child: _pillButton(
               label: 'Accept', fill: AD.newGroup, labelColor: Colors.white,
               onTap: () => _respondInvite(inv, true))),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(child: _pillButton(
               label: 'Decline', fill: AD.card, labelColor: AD.textPrimary,
               borderColor: AD.borderControl, onTap: () => _respondInvite(inv, false))),
@@ -404,7 +404,7 @@ class _GroupsTabState extends State<GroupsTab> {
                   PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                   size: 32, color: AD.textTertiary)),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('No groups match "$_query"',
                 textAlign: TextAlign.center,
                 style: ADText.preview(c: AD.textSecondary)),
@@ -428,14 +428,14 @@ class _GroupsTabState extends State<GroupsTab> {
                   PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
                   size: 32, color: AD.textTertiary)),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text(
               'No groups yet — start a group chat with a few people. '
               'Up to 5 can be on a free call; paid plans unlock larger calls.',
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textSecondary),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             _fab(
               icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
               label: 'New group',

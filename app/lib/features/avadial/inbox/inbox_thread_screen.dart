@@ -1075,13 +1075,13 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       ),
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Container(
             width: 40, height: 4,
             decoration:
                 BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           if (_c.hasRecording)
             _CardMenuRow(
               icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
@@ -1204,7 +1204,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(_heard ? PhosphorIcons.checks(PhosphorIconsStyle.regular) : PhosphorIcons.check(PhosphorIconsStyle.regular),
                       size: 15, color: _heard ? _heardTick : _unheardTick),
-                  const SizedBox(width: 3),
+                  const SizedBox(width: Msg.s1),
                   Text(
                     _heard ? 'Heard' : 'Not heard yet',
                     style: ADText.statCaption(c: _heard ? _heardTick : _unheardTick)
@@ -1219,11 +1219,11 @@ class _VoicemailCardState extends State<_VoicemailCard> {
             // [AVAINBOX-1] User-set voicemail title ("Edit voicemail title")
             // — distinct row so it's never confused with the caller name.
             if (_meta?.title != null && _meta!.title!.isNotEmpty) ...[
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text('“${_meta!.title}”',
                   style: ADText.preview(c: ink).copyWith(fontStyle: FontStyle.italic)),
             ],
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             if (_c.summaryText != null) ...[
               Text(_c.summaryText!, style: ADText.bubbleBody(c: ink)),
               const SizedBox(height: 8),
@@ -1280,7 +1280,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
             // ---- Tags ("Tag" menu item) ----
             if (_meta?.tags.isNotEmpty ?? false) ...[
               const SizedBox(height: 8),
-              Wrap(spacing: 6, runSpacing: 4, children: [
+              Wrap(spacing: Msg.s1, runSpacing: 4, children: [
                 for (final tag in _meta!.tags)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

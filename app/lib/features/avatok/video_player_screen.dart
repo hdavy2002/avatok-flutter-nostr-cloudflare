@@ -74,7 +74,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   )
                 : Column(mainAxisSize: MainAxisSize.min, children: [
                     const CircularProgressIndicator(color: AD.primaryBadge),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     Text(_status,
                         textAlign: TextAlign.center,
                         // White text only inside dark bands over video areas.
@@ -129,7 +129,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: Msg.s3),
                     Expanded(
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),

@@ -9,6 +9,7 @@ import '../../identity/identity.dart';
 import '../avatok/contact_profile_screen.dart';
 import '../avatok/media.dart';
 import '../avatok/video_player_screen.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// [STATUS-FANOUT-1] Full-screen status playback for ONE author — owner spec
 /// 2026-07-15:
@@ -135,7 +136,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
         child: Row(children: [
           // Owner spec: back button in the header → straight back to the threads.
           AdBackButton(onTap: () => Navigator.of(context).maybePop()),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           // PLAIN avatar — no animated ring in here, on purpose (see class doc).
           GestureDetector(
             onTap: _openProfile,
@@ -146,7 +147,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
               avatarUrl: (widget.authorAvatarUrl ?? '').isEmpty ? null : widget.authorAvatarUrl,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: GestureDetector(
               onTap: _openProfile,

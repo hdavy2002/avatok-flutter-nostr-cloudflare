@@ -214,7 +214,7 @@ class _InviteScreenState extends State<InviteScreen> {
             child: Column(children: [
               Row(children: [
                 _backButton(context),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Expanded(child: Text('Invite friends', style: ADText.appTitle())),
                 if (_refreshing)
                   const SizedBox(width: 16, height: 16,
@@ -384,7 +384,7 @@ class _InviteScreenState extends State<InviteScreen> {
                 ])
               : null,
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: Msg.s1),
         GestureDetector(
           onTap: busy ? null : onTap,
           child: Opacity(
@@ -417,7 +417,7 @@ class _InviteScreenState extends State<InviteScreen> {
           Text(title, textAlign: TextAlign.center, style: ADText.threadName()),
           const SizedBox(height: 8),
           Text(body, textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary)),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s4),
           _ctaButton(label: cta, onPressed: _allowContacts),
         ]),
       ),

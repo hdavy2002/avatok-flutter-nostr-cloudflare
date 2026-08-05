@@ -55,12 +55,12 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Text('Make message, chat, contacts and menu text bigger or smaller. '
             'Big titles and icons stay the same size.', style: ADText.preview()),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         // Live preview card — text inside scales with the chosen value.
         AdCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Preview', style: ADText.sectionLabel()),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_v)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -73,7 +73,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
             ),
           ]),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: Msg.s4),
         Row(children: [
           Text('Text size', style: ADText.sectionLabel()),
           const Spacer(),
@@ -94,7 +94,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
           ),
           PhosphorIcon(PhosphorIcons.textAa(PhosphorIconsStyle.bold), size: 26, color: AD.textPrimary),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final p in const [('Small', 0.9), ('Default', 1.0), ('Large', 1.18), ('Larger', 1.35), ('Largest', 1.6)])
             ChoiceChip(
@@ -108,7 +108,7 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
               onSelected: (_) => _apply(p.$2),
             ),
         ]),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         Center(child: AdButton(
           label: 'Reset to default', variant: AdButtonVariant.ghost, fontSize: 14,
           icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), trailingIcon: false,

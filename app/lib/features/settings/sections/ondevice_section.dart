@@ -14,6 +14,7 @@ import '../../../core/ava_local_mode.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 void registerOnDeviceSection() {
   SettingsSectionRegistry.register(
@@ -78,7 +79,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                       children: [
                         Text('Keep my memory on this phone',
                             style: ADText.rowName()),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: Msg.s1),
                         Row(children: [
                           Container(
                             width: 9,
@@ -86,7 +87,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                             decoration: BoxDecoration(
                                 color: dotColor, shape: BoxShape.circle),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: Msg.s1),
                           Flexible(
                             child:
                                 Text(label, style: ADText.preview()),
@@ -95,7 +96,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                       ]),
                 ),
               ]),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Text(
                 'When on, your messages and notes are indexed privately on this '
                 'phone so Ava can recall them offline. Ava still thinks in the '

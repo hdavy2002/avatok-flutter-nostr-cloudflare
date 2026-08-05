@@ -102,11 +102,11 @@ class BusyCard extends StatelessWidget {
           children: [
             Text(_title,
                 textAlign: TextAlign.center, style: ADText.appTitle()),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(_subtitle,
                 textAlign: TextAlign.center,
                 style: ADText.preview(c: AD.textSecondary)),
-            const SizedBox(height: 22),
+            const SizedBox(height: Msg.s5),
             // "Leave a message for Ava" — the differentiator. Only when the
             // callee's receptionist is enabled (§3.1). It is the primary action
             // (accent fill) because it's the one thing WhatsApp can't do.
@@ -117,7 +117,7 @@ class BusyCard extends StatelessWidget {
                 fontSize: 16,
                 onPressed: onLeaveMessage,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
             ],
             _adPillButton(
               label: notifyRegistered ? "We'll notify you" : 'Notify me',
@@ -128,7 +128,7 @@ class BusyCard extends StatelessWidget {
               onPressed:
                   (notifyInFlight || notifyRegistered) ? null : onNotifyMe,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             _adPillButton(
               label: 'Cancel',
               fill: AD.card,

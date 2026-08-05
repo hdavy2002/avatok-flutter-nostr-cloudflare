@@ -9,6 +9,7 @@ import '../avatok/contacts.dart';
 import '../avatok/invite_screen.dart';
 import '../avatok/place_1to1_call.dart';
 import 'avadial_theme.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// The Calls app's Dialpad tab — AVATOK-ONLY (owner pivot 2026-07-16). AvaDial no
 /// longer places carrier/PSTN calls: dialing a number now resolves it against the
@@ -226,12 +227,12 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: AD.textTertiary, size: 48),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('Not on AvaTOK', style: AvaDialTheme.title(size: 16, color: AvaDialTheme.text)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('No AvaTOK account matches that number or email.',
                 textAlign: TextAlign.center, style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft)),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdButton(
               label: 'Invite',
               variant: AdButtonVariant.teal,
@@ -312,7 +313,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           ],
         ),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s3),
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         const SizedBox(width: 64),
         const Spacer(),

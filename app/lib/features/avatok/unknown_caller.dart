@@ -207,14 +207,14 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), size: 14, color: AD.iconPhone),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: Msg.s1),
                     Flexible(child: Text(pretty, style: ADText.threadName())),
                   ]),
                   Text('Not on AvaTOK', style: ADText.statCaption()),
                 ]),
               ),
             ]),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdField(
               controller: _name,
               hint: 'Name (optional)',

@@ -11,6 +11,7 @@ import 'avadial_theme.dart';
 import 'block_list.dart';
 import 'device_contacts.dart';
 import 'in_call_screen.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// The spam-shield paint bucket for an incoming PSTN call (plan §4.3).
 enum PstnColor { red, green, blue }
@@ -249,9 +250,9 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
           color: Colors.white,
         ),
       ),
-      const SizedBox(height: 20),
+      const SizedBox(height: Msg.s4),
       Text(kicker, style: AvaDialTheme.tag(size: 11, color: _accent == AD.danger ? AD.danger : AvaDialTheme.textSoft)),
-      const SizedBox(height: 6),
+      const SizedBox(height: Msg.s1),
       Text(
         name ?? widget.number,
         textAlign: TextAlign.center,

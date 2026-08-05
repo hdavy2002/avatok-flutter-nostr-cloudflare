@@ -12,6 +12,7 @@ import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/wallet_entitlement.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Paid-call pre-connect prompt (Specs/PLAN-2026-07-11-dialpad-business-calls-
 /// ava-voice-agent.md §3B, Phase B2). Shown to the CALLER before connecting,
@@ -185,7 +186,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
                 ]),
               ),
             ]),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             AdCard(
               radius: AD.rListCard,
               boxShadow: const [],
@@ -197,9 +198,9 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
                     style: ADText.preview()),
               ]),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Text('CHOOSE A LENGTH', style: ADText.sectionLabel()),
-            const SizedBox(height: 9),
+            const SizedBox(height: Msg.s2),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final m in o.lengthOptions)
                 AdChip(
@@ -208,7 +209,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
                   onTap: () => setState(() { _selectedMinutes = m; _error = null; }),
                 ),
             ]),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             AdCard(
               radius: AD.rListCard,
               boxShadow: const [],
@@ -240,7 +241,7 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
               style: ADText.preview(),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               AdErrorMsg(_error!),
             ],
             const Spacer(),
@@ -254,13 +255,13 @@ class _PaidCallPromptScreenState extends State<PaidCallPromptScreen> {
             ),
             // ZineButton has no subtitle slot — the same reassurance repeated
             // briefly just under the button, right where the tap happens.
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text(
               'Tokens are held, not charged, until the call connects.',
               textAlign: TextAlign.center,
               style: ADText.preview(),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             AdButton(
               label: 'Cancel',
               variant: AdButtonVariant.ghost,

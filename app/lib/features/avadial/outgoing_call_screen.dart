@@ -10,6 +10,7 @@ import 'avadial_channel.dart';
 import 'avadial_theme.dart';
 import 'device_contacts.dart';
 import 'in_call_screen.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Outgoing PSTN "dialing" screen (plan §4.3). Shown right after the dialpad places
 /// a call via [AvaDialChannel.placeCall]. It listens for the native call events to
@@ -130,9 +131,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
                   ? Text(initial, style: AvaDialTheme.title(size: 44, color: Colors.white))
                   : Icon(PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.fill), size: 50, color: Colors.white),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             Text('Calling', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text(name ?? widget.number,
                 textAlign: TextAlign.center, style: AvaDialTheme.title(size: 30, color: AvaDialTheme.text)),
             if (name != null) ...[

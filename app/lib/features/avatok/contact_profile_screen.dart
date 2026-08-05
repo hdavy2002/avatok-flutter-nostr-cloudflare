@@ -145,9 +145,9 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         Center(child: Text(_displayName, style: ADText.appTitle())),
-        const SizedBox(height: 20),
+        const SizedBox(height: Msg.s4),
         if (_number.isNotEmpty)
           _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), AD.iconSearch,
               child: Row(children: [
@@ -217,9 +217,9 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
               }),
           ])),
         ],
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         Text('SHARED GROUPS', style: ADText.sectionLabel()),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         if (_shared.isEmpty)
           Padding(padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text('No groups in common', style: ADText.preview(c: AD.textSecondary)))
@@ -258,7 +258,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
               child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text('CONTACT', style: ADText.sectionLabel()),
             const SizedBox(height: 1),
@@ -280,7 +280,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(icon, size: 17, color: AD.textPrimary),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Text(label, style: ADText.rowName()),
           ]),
         ),
@@ -304,10 +304,10 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
               ),
               child: Icon(icon, size: 15, color: accent),
             ),
-            const SizedBox(width: 9),
+            const SizedBox(width: Msg.s2),
             Expanded(child: Text(label, style: ADText.sectionLabel())),
           ]),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           child,
         ]),
       );

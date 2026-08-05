@@ -86,11 +86,11 @@ class AvaLaneBubble extends StatelessWidget {
                   const SizedBox(width: Msg.s1),
                   PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill),
                       size: 12, color: safety),
-                  const SizedBox(width: 3),
+                  const SizedBox(width: Msg.s1),
                   Text('Safety',
                       style: ADText.tabLabel(c: safety).copyWith(fontSize: 11)),
                 ],
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => showAvaLaneInfo(context),

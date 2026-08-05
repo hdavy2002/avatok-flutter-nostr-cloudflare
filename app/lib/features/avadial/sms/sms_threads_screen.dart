@@ -369,7 +369,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 11),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, size: 17, color: fg),
-        const SizedBox(width: 7),
+        const SizedBox(width: Msg.s2),
         Text(label, style: AvaDialTheme.value(size: 15, color: fg)),
       ]),
     );

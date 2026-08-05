@@ -7,6 +7,7 @@ import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/voice/google_voice.dart';
 import '../settings_registry.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// Settings → "Ava voice".
 ///
@@ -97,7 +98,7 @@ class _VoiceCardState extends State<_VoiceCard> {
             ]),
           ),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         ValueListenableBuilder<String>(
           valueListenable: GoogleVoicePref.voice,
           builder: (context, current, _) {
@@ -125,14 +126,14 @@ class _VoiceCardState extends State<_VoiceCard> {
             );
           },
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         const Divider(height: 1, color: AD.borderHairline),
         const SizedBox(height: 16),
         Text('LANGUAGE', style: ADText.sectionLabel()),
         const SizedBox(height: 4),
         Text('The language Ava speaks on a call. Auto follows whatever you speak.',
             style: ADText.preview()),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         ValueListenableBuilder<String>(
           valueListenable: AvaVoiceLangPref.lang,
           builder: (context, code, _) => Wrap(

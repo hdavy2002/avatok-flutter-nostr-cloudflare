@@ -6,6 +6,7 @@ import '../../core/ava_ai_client.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avabrain/brain_settings_screen.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Private-content export sheet — [AVABRAIN-CLIENT-MEM-1] (Product Bible §6.1,
 /// §9.2 `POST /api/brain/export`).
@@ -133,13 +134,13 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
                   style: ADText.preview()),
             ])),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           AdCard(
             color: AD.card,
             padding: const EdgeInsets.all(14),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.bold), size: 18, color: AD.iconBell),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(
                 child: Text(
                   'Your messages are normally end-to-end encrypted and stay on this '
@@ -154,7 +155,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
             ]),
           ),
           if (_error != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(_error!, style: ADText.preview(c: AD.danger)),
             if (_showSettingsButton) ...[
               const SizedBox(height: 8),
@@ -166,7 +167,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
               ),
             ],
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           Row(children: [
             Expanded(
               child: AdButton(
@@ -176,7 +177,7 @@ class _BrainExportSheetState extends State<_BrainExportSheet> {
                 onPressed: _sending ? null : () => Navigator.pop(context, false),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(
               child: AdButton(
                 label: 'Export',

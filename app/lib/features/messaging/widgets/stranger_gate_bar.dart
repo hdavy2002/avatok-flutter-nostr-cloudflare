@@ -118,7 +118,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // ── result banner (after Safety shield) ─────────────────────────────
         if (_scored) _scoreBanner(scam),
-        if (_scored) const SizedBox(height: 10),
+        if (_scored) const SizedBox(height: Msg.s2),
         // ── explainer line ──────────────────────────────────────────────────
         Row(children: [
           Icon(PhosphorIcons.shield(PhosphorIconsStyle.regular),
@@ -131,7 +131,7 @@ class _StrangerGateBarState extends State<StrangerGateBar> {
             ),
           ),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         // ── action row ──────────────────────────────────────────────────────
         Row(children: [
           _iconBtn(PhosphorIcons.shieldCheck(PhosphorIconsStyle.regular), 'Safety',

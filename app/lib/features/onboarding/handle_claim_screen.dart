@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/guest_session.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// L0 entry — the FIRST thing a new user sees (Trust Ladder, §3).
 /// One field: pick a unique @handle. It is reserved server-side immediately
@@ -104,13 +105,13 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
               ),
               const SizedBox(height: 24),
               Text("It's yours!", style: ADText.appTitle().copyWith(fontSize: 34), textAlign: TextAlign.center),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Text('@$_clean', style: ADText.rowName(c: AD.iconSearch)),
               const SizedBox(height: 12),
               ConstrainedBox(constraints: const BoxConstraints(maxWidth: 280),
                 child: Text("Locked in and reserved. Let's set up the rest of you.",
                     style: ADText.preview(c: AD.textSecondary), textAlign: TextAlign.center)),
-              const SizedBox(height: 26),
+              const SizedBox(height: Msg.s5),
               AdButton(label: 'Keep going', onPressed: widget.onClaimed,
                   icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold)),
             ]),
@@ -139,7 +140,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                         shape: BoxShape.circle,
                         color: i == 1 ? AD.primaryBadge : AD.card,
                         border: Border.all(color: AD.borderControl, width: 1))),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: Msg.s2),
                     ],
                     const SizedBox(width: 4),
                     Text('STEP 1 / 3', style: ADText.sectionLabel()),
@@ -149,7 +150,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    const SizedBox(height: 34),
+                    const SizedBox(height: Msg.s6),
                     Center(
                       child: Container(
                         width: 116, height: 116,
@@ -165,7 +166,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     Text.rich(
                       TextSpan(children: [
                         const TextSpan(text: 'Pick your '),
@@ -174,7 +175,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                       textAlign: TextAlign.center,
                       style: ADText.appTitle().copyWith(fontSize: 38, height: 1.08),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 300),
@@ -193,7 +194,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 34),
+                    const SizedBox(height: Msg.s6),
                     AdField(
                       controller: _ctrl,
                       label: 'your handle',
@@ -209,7 +210,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                     const SizedBox(height: 12),
                     _statusLine(),
                     if (_avail == false && _msg != null) ...[
-                      const SizedBox(height: 14),
+                      const SizedBox(height: Msg.s3),
                       Wrap(spacing: 8, runSpacing: 8, children: [
                         for (final s in _suggestions)
                           AdSticker('@$s', onTap: () {
@@ -218,7 +219,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                           }),
                       ]),
                     ],
-                    const SizedBox(height: 22),
+                    const SizedBox(height: Msg.s5),
                   ]),
                 ),
               ),
@@ -230,7 +231,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                 loading: _reserving,
                 onPressed: _avail == true && !_reserving ? _claim : null,
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Text('already on AvaTOK? ', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
                 ZineLink('log in', onTap: widget.onHaveAccount, fontSize: 14, underline: AD.iconSearch),

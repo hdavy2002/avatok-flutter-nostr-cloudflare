@@ -65,7 +65,7 @@ Future<void> showAvaDialRowMenu(
         ),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Container(
           width: 40, height: 4,
           decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
@@ -329,7 +329,7 @@ Future<void> _pickGroup(BuildContext context, String number) async {
     ),
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         Container(
           width: 40, height: 4,
           decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),

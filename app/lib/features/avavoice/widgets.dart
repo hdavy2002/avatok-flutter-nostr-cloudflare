@@ -46,7 +46,7 @@ class AvailabilityChip extends StatelessWidget {
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 7, height: 7, decoration: const BoxDecoration(color: dot, shape: BoxShape.circle)),
-        const SizedBox(width: 5),
+        const SizedBox(width: Msg.s1),
         Text(busy ? 'Agent busy' : 'Call now',
             style: ADText.tabLabel(c: fg).copyWith(fontSize: compact ? 10 : 12, letterSpacing: 0.44)),
       ]),
@@ -119,10 +119,10 @@ class AgentCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(agent.role, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
-            const SizedBox(height: 7),
+            const SizedBox(height: Msg.s2),
             Row(children: [
-              if (agent.isFreeForCallers) ...[const FreeBadge(), const SizedBox(width: 6)],
-              if (agent.visionEnabled) ...[const VisionBadge(), const SizedBox(width: 6)],
+              if (agent.isFreeForCallers) ...[const FreeBadge(), const SizedBox(width: Msg.s1)],
+              if (agent.visionEnabled) ...[const VisionBadge(), const SizedBox(width: Msg.s1)],
               Flexible(child: Text(
                 agent.isFreeForCallers
                     ? 'Up to ${agent.sessionLimitMin} min'

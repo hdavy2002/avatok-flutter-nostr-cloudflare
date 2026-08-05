@@ -165,7 +165,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: a.images.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              separatorBuilder: (_, __) => const SizedBox(width: Msg.s2),
               itemBuilder: (_, i) => Container(
                 decoration: BoxDecoration(borderRadius: BorderRadius.circular(Msg.rLg), border: Border.all(color: AD.borderControl, width: 1)),
                 clipBehavior: Clip.antiAlias,
@@ -191,13 +191,13 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
             const SizedBox(height: 4),
             Text(a.role, style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
+            Wrap(spacing: Msg.s1, runSpacing: Msg.s1, children: [
               busy ? const MiniPill('agent busy', fill: AD.danger, fg: Colors.white) : const MiniPill('call now', fill: AD.online, fg: Colors.white),
               CapabilityBadge(a.capability),
             ]),
           ])),
         ]),
-        const SizedBox(height: 20),
+        const SizedBox(height: Msg.s4),
         _infoTile(
             PhosphorIcons.coins(PhosphorIconsStyle.bold),
             AD.online,
@@ -235,7 +235,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ZineCardHead(icon: PhosphorIcons.eye(PhosphorIconsStyle.bold), accent: AD.tabCalls, title: 'About this agent'),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               Text(a.systemProfile, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 14, height: 1.42)),
             ]),
           ),
@@ -255,7 +255,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
             Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text(body, style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
             ])),
           ]),
@@ -293,7 +293,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                       onPressed: _book,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(
                     child: ZineButton(
                       label: busy ? 'Agent busy' : 'Call now',

@@ -187,7 +187,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 5),
+                              const SizedBox(height: Msg.s1),
                               Row(children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -199,9 +199,9 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                                   child: Text(_sentence(a.status),
                                       style: ADText.tabLabel(c: suspended ? Colors.white : AD.textPrimary).copyWith(fontSize: 10, letterSpacing: 0.4)),
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: Msg.s1),
                                 CapabilityBadge(a.capability),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: Msg.s1),
                                 Flexible(
                                     child: Text(
                                   a.isFreeForCallers
@@ -213,7 +213,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
                                 )),
                               ]),
                             ])),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: Msg.s1),
                             PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 22, color: AD.textSecondary),
                           ]),
                         );
@@ -239,15 +239,15 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
               ),
               child: Center(child: PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 36, color: Colors.white)),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             Text('Create your first AI vision agent', style: ADText.appTitle().copyWith(fontSize: 26, height: 1.08, letterSpacing: -0.52), textAlign: TextAlign.center),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Text(
               'Pick a use-case template, give it a personality, choose a voice and vision overlay, set your rate — and publish. You earn 50% of every minute people train with it.',
               textAlign: TextAlign.center,
               style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             ZineButton(
               label: 'Create an agent',
               variant: ZineButtonVariant.blue,

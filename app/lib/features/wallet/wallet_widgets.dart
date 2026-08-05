@@ -993,7 +993,7 @@ class WalletCalendar extends StatelessWidget {
   Widget _dayCell(int? day) {
     // NOT a spacing token: this must match the filled cell's 28px height
     // exactly or the calendar grid goes ragged.
-    if (day == null) return const SizedBox(height: 28);
+    if (day == null) return const SizedBox(height: Msg.s5);
     final selected = day == selectedDay;
     return GestureDetector(
       onTap: () => onPick(day),

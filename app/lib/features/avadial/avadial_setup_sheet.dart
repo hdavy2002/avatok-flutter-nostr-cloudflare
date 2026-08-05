@@ -265,7 +265,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               const Text(
                 'Set AvaTOK up for calls',
                 style: TextStyle(
@@ -273,7 +273,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                     fontSize: 20,
                     fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: Msg.s1),
               const Text(
                 'A couple of Android switches let AvaTOK ring you full-screen '
                 'and use your phone book. Work through the tasks below — we '
@@ -281,7 +281,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                 style:
                     TextStyle(color: Colors.white70, fontSize: 14, height: 1.35),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               // Beta notice (owner request 2026-07-14): manual switches are a
               // beta-period quirk; the Play Store release sets them automatically.
               Container(
@@ -300,7 +300,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                       TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 28),
@@ -437,7 +437,7 @@ class _StepRow extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         if (!done)
           TextButton(
             onPressed: onTap,

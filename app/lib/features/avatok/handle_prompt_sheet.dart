@@ -124,7 +124,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
               child: Center(child: PhosphorIcon(
                   PhosphorIcons.at(PhosphorIconsStyle.bold), size: 22, color: AD.primaryBadge)),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text.rich(
               TextSpan(children: [
                 TextSpan(text: 'Pick your ', style: ADText.appTitle()),
@@ -135,7 +135,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
             Text('A @handle is how friends find and tag you on AvaTok. You can change it '
                 'later in your profile.',
                 style: ADText.preview()),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             // White dark-v2 handle field with a leading @ and a status trailing.
             Container(
               decoration: BoxDecoration(
@@ -171,7 +171,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                 if (_trailing() != null) ...[const SizedBox(width: 8), _trailing()!],
               ]),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             _status(),
             const SizedBox(height: 16),
             GestureDetector(
@@ -193,7 +193,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Center(child: GestureDetector(
               onTap: _saving ? null : _skip,
               child: Text('Maybe later', style: ADText.preview(c: AD.textSecondary)),

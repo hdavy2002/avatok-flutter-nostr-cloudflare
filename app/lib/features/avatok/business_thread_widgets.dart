@@ -11,6 +11,7 @@ import '../../core/config.dart';
 import '../../core/ui/avatok_dark.dart';
 import 'media.dart';
 import 'unknown_caller.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Message-bubble renderers for business-call records (Specs/PLAN-2026-07-11-
 /// dialpad-business-calls-ava-voice-agent.md §6, §12.11). These render on the
@@ -209,7 +210,7 @@ class _VoicemailCardState extends State<VoicemailCard> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Icon(PhosphorIcons.voicemail(PhosphorIconsStyle.fill), size: 18, color: AD.danger),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Expanded(child: Text('$_callerName left a voicemail', style: ADText.rowName())),
         ]),
         if (_callerNumber.isNotEmpty)
@@ -229,7 +230,7 @@ class _VoicemailCardState extends State<VoicemailCard> {
           ]),
         ),
         if (_transcript.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Text(_expanded ? 'Hide transcript ▲' : 'Show transcript ▼',
@@ -242,8 +243,8 @@ class _VoicemailCardState extends State<VoicemailCard> {
             ),
         ],
         if (!_handled) ...[
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 6, children: [
+          const SizedBox(height: Msg.s2),
+          Wrap(spacing: 8, runSpacing: Msg.s1, children: [
             AdChip(label: 'Accept', onTap: _accept),
             AdChip(label: 'Block', onTap: _block),
             AdChip(label: 'Save contact', onTap: _saveContact),
@@ -303,12 +304,12 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Icon(PhosphorIcons.robot(PhosphorIconsStyle.fill), size: 18, color: AD.iconVideo),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Expanded(child: Text('Ava AI Agent talked to $_callerName', style: ADText.rowName())),
         ]),
         if (_callerNumber.isNotEmpty)
           Padding(padding: const EdgeInsets.only(top: 2), child: Text(_callerNumber, style: ADText.preview())),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         // "What the agent did" summary line — the owner reads this without
         // opening the whole transcript.
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -345,7 +346,7 @@ class _AgentTranscriptCardState extends State<AgentTranscriptCard> {
             ),
         ],
         if (widget.onReply != null) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           AdChip(
             label: 'Reply',
             onTap: () {

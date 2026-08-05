@@ -142,7 +142,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                         Text('Live now', style: ADText.appTitle()),
                         const SizedBox(height: Msg.s3),
                         for (final l in _live) _card(l, live: true),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: Msg.s3),
                       ],
                       if (_upcoming.isNotEmpty) ...[
                         Text('Upcoming events', style: ADText.appTitle()),
@@ -191,7 +191,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Container(width: 6, height: 6, decoration: const BoxDecoration(color: AD.destructiveInk, shape: BoxShape.circle)),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: Msg.s1),
                       Text('Live', style: ADText.sectionLabel(c: AD.destructiveInk)),
                     ]),
                   )),
@@ -215,7 +215,7 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
               padding: const EdgeInsets.all(Msg.s3),
               child: Row(children: [
                 Avatar(seed: l.creator.uid, name: l.creator.name ?? 'Creator', size: 38),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.rowName()),

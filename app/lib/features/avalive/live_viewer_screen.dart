@@ -192,14 +192,14 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
             accent: AD.online,
             title: 'Send a donation',
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Text(
               balUnavailable
                   ? '$kWalletUnavailableMessage · goes to the creator instantly'
                   : 'Balance \$${(bal / 100).toStringAsFixed(2)} · goes to the creator instantly',
               style: ADText.preview()),
           const SizedBox(height: Msg.s4),
-          Wrap(spacing: 9, runSpacing: 9, children: [
+          Wrap(spacing: Msg.s2, runSpacing: Msg.s2, children: [
             for (final a in amounts)
               ZineSticker(
                 '\$${(a / 100).toStringAsFixed(a % 100 == 0 ? 0 : 2)}',
@@ -273,7 +273,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
               decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.regular), color: AD.primaryBadge, size: 14),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Expanded(child: Text(_pinned!, style: ADText.tabLabel(c: AD.textPrimary))),
               ]),
             ),
@@ -321,7 +321,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                 tooltip: 'Chat',
                 onTap: _sendChat,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               LiveCircleButton(
                 icon: PhosphorIcons.rocketLaunch(PhosphorIconsStyle.regular),
                 size: 40,
@@ -333,7 +333,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                   _chatCtl.clear();
                 },
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               // reactions + stickers
               PopupMenuButton<String>(
                 color: AD.menu,
@@ -343,7 +343,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     enabled: false,
-                    child: Wrap(spacing: 6, children: [
+                    child: Wrap(spacing: Msg.s1, children: [
                       for (final e in kReactionEmojis)
                         GestureDetector(
                           onTap: () { Navigator.pop(context); _room?.send({'type': 'reaction', 'emoji': e}); setState(() => _bursts.add(ReactionBurst(e))); },
@@ -353,7 +353,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                   ),
                   PopupMenuItem(
                     enabled: false,
-                    child: Wrap(spacing: 6, children: [
+                    child: Wrap(spacing: Msg.s1, children: [
                       for (final s in kStickerCatalog)
                         GestureDetector(
                           onTap: () { Navigator.pop(context); _room?.send({'type': 'sticker', 'id': s}); },
@@ -372,7 +372,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                   child: PhosphorIcon(PhosphorIcons.smiley(PhosphorIconsStyle.regular), size: 19, color: AD.iconNeutral),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: Msg.s1),
               // money = green
               LiveCircleButton(
                 icon: PhosphorIcons.coins(PhosphorIconsStyle.regular),

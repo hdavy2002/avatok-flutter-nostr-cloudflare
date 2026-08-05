@@ -126,7 +126,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
           children: [
             _daysChips(),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 48),
@@ -144,15 +144,15 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
                   'call or takes a voicemail, it shows up here.')
             else ...[
               _totalsRow(),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               _modeSplitCard(),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               _hoursCard(),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               _trendCard(),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               _topCallersCard(),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               _countriesCard(),
             ],
           ],
@@ -184,11 +184,11 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
       Expanded(
           child: _miniCard('Calls', '$calls',
               PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.iconSearch)),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       Expanded(
           child: _miniCard('Minutes', _mins(minutes),
               PhosphorIcons.timer(PhosphorIconsStyle.bold), AD.online)),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       Expanded(
           child: _miniCard(
               'Tokens',
@@ -206,13 +206,13 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: icon, color: accent, size: 30),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(value, style: ADText.appTitle(c: accent)),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: Msg.s1),
           Text(label, style: ADText.statCaption()),
         ]),
       );
@@ -233,7 +233,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
           const SizedBox(width: 8),
           Text('How Ava answered', style: ADText.sectionLabel()),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         _splitRow('AI Voice Agent', agent, agent / total, AD.online),
         const SizedBox(height: 8),
         _splitRow('Voice mail', vm, vm / total, AD.iconSearch),
@@ -247,7 +247,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
           Expanded(child: Text(label, style: ADText.rowName())),
           Text('×$count', style: ADText.rowName(c: c)),
         ]),
-        const SizedBox(height: 5),
+        const SizedBox(height: Msg.s1),
         _bar(f, c),
       ]);
 
@@ -307,7 +307,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
             ],
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -366,7 +366,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
             ],
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(first, style: ADText.statCaption()),
           Text(last, style: ADText.statCaption()),
@@ -391,7 +391,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
           const SizedBox(width: 8),
           Text('Top callers', style: ADText.sectionLabel()),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         for (final c in callers)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -412,7 +412,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
                 Text(_mins(_d(c['minutes'])),
                     style: ADText.rowName(c: AD.online)),
               ]),
-              const SizedBox(height: 5),
+              const SizedBox(height: Msg.s1),
               _bar(_n(c['count']) / maxC, AD.online),
             ]),
           ),
@@ -448,7 +448,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
           const SizedBox(width: 8),
           Text('Where calls came from', style: ADText.sectionLabel()),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         for (final c in countries.take(12))
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -463,7 +463,7 @@ class _ReceptionistAnalyticsPageState extends State<ReceptionistAnalyticsPage> {
                 ),
                 Text('×${_n(c['count'])}', style: ADText.rowName(c: AD.iconSearch)),
               ]),
-              const SizedBox(height: 5),
+              const SizedBox(height: Msg.s1),
               _bar(_n(c['count']) / maxC, AD.iconSearch),
             ]),
           ),

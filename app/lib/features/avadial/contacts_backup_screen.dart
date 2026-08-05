@@ -7,6 +7,7 @@ import '../../core/ui/zine_widgets.dart';
 import 'ava_contact_book.dart';
 import 'avadial_theme.dart';
 import 'contact_backup_role.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// "Contacts backup" screen (owner request 2026-07-13). Shows the state of the
 /// user's AvaTOK contact-book backup — held on AvaTOK's own servers, independent
@@ -402,7 +403,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                   loading: _busy,
                   onPressed: (_busy || _restoring) ? null : _backupNow,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: Msg.s2),
                 AdButton(
                   label: 'Restore from AvaTOK',
                   variant: AdButtonVariant.ghost,
@@ -422,7 +423,7 @@ class _ContactsBackupScreenState extends State<ContactsBackupScreen> {
                       style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                     ),
                   ),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
                 Text('How it works', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
                 const SizedBox(height: 8),
                 _bullet('AvaTOK backs your contacts up once a day by itself, and again '

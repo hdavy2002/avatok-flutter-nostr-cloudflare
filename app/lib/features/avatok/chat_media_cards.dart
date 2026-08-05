@@ -352,7 +352,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
           ),
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       // Scrubbable waveform timeline. `Expanded` (not a fixed 128px) is the
       // point of the fix: the bubble's own 78% max-width constraint decides how
       // wide this gets, so a voice note now spans the bubble left-to-right.
@@ -438,7 +438,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
           );
         }),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -446,7 +446,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
           Text(label, style: ADText.bubbleMeta(c: metaC)),
           // Speed chip — only after playback has started.
           if (active) ...[
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             GestureDetector(
               onTap: widget.onCycleSpeed,
               child: Container(
@@ -521,7 +521,7 @@ class PendingVoiceNoteBubble extends StatelessWidget {
           ),
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       Text('Posting your voice note…', style: ADText.bubbleMeta(c: metaC)),
     ]);
   }
@@ -558,7 +558,7 @@ class FailedVoiceNoteBubble extends StatelessWidget {
           ),
           child: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold), size: 20, color: AD.danger),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Text("Couldn't send · tap to retry", style: ADText.bubbleMeta(c: AD.danger)),
       ]),
     );
@@ -629,7 +629,7 @@ class MediaForwardedLabel extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
                 size: 11, color: Colors.white),
-            const SizedBox(width: 3),
+            const SizedBox(width: Msg.s1),
             Text('FORWARDED', style: ADText.statCaption(c: Colors.white)),
           ]),
         ),
@@ -696,7 +696,7 @@ class ChatImageCard extends StatelessWidget {
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
                         size: 26, color: Colors.white70),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Msg.s1),
                     const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
                   ]),
                 );
@@ -1168,7 +1168,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
                 color: Colors.black.withValues(alpha: 0.62),
                 child: Row(children: [
                   Icon(info.icon, size: 16, color: Colors.white),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   Expanded(
                     child: Text(widget.name,
                         maxLines: 1,
@@ -1176,7 +1176,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
                         style: ADText.preview(c: Colors.white)),
                   ),
                   if (sizeLabel.isNotEmpty) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: Msg.s1),
                     Text(sizeLabel, style: ADText.statCaption(c: Colors.white)),
                   ],
                 ]),
@@ -1225,7 +1225,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
                   style: ADText.statCaption(c: info.color)),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1235,14 +1235,14 @@ class _ChatFileCardState extends State<ChatFileCard> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: inkC != null ? ADText.rowName(c: inkC) : ADText.rowName()),
-                const SizedBox(height: 3),
+                const SizedBox(height: Msg.s1),
                 Row(children: [
                   if (sizeLabel.isNotEmpty)
                     Text(sizeLabel, style: ADText.statCaption(c: metaC)),
                   if (sizeLabel.isNotEmpty) const SizedBox(width: 8),
                   PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
                       size: 13, color: accentC),
-                  const SizedBox(width: 3),
+                  const SizedBox(width: Msg.s1),
                   Text('OPEN', style: ADText.statCaption(c: accentC)),
                 ]),
               ],

@@ -257,7 +257,7 @@ Widget _sheetTile({
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
         child: Row(children: [
           PhosphorIcon(icon, size: 21, color: iconColor),
-          const SizedBox(width: 13),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: ADText.rowName(c: textColor ?? AD.textPrimary)),
@@ -373,24 +373,24 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
             ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
             : ListView(padding: const EdgeInsets.all(18), children: [
                 _SearchBar(hint: 'Search files & folders', onChanged: (v) => setState(() => _query = v)),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 if (empty)
                   _emptyBody()
                 else ...[
                   Text('Your files across every AvaVerse app, by type.', style: ADText.preview()),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Msg.s3),
                   if (roots.isNotEmpty) ...[
                     Text('Library', style: ADText.sectionLabel()),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: Msg.s2),
                     for (final r in roots) _row(
                       icon: r.cat.icon, color: r.cat.color, title: r.cat.label,
                       sub: '${r.count} file${r.count == 1 ? '' : 's'}',
                       onTap: () => _openCategory(r),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: Msg.s4),
                   ],
                   Text('Folders', style: ADText.sectionLabel()),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: Msg.s2),
                   if (folders.isEmpty)
                     Padding(padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Text(q.isEmpty ? 'No folders yet — tap Add › New folder.' : 'No folders match.',
@@ -461,7 +461,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
         Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
             child: Row(children: [
               ZineIconBadge(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 30),
-              const SizedBox(width: 11),
+              const SizedBox(width: Msg.s3),
               Expanded(child: Text(f.name, style: ADText.threadName())),
             ])),
         const Divider(height: 2, color: AD.borderHairline, thickness: 1),
@@ -743,9 +743,9 @@ class _FolderViewState extends State<_FolderView> {
             padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 15, color: Colors.white),
-              const SizedBox(width: 7),
+              const SizedBox(width: Msg.s2),
               Text(_dayHeader(_dayFilter!), style: ADText.statCaption(c: Colors.white)),
-              const SizedBox(width: 7),
+              const SizedBox(width: Msg.s2),
               PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 13, color: Colors.white),
             ]),
           ),
@@ -773,7 +773,7 @@ class _FolderViewState extends State<_FolderView> {
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (var i = 0; i < 3; i++) ...[
-            if (i > 0) const SizedBox(width: 10),
+            if (i > 0) const SizedBox(width: Msg.s2),
             Expanded(
               child: i < tiles.length
                   ? AspectRatio(aspectRatio: 1, child: _ThumbTile(
@@ -826,7 +826,7 @@ class _FolderViewState extends State<_FolderView> {
         Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
             child: Row(children: [
               ZineIconBadge(icon: _catOf(m.category).icon, color: _catOf(m.category).color, size: 30),
-              const SizedBox(width: 11),
+              const SizedBox(width: Msg.s3),
               Expanded(child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.threadName())),
             ])),
@@ -953,7 +953,7 @@ class _ThumbTileState extends State<_ThumbTile> {
                   colors: [Color(0xCC000000), Color(0x00000000)]),
               ),
               child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
             ),
           ),
           if (!_tried && _file == null && LibThumbs.canRender(m))
@@ -974,7 +974,7 @@ class _ThumbTileState extends State<_ThumbTile> {
           isVid ? PhosphorIcons.playCircle(PhosphorIconsStyle.fill)
                 : (LibThumbs.isPdf(m) ? PhosphorIcons.filePdf(PhosphorIconsStyle.bold) : c.icon),
           color: c.color == AD.danger ? Colors.white : AD.textOnInput, size: 30),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
           decoration: BoxDecoration(
@@ -1048,7 +1048,7 @@ Future<bool> showAddSheet(BuildContext context, {required String app, String? fo
     backgroundColor: AD.overlaySheet,
     shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       if (onNewFolder != null)
         _sheetTile(icon: PhosphorIcons.folderPlus(PhosphorIconsStyle.bold), iconColor: AD.iconSearch,
             title: 'New folder', onTap: () => Navigator.pop(context, 'folder')),
@@ -1058,7 +1058,7 @@ Future<bool> showAddSheet(BuildContext context, {required String app, String? fo
           onTap: () => Navigator.pop(context, 'camera')),
       _sheetTile(icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), title: 'Upload file',
           onTap: () => Navigator.pop(context, 'file')),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
     ])),
   );
   if (action == null || !context.mounted) return false;
@@ -1358,9 +1358,9 @@ Future<String?> _promptName(BuildContext context, String title, {String initial 
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(title, style: ADText.threadName()),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               AdField(controller: ctrl, autofocus: true, hint: 'Folder name'),
-              const SizedBox(height: 18),
+              const SizedBox(height: Msg.s4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [

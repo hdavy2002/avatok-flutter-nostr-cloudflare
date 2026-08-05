@@ -424,7 +424,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(children: [
                       PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: Msg.s1),
                       Text(d.listing.creator.avatokNumber!, style: ADText.rowName(c: AD.textPrimary)),
                       const SizedBox(width: 8),
                       Text('· tap to message or call', style: ADText.statCaption(c: AD.textSecondary)),
@@ -496,7 +496,7 @@ class ListingDetailView extends StatelessWidget {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: Text(card.title, style: ADText.appTitle())),
             if (priceStr.isNotEmpty) ...[
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
@@ -512,7 +512,7 @@ class ListingDetailView extends StatelessWidget {
           // #7: live viewer count (PartyKit roster). Shown only when others are
           // here too; dormant/0 until partyEnabled is on.
           if (viewers > 1) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular),
                   size: 14, color: AD.textTertiary),
@@ -536,7 +536,7 @@ class ListingDetailView extends StatelessWidget {
             if (chips.isEmpty) return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Wrap(spacing: 14, runSpacing: 6, children: chips),
+              child: Wrap(spacing: Msg.s3, runSpacing: Msg.s1, children: chips),
             );
           }),
           Wrap(spacing: 8, runSpacing: 8, children: [
@@ -561,7 +561,7 @@ class ListingDetailView extends StatelessWidget {
             if (card.category.trim().isNotEmpty) AdSticker(card.category, kind: AdStickerKind.hint),
           ]),
           if (card.joinedCount > 0) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.fire(PhosphorIconsStyle.fill),
                   size: 14, color: AD.textSecondary),
@@ -572,7 +572,7 @@ class ListingDetailView extends StatelessWidget {
           const SizedBox(height: 16),
           if ((card.description ?? '').isNotEmpty) ...[
             Text(card.description!, style: ADText.preview(c: AD.textPrimary)),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
           ],
           // 3. Owner profile block — avatar, AvaTOK number, QR of the deep link.
           _OwnerProfileBlock(
@@ -582,15 +582,15 @@ class ListingDetailView extends StatelessWidget {
             followerCount: followerCount,
             onCreatorTap: onCreatorTap,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s4),
           // 4. Category block — the ONLY part that varies by template. Reads
           // `attrs` generically (the field_schema drives what's present).
           _CategoryBlock(card: card, theme: it),
-          const SizedBox(height: 22),
+          const SizedBox(height: Msg.s5),
           // 5. Reviews (existing).
           Row(children: [
             Text('Reviews', style: ADText.appTitle()),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             RatingStars(rating: card.ratingAvg, count: card.ratingCount, size: 15),
             const Spacer(),
             if (canReview)
@@ -607,14 +607,14 @@ class ListingDetailView extends StatelessWidget {
           // 6. Report — present on EVERY template (skeleton step 6). Hidden in the
           // creation-preview (onReport null) since there's nothing to report yet.
           if (onReport != null) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Center(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onReport,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), size: 15, color: AD.textTertiary),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   Text('Report this listing', style: ADText.preview(c: AD.textTertiary)),
                 ]),
               ),
@@ -947,13 +947,13 @@ class _OwnerProfileBlock extends StatelessWidget {
           onTap: onCreatorTap,
           child: Row(children: [
             Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44, avatarUrl: card.creator.avatarUrl),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName())),
                 if (card.creator.kycVerified) ...[
-                  const SizedBox(width: 5),
+                  const SizedBox(width: Msg.s1),
                   PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: AD.iconSearch),
                 ],
               ]),
@@ -962,7 +962,7 @@ class _OwnerProfileBlock extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 2),
                   child: Row(children: [
                     PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 13, color: AD.textSecondary),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: Msg.s1),
                     Text(number, style: ADText.statCaption(c: AD.textSecondary)),
                   ]),
                 ),
@@ -974,7 +974,7 @@ class _OwnerProfileBlock extends StatelessWidget {
             ])),
           ]),
         )),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         // QR — client-rendered (qr_flutter is a dependency). Tap → share sheet.
         if (card.id.isNotEmpty)
           GestureDetector(
@@ -990,7 +990,7 @@ class _OwnerProfileBlock extends StatelessWidget {
                 ),
                 child: QrImageView(data: _deepLink, size: 58, backgroundColor: AD.inputField),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text('Share', style: ADText.statCaption(c: AD.textTertiary)),
             ]),
           ),
@@ -1068,17 +1068,17 @@ class _CategoryBlock extends StatelessWidget {
                     width: 130,
                     child: Text(rows[i].key, style: ADText.statCaption(c: AD.textSecondary)),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(child: Text(rows[i].value, style: ADText.preview(c: AD.textPrimary))),
                 ]),
               ),
           ]),
         ),
       if (bookHint) ...[
-        if (rows.isNotEmpty) const SizedBox(height: 10),
+        if (rows.isNotEmpty) const SizedBox(height: Msg.s2),
         Row(children: [
           PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 15, color: AD.textSecondary),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Expanded(child: Text('Pick an available time when you tap "Book a slot" below.',
               style: ADText.preview(c: AD.textSecondary))),
         ]),
@@ -1119,7 +1119,7 @@ class ReviewTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Avatar(seed: review.authorId, name: review.authorName ?? '?', size: 34, avatarUrl: review.authorAvatar),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(review.authorName ?? 'AvaTOK user',
@@ -1255,7 +1255,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking', style: ADText.appTitle()),
           const SizedBox(height: 4),
           Text(l.title, style: ADText.preview()),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           if (_isConsult) ...[
             Row(children: [
               Text('Pick a time', style: ADText.sectionLabel()),
@@ -1273,12 +1273,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   Text(_ymd, style: ADText.preview(c: AD.textPrimary)),
                 ]),
               ),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             if (_loadingSlots) const Center(child: Padding(padding: EdgeInsets.all(12),
                 child: CircularProgressIndicator(color: AD.iconSearch)))
             else if (_slots.isEmpty)
@@ -1288,7 +1288,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final s in _slots) _slotChip(s),
               ]),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
           ],
           if (l.effectivePrice > 0) ...[
             AdField(
@@ -1316,7 +1316,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       style: ADText.preview(c: AD.textPrimary),
                     ),
                   ])),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   ZineToggle(value: _translate, onChanged: (v) => setState(() => _translate = v)),
                 ]),
                 if (_translate) ...[
@@ -1454,7 +1454,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             hint: 'Share your experience (optional)',
           ),
           if (_error != null) AdErrorMsg(_error!),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           AdButton(
             label: 'Send review',
             fullWidth: true,

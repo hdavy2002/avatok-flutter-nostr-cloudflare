@@ -523,7 +523,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
         mainAxisSize: MainAxisSize.min,
         children: [
           button,
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Text('Translate',
               maxLines: 1,
               textAlign: TextAlign.center,
@@ -552,7 +552,7 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         button,
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         // Language chip: reopens the SAME searchable sheet mid-session so the
         // payer can change target language without stopping (and without being
         // re-billed for a new session).
@@ -569,13 +569,13 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Text(currentLang,
                   style: ADText.timestamp().copyWith(color: AD.textPrimary)),
-              const SizedBox(width: 3),
+              const SizedBox(width: Msg.s1),
               PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
                   size: 10, color: AD.textSecondary),
             ]),
           ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: Msg.s1),
         // The meter. Continuously visible on purpose — see the class doc.
         ValueListenableBuilder<int>(
           valueListenable: controller.billedTokens,
@@ -677,14 +677,14 @@ class _CallTranslationLanguagePickerState extends State<_CallTranslationLanguage
               widget.currentCode == null ? 'Translate incoming voice' : 'Change language',
               style: ADText.appTitle().copyWith(fontSize: 18),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text(
               widget.currentCode == null
                   ? 'Choose your language · 5 Tokens per started minute'
                   : 'Switching is free — the same session keeps running',
               style: ADText.preview(),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             TextField(
               controller: _search,
               // Deliberately NOT autofocused — see (2) above.

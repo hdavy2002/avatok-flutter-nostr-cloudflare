@@ -516,7 +516,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             label: 'Take photo', fullWidth: true, variant: AdButtonVariant.teal,
             icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), trailingIcon: false,
             onPressed: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           AdButton(
             label: 'Choose from gallery', fullWidth: true,
             icon: PhosphorIcons.image(PhosphorIconsStyle.bold), trailingIcon: false,
@@ -852,7 +852,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final has = value.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: ADText.sectionLabel(c: AD.textSecondary)),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -865,7 +865,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
           child: Row(children: [
             Icon(icon, size: 20, color: AD.textOnInput),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(
               child: Text(
                 has ? value : hint,
@@ -941,14 +941,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 child: Row(children: [
                   const SizedBox(width: 18, height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(child: Text(_holdMsg!, style: ADText.rowName().copyWith(fontSize: 13))),
                 ]),
               ),
             Text('A few details so people can recognise you. Your email and AvaTOK '
                 'number are set from sign-up and shown locked below.',
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Center(
               key: _photoKey,
               child: GestureDetector(
@@ -988,35 +988,35 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ]),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             if (_avatarUrl.isEmpty && !_fieldErrors.containsKey('photo'))
-              Center(child: Text('Tap to add a profile photo', style: ADText.preview(c: AD.danger).copyWith(fontSize: 12.5))),
+              Center(child: Text('Tap to add a profile photo', style: ADText.preview(c: AD.danger).copyWith(fontSize: 12))),
             Center(child: _errFor('photo')),
-            const SizedBox(height: 20),
+            const SizedBox(height: Msg.s4),
             AdField(key: _firstKey, controller: _first, label: 'First name', hint: 'Your first name',
                 error: _fieldErrors.containsKey('first_name'),
                 textCapitalization: TextCapitalization.words,
                 onChanged: (_) { _clearErr('first_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('first_name'),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdField(key: _lastKey, controller: _last, label: 'Last name', hint: 'Your last name',
                 error: _fieldErrors.containsKey('last_name'),
                 textCapitalization: TextCapitalization.words,
                 onChanged: (_) { _clearErr('last_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('last_name'),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdField(controller: _email, label: 'Email', hint: 'you@example.com',
                 readOnly: true),
             const SizedBox(height: 4),
             Text('The email you signed in with — locked here.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdField(controller: _phone, label: 'Your AvaTOK number',
                 hint: _avatokNumber.isEmpty ? 'Assigned just now' : _avatokNumber,
                 readOnly: true),
             const SizedBox(height: 4),
             Text('This is your AvaTOK number — it represents you and keeps your real '
                 'phone private. You can change it later in Settings.', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // Personal (real) phone with SMS OTP → locked once verified.
             PersonalPhoneField(
               initialPhone: _privatePhone,
@@ -1026,7 +1026,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 _privatePhoneVerified = true;
               }),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // Date of birth (mandatory) — tappable, opens a date picker.
             Row(key: _birthYearKey, children: [
               Expanded(
@@ -1039,7 +1039,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   onTap: _pickBirthDate,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               // Time of birth (optional).
               Expanded(
                 child: _tappableField(
@@ -1056,7 +1056,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Text('Private — never shown to anyone. Used to confirm your age '
                 '(under-18 accounts get extra safety protections). Time of birth is optional.',
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // ── Gender (mandatory) — AI-detected from the name and LOCKED. Only
             //    editable when detection is uncertain, so an unusual name never traps. ──
             Row(key: _genderKey, children: [
@@ -1065,11 +1065,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 const SizedBox(width: 8),
                 const SizedBox(width: 13, height: 13,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Text('detecting from your name…', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
               ],
             ]),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             if (_genderLocked)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1080,7 +1080,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ),
                 child: Row(children: [
                   PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.fill), size: 18, color: AD.textOnInput),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(child: Text(_genderLabel(_gender), style: TextStyle(
                       fontFamily: ADText.family, fontWeight: FontWeight.w700, fontSize: 15, color: AD.textOnInput))),
                   Text('set from your name', style: TextStyle(
@@ -1109,7 +1109,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             const SizedBox(height: 4),
             Text('Ava uses this when she answers your missed calls — '
                 '"can I take a message for him/her/them?"', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             // ── About you (bio) — live AI moderation + "write my bio" sparkle ──
             Row(key: _bioKey, children: [
               Expanded(child: Text('About you', style: ADText.sectionLabel())),
@@ -1129,14 +1129,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     else
                       PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Colors.white),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: Msg.s1),
                     Text(_bioAiBusy ? 'Writing…' : 'Write my bio',
                         style: const TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
                   ]),
                 ),
               ),
             ]),
-            const SizedBox(height: 9),
+            const SizedBox(height: Msg.s2),
             AdField(controller: _bio, hint: 'Tell Ava a little about yourself…',
                 error: _fieldErrors.containsKey('about') || _bioModError != null,
                 maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
@@ -1148,7 +1148,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 child: Row(children: [
                   const SizedBox(width: 14, height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)),
-                  const SizedBox(width: 7),
+                  const SizedBox(width: Msg.s2),
                   Text('Ava is checking your profile…', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
                 ]),
               ),
@@ -1171,12 +1171,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
                       color: AD.danger, size: 20),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(child: Text(_rejectBanner!,
-                      style: ADText.rowName().copyWith(fontSize: 13.5, fontWeight: FontWeight.w700))),
+                      style: ADText.rowName().copyWith(fontSize: 13, fontWeight: FontWeight.w700))),
                 ]),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
             ],
             AdButton(
               label: _saving ? 'Saving…' : 'Save & continue',
@@ -1190,7 +1190,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   ? null
                   : _save,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Center(child: GestureDetector(
               onTap: widget.onSignOut,
               child: Text('Sign out instead', style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),

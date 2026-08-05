@@ -151,7 +151,7 @@ class _GuardianCardState extends State<_GuardianCard> {
             ),
           ),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         // FREE — scam-shield assurance (always on). Read-only row.
         Row(children: [
           PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 18, color: AD.online),
@@ -174,7 +174,7 @@ class _GuardianCardState extends State<_GuardianCard> {
                 Text('In addition to the private in-chat note.', style: ADText.preview()),
               ]),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             _AdToggle(value: on, onChanged: (v) => GuardianDisplayPrefs.setShowBanner(v)),
           ]),
         ),
@@ -192,7 +192,7 @@ class _GuardianCardState extends State<_GuardianCard> {
                       style: ADText.preview()),
                 ]),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               // The toggle shows "warnings ON" = NOT opted out, so invert.
               _AdToggle(value: !optedOut, onChanged: (show) => _setAdultOptOut(!show)),
             ]),
@@ -213,14 +213,14 @@ class _GuardianCardState extends State<_GuardianCard> {
             valueListenable: GuardianDefaults.parentDigest,
             builder: (context, on, _) => Row(children: [
               ZineIconBadge(icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 30),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Weekly safety digest', style: ADText.rowName()),
                   Text('A weekly summary of safety flags for your children.', style: ADText.preview()),
                 ]),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               _AdToggle(value: on, onChanged: (v) => GuardianParentDigest.setOptIn(v)),
             ]),
           ),

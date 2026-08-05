@@ -40,8 +40,8 @@ class SourceChipsRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
+        spacing: Msg.s1,
+        runSpacing: Msg.s1,
         children: [
           for (final c in citations) _SourceChip(citation: c, onTap: onTap),
         ],
@@ -89,7 +89,7 @@ class _SourceChip extends StatelessWidget {
       message: hedged
           ? 'Ava found a note suggesting this — low confidence.\n${citation.snippet}'
           : citation.snippet,
-      textStyle: TextStyle(fontFamily: ADText.family, fontSize: 11.5, color: AD.textPrimary),
+      textStyle: TextStyle(fontFamily: ADText.family, fontSize: 11, color: AD.textPrimary),
       decoration: BoxDecoration(color: AD.popover, borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AD.borderControl, width: 1)),
       child: GestureDetector(

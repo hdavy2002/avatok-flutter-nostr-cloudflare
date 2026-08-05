@@ -84,7 +84,7 @@ class _VoicePickerState extends State<VoicePicker> {
             PhosphorIcon(
                 sel ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),
                 color: sel ? Colors.white : AD.textTertiary, size: 22),
-            const SizedBox(width: 11),
+            const SizedBox(width: Msg.s3),
             Expanded(child: Text(v.label,
                 style: ADText.rowName().copyWith(fontSize: 15, height: 1.3, fontWeight: sel ? FontWeight.w700 : FontWeight.w600))),
             ZineBackButton(

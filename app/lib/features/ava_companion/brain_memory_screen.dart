@@ -273,7 +273,7 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
         const AdBackButton(),
         const SizedBox(width: 4),
         ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('AvaBrain Memory', style: ADText.threadName(c: AD.textPrimary)),
@@ -311,10 +311,10 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
           padding: const EdgeInsets.all(28),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 54),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text(_fetchFailed ? 'Memory isn’t available yet' : 'Nothing remembered yet',
                 style: ADText.threadName(c: AD.textPrimary), textAlign: TextAlign.center),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text(
               _fetchFailed
                   ? 'Check back soon — this screen turns on as AvaBrain memory rolls out.'
@@ -421,7 +421,7 @@ class _MemoryRow extends StatelessWidget {
         Row(children: [
           if (item.sourceDomain.isNotEmpty) ...[
             AdSticker(item.sourceDomain, kind: AdStickerKind.hint),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
           ],
           if (hedged)
             AdSticker('low confidence', kind: AdStickerKind.hint, icon: PhosphorIcons.warning(PhosphorIconsStyle.bold)),
@@ -462,7 +462,7 @@ class _ConfirmedBadge extends StatelessWidget {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 10, color: Colors.white),
-          const SizedBox(width: 3),
+          const SizedBox(width: Msg.s1),
           Text('confirmed', style: ADText.statCaption(c: Colors.white)),
         ]),
       );

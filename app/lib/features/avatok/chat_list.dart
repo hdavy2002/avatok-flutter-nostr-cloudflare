@@ -151,6 +151,78 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   // the fresher store-backed data if it happens to resolve later.
   bool _booted = false;
   bool _authoritativeLoaded = false;
+
+  // [UI-COLDSTART-TELEMETRY-1 2026-08-05] Cold-start diagnosability state.
+  //
+  // WHY: this screen's own telemetry used to report SUCCESS ONLY — both
+  // `cacheEvent('chat_list', …)` call sites hardcoded the literal 'hit', and the
+  // genuine-miss path (no projection rows) returned BEFORE emitting anything at
+  // all. So in PostHog a true cold start — the exact case the owner complains
+  // about ("blank, then the rows adjust themselves one by one") — was
+  // indistinguishable from a perfect instant paint: it simply had no events.
+  // These fields let the emit sites report the REAL result and let the
+  // later authoritative/network paints be recognised as a visible content SWAP.
+  // Purely observational: nothing here is read by build().
+  int _screenT0 = 0;            // ms epoch at initState → "how long until first paint"
+  String? _cachedPaintSource;   // 'snapshot' | 'projection' — null = nothing cached was painted
+  int _cachedPaintAtMs = 0;     // ms epoch of that cached paint → swap_delta_ms
+  bool _firstPaintReported = false; // ui_interaction(first_paint) fires once per screen
+  int _contentFlashCount = 0;   // bounded: at most _kMaxContentFlash events per screen life
+  static const int _kMaxContentFlash = 3;
+
+  /// [UI-COLDSTART-TELEMETRY-1] Fire-and-forget "the user saw the list" marker.
+  /// Uses the standardized helper so chat-list first paint is chartable next to
+  /// every other screen instead of being a bespoke `*_ms` event. Never awaited,
+  /// never throws into the paint path.
+  void _reportFirstPaint(String source) {
+    if (_firstPaintReported) return;
+    _firstPaintReported = true;
+    final ms = DateTime.now().millisecondsSinceEpoch - _screenT0;
+    unawaited(Analytics.uiInteraction('chat_list_first_paint', ms < 0 ? 0 : ms,
+        source: source));
+  }
+
+  /// [UI-COLDSTART-TELEMETRY-1] Emit `ui_content_flash` when content already on
+  /// screen is REPLACED by fresher content — the swap the owner actually sees as
+  /// rows re-settling. Mirrors the AvaDialer inbox payload shape
+  /// (`features/avadial/inbox/inbox_list_screen.dart`) so both screens are
+  /// queryable under one event name. Row IDENTITY only (counts + set deltas) —
+  /// never a uid, phone number, name or message preview.
+  ///
+  /// Bounded by [_kMaxContentFlash]: this must stay a diagnosis signal, not a
+  /// per-setState firehose that costs money and drowns the real swaps.
+  void _reportContentFlash({
+    required String trigger,
+    required String firstSource,
+    required Set<String> before,
+    required Set<String> after,
+  }) {
+    if (_contentFlashCount >= _kMaxContentFlash) return;
+    if (before.length == after.length && before.containsAll(after)) return; // no visible change
+    _contentFlashCount++;
+    final base = _cachedPaintAtMs != 0 ? _cachedPaintAtMs : _screenT0;
+    unawaited(Analytics.capture('ui_content_flash', {
+      'screen': 'chat_list',
+      'first_source': firstSource, // snapshot | projection | none
+      'swapped': true,
+      'trigger': trigger, // bootstrap | group_sync
+      'before_count': before.length,
+      'after_count': after.length,
+      'added': after.difference(before).length,
+      'removed': before.difference(after).length,
+      'swap_delta_ms': DateTime.now().millisecondsSinceEpoch - base,
+      'flash_seq': _contentFlashCount, // "how many times did it re-settle"
+    }));
+  }
+
+  /// [UI-COLDSTART-TELEMETRY-1] Opaque per-row identity keys for the flash
+  /// compare. Deliberately NOT the uid/phone — a stable local shape is all the
+  /// diff needs, and contact identifiers must never leave the device.
+  Set<String> _rowIdentity(List<Contact> contacts, List<Group> groups) => {
+        for (final c in contacts) '1:${c.uid.hashCode}',
+        for (final g in groups) 'g:${g.id.hashCode}',
+      };
+
   // [BLANK-GUARD] The chat list is derived entirely from _contacts, and the
   // per-account caches (DiskCache/Db) silently fall back to a 'default' bucket
   // whenever AccountScope.id is momentarily null — which happens on first mount
@@ -564,6 +636,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // so the "redraws one by one, not instant like WhatsApp" complaint is queryable
     // by email (auto-stamped) — the in-session snapshot path should be ~0ms.
     final renderSw = Stopwatch()..start();
+    _screenT0 = DateTime.now().millisecondsSinceEpoch; // [UI-COLDSTART-TELEMETRY-1]
     if (ChatListSnapshot.has) {
       _contacts = ChatListSnapshot.contacts;
       _groups = ChatListSnapshot.groups;
@@ -572,9 +645,23 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (ChatListSnapshot.flags.isNotEmpty) _flags = ChatListSnapshot.flags;
       _booted = true;
       renderSw.stop();
-      Analytics.cacheEvent('chat_list', 'hit',
+      // [UI-COLDSTART-TELEMETRY-1] A real hit: the in-session snapshot existed
+      // AND we just painted it. This is the ONE site where 'hit' is genuinely a
+      // constant — do NOT copy that literal to the other emit sites (see
+      // _paintFromProjection); reporting 'hit' unconditionally is what made
+      // cold-start failures invisible in the first place.
+      _cachedPaintSource = 'snapshot';
+      _cachedPaintAtMs = DateTime.now().millisecondsSinceEpoch;
+      unawaited(Analytics.cacheEvent('chat_list', 'hit',
           renderMs: (renderSw.elapsedMicroseconds / 1000.0).round(),
-          extra: {'source': 'snapshot', 'rows': _contacts.length});
+          extra: {
+            'source': 'snapshot',
+            'rows': _contacts.length,
+            'contacts': _contacts.length,
+            'groups': _groups.length,
+            'previews': _previews.length,
+          }));
+      _reportFirstPaint('cache');
     } else {
       // True cold start (no in-session snapshot): paint from the local DB with
       // one query before the slower store reads in _bootstrap finish.
@@ -682,13 +769,53 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     try {
       rows = await Db.I.chatsOnce();
     } catch (_) {
+      // [UI-COLDSTART-TELEMETRY-1] WHY emit before returning: this early return
+      // used to be SILENT. A user whose projection query throws (DB not ready,
+      // scope not resolved) got a blank list and PostHog got nothing — the
+      // failure looked identical to a screen that was never opened.
+      sw.stop();
+      unawaited(Analytics.cacheEvent('chat_list', 'miss',
+          renderMs: (sw.elapsedMicroseconds / 1000.0).round(),
+          extra: {
+            'source': 'projection',
+            'rows': 0,
+            'reason': 'query_failed',
+            'scope_ready': _scopeReady,
+          }));
       return; // no projection yet → _bootstrap will load + paint as usual
     }
-    if (rows.isEmpty || _authoritativeLoaded || !mounted) return;
     sw.stop();
-    Analytics.cacheEvent('chat_list', 'hit',
-        renderMs: (sw.elapsedMicroseconds / 1000.0).round(),
-        extra: {'source': 'projection', 'rows': rows.length});
+    final queryMs = (sw.elapsedMicroseconds / 1000.0).round();
+    if (rows.isEmpty) {
+      // [UI-COLDSTART-TELEMETRY-1] The GENUINE MISS — nothing cached to paint,
+      // so the user stares at an empty list until _bootstrap lands. Reporting it
+      // as a miss (rather than reporting nothing) is the whole point: cold-start
+      // pain is now `cache_event where store=chat_list and result=miss`.
+      unawaited(Analytics.cacheEvent('chat_list', 'miss',
+          renderMs: queryMs,
+          extra: {
+            'source': 'projection',
+            'rows': 0,
+            'reason': 'empty_projection',
+            'scope_ready': _scopeReady,
+            'booted': _booted,
+          }));
+      return;
+    }
+    if (_authoritativeLoaded || !mounted) {
+      // [UI-COLDSTART-TELEMETRY-1] STALE, not hit and not miss: the cache DID
+      // have rows, but they were superseded (bootstrap already won) or the
+      // screen went away, so they were never painted. Counting this as a 'hit'
+      // is how the old code claimed success for a paint that never happened.
+      unawaited(Analytics.cacheEvent('chat_list', 'stale',
+          renderMs: queryMs,
+          extra: {
+            'source': 'projection',
+            'rows': rows.length,
+            'reason': _authoritativeLoaded ? 'superseded_by_bootstrap' : 'unmounted',
+          }));
+      return;
+    }
     final contacts = <Contact>[];
     final groups = <Group>[];
     final previews = <String, ({String text, int ts, bool me})>{};
@@ -720,7 +847,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         }
       } catch (_) {/* skip a bad row */}
     }
-    if (_authoritativeLoaded || !mounted) return;
+    if (_authoritativeLoaded || !mounted) {
+      // [UI-COLDSTART-TELEMETRY-1] Same stale case, but the race was lost DURING
+      // the decode loop rather than before it. Distinguishing the two reasons is
+      // what tells you whether the projection read or the JSON decode is the
+      // slow half on a given phone.
+      unawaited(Analytics.cacheEvent('chat_list', 'stale',
+          renderMs: queryMs,
+          extra: {
+            'source': 'projection',
+            'rows': rows.length,
+            'reason': _authoritativeLoaded ? 'superseded_during_decode' : 'unmounted_during_decode',
+          }));
+      return;
+    }
     setState(() {
       _contacts = contacts;
       _groups = groups;
@@ -729,6 +869,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       _flags = flags;
       _booted = true;
     });
+    // [UI-COLDSTART-TELEMETRY-1] Emit the HIT only now, AFTER the rows are
+    // actually on screen. The old code emitted it before the decode + the second
+    // race guard, so a paint that bailed out still reported a hit.
+    _cachedPaintSource = 'projection';
+    _cachedPaintAtMs = DateTime.now().millisecondsSinceEpoch;
+    unawaited(Analytics.cacheEvent('chat_list', 'hit',
+        renderMs: queryMs,
+        extra: {
+          'source': 'projection',
+          'rows': rows.length,
+          'contacts': contacts.length,
+          'groups': groups.length,
+          'previews': previews.length,
+          'paint_ms': DateTime.now().millisecondsSinceEpoch - _screenT0,
+        }));
+    _reportFirstPaint('cache');
   }
 
   /// Serialize the current chat list into the persisted projection (one row per
@@ -995,6 +1151,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     try {
       dbUnreadByConv = await Db.I.unreadByConv(lastRead);
     } catch (_) {/* DB not ready — keep whatever frames gave us */}
+    // [UI-COLDSTART-TELEMETRY-1] SWAP POINT 1 (the one the owner sees): the
+    // cached paint (snapshot or projection) is about to be replaced by the
+    // authoritative store data. Snapshot the on-screen row identity BEFORE the
+    // setState — afterwards there is nothing left to compare against. Only fires
+    // when something cached was actually painted first AND the content really
+    // changed, so a cache that already matched stays silent.
+    final flashSource = _cachedPaintSource;
+    final beforeRows = flashSource == null
+        ? const <String>{}
+        : _rowIdentity(_contacts, _groups);
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
@@ -1017,6 +1183,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           ..addAll(dbUnreadByConv);
       }
       _authoritativeLoaded = true;
+    }
+    // [UI-COLDSTART-TELEMETRY-1] …and report the swap if the authoritative data
+    // differs from what the user was already looking at.
+    // (Guarded on `mounted`: the else-branch above ran because the screen went
+    // away, and an unmounted widget painted nothing to flash or time.)
+    if (mounted && flashSource != null) {
+      _reportContentFlash(
+        trigger: 'bootstrap',
+        firstSource: flashSource,
+        before: beforeRows,
+        after: _rowIdentity(contacts, groups),
+      );
+    } else if (mounted) {
+      // Nothing cached was painted → THIS is the user's first sight of the list,
+      // and it came from the stores, not the cache. Tags the slow cold start.
+      _reportFirstPaint('network');
     }
     // Rich load telemetry (email auto-stamped) so blank-list regressions are
     // visible in PostHog: how many contacts/previews we painted, whether the
@@ -1074,7 +1256,23 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         'cold-start scope=${AccountScope.id ?? "null"} contacts=${contacts.length} previews=${previews.length} groups=${groups.length} loadMs=${DateTime.now().difference(bootT0).inMilliseconds}');
     // Reconcile server-side group memberships so any group the user was ADDED to
     // (here or on another device) shows up in the Groups tab — best-effort.
-    GroupApi.sync().then((gs) { if (mounted) setState(() => _groups = gs); });
+    GroupApi.sync().then((gs) {
+      if (!mounted) return;
+      // [UI-COLDSTART-TELEMETRY-1] SWAP POINT 2: the only NETWORK call on the
+      // cold-start path that adds/removes visible rows. Deliberately the last
+      // flash site — the avatar backfill and thread resurrection change pixels
+      // or arrive minutes later (and resurrection already has its own
+      // `threads_resurrected` event), so firing there would turn ui_content_flash
+      // into noise we pay for. Silent when the sync returns the same groups.
+      final before = _rowIdentity(_contacts, _groups);
+      setState(() => _groups = gs);
+      _reportContentFlash(
+        trigger: 'group_sync',
+        firstSource: _cachedPaintSource ?? 'none',
+        before: before,
+        after: _rowIdentity(_contacts, gs),
+      );
+    });
     // Backfill profile photos for contacts saved before avatars existed — silent.
     _contactsStore.refreshMissingAvatars().then((list) {
       if (mounted) setState(() => _contacts = list);

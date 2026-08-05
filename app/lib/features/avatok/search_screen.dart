@@ -264,7 +264,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Expanded(
                   child: _searchDock(
                     controller: _ctrl,
@@ -365,7 +365,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       child: Center(child: _emptyState(
                           icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                           text: 'Search your contacts, the directory and your phone book'))),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
               ],
             ),
           ),
@@ -418,7 +418,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
           ),
-          if (trailing != null) ...[const SizedBox(width: 6), trailing],
+          if (trailing != null) ...[const SizedBox(width: Msg.s1), trailing],
         ]),
       );
 
@@ -513,7 +513,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
-              const SizedBox(width: 5),
+              const SizedBox(width: Msg.s1),
               Text('INVITE', style: ADText.statCaption(c: AD.textPrimary)),
             ]),
           ),
@@ -537,7 +537,7 @@ class _SearchScreenState extends State<SearchScreen> {
     ];
     if (icons.isEmpty) return null;
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (int i = 0; i < icons.length; i++) ...[if (i > 0) const SizedBox(width: 6), icons[i]],
+      for (int i = 0; i < icons.length; i++) ...[if (i > 0) const SizedBox(width: Msg.s1), icons[i]],
     ]);
   }
 }

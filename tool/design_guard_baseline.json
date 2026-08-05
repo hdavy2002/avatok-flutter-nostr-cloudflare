@@ -10,7 +10,7 @@
         "white"
       ]
     },
-    "total": 218,
+    "total": 211,
     "entries": {
       "app/lib/core/admin_tools.dart": {
         "Color(0x…)": 15
@@ -71,8 +71,7 @@
         "Colors.white70": 2
       },
       "app/lib/features/avatok/chat_thread.dart": {
-        "Color(0x…)": 2,
-        "Colors.black26": 1
+        "Color(0x…)": 1
       },
       "app/lib/features/avatok/chat_thread/bubbles.dart": {
         "Color(0x…)": 1
@@ -83,9 +82,15 @@
       "app/lib/features/avatok/chat_thread/composer.dart": {
         "Color(0x…)": 3
       },
+      "app/lib/features/avatok/chat_thread/formatting.dart": {
+        "Color(0x…)": 1
+      },
       "app/lib/features/avatok/chat_thread/guardian.dart": {
         "Color(0x…)": 2,
         "Colors.white70": 3
+      },
+      "app/lib/features/avatok/chat_thread/send.dart": {
+        "Colors.black26": 1
       },
       "app/lib/features/avatok/chat_thread/special_content.dart": {
         "Colors.black54": 1
@@ -119,17 +124,8 @@
       "app/lib/features/explore/listing_detail.dart": {
         "Color(0x…)": 1
       },
-      "app/lib/features/identity/liveness_v2/expression_step.dart": {
-        "Color(0x…)": 1
-      },
-      "app/lib/features/identity/liveness_v2/head_circle_step.dart": {
-        "Color(0x…)": 1
-      },
       "app/lib/features/identity/liveness_v2/live_theme.dart": {
         "Color(0x…)": 4
-      },
-      "app/lib/features/identity/liveness_v2/stage_chrome.dart": {
-        "Color(0x…)": 5
       },
       "app/lib/features/library/avalibrary_screen.dart": {
         "Color(0x…)": 2,

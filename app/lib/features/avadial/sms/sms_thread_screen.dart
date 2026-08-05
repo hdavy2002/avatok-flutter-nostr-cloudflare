@@ -215,7 +215,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
             onSubmitted: (_) => _send(),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         _SendButton(loading: _sending, onTap: _send),
       ]),
     );

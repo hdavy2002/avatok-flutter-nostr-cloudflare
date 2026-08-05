@@ -327,7 +327,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                       ),
                     ]),
                     if (i == 3) ...[
-                      const SizedBox(height: 14),
+                      const SizedBox(height: Msg.s3),
                       Center(
                         child: ZineLink('save as draft', fontSize: 13,
                             onTap: _working ? null : _next),
@@ -410,7 +410,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         ),
         const SizedBox(height: 16),
         Text('Listing photos (1–5)', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-        const SizedBox(height: 9),
+        const SizedBox(height: Msg.s2),
         Wrap(spacing: 12, runSpacing: 12, children: [
           for (var i = 0; i < _images.length; i++)
             Stack(clipBehavior: Clip.none, children: [
@@ -467,13 +467,13 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           ZineIconBadge(
               icon: PhosphorIcons.waveform(PhosphorIconsStyle.bold),
               color: AD.tabCalls, size: 30),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text('Choose how your agent sounds. Tap ▶ to hear a sample.',
                 style: ADText.preview().copyWith(fontSize: 13, height: 1.42)),
           ),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         VoicePicker(selected: _voice, onSelected: (v) => setState(() => _voice = v)),
       ]);
 
@@ -493,7 +493,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           loading: _uploading,
           onPressed: _uploading ? null : _addFile,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         if (_files.isEmpty)
           Text('No files yet — that\'s OK, you can add them anytime. Agents work without files too.',
               style: ADText.preview().copyWith(fontSize: 12, height: 1.42))
@@ -513,7 +513,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
                   ZineIconBadge(
                       icon: PhosphorIcons.fileText(PhosphorIconsStyle.bold),
                       color: AD.tabCalls, size: 30),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(f.filename, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -547,13 +547,13 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     final userPays = _payerMode == 'user_pays';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Who pays for calls?', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       _payerCard('user_pays', 'Callers pay you',
           'You set an hourly rate. Callers are billed per minute; you earn 50% after the platform fee.'),
-      const SizedBox(height: 10),
+      const SizedBox(height: Msg.s2),
       _payerCard('creator_pays', 'You cover the calls (free for callers)',
           'Great for business agents — receptionists, support lines. You pay a flat ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hour of talk time from your AvaWallet.'),
-      const SizedBox(height: 18),
+      const SizedBox(height: Msg.s4),
       if (userPays) ...[
         ZineField(
           controller: _rate,
@@ -563,7 +563,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         // "You earn" math — mint (money accent).
         Container(
           padding: const EdgeInsets.all(12),
@@ -576,7 +576,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           child: Row(children: [
             PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.regular),
                 size: 18, color: AD.online),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             Expanded(
               child: Text(
                 _rateCoins >= 100
@@ -587,13 +587,13 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             ),
           ]),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ],
       Text('Maximum session length', style: ADText.sectionLabel(c: AD.textSecondary).copyWith(fontSize: 11, letterSpacing: 0.88)),
       const SizedBox(height: 4),
       Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
           style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
-      const SizedBox(height: 9),
+      const SizedBox(height: Msg.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in kSessionLimitChoices)
           ZineChip(
@@ -602,18 +602,18 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
             onTap: () => setState(() => _sessionLimit = m),
           ),
       ]),
-      const SizedBox(height: 18),
+      const SizedBox(height: Msg.s4),
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Vision (screen & camera)', style: ADText.rowName().copyWith(fontSize: 15, height: 1.3)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(
                 'Let callers share their screen or camera so the agent can see and help — e.g. step-by-step tech support.',
                 style: ADText.preview().copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         ZineToggle(value: _vision, onChanged: (v) => setState(() => _vision = v)),
       ]),
     ]);
@@ -645,7 +645,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: ADText.threadName().copyWith(fontSize: 16, height: 1.1, letterSpacing: -0.2)),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(body, style: ADText.preview(c: sel ? AD.textPrimary : AD.textSecondary).copyWith(fontSize: 12, height: 1.42)),
           ]),
         ),

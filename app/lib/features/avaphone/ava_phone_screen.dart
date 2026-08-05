@@ -233,7 +233,7 @@ class _CallsTabState extends State<_CallsTab> {
         side: BorderSide(color: PhoneTheme.border, width: 1.5),
         borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         ListTile(
           leading: PhoneTheme.ring(Avatar(seed: c.seed, name: c.name, size: 44, avatarUrl: _avatarFor(c.seed))),
           title: Text(c.name.isNotEmpty ? c.name : c.seed, style: PhoneTheme.value(size: 15)),
@@ -297,7 +297,7 @@ class _CallsTabState extends State<_CallsTab> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${c.name.isNotEmpty ? c.name : c.seed} — ${history.length} call${history.length == 1 ? '' : 's'}',
               style: PhoneTheme.title(size: 17)),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 360),
             child: ListView(shrinkWrap: true, children: [
@@ -306,7 +306,7 @@ class _CallsTabState extends State<_CallsTab> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(children: [
                     Icon(dir(e.dir).icon, size: 16, color: dir(e.dir).color),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Msg.s2),
                     Text(e.dir.name[0].toUpperCase() + e.dir.name.substring(1), style: PhoneTheme.value(size: 14)),
                     const Spacer(),
                     Text(e.timeLabel, style: PhoneTheme.sub(size: 12)),
@@ -376,9 +376,9 @@ class _CallsTabState extends State<_CallsTab> {
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), size: 46, color: PhoneTheme.textMute),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('No calls yet', style: PhoneTheme.title(size: 17)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Tap the keypad to dial an AvaTOK number — no need to save a contact first.',
                 textAlign: TextAlign.center, style: PhoneTheme.sub(size: 13)),
           ]),
@@ -391,7 +391,7 @@ class _CallsTabState extends State<_CallsTab> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           itemCount: favs.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 14),
+          separatorBuilder: (_, __) => const SizedBox(width: Msg.s3),
           itemBuilder: (_, i) {
             final c = favs[i];
             return GestureDetector(
@@ -414,7 +414,7 @@ class _CallsTabState extends State<_CallsTab> {
                       ),
                     ),
                   ]),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: Msg.s1),
                   Text(c.name.isNotEmpty ? c.name.split(' ').first : 'Unknown',
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: PhoneTheme.sub(size: 11, color: PhoneTheme.text)),
@@ -447,12 +447,12 @@ class _SearchHeader extends StatelessWidget {
             ),
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.textSoft),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Text('Search AvaTOK numbers & names', style: PhoneTheme.sub(size: 13)),
             ]),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         GestureDetector(
           onTap: onDialpad,
           child: Container(
@@ -529,13 +529,13 @@ class _CallRow extends StatelessWidget {
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: PhoneTheme.value(
                       size: 15, color: entry.dir == CallDir.missed ? PhoneTheme.danger : PhoneTheme.text)),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Row(children: [
                 Icon(d.icon, size: 13, color: d.color),
-                const SizedBox(width: 5),
+                const SizedBox(width: Msg.s1),
                 Text(entry.timeLabel, style: PhoneTheme.sub(size: 12)),
                 if (entry.video) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), size: 12, color: PhoneTheme.textMute),
                 ],
               ]),
@@ -809,7 +809,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
               ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         // Call + backspace row.
         Row(children: [
           const SizedBox(width: 64),

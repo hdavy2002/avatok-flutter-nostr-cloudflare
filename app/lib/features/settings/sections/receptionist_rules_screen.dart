@@ -17,6 +17,7 @@ import '../../../core/ava_log.dart';
 import '../../../core/receptionist_rules_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/ui/messenger_theme.dart';
 
 /// A few starter lines the owner can tap to insert instead of typing from
 /// scratch. Deliberately short and concrete — they double as the "what kind
@@ -210,7 +211,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                       const SizedBox(height: 16),
                     ],
                     Text('EXAMPLES · TAP TO ADD', style: ADText.sectionLabel()),
-                    const SizedBox(height: 9),
+                    const SizedBox(height: Msg.s2),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -231,18 +232,18 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                       textCapitalization: TextCapitalization.sentences,
                       onChanged: (_) => setState(() {}),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Msg.s1),
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text('${_rules.text.length}/4000', style: ADText.statCaption()),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Msg.s1),
                     Text(
                       'Ava follows these rules word-for-word — instantly. Write them '
                       'as plain sentences, one instruction at a time.',
                       style: ADText.preview(),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: Msg.s4),
                     AdButton(
                       label: _saving ? 'Saving…' : 'Save',
                       fullWidth: true,
@@ -251,7 +252,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                       onPressed: _saving ? null : _save,
                     ),
                     if (_active) ...[
-                      const SizedBox(height: 10),
+                      const SizedBox(height: Msg.s2),
                       AdButton(
                         label: _clearing ? 'Turning off…' : 'Turn off rules',
                         variant: AdButtonVariant.ghost,
@@ -296,7 +297,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
         ),
         child: Row(children: [
           const AdSticker('Active', kind: AdStickerKind.ok),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Text('Your rules are live — Ava uses them on your next call.',
                 style: ADText.preview()),
@@ -314,7 +315,7 @@ class _ReceptionistRulesScreenState extends State<ReceptionistRulesScreen> {
                   icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
                   color: AD.iconVideo,
                   size: 36),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               Text('Call Rules — coming soon', style: ADText.rowName()),
               const SizedBox(height: 8),
               Text(

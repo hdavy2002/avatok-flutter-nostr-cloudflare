@@ -7,6 +7,7 @@ import '../../core/update_service.dart';
 import '../shell_v2.dart';
 import 'app_order_screen.dart';
 import 'shell_destinations.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// A single destination in a shell footer (app switcher on Home, app tabs inside
 /// a sub-app).
@@ -175,10 +176,10 @@ class ShellSidebar extends StatelessWidget {
                 },
               ),
               if (extra.isNotEmpty) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 ...extra,
               ],
-              const SizedBox(height: 6),
+              const SizedBox(height: Msg.s1),
               Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
                   child: Text('MORE', style: ADText.sectionLabel(c: AD.textTertiary))),
@@ -231,7 +232,7 @@ class ShellSidebar extends StatelessWidget {
                   UpdateService.runManual();
                 },
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: Msg.s1),
               _SidebarRow(
                 icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
                 color: AD.textTertiary,
@@ -322,10 +323,10 @@ class _SidebarRow extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: ADText.threadName().copyWith(fontSize: 15.5)),
+                Text(title, style: ADText.threadName().copyWith(fontSize: 15)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 1),
-                  Text(subtitle!, style: ADText.statCaption(c: AD.textSecondary).copyWith(fontSize: 10.5)),
+                  Text(subtitle!, style: ADText.statCaption(c: AD.textSecondary).copyWith(fontSize: 10)),
                 ],
               ]),
             ),

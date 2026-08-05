@@ -269,14 +269,14 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       backgroundColor: Colors.transparent,
       builder: (_) => _Sheet(child: Column(mainAxisSize: MainAxisSize.min, children: [
         ZineIconBadge(icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), color: AD.tabCalls),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         Text('Deep analyses used up', style: ADText.threadName().copyWith(fontSize: 19, height: 1.1, letterSpacing: -0.2)),
         const SizedBox(height: 8),
         Text(
           'You\'ve used all ${_snapCap == 1 ? 'your' : 'the $_snapCap'} free "Analyze my form" check${_snapCap == 1 ? '' : 's'} for this session — no charge. Your coach keeps guiding you live with the on-screen score.',
           textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         ZineButton(label: 'Keep training', fullWidth: true,
             onPressed: () => Navigator.pop(context)),
       ])),
@@ -299,7 +299,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
               if (res.score != null)
                 _Badge('${a.scoreLabel ?? 'Score'} ${res.score!.round()}'),
             ]),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             if (bytes != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(Msg.rLg),
@@ -308,7 +308,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
                   child: Image.memory(bytes, fit: BoxFit.cover),
                 ),
               ),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             if (res.breakdown.isNotEmpty)
               Text(res.breakdown, style: ADText.preview().copyWith(fontSize: 14, height: 1.42)),
             const SizedBox(height: 16),
@@ -377,7 +377,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
                 _chip(PhosphorIcons.timer(PhosphorIconsStyle.bold),
                     live ? '-${_fmt(remaining)}' : '--:--', alert: _state == 'wrapup'),
               ]),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
               if (live) _seenIndicator(),
             ]),
           ),
@@ -429,7 +429,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.fill), size: 13, color: AD.danger),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             Text('${a.name} can see you',
                 style: ADText.tabLabel(c: AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
           ]),
@@ -538,7 +538,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         alignment: Alignment.center,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const CircularProgressIndicator(color: AD.primaryBadge),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           Text(msg, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 14, height: 1.42)),
         ]),
       );
@@ -553,7 +553,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
             const SizedBox(height: 16),
             Text(_error ?? 'Something went wrong',
                 textAlign: TextAlign.center, style: ADText.preview(c: AD.textPrimary).copyWith(fontSize: 15, height: 1.42)),
-            const SizedBox(height: 22),
+            const SizedBox(height: Msg.s5),
             ZineButton(
               label: 'Back',
               onPressed: () => Navigator.of(context).maybePop(),
@@ -573,7 +573,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(icon, size: 14, color: alert ? Colors.white : AD.textPrimary),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           Text(label,
               style: ADText.tabLabel(c: alert ? Colors.white : AD.textPrimary).copyWith(fontSize: 11, letterSpacing: 0.44)),
         ]),
@@ -687,21 +687,21 @@ class _ConsentSheet extends StatelessWidget {
         children: [
           Center(child: ZineIconBadge(
               icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: AD.tabCalls)),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           Text('Turn on your camera?', textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 20, height: 1.1, letterSpacing: -0.2)),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Text(
             '$agentName is a vision coach. While you train, it sees a low-resolution view (about one frame a second) and hears you, so it can guide your technique. An on-device overlay tracks your movement — that part never leaves your phone. It only coaches technique, never judges your appearance, and you can stop anytime.',
             textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 14, height: 1.42),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: Msg.s4),
           ZineButton(
             label: 'I understand — start',
             fullWidth: true,
             icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
             onPressed: () => Navigator.pop(context, true),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Center(child: ZineLink('Not now', onTap: () => Navigator.pop(context, false))),
         ],
       ));

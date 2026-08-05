@@ -497,7 +497,7 @@ class _AvaShellState extends State<AvaShell> {
               'touch without giving out your real phone — your real number always '
               'stays private. Free accounts get one number; you can choose it now.',
               style: ADText.preview()),
-          const SizedBox(height: 18),
+          const SizedBox(height: Msg.s4),
           AdButton(label: 'Choose my number', variant: AdButtonVariant.teal,
               fullWidth: true, fontSize: 16, trailingIcon: false,
               icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),

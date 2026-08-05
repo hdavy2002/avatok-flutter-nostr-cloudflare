@@ -145,7 +145,7 @@ class GuardianWarningCard extends StatelessWidget {
                 const SizedBox(width: Msg.s1),
                 _privateTag(),
               ]),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text(info.text,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,

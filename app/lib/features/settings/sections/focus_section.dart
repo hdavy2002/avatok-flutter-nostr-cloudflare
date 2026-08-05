@@ -59,7 +59,7 @@ class _FocusModeCardState extends State<_FocusModeCard> {
               ),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           _AdToggle(value: on, onChanged: (v) => FocusMode.set(v)),
         ]),
       ),

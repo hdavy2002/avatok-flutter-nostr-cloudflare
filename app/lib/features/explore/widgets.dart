@@ -88,7 +88,7 @@ class RatingStars extends StatelessWidget {
     if (rating == null || count == 0) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
       PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), color: AD.iconStar, size: size + 1),
-      const SizedBox(width: 3),
+      const SizedBox(width: Msg.s1),
       Text('${rating!.toStringAsFixed(1)} ($count)',
           style: ADText.preview(c: AD.textSecondary)),
     ]);

@@ -101,7 +101,7 @@ class AvaDialTheme {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[
             Icon(icon, size: 11, color: color),
-            const SizedBox(width: 3),
+            const SizedBox(width: Msg.s1),
           ],
           Text(label, style: tag(size: 11, color: color)),
         ]),

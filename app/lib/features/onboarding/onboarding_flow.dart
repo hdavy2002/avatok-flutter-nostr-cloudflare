@@ -268,7 +268,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         shape: BoxShape.circle,
                         color: i == _step + 1 ? AD.primaryBadge : AD.card,
                         border: Border.all(color: AD.borderControl, width: 1))),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: Msg.s2),
                     ],
                     const SizedBox(width: 4),
                     Text('STEP ${_step + 1} / $_steps', style: ADText.sectionLabel()),
@@ -358,8 +358,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 Text(
                     'This sets up your account. Parent and Business accounts unlock extra '
                     'management tools in the sidebar. You can change this later in Settings.',
-                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
-                const SizedBox(height: 22),
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
+                const SizedBox(height: Msg.s5),
                 _kindCard(
                   kind: AccountKind.personal,
                   icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
@@ -367,7 +367,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   title: 'Just me',
                   sub: 'A personal account with all the standard AvaVerse apps.',
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 _kindCard(
                   kind: AccountKind.parent,
                   icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
@@ -376,7 +376,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   sub: 'Create and manage accounts for your kids — app controls, '
                       'contact approvals, screen time and safety alerts.',
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: Msg.s3),
                 _kindCard(
                   kind: AccountKind.enterprise,
                   icon: PhosphorIcons.buildings(PhosphorIconsStyle.bold),
@@ -419,12 +419,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       padding: const EdgeInsets.all(14),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ZineIconBadge(icon: icon, color: color, size: 42),
-        const SizedBox(width: 14),
+        const SizedBox(width: Msg.s3),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: ADText.threadName(c: selected ? Colors.white : AD.textPrimary).copyWith(fontSize: 18)),
             const SizedBox(height: 4),
-            Text(sub, style: ADText.preview(c: selected ? Colors.white : AD.textSecondary).copyWith(fontSize: 12.5)),
+            Text(sub, style: ADText.preview(c: selected ? Colors.white : AD.textSecondary).copyWith(fontSize: 12)),
           ]),
         ),
         const SizedBox(width: 8),
@@ -467,7 +467,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 ),
                 const SizedBox(height: 8),
                 Text('This is how you’ll appear to people you message. You can set a private AvaTOK number later in Settings.',
-                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
                 const SizedBox(height: 24),
                 _field(
                   controller: _nameCtrl,
@@ -477,7 +477,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   onChanged: (_) => setState(() {}),
                   textCapitalization: TextCapitalization.words,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 _field(
                   controller: _lastCtrl,
                   label: 'last name',
@@ -561,7 +561,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (label != null) ...[
         Text(label, style: ADText.sectionLabel(c: AD.textSecondary)),
-        const SizedBox(height: 9),
+        const SizedBox(height: Msg.s2),
       ],
       Container(
         decoration: BoxDecoration(
@@ -751,15 +751,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineIconBadge(icon: r.icon, color: r.color, size: 42),
-          const SizedBox(width: 14),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(r.title, style: ADText.threadName().copyWith(fontSize: 15.5)),
-              const SizedBox(height: 3),
-              Text(r.reason, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5)),
+              Text(r.title, style: ADText.threadName().copyWith(fontSize: 15)),
+              const SizedBox(height: Msg.s1),
+              Text(r.reason, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12)),
             ]),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: AdSticker(
@@ -804,8 +804,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 Text(
                     'AvaTOK asks for everything it needs once, here — with a reason for '
                     'each. You can change any of these later in Settings.',
-                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
-                const SizedBox(height: 20),
+                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
+                const SizedBox(height: Msg.s4),
                 for (final r in rows) ...[
                   _permissionRow(r),
                   const SizedBox(height: 12),
@@ -854,9 +854,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   style: ADText.appTitle().copyWith(
                       fontSize: ZineBreakpoints.heroTextSize(context, regular: 30), height: 1.08),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: Msg.s1),
                 Text('Please review before continuing', style: ADText.sectionLabel(c: AD.textTertiary)),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
                 _termSection('1. Your Account', '$para $para'),
                 _termSection('2. Content & Ownership', '$para $para'),
                 _termSection('3. Payments & Payouts', para),
@@ -897,7 +897,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   ),
                 ]),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               _primary('Keep going', _agreedTerms ? _next : null),
             ],
           ),
@@ -910,8 +910,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         padding: const EdgeInsets.only(bottom: 18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: ADText.threadName().copyWith(fontSize: 17)),
-          const SizedBox(height: 6),
-          Text(body, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13.5)),
+          const SizedBox(height: Msg.s1),
+          Text(body, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 13)),
         ]),
       );
 
@@ -931,7 +931,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             _dot(AD.danger, big: true),
           ]),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         Text.rich(
           TextSpan(children: [
             const TextSpan(text: 'Find people you '),
@@ -945,7 +945,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           constraints: const BoxConstraints(maxWidth: 300),
           child: Text(
               'Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
-              textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5)),
+              textAlign: TextAlign.center, style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
         ),
         const SizedBox(height: 32),
         _primary('Find my people', () async {
@@ -953,7 +953,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           // TODO: read + upload contacts in background once granted.
           _next();
         }, icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold)),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         ZineLink('skip for now', fontSize: 14, onTap: _next, underline: AD.iconSearch),
       ]),
     );
@@ -990,7 +990,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               style: ADText.appTitle().copyWith(
                   fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Toggle the AvaVerse apps you want. Change these anytime.',
                 style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
           ]),

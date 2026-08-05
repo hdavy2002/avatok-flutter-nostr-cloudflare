@@ -16,6 +16,7 @@ import '../core/wallet_entitlement.dart';
 import '../features/diagnostics/log_page.dart';
 import '../features/settings/about_screen.dart';
 import 'focus_mode.dart';
+import '../core/ui/messenger_theme.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
 /// 'explore' | 'verse' | 'library' | 'settings' | 'wallet' | 'profile' |
@@ -451,7 +452,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
             ZineIconBadge(icon: icon, color: AD.iconSearch, size: 30),
-            const SizedBox(width: 11),
+            const SizedBox(width: Msg.s3),
             Expanded(child: Text(label, style: ADText.rowName())),
             PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 12, color: AD.textSecondary),
           ]),
@@ -483,7 +484,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
             ZineIconBadge(icon: t.icon, color: t.color, size: 30),
-            const SizedBox(width: 11),
+            const SizedBox(width: Msg.s3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(t.name, style: ADText.rowName()),
@@ -512,7 +513,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
             ZineIconBadge(icon: a.icon, color: a.color, size: 30),
-            const SizedBox(width: 11),
+            const SizedBox(width: Msg.s3),
             Expanded(child: Text(a.title, style: ADText.rowName())),
             // Owner request 2026-06-27: hide the PAID marker once the user is on
             // a paid plan / topped-up wallet — subscribers shouldn't see it on
@@ -545,7 +546,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(children: [
           ZineIconBadge(icon: icon, color: accent, size: 30),
-          const SizedBox(width: 11),
+          const SizedBox(width: Msg.s3),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: ADText.rowName()),
@@ -603,7 +604,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 style: TextStyle(
                     fontFamily: ADText.family, fontWeight: FontWeight.w600,
                     fontSize: 14, letterSpacing: 0.4, color: AD.textPrimary)),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             PhosphorIcon(
                 _accountOpen
                     ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
@@ -667,7 +668,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
             // a white fill gives a dark glyph — the neutral badge on the dark v2
             // surface.
             ZineIconBadge(icon: icon, color: Colors.white, size: 30),
-            const SizedBox(width: 11),
+            const SizedBox(width: Msg.s3),
             Expanded(child: Text(name, style: ADText.rowName())),
           ]),
         ),

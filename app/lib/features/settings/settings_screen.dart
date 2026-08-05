@@ -22,6 +22,7 @@ import '../ava_ai/ava_ai_setup.dart';
 import '../avabrain/brain_settings_screen.dart';
 import 'auto_responder_settings_page.dart';
 import 'settings_registry.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Account settings — Backup, Manage keys, Delete account.
 class SettingsScreen extends StatefulWidget {
@@ -191,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: Text('Backup ready', style: ADText.threadName()),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${j['size'] ?? 0} bytes exported (media excluded).', style: ADText.preview()),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             SelectableText(url, style: ADText.preview(c: AD.iconSearch)),
           ]),
           actions: [
@@ -350,7 +351,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Permanently remove your account', _delete, danger: true),
                   ],
                 )), danger: true),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         AdButton(
           label: 'Log out',
           variant: AdButtonVariant.ghost,
@@ -366,7 +367,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             widget.onSignOut();
           },
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
         Center(child: Text('AVATOK · YOU OWN IT ALL', style: ADText.sectionLabel(c: AD.textTertiary))),
         ]),
       ),
@@ -396,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             AdSticker('ON', kind: AdStickerKind.ok,
                 icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         // ONE button: Connect when off, Disconnect when on. Disconnecting clears
         // the key + linked account and the label flips back to Connect.
         AdButton(
@@ -412,11 +413,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         // Below the button: the Google account this key is connected with.
         if (_aiConnected) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Row(children: [
             PhosphorIcon(PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
                 size: 15, color: AD.textSecondary),
-            const SizedBox(width: 7),
+            const SizedBox(width: Msg.s2),
             Expanded(child: Text(
                 _aiEmail?.isNotEmpty == true
                     ? 'Connected as ${_aiEmail!}'

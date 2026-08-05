@@ -206,7 +206,7 @@ class AvaDocActions {
             child: Row(children: [
               PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.regular),
                   size: 20, color: AD.textPrimary),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Text('Translate into…',
                   style: ADText.threadName().copyWith(fontSize: 18)),
             ]),

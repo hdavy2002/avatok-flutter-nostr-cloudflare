@@ -367,9 +367,9 @@ class _SignInScreenState extends State<SignInScreen> {
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 24),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    const SizedBox(height: 18),
+                    const SizedBox(height: Msg.s4),
                     const Center(child: ZineCrest(size: 96)),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     ZineMarkTitle(pre: titlePre, mark: titleMark,
                         fontSize: ZineBreakpoints.heroTextSize(context)),
                     const SizedBox(height: 12),
@@ -385,7 +385,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       const SizedBox(height: 16),
                       ZineErrorMsg(_error!),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: Msg.s4),
                     ZineButton(
                       label: cta,
                       icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
@@ -409,7 +409,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     ],
                     const SizedBox(height: 16),
                     Center(child: _footerLink()),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
                           size: 14, color: Msg.accent),
@@ -451,7 +451,7 @@ class _SignInScreenState extends State<SignInScreen> {
           error: _error != null,
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ],
       // NEW PASSWORD (reset)
       if (_mode == _Mode.resetCode) ...[
@@ -466,7 +466,7 @@ class _SignInScreenState extends State<SignInScreen> {
           trailing: _eyeToggle(),
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ],
       // NAME (sign up only — Clerk requires first + last name)
       if (_mode == _Mode.signUp) ...[
@@ -481,7 +481,7 @@ class _SignInScreenState extends State<SignInScreen> {
           error: _error != null && _name.text.trim().isEmpty,
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ],
       // EMAIL (sign in / sign up / reset request)
       if (_mode == _Mode.signIn || _mode == _Mode.signUp || _mode == _Mode.reset) ...[
@@ -495,7 +495,7 @@ class _SignInScreenState extends State<SignInScreen> {
           error: _error != null && _email.text.trim().isEmpty,
           onSubmitted: (_) { if (_mode == _Mode.reset) _submit(); },
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: Msg.s4),
       ],
       // PASSWORD (sign in / sign up)
       if (_mode == _Mode.signIn || _mode == _Mode.signUp) ...[

@@ -583,7 +583,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Report spam', style: ADText.appTitle(c: AD.textPrimary)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('The call ends and $_displayName is reported.', style: ADText.preview(c: AD.textSecondary)),
             ListTile(contentPadding: EdgeInsets.zero, title: Text('Report only', style: ADText.preview(c: AD.textPrimary)), onTap: () => Navigator.of(sheetContext).pop(false)),
             ListTile(contentPadding: EdgeInsets.zero, title: Text('Report and block', style: ADText.preview(c: AD.destructiveBg)), onTap: () => Navigator.of(sheetContext).pop(true)),
@@ -751,7 +751,7 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                 // Real breathing room under the row (was 8px). Sits inside
                 // SafeArea, so this is clear space ABOVE the gesture bar rather
                 // than padding fighting with it.
-                const SizedBox(height: 36),
+                const SizedBox(height: Msg.s6),
               ],
             ),
           ),
@@ -825,7 +825,7 @@ class _CallAction extends StatelessWidget {
             color: filled ? AD.bg : tint.withValues(alpha: dim ? 0.4 : 1.0),
           ),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         SizedBox(
           height: _labelBox,
           child: Center(
@@ -894,7 +894,7 @@ class _QuickReplySheet extends StatelessWidget {
           child: Text('$callerName gets this as a message — the call ends quietly',
               style: ADText.preview(c: AD.textSecondary)),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         ...kQuickReplies.map((r) => Padding(
               padding: const EdgeInsets.only(bottom: 7),
               child: GestureDetector(
@@ -908,7 +908,7 @@ class _QuickReplySheet extends StatelessWidget {
                   ),
                   child: Row(children: [
                     Text(r.emoji, style: const TextStyle(fontSize: 19)),
-                    const SizedBox(width: 13),
+                    const SizedBox(width: Msg.s3),
                     Expanded(
                       child: Text(r.text, style: ADText.appTitle(c: AD.textPrimary)),
                     ),

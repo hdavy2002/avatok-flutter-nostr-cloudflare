@@ -157,9 +157,9 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), size: 46, color: PhoneTheme.textMute),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text('No messages yet', style: PhoneTheme.title(size: 17)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Tap "New message" to text an AvaTOK number.',
                 textAlign: TextAlign.center, style: PhoneTheme.sub(size: 13)),
           ]),
@@ -195,11 +195,11 @@ class _SmsRow extends StatelessWidget {
                       style: PhoneTheme.value(size: 15)),
                 ),
                 if (contact.number.isNotEmpty) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   PhosphorIcon(PhosphorIcons.hash(PhosphorIconsStyle.bold), size: 12, color: PhoneTheme.teal),
                 ],
               ]),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Text(preview.isEmpty ? 'Tap to open' : preview,
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: PhoneTheme.sub(size: 13, color: unread ? PhoneTheme.text : PhoneTheme.textSoft)),
@@ -208,12 +208,12 @@ class _SmsRow extends StatelessWidget {
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(time, style: PhoneTheme.tag(size: 11, color: unread ? PhoneTheme.accent : PhoneTheme.textMute)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             if (unread)
               Container(width: 10, height: 10,
                   decoration: const BoxDecoration(color: PhoneTheme.accent, shape: BoxShape.circle))
             else
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
           ]),
         ]),
       ),
@@ -281,7 +281,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
           Text('New message', style: PhoneTheme.title(size: 20)),
           const SizedBox(height: 4),
           Text('Send to any AvaTOK number.', style: PhoneTheme.sub(size: 12)),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           TextField(
             controller: _ctrl,
             autofocus: true,
@@ -306,7 +306,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
           if (_error != null)
             Padding(padding: const EdgeInsets.only(top: 8),
                 child: Text(_error!, style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger))),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -327,7 +327,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
             ),
           ),
           if (saved.isNotEmpty) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             Text('Your AvaTOK contacts', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
             const SizedBox(height: 8),
             ConstrainedBox(

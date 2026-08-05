@@ -36,7 +36,7 @@ class _DarkHeader extends StatelessWidget implements PreferredSizeWidget {
           padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
           child: Row(children: [
             const AdBackButton(),
-            const SizedBox(width: 6),
+            const SizedBox(width: Msg.s1),
             Expanded(
               child: Text(title, style: ADText.appTitle(),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -431,13 +431,13 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             const SizedBox(width: 8),
             _premiumBadge(),
           ]),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Row(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.lightning(PhosphorIconsStyle.fill), size: 12, color: AD.textTertiary),
             const SizedBox(width: 4),
             Text('Powered by Composio', style: ADText.statCaption(c: AD.textTertiary)),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           // Search filter on top — white dark-v2 search dock.
           Container(
             decoration: BoxDecoration(
@@ -466,7 +466,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               ),
             ]),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           if (_loading)
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: AD.iconSearch))),
           if (!_loading && _visible.isEmpty)
@@ -501,7 +501,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
               sliver: SliverList(delegate: SliverChildListDelegate([
           Text('Ask Ava', style: ADText.sectionLabel()),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           AdCard(
             radius: AD.rListCard, padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -527,7 +527,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             ]),
           ),
           if (_status != null && (_answer == null || _answer!.isEmpty)) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Row(children: [
               const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.8, color: AD.iconSearch)),
               const SizedBox(width: 8),
@@ -535,7 +535,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
             ]),
           ],
           if (_answer != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             AdCard(
               radius: AD.rListCard, padding: const EdgeInsets.all(14),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -545,10 +545,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                   if (_answerAsOf != null) ...[
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       const SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.textTertiary)),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: Msg.s1),
                       Text('as of $_answerAsOf · refreshing…', style: ADText.preview(c: AD.textTertiary)),
                     ]),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Msg.s1),
                   ],
                   SelectableText(_answer!, style: ADText.rowName()),
                 ])),
@@ -619,7 +619,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               ),
             ),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: ADText.preview(c: enabled ? AD.textSecondary : AD.textTertiary)),
@@ -701,7 +701,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
-        const SizedBox(width: 6),
+        const SizedBox(width: Msg.s1),
         Text('Beta-free', style: ADText.sectionLabel(c: Colors.white)),
       ]),
     );

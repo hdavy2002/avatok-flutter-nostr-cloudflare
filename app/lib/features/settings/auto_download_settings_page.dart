@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/media_auto_download.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// ACCOUNT & SETTINGS → Auto-download (STREAM J / D17).
 ///
@@ -119,7 +120,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                   title: 'Do not download automatically',
                   subtitle: 'Nothing downloads until you tap it — you stay fully in control.',
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: Msg.s4),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -130,7 +131,7 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
                   child: Row(children: [
                     PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.fill),
                         size: 18, color: AD.textSecondary),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Msg.s2),
                     Expanded(
                       child: Text(
                         'You can always tap any attachment to download it, whatever '
@@ -170,12 +171,12 @@ class _AutoDownloadSettingsPageState extends State<AutoDownloadSettingsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: ADText.rowName()),
-                const SizedBox(height: 3),
+                const SizedBox(height: Msg.s1),
                 Text(subtitle, style: ADText.preview()),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           _radio(selected),
         ]),
       ),

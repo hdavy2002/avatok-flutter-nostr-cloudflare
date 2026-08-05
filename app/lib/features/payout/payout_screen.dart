@@ -286,7 +286,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.rowName()),
               const SizedBox(height: Msg.s1),
-              Wrap(spacing: 6, runSpacing: 4, children: [
+              Wrap(spacing: Msg.s1, runSpacing: 4, children: [
                 ZineSticker('${a['currency'] ?? ''} · $status', kind: statusKind),
                 if (taxMissing) const ZineSticker('tax info missing', kind: ZineStickerKind.no),
               ]),

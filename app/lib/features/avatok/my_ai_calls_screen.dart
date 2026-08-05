@@ -11,6 +11,7 @@ import '../../core/business_agent_api.dart';
 import '../../core/disk_cache.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// "My AI calls" — caller-side history of calls I made to OTHER people's Ava AI
 /// Voice Agents (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md
@@ -123,7 +124,7 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _calls.length + (_cursor != null ? 1 : 0),
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
                         itemBuilder: (context, i) {
                           if (i >= _calls.length) {
                             _loadMore();
@@ -165,7 +166,7 @@ class _MyAiCallsScreenState extends State<MyAiCallsScreen> {
       padding: const EdgeInsets.all(13),
       child: Row(children: [
         ZineIconBadge(icon: PhosphorIcons.robot(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 36),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
@@ -269,7 +270,7 @@ class _MyAiCallDetailScreenState extends State<_MyAiCallDetailScreen> {
                         color: AD.incomingCall,
                         child: Text(_t!.whatTheAgentDid, style: ADText.rowName(c: AD.textOnInput)),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: Msg.s3),
                     ],
                     for (final t in _t!.turns)
                       Padding(

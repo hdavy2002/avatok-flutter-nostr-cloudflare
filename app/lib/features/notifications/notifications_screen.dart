@@ -7,6 +7,7 @@ import '../../core/analytics.dart';
 import '../../core/notifications_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// In-app notification feed (wallet, moderation, briefings, social).
 /// Pass [realtime] (NostrClient.notifications) to prepend live notifications as
@@ -99,7 +100,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AD.card,
         title: Text('Clear all notifications?',
-            style: ADText.rowName().copyWith(fontSize: 16.5)),
+            style: ADText.rowName().copyWith(fontSize: 16)),
         content: Text('This removes every notification from this feed. It can\'t be undone.',
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
@@ -162,7 +163,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               padding: const EdgeInsets.fromLTRB(8, 6, 18, 10),
               child: Row(children: [
                 AdBackButton(onTap: () => Navigator.of(context).maybePop()),
-                const SizedBox(width: 6),
+                const SizedBox(width: Msg.s1),
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -224,7 +225,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                     // [NOTIF-LAZY-1] +1 for the paging spinner / end-of-feed cap.
                     itemCount: _items.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
                     itemBuilder: (_, i) {
                       if (i == _items.length) {
                         if (_end) return const SizedBox(height: 8);
@@ -253,10 +254,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(n.title, style: ADText.rowName().copyWith(fontSize: 14.5)),
+                              Text(n.title, style: ADText.rowName().copyWith(fontSize: 14)),
                               if (n.body.isNotEmpty) ...[
                                 const SizedBox(height: 2),
-                                Text(n.body, style: ADText.preview().copyWith(fontSize: 12.5)),
+                                Text(n.body, style: ADText.preview().copyWith(fontSize: 12)),
                               ],
                             ]),
                           ),

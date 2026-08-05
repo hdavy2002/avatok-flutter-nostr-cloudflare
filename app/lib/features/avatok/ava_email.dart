@@ -210,7 +210,7 @@ class _EmailInboxCardsState extends State<EmailInboxCards> {
             PhosphorIcon(PhosphorIcons.tray(PhosphorIconsStyle.fill), size: 13, color: _bubbleInk),
             const SizedBox(width: Msg.s2),
             Text('Inbox · ${visible.length} ${visible.length == 1 ? 'email' : 'emails'}',
-                style: _mono.copyWith(fontSize: 9.5, color: _bubbleInk)),
+                style: _mono.copyWith(fontSize: 9, color: _bubbleInk)),
           ]),
         ),
         if (visible.isEmpty)
@@ -259,21 +259,21 @@ class _EmailCard extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(initial, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600, fontSize: 16, color: Colors.white)),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text(e.from, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13.5))),
+                    style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13))),
                 if (e.flag != null) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Msg.s1),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(color: AD.danger, borderRadius: Msg.brPill),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 9, color: Colors.white),
                       const SizedBox(width: Msg.s1),
-                      Text(e.flag!, style: _mono.copyWith(fontSize: 8.5, color: Colors.white)),
+                      Text(e.flag!, style: _mono.copyWith(fontSize: 8, color: Colors.white)),
                     ]),
                   ),
                 ],
@@ -284,20 +284,20 @@ class _EmailCard extends StatelessWidget {
                         style: _mono.copyWith(fontSize: 10, color: _bubbleMuted))),
               Padding(padding: const EdgeInsets.only(top: 6),
                   child: Text(e.subject, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13.5))),
+                      style: ADText.rowName(c: _bubbleInk).copyWith(fontSize: 13))),
               if (e.snippet.isNotEmpty)
                 Padding(padding: const EdgeInsets.only(top: 2),
                     child: Text(e.snippet, maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: ADText.preview(c: _bubbleMuted).copyWith(fontSize: 12.5))),
+                        style: ADText.preview(c: _bubbleMuted).copyWith(fontSize: 12))),
             ]),
           ),
         ]),
-        const SizedBox(height: 9),
+        const SizedBox(height: Msg.s2),
         Row(children: [
           _pill('View', PhosphorIcons.envelopeOpen(PhosphorIconsStyle.fill), AD.primaryBadge, onView),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           _pill('Spam', PhosphorIcons.prohibit(PhosphorIconsStyle.bold), AD.danger, onSpam),
-          const SizedBox(width: 6),
+          const SizedBox(width: Msg.s1),
           _pill('Delete', PhosphorIcons.trash(PhosphorIconsStyle.bold), _bubbleSurface, onDelete),
         ]),
       ]),
@@ -419,7 +419,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
             child: Row(children: [
               _circleBtn(_mode == 'reply' ? PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold) : PhosphorIcons.x(PhosphorIconsStyle.bold),
                   () => _mode == 'reply' ? setState(() => _mode = 'read') : Navigator.of(context).pop(false)),
-              const SizedBox(width: 11),
+              const SizedBox(width: Msg.s3),
               Expanded(child: Text(title, style: ADText.appTitle().copyWith(fontSize: 19))),
               if (_mode != 'sent')
                 _circleBtn(PhosphorIcons.trash(PhosphorIconsStyle.regular), _trash),
@@ -463,7 +463,7 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _metaRow('TO', '${e.from}  ·  ${e.addr}'),
-          const SizedBox(height: 7),
+          const SizedBox(height: Msg.s2),
           _metaRow('SUBJ', 'Re: ${e.subject}'),
           const SizedBox(height: 12),
           Container(
@@ -506,14 +506,14 @@ class _EmailViewerScreenState extends State<EmailViewerScreen> {
             Text(e.from, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName().copyWith(fontSize: 16)),
             Text(e.addr, maxLines: 1, overflow: TextOverflow.ellipsis, style: _mono.copyWith(fontSize: 11, color: AD.textTertiary)),
             Padding(padding: const EdgeInsets.only(top: 2),
-                child: Text('to me · ${e.time}', style: _mono.copyWith(fontSize: 10.5, color: AD.textTertiary))),
+                child: Text('to me · ${e.time}', style: _mono.copyWith(fontSize: 10, color: AD.textTertiary))),
           ])),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         Text(e.subject, style: ADText.appTitle().copyWith(fontSize: 23)),
         const SizedBox(height: 12),
         const Divider(color: AD.borderHairline, height: 1, thickness: 1),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         if (_loadingBody)
           const Padding(padding: EdgeInsets.symmetric(vertical: 20),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch)))

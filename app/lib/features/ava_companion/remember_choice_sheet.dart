@@ -6,6 +6,7 @@ import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// [AVABRAIN-CLIENT-REC-1] The per-recording "Remember this in AvaBrain?"
 /// choice (Product Bible §5.1 item 4): every recorded voice note/media clip
@@ -150,7 +151,7 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
               Text(widget.subtitle, style: ADText.preview()),
             ])),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           AdCard(
             color: AD.card,
             onTap: () => _choose(true),
@@ -163,7 +164,7 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
               ])),
             ]),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           AdCard(
             color: AD.card,
             onTap: () => _choose(false),
@@ -176,7 +177,7 @@ class _RememberChoiceSheetState extends State<_RememberChoiceSheet> {
               ])),
             ]),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           AdCard(
             color: AD.card,
             onTap: _loaded ? _chooseAccountDefault : null,

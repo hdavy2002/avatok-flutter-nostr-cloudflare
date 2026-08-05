@@ -210,7 +210,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.cloud(PhosphorIconsStyle.fill), color: AD.primaryBadge, size: 34),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Text('Google Drive backup', style: ADText.rowName())),
           const _FreeChip(),
         ]),
@@ -236,7 +236,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
         padding: EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2)),
-          SizedBox(width: 10),
+          SizedBox(width: Msg.s2),
           Text('Checking Google Drive…'),
         ]),
       );
@@ -280,7 +280,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           onPressed: _busy ? null : () => _run(BackupService.I.backupAllToDrive, 'Chats + media backed up to Drive.', name: 'drive_backup'),
         ),
       ),
-      const SizedBox(width: 10),
+      const SizedBox(width: Msg.s2),
       Expanded(
         child: AdButton(
           label: 'Restore',
@@ -304,7 +304,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.devices(PhosphorIconsStyle.fill), color: AD.iconSearch, size: 34),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(child: Text('Cross-device sync', style: ADText.rowName())),
           const PaidBadge(),
         ]),
@@ -325,7 +325,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
               child: _pillLabel('Sync now', PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), AD.newGroup),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           // Restore from R2 is allowed even for a lapsed account (so they can
           // recover their own data) — still behind PaidFeature so the entry
           // point reads as premium, but the server permits the GET regardless.

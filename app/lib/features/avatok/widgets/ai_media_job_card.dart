@@ -214,7 +214,7 @@ Widget _pillButton({
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
           PhosphorIcon(icon, size: 14, color: color),
-          const SizedBox(width: 5),
+          const SizedBox(width: Msg.s1),
         ],
         Text(label, style: ADText.statCaption(c: color).copyWith(fontWeight: FontWeight.w700)),
       ]),
@@ -244,7 +244,7 @@ class _WorkingCard extends StatelessWidget {
             width: 20, height: 20,
             child: CircularProgressIndicator(strokeWidth: 2, color: accent),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           PhosphorIcon(_kindIcon(job.kind), size: 18, color: accent),
           const SizedBox(width: 8),
           Expanded(
@@ -254,7 +254,7 @@ class _WorkingCard extends StatelessWidget {
           ),
         ]),
         if (job.progress != null) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           ClipRRect(
             borderRadius: Msg.brPill,
             child: LinearProgressIndicator(
@@ -266,7 +266,7 @@ class _WorkingCard extends StatelessWidget {
           ),
         ],
         if (onCancel != null) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Align(
             alignment: Alignment.centerRight,
             child: _pillButton(label: 'Cancel', onPressed: onCancel, color: AD.textSecondary),
@@ -423,11 +423,11 @@ class _ReadyCard extends StatelessWidget {
             ),
             child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), color: accent, size: 20),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: Msg.s2),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(_readyLabel(job), maxLines: 2, overflow: TextOverflow.ellipsis, style: ADText.rowName()),
-              const SizedBox(height: 3),
+              const SizedBox(height: Msg.s1),
               Row(mainAxisSize: MainAxisSize.min, children: [
                 PhosphorIcon(_kindIcon(job.kind), size: 12, color: AD.textTertiary),
                 const SizedBox(width: 4),
@@ -475,7 +475,7 @@ class _FailedCard extends StatelessWidget {
           ),
           child: Icon(PhosphorIcons.warning(PhosphorIconsStyle.fill), color: AD.danger, size: 20),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(_friendlyError(job), maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -527,7 +527,7 @@ class _CancelledCard extends StatelessWidget {
           ),
           child: Icon(PhosphorIcons.xCircle(PhosphorIconsStyle.bold), color: AD.textTertiary, size: 20),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text('Cancelled', style: ADText.rowName(c: AD.textSecondary)),

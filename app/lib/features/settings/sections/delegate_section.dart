@@ -112,7 +112,7 @@ class _DelegateCardState extends State<_DelegateCard> {
             ),
           ),
         ]),
-        const SizedBox(height: 14),
+        const SizedBox(height: Msg.s3),
         // FREE default — alert on mentions.
         ValueListenableBuilder<bool>(
           valueListenable: DelegateDefaults.alertMentions,
@@ -123,7 +123,7 @@ class _DelegateCardState extends State<_DelegateCard> {
                 Text('New chats start by pushing you on @mentions.', style: ADText.preview()),
               ]),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             _AdToggle(value: on, onChanged: (v) => DelegateDefaults.setAlert(v)),
           ]),
         ),
@@ -145,7 +145,7 @@ class _DelegateCardState extends State<_DelegateCard> {
                     style: ADText.preview()),
               ]),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             if (on)
               _AdToggle(value: true, onChanged: (_) => DelegateDefaults.setMonitor(false))
             else

@@ -263,11 +263,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           _sheetTile(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), AD.iconSearch, 'Take photo',
               () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           _sheetTile(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), AD.primaryBadge, 'Choose from gallery',
               () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); }),
           if (hasPhoto) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             _sheetTile(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), AD.danger, 'Remove photo',
                 () { Navigator.pop(ctx); _removePhoto(); }, danger: true),
           ],
@@ -393,7 +393,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               keyboardType: TextInputType.emailAddress,
             ),
             if (sent) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: Msg.s3),
               AdField(
                 controller: codeCtrl,
                 label: '6-digit code from your inbox',
@@ -529,7 +529,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.fromLTRB(10, 8, 18, 12),
               child: Row(children: [
                 const AdBackButton(),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,7 +597,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 16),
         Center(child: Text(_fullName.isEmpty ? 'You' : _fullName,
             style: ADText.appTitle())),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         AdField(
           controller: _name,
           label: 'First name',
@@ -613,7 +613,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           textCapitalization: TextCapitalization.words,
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text('People find you by your AvaTOK number, phone, or email — set your number in Settings → Your number.',
             style: ADText.preview()),
         const SizedBox(height: 16),
@@ -626,14 +626,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text('Private — never shown to anyone. Required. Used to confirm your age '
             '(under-18 accounts get extra safety protections) and for anonymous '
             'age-group stats (e.g. "25-34").',
             style: ADText.preview()),
         const SizedBox(height: 16),
-        Text('Gender', style: ADText.rowName().copyWith(fontSize: 13.5)),
-        const SizedBox(height: 7),
+        Text('Gender', style: ADText.rowName().copyWith(fontSize: 13)),
+        const SizedBox(height: Msg.s2),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final opt in const [
             ['male', 'Male (he/him)'],
@@ -651,7 +651,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   fontSize: 13, color: _gender == opt[0] ? Colors.white : AD.textSecondary),
             ),
         ]),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text('Ava uses this when she answers your missed calls — '
             '"can I take a message for him/her/them?"', style: ADText.preview()),
         const SizedBox(height: 16),
@@ -664,7 +664,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text('Private to you. Ava reads this to personalise its help — manage what Ava '
             'learns from in Settings → AvaBrain.', style: ADText.preview()),
         const SizedBox(height: 16),
@@ -672,11 +672,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Share last seen / online', style: ADText.rowName().copyWith(fontSize: 14.5)),
+              Text('Share last seen / online', style: ADText.rowName().copyWith(fontSize: 14)),
               const SizedBox(height: 2),
               Text('Let contacts see when you are online', style: ADText.preview().copyWith(fontSize: 12)),
             ])),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             ZineToggle(value: _sharePresence, onChanged: (v) => setState(() => _sharePresence = v)),
           ]),
         ),
@@ -686,7 +686,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // — Profile.privatePhoneVerified). When the switch is on, this number
         // replaces the AvaTOK number on the QR card and contact areas.
         Text('PRIVATE PHONE NUMBER (OPTIONAL)', style: ADText.sectionLabel()),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         AdField(
           controller: _privatePhone,
           label: 'Private phone number',
@@ -694,7 +694,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           keyboardType: TextInputType.phone,
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text('Optional and private by default. Not verified yet — verification is '
             'coming later. Only shown to others if you turn on the switch below.',
             style: ADText.preview()),
@@ -703,12 +703,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Show my private number instead of my AvaTOK number', style: ADText.rowName().copyWith(fontSize: 14.5)),
+              Text('Show my private number instead of my AvaTOK number', style: ADText.rowName().copyWith(fontSize: 14)),
               const SizedBox(height: 2),
               Text('People see this number on your card and can call it on AvaTOK. '
                   'Your AvaTOK number is hidden while this is on.', style: ADText.preview().copyWith(fontSize: 12)),
             ])),
-            const SizedBox(width: 10),
+            const SizedBox(width: Msg.s2),
             ZineToggle(
               value: _showPrivateNumber && _privatePhone.text.trim().isNotEmpty,
               onChanged: _privatePhone.text.trim().isEmpty
@@ -719,18 +719,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         Text('Account & security', style: ADText.sectionLabel()),
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), AD.iconSearch,
             'Change email', 'Verify the new address with a 6-digit code', _changeEmail),
         _securityRow(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), AD.iconVideo,
             'Password', 'Set or change your sign-in password', _changePassword),
-        const SizedBox(height: 6),
+        const SizedBox(height: Msg.s1),
         if (id != null) AdCard(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.qrCode(PhosphorIconsStyle.bold), color: AD.iconSearch, size: 28),
-              const SizedBox(width: 9),
+              const SizedBox(width: Msg.s2),
               Expanded(child: Text('Add me on AvaTOK', style: ADText.sectionLabel())),
             ]),
             const SizedBox(height: 12),
@@ -743,7 +743,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ))
             else
               const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator(color: AD.primaryBadge))),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Center(child: Text(
               _cardNumber.isNotEmpty ? _cardNumber : 'Scan to add me on AvaTOK',
               style: ADText.rowName(c: AD.iconSearch).copyWith(fontSize: 15))),
@@ -760,8 +760,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
                 Text('Generate your AvaTOK number in Settings → Your number to share it, '
                     'or add a private number above and choose to show it.',
-                    textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 11.5)))),
-            const SizedBox(height: 14),
+                    textAlign: TextAlign.center, style: ADText.preview().copyWith(fontSize: 11)))),
+            const SizedBox(height: Msg.s3),
             Row(children: [
               Expanded(child: AdButton(
                 label: 'Share', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
@@ -774,7 +774,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SnackBar(content: Text("Couldn't prepare the QR image — try again.")));
                   }
                 })),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: AdButton(
                 label: 'Copy', variant: AdButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
@@ -784,7 +784,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
                 })),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             // Owner request 2026-06-29: Download a JPEG of the card, or Print it to
             // post at a business — both use the identical QrShare layout.
             Row(children: [
@@ -801,7 +801,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SnackBar(content: Text("Couldn't save the image.")));
                   }
                 })),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: AdButton(
                 label: 'Print', variant: AdButtonVariant.ghost, icon: PhosphorIcons.printer(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
@@ -816,7 +816,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
           ]),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: Msg.s5),
         AdButton(
           label: _listed ? 'Update profile' : 'Save & get discoverable',
           fullWidth: true,

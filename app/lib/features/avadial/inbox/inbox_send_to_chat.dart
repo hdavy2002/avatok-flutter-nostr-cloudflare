@@ -199,7 +199,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Container(
             width: 40, height: 4,
             decoration:
@@ -240,7 +240,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
               ]),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Flexible(
             child: _loading
                 ? const Padding(

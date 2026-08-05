@@ -32,6 +32,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/voice/google_voice.dart';
 import 'settings_registry.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Default-language allowlist (BCP-47 short codes) — MUST match AGENT_LANGS in
 /// worker/src/routes/agent_settings.ts. `label` is the English language name.
@@ -329,7 +330,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                   _tone,
                   (v) => setState(() => _tone = v),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
 
                 // ── Negotiation guardrails ──
                 _sectionKicker('Negotiation guardrails'),
@@ -365,7 +366,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                   _askBeforeCommit,
                   (v) => setState(() => _askBeforeCommit = v),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
 
                 // ── Auto-respond + quiet hours ──
                 _sectionKicker('Availability'),
@@ -378,7 +379,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                 _label('Quiet hours'),
                 Row(children: [
                   Expanded(child: _timeBtn('Start', _quietStart, () => _pickTime(true))),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: Msg.s2),
                   Expanded(child: _timeBtn('End', _quietEnd, () => _pickTime(false))),
                 ]),
                 Padding(
@@ -388,7 +389,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                     style: ADText.preview(),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: Msg.s4),
 
                 // ── Digest ──
                 _sectionKicker('Updates'),
@@ -398,7 +399,7 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
                   _digest,
                   (v) => setState(() => _digest = v),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: Msg.s5),
 
                 AdButton(
                   label: 'Save',

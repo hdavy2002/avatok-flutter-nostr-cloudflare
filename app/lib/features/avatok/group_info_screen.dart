@@ -521,7 +521,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             style: TextStyle(
                 fontFamily: ADText.family,
                 fontWeight: FontWeight.w600,
-                fontSize: 12.5,
+                fontSize: 12,
                 color: Colors.white)),
       );
 
@@ -626,7 +626,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                         size: 20, color: AD.textPrimary)),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: Msg.s3),
                 Text('Group info', style: ADText.appTitle()),
               ]),
             ),
@@ -682,7 +682,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             Center(child: Text(_group.name, style: ADText.appTitle())),
             const SizedBox(height: 4),
             Center(child: Text('${_group.members.length} MEMBERS', style: ADText.sectionLabel())),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Material(
@@ -748,7 +748,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   Flexible(child: Text(_label(m), maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ADText.rowName())),
                   if (_group.admins.contains(m)) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: Msg.s1),
                     _adminPill(),
                   ],
                 ]),
@@ -852,7 +852,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 : 'Current mode for this group. Only a group admin can change it.',
             style: ADText.preview(),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           Row(children: [
             for (final m in modes) ...[
               Expanded(child: _companionModeChip(m.$1, m.$2)),
@@ -922,7 +922,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               PhosphorIcon(icon, size: 18, color: labelColor),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Text(label, style: ADText.rowName(c: labelColor)),
             ]),
           ),

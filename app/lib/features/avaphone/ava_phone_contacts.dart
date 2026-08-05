@@ -115,7 +115,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         side: BorderSide(color: PhoneTheme.border, width: 1.5),
         borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        const SizedBox(height: Msg.s2),
         ListTile(
           leading: PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 44,
               avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
@@ -249,7 +249,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
                 border: Border.all(color: PhoneTheme.border, width: 1.5)),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 17, color: PhoneTheme.textSoft),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(
                   child: TextField(
                     style: PhoneTheme.value(size: 14),
@@ -310,9 +310,9 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 46, color: PhoneTheme.textMute),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             Text(_q.isEmpty ? 'No AvaTOK contacts yet' : 'No matches', style: PhoneTheme.title(size: 17)),
-            const SizedBox(height: 6),
+            const SizedBox(height: Msg.s1),
             Text('Add someone by their AvaTOK number or scan their QR code.',
                 textAlign: TextAlign.center, style: PhoneTheme.sub(size: 13)),
           ]),
@@ -380,7 +380,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
           Text('Add AvaTOK contact', style: PhoneTheme.title(size: 20)),
           const SizedBox(height: 4),
           Text('Save someone by their AvaTOK number.', style: PhoneTheme.sub(size: 12)),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           TextField(
             controller: _ctrl,
             autofocus: true,
@@ -404,7 +404,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
           if (_error != null)
             Padding(padding: const EdgeInsets.only(top: 8),
                 child: Text(_error!, style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger))),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -422,7 +422,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
               label: Text(_resolving ? 'Finding…' : 'Find & save', style: PhoneTheme.value(size: 15, color: Colors.white)),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(

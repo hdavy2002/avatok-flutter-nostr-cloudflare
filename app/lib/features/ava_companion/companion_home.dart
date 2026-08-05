@@ -249,13 +249,13 @@ class _CompanionHomeState extends State<CompanionHome> {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
-              const SizedBox(width: 10),
+              const SizedBox(width: Msg.s2),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('New chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
                 Text('Pick how you want to talk', style: ADText.preview()),
               ])),
             ]),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             for (final p in AvaPersonas.all) ...[
               _PersonaTile(
                 persona: p,
@@ -270,7 +270,7 @@ class _CompanionHomeState extends State<CompanionHome> {
                   Navigator.pop(ctx, p);
                 },
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: Msg.s2),
             ],
             const SizedBox(height: 4),
             Text(
@@ -308,7 +308,7 @@ class _CompanionHomeState extends State<CompanionHome> {
               'safe and moderated either way.',
               style: ADText.preview(),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             AdButton(
               label: 'Verify in AvaIdentity',
               variant: AdButtonVariant.teal,
@@ -358,7 +358,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           _menuRow(ctx, 'archive', PhosphorIcons.archive(PhosphorIconsStyle.bold),
               s.archived ? 'Unarchive' : 'Archive'),
           _menuRow(ctx, 'delete', PhosphorIcons.trash(PhosphorIconsStyle.bold), 'Delete', danger: true),
-          const SizedBox(height: 10),
+          const SizedBox(height: Msg.s2),
         ]),
       ),
     );
@@ -496,7 +496,7 @@ class _CompanionHomeState extends State<CompanionHome> {
         const AdBackButton(),
         const SizedBox(width: 4),
         ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
@@ -545,10 +545,10 @@ class _CompanionHomeState extends State<CompanionHome> {
           ZineIconBadge(
               icon: PhosphorIcons.chatTeardropDots(PhosphorIconsStyle.fill),
               color: AD.iconVideo, size: 54),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           Text(_showArchived ? 'No archived chats' : 'No chats yet',
               style: ADText.threadName(c: AD.textPrimary), textAlign: TextAlign.center),
-          const SizedBox(height: 6),
+          const SizedBox(height: Msg.s1),
           Text(
             _showArchived
                 ? 'Chats you archive will show up here.'
@@ -556,7 +556,7 @@ class _CompanionHomeState extends State<CompanionHome> {
             style: ADText.preview(), textAlign: TextAlign.center,
           ),
           if (!_showArchived) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: Msg.s4),
             AdButton(
               label: 'Start a chat',
               variant: AdButtonVariant.primary,
@@ -651,12 +651,12 @@ class _SessionCard extends StatelessWidget {
               ],
               Flexible(child: Text(title, style: ADText.rowName(), maxLines: 1, overflow: TextOverflow.ellipsis)),
             ]),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text(
               session.preview.isEmpty ? '${p.name} · tap to continue' : session.preview,
               style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: Msg.s1),
             Text('${p.name} · ${_ago(session.updatedAt)}', style: ADText.statCaption(c: AD.textTertiary)),
           ]),
         ),
@@ -743,7 +743,7 @@ class _PersonaTile extends StatelessWidget {
             Text(persona.tagline, style: ADText.preview()),
           ]),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: Msg.s1),
         if (loading)
           const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))
         else

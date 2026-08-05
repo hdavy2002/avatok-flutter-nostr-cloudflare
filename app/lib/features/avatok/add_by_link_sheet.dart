@@ -112,7 +112,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
           Text('Add by QR link', style: ADText.appTitle()),
           const SizedBox(height: 4),
           Text('Paste an AvaTOK add link, or scan a code that opens it.', style: ADText.preview()),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           if (_card == null) ...[
             // White dark-v2 link field with a Paste action.
             Container(
@@ -125,7 +125,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
                     size: 18, color: AD.placeholderOnWhite),
-                const SizedBox(width: 10),
+                const SizedBox(width: Msg.s2),
                 Expanded(
                   child: TextField(
                     controller: _linkCtrl,
@@ -151,7 +151,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
               ]),
             ),
             if (_error != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(_error!, style: ADText.preview(c: AD.danger))),
-            const SizedBox(height: 14),
+            const SizedBox(height: Msg.s3),
             _PrimaryButton(
               label: _resolving ? 'Looking up…' : 'Continue',
               loading: _resolving,
@@ -186,12 +186,12 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
               Text(c.sharesRealNumber ? 'Shared a private number' : 'AvaTOK member', style: ADText.preview()),
             ])),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: Msg.s3),
           _row(c.sharesRealNumber ? PhosphorIcons.phone(PhosphorIconsStyle.bold) : PhosphorIcons.hash(PhosphorIconsStyle.bold),
               'Number', c.number.isEmpty ? '—' : c.number),
           if (c.email.isNotEmpty) _row(PhosphorIcons.envelope(PhosphorIconsStyle.bold), 'Email', c.email),
           if (c.sharesRealNumber) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: Msg.s2),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
               decoration: BoxDecoration(color: AD.danger.withValues(alpha: 0.14), borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
@@ -200,10 +200,10 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
           ],
         ]),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: Msg.s3),
       Row(children: [
         Expanded(child: _GhostButton(label: 'Cancel', onTap: () => Navigator.pop(context))),
-        const SizedBox(width: 10),
+        const SizedBox(width: Msg.s2),
         Expanded(child: _PrimaryButton(
             label: 'Add contact',
             icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),

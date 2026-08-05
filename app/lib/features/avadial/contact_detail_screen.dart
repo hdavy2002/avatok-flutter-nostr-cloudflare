@@ -16,6 +16,7 @@ import 'contact_edit_screen.dart';
 import 'contact_overrides.dart';
 import 'contact_row_menu.dart';
 import 'sms/sms_thread_screen.dart';
+import '../../core/ui/messenger_theme.dart';
 
 /// Full contact card for a Calls-app contact (owner spec, pic 3). Header avatar +
 /// name/number, an action row (Call · Message · AvaTOK · Edit · Block) and every
@@ -211,7 +212,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       child: Text(_initials,
                           style: AvaDialTheme.title(size: 34, color: AD.iconSearch)),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: Msg.s3),
                     Text(_title,
                         textAlign: TextAlign.center,
                         style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
@@ -220,7 +221,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                         style: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textSoft)),
                   ]),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: Msg.s5),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                   _action(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Call', AD.incomingCall, _call),
                   _action(PhosphorIcons.chatText(PhosphorIconsStyle.bold), 'Message', AD.iconVideo, _sms),
@@ -309,7 +310,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           alignment: Alignment.center,
           child: PhosphorIcon(icon, color: color, size: 23),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: Msg.s2),
         Text(label, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
       ]),
     );
