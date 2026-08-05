@@ -24,7 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # affiliate_commission_lifecycle.test.ts uses node:sqlite, which was
+          # added in Node 22.5. Keep the test runner aligned with that contract.
+          node-version: 22
       - name: Install worker deps
         working-directory: worker
         run: npm ci --no-audit --no-fund --silent

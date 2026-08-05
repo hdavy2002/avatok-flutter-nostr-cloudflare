@@ -912,7 +912,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     super.dispose();
   }
 
+  void _trackBootstrapFailure(Object error) {
+    Analytics.capture('chat_list_load_failed', {
+      'phase': 'bootstrap',
+      'error': error.toString(),
+      'scope_ready': _scopeReady,
+      'scope': AccountScope.id ?? 'null',
+      'booted': _booted,
+      'authoritative_loaded': _authoritativeLoaded,
+      'retries': _emptyBootRetries,
+    });
+  }
+
   Future<void> _bootstrap() async {
+    try {
     final bootT0 = DateTime.now(); // measure how long the local reads actually take
     // Kick EVERY local read off concurrently. These were 11 sequential awaits,
     // which on a slower phone (Samsung secure-storage/disk reads) serialised into
@@ -1150,8 +1163,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         }
       } catch (_) {/* not signed in / offline */}
     }());
-    // Handles are retired (owner decision 2026-06-27): we no longer prompt for a
-    // @handle. Tagging in groups uses the name you saved the contact under.
+      // Handles are retired (owner decision 2026-06-27): we no longer prompt for a
+      // @handle. Tagging in groups uses the name you saved the contact under.
+    } catch (error) {
+      // Keep the last-known list visible, but make a failed authoritative load
+      // queryable. Previously every failure escaped into an unhandled Future and
+      // the only chat-list event was the success event above.
+      _trackBootstrapFailure(error);
+    }
   }
 
   /// Global inbox: surface incoming messages/status/receipts even with no thread
