@@ -5,7 +5,7 @@
 //     Σ(ledger credits) − Σ(ledger debits) for that account. The consumer
 //     recomputes buckets from the ledger, so a mismatch means MANUAL TAMPERING
 //     (exactly the seeded-mismatch acceptance test) or a partial write.
-//  2. Per user with recent ledger activity: WalletDO (balance + held) equals
+//  2. Per user with recent ledger activity: WalletDO (balance + held + bonus) equals
 //     Σ ledger credits − debits for 'user:<id>' — tolerating in-flight Q_WALLET
 //     messages via a 5-minute watermark and one re-check before alerting.
 //     Users with pre-ledger (legacy wallet_transactions) history are skipped —
@@ -33,14 +33,31 @@ async function ledgerSum(env: Env, acct: string, beforeTs?: number): Promise<num
   return Number(r?.bal ?? 0);
 }
 
-async function doBalance(env: Env, uid: string): Promise<{ balance: number; held: number } | null> {
+// [RECON-BONUS-1] The DO splits a user's tokens across THREE buckets:
+//   bal.balance  — paid coins (topups, earnings)
+//   bal.held     — matured-pending earnings
+//   acct.bonus   — the persistent promo bucket (the 100-token welcome grant,
+//                  routes/welcome_bonus.ts -> promoCredit, do/wallet.ts:443)
+// The welcome grant writes a REAL double-entry ledger row (external:promo ->
+// user:<uid>, type='promo') but credits ONLY `acct.bonus`. Summing just
+// balance+held therefore reported `expected=100, actual=0` for every single
+// user whose only wallet event was signing up — a guaranteed false positive,
+// not a race. `acct.bonus` is ledger-backed on both sides (promoCredit credits
+// it, spend()/settle debit it as part of the full-amount ledger debit), so it
+// belongs in the invariant.
+//
+// `acct.free` is deliberately NOT included: the daily grant mutates it with no
+// ledger row. That is safe only while DAILY_FREE_GRANT === 0 (do/wallet.ts:90).
+// If it is ever raised above 0, free coins must start emitting a ledger row or
+// this invariant breaks again.
+async function doBalance(env: Env, uid: string): Promise<{ balance: number; held: number; bonus: number } | null> {
   if (!env.WALLET_DO) return null;
   try {
     const stub = env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
     const r = await stub.fetch("https://wallet/op", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "balance", uid }) });
     if (!r.ok) return null;
     const b = (await r.json()) as any;
-    return { balance: Number(b.balance ?? 0), held: Number(b.held ?? 0) };
+    return { balance: Number(b.balance ?? 0), held: Number(b.held ?? 0), bonus: Number(b.bonus ?? 0) };
   } catch { return null; }
 }
 
@@ -82,15 +99,15 @@ export async function reconWallet(env: Env): Promise<void> {
 
     const dob = await doBalance(env, uid);
     if (!dob) continue; // DO unreachable — don't false-alarm
-    const total = dob.balance + dob.held;
+    const total = dob.balance + dob.held + dob.bonus;
     const sumOld = await ledgerSum(env, acct, now - WATERMARK_MS);
     if (total === sumOld) continue;
     // Re-check including in-flight rows (queue may have just applied newer ops).
     const sumAll = await ledgerSum(env, acct);
     const dob2 = await doBalance(env, uid);
-    const total2 = (dob2?.balance ?? dob.balance) + (dob2?.held ?? dob.held);
+    const total2 = (dob2?.balance ?? dob.balance) + (dob2?.held ?? dob.held) + (dob2?.bonus ?? dob.bonus);
     if (total2 === sumAll || total2 === sumOld) continue;
-    diffs.push({ kind: "user", account: acct, expected: sumAll, actual: total2, note: "DO(balance+held) vs ledger Σ" });
+    diffs.push({ kind: "user", account: acct, expected: sumAll, actual: total2, note: "DO(balance+held+bonus) vs ledger Σ" });
   }
 
   // --- 3. Σ escrow == Σ held orders (activates with Phase 6's orders table) ---
