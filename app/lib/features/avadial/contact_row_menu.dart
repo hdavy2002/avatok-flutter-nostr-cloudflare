@@ -3,7 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avatok/contact_actions.dart';
 import '../avatok/contacts.dart' show Contact, Directory;
 import '../avatok/invite_screen.dart';
@@ -56,7 +56,7 @@ Future<void> showAvaDialRowMenu(
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       side: BorderSide(color: AvaDialTheme.border, width: 1),
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: Msg.brSheetTop,
     ),
     builder: (sheetCtx) => SafeArea(
       child: ConstrainedBox(
@@ -68,14 +68,14 @@ Future<void> showAvaDialRowMenu(
         const SizedBox(height: 10),
         Container(
           width: 40, height: 4,
-          decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+          decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
         ),
         ListTile(
-          leading: const Icon(Icons.perm_phone_msg_outlined, color: AvaDialTheme.text),
+          leading: Icon(PhosphorIcons.chatCenteredDots(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
           title: Text(name?.isNotEmpty == true ? name! : number,
-              style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+              style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
           subtitle: name?.isNotEmpty == true
-              ? Text(number, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft))
+              ? Text(number, style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft))
               : null,
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
@@ -263,16 +263,16 @@ Future<void> _showNotOnAvaTok(BuildContext context, String number) => showDialog
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Not on AvaTOK', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        title: Text('Not on AvaTOK', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
         content: Text(
           '$number isn\'t an AvaTOK number yet. AvaTOK only calls other AvaTOK '
           'users — invite them to join.',
-          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+          style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () {
@@ -280,7 +280,7 @@ Future<void> _showNotOnAvaTok(BuildContext context, String number) => showDialog
               Navigator.of(context, rootNavigator: true).push(
                   MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
             },
-            child: Text('Invite', style: ZineText.value(size: 14, color: AD.online)),
+            child: Text('Invite', style: AvaDialTheme.value(size: 14, color: AD.online)),
           ),
         ],
       ),
@@ -294,20 +294,20 @@ Future<bool?> _confirmDelete(BuildContext context, String label) => showDialog<b
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Delete $label?', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        title: Text('Delete $label?', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
         content: Text(
           'This deletes the contact from your phone\'s address book. This can\'t be '
           'undone.',
-          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+          style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: ZineText.value(size: 14, color: AD.danger)),
+            child: Text('Delete', style: AvaDialTheme.value(size: 14, color: AD.danger)),
           ),
         ],
       ),
@@ -325,18 +325,18 @@ Future<void> _pickGroup(BuildContext context, String number) async {
     backgroundColor: AvaDialTheme.surface,
     shape: const RoundedRectangleBorder(
       side: BorderSide(color: AvaDialTheme.border, width: 1),
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: Msg.brSheetTop,
     ),
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
         Container(
           width: 40, height: 4,
-          decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+          decoration: BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
         ),
         ListTile(
           title: Text('Add to color group',
-              style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+              style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
         ),
         const Divider(color: AvaDialTheme.border, height: 1),
         Flexible(
@@ -349,8 +349,8 @@ Future<void> _pickGroup(BuildContext context, String number) async {
                     width: 22, height: 22,
                     decoration: BoxDecoration(color: g.colorValue, shape: BoxShape.circle),
                   ),
-                  title: Text(g.name, style: ZineText.value(size: 15, color: AvaDialTheme.text)),
-                  trailing: g.id == current ? const Icon(Icons.check, color: AD.online) : null,
+                  title: Text(g.name, style: AvaDialTheme.value(size: 15, color: AvaDialTheme.text)),
+                  trailing: g.id == current ? Icon(PhosphorIcons.check(PhosphorIconsStyle.regular), color: AD.online) : null,
                   // [AVADIAL-GROUPS-1] Write BEFORE popping: popping completes the
                   // sheet's future, so _pickGroup returns and the caller's
                   // onChanged/_reload can run before the assignment has landed.
@@ -364,7 +364,7 @@ Future<void> _pickGroup(BuildContext context, String number) async {
                   leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
                       color: AvaDialTheme.textSoft),
                   title: Text('Remove from color group',
-                      style: ZineText.value(size: 15, color: AvaDialTheme.textSoft)),
+                      style: AvaDialTheme.value(size: 15, color: AvaDialTheme.textSoft)),
                   // [AVADIAL-GROUPS-1] Write before popping — see note above.
                   onTap: () async {
                     await ContactOverrides.I.setGroup(number, null);
@@ -390,7 +390,7 @@ Widget _row({
   return ListTile(
     leading: PhosphorIcon(icon, color: color),
     title: Text(label,
-        style: ZineText.value(size: 15, color: danger ? AD.danger : AvaDialTheme.text)),
+        style: AvaDialTheme.value(size: 15, color: danger ? AD.danger : AvaDialTheme.text)),
     onTap: onTap,
   );
 }

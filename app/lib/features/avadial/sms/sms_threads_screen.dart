@@ -10,7 +10,7 @@ import '../../../core/ava_log.dart';
 import '../../../core/config.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ui/avatok_dark.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
 import '../avadial_theme.dart';
@@ -255,7 +255,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
         child: ZinePressable(
           onTap: _compose,
           color: AD.primaryBadge,
-          radius: BorderRadius.circular(100),
+          radius: Msg.brLg,
           borderColor: AD.borderControl,
           borderWidth: 1,
           boxShadow: const [],
@@ -297,7 +297,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
           // [AVADIAL-SEARCH-2] White pill, black text (owner spec) — same tokens
           // as the other three Calls search bars, see AvaDialTheme.search*.
           color: AvaDialTheme.searchFill,
-          borderRadius: BorderRadius.circular(100),
+          borderRadius: Msg.brMd,
           border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Row(children: [
@@ -316,10 +316,10 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                 setState(() => _query = v);
               },
               textInputAction: TextInputAction.search,
-              style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14.5),
+              style: const TextStyle(color: AvaDialTheme.searchText, fontSize: 14),
               decoration: const InputDecoration(
                 hintText: 'Search messages, names or numbers',
-                hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14.5),
+                hintStyle: TextStyle(color: AvaDialTheme.searchHint, fontSize: 14),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -333,9 +333,9 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                 _searchController.clear();
                 setState(() => _query = '');
               },
-              child: const Padding(
-                padding: EdgeInsets.only(left: 6),
-                child: Icon(Icons.close, size: 18, color: AvaDialTheme.searchHint),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), size: 18, color: AvaDialTheme.searchHint),
               ),
             ),
         ]),
@@ -361,7 +361,8 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
     return ZinePressable(
       onTap: () => setState(() => _filter = f),
       color: fill,
-      radius: BorderRadius.circular(100),
+      // Filter chip — a genuine pill.
+      radius: Msg.brPill,
       borderColor: AD.borderControl,
       borderWidth: 1,
       boxShadow: const [],
@@ -369,7 +370,7 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, size: 17, color: fg),
         const SizedBox(width: 7),
-        Text(label, style: ZineText.button(size: 15, color: fg)),
+        Text(label, style: AvaDialTheme.value(size: 15, color: fg)),
       ]),
     );
   }
@@ -400,13 +401,13 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
               Text(name ?? t.address,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.cardTitle(size: 15.5, color: AD.textPrimary)),
+                  style: AvaDialTheme.title(size: 15, color: AD.textPrimary)),
               const SizedBox(height: 2),
               Text(t.snippet,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.sub(
-                      size: 12.5,
+                  style: AvaDialTheme.sub(
+                      size: 12,
                       color: isUnread ? AD.textPrimary : AD.textSecondary)),
             ]),
           ),
@@ -418,21 +419,18 @@ class _SmsThreadsScreenState extends State<SmsThreadsScreen> {
                     const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: AD.primaryBadge, // orange — owner spec 2026-07-14
-                  borderRadius: BorderRadius.circular(11),
+                  // Unread badge — one of the shapes rPill is reserved for.
+                  borderRadius: Msg.brPill,
                 ),
                 child: Text(
                   unread > 99 ? '99+' : '$unread',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                  ),
+                  style: ADText.timestamp(c: AD.textPrimary)
+                      .copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: AD.textSecondary),
+            icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular), color: AD.textSecondary),
             color: AD.menu,
             onSelected: (v) => v == 'spam' ? _moveToSpam(t) : _moveToInbox(t),
             itemBuilder: (_) => [
@@ -474,14 +472,14 @@ class ShellEmptyStateFallback extends StatelessWidget {
         const SizedBox(height: 16),
         Text(spam ? 'No spam' : 'No messages',
             textAlign: TextAlign.center,
-            style: ZineText.cardTitle(size: 18, color: AD.textPrimary)),
+            style: AvaDialTheme.title(size: 18, color: AD.textPrimary)),
         const SizedBox(height: 8),
         Text(
           spam
               ? 'Filtered spam texts will collect here.'
               : 'Your carrier text conversations show up here.',
           textAlign: TextAlign.center,
-          style: ZineText.sub(size: 14, color: AD.textSecondary),
+          style: AvaDialTheme.sub(size: 14, color: AD.textSecondary),
         ),
       ],
     );

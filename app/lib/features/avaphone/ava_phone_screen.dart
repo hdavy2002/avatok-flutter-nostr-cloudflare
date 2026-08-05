@@ -10,6 +10,7 @@ import '../../core/call_log_store.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
 import '../../core/team_api.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avatok/place_1to1_call.dart';
 import '../team/team_ivr_screen.dart';
 import '../avatok/contact_actions.dart';
@@ -85,7 +86,7 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
           data: NavigationBarThemeData(
             backgroundColor: PhoneTheme.surface,
             indicatorColor: PhoneTheme.accent.withValues(alpha: 0.22),
-            labelTextStyle: WidgetStatePropertyAll(PhoneTheme.tag(size: 10.5, color: PhoneTheme.textSoft)),
+            labelTextStyle: WidgetStatePropertyAll(PhoneTheme.tag(size: 11, color: PhoneTheme.textSoft)),
           ),
           child: NavigationBar(
             height: 64,
@@ -139,7 +140,7 @@ class _DialpadNavIcon extends StatelessWidget {
       height: 28,
       decoration: BoxDecoration(
         color: PhoneTheme.teal,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(Msg.rSm),
         border: Border.all(color: PhoneTheme.border, width: 1.5),
       ),
       alignment: Alignment.center,
@@ -230,17 +231,17 @@ class _CallsTabState extends State<_CallsTab> {
       backgroundColor: PhoneTheme.surface,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: PhoneTheme.border, width: 1.5),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
         ListTile(
           leading: PhoneTheme.ring(Avatar(seed: c.seed, name: c.name, size: 44, avatarUrl: _avatarFor(c.seed))),
-          title: Text(c.name.isNotEmpty ? c.name : c.seed, style: PhoneTheme.value(size: 15.5)),
-          subtitle: Text('Called ${history.length} time${history.length == 1 ? '' : 's'}', style: PhoneTheme.sub(size: 12.5)),
+          title: Text(c.name.isNotEmpty ? c.name : c.seed, style: PhoneTheme.value(size: 15)),
+          subtitle: Text('Called ${history.length} time${history.length == 1 ? '' : 's'}', style: PhoneTheme.sub(size: 12)),
         ),
         const Divider(color: PhoneTheme.border, height: 1),
         ListTile(
-          leading: const Icon(Icons.call, color: PhoneTheme.callGreen),
+          leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
           title: Text('Call', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _call(c); }),
         ListTile(
@@ -280,9 +281,9 @@ class _CallsTabState extends State<_CallsTab> {
 
   void _showHistory(CallEntry c, List<CallEntry> history) {
     ({IconData icon, Color color}) dir(CallDir d) => switch (d) {
-          CallDir.incoming => (icon: Icons.call_received, color: PhoneTheme.callGreen),
-          CallDir.outgoing => (icon: Icons.call_made, color: PhoneTheme.teal),
-          CallDir.missed => (icon: Icons.call_missed, color: PhoneTheme.danger),
+          CallDir.incoming => (icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
+          CallDir.outgoing => (icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular), color: PhoneTheme.teal),
+          CallDir.missed => (icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular), color: PhoneTheme.danger),
         };
     showModalBottomSheet<void>(
       context: context,
@@ -290,7 +291,7 @@ class _CallsTabState extends State<_CallsTab> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: PhoneTheme.border, width: 1.5),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        borderRadius: Msg.brSheetTop),
       builder: (_) => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -308,7 +309,7 @@ class _CallsTabState extends State<_CallsTab> {
                     const SizedBox(width: 10),
                     Text(e.dir.name[0].toUpperCase() + e.dir.name.substring(1), style: PhoneTheme.value(size: 14)),
                     const Spacer(),
-                    Text(e.timeLabel, style: PhoneTheme.sub(size: 12.5)),
+                    Text(e.timeLabel, style: PhoneTheme.sub(size: 12)),
                   ]),
                 ),
             ]),
@@ -354,7 +355,7 @@ class _CallsTabState extends State<_CallsTab> {
                         if (favs.isNotEmpty) _favRow(favs),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                          child: Text('RECENT', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
+                          child: Text('Recent', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
                         ),
                         for (final c in _calls) _CallRow(
                           entry: c,
@@ -409,14 +410,14 @@ class _CallsTabState extends State<_CallsTab> {
                         decoration: BoxDecoration(
                           color: PhoneTheme.accent, shape: BoxShape.circle,
                           border: Border.all(color: PhoneTheme.bg, width: 2)),
-                        child: const Icon(Icons.call, size: 11, color: _kInk),
+                        child: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 11, color: _kInk),
                       ),
                     ),
                   ]),
                   const SizedBox(height: 6),
                   Text(c.name.isNotEmpty ? c.name.split(' ').first : 'Unknown',
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: PhoneTheme.sub(size: 11.5, color: PhoneTheme.text)),
+                      style: PhoneTheme.sub(size: 11, color: PhoneTheme.text)),
                 ]),
               ),
             );
@@ -441,7 +442,7 @@ class _SearchHeader extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: PhoneTheme.surface,
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: Msg.brMd,
               border: Border.all(color: PhoneTheme.border, width: 1.5),
             ),
             child: Row(children: [
@@ -458,7 +459,7 @@ class _SearchHeader extends StatelessWidget {
             width: 46, height: 46,
             decoration: BoxDecoration(
               color: PhoneTheme.teal,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(color: PhoneTheme.border, width: 1.5),
             ),
             child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 22, color: _kInk),
@@ -480,7 +481,7 @@ class _NetworkBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: PhoneTheme.teal.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Msg.rMd),
         border: Border.all(color: PhoneTheme.teal.withValues(alpha: 0.35), width: 1),
       ),
       child: Row(children: [
@@ -488,7 +489,7 @@ class _NetworkBanner extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text('Everything here is on the AvaTOK network — not your phone contacts.',
-              style: PhoneTheme.sub(size: 11.5, color: PhoneTheme.textSoft)),
+              style: PhoneTheme.sub(size: 11, color: PhoneTheme.textSoft)),
         ),
       ]),
     );
@@ -506,9 +507,9 @@ class _CallRow extends StatelessWidget {
   const _CallRow({required this.entry, required this.onTap, required this.onCall, this.avatarUrl, this.isAvatok = false});
 
   ({IconData icon, Color color, String label}) get _dir => switch (entry.dir) {
-        CallDir.incoming => (icon: Icons.call_received, color: PhoneTheme.callGreen, label: 'Incoming'),
-        CallDir.outgoing => (icon: Icons.call_made, color: PhoneTheme.teal, label: 'Outgoing'),
-        CallDir.missed => (icon: Icons.call_missed, color: PhoneTheme.danger, label: 'Missed'),
+        CallDir.incoming => (icon: PhosphorIcons.phoneIncoming(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen, label: 'Incoming'),
+        CallDir.outgoing => (icon: PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.regular), color: PhoneTheme.teal, label: 'Outgoing'),
+        CallDir.missed => (icon: PhosphorIcons.phoneX(PhosphorIconsStyle.regular), color: PhoneTheme.danger, label: 'Missed'),
       };
 
   @override
@@ -738,7 +739,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
     return Container(
       decoration: const BoxDecoration(
         color: PhoneTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        borderRadius: Msg.brSheetTop,
         border: Border(
           top: BorderSide(color: PhoneTheme.border, width: 1.5),
           left: BorderSide(color: PhoneTheme.border, width: 1.5),
@@ -749,7 +750,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: BorderRadius.circular(100)),
+          decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill),
         ),
         // Entered number. Long-press pastes a sanitized number from the
         // clipboard; a small paste icon appears when the clipboard holds one.
@@ -787,7 +788,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
         if (_status != null)
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 4),
-            child: Text(_status!, style: PhoneTheme.sub(size: 12.5, color: PhoneTheme.danger)),
+            child: Text(_status!, style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger)),
           ),
         const SizedBox(height: 8),
         // Keypad grid.
@@ -825,7 +826,7 @@ class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserve
               child: _dialing
                   ? const Padding(padding: EdgeInsets.all(20),
                       child: CircularProgressIndicator(strokeWidth: 2.6, color: _kInk))
-                  : const Icon(Icons.call, size: 30, color: _kInk),
+                  : Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 30, color: _kInk),
             ),
           ),
           const Spacer(),
@@ -860,7 +861,7 @@ class _Key extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: PhoneTheme.surface2,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Msg.rLg),
           border: Border.all(color: PhoneTheme.border, width: 1.2),
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [

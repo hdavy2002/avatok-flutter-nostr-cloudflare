@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../analytics.dart';
-import '../ui/zine.dart';
+import '../ui/avatok_dark.dart';
+import '../ui/messenger_theme.dart';
 import 'call_session.dart';
 
 /// Draggable floating video thumbnail shown while a 1:1 VIDEO call is minimized.
@@ -46,7 +48,7 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
 
   late final AnimationController _spring = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 260),
+    duration: Msg.base,
   );
   Animation<Offset>? _snap;
 
@@ -153,10 +155,10 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
     final s = widget.session;
     return Container(
       decoration: BoxDecoration(
-        color: Zine.ink,
-        borderRadius: BorderRadius.circular(Zine.rSm),
-        border: Zine.border,
-        boxShadow: Zine.shadowSm,
+        color: AD.bg,
+        borderRadius: Msg.brLg,
+        border: Border.all(color: AD.borderControl, width: 1),
+        boxShadow: Msg.lift,
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -177,13 +179,13 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
                     phase == CallPhase.reconnecting || away;
                 if (!reconnecting) return const SizedBox.shrink();
                 return Container(
-                  color: Zine.ink.withValues(alpha: 0.55),
+                  color: AD.scrim,
                   alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
                   child: Text(
                     'Reconnecting…',
                     textAlign: TextAlign.center,
-                    style: ZineText.tag(size: 11, color: Colors.white),
+                    style: ADText.sectionLabel(c: AD.textPrimary),
                   ),
                 );
               },
@@ -196,9 +198,11 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
             child: ValueListenableBuilder<bool>(
               valueListenable: s.muted,
               builder: (context, muted, _) => _miniBtn(
-                icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                fill: muted ? Zine.coral : Zine.card,
-                iconColor: muted ? Colors.white : Zine.ink,
+                icon: muted
+                    ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.regular)
+                    : PhosphorIcons.microphone(PhosphorIconsStyle.regular),
+                fill: muted ? AD.danger : AD.card,
+                iconColor: muted ? AD.destructiveInk : AD.textPrimary,
                 onTap: s.toggleMute,
               ),
             ),
@@ -207,9 +211,9 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
             bottom: 6,
             right: 6,
             child: _miniBtn(
-              icon: Icons.call_end_rounded,
-              fill: Zine.coral,
-              iconColor: Colors.white,
+              icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
+              fill: AD.danger,
+              iconColor: AD.destructiveInk,
               onTap: s.endByUser,
             ),
           ),
@@ -233,7 +237,7 @@ class _CallPipThumbnailState extends State<CallPipThumbnail>
         decoration: BoxDecoration(
           color: fill,
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: 2),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Icon(icon, size: 16, color: iconColor),
       ),

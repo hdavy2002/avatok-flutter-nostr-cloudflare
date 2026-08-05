@@ -5,8 +5,8 @@
 // → Mute / Ban / Report (A1), publish-health indicator + auto-reconnect loop
 // (A4), end-stream → settlement-pending.
 //
-// Zine: pre-live setup + ended/settlement states are full paper screens; the
-// live HUD chrome is flat ink-alpha bands + bordered circle buttons over the
+// Chrome: pre-live setup + ended/settlement states are full AD screens; the
+// live HUD chrome is flat black-alpha bands + hairline circle buttons over the
 // video (the video itself is content and stays full-bleed).
 import 'dart:async';
 
@@ -18,7 +18,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/session_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'live_room_widgets.dart';
 
@@ -207,26 +208,26 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     if (uid.isEmpty) return;
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text(name, style: ZineText.cardTitle(size: 17))),
+          ListTile(title: Text(name, style: ADText.threadName())),
           ListTile(
-            leading: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold), color: Zine.ink),
-            title: Text('Mute', style: ZineText.value(size: 15)),
-            subtitle: Text('No more messages — can keep watching', style: ZineText.sub(size: 13)),
+            leading: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.regular), color: AD.iconNeutral),
+            title: Text('Mute', style: ADText.rowName()),
+            subtitle: Text('No more messages — can keep watching', style: ADText.preview()),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'mute', target: uid); },
           ),
           ListTile(
-            leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
-            title: Text('Ban', style: ZineText.value(size: 15, color: Zine.coral)),
-            subtitle: Text('Kicked — join token revoked, no re-entry', style: ZineText.sub(size: 13)),
+            leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.regular), color: AD.danger),
+            title: Text('Ban', style: ADText.rowName(c: AD.danger)),
+            subtitle: Text('Kicked — join token revoked, no re-entry', style: ADText.preview()),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'ban', target: uid); },
           ),
           ListTile(
-            leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: Zine.ink),
-            title: Text('Report', style: ZineText.value(size: 15)),
+            leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.regular), color: AD.iconNeutral),
+            title: Text('Report', style: ADText.rowName()),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'ban', target: uid); },
           ),
         ]),
@@ -239,15 +240,15 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     final t = await showDialog<String>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Pin a message', style: ZineText.cardTitle()),
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('Pin a message', style: ADText.threadName()),
         content: ZineField(controller: ctl, maxLength: 200, hint: 'Say it loud…'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx, ''),
-              child: Text('UNPIN', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+              child: Text('Unpin', style: ADText.rowName(c: AD.textSecondary))),
           ZineButton(label: 'Pin', fontSize: 16, onPressed: () => Navigator.pop(dCtx, ctl.text.trim())),
         ],
       ),
@@ -261,16 +262,16 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.popover,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('End stream?', style: ZineText.cardTitle()),
+            borderRadius: Msg.brLg,
+            side: const BorderSide(color: AD.borderControl, width: 1)),
+        title: Text('End stream?', style: ADText.threadName()),
         content: Text('The event moves to settlement — your 80% lands in the wallet after the rules pass.',
-            style: ZineText.sub(size: 14.5)),
+            style: ADText.preview()),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dCtx, false),
-              child: Text('KEEP GOING', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+              child: Text('Keep going', style: ADText.rowName(c: AD.textSecondary))),
           ZineButton(label: 'End stream', fontSize: 16, variant: ZineButtonVariant.coral,
               onPressed: () => Navigator.pop(dCtx, true)),
         ],
@@ -295,7 +296,11 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     super.dispose();
   }
 
-  Color get _healthColor => !_live ? Zine.coral : (_bitrateKbps > 800 ? Zine.lime : (_bitrateKbps > 250 ? Zine.blue : Zine.coral));
+  Color get _healthColor => !_live
+      ? AD.danger
+      : (_bitrateKbps > 800
+          ? AD.online
+          : (_bitrateKbps > 250 ? AD.primaryBadge : AD.danger));
 
   @override
   Widget build(BuildContext context) {
@@ -307,13 +312,13 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     final remaining = _endsAt > 0 ? (_endsAt - now).clamp(0, 1 << 62) : 0;
     final earnings = (_ticketGross * 0.8).round() + (_donationsTotal * 0.8).round();
     return Scaffold(
-      backgroundColor: Zine.ink,
+      backgroundColor: AD.bg,
       body: Stack(fit: StackFit.expand, children: [
         RTCVideoView(_renderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
         if (_reconnecting)
           Container(
             color: kInkScrimHeavy, alignment: Alignment.center,
-            child: Text('Reconnecting in $_reconnectIn…', style: ZineText.value(size: 15, color: Colors.white)),
+            child: Text('Reconnecting in $_reconnectIn…', style: ADText.rowName(c: AD.textPrimary)),
           ),
         // feed (doubles as moderation surface — long-press a line)
         Positioned(
@@ -328,42 +333,45 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
                 child: Column(children: [
                   Row(children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                       decoration: BoxDecoration(
-                        color: _live ? Zine.coral : Zine.paper2,
-                        borderRadius: BorderRadius.circular(100),
-                        border: Border.all(color: Zine.ink, width: 2),
+                        color: _live ? AD.danger : AD.card,
+                        // Status badge — a genuine pill.
+                        borderRadius: Msg.brPill,
+                        border: Border.all(color: AD.borderControl, width: 1),
                       ),
-                      child: Text(_live ? 'LIVE' : _status.toUpperCase(),
-                          style: ZineText.tag(size: 11, color: _live ? Colors.white : Zine.ink)),
+                      child: Text(_live ? 'Live' : _status,
+                          style: ADText.sectionLabel(
+                              c: _live ? AD.destructiveInk : AD.textSecondary)),
                     ),
-                    const SizedBox(width: 8),
-                    Flexible(child: LiveInkPill('$_watching watching · $_joined joined', icon: PhosphorIcons.eye(PhosphorIconsStyle.bold))),
+                    const SizedBox(width: Msg.s2),
+                    Flexible(child: LiveInkPill('$_watching watching · $_joined joined', icon: PhosphorIcons.eye(PhosphorIconsStyle.regular))),
                     const Spacer(),
                     Container(
                       width: 10, height: 10,
                       decoration: BoxDecoration(shape: BoxShape.circle, color: _healthColor),
                     ),
-                    const SizedBox(width: 4),
-                    Text('$_bitrateKbps KBPS', style: ZineText.tag(size: 10.5, color: Colors.white)),
+                    const SizedBox(width: Msg.s1),
+                    Text('$_bitrateKbps kbps', style: ADText.sectionLabel(c: AD.textPrimary)),
                   ]),
                   const SizedBox(height: 6),
                   Row(children: [
-                    LiveInkPill('${fmtClock(elapsed)} · ${fmtClock(remaining)} left', icon: PhosphorIcons.timer(PhosphorIconsStyle.bold)),
-                    const SizedBox(width: 8),
+                    LiveInkPill('${fmtClock(elapsed)} · ${fmtClock(remaining)} left', icon: PhosphorIcons.timer(PhosphorIconsStyle.regular)),
+                    const SizedBox(width: Msg.s2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Msg.s1),
                       decoration: BoxDecoration(
-                        color: Zine.mint,
-                        borderRadius: BorderRadius.circular(100),
-                        border: Border.all(color: Zine.ink, width: 2),
+                        color: AD.online,
+                        // Earnings badge — a genuine pill.
+                        borderRadius: Msg.brPill,
+                        border: Border.all(color: AD.borderControl, width: 1),
                       ),
-                      child: Text('~\$${(earnings / 100).toStringAsFixed(2)} SO FAR',
-                          style: ZineText.tag(size: 11, color: Zine.ink)),
+                      child: Text('~\$${(earnings / 100).toStringAsFixed(2)} so far',
+                          style: ADText.sectionLabel(c: AD.bg)),
                     ),
                   ]),
                 ]),
@@ -371,14 +379,14 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
             ),
           ),
         ),
-        // bottom toolbar — bordered circle buttons (end = coral)
+        // bottom toolbar — hairline circle buttons (end = danger)
         Positioned(
           left: 12, right: 12, bottom: 12,
           child: SafeArea(
             top: false,
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               LiveCircleButton(
-                icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.regular),
                 tooltip: 'Flip camera',
                 onTap: () {
                   final v = _stream?.getVideoTracks();
@@ -386,36 +394,36 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                 },
               ),
               LiveCircleButton(
-                icon: PhosphorIcons.pushPin(PhosphorIconsStyle.bold),
+                icon: PhosphorIcons.pushPin(PhosphorIconsStyle.regular),
                 tooltip: 'Pin message',
                 onTap: _pinDialog,
               ),
               PopupMenuButton<int>(
                 tooltip: 'Slow mode',
-                color: Zine.paper,
+                color: AD.menu,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(Zine.rSm),
-                    side: const BorderSide(color: Zine.ink, width: 2)),
+                    borderRadius: Msg.brMd,
+                    side: const BorderSide(color: AD.borderControl, width: 1)),
                 onSelected: (s) { setState(() => _slowSec = s); SessionApi.mod(widget.listingId, 'slow', sec: s); },
                 itemBuilder: (_) => [
-                  PopupMenuItem(value: 0, child: Text('Slow mode off', style: ZineText.value(size: 14))),
-                  PopupMenuItem(value: 5, child: Text('1 msg / 5 s', style: ZineText.value(size: 14))),
-                  PopupMenuItem(value: 30, child: Text('1 msg / 30 s', style: ZineText.value(size: 14))),
+                  PopupMenuItem(value: 0, child: Text('Slow mode off', style: ADText.preview(c: AD.textPrimary))),
+                  PopupMenuItem(value: 5, child: Text('1 msg / 5 s', style: ADText.preview(c: AD.textPrimary))),
+                  PopupMenuItem(value: 30, child: Text('1 msg / 30 s', style: ADText.preview(c: AD.textPrimary))),
                 ],
                 child: Container(
                   width: 46, height: 46,
                   decoration: BoxDecoration(
-                    color: _slowSec > 0 ? Zine.lime : Zine.card,
+                    color: _slowSec > 0 ? AD.primaryBadge : AD.card,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: Zine.bw),
-                    boxShadow: Zine.shadowXs,
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
-                  child: PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 21, color: Zine.ink),
+                  child: PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.regular), size: 21,
+                      color: _slowSec > 0 ? AD.bg : AD.iconNeutral),
                 ),
               ),
               LiveCircleButton(
-                icon: PhosphorIcons.stopCircle(PhosphorIconsStyle.fill),
-                fill: Zine.coral,
+                icon: PhosphorIcons.stopCircle(PhosphorIconsStyle.bold),
+                fill: AD.danger,
                 size: 54,
                 tooltip: 'End stream',
                 onTap: _end,
@@ -427,34 +435,34 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     );
   }
 
-  /// Pre-live setup — full zine paper screen with the camera preview in an
-  /// ink-bordered tile and the lime "Go live" action.
+  /// Pre-live setup — full AD screen with the camera preview in a hairline
+  /// tile and the accent "Go live" action.
   Widget _preLiveScreen() {
     final isError = _status.startsWith('error') || _status.startsWith('Streaming');
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: ZinePaper(
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(Msg.s4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
                 ZineBackButton(onTap: () => Navigator.of(context).maybePop()),
                 const SizedBox(width: 14),
                 Expanded(child: ZineMarkTitle(pre: 'Go ', mark: 'live', fontSize: 30, textAlign: TextAlign.left)),
-                const ZineSticker('AVALIVE', kind: ZineStickerKind.hint),
+                const ZineSticker('AvaLive', kind: ZineStickerKind.hint),
               ]),
               const SizedBox(height: 6),
-              Text(widget.title, style: ZineText.sub(), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(widget.title, style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 14),
               Expanded(
                 child: Container(
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: Zine.paper2,
-                    borderRadius: BorderRadius.circular(Zine.r),
-                    border: Zine.border,
-                    boxShadow: Zine.shadowSm,
+                    color: AD.card,
+                    borderRadius: Msg.brLg,
+                    border: Border.all(color: AD.borderControl, width: 1),
+                    boxShadow: Msg.lift,
                   ),
                   child: _ready
                       ? RTCVideoView(_renderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
@@ -463,9 +471,9 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                               ? Padding(
                                   padding: const EdgeInsets.all(20),
                                   child: ZineEmptyState(
-                                      icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _status),
+                                      icon: PhosphorIcons.warning(PhosphorIconsStyle.regular), text: _status),
                                 )
-                              : const CircularProgressIndicator(color: Zine.blueInk),
+                              : const CircularProgressIndicator(color: AD.primaryBadge),
                         ),
                 ),
               ),
@@ -480,7 +488,8 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
                 onPressed: _ready ? _goLive : null,
               ),
               const SizedBox(height: 10),
-              Center(child: Text('YOUR 80% · STRAIGHT TO YOUR WALLET', style: ZineText.kicker(size: 10.5))),
+              Center(child: Text('Your 80% · straight to your wallet',
+                  style: ADText.sectionLabel())),
             ]),
           ),
         ),
@@ -488,14 +497,14 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     );
   }
 
-  /// Ended — settlement pending, full zine paper screen.
+  /// Ended — settlement pending, full AD screen.
   Widget _settlementScreen() {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: ZineSuccessOverlay(
-        icon: Icons.check_rounded,
+        icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
         headline: "That's a wrap",
-        accentLine: 'SETTLEMENT PENDING',
+        accentLine: 'Settlement pending',
         sub: 'Your 80% lands in the wallet after the rules pass.',
         ctaLabel: 'Back to AvaLive',
         onCta: () => Navigator.of(context).maybePop(),

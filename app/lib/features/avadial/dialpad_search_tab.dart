@@ -4,7 +4,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/contacts.dart';
 import '../avatok/invite_screen.dart';
@@ -173,15 +172,15 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           // The app-wide cursor colour is tuned for the dark surface and
           // vanishes on white — pin it to the input's own ink.
           cursorColor: AvaDialTheme.searchText,
-          style: ZineText.value(size: 15, color: AvaDialTheme.searchText),
+          style: AvaDialTheme.value(size: 15, color: AvaDialTheme.searchText),
           decoration: InputDecoration(
             hintText: 'Search by AvaTOK number or email…',
-            hintStyle: ZineText.sub(size: 14, color: AvaDialTheme.searchHint),
-            prefixIcon: const Icon(Icons.search, color: AvaDialTheme.searchHint),
+            hintStyle: AvaDialTheme.sub(size: 14, color: AvaDialTheme.searchHint),
+            prefixIcon: Icon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular), color: AvaDialTheme.searchHint),
             suffixIcon: _searchCtrl.text.isEmpty
                 ? null
                 : IconButton(
-                    icon: const Icon(Icons.close, color: AvaDialTheme.searchHint),
+                    icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), color: AvaDialTheme.searchHint),
                     onPressed: () {
                       _searchCtrl.clear();
                       _onSearchChanged('');
@@ -219,7 +218,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
     if (hit == null) {
       if (!_searchedNoHit) {
         return Center(
-          child: Text('No matches yet', style: ZineText.sub(size: 14, color: AvaDialTheme.textSoft)),
+          child: Text('No matches yet', style: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textSoft)),
         );
       }
       return Center(
@@ -228,10 +227,10 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ZineIconBadge(icon: PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: AD.textTertiary, size: 48),
             const SizedBox(height: 14),
-            Text('Not on AvaTOK', style: ZineText.cardTitle(size: 16, color: AvaDialTheme.text)),
+            Text('Not on AvaTOK', style: AvaDialTheme.title(size: 16, color: AvaDialTheme.text)),
             const SizedBox(height: 6),
             Text('No AvaTOK account matches that number or email.',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 13, color: AvaDialTheme.textSoft)),
+                textAlign: TextAlign.center, style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft)),
             const SizedBox(height: 14),
             AdButton(
               label: 'Invite',
@@ -257,14 +256,14 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(hit.name.isNotEmpty ? hit.name : hit.number,
-                    style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+                    style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
                 if (hit.number.isNotEmpty)
-                  Text(hit.number, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
+                  Text(hit.number, style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft)),
               ]),
             ),
             IconButton(
               onPressed: () => _callContact(hit),
-              icon: const Icon(Icons.call, color: AD.incomingCall),
+              icon: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: AD.incomingCall),
             ),
           ]),
         ),
@@ -282,7 +281,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             _digits.isEmpty ? 'Enter an AvaTOK number' : _digits,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: ZineText.cardTitle(
+            style: AvaDialTheme.title(
                 size: 26, color: _digits.isEmpty ? AvaDialTheme.textMute : AvaDialTheme.text),
           ),
         ),
@@ -290,7 +289,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
       if (_status != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Text(_status!, style: ZineText.sub(size: 12.5, color: AD.danger)),
+          child: Text(_status!, style: AvaDialTheme.sub(size: 12, color: AD.danger)),
         ),
       const SizedBox(height: 8),
       Padding(
@@ -330,7 +329,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
             child: _dialing
                 ? const Padding(padding: EdgeInsets.all(18),
                     child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
-                : const Icon(Icons.call, size: 28, color: Colors.white),
+                : Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 28, color: Colors.white),
           ),
         ),
         const Spacer(),
@@ -340,7 +339,7 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
               ? null
               : IconButton(
                   onPressed: _backspace,
-                  icon: const Icon(Icons.backspace_outlined, color: AvaDialTheme.textSoft),
+                  icon: Icon(PhosphorIcons.backspace(PhosphorIconsStyle.regular), color: AvaDialTheme.textSoft),
                 ),
         ),
       ]),
@@ -370,9 +369,9 @@ class _DialKey extends StatelessWidget {
           boxShadow: const [],
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(digit, style: ZineText.cardTitle(size: 22, color: AvaDialTheme.text)),
+          Text(digit, style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
           if (sub.isNotEmpty)
-            Text(sub, style: ZineText.tag(size: 9, color: AvaDialTheme.textMute)),
+            Text(sub, style: AvaDialTheme.tag(size: 9, color: AvaDialTheme.textMute)),
         ]),
       ),
     );

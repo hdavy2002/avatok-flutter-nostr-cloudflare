@@ -5,7 +5,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
 import 'avadial_theme.dart';
@@ -228,9 +227,9 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
   Widget _header() {
     final name = _contact?.name;
     final kicker = switch (_color) {
-      PstnColor.red => 'SUSPECTED SPAM',
-      PstnColor.green => 'INCOMING CALL',
-      PstnColor.blue => 'UNKNOWN NUMBER',
+      PstnColor.red => 'Suspected spam',
+      PstnColor.green => 'Incoming call',
+      PstnColor.blue => 'Unknown number',
     };
     return Column(children: [
       Container(
@@ -251,16 +250,16 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
         ),
       ),
       const SizedBox(height: 20),
-      Text(kicker, style: ZineText.kicker(color: _accent == AD.danger ? AD.danger : AvaDialTheme.textSoft)),
+      Text(kicker, style: AvaDialTheme.tag(size: 11, color: _accent == AD.danger ? AD.danger : AvaDialTheme.textSoft)),
       const SizedBox(height: 6),
       Text(
         name ?? widget.number,
         textAlign: TextAlign.center,
-        style: ZineText.hero(size: 30, color: AvaDialTheme.text),
+        style: AvaDialTheme.title(size: 30, color: AvaDialTheme.text),
       ),
       if (name != null) ...[
         const SizedBox(height: 4),
-        Text(widget.number, style: ZineText.sub(size: 15, color: AvaDialTheme.textSoft)),
+        Text(widget.number, style: AvaDialTheme.sub(size: 15, color: AvaDialTheme.textSoft)),
       ],
     ]);
   }
@@ -276,7 +275,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
                   ? 'Reported by the community (score ${widget.spamScore}). '
                       'We recommend declining.'
                   : 'This number has been reported as spam. We recommend declining.',
-              style: ZineText.sub(size: 13.5, color: AvaDialTheme.text),
+              style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.text),
             ),
           ),
         ]),
@@ -291,7 +290,7 @@ class _PstnCallScreenState extends State<PstnCallScreen> {
             label: 'Decline',
             variant: AdButtonVariant.danger,
             fullWidth: true,
-            icon: Icons.call_end,
+            icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
             trailingIcon: false,
             onPressed: _decline,
           ),

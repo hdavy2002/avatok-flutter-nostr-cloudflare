@@ -5,6 +5,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
+// zine.dart is retained ONLY for ZineBreakpoints (responsive width class);
+// every colour/type token on this screen now comes from AD / ADText / Msg.
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../shell/shell_v2.dart' show kPstnVoicemailDid;
@@ -213,7 +216,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
               'Ava voicemail instead of ringing out. Priya answers, takes the '
               'message, and it shows up in your Inbox — with a transcript.',
               textAlign: TextAlign.center,
-              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14.5),
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14),
             ),
           ),
           const SizedBox(height: 24),
@@ -234,7 +237,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           const SizedBox(height: 20),
           AdCard(
             color: AD.card,
-            radius: Zine.rSm,
+            radius: Msg.rMd,
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                   size: 18, color: AD.online),
@@ -243,7 +246,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
                 child: Text(
                   'A row only turns green after your carrier confirms the '
                   'forwarding is on — no guesswork.',
-                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
+                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
                 ),
               ),
             ]),
@@ -266,7 +269,7 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
           const SizedBox(height: 6),
           Text('You can turn this on later in Settings → Voicemail.',
               textAlign: TextAlign.center,
-              style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11.5)),
+              style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11)),
         ],
       ),
     );

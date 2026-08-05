@@ -3,15 +3,17 @@
 // sends, donation banners, viewer count, countdowns. Pure presentation — the
 // screens own the RoomChannel and feed events in.
 //
-// Zine treatment: the video is content and stays full-bleed; ALL chrome here is
-// zine — flat ink-alpha bands/pills over the video (white text allowed only
-// inside those), ink-bordered circle buttons, coral LIVE sticker, mint money.
+// Chrome treatment: the video is content and stays full-bleed; ALL chrome here
+// uses AD tokens — flat black-alpha bands/pills over the video (white text
+// allowed only inside those), hairline-bordered circle buttons, a danger LIVE
+// sticker and a green money banner.
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 
 const kStickerCatalog = ['🔥', '💎', '🎉', '👏', '😂', '😍', '🚀', '👑']; // tiny static set, tree-shaken
 const kReactionEmojis = ['❤️', '🔥', '😂', '👏', '😮', '💯'];
@@ -23,9 +25,9 @@ String fmtClock(int ms) {
   return h > 0 ? '$h:$mm:$sss' : '$mm:$sss';
 }
 
-/// Flat ink-alpha overlay tint — the ONLY dim allowed over video (no gradients).
-final Color kInkScrim = Zine.ink.withValues(alpha: 0.55);
-final Color kInkScrimHeavy = Zine.ink.withValues(alpha: 0.72);
+/// Flat black-alpha overlay tint — the ONLY dim allowed over video (no gradients).
+final Color kInkScrim = Colors.black.withValues(alpha: 0.55);
+final Color kInkScrimHeavy = Colors.black.withValues(alpha: 0.72);
 
 class ChatLine {
   final String from;
@@ -53,18 +55,18 @@ class DonationBanner {
   DonationBanner(this.name, this.amount);
 }
 
-/// Ink-bordered circle control (§7.7) for live chrome — card fill by default,
-/// lime when active, coral for danger/end (white icon allowed on coral only).
+/// Hairline-bordered circle control for live chrome — card fill by default,
+/// accent when active, danger for end (white icon allowed on danger only).
 class LiveCircleButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
   final Color fill;
   final double size;
   final String? tooltip;
-  const LiveCircleButton({super.key, required this.icon, this.onTap, this.fill = Zine.card, this.size = 46, this.tooltip});
+  const LiveCircleButton({super.key, required this.icon, this.onTap, this.fill = AD.card, this.size = 46, this.tooltip});
   @override
   Widget build(BuildContext context) {
-    final fg = fill == Zine.coral ? Colors.white : Zine.ink;
+    final fg = fill == AD.card ? AD.iconNeutral : AD.destructiveInk;
     final core = GestureDetector(
       onTap: onTap,
       child: Container(
@@ -72,8 +74,7 @@ class LiveCircleButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: fill,
           shape: BoxShape.circle,
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowXs,
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: Icon(icon, size: size * 0.46, color: fg),
       ),
@@ -91,14 +92,15 @@ class LiveInkPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: kInkScrim, borderRadius: BorderRadius.circular(100)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Msg.s1),
+      // Genuine status pill.
+      decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
-          Icon(icon, color: Colors.white, size: 13),
+          Icon(icon, color: AD.textPrimary, size: 13),
           const SizedBox(width: 5),
         ],
-        Text(text.toUpperCase(), style: ZineText.tag(size: 11, color: Colors.white)),
+        Text(text, style: ADText.sectionLabel(c: AD.textPrimary)),
       ]),
     );
   }
@@ -130,18 +132,18 @@ class ChatOverlay extends StatelessWidget {
               decoration: BoxDecoration(
                 color: kInkScrim,
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4), // squared corner toward the sender (§7.14)
-                  topRight: Radius.circular(14),
-                  bottomLeft: Radius.circular(14),
-                  bottomRight: Radius.circular(14),
+                  topLeft: Radius.circular(4), // squared corner toward the sender
+                  topRight: Radius.circular(Msg.rMd),
+                  bottomLeft: Radius.circular(Msg.rMd),
+                  bottomRight: Radius.circular(Msg.rMd),
                 ),
               ),
               child: RichText(
                 text: TextSpan(
-                  style: ZineText.value(size: 13, color: Colors.white, weight: FontWeight.w700),
+                  style: ADText.tabLabel(c: AD.textPrimary),
                   children: [
                     TextSpan(text: '${l.from}  ',
-                        style: ZineText.tag(size: 11, color: Zine.lime)),
+                        style: ADText.sectionLabel(c: AD.primaryBadge)),
                     TextSpan(text: l.text),
                   ],
                 ),
@@ -175,9 +177,10 @@ class FlyLayer extends StatelessWidget {
                 child: child!,
               ),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: kInkScrim, borderRadius: BorderRadius.circular(100)),
-                child: Text(m.text, style: ZineText.value(size: 13, color: Colors.white, weight: FontWeight.w700)),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Msg.s1),
+                // Genuine pill.
+                decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
+                child: Text(m.text, style: ADText.tabLabel(c: AD.textPrimary)),
               ),
             ),
         ]);
@@ -223,21 +226,21 @@ class DonationBannerWidget extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey('${banner.name}${banner.amount}${banner.hashCode}'),
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 400),
+      duration: Msg.slow,
       builder: (_, v, child) => Transform.scale(scale: .8 + v * .2, child: Opacity(opacity: v, child: child)),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: 10),
         decoration: BoxDecoration(
-          color: Zine.mint,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Zine.ink, width: Zine.bw),
-          boxShadow: Zine.shadowSm,
+          color: AD.online,
+          borderRadius: Msg.brMd,
+          border: Border.all(color: AD.borderControl, width: 1),
+          boxShadow: Msg.lift,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill), size: 17, color: Zine.ink),
+          PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.regular), size: 17, color: AD.bg),
           const SizedBox(width: 7),
           Text('${banner.name} donated \$${(banner.amount / 100).toStringAsFixed(2)}',
-              style: ZineText.value(size: 14, color: Zine.ink)),
+              style: ADText.rowName(c: AD.bg)),
         ]),
       ),
     );
@@ -262,35 +265,37 @@ class LiveTopBar extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
           child: Row(children: [
             Expanded(
               child: GestureDetector(
                 onTap: onCreatorTap,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                  decoration: BoxDecoration(color: kInkScrim, borderRadius: BorderRadius.circular(100)),
+                  // Creator chip — a genuine pill.
+                  decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
                   child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 13, color: Colors.white, weight: FontWeight.w700)),
+                      style: ADText.tabLabel(c: AD.textPrimary)),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Msg.s2),
             if (live)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
-                  color: Zine.coral,
-                  borderRadius: BorderRadius.circular(100),
-                  border: Border.all(color: Zine.ink, width: 2),
+                  color: AD.danger,
+                  // Status badge — a genuine pill.
+                  borderRadius: Msg.brPill,
+                  border: Border.all(color: AD.borderControl, width: 1),
                 ),
-                child: Text('LIVE', style: ZineText.tag(size: 11, color: Colors.white)),
+                child: Text('Live', style: ADText.sectionLabel(c: AD.destructiveInk)),
               ),
-            const SizedBox(width: 8),
-            LiveInkPill('$watching', icon: PhosphorIcons.eye(PhosphorIconsStyle.bold)),
-            if (remainingMs != null) ...[const SizedBox(width: 6), LiveInkPill(fmtClock(remainingMs!), icon: PhosphorIcons.timer(PhosphorIconsStyle.bold))],
-            const SizedBox(width: 8),
-            LiveCircleButton(icon: PhosphorIcons.x(PhosphorIconsStyle.bold), size: 36, onTap: onClose),
+            const SizedBox(width: Msg.s2),
+            LiveInkPill('$watching', icon: PhosphorIcons.eye(PhosphorIconsStyle.regular)),
+            if (remainingMs != null) ...[const SizedBox(width: 6), LiveInkPill(fmtClock(remainingMs!), icon: PhosphorIcons.timer(PhosphorIconsStyle.regular))],
+            const SizedBox(width: Msg.s2),
+            LiveCircleButton(icon: PhosphorIcons.x(PhosphorIconsStyle.regular), size: 36, onTap: onClose),
           ]),
         ),
       ),
@@ -308,11 +313,12 @@ class ReconnectingOverlay extends StatelessWidget {
       color: kInkScrimHeavy,
       alignment: Alignment.center,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const CircularProgressIndicator(color: Zine.lime),
-        const SizedBox(height: 16),
-        Text('Creator reconnecting…', style: ZineText.value(size: 15, color: Colors.white)),
-        const SizedBox(height: 4),
-        Text('THE STREAM RESUMES AUTOMATICALLY', style: ZineText.tag(size: 10.5, color: Colors.white)),
+        const CircularProgressIndicator(color: AD.primaryBadge),
+        const SizedBox(height: Msg.s4),
+        Text('Creator reconnecting…', style: ADText.rowName(c: AD.textPrimary)),
+        const SizedBox(height: Msg.s1),
+        Text('The stream resumes automatically',
+            style: ADText.sectionLabel(c: AD.textSecondary)),
       ]),
     );
   }

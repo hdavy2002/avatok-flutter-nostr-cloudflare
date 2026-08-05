@@ -15,6 +15,7 @@ import '../../../core/brain_consent.dart';
 import '../../../core/config.dart';
 import '../../../core/local_brain/local_brain.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 // [AVAINBOX-3] `show` is REQUIRED, not tidiness: contacts.dart declares its own
 // `Directory` (the AvaTOK user directory), which collides with dart:io's
 // `Directory` used by the download fallback below. An unqualified import here
@@ -449,7 +450,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
         actions: [
           if (phone != null)
             PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: AvaDialTheme.text),
+              icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
               color: AvaDialTheme.surface,
               onSelected: (v) {
                 switch (v) {
@@ -604,7 +605,8 @@ class _DateSeparator extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         decoration: BoxDecoration(
           color: AvaDialTheme.surface2,
-          borderRadius: BorderRadius.circular(100),
+          // Date separator chip — a genuine pill.
+          borderRadius: Msg.brPill,
           border: Border.all(color: AvaDialTheme.border, width: 1),
         ),
         child: Text(label, style: ADText.statCaption(c: AvaDialTheme.textMute)),
@@ -1069,7 +1071,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: AvaDialTheme.border, width: 1),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: Msg.brSheetTop,
       ),
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1077,7 +1079,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
           Container(
             width: 40, height: 4,
             decoration:
-                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
           ),
           const SizedBox(height: 6),
           if (_c.hasRecording)
@@ -1164,18 +1166,18 @@ class _VoicemailCardState extends State<_VoicemailCard> {
   // light bubble" token — so it reads on both surfaces. The old Opacity(0.5)
   // dimming is gone: on a light bubble it just muddied the colour; the grey vs
   // green surface already tells the two states apart at a glance.
-  static const _newBubbleBg = Color(0xFFCDEBD3); // pale green (unheard)
-  static const _newBubbleBorder = Color(0xFF3E8E5A); // deeper green edge
+  static const _newBubbleBg = AD.bubbleOutBg; // 0xFFCDEBD3 — pale green (unheard)
+  static const _newBubbleBorder = AD.bubbleOutPlay; // 0xFF3E8E5A — deeper green edge
   static const _readBubbleBg = Color(0xFFE7E8EB); // very light grey (heard)
   static const _readBubbleBorder = Color(0xFFCED0D6); // slightly darker grey edge
-  static const _heardTick = Color(0xFF3E8E5A); // pale/mid green — the 2 heard ticks
+  static const _heardTick = AD.bubbleOutPlay; // 0xFF3E8E5A — the 2 heard ticks
   static const _unheardTick = AD.iconSearch; // 0xFF6FA8E8 — the 1 "not heard" blue tick
 
   @override
   Widget build(BuildContext context) {
     final unheard = _c.hasRecording && !_heard;
     // Dark-on-light ink pair for whichever surface is showing.
-    final ink = unheard ? const Color(0xFF1C3324) : const Color(0xFF14161A);
+    final ink = unheard ? AD.bubbleOutInk : const Color(0xFF14161A);
     final subInk = unheard ? const Color(0xFF2A4436) : const Color(0xFF3B3D45);
     return GestureDetector(
       onLongPress: () => _showCardMenu(context),
@@ -1200,7 +1202,7 @@ class _VoicemailCardState extends State<_VoicemailCard> {
               // tick + "Not heard yet" before that.
               if (_c.hasRecording)
                 Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(_heard ? Icons.done_all : Icons.check,
+                  Icon(_heard ? PhosphorIcons.checks(PhosphorIconsStyle.regular) : PhosphorIcons.check(PhosphorIconsStyle.regular),
                       size: 15, color: _heard ? _heardTick : _unheardTick),
                   const SizedBox(width: 3),
                   Text(
@@ -1284,7 +1286,8 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: AD.bubbleInPlay.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(100),
+                      // Tag chip — a genuine pill.
+                      borderRadius: Msg.brPill,
                       border: Border.all(color: AD.bubbleInPlay.withValues(alpha: 0.55), width: 1),
                     ),
                     child: Text(tag, style: ADText.statCaption(c: AD.bubbleInPlay)),

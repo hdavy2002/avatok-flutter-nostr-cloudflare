@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/analytics.dart';
 import '../../../core/campaigns_api.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
 import '../../../sync/sync_hub.dart';
@@ -457,10 +458,10 @@ class _InboxListScreenState extends State<InboxListScreen> {
       if (_hasError) return _errorState();
       return RefreshIndicator(
         onRefresh: _reload,
-        child: ListView(children: const [
-          SizedBox(height: 100),
+        child: ListView(children: [
+          const SizedBox(height: 100),
           ShellEmptyState(
-            icon: Icons.voicemail_outlined,
+            icon: PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
             title: 'No messages yet',
             subtitle: 'Missed calls Ava answers for you will show up here.',
             color: AD.iconShield,
@@ -471,10 +472,10 @@ class _InboxListScreenState extends State<InboxListScreen> {
     if (threads.isEmpty) {
       return RefreshIndicator(
         onRefresh: _reload,
-        child: ListView(children: const [
-          SizedBox(height: 100),
+        child: ListView(children: [
+          const SizedBox(height: 100),
           ShellEmptyState(
-            icon: Icons.search_off,
+            icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
             title: 'No matches',
             subtitle: 'No calls match your search.',
             color: AD.iconSearch,
@@ -497,10 +498,10 @@ class _InboxListScreenState extends State<InboxListScreen> {
 
   Widget _errorState() => RefreshIndicator(
         onRefresh: _reload,
-        child: ListView(children: const [
-          SizedBox(height: 100),
+        child: ListView(children: [
+          const SizedBox(height: 100),
           ShellEmptyState(
-            icon: Icons.error_outline,
+            icon: PhosphorIcons.warningCircle(PhosphorIconsStyle.regular),
             title: 'Couldn’t load your Inbox',
             subtitle: 'Pull down to try again.',
             color: AD.danger,
@@ -658,7 +659,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
               )
             else
               // 2 blue tick marks — read.
-              const Icon(Icons.done_all, size: 18, color: _readTick),
+              Icon(PhosphorIcons.checks(PhosphorIconsStyle.regular), size: 18, color: _readTick),
           ]),
         ]),
       ),
@@ -680,7 +681,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: AvaDialTheme.border, width: 1),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: Msg.brSheetTop,
       ),
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -688,7 +689,7 @@ class _InboxListScreenState extends State<InboxListScreen> {
           Container(
             width: 40, height: 4,
             decoration:
-                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
           ),
           const SizedBox(height: 6),
           if (phone != null)

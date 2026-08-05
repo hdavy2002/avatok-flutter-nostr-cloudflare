@@ -83,7 +83,12 @@ class AD {
   static const iconNeutral = Color(0xFFB9BCC4); // == textSecondary family
   static const iconAccent = primaryBadge;       // the single accent, #E8833A
 
-  static const iconSearch = iconAccent;
+  // NOTE `iconSearch` is NEUTRAL, not accent, despite the name. It is reused as
+  // the read/unheard tick colour in the AvaDialer inbox (inbox_list_screen /
+  // inbox_thread_screen, where the comments still call it "blue"), so pointing
+  // it at the accent turned those ticks orange on a pale-green card. Semantics
+  // beat the token's name here.
+  static const iconSearch = iconNeutral;
   static const iconBell = iconNeutral;
   static const iconShield = iconNeutral;
   static const iconPhone = iconNeutral;

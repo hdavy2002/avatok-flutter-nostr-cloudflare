@@ -6,6 +6,7 @@ import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/ice_cache.dart';
 import '../../core/device_contacts.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avatok/add_by_link_sheet.dart';
 import '../avatok/place_1to1_call.dart';
 import '../avatok/chat_thread.dart';
@@ -112,14 +113,14 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
       backgroundColor: PhoneTheme.surface,
       shape: const RoundedRectangleBorder(
         side: BorderSide(color: PhoneTheme.border, width: 1.5),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        borderRadius: Msg.brSheetTop),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
         ListTile(
           leading: PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 44,
               avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
-          title: Text(c.name.isNotEmpty ? c.name : c.number, style: PhoneTheme.value(size: 15.5)),
-          subtitle: Text(c.number, style: PhoneTheme.sub(size: 12.5)),
+          title: Text(c.name.isNotEmpty ? c.name : c.number, style: PhoneTheme.value(size: 15)),
+          subtitle: Text(c.number, style: PhoneTheme.sub(size: 12)),
         ),
         const Divider(color: PhoneTheme.border, height: 1),
         ListTile(
@@ -127,7 +128,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           title: Text('View contact', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _viewContact(c); }),
         ListTile(
-          leading: const Icon(Icons.call, color: PhoneTheme.callGreen),
+          leading: Icon(PhosphorIcons.phone(PhosphorIconsStyle.regular), color: PhoneTheme.callGreen),
           title: Text('Dial', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _call(c); }),
         ListTile(
@@ -142,12 +143,12 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
           title: Text('Share contact', style: PhoneTheme.value(size: 15)),
-          subtitle: Text('vCard — WhatsApp, email & more', style: PhoneTheme.sub(size: 11.5)),
+          subtitle: Text('vCard — WhatsApp, email & more', style: PhoneTheme.sub(size: 11)),
           onTap: () { Navigator.pop(ctx); ContactActions.share(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
           title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
-          subtitle: Text('Send as a card to a chat or group', style: PhoneTheme.sub(size: 11.5)),
+          subtitle: Text('Send as a card to a chat or group', style: PhoneTheme.sub(size: 11)),
           onTap: () { Navigator.pop(ctx); ContactActions.forward(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
@@ -195,11 +196,11 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         foregroundColor: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Msg.rLg),
           side: const BorderSide(color: PhoneTheme.border, width: 2)),
         onPressed: _add,
         icon: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 18),
-        label: Text('Add', style: PhoneTheme.tag(size: 11.5, color: Colors.white)),
+        label: Text('Add', style: PhoneTheme.tag(size: 11, color: Colors.white)),
       ),
       body: SafeArea(
         bottom: false,
@@ -226,7 +227,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
               color: PhoneTheme.surface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(color: PhoneTheme.border, width: 1.2),
             ),
             child: Row(children: [
@@ -234,7 +235,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
               const SizedBox(width: 8),
               Expanded(child: Text(
                 'All contacts here are on the AvaTOK network — not from your phone’s contact list.',
-                style: PhoneTheme.sub(size: 11.5))),
+                style: PhoneTheme.sub(size: 11))),
             ]),
           ),
           Padding(
@@ -244,7 +245,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: PhoneTheme.surface,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: Msg.brMd,
                 border: Border.all(color: PhoneTheme.border, width: 1.5)),
               child: Row(children: [
                 PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 17, color: PhoneTheme.textSoft),
@@ -299,7 +300,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
             ),
             IconButton(
               onPressed: () => _call(c),
-              icon: const Icon(Icons.call, size: 20, color: PhoneTheme.callGreen)),
+              icon: Icon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20, color: PhoneTheme.callGreen)),
           ]),
         ),
       );
@@ -369,16 +370,16 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
       child: Container(
         decoration: const BoxDecoration(
           color: PhoneTheme.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+          borderRadius: Msg.brSheetTop,
           border: Border(top: BorderSide(color: PhoneTheme.border, width: 1.5)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: BorderRadius.circular(100)))),
+              decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill))),
           Text('Add AvaTOK contact', style: PhoneTheme.title(size: 20)),
           const SizedBox(height: 4),
-          Text('Save someone by their AvaTOK number.', style: PhoneTheme.sub(size: 12.5)),
+          Text('Save someone by their AvaTOK number.', style: PhoneTheme.sub(size: 12)),
           const SizedBox(height: 14),
           TextField(
             controller: _ctrl,
@@ -388,21 +389,21 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
             cursorColor: PhoneTheme.accent,
             decoration: InputDecoration(
               hintText: 'AvaTOK number, e.g. +233 24 555 0148',
-              hintStyle: PhoneTheme.sub(size: 13.5, color: PhoneTheme.textMute),
+              hintStyle: PhoneTheme.sub(size: 13, color: PhoneTheme.textMute),
               filled: true, fillColor: PhoneTheme.surface2,
               prefixIcon: PhosphorIcon(PhosphorIcons.hash(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.teal),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 borderSide: const BorderSide(color: PhoneTheme.border, width: 1.5)),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 borderSide: const BorderSide(color: PhoneTheme.accent, width: 1.8)),
             ),
             onSubmitted: (_) => _resolve(),
           ),
           if (_error != null)
             Padding(padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: PhoneTheme.sub(size: 12.5, color: PhoneTheme.danger))),
+                child: Text(_error!, style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger))),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
@@ -411,7 +412,7 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
                 backgroundColor: PhoneTheme.accent, foregroundColor: Colors.white,
                 elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(Msg.rMd),
                   side: const BorderSide(color: PhoneTheme.border, width: 2)),
               ),
               onPressed: _resolving ? null : _resolve,
@@ -429,11 +430,11 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
                 foregroundColor: PhoneTheme.text,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 side: const BorderSide(color: PhoneTheme.border, width: 1.5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Msg.rMd)),
               ),
               onPressed: widget.onScanQr,
               icon: PhosphorIcon(PhosphorIcons.qrCode(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.text),
-              label: Text('Scan / paste QR code', style: PhoneTheme.value(size: 14.5)),
+              label: Text('Scan / paste QR code', style: PhoneTheme.value(size: 14)),
             ),
           ),
         ]),

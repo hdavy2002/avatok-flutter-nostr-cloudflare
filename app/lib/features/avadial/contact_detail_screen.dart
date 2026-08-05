@@ -4,7 +4,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/contacts.dart' show Contact, Directory;
@@ -110,16 +109,16 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           side: const BorderSide(color: AvaDialTheme.border, width: 1),
           borderRadius: BorderRadius.circular(AD.rListCard),
         ),
-        title: Text('Not on AvaTOK', style: ZineText.cardTitle(size: 17, color: AvaDialTheme.text)),
+        title: Text('Not on AvaTOK', style: AvaDialTheme.title(size: 17, color: AvaDialTheme.text)),
         content: Text(
           '${widget.number} isn\'t an AvaTOK number yet. AvaTOK only calls other '
           'AvaTOK users — invite them to join.',
-          style: ZineText.sub(size: 13.5, color: AvaDialTheme.textSoft),
+          style: AvaDialTheme.sub(size: 13, color: AvaDialTheme.textSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: Text('Cancel', style: ZineText.value(size: 14, color: AvaDialTheme.textSoft)),
+            child: Text('Cancel', style: AvaDialTheme.value(size: 14, color: AvaDialTheme.textSoft)),
           ),
           TextButton(
             onPressed: () {
@@ -127,7 +126,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
               Navigator.of(context, rootNavigator: true).push(
                   MaterialPageRoute<void>(builder: (_) => const InviteScreen()));
             },
-            child: Text('Invite', style: ZineText.value(size: 14, color: AD.online)),
+            child: Text('Invite', style: AvaDialTheme.value(size: 14, color: AD.online)),
           ),
         ],
       ),
@@ -179,10 +178,10 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
-        title: Text('Contact', style: ZineText.appbar(color: AvaDialTheme.text)),
+        title: Text('Contact', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_vert, color: AvaDialTheme.text),
+            icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
             onPressed: () => showAvaDialRowMenu(
               context,
               number: widget.number,
@@ -210,15 +209,15 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       ),
                       alignment: Alignment.center,
                       child: Text(_initials,
-                          style: ZineText.cardTitle(size: 34, color: AD.iconSearch)),
+                          style: AvaDialTheme.title(size: 34, color: AD.iconSearch)),
                     ),
                     const SizedBox(height: 14),
                     Text(_title,
                         textAlign: TextAlign.center,
-                        style: ZineText.cardTitle(size: 22, color: AvaDialTheme.text)),
+                        style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
                     const SizedBox(height: 4),
                     Text(widget.number,
-                        style: ZineText.sub(size: 14, color: AvaDialTheme.textSoft)),
+                        style: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textSoft)),
                   ]),
                 ),
                 const SizedBox(height: 22),
@@ -311,7 +310,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
           child: PhosphorIcon(icon, color: color, size: 23),
         ),
         const SizedBox(height: 7),
-        Text(label, style: ZineText.tag(size: 11.5, color: AvaDialTheme.textSoft)),
+        Text(label, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
       ]),
     );
   }
@@ -343,14 +342,14 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label, style: ZineText.tag(size: 11, color: AvaDialTheme.textMute)),
+                Text(label, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
                 const SizedBox(height: 2),
-                Text(value, style: ZineText.value(size: 15, color: AvaDialTheme.text)),
+                Text(value, style: AvaDialTheme.value(size: 15, color: AvaDialTheme.text)),
               ]),
             ),
             if (trailing != null) ...[
               const SizedBox(width: 8),
-              Text(trailing, style: ZineText.tag(size: 11.5, color: color)),
+              Text(trailing, style: AvaDialTheme.tag(size: 11, color: color)),
             ],
           ]),
         ),

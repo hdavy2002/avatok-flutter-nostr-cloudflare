@@ -8,7 +8,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/session_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
@@ -81,15 +82,15 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
         ? mine.first
         : await showModalBottomSheet<ListingCard>(
             context: context,
-            backgroundColor: Zine.paper,
+            backgroundColor: AD.overlaySheet,
             builder: (sheetCtx) => SafeArea(
               child: ListView(shrinkWrap: true, children: [
-                Padding(padding: const EdgeInsets.all(18),
-                    child: Text('Which event?', style: ZineText.cardTitle())),
+                Padding(padding: const EdgeInsets.all(Msg.s4),
+                    child: Text('Which event?', style: ADText.threadName())),
                 for (final m in mine)
                   ListTile(
-                    title: Text(m.title, style: ZineText.value(size: 15)),
-                    subtitle: Text(m.status.toUpperCase(), style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                    title: Text(m.title, style: ADText.rowName()),
+                    subtitle: Text(m.status, style: ADText.sectionLabel()),
                     onTap: () => Navigator.pop(sheetCtx, m),
                   ),
               ]),
@@ -106,11 +107,11 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
       appBar: ZineAppBar(
         title: 'AvaLive',
         markWord: 'Live',
-        tag: 'LIVE NOW · CREATOR EVENTS',
+        tag: 'Live now · creator events',
         showBack: Navigator.of(context).canPop(),
         actions: [
           ZineBackButton(
-            icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold),
+            icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular),
             onTap: _load,
           ),
         ],
@@ -124,28 +125,28 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
       ),
       body: ZinePaper(
         child: RefreshIndicator(
-          color: Zine.blueInk,
+          color: AD.primaryBadge,
           onRefresh: _load,
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+              ? const Center(child: CircularProgressIndicator(color: AD.primaryBadge))
               : (_live.isEmpty && _upcoming.isEmpty)
                   ? ListView(children: [
                       const SizedBox(height: 130),
                       Center(child: ZineEmptyState(
-                        icon: PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
+                        icon: PhosphorIcons.broadcast(PhosphorIconsStyle.regular),
                         text: 'No live events right now.\nBrowse AvaExplore to book upcoming ones.',
                       )),
                     ])
-                  : ListView(padding: const EdgeInsets.all(16), children: [
+                  : ListView(padding: const EdgeInsets.all(Msg.s4), children: [
                       if (_live.isNotEmpty) ...[
-                        Text('Live now', style: ZineText.cardTitle(size: 20)),
-                        const SizedBox(height: 12),
+                        Text('Live now', style: ADText.appTitle()),
+                        const SizedBox(height: Msg.s3),
                         for (final l in _live) _card(l, live: true),
                         const SizedBox(height: 14),
                       ],
                       if (_upcoming.isNotEmpty) ...[
-                        Text('Upcoming events', style: ZineText.cardTitle(size: 20)),
-                        const SizedBox(height: 12),
+                        Text('Upcoming events', style: ADText.appTitle()),
+                        const SizedBox(height: Msg.s3),
                         for (final l in _upcoming) _card(l, live: false),
                       ],
                       const SizedBox(height: 96),
@@ -165,10 +166,10 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
         child: Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Zine.card,
-            borderRadius: BorderRadius.circular(Zine.r),
-            border: Zine.border,
-            boxShadow: Zine.shadowSm,
+            color: AD.card,
+            borderRadius: Msg.brLg,
+            border: Border.all(color: AD.borderControl, width: 1),
+            boxShadow: Msg.lift,
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             SizedBox(
@@ -178,53 +179,52 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
                 Positioned.fill(
                   child: CoverImage(url: l.coverUrl, seed: l.id.hashCode, radius: BorderRadius.zero),
                 ),
-                // LIVE → coral sticker (white text allowed on coral).
+                // LIVE → danger badge (white text allowed on danger).
                 if (live)
                   Positioned(left: 10, top: 10, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: Msg.s1),
                     decoration: BoxDecoration(
-                      color: Zine.coral,
-                      borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: Zine.ink, width: 2),
-                      boxShadow: Zine.shadowXs,
+                      color: AD.danger,
+                      // Status badge — a genuine pill.
+                      borderRadius: Msg.brPill,
+                      border: Border.all(color: AD.borderControl, width: 1),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: AD.destructiveInk, shape: BoxShape.circle)),
                       const SizedBox(width: 5),
-                      Text('LIVE', style: ZineText.tag(size: 10.5, color: Colors.white)),
+                      Text('Live', style: ADText.sectionLabel(c: AD.destructiveInk)),
                     ]),
                   )),
-                // Price chip — card fill + ink border (no dark scrims).
+                // Price chip — card fill + hairline border (no dark scrims).
                 Positioned(right: 10, top: 10, child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: Msg.s1),
                   decoration: BoxDecoration(
-                    color: Zine.card,
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(color: Zine.ink, width: 2),
-                    boxShadow: Zine.shadowXs,
+                    color: AD.card,
+                    // Price chip — a genuine pill.
+                    borderRadius: Msg.brPill,
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
                   child: Text(l.priceLabel,
-                      style: ZineText.value(size: 12,
-                          color: l.priceLabel.toLowerCase() == 'free' ? Zine.mintInk : Zine.ink,
-                          weight: FontWeight.w900)),
+                      style: ADText.timestamp(
+                          c: l.priceLabel.toLowerCase() == 'free' ? AD.online : AD.textPrimary)),
                 )),
               ]),
             ),
-            Container(height: Zine.bw, color: Zine.ink),
+            const Divider(height: 1, thickness: 1, color: AD.borderHairline),
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(Msg.s3),
               child: Row(children: [
                 Avatar(seed: l.creator.uid, name: l.creator.name ?? 'Creator', size: 38),
                 const SizedBox(width: 10),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: ZineText.value(size: 15, weight: FontWeight.w800)),
+                      style: ADText.rowName()),
                   Text('${l.creator.name ?? 'Creator'}${l.joinedCount > 0 ? ' · ${l.joinedCount} joined' : ''}',
-                      style: ZineText.sub(size: 12.5)),
+                      style: ADText.preview()),
                 ])),
                 PhosphorIcon(
-                    live ? PhosphorIcons.eye(PhosphorIconsStyle.bold) : PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
-                    color: Zine.blueInk, size: 22),
+                    live ? PhosphorIcons.eye(PhosphorIconsStyle.regular) : PhosphorIcons.calendarBlank(PhosphorIconsStyle.regular),
+                    color: AD.iconNeutral, size: 22),
               ]),
             ),
           ]),

@@ -5,7 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/account_storage.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'pstn_forwarding_setup.dart';
 
@@ -432,7 +432,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
     return Opacity(
       opacity: locked || paid ? 0.45 : 1,
       child: AdCard(
-        radius: Zine.rSm,
+        radius: Msg.rMd,
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -448,7 +448,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
                 Row(children: [
                   Flexible(
                     child: Text(_title(kind),
-                        style: ADText.rowName().copyWith(fontSize: 14.5)),
+                        style: ADText.rowName().copyWith(fontSize: 14)),
                   ),
                   // [AVA-VM-PAID-1] Green PAID pill (owner's explicit choice
                   // 2026-07-17 over an amber one, accepting that green also
@@ -459,15 +459,12 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
                         color: AD.online.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(7),
+                        // Status chip — a genuine pill.
+                        borderRadius: Msg.brPill,
                         border: Border.all(color: AD.online, width: 1),
                       ),
-                      child: Text('PAID',
-                          style: ADText.preview(c: AD.online).copyWith(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.4,
-                          )),
+                      child: Text('Paid',
+                          style: ADText.sectionLabel(c: AD.online)),
                     ),
                   ],
                 ]),
@@ -497,14 +494,14 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               'safe instruction phone companies worldwide use to switch on '
               'call forwarding — it only talks to your phone company and '
               'can\'t read or change anything on your phone.',
-              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
+              style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
             ),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                 child: AdButton(
                   label: 'Dial it for me',
-                  fontSize: 13.5,
+                  fontSize: 13,
                   onPressed: () => _enable(kind, visible: true),
                 ),
               ),
@@ -512,7 +509,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               Expanded(
                 child: AdButton(
                   label: "I'll dial it myself",
-                  fontSize: 13.5,
+                  fontSize: 13,
                   onPressed: () => _manualDial(kind),
                 ),
               ),
@@ -524,14 +521,14 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               Text(
                 'Your phone app showed your phone company\'s reply to the '
                 'forwarding code (a standard, safe carrier code). What did it say?',
-                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12.5),
+                style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12),
               ),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                 child: AdButton(
                   label: 'It turned on',
-                  fontSize: 13.5,
+                  fontSize: 13,
                   onPressed: () => _attest(kind, true),
                 ),
               ),
@@ -539,7 +536,7 @@ class _PstnForwardingWizardState extends State<PstnForwardingWizard>
               Expanded(
                 child: AdButton(
                   label: "It didn't work",
-                  fontSize: 13.5,
+                  fontSize: 13,
                   onPressed: () => _attest(kind, false),
                 ),
               ),

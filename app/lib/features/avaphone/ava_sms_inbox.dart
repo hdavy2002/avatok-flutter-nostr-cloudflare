@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/contacts.dart';
 import '../avatok/data.dart';
@@ -101,11 +102,11 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
         foregroundColor: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Msg.rLg),
           side: const BorderSide(color: PhoneTheme.border, width: 2)),
         onPressed: _compose,
         icon: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 18),
-        label: Text('New message', style: PhoneTheme.tag(size: 11.5, color: Colors.white)),
+        label: Text('New message', style: PhoneTheme.tag(size: 11, color: Colors.white)),
       ),
       body: SafeArea(
         bottom: false,
@@ -122,7 +123,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
             child: Text('Text any AvaTOK number — separate from your Messenger chats.',
-                style: PhoneTheme.sub(size: 12.5)),
+                style: PhoneTheme.sub(size: 12)),
           ),
           Expanded(
             child: !_loaded
@@ -206,7 +207,7 @@ class _SmsRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(time.toUpperCase(), style: PhoneTheme.tag(size: 9.5, color: unread ? PhoneTheme.accent : PhoneTheme.textMute)),
+            Text(time, style: PhoneTheme.tag(size: 11, color: unread ? PhoneTheme.accent : PhoneTheme.textMute)),
             const SizedBox(height: 6),
             if (unread)
               Container(width: 10, height: 10,
@@ -268,18 +269,18 @@ class _ComposeSheetState extends State<_ComposeSheet> {
       child: Container(
         decoration: const BoxDecoration(
           color: PhoneTheme.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+          borderRadius: Msg.brSheetTop,
           border: Border(top: BorderSide(color: PhoneTheme.border, width: 1.5)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(
             child: Container(width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: BorderRadius.circular(100))),
+                decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: Msg.brPill)),
           ),
           Text('New message', style: PhoneTheme.title(size: 20)),
           const SizedBox(height: 4),
-          Text('Send to any AvaTOK number.', style: PhoneTheme.sub(size: 12.5)),
+          Text('Send to any AvaTOK number.', style: PhoneTheme.sub(size: 12)),
           const SizedBox(height: 14),
           TextField(
             controller: _ctrl,
@@ -289,22 +290,22 @@ class _ComposeSheetState extends State<_ComposeSheet> {
             cursorColor: PhoneTheme.accent,
             decoration: InputDecoration(
               hintText: 'AvaTOK number, e.g. +233 24 555 0148',
-              hintStyle: PhoneTheme.sub(size: 13.5, color: PhoneTheme.textMute),
+              hintStyle: PhoneTheme.sub(size: 13, color: PhoneTheme.textMute),
               filled: true,
               fillColor: PhoneTheme.surface2,
               prefixIcon: PhosphorIcon(PhosphorIcons.hash(PhosphorIconsStyle.bold), size: 18, color: PhoneTheme.teal),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 borderSide: const BorderSide(color: PhoneTheme.border, width: 1.5)),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(Msg.rMd),
                 borderSide: const BorderSide(color: PhoneTheme.accent, width: 1.8)),
             ),
             onSubmitted: (_) => _go(),
           ),
           if (_error != null)
             Padding(padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: PhoneTheme.sub(size: 12.5, color: PhoneTheme.danger))),
+                child: Text(_error!, style: PhoneTheme.sub(size: 12, color: PhoneTheme.danger))),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
@@ -315,7 +316,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(Msg.rMd),
                   side: const BorderSide(color: PhoneTheme.border, width: 2)),
               ),
               onPressed: _resolving ? null : _go,
@@ -327,7 +328,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
           ),
           if (saved.isNotEmpty) ...[
             const SizedBox(height: 18),
-            Text('YOUR AVATOK CONTACTS', style: PhoneTheme.tag(size: 10.5, color: PhoneTheme.textMute)),
+            Text('Your AvaTOK contacts', style: PhoneTheme.tag(size: 11, color: PhoneTheme.textMute)),
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),
@@ -340,7 +341,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                     contentPadding: EdgeInsets.zero,
                     leading: PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 40,
                         avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
-                    title: Text(c.name.isNotEmpty ? c.name : c.number, style: PhoneTheme.value(size: 14.5)),
+                    title: Text(c.name.isNotEmpty ? c.name : c.number, style: PhoneTheme.value(size: 14)),
                     subtitle: Text(c.number, style: PhoneTheme.sub(size: 12)),
                     onTap: () => Navigator.pop(context, c),
                   );

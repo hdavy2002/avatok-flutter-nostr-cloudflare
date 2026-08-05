@@ -9,9 +9,9 @@
 // Cloudflare Realtime A/V CloudflareConferenceScreen instead — this screen is
 // the Free path.
 //
-// Zine: paper chrome; participant tiles get 2px ink borders (lime when speaking
-// is not tracked in mesh, so border stays ink); control bar = paper-2 band with
-// bordered circle buttons (leave = coral).
+// Chrome: AD dark tokens (near-black surfaces, hairline borders); participant
+// tiles are hairline-bordered cards; the control bar is a header-footer band of
+// circular buttons (leave = danger).
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -24,7 +24,8 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/ava_log.dart';
 import '../../core/ice_cache.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'mesh_api.dart';
 
@@ -326,12 +327,12 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         body: ZinePaper(
           child: SafeArea(
             child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _error!),
-              const SizedBox(height: 16),
+              ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.regular), text: _error!),
+              const SizedBox(height: Msg.s4),
               ZineButton(label: 'Close', variant: ZineButtonVariant.ghost, fontSize: 16,
                   onPressed: () => Navigator.of(context).maybePop()),
             ])),
@@ -352,27 +353,28 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) { if (!didPop) _leave(); },
       child: Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         body: ZinePaper(
           child: SafeArea(
             child: Column(children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
                 child: Row(children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: ZineText.cardTitle(size: 18)),
-                    Text('$n IN CALL · FREE · MAX ${MeshApi.maxMesh}', style: ZineText.kicker(size: 10.5)),
+                        style: ADText.threadName()),
+                    Text('$n in call · Free · max ${MeshApi.maxMesh}',
+                        style: ADText.sectionLabel()),
                   ])),
                 ]),
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
                   child: GridView.count(
                     crossAxisCount: cols,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
+                    mainAxisSpacing: Msg.s2,
+                    crossAxisSpacing: Msg.s2,
                     childAspectRatio: 0.78,
                     children: tiles,
                   ),
@@ -380,34 +382,34 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
               ),
               Container(
                 decoration: const BoxDecoration(
-                  color: Zine.paper2,
-                  border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+                  color: AD.headerFooter,
+                  border: Border(top: Msg.hairline),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  _ctl(_mic ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
-                            : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold),
+                  _ctl(_mic ? PhosphorIcons.microphone(PhosphorIconsStyle.regular)
+                            : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.regular),
                       _mic ? 'Mute' : 'Unmute', _toggleMic, active: _mic),
                   if (_video)
-                    _ctl(_cam ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
-                              : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                    _ctl(_cam ? PhosphorIcons.videoCamera(PhosphorIconsStyle.regular)
+                              : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.regular),
                         'Camera', _toggleCam, active: _cam),
                   if (_video && _cam)
-                    _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold), 'Flip', _flipCam, active: true),
-                  _ctl(_speaker ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
-                                : PhosphorIcons.ear(PhosphorIconsStyle.bold),
+                    _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.regular), 'Flip', _flipCam, active: true),
+                  _ctl(_speaker ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.regular)
+                                : PhosphorIcons.ear(PhosphorIconsStyle.regular),
                       'Speaker', _toggleSpeaker, active: _speaker),
                   GestureDetector(
                     onTap: _leave,
                     child: Container(
                       width: 56, height: 56,
                       decoration: BoxDecoration(
-                        color: Zine.coral, shape: BoxShape.circle,
-                        border: Border.all(color: Zine.ink, width: Zine.bw),
-                        boxShadow: Zine.shadowSm,
+                        color: AD.danger, shape: BoxShape.circle,
+                        border: Border.all(color: AD.borderControl, width: 1),
+                        boxShadow: Msg.lift,
                       ),
-                      child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill),
-                          color: Colors.white, size: 24),
+                      child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
+                          color: AD.destructiveInk, size: 24),
                     ),
                   ),
                 ]),
@@ -426,10 +428,10 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
           child: Container(
             width: 48, height: 48,
             decoration: BoxDecoration(
-              color: active ? Zine.card : Zine.coral, shape: BoxShape.circle,
-              border: Border.all(color: Zine.ink, width: Zine.bw), boxShadow: Zine.shadowXs,
+              color: active ? AD.card : AD.danger, shape: BoxShape.circle,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Icon(icon, color: active ? Zine.ink : Colors.white, size: 22),
+            child: Icon(icon, color: active ? AD.iconNeutral : AD.destructiveInk, size: 22),
           ),
         ),
       );
@@ -438,9 +440,9 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Zine.paper2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Zine.ink, width: 2),
+        color: AD.card,
+        borderRadius: Msg.brMd,
+        border: Border.all(color: AD.borderControl, width: 1),
       ),
       child: Stack(fit: StackFit.expand, children: [
         if (showVideo && renderer.srcObject != null)
@@ -450,12 +452,13 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
         Positioned(
           left: 6, bottom: 6,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
             decoration: BoxDecoration(
-              color: Zine.ink.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(100),
+              color: AD.scrim,
+              // Name tag over a video tile — a genuine pill.
+              borderRadius: Msg.brPill,
             ),
-            child: Text(name, style: ZineText.value(size: 11.5, color: Colors.white, weight: FontWeight.w700)),
+            child: Text(name, style: ADText.bubbleMeta(c: AD.textPrimary)),
           ),
         ),
       ]),

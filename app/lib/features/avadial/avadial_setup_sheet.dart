@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/voice/native_voice_audio.dart';
 import 'avadial_channel.dart';
 
@@ -60,10 +63,8 @@ Future<void> showAvaDialSetupSheet(BuildContext context) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF1B1B1D),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    backgroundColor: AD.overlaySheet,
+    shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
     builder: (_) => const _AvaDialSetupSheet(),
   );
 }
@@ -76,7 +77,7 @@ class _AvaDialSetupSheet extends StatefulWidget {
 
 class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
     with WidgetsBindingObserver {
-  static const _teal = Color(0xFF11A37F);
+  static const _teal = AD.newGroup;
 
   bool _fsi = false; // full-screen / lock-screen calls
   bool _battery = false; // ignore battery optimisation (reliable delivery)
@@ -180,11 +181,19 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
           break;
         }
       }
+      // [UI-DS-SWEEP-1] The "done ✓" emoji tick is now a real Phosphor glyph
+      // beside the copy — emoji has no weight, colour or size control.
       final msg = next == null
-          ? '${justDone.title} — done ✓  All set!'
-          : '${justDone.title} — done ✓  Next: ${next.title}';
-      ScaffoldMessenger.maybeOf(context)
-          ?.showSnackBar(SnackBar(content: Text(msg)));
+          ? '${justDone.title} — done. All set!'
+          : '${justDone.title} — done. Next: ${next.title}';
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Row(children: [
+          PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+              size: 18, color: AD.online),
+          const SizedBox(width: Msg.s2),
+          Expanded(child: Text(msg)),
+        ]),
+      ));
     }
   }
 
@@ -252,7 +261,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                   height: 4,
                   decoration: BoxDecoration(
                     color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(Msg.rSm),
                   ),
                 ),
               ),
@@ -279,7 +288,7 @@ class _AvaDialSetupSheetState extends State<_AvaDialSetupSheet>
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: _teal.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(Msg.rSm),
                   border: Border.all(color: _teal.withValues(alpha: 0.35)),
                 ),
                 child: const Text(
@@ -369,12 +378,14 @@ class _StepRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const teal = Color(0xFF11A37F);
+    const teal = AD.newGroup;
     final row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
-          done ? Icons.check_circle : Icons.radio_button_unchecked,
+          done
+              ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+              : PhosphorIcons.circle(PhosphorIconsStyle.regular),
           color: done
               ? teal
               : active
@@ -404,7 +415,7 @@ class _StepRow extends StatelessWidget {
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(
                       color: teal.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(Msg.rSm),
                     ),
                     child: const Text(
                       'NEXT',
@@ -454,7 +465,7 @@ class _StepRow extends StatelessWidget {
       decoration: active
           ? BoxDecoration(
               color: teal.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(Msg.rMd),
               border: Border.all(color: teal.withValues(alpha: 0.35)),
             )
           : null,

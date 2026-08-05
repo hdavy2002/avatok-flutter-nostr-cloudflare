@@ -9,6 +9,7 @@ import '../../../core/api_auth.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/config.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../identity/identity.dart';
 import '../../../sync/dm.dart';
 import '../../../sync/sync_hub.dart';
@@ -139,7 +140,7 @@ Future<Contact?> _pickContact(BuildContext context) {
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       side: BorderSide(color: AvaDialTheme.border, width: 1),
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: Msg.brSheetTop,
     ),
     builder: (ctx) => const _ContactPickerSheet(),
   );
@@ -202,7 +203,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
           Container(
             width: 40, height: 4,
             decoration:
-                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: BorderRadius.circular(100)),
+                BoxDecoration(color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),

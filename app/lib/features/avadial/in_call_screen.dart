@@ -5,7 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
 import 'avadial_theme.dart';
@@ -172,9 +172,9 @@ class _InCallScreenState extends State<InCallScreen> {
             _avatar(name),
             const SizedBox(height: 20),
             Text(name ?? widget.number,
-                textAlign: TextAlign.center, style: ZineText.hero(size: 30, color: AvaDialTheme.text)),
+                textAlign: TextAlign.center, style: AvaDialTheme.title(size: 30, color: AvaDialTheme.text)),
             const SizedBox(height: 6),
-            Text(_statusLine, style: ZineText.sub(size: 16, color: AvaDialTheme.textSoft)),
+            Text(_statusLine, style: AvaDialTheme.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
             if (_keypad) _keypadGrid() else _controls(),
             const SizedBox(height: 18),
@@ -202,7 +202,7 @@ class _InCallScreenState extends State<InCallScreen> {
         boxShadow: const <BoxShadow>[],
       ),
       child: initial != null
-          ? Text(initial, style: ZineText.hero(size: 44, color: Colors.white))
+          ? Text(initial, style: AvaDialTheme.title(size: 44, color: Colors.white))
           : Icon(PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), size: 50, color: Colors.white),
     );
   }
@@ -241,12 +241,13 @@ class _InCallScreenState extends State<InCallScreen> {
         onTap: onTap,
         color: active ? AD.primaryBadge : AvaDialTheme.surface2,
         borderColor: AvaDialTheme.border,
-        radius: BorderRadius.circular(100),
+        // Round call controls — the phone-call idiom; kept circular.
+        radius: Msg.brPill,
         padding: const EdgeInsets.all(18),
         child: Icon(icon, size: 26, color: active ? Colors.white : AvaDialTheme.text),
       ),
       const SizedBox(height: 6),
-      Text(label, style: ZineText.tag(size: 11, color: AvaDialTheme.textSoft)),
+      Text(label, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
     ]);
   }
 
@@ -266,8 +267,8 @@ class _InCallScreenState extends State<InCallScreen> {
               onTap: () => _dtmf(k),
               color: AvaDialTheme.surface2,
               borderColor: AvaDialTheme.border,
-              radius: BorderRadius.circular(16),
-              child: Center(child: Text(k, style: ZineText.hero(size: 26, color: AvaDialTheme.text))),
+              radius: BorderRadius.circular(Msg.rLg),
+              child: Center(child: Text(k, style: AvaDialTheme.title(size: 26, color: AvaDialTheme.text))),
             ),
         ],
       ),
@@ -285,7 +286,7 @@ class _InCallScreenState extends State<InCallScreen> {
         label: 'End',
         variant: AdButtonVariant.danger,
         fullWidth: true,
-        icon: Icons.call_end,
+        icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
         trailingIcon: false,
         onPressed: _end,
       );

@@ -5,7 +5,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_channel.dart';
 import 'avadial_theme.dart';
@@ -128,26 +127,26 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
                 boxShadow: const <BoxShadow>[],
               ),
               child: initial != null
-                  ? Text(initial, style: ZineText.hero(size: 44, color: Colors.white))
+                  ? Text(initial, style: AvaDialTheme.title(size: 44, color: Colors.white))
                   : Icon(PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.fill), size: 50, color: Colors.white),
             ),
             const SizedBox(height: 20),
-            Text('CALLING', style: ZineText.kicker(color: AvaDialTheme.textSoft)),
+            Text('Calling', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textSoft)),
             const SizedBox(height: 6),
             Text(name ?? widget.number,
-                textAlign: TextAlign.center, style: ZineText.hero(size: 30, color: AvaDialTheme.text)),
+                textAlign: TextAlign.center, style: AvaDialTheme.title(size: 30, color: AvaDialTheme.text)),
             if (name != null) ...[
               const SizedBox(height: 4),
-              Text(widget.number, style: ZineText.sub(size: 15, color: AvaDialTheme.textSoft)),
+              Text(widget.number, style: AvaDialTheme.sub(size: 15, color: AvaDialTheme.textSoft)),
             ],
             const SizedBox(height: 8),
-            Text(_statusLine, style: ZineText.sub(size: 16, color: AvaDialTheme.textSoft)),
+            Text(_statusLine, style: AvaDialTheme.sub(size: 16, color: AvaDialTheme.textSoft)),
             const Spacer(),
             AdButton(
               label: 'End',
               variant: AdButtonVariant.danger,
               fullWidth: true,
-              icon: Icons.call_end,
+              icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
               trailingIcon: false,
               onPressed: _end,
             ),

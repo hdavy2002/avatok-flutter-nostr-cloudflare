@@ -11,7 +11,6 @@ import '../../core/analytics.dart';
 import '../../core/config.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../shell/shell_v2.dart' show kPstnVoicemailDid;
 import '../settings/settings_registry.dart';
@@ -725,7 +724,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           backgroundColor: AvaDialTheme.surface,
           leading: const AdBackButton(),
           iconTheme: const IconThemeData(color: AvaDialTheme.text),
-          title: Text('Voicemail', style: ZineText.appbar(color: AvaDialTheme.text)),
+          title: Text('Voicemail', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
         ),
         body: const SizedBox.shrink(),
       );
@@ -742,7 +741,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
         // near-invisible brown (owner report 2026-07-17). Explicit + themed.
         leading: const AdBackButton(),
         iconTheme: const IconThemeData(color: AvaDialTheme.text),
-        title: Text('Voicemail', style: ZineText.appbar(color: AvaDialTheme.text)),
+        title: Text('Voicemail', style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -756,7 +755,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Voicemail via your carrier',
-                      style: ZineText.cardTitle(size: 15.5, color: AvaDialTheme.text)),
+                      style: AvaDialTheme.title(size: 15, color: AvaDialTheme.text)),
                   const SizedBox(height: 4),
                   Text(
                     // [AVA-VM-PAID-1] No longer claims all three conditions are
@@ -766,7 +765,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                     "send calls you can't take to AvaTOK instead of ringing out — "
                     "you'll see them in your Inbox with a transcript. A step only "
                     'turns green once your carrier confirms it.',
-                    style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
+                    style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                   ),
                 ]),
               ),
@@ -777,7 +776,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 4, left: 4),
               child: Text('Checking your SIM…',
-                  style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute)),
+                  style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textMute)),
             )
           else
             Padding(
@@ -791,7 +790,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
                     (_simLabel == null || _simLabel!.isEmpty)
                         ? 'Using your default calling SIM'
                         : 'Using $_simLabel for these codes',
-                    style: ZineText.sub(size: 12.5, color: AvaDialTheme.textMute),
+                    style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textMute),
                   ),
                 ),
               ]),
@@ -802,7 +801,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
           // the Settings-only "Turn off" affordance on verified rows.
           PstnForwardingWizard(did: _did, storage: _sec, showTurnOff: true),
           const SizedBox(height: 20),
-          Text('WHAT THIS DOES NOT DO', style: ZineText.kicker(color: AvaDialTheme.textMute)),
+          Text('What this does not do', style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
           const SizedBox(height: 8),
           _bullet('No spam filtering here — that needs the call-screening role, which '
               'AvaTOK no longer asks for.'),
@@ -826,7 +825,7 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
             ),
           ),
           Expanded(
-            child: Text(text, style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft)),
+            child: Text(text, style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft)),
           ),
         ]),
       );
@@ -882,7 +881,7 @@ class _PstnForwardingRow extends StatelessWidget {
                   style: ADText.preview()),
             ]),
           ),
-          const Icon(Icons.chevron_right, color: AD.textSecondary),
+          Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.regular), color: AD.textSecondary),
         ]),
       ),
     );

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../analytics.dart';
-import '../ui/zine.dart';
+import '../ui/avatok_dark.dart';
+import '../ui/messenger_theme.dart';
 import 'call_session.dart';
 
 /// The slim green "ongoing call" pill shown while a 1:1 AUDIO call is minimized.
@@ -138,7 +140,7 @@ class _PillBody extends StatelessWidget {
             return ValueListenableBuilder<int>(
               valueListenable: session.elapsedSeconds,
               builder: (context, secs, ___) {
-                final fill = reconnecting ? Zine.card : Zine.mint;
+                final fill = reconnecting ? AD.card : AD.online;
                 final label = reconnecting
                     ? 'Reconnecting…'
                     : 'Ongoing call · ${_clock(secs)}';
@@ -146,31 +148,32 @@ class _PillBody extends StatelessWidget {
                   color: Colors.transparent,
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 320),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Msg.s4, vertical: Msg.s2),
                     decoration: BoxDecoration(
                       color: fill,
-                      borderRadius: BorderRadius.circular(100),
-                      border: Zine.border,
-                      boxShadow: Zine.shadowXs,
+                      // A genuine status pill — one of the rPill exceptions.
+                      borderRadius: Msg.brPill,
+                      border: Border.all(color: AD.borderControl, width: 1),
+                      boxShadow: Msg.lift,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           reconnecting
-                              ? Icons.wifi_tethering_error_rounded_outlined
-                              : Icons.mic_rounded,
+                              ? PhosphorIcons.wifiSlash(PhosphorIconsStyle.regular)
+                              : PhosphorIcons.microphone(PhosphorIconsStyle.regular),
                           size: 18,
-                          color: Zine.ink,
+                          color: AD.textPrimary,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: Msg.s2),
                         Flexible(
                           child: Text(
                             label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: ZineText.tag(size: 13, color: Zine.ink),
+                            style: ADText.tabLabel(),
                           ),
                         ),
                       ],

@@ -4,8 +4,8 @@
 // badge, viewer count, time remaining. Join requires a paid order (the worker
 // refuses non-payers); leave/rejoin within the entitlement always works.
 //
-// Zine: video is content (full-bleed, untouched). Chrome = ink-alpha bands and
-// bordered circle buttons; join-error and stream-ended are full paper screens.
+// Chrome: video is content (full-bleed, untouched). Chrome = black-alpha bands
+// and hairline circle buttons; join-error and stream-ended are full AD screens.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,7 +17,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
 import '../../core/session_api.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/wallet_entitlement.dart';
 import '../explore/creator_channel.dart';
@@ -181,14 +182,14 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     final amounts = [100, 200, 500, 1000, 2000, 5000];
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
       builder: (sheetCtx) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           ZineCardHead(
-            icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
-            accent: Zine.mint,
+            icon: PhosphorIcons.coins(PhosphorIconsStyle.regular),
+            accent: AD.online,
             title: 'Send a donation',
           ),
           const SizedBox(height: 6),
@@ -196,17 +197,17 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
               balUnavailable
                   ? '$kWalletUnavailableMessage · goes to the creator instantly'
                   : 'Balance \$${(bal / 100).toStringAsFixed(2)} · goes to the creator instantly',
-              style: ZineText.sub(size: 13.5)),
-          const SizedBox(height: 16),
+              style: ADText.preview()),
+          const SizedBox(height: Msg.s4),
           Wrap(spacing: 9, runSpacing: 9, children: [
             for (final a in amounts)
               ZineSticker(
                 '\$${(a / 100).toStringAsFixed(a % 100 == 0 ? 0 : 2)}',
-                kind: ZineStickerKind.ok, // lime = pay action on a paper sheet
+                kind: ZineStickerKind.ok, // the pay action
                 onTap: () { Navigator.pop(sheetCtx); _donate(a); },
               ),
           ]),
-          const SizedBox(height: 8),
+          const SizedBox(height: Msg.s2),
         ]),
       ),
     );
@@ -247,7 +248,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     if (_streamEnded) return _endedScreen();
     final remaining = _endsAt > 0 ? _endsAt - DateTime.now().millisecondsSinceEpoch : null;
     return Scaffold(
-      backgroundColor: Zine.ink,
+      backgroundColor: AD.bg,
       body: Stack(fit: StackFit.expand, children: [
         RTCVideoView(_renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
         if (_status != 'watching')
@@ -267,13 +268,13 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
           Positioned(
             left: 12, right: 12, top: 64,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(color: kInkScrim, borderRadius: BorderRadius.circular(100)),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
+              // Pinned-message pill.
+              decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brPill),
               child: Row(children: [
-                PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill), color: Zine.lime, size: 14),
+                PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.regular), color: AD.primaryBadge, size: 14),
                 const SizedBox(width: 6),
-                Expanded(child: Text(_pinned!,
-                    style: ZineText.value(size: 12.5, color: Colors.white, weight: FontWeight.w700))),
+                Expanded(child: Text(_pinned!, style: ADText.tabLabel(c: AD.textPrimary))),
               ]),
             ),
           ),
@@ -299,21 +300,21 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(color: kInkScrim, borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(color: kInkScrim, borderRadius: Msg.brSm),
                   child: TextField(
                     controller: _chatCtl,
-                    style: ZineText.value(size: 13, color: Colors.white, weight: FontWeight.w700),
-                    cursorColor: Zine.lime,
+                    style: ADText.tabLabel(c: AD.textPrimary),
+                    cursorColor: AD.primaryBadge,
                     decoration: InputDecoration(
                       hintText: 'Say something…',
-                      hintStyle: ZineText.value(size: 13, color: Colors.white70, weight: FontWeight.w700),
+                      hintStyle: ADText.tabLabel(c: AD.textSecondary),
                       border: InputBorder.none,
                     ),
                     onSubmitted: (_) => _sendChat(),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Msg.s2),
               LiveCircleButton(
                 icon: PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.bold),
                 size: 40,
@@ -322,7 +323,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
               ),
               const SizedBox(width: 6),
               LiveCircleButton(
-                icon: PhosphorIcons.rocketLaunch(PhosphorIconsStyle.bold),
+                icon: PhosphorIcons.rocketLaunch(PhosphorIconsStyle.regular),
                 size: 40,
                 tooltip: 'Flying message',
                 onTap: () {
@@ -335,10 +336,10 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
               const SizedBox(width: 6),
               // reactions + stickers
               PopupMenuButton<String>(
-                color: Zine.paper,
+                color: AD.menu,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(Zine.rSm),
-                    side: const BorderSide(color: Zine.ink, width: 2)),
+                    borderRadius: Msg.brMd,
+                    side: const BorderSide(color: AD.borderControl, width: 1)),
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     enabled: false,
@@ -364,19 +365,18 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
                 child: Container(
                   width: 40, height: 40,
                   decoration: BoxDecoration(
-                    color: Zine.card,
+                    color: AD.card,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: Zine.bw),
-                    boxShadow: Zine.shadowXs,
+                    border: Border.all(color: AD.borderControl, width: 1),
                   ),
-                  child: PhosphorIcon(PhosphorIcons.smiley(PhosphorIconsStyle.bold), size: 19, color: Zine.ink),
+                  child: PhosphorIcon(PhosphorIcons.smiley(PhosphorIconsStyle.regular), size: 19, color: AD.iconNeutral),
                 ),
               ),
               const SizedBox(width: 6),
-              // money = mint
+              // money = green
               LiveCircleButton(
-                icon: PhosphorIcons.coins(PhosphorIconsStyle.fill),
-                fill: Zine.mint,
+                icon: PhosphorIcons.coins(PhosphorIconsStyle.regular),
+                fill: AD.online,
                 size: 46,
                 tooltip: 'Donate',
                 onTap: _donateSheet,
@@ -388,30 +388,30 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
     );
   }
 
-  /// Join failed (unpaid / error) — full zine paper screen.
+  /// Join failed (unpaid / error) — full-screen AD surface.
   Widget _errorScreen() {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       appBar: const ZineAppBar(title: 'AvaLive', markWord: 'Live', tag: 'live stream'),
       body: ZinePaper(
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _error!),
+            padding: const EdgeInsets.all(Msg.s5),
+            child: ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.regular), text: _error!),
           ),
         ),
       ),
     );
   }
 
-  /// Stream over — full zine paper screen.
+  /// Stream over — full-screen AD surface.
   Widget _endedScreen() {
     return Scaffold(
-      backgroundColor: Zine.paper,
+      backgroundColor: AD.bg,
       body: ZineSuccessOverlay(
-        icon: Icons.check_rounded,
+        icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
         headline: 'Stream ended',
-        accentLine: 'THANKS FOR WATCHING',
+        accentLine: 'Thanks for watching',
         sub: 'The creator wrapped up — catch the next one from their channel.',
         ctaLabel: 'Back to AvaTOK',
         onCta: () => Navigator.pop(context),

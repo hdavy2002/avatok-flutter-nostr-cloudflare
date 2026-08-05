@@ -1,7 +1,7 @@
 // [CF-CALL-003/007] Cloudflare Realtime A/V group-call screen — the ONLY
 // group-call screen as of CF-CALL-007 (the prior `conference_screen.dart`
-// provider was removed). Zine UI conventions (paper chrome, bordered circle
-// controls, lime speaking border, grid/paginated-grid tiles); all
+// provider was removed). AD dark tokens (near-black chrome, hairline-bordered
+// circle controls, accent speaking border, grid/paginated-grid tiles); all
 // media/session logic lives in `CloudflareConferenceController`.
 //
 // Reached only when RemoteConfig.cloudflareConferenceEnabled is true (see the
@@ -15,7 +15,8 @@ import 'package:permission_handler/permission_handler.dart' show openAppSettings
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
-import '../../core/ui/zine.dart';
+import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'cloudflare_conference_controller.dart';
 
@@ -92,20 +93,20 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
   Widget build(BuildContext context) {
     if (_ctrl.state == CfConnState.failed) {
       return Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         body: ZinePaper(
           child: SafeArea(
             child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               // `statusText` now carries the server's real message (or a
               // permission-specific one) instead of one generic line for every
               // possible cause.
-              ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _ctrl.statusText),
-              const SizedBox(height: 16),
+              ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.regular), text: _ctrl.statusText),
+              const SizedBox(height: Msg.s4),
               // A permission refusal is the one failure the user can fix on the
               // spot — give them the door instead of a dead end.
               if (_ctrl.permissionDenied) ...[
                 ZineButton(label: 'Open settings', fontSize: 16, onPressed: openAppSettings),
-                const SizedBox(height: 8),
+                const SizedBox(height: Msg.s2),
               ],
               ZineButton(label: 'Close', variant: ZineButtonVariant.ghost, fontSize: 16,
                   onPressed: () => Navigator.pop(context)),
@@ -116,8 +117,8 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
     }
     if (_ctrl.state == CfConnState.connecting) {
       return const Scaffold(
-        backgroundColor: Zine.paper,
-        body: Center(child: CircularProgressIndicator(color: Zine.blueInk)),
+        backgroundColor: AD.bg,
+        body: Center(child: CircularProgressIndicator(color: AD.primaryBadge)),
       );
     }
 
@@ -136,25 +137,25 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
     return PopScope(
       canPop: true,
       child: Scaffold(
-        backgroundColor: Zine.paper,
+        backgroundColor: AD.bg,
         body: ZinePaper(
           child: SafeArea(
             child: Column(children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
                 child: Row(children: [
-                  ZineBackButton(icon: PhosphorIcons.caretDown(PhosphorIconsStyle.bold), onTap: () => Navigator.pop(context)),
-                  const SizedBox(width: 12),
+                  ZineBackButton(icon: PhosphorIcons.caretDown(PhosphorIconsStyle.regular), onTap: () => Navigator.pop(context)),
+                  const SizedBox(width: Msg.s3),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 18)),
+                    Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.threadName()),
                     Text(
                       // A reconnect used to render as a completely frozen call:
                       // `reconnecting` had no UI at all, so the only visible
                       // difference between recovering and dead was neither.
                       _ctrl.state == CfConnState.reconnecting
-                          ? 'RECONNECTING…'
-                          : '${members.length + 1} IN CALL · CLOUDFLARE',
-                      style: ZineText.kicker(size: 10.5),
+                          ? 'Reconnecting…'
+                          : '${members.length + 1} in call · Cloudflare',
+                      style: ADText.sectionLabel(),
                     ),
                   ])),
                 ]),
@@ -187,8 +188,8 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                                 width: 8, height: 8, margin: const EdgeInsets.symmetric(horizontal: 3),
                                 decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: i == page ? Zine.coral : Zine.card,
-                                    border: Border.all(color: Zine.ink, width: 2)),
+                                    color: i == page ? AD.primaryBadge : AD.card,
+                                    border: Border.all(color: AD.borderControl, width: 1)),
                               ),
                           ]),
                         ),
@@ -196,12 +197,12 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
               ),
               Container(
                 decoration: const BoxDecoration(
-                  color: Zine.paper2,
-                  border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+                  color: AD.headerFooter,
+                  border: Border(top: Msg.hairline),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: Msg.s3),
                 child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  _ctl(_ctrl.muted ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold) : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                  _ctl(_ctrl.muted ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.regular) : PhosphorIcons.microphone(PhosphorIconsStyle.regular),
                       _ctrl.muted ? 'Unmute' : 'Mute', _ctrl.toggleMute, active: !_ctrl.muted),
                   // Camera controls follow the EFFECTIVE media mode, not
                   // `widget.video` (the request). A video call that downgraded
@@ -209,21 +210,21 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                   // audio-only — used to keep showing a camera button that
                   // could never do anything.
                   if (_ctrl.effectiveVideo)
-                    _ctl(_ctrl.cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                    _ctl(_ctrl.cameraOn ? PhosphorIcons.videoCamera(PhosphorIconsStyle.regular) : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.regular),
                         'Camera', _ctrl.toggleCamera, active: _ctrl.cameraOn),
                   if (_ctrl.effectiveVideo && _ctrl.cameraOn)
-                    _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold), 'Flip', _ctrl.flipCamera, active: true),
-                  _ctl(_ctrl.speakerOn ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold) : PhosphorIcons.ear(PhosphorIconsStyle.bold),
+                    _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.regular), 'Flip', _ctrl.flipCamera, active: true),
+                  _ctl(_ctrl.speakerOn ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.regular) : PhosphorIcons.ear(PhosphorIconsStyle.regular),
                       'Speaker', _ctrl.toggleSpeaker, active: _ctrl.speakerOn),
                   GestureDetector(
                     onTap: _leave,
                     child: Container(
                       width: 56, height: 56,
                       decoration: BoxDecoration(
-                        color: Zine.coral, shape: BoxShape.circle,
-                        border: Border.all(color: Zine.ink, width: Zine.bw), boxShadow: Zine.shadowSm,
+                        color: AD.danger, shape: BoxShape.circle,
+                        border: Border.all(color: AD.borderControl, width: 1), boxShadow: Msg.lift,
                       ),
-                      child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill), color: Colors.white, size: 24),
+                      child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.bold), color: AD.destructiveInk, size: 24),
                     ),
                   ),
                 ]),
@@ -240,19 +241,19 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
   Widget _noticeBar(String text) => Container(
         width: double.infinity,
         decoration: const BoxDecoration(
-          color: Zine.card,
-          border: Border(bottom: BorderSide(color: Zine.ink, width: 2)),
+          color: AD.card,
+          border: Border(bottom: Msg.hairline),
         ),
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s2, Msg.s2),
         child: Row(children: [
-          PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: ZineText.value(size: 12.5))),
+          PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.regular), size: 16, color: AD.iconNeutral),
+          const SizedBox(width: Msg.s2),
+          Expanded(child: Text(text, style: ADText.timestamp(c: AD.textSecondary))),
           GestureDetector(
             onTap: () => setState(() => _ctrl.notice = null),
             child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Zine.ink),
+              padding: const EdgeInsets.all(Msg.s1),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.regular), size: 14, color: AD.iconNeutral),
             ),
           ),
         ]),
@@ -265,12 +266,11 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
           child: Container(
             width: 48, height: 48,
             decoration: BoxDecoration(
-              color: active ? Zine.card : Zine.coral,
+              color: active ? AD.card : AD.danger,
               shape: BoxShape.circle,
-              border: Border.all(color: Zine.ink, width: Zine.bw),
-              boxShadow: Zine.shadowXs,
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Icon(icon, color: active ? Zine.ink : Colors.white, size: 22),
+            child: Icon(icon, color: active ? AD.iconNeutral : AD.destructiveInk, size: 22),
           ),
         ),
       );
@@ -304,12 +304,12 @@ class _LocalTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(color: Zine.paper2, borderRadius: BorderRadius.circular(14), border: Border.all(color: Zine.ink, width: 2)),
+      decoration: BoxDecoration(color: AD.card, borderRadius: Msg.brMd, border: Border.all(color: AD.borderControl, width: 1)),
       child: Stack(fit: StackFit.expand, children: [
         if (ctrl.cameraOn)
           webrtc.RTCVideoView(ctrl.localRenderer, mirror: true, objectFit: webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
         else
-          const Center(child: Icon(Icons.person, color: Colors.white54, size: 48)),
+          Center(child: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.regular), color: AD.textFaint, size: 48)),
         Positioned(left: 6, bottom: 6, child: _namePill('You', muted: ctrl.muted)),
       ]),
     );
@@ -328,9 +328,11 @@ class _RemoteTile extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Zine.paper2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: speaking ? Zine.lime : Zine.ink, width: speaking ? Zine.bw : 2),
+        color: AD.card,
+        borderRadius: Msg.brMd,
+        border: Border.all(
+            color: speaking ? AD.primaryBadge : AD.borderControl,
+            width: speaking ? 2 : 1),
       ),
       child: Stack(fit: StackFit.expand, children: [
         if (p.videoEnabled && renderer != null)
@@ -349,14 +351,15 @@ class _RemoteTile extends StatelessWidget {
 }
 
 Widget _namePill(String name, {required bool muted}) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(color: Zine.ink.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(100)),
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
+      // Name tag over a video tile — a genuine pill.
+      decoration: BoxDecoration(color: AD.scrim, borderRadius: Msg.brPill),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: ZineText.value(size: 11.5, color: Colors.white, weight: FontWeight.w700))),
+            style: ADText.bubbleMeta(c: AD.textPrimary))),
         if (muted) ...[
-          const SizedBox(width: 4),
-          PhosphorIcon(PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold), color: Colors.white, size: 12),
+          const SizedBox(width: Msg.s1),
+          PhosphorIcon(PhosphorIcons.microphoneSlash(PhosphorIconsStyle.regular), color: AD.textPrimary, size: 12),
         ],
       ]),
     );

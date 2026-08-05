@@ -4,9 +4,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
-import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
+import '../avadial_theme.dart';
 import '../device_contacts.dart';
 import 'sms_thread_screen.dart';
 
@@ -169,12 +169,12 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Send to this number', style: ZineText.sub(size: 11.5, color: AD.textSecondary)),
+              Text('Send to this number', style: AvaDialTheme.sub(size: 11, color: AD.textSecondary)),
               const SizedBox(height: 2),
               Text(number,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.cardTitle(size: 15.5, color: AD.textPrimary)),
+                  style: AvaDialTheme.title(size: 15, color: AD.textPrimary)),
             ]),
           ),
           PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
@@ -203,7 +203,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
               shape: BoxShape.circle,
               border: Border.all(color: AD.borderControl, width: 1),
             ),
-            child: Text(initial, style: ZineText.cardTitle(size: 16, color: AD.textPrimary)),
+            child: Text(initial, style: AvaDialTheme.title(size: 16, color: AD.textPrimary)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -211,13 +211,13 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
               Text(c.name ?? c.number,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZineText.cardTitle(size: 15.5, color: AD.textPrimary)),
+                  style: AvaDialTheme.title(size: 15, color: AD.textPrimary)),
               if (c.name != null) ...[
                 const SizedBox(height: 2),
                 Text(c.number,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 12.5, color: AD.textSecondary)),
+                    style: AvaDialTheme.sub(size: 12, color: AD.textSecondary)),
               ],
             ]),
           ),
@@ -238,13 +238,13 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
             size: 52),
         const SizedBox(height: 14),
         Text('Contacts are off',
-            textAlign: TextAlign.center, style: ZineText.cardTitle(size: 17, color: AD.textPrimary)),
+            textAlign: TextAlign.center, style: AvaDialTheme.title(size: 17, color: AD.textPrimary)),
         const SizedBox(height: 8),
         Text(
           'Allow contacts so you can pick someone by name. You can still text any '
           'number by typing it above.',
           textAlign: TextAlign.center,
-          style: ZineText.sub(size: 13.5, color: AD.textSecondary),
+          style: AvaDialTheme.sub(size: 13, color: AD.textSecondary),
         ),
         const SizedBox(height: 16),
         AdButton(
@@ -260,7 +260,7 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
         const SizedBox(height: 10),
         TextButton(
           onPressed: _load,
-          child: Text('Try again', style: ZineText.link(size: 14, color: AD.iconSearch)),
+          child: Text('Try again', style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
         ),
       ]),
     );
@@ -278,11 +278,11 @@ class _SmsComposeScreenState extends State<SmsComposeScreen> {
         Text(
           _search.text.trim().isEmpty ? 'No contacts found' : 'No matches',
           textAlign: TextAlign.center,
-          style: ZineText.cardTitle(size: 17, color: AD.textPrimary),
+          style: AvaDialTheme.title(size: 17, color: AD.textPrimary),
         ),
         const SizedBox(height: 8),
         Text('Type a phone number above to start a new text.',
-            textAlign: TextAlign.center, style: ZineText.sub(size: 13.5, color: AD.textSecondary)),
+            textAlign: TextAlign.center, style: AvaDialTheme.sub(size: 13, color: AD.textSecondary)),
       ]),
     );
   }

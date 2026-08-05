@@ -5,9 +5,10 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/avatok_dark.dart';
-import '../../../core/ui/zine.dart';
+import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../avadial_channel.dart';
+import '../avadial_theme.dart';
 import '../device_contacts.dart';
 
 /// One SMS in a thread (LIVE from the OS provider — never persisted by AvaTOK).
@@ -127,8 +128,8 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
         leading: AdBackButton(),
         shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name ?? widget.address, style: ZineText.appbar(color: AD.textPrimary)),
-          if (name != null) Text(widget.address, style: ZineText.sub(size: 12, color: AD.textSecondary)),
+          Text(name ?? widget.address, style: AvaDialTheme.title(size: 22, color: AD.textPrimary)),
+          if (name != null) Text(widget.address, style: AvaDialTheme.sub(size: 12, color: AD.textSecondary)),
         ]),
       ),
       body: SafeArea(
@@ -163,12 +164,12 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
         decoration: BoxDecoration(
           color: mine ? AD.bubbleOutBg : AD.card,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Msg.rLg),
           border: Border.all(color: AD.borderControl, width: 1),
           boxShadow: const [],
         ),
         child: Text(r.body,
-            style: ZineText.value(size: 15, color: mine ? AD.bubbleOutInk : AD.textPrimary)),
+            style: AvaDialTheme.value(size: 15, color: mine ? AD.bubbleOutInk : AD.textPrimary)),
       ),
     );
   }
@@ -189,7 +190,7 @@ class _SmsThreadScreenState extends State<SmsThreadScreen> {
       padding: const EdgeInsets.only(right: 18, bottom: 2),
       child: Align(
         alignment: Alignment.centerRight,
-        child: Text(label, style: ZineText.tag(size: 11, color: color)),
+        child: Text(label, style: AvaDialTheme.tag(size: 11, color: color)),
       ),
     );
   }
@@ -231,7 +232,7 @@ class _SendButton extends StatelessWidget {
     return ZinePressable(
       onTap: loading ? null : onTap,
       color: AD.primaryBadge,
-      radius: BorderRadius.circular(100),
+      radius: Msg.brMd,
       borderColor: AD.borderControl,
       borderWidth: 1,
       boxShadow: const [],

@@ -3,7 +3,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
-import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'avadial_theme.dart';
 import 'contact_overrides.dart';
@@ -256,22 +255,22 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
         // Explicit close (X) so it's obvious how to back out without saving
         // (owner request — the default back arrow was too faint to notice).
         leading: IconButton(
-          icon: const Icon(Icons.close, color: AvaDialTheme.text),
+          icon: Icon(PhosphorIcons.x(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
           tooltip: 'Cancel',
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
         ),
         title: Text(widget.create ? 'Add contact' : 'Edit contact',
-            style: ZineText.appbar(color: AvaDialTheme.text)),
+            style: AvaDialTheme.title(size: 22, color: AvaDialTheme.text)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AvaDialTheme.accent))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _label('DISPLAY NAME'),
+                _label('Display name'),
                 _field(_nameCtrl, 'Add a name', icon: PhosphorIcons.user(PhosphorIconsStyle.bold)),
                 const SizedBox(height: 16),
-                _label('NUMBER'),
+                _label('Number'),
                 widget.create
                     ? _field(_numberCtrl, 'Phone number',
                         icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
@@ -280,36 +279,36 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                         color: AvaDialTheme.surface2,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                         child: Text(widget.number,
-                            style: ZineText.value(size: 16, color: AvaDialTheme.text)),
+                            style: AvaDialTheme.value(size: 16, color: AvaDialTheme.text)),
                       ),
                 const SizedBox(height: 16),
-                _label('AVATOK NUMBER'),
+                _label('AvaTOK number'),
                 _field(_avatokCtrl, 'Their AvaTOK number or @handle',
                     icon: PhosphorIcons.chatCircleDots(PhosphorIconsStyle.bold),
                     accent: AD.primaryBadge),
                 const SizedBox(height: 16),
-                _label('PERSONAL EMAIL'),
+                _label('Personal email'),
                 _field(_personalEmailCtrl, 'name@personal.com',
                     icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
                     keyboard: TextInputType.emailAddress),
                 const SizedBox(height: 16),
-                _label('BUSINESS EMAIL'),
+                _label('Business email'),
                 _field(_businessEmailCtrl, 'name@company.com',
                     icon: PhosphorIcons.briefcase(PhosphorIconsStyle.bold),
                     keyboard: TextInputType.emailAddress),
                 const SizedBox(height: 16),
-                _label('ADDRESS'),
+                _label('Address'),
                 _field(_addressCtrl, 'Street, city, postal code…',
                     icon: PhosphorIcons.mapPin(PhosphorIconsStyle.bold),
                     keyboard: TextInputType.streetAddress,
                     maxLines: 3),
                 const SizedBox(height: 16),
-                _label('LINKEDIN'),
+                _label('LinkedIn'),
                 _field(_linkedinCtrl, 'linkedin.com/in/…',
                     icon: PhosphorIcons.linkedinLogo(PhosphorIconsStyle.bold),
                     keyboard: TextInputType.url),
                 const SizedBox(height: 16),
-                if (_custom.isNotEmpty) _label('MORE FIELDS'),
+                if (_custom.isNotEmpty) _label('More fields'),
                 for (var i = 0; i < _custom.length; i++) ...[
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -324,7 +323,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                         child: _plainField(_custom[i].$2, 'Value'),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.remove_circle_outline, color: AD.danger),
+                        icon: Icon(PhosphorIcons.minusCircle(PhosphorIconsStyle.regular), color: AD.danger),
                         onPressed: () => _removeField(i),
                       ),
                     ]),
@@ -338,14 +337,14 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
                     icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
                         color: AD.iconSearch, size: 20),
                     label: Text('Add field',
-                        style: ZineText.value(size: 14.5, color: AD.iconSearch)),
+                        style: AvaDialTheme.value(size: 14, color: AD.iconSearch)),
                   ),
                 ),
                 const SizedBox(height: 14),
                 Text(
                   'Saved to your phone\'s contacts. Extra AvaTOK details (AvaTOK '
                   'number, custom fields) are kept in AvaTOK.',
-                  style: ZineText.sub(size: 12.5, color: AvaDialTheme.textSoft),
+                  style: AvaDialTheme.sub(size: 12, color: AvaDialTheme.textSoft),
                 ),
                 // Bottom breathing room so the last field can scroll clear of the
                 // pinned action bar below (which is OUTSIDE this list).
@@ -381,7 +380,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
 
   Widget _label(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Text(t, style: ZineText.kicker(color: AvaDialTheme.textMute)),
+        child: Text(t, style: AvaDialTheme.tag(size: 11, color: AvaDialTheme.textMute)),
       );
 
   Widget _field(TextEditingController c, String hint,
@@ -394,10 +393,10 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
       controller: c,
       keyboardType: keyboard,
       maxLines: maxLines,
-      style: ZineText.value(size: 16, color: AvaDialTheme.text),
+      style: AvaDialTheme.value(size: 16, color: AvaDialTheme.text),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: ZineText.sub(size: 15, color: AvaDialTheme.textMute),
+        hintStyle: AvaDialTheme.sub(size: 15, color: AvaDialTheme.textMute),
         prefixIcon: icon != null
             ? Padding(
                 padding: const EdgeInsets.only(left: 12, right: 8),
@@ -425,10 +424,10 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     );
     return TextField(
       controller: c,
-      style: ZineText.value(size: 15, color: AvaDialTheme.text),
+      style: AvaDialTheme.value(size: 15, color: AvaDialTheme.text),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: ZineText.sub(size: 14, color: AvaDialTheme.textMute),
+        hintStyle: AvaDialTheme.sub(size: 14, color: AvaDialTheme.textMute),
         filled: true,
         fillColor: AvaDialTheme.surface2,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
