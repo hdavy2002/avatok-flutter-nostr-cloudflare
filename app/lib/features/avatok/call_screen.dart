@@ -1176,10 +1176,20 @@ class _CallScreenState extends State<CallScreen> {
                     // no native bridge — it collapses to nothing and this third
                     // of the row is simply empty; the neighbouring tiles do not
                     // move.
-                    child: (connected && !s.isReceptDuo)
+                    //
+                    // [CALL-TRANSLATE-SLOT-1 2026-08-05] `connected` is now PASSED
+                    // rather than used to decide whether to mount. Gating the mount
+                    // meant the slot sat blank through ringing and the icon appeared
+                    // out of nowhere on connect (owner report; measured at ~2.4s on
+                    // avatok-7ed0f03c). The overlay renders a dimmed, inert tile
+                    // until `callConnected` — and warms its native probe meanwhile,
+                    // so the live control is ready the instant the call connects.
+                    child: !s.isReceptDuo
                         ? Center(
-                            child:
-                                CallTranslateOverlay(callRef: s.room, tile: true))
+                            child: CallTranslateOverlay(
+                                callRef: s.room,
+                                tile: true,
+                                callConnected: connected))
                         : const SizedBox.shrink(),
                   ),
                   Expanded(

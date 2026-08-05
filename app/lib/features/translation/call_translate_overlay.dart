@@ -49,8 +49,24 @@ class CallTranslateOverlay extends StatefulWidget {
     super.key,
     required this.callRef,
     this.tile = false,
+    this.callConnected = true,
   });
   final String callRef;
+
+  /// [CALL-TRANSLATE-SLOT-1 2026-08-05] Whether the call has actually connected.
+  ///
+  /// The overlay used to be MOUNTED on connect, which is why the Translate slot
+  /// was empty while a call rang and then popped into existence — the owner's
+  /// "there is a blank space, then it comes". Measured on avatok-7ed0f03c: the
+  /// call screen opened at 16:22:59.905Z and `shown` landed at 16:23:02.267Z;
+  /// only 20ms of that was the bridge probe, the other 2.34s was waiting to be
+  /// mounted at all.
+  ///
+  /// So the widget now mounts with the screen and takes connectedness as input:
+  /// false renders the dimmed placeholder tile (and starts the native probe early,
+  /// so it is warm by the time the call connects), true unlocks it. Starting a
+  /// billed session before there is a call to translate stays impossible.
+  final bool callConnected;
 
   /// [CALL-UI-GRID-2026-08-05] Render as a cell of the call screen's 2x3
   /// control grid: a 64px circle with a "Translate" label under it, and NO
@@ -101,6 +117,13 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   String? _lastVisibilityReason;
   int _visibilityEvents = 0;
   static const int _kMaxVisibilityEvents = 8;
+
+  /// [CALL-TRANSLATE-SLOT-1] True once [_retryNativeProbe] has run out of
+  /// attempts. Until then `!_nativeSupported` means "still asking", not "cannot"
+  /// — and the difference decides whether the control slot shows a dimmed
+  /// placeholder or collapses to nothing. Without this the two were conflated and
+  /// a device that recovers on attempt 3 showed an empty hole for up to 6.6s.
+  bool _probeExhausted = false;
 
   @override
   void initState() {
@@ -169,6 +192,10 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
       }
     }
     if (!mounted) return;
+    // [CALL-TRANSLATE-SLOT-1] Probing is over and the answer is no. Flip the flag
+    // BEFORE the (awaited) cause lookups below, so the dimmed placeholder does not
+    // linger through two more method-channel round trips.
+    setState(() => _probeExhausted = true);
     // Terminal: this device will not show the pill for this call. The ONLY
     // genuine per-device failure mode, and it used to be completely invisible.
     // [CALL-TRANSLATE-PROBE-OBS-1] `result: unsupported` alone was still a dead
@@ -245,12 +272,18 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     if (s == CallTranslationState.idle) _hadActiveTranslation = false;
   }
 
-  /// [CALL-TRANSLATE-2D-4] Live translation is PAID-ONLY (owner, 2026-08-04):
-  /// the 100-token welcome grant and the daily free grant are deliberately not
-  /// spendable on it. So a user can be refused while their wallet visibly shows
-  /// tokens, and "you have no Tokens" would be plainly wrong on their screen.
-  /// The Worker's 402 reports the paid balance and the spendable balance
-  /// separately so this copy can be honest about WHICH tokens are missing.
+  /// [CALL-TRANSLATE-FREE-1 2026-08-05] Which of the two sentences below is true
+  /// is now a SERVER decision, and this method must never guess it.
+  ///
+  /// The paid-only rule (owner, 2026-08-04) was reversed on 2026-08-05: free and
+  /// bonus tokens now pay for live translation by default, behind the flag
+  /// `callTranslationAllowFreeTokens`. So the "your tokens are the wrong kind"
+  /// sentence is no longer the normal case — it is only correct while that flag
+  /// is off. The Worker says which by sending `paid_only` on the 402, alongside
+  /// the paid and spendable balances; the controller turns that into
+  /// [CallTranslationController.needsPaidTopUp]. Do NOT reintroduce a client-side
+  /// assumption here: telling someone with an empty wallet to top up because
+  /// their tokens are "free/bonus" is visibly wrong next to a zero balance.
   String _outOfTokensCopy(String suffix) {
     final c = _controller;
     if (c != null && c.needsPaidTopUp) {
@@ -415,6 +448,66 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     ));
   }
 
+  /// [CALL-TRANSLATE-SLOT-1 2026-08-05] The Translate control while it is still
+  /// waking up: same 64px circle, same label, same slot — dimmed and inert.
+  ///
+  /// It exists because the call controls are a fixed 2x3 grid (call_screen.dart
+  /// `_controlRow`): the Translate third does not reflow when the widget returns
+  /// nothing, it just goes blank, so the row reads as "More … End" with a hole in
+  /// it for the first second or two of every call. Rendering the tile immediately
+  /// and enabling it in place is the whole fix — nothing about the underlying
+  /// probe got faster, but the control stops appearing out of nowhere.
+  ///
+  /// Deliberately NOT tappable: `_pick()` needs a controller, and a tap that
+  /// silently does nothing is worse than one that is visibly not ready yet.
+  Widget _pendingTile() {
+    if (!widget.tile) return const SizedBox.shrink();
+    return Semantics(
+      button: true,
+      enabled: false,
+      label: 'Translate, preparing',
+      child: Tooltip(
+        message: 'Preparing translation…',
+        child: Opacity(
+          // Matches the disabled treatment of the other call tiles rather than
+          // inventing a new one — see `_CallTile` in call_screen.dart.
+          opacity: 0.45,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ZinePressable(
+                onTap: null,
+                color: AD.cardHover,
+                pressedColor: AD.cardHover,
+                radius: Msg.brPill,
+                boxShadow: Msg.none,
+                borderWidth: 1,
+                borderColor: AD.borderControl,
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Center(
+                    child: PhosphorIcon(
+                      PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                      size: 27,
+                      color: AD.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: Msg.s1),
+              Text('Translate',
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: ADText.sectionLabel(c: AD.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override Widget build(BuildContext context) {
     // [CALL-TRANSLATE-OBS-1 / F1] Every hide path used to be a bare
     // `SizedBox.shrink()` — no log, no event, no dialog — so "I don't see the
@@ -433,13 +526,35 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
       _reportVisibility('flag_call_translation_off', visible: false);
       return const SizedBox.shrink();
     }
+    if (!widget.callConnected) {
+      // Ringing / connecting. The tile is present but inert — see [callConnected].
+      _reportVisibility('call_not_connected', visible: false);
+      return _pendingTile();
+    }
     final controller = _controller;
     if (controller == null) {
-      // Transient by nature: the async bridge probe has not returned yet.
+      // [CALL-TRANSLATE-SLOT-1 2026-08-05] Transient by nature: `_initializeBridge`
+      // is still awaiting `WebRTC.initialize()` + `bridge.isSupported()`. Owner
+      // report 2026-08-05: "the translate icon populates after a while when the
+      // call comes, there is a blank space, then it comes." Telemetry agrees —
+      // on call avatok-7ed0f03c the screen opened at 16:22:59.905Z and `shown`
+      // only landed at 16:23:02.267Z, 2.4s of an empty hole between More and End.
+      //
+      // A transient state is NOT the same as "this device cannot translate", so
+      // it no longer renders as nothing. It renders the real tile, dimmed and
+      // inert, and swaps to the live one in place. Permanent hides (wrong
+      // platform, flag off, probe exhausted) still collapse to nothing.
       _reportVisibility('controller_null', visible: false);
-      return const SizedBox.shrink();
+      return _pendingTile();
     }
     if (!_nativeSupported) {
+      // Still probing (bounded by _kProbeBackoff) — same transient treatment.
+      // Only once the retries are exhausted is this device genuinely incapable,
+      // and only then does the slot go empty.
+      if (!_probeExhausted) {
+        _reportVisibility('native_probing', visible: false);
+        return _pendingTile();
+      }
       _reportVisibility('native_unsupported', visible: false);
       return const SizedBox.shrink();
     }
