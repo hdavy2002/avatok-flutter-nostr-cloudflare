@@ -36,6 +36,7 @@ import 'core/profile_store.dart';
 import 'core/remote_config.dart';
 import 'core/theme.dart';
 import 'core/ui/avatok_dark.dart'; // [UI-COLDSTART-1] boot loader matches the shell
+import 'core/ui/boot_screen.dart'; // [BOOT-FLASH-2] shared static launch screen
 import 'core/ui/zine_widgets.dart';
 import 'firebase_options.dart';
 import 'identity/identity.dart';
@@ -899,17 +900,15 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     switch (_stage) {
       case _Stage.loading:
         // [UI-COLDSTART-1 2026-08-05] This used to inherit AvaTheme.light, whose
-        // scaffold is Zine.paper (#F9F7ED cream) with a teal spinner. The screen
-        // that follows it — AvaShell's own gate and then the chat list — is
-        // AD.bg (#0B0B0D near-black). So every cold start painted
-        // cream -> near-black, a full luminance inversion one or two frames
-        // wide. That is the "millisecond flash": not an animation, just two
-        // loading screens from two different design systems stacked in front of
-        // a dark app. Matching AvaShell's gate exactly removes the step.
-        return const Scaffold(
-          backgroundColor: AD.bg,
-          body: Center(child: CircularProgressIndicator(color: AD.iconSearch)),
-        );
+        // scaffold is Zine.paper (#F9F7ED cream) with a teal spinner, while the
+        // screen after it is AD.bg (#0B0B0D near-black) — a full luminance
+        // inversion on every cold start.
+        //
+        // [BOOT-FLASH-2 2026-08-06] Now the SAME widget AvaShell's gate paints,
+        // and it is static. Two identical spinners used to hand off here and the
+        // indicator restarted mid-spin. See boot_screen.dart for why the fix is
+        // to delete the motion rather than to share the widget.
+        return const AvaBootScreen();
       case _Stage.welcome:
         // Google-only auth (2026-06-18): the welcome hero leads straight into
         // Google sign-in. The handle is picked AFTER auth in OnboardingFlow's

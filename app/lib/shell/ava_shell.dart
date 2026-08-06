@@ -16,6 +16,7 @@ import '../core/remote_config.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine_widgets.dart';
 import '../core/ui/avatok_dark.dart';
+import '../core/ui/boot_screen.dart'; // [BOOT-FLASH-2] shared static launch screen
 import '../core/ui/messenger_theme.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
@@ -519,12 +520,13 @@ class _AvaShellState extends State<AvaShell> {
     // Mandatory-profile gate (pic5): block the entire app until the profile is
     // complete. A brief loader while we read the local profile; then either the
     // non-skippable setup screen or the real shell.
-    if (_profileComplete == null) {
-      return const Scaffold(
-        backgroundColor: AD.bg,
-        body: Center(child: CircularProgressIndicator(color: AD.iconSearch)),
-      );
-    }
+    // [BOOT-FLASH-2 2026-08-06] Shares `AvaBootScreen` with RootFlow's
+    // `_Stage.loading` in main.dart. These two gates run back to back at launch
+    // and both used to paint their own identical `CircularProgressIndicator`;
+    // at the handoff one was disposed and the other created, so the spinner
+    // visibly restarted. Both are LOCAL reads, so the screen is now static and
+    // the handoff is undetectable. Do not reintroduce a spinner here.
+    if (_profileComplete == null) return const AvaBootScreen();
     // Compulsory AvaTOK number gate FIRST (owner decision 2026-06-27): the user
     // picks their number before completing the profile, so the profile can show
     // that number (locked) in the phone field. Same gate for new users at
