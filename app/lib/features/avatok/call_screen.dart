@@ -12,8 +12,12 @@ import '../../core/agent_voice_call.dart';
 import '../../core/analytics.dart'; // [VM-IN-MENU-1]
 import '../../core/ava_identity.dart';
 import '../../core/avatar.dart';
+import '../../core/account_storage.dart'; // [CALLREC-UI-1] per-account consent key
+import '../../core/call_recording/call_recording_model.dart'; // [CALLREC-UI-1]
+import '../../core/call_recording/call_recording_store.dart'; // [CALLREC-UI-1]
 import '../../core/call_routing_api.dart';
 import '../../core/calls/call_overlay.dart';
+import '../../core/disk_cache.dart'; // [CALLREC-UI-1] per-account consent store
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/remote_config.dart';
@@ -685,7 +689,14 @@ class _CallScreenState extends State<CallScreen> {
     // [CALL-UI-GRID-2026-08-05] Was 222 for the old 3+2 circles + isolated
     // hang-up. The labelled 2x3 panel is taller: 14 card margin + 18 pad +
     // 2x(64 circle + 6 + ~15 label) + 18 row gap + 18 pad ≈ 238.
-    const controlPanelHeight = 250.0;
+    // [CALLREC-UI-1] The Record row is a THIRD grid row when call recording is
+    // enabled (spec §5.2 — an on-demand feature buried in the More sheet does
+    // not get used), so the reserved footprint has to grow with it or the hero
+    // avatar scrolls under the panel again. Following the same arithmetic:
+    // one more row gap (Msg.s4 = 16) + one more tile (64 circle + Msg.s1 = 4 +
+    // ~15 label) ≈ 99, rounded to 100 for the same slack the 250 above carries.
+    final controlPanelHeight =
+        RemoteConfig.callRecordingEnabled ? 350.0 : 250.0;
     // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] Keyboard height (0 when closed) — the
     // video outcome-menu overlay bottoms out at its top edge while typing.
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
@@ -1074,6 +1085,27 @@ class _CallScreenState extends State<CallScreen> {
             ),
           ),
 
+        // [CALLREC-UI-1] The recording indicator — spec §4's consent surface.
+        //
+        // This matters MORE for on-demand recording than it would for automatic
+        // recording, because the other party gets no other warning at all. It is
+        // rendered here, OUTSIDE the `light`/`showVideo` branches, so it appears
+        // on both the audio (paper/dialer) and video (dark chrome) layouts; the
+        // pill paints its own fill and ink, so it reads on either. It sits below
+        // the network HUD (top + 58) rather than beside it, so neither clips the
+        // other on a narrow handset.
+        //
+        // The pill renders NOTHING when no recording is running, so the
+        // non-recording case costs no layout at all.
+        if (RemoteConfig.callRecordingEnabled &&
+            RemoteConfig.callRecordingIndicatorEnabled)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 104,
+            left: 0,
+            right: 0,
+            child: const Center(child: _RecordingIndicatorPill()),
+          ),
+
         // [CALL-TRANSLATE-UI-1 2026-08-05] The translate control used to live
         // HERE — a floating light-themed pill pinned top-right, the only
         // interactive thing on the call screen that wasn't in the control row.
@@ -1204,6 +1236,36 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                   ),
                 ]),
+                // [CALLREC-UI-1] Third row: Record. Present ONLY while
+                // `callRecordingEnabled` is on — with the flag off the panel is
+                // byte-for-byte the 2x3 grid it was, and `controlPanelHeight`
+                // above reverts with it.
+                //
+                // Still three Expanded thirds even though only the middle one is
+                // filled: the equal-thirds geometry is what stops a control
+                // moving under the user's thumb when an optional tile appears,
+                // and centring a lone Row child would break that promise for
+                // this row alone. Deliberately NOT gated on video — recording is
+                // audio-only and unaffected by the camera (spec §3.4).
+                if (RemoteConfig.callRecordingEnabled) ...[
+                  const SizedBox(height: Msg.s4),
+                  Row(children: [
+                    const Expanded(child: SizedBox.shrink()),
+                    Expanded(
+                      child: Center(
+                        child: _CallRecordTile(
+                          callId: s.room,
+                          peerUid: widget.seed,
+                          peerName: widget.title,
+                          peerAvatar: widget.avatarUrl,
+                          direction: widget.outgoing ? 'outgoing' : 'incoming',
+                          callConnected: connected,
+                        ),
+                      ),
+                    ),
+                    const Expanded(child: SizedBox.shrink()),
+                  ]),
+                ],
               ]),
             ),
           ),
@@ -1529,6 +1591,380 @@ class _CallTile extends StatelessWidget {
       ],
     );
   }
+}
+
+/// [CALLREC-UI-1] The Record control — one cell of the call control panel.
+///
+/// Spec: `Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md` §5.2.
+///
+/// It builds its OWN copy of [_CallTile]'s geometry (64px circle, 27px icon,
+/// label underneath) for the same reason `CallTranslateOverlay` does: it owns
+/// per-session state and a live duration caption that `_CallTile` has no slot
+/// for. The two are deliberate copies — if the call controls change, change this
+/// with them or Record will visibly not belong in the row.
+///
+/// THINGS THAT ARE EASY TO GET WRONG HERE, all of them load-bearing:
+///
+/// * **A recording can end without anyone calling `stop`.** Native's degradation
+///   ladder finalizes on its own, so this widget binds to
+///   [CallRecordingStore.phase]/[CallRecordingStore.activeCallId] and never
+///   holds a local `_isRecording` bool that could disagree with reality.
+/// * **`start` fails by RETURNING FALSE, not throwing.** Every refusal is
+///   surfaced with its real reason. A tap that silently does nothing would read
+///   as "it's recording" — the worst possible outcome for a consent feature.
+/// * **Audio only, always.** Nothing here reads the camera/video state, and
+///   turning the camera on mid-call does not stop, pause or alter recording
+///   (spec §3.4).
+class _CallRecordTile extends StatefulWidget {
+  const _CallRecordTile({
+    required this.callId,
+    required this.peerUid,
+    required this.peerName,
+    required this.peerAvatar,
+    required this.direction,
+    required this.callConnected,
+  });
+
+  final String callId;
+  final String peerUid;
+  final String peerName;
+  final String peerAvatar;
+  final String direction; // 'incoming' | 'outgoing'
+
+  /// Arming before the call connects would record ringback and nothing else, so
+  /// the tile renders dimmed and inert until then — the same treatment
+  /// `CallTranslateOverlay._pendingTile()` uses, rather than an empty slot.
+  final bool callConnected;
+
+  @override
+  State<_CallRecordTile> createState() => _CallRecordTileState();
+}
+
+class _CallRecordTileState extends State<_CallRecordTile> {
+  /// Per-account (spec/rulebook §1): one phone is shared by a parent and each
+  /// child, and one person's consent is not another's. [DiskCache] is already
+  /// scoped to `AccountScope.id` internally; [scopedKey] on top of it makes the
+  /// intent explicit at the call site and survives any future re-pointing of
+  /// DiskCache at a shared directory.
+  static String get _consentKey => scopedKey('callrec_consent_v1');
+
+  /// Guards a double tap: `start`/`stop` are async and the store's own `_busy`
+  /// returns false rather than queueing, which would otherwise look like a
+  /// failed tap.
+  bool _busy = false;
+
+  Future<bool> _hasConsent() async {
+    try {
+      return (await DiskCache.read(_consentKey)) == '1';
+    } catch (_) {
+      return false; // a read failure must never SKIP the consent dialog
+    }
+  }
+
+  /// The one-time first-tap dialog (spec §4.3). Covers what is captured, that
+  /// the other party is shown a recording indicator, and that it counts toward
+  /// the user's storage. Returns true only on an explicit accept.
+  Future<bool> _askConsent() async {
+    final peer = widget.peerName.trim();
+    final theirs = peer.isEmpty ? 'the other person’s' : '$peer’s';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        backgroundColor: AD.overlaySheet,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AD.rDialog),
+        ),
+        title: Text('Record this call?', style: ADText.appTitle()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'AvaTOK records the AUDIO of both sides of the call — yours and '
+              '$theirs. Video is never captured, even if the camera is on.',
+              style: ADText.preview(c: AD.textSecondary),
+            ),
+            const SizedBox(height: Msg.s3),
+            Text(
+              'The other person sees a “Recording” indicator on their call '
+              'screen for as long as you are recording.',
+              style: ADText.preview(c: AD.textSecondary),
+            ),
+            const SizedBox(height: Msg.s3),
+            Text(
+              'The recording is saved to your Inbox and counts toward your '
+              'AvaStorage. It stays until you delete it.',
+              style: ADText.preview(c: AD.textSecondary),
+            ),
+            const SizedBox(height: Msg.s3),
+            Text(
+              'Recording laws differ by country and state. You are responsible '
+              'for recording lawfully.',
+              style: ADText.timestamp(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: Text('Not now',
+                style: ADText.preview(c: AD.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: Text('Start recording',
+                style: ADText.preview(c: AD.primaryBadge)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+    try {
+      await DiskCache.write(_consentKey, '1');
+    } catch (_) {/* they'll simply be asked again next call */}
+    unawaited(Analytics.capture('callrec_consent_accepted', {
+      'call_id': widget.callId,
+      if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
+    }));
+    return true;
+  }
+
+  Future<void> _onTap({required bool recording}) async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      if (recording) {
+        await CallRecordingStore.I.stop();
+        return;
+      }
+      unawaited(Analytics.capture('callrec_armed', {
+        'call_id': widget.callId,
+        'direction': widget.direction,
+        if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
+      }));
+      if (!await _hasConsent()) {
+        if (!mounted) return;
+        if (!await _askConsent()) return;
+      }
+      if (!mounted) return;
+      final ok = await CallRecordingStore.I.start(
+        callId: widget.callId,
+        peerUid: widget.peerUid,
+        peerName: widget.peerName,
+        peerAvatar: widget.peerAvatar,
+        direction: widget.direction,
+      );
+      if (ok || !mounted) return;
+      // Never let a refusal look like a start. `lastError` carries the real
+      // reason the store/native gave.
+      await _showFailure(CallRecordingStore.I.lastError.value ?? '');
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _showFailure(String error) async {
+    final String message;
+    if (error == 'disabled') {
+      message = 'Call recording is switched off right now. Your call is '
+          'unaffected.';
+    } else if (error == 'insufficient_storage') {
+      message = 'There is not enough free space on this phone to record. Free '
+          'some space and try again — your call is unaffected.';
+    } else if (error == 'already_recording' || error == 'busy_other_call') {
+      message = 'A recording is already running.';
+    } else if (error.startsWith('near_adapter_unavailable') ||
+        error.startsWith('subscribe_failed')) {
+      // The microphone-side tap never bound. Recording anyway would capture the
+      // OTHER person only — a one-sided recording is a correctness failure, not
+      // a degraded success, so the store refuses and so does this copy.
+      message = 'This phone could not capture both sides of the call, so '
+          'nothing was recorded. Your call is unaffected.';
+    } else {
+      message = 'Recording could not start. Your call is unaffected.';
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        backgroundColor: AD.overlaySheet,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AD.rDialog),
+        ),
+        title: Text('Recording unavailable', style: ADText.appTitle()),
+        content: Text(message, style: ADText.preview(c: AD.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d),
+            child: Text('OK', style: ADText.preview(c: AD.primaryBadge)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CallRecordingPhase>(
+      valueListenable: CallRecordingStore.I.phase,
+      builder: (context, phase, _) => ValueListenableBuilder<String?>(
+        valueListenable: CallRecordingStore.I.activeCallId,
+        builder: (context, activeId, __) {
+          // The recorder is process-wide, so "is it recording" is not enough —
+          // it has to be recording THIS call before this tile turns red.
+          final mine = activeId == widget.callId;
+          final recording = mine && phase == CallRecordingPhase.recording;
+          final finalizing = mine && phase == CallRecordingPhase.finalizing;
+          final ready = widget.callConnected && !finalizing;
+
+          return ValueListenableBuilder<CallRecordingProgress?>(
+            valueListenable: CallRecordingStore.I.progress,
+            builder: (context, progress, ___) {
+              final elapsed = (recording && progress != null)
+                  ? _hhmmss(progress.durationMs)
+                  : '';
+              final label = finalizing
+                  ? 'Saving…'
+                  : recording
+                      ? (elapsed.isEmpty ? 'Recording' : elapsed)
+                      : 'Record';
+              final semantics = finalizing
+                  ? 'Saving recording'
+                  : recording
+                      ? 'Stop recording'
+                      : 'Record this call';
+              final tile = Semantics(
+                button: true,
+                enabled: ready,
+                label: semantics,
+                child: Tooltip(
+                  message: semantics,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ZinePressable(
+                        onTap: ready
+                            ? () => unawaited(_onTap(recording: recording))
+                            : null,
+                        // RED while recording — the single unmistakable state
+                        // this control has to communicate.
+                        color: recording ? AD.destructiveBg : AD.cardHover,
+                        pressedColor:
+                            recording ? AD.destructiveBg : AD.primaryBadge,
+                        radius: Msg.brPill,
+                        boxShadow: const [],
+                        borderWidth: 1,
+                        borderColor: recording
+                            ? AD.destructiveBg
+                            : AD.borderControl,
+                        child: SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: Center(
+                            child: PhosphorIcon(
+                              recording
+                                  // `stop` and `circle` are both verified names
+                                  // in phosphor_flutter 2.1.0 (grep the repo) —
+                                  // there is no `record`, and an invented icon
+                                  // name only fails in CI, ~5 minutes into a
+                                  // release build.
+                                  ? PhosphorIcons.stop(PhosphorIconsStyle.fill)
+                                  : PhosphorIcons.circle(
+                                      PhosphorIconsStyle.fill),
+                              size: 27,
+                              color: recording
+                                  ? AD.destructiveInk
+                                  : AD.destructiveBg,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: Msg.s1),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        style: ADText.sectionLabel(
+                            c: recording ? AD.danger : AD.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+              // Same dimming as the other not-yet-available call controls
+              // rather than a new treatment.
+              return ready ? tile : Opacity(opacity: 0.45, child: tile);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// [CALLREC-UI-1] The persistent "Recording" pill (spec §4.2).
+///
+/// Renders NOTHING unless a recording is actually running or finalizing, so it
+/// costs no layout on an ordinary call. It paints its own fill and ink so the
+/// one widget reads correctly on both the paper/dialer audio screen and the dark
+/// video chrome.
+class _RecordingIndicatorPill extends StatelessWidget {
+  const _RecordingIndicatorPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CallRecordingPhase>(
+      valueListenable: CallRecordingStore.I.phase,
+      builder: (context, phase, _) {
+        final recording = phase == CallRecordingPhase.recording;
+        final finalizing = phase == CallRecordingPhase.finalizing;
+        if (!recording && !finalizing) return const SizedBox.shrink();
+        return ValueListenableBuilder<CallRecordingProgress?>(
+          valueListenable: CallRecordingStore.I.progress,
+          builder: (context, progress, __) {
+            final elapsed = (recording && progress != null)
+                ? _hhmmss(progress.durationMs)
+                : '';
+            return Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: Msg.s3, vertical: Msg.s1),
+              decoration: BoxDecoration(
+                color: AD.destructiveBg,
+                // A genuine status pill — one of the shapes rPill is for.
+                borderRadius: Msg.brPill,
+                border: Border.all(color: AD.destructiveBg, width: 1),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
+                    size: 10, color: AD.destructiveInk),
+                const SizedBox(width: Msg.s2),
+                Text(
+                  finalizing
+                      ? 'Saving recording…'
+                      : (elapsed.isEmpty ? 'Recording' : 'Recording · $elapsed'),
+                  style: ADText.timestamp(c: AD.destructiveInk)
+                      .copyWith(fontWeight: FontWeight.w700),
+                ),
+              ]),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// `m:ss`, or `h:mm:ss` once a recording passes an hour. Shared by the Record
+/// tile and the indicator pill so the two can never disagree about how long the
+/// same recording has been running.
+String _hhmmss(int ms) {
+  final total = ms <= 0 ? 0 : ms ~/ 1000;
+  final h = total ~/ 3600;
+  final m = (total % 3600) ~/ 60;
+  final s = total % 60;
+  final ss = s.toString().padLeft(2, '0');
+  if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:$ss';
+  return '$m:$ss';
 }
 
 /// Header ⌄ control — shrinks the call to the floating PiP/pill. A small zine

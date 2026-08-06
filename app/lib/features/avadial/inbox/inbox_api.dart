@@ -40,7 +40,7 @@ import '../../../identity/identity.dart';
 class InboxCard {
   final String id; // InboxDO row id (sync cursor position) — also the sort key
   final String conv;
-  final String kind; // 'voicemail' | 'recept'
+  final String kind; // 'voicemail' | 'recept' | 'call_recording'
   final int createdAtMs;
   final String? sessionId;
   final String? callerName;
@@ -87,6 +87,54 @@ class InboxCard {
   /// `app/lib/features/campaigns/campaign_inbox_cards.dart`'s file-level
   /// doc). Never true for a voicemail/recept row.
   bool get isCampaign => sender == 'ava_campaign';
+
+  // ─────────────────────────── [CALLREC-UI-1] call recordings ───────────────
+  //
+  // A `kind: 'call_recording'` row posted by `worker/src/routes/callrec.ts`
+  // into `callrec_<ownerUid>__<peerKey>`. Its `body` is the envelope
+  //   {"t":"callrec","title","description","call_id","started_at","duration_s",
+  //    "bytes","peer_uid","peer_name","peer_avatar","direction"}
+  // parsed into [rawBody] by [fromRow], exactly as a campaign row is.
+  //
+  // `title`/`description` start EMPTY and are user-supplied — there is no AI in
+  // this feature, so an empty title means "the user hasn't named it yet", never
+  // "generation failed".
+
+  bool get isCallRecording => kind == 'call_recording';
+
+  String _rec(String key) {
+    if (!isCallRecording) return '';
+    final v = rawBody?[key];
+    return v == null ? '' : v.toString();
+  }
+
+  String get recTitle => _rec('title');
+  String get recDescription => _rec('description');
+  String get recCallId => _rec('call_id');
+  String get recPeerUid => _rec('peer_uid');
+  String get recPeerName => _rec('peer_name');
+  String get recPeerAvatar => _rec('peer_avatar');
+
+  /// `incoming` | `outgoing`, from the recorder's point of view.
+  String get recDirection => _rec('direction');
+
+  /// Epoch MILLISECONDS — the Worker stamps `Date.now()`. This differs from
+  /// `Messages.createdAt` (seconds) elsewhere in the app, which is exactly the
+  /// kind of mismatch that silently renders 1970.
+  int get recStartedAtMs {
+    if (!isCallRecording) return 0;
+    final v = rawBody?['started_at'];
+    final n = (v is num) ? v : num.tryParse('$v');
+    return n == null ? 0 : n.toInt();
+  }
+
+  /// Size of the finished `.m4a` on the server.
+  int get recBytes {
+    if (!isCallRecording) return 0;
+    final v = rawBody?['bytes'];
+    final n = (v is num) ? v : num.tryParse('$v');
+    return n == null ? 0 : n.toInt();
+  }
 
   /// [AVA-CAMP-Q-INBOX] Campaign id for a campaign row — envelope key first
   /// (both `campaign_id`/`campaignId` are checked defensively, no fixed key
@@ -182,7 +230,13 @@ class InboxCard {
     // untouched for every other row.
     final sender = row['sender']?.toString();
     final isCampaign = sender == 'ava_campaign';
-    if (kind != 'voicemail' && kind != 'recept' && !isCampaign) return null;
+    // [CALLREC-UI-1] ADDITIVE: a call-recording row is admitted by KIND, the
+    // same way voicemail/recept are. Its `sender` is the peer's uid, so the
+    // campaign check above is unaffected.
+    final isCallRec = kind == 'call_recording';
+    if (kind != 'voicemail' && kind != 'recept' && !isCallRec && !isCampaign) {
+      return null;
+    }
     Map<String, dynamic> e = const {};
     final rawBody = row['body'];
     try {
@@ -195,7 +249,13 @@ class InboxCard {
       // itself carries (caller/time), just without transcript/summary detail.
     }
     final summary = e['summary'];
-    final callerName = (e['caller_name'] ?? (summary is Map ? summary['caller_name'] : null))
+    // [CALLREC-UI-1] A recording has no "caller" — the display name is the PEER
+    // on the call, so `peer_name` feeds the same slot. Without this the Inbox
+    // list's name resolver falls all the way through to "Unknown caller" for a
+    // thread whose envelope names the person explicitly.
+    final callerName = (e['caller_name'] ??
+            (isCallRec ? e['peer_name'] : null) ??
+            (summary is Map ? summary['caller_name'] : null))
         ?.toString();
     final callerPhone = (e['caller_phone'] ?? e['caller_number'])?.toString();
     final transcript = (e['transcript'] ?? '').toString().trim();
@@ -247,8 +307,11 @@ class InboxCard {
       // [AVA-CAMP-FL-NAV] Only ever set for a campaign row — every existing
       // voicemail/recept row keeps sender/rawBody null, unchanged from before
       // this lane.
-      sender: isCampaign ? sender : null,
-      rawBody: isCampaign ? e : null,
+      // [CALLREC-UI-1] A call-recording row keeps its parsed envelope too — the
+      // card reads title/description/peer/size straight off it. Every
+      // voicemail/recept row still keeps sender/rawBody null, unchanged.
+      sender: (isCampaign || isCallRec) ? sender : null,
+      rawBody: (isCampaign || isCallRec) ? e : null,
     );
   }
 }
@@ -288,6 +351,11 @@ class InboxThread {
   /// campaign cards, so checking the first card is enough and avoids an
   /// O(n) scan on every list build.
   bool get isCampaignThread => cards.isNotEmpty && cards.first.isCampaign;
+
+  /// [CALLREC-UI-1] True for a `callrec_<owner>__<peer>` thread. Keyed off the
+  /// CONV id rather than the cards so an empty/unparsed thread still gets the
+  /// recording treatment instead of rendering as a missed call.
+  bool get isCallRecordingThread => conv.startsWith('callrec_');
 
   /// The campaign id for a [isCampaignThread] thread (see
   /// [InboxCard.campaignId]), else null.
@@ -331,7 +399,10 @@ class InboxThread {
 class InboxApi {
   InboxApi._();
 
-  static const _kPrefixes = ['voicemail_', 'recept_'];
+  // [CALLREC-UI-1] `callrec_` joins the namespace: `callrec_<ownerUid>__<peerKey>`
+  // (`convFor()` in worker/src/routes/callrec.ts). Because `_callerKeyOf` splits
+  // on the LAST `__`, the peer uid falls out of it for free.
+  static const _kPrefixes = ['voicemail_', 'recept_', 'callrec_'];
 
   static bool _isInboxConv(String conv) => _kPrefixes.any((p) => conv.startsWith(p));
 

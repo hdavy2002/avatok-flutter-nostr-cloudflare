@@ -643,6 +643,15 @@ class SyncHub {
         // as raw text). Redact durably + live on this device.
         _ingestDel(m);
         break;
+      case 'edit':
+        // [CALLREC-UI-1] A stored row's BODY was patched in place — today that
+        // means a call recording's title/description (worker/src/routes/
+        // callrec.ts → InboxDO edit). This switch handled msg/receipt/read/hide/
+        // del/call but NOT edit, so a rename on one device was silently dropped
+        // on the other until a full resync. Same shape as `hide`/`del`: a
+        // control frame, never a renderable message.
+        _ingestEdit(m);
+        break;
       case 'call':
         // A new call-log entry recorded on another of MY devices → mirror it here.
         // Guarded: a malformed call frame must never crash the socket handler (and
@@ -1049,6 +1058,41 @@ class SyncHub {
     final target = (r['target'] ?? '').toString();
     if (target.isEmpty) return;
     applyRemoteDelete(target, conv: conv, source: 'live_socket');
+  }
+
+  // [CALLREC-UI-1] An EDIT-IN-PLACE control frame: {type:'edit', conv, target,
+  // body, edited_at}. The server has already rewritten the stored row, so this
+  // is purely the live nudge for a screen that is open right now — re-emitted on
+  // `incoming` in the same {t:…} envelope style as `applyRemoteHide`, so a
+  // listener can apply it without knowing anything about the socket.
+  //
+  // Nothing durable is written here on purpose: unlike a hide (which needs the
+  // local HiddenStore to survive a cold open), the edited body IS the server's
+  // row and the next sync returns the new text anyway. The frame only exists so
+  // the OTHER device does not sit on a stale title until then.
+  void _ingestEdit(Map<String, dynamic> r) {
+    final conv = (r['conv'] ?? '').toString();
+    final target = (r['target'] ?? '').toString();
+    if (target.isEmpty || conv.isEmpty) return;
+    final myUid = _myUid ?? '';
+    final convKey =
+        conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
+    final editedAt = (r['edited_at'] as num?)?.toInt() ??
+        DateTime.now().millisecondsSinceEpoch;
+    _incoming.add(HubEvent(
+      convKey,
+      myUid,
+      myUid,
+      true,
+      'edit_${target}_$editedAt',
+      jsonEncode({
+        't': 'edit',
+        'target': target,
+        'body': (r['body'] ?? '').toString(),
+        'edited_at': editedAt,
+      }),
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    ));
   }
 
   // A SOFT-DELETE/Undo (delete-for-me, the owner side of delete-for-everyone, or

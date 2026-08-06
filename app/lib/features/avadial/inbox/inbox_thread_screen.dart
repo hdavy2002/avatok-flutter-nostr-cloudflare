@@ -30,6 +30,7 @@ import '../block_list.dart';
 import '../contact_edit_screen.dart';
 import '../contact_overrides.dart';
 import '../device_contacts.dart';
+import 'call_recording_card.dart' show buildCallRecordingCard;
 import 'inbox_api.dart';
 import 'inbox_caller_name.dart';
 import 'inbox_card_meta.dart';
@@ -506,6 +507,18 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                   );
                 }
                 final card = item.card!;
+                // [CALLREC-UI-1] ADDITIVE ONLY: a `kind: 'call_recording'` row
+                // renders as its own card, delegated to call_recording_card.dart
+                // exactly as a campaign row delegates to buildCampaignCard. The
+                // card is a different SHAPE of thing (avatar pair, editable
+                // title, size) rather than a variant of _VoicemailCard, and it
+                // lives in its own file so this branch stays three lines.
+                if (card.isCallRecording) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: Msg.s3),
+                    child: buildCallRecordingCard(context, card),
+                  );
+                }
                 // [AVA-CAMP-FL-NAV] ADDITIVE ONLY: a campaign row (sender ==
                 // 'ava_campaign', see InboxCard.isCampaign/inbox_api.dart)
                 // renders via buildCampaignCard instead of the default

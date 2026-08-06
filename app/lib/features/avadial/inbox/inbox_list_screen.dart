@@ -15,6 +15,7 @@ import '../avadial_theme.dart';
 import '../block_list.dart';
 import '../contact_overrides.dart';
 import '../device_contacts.dart';
+import 'call_recording_card.dart' show callRecDurationLabel;
 import 'inbox_api.dart';
 import 'inbox_caller_name.dart';
 import 'inbox_heard_store.dart';
@@ -123,7 +124,12 @@ class _InboxListScreenState extends State<InboxListScreen> {
     _liveSub = SyncHub.I.incoming
         .where((e) =>
             e.convKey.startsWith('g:voicemail_') ||
-            e.convKey.startsWith('g:recept_'))
+            e.convKey.startsWith('g:recept_') ||
+            // [CALLREC-UI-1] A finished recording appends to
+            // `callrec_<owner>__<peer>`. Without this the card only appeared
+            // after a manual pull-to-refresh — the exact bug INBOX-LIVE-1 fixed
+            // for voicemail.
+            e.convKey.startsWith('g:callrec_'))
         .listen((_) {
       _liveDebounce?.cancel();
       _liveDebounce = Timer(const Duration(milliseconds: 400), () {
@@ -526,6 +532,15 @@ class _InboxListScreenState extends State<InboxListScreen> {
       final name = t.campaignEnvelopeName ?? (id != null ? _campaignNames[id] : null) ?? id;
       return (title: name ?? 'Campaign', subtitleNumber: null);
     }
+    // [CALLREC-UI-1] A recording thread's "who" is the PEER on the call, which
+    // the envelope names outright — going through the phone/uid resolver would
+    // land on "Unknown caller" for a person the row already identifies.
+    if (t.isCallRecordingThread) {
+      final peer = t.latest.recPeerName.trim();
+      final fallback = (t.latest.callerName ?? '').trim();
+      final who = peer.isNotEmpty ? peer : fallback;
+      return (title: who.isEmpty ? 'Call recording' : who, subtitleNumber: null);
+    }
     if (t.isAnonymous) return (title: 'Hidden number', subtitleNumber: null);
     final resolved = _resolvedNames[t.conv];
     final phone = t.telPhone ?? t.latest.callerPhone;
@@ -595,13 +610,30 @@ class _InboxListScreenState extends State<InboxListScreen> {
   static const _campaignTitleInk = AD.bubbleInInk; // 0xFF2A2640
   static const _campaignSecondaryInk = AD.bubbleInMeta; // 0xFF7B76A0
 
+  // [CALLREC-UI-1] A call-recording thread is neither a missed call nor a
+  // campaign. It keeps the same light card body (so the read/unread language is
+  // unchanged) but wears a GREEN edge and a green microphone badge — the same
+  // `bubbleOut` green family the card itself uses in the thread. No new colour
+  // is invented for it, and it is unmistakable next to a missed-call row.
+  static const _callRecCardBorder = AD.bubbleOutPlay; // 0xFF3E8E5A
+  static const _callRecTitleInk = AD.bubbleOutInk; // 0xFF1C3324
+  static const _callRecSecondaryInk = AD.bubbleOutMeta; // 0xFF567E63
+
   Widget _row(InboxThread t) {
     final label = _labelFor(t);
     final isCampaign = t.isCampaignThread;
+    final isCallRec = t.isCallRecordingThread;
     final hasUnread = _unreadCount(t) > 0;
-    final titleInk = isCampaign ? _campaignTitleInk : (hasUnread ? _unreadTitleInk : _readTitleInk);
-    final secondaryInk =
-        isCampaign ? _campaignSecondaryInk : (hasUnread ? _unreadSecondaryInk : _readSecondaryInk);
+    final titleInk = isCallRec
+        ? _callRecTitleInk
+        : isCampaign
+            ? _campaignTitleInk
+            : (hasUnread ? _unreadTitleInk : _readTitleInk);
+    final secondaryInk = isCallRec
+        ? _callRecSecondaryInk
+        : isCampaign
+            ? _campaignSecondaryInk
+            : (hasUnread ? _unreadSecondaryInk : _readSecondaryInk);
     // [RECEPT-EMPTY-CARD-1 2026-08-06] The final fallback used to assert
     // "Left a message" for every row that had no summary and no transcript —
     // including a caller who rang off before Ava got a word in, which leaves no
@@ -614,14 +646,28 @@ class _InboxListScreenState extends State<InboxListScreen> {
         (t.latest.transcript ?? '').trim().isEmpty &&
         (t.latest.summaryText ?? '').trim().isEmpty &&
         t.latest.durationSec <= 0;
-    final preview = t.latest.summaryText ??
-        (t.latest.transcript != null && t.latest.transcript!.length > 60
-            ? '${t.latest.transcript!.substring(0, 60)}…'
-            : t.latest.transcript) ??
-        (noContent ? 'Hung up before leaving a message' : 'Left a message');
+    // [CALLREC-UI-1] A recording has no summary and no transcript, so the
+    // generic fallbacks above ("Left a message") would be actively wrong. Show
+    // the user's own title when they typed one, and the length either way.
+    final recDuration = callRecDurationLabel(t.latest.durationSec);
+    final preview = isCallRec
+        ? [
+            t.latest.recTitle.trim().isEmpty
+                ? 'Recorded call'
+                : t.latest.recTitle.trim(),
+            if (recDuration.isNotEmpty) recDuration,
+          ].join(' · ')
+        : t.latest.summaryText ??
+            (t.latest.transcript != null && t.latest.transcript!.length > 60
+                ? '${t.latest.transcript!.substring(0, 60)}…'
+                : t.latest.transcript) ??
+            (noContent ? 'Hung up before leaving a message' : 'Left a message');
     // A campaign thread has no "caller" to have missed — this row is a
-    // campaign result, not a missed call, so skip that copy for it.
-    final titleText = isCampaign ? label.title : 'Missed call from ${label.title}';
+    // campaign result, not a missed call, so skip that copy for it. Nor does a
+    // recording: the call happened and was answered, by definition.
+    final titleText = (isCampaign || isCallRec)
+        ? label.title
+        : 'Missed call from ${label.title}';
     return GestureDetector(
       onTap: () => _open(t),
       onLongPress: () => _showThreadMenu(t),
@@ -631,16 +677,24 @@ class _InboxListScreenState extends State<InboxListScreen> {
           color: isCampaign ? _campaignCardBg : (hasUnread ? _unreadCardBg : _readCardBg),
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(
-            color: isCampaign ? _campaignCardBorder : (hasUnread ? _unreadCardBorder : _readCardBorder),
-            width: (isCampaign || hasUnread) ? 1.5 : 1,
+            color: isCallRec
+                ? _callRecCardBorder
+                : isCampaign
+                    ? _campaignCardBorder
+                    : (hasUnread ? _unreadCardBorder : _readCardBorder),
+            width: (isCampaign || isCallRec || hasUnread) ? 1.5 : 1,
           ),
         ),
         child: Row(children: [
           ZineIconBadge(
-            icon: isCampaign
-                ? PhosphorIcons.megaphone(PhosphorIconsStyle.fill)
-                : PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
-            color: isCampaign ? AD.iconVideo : AD.iconShield,
+            icon: isCallRec
+                ? PhosphorIcons.microphone(PhosphorIconsStyle.fill)
+                : isCampaign
+                    ? PhosphorIcons.megaphone(PhosphorIconsStyle.fill)
+                    : PhosphorIcons.phoneIncoming(PhosphorIconsStyle.fill),
+            color: isCallRec
+                ? _callRecCardBorder
+                : (isCampaign ? AD.iconVideo : AD.iconShield),
           ),
           const SizedBox(width: 12),
           Expanded(
