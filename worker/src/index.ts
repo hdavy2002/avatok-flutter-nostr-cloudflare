@@ -376,8 +376,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
 
-    const conferenceRoom = p.match(/^\/api\/conference-room\/([A-Za-z0-9_:.-]{1,96})\/(state|start|participant\/(?:reserve|join|leave)|migration\/(?:reserve|prepare|commit|abort)|billing\/(?:start|sponsor\/accept|tick)|host\/transfer|end)$/);
-    if (conferenceRoom) return await conferenceRoomRoute(req, env, conferenceRoom[1], conferenceRoom[2]);
+    // [ADDCALL-2-SRV] `release` added (spec §4.1 step 8 — the 1:1 leg is torn
+    // down on the device, so the server needs a signal to close the escalation
+    // funnel and emit groupcall_release_p2p). `ctx` is now passed because every
+    // migration emit must be waitUntil'd: workerd drops unawaited telemetry on
+    // an early-return error path, which is exactly where these emits sit.
+    const conferenceRoom = p.match(/^\/api\/conference-room\/([A-Za-z0-9_:.-]{1,96})\/(state|start|participant\/(?:reserve|join|leave)|migration\/(?:reserve|prepare|commit|abort|release)|billing\/(?:start|sponsor\/accept|tick)|host\/transfer|end)$/);
+    if (conferenceRoom) return await conferenceRoomRoute(req, env, conferenceRoom[1], conferenceRoom[2], ctx);
 
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);

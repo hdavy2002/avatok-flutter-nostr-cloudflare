@@ -88,8 +88,14 @@ const MAX_TITLE = 120;
 export const ADHOC_ROOM_KIND = "call";
 
 /** Shared funnel key across client and worker, the way `rec_id` works for
- *  recordings (spec §10). One escalation reconstructs as one funnel. */
-function escalationIdFor(key: string): string {
+ *  recordings (spec §10). One escalation reconstructs as one funnel.
+ *
+ *  [ADDCALL-2-SRV] Exported so routes/conference_room.ts stamps the SAME id on
+ *  the migration half of the funnel. Both halves key on the 1:1 `call_id`
+ *  (which is also the ConferenceRoomDO's `idFromName`), so room creation and
+ *  the reserve/prepare/commit/release chain join up as one escalation. If this
+ *  is ever computed by hand anywhere else, the funnel silently splits in two. */
+export function escalationIdFor(key: string): string {
   return `addcall:${key}`;
 }
 
