@@ -22,6 +22,7 @@ import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
 import 'core/badge_service.dart';
 import 'core/calls/call_overlay.dart';
+import 'core/call_recording/call_recording_store.dart';
 import 'core/calls/call_session_manager.dart';
 import 'core/voice/native_voice_audio.dart';
 import 'core/db.dart';
@@ -701,6 +702,22 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         // phone. Every signed-in account passes through here, so claiming here
         // makes the order match what the owner actually asked for.
         unawaited(AvaContactBook.I.backupRole());
+        // [CALLREC-FIX-1] Orphan recovery + deferred-upload drain, on the SAME
+        // chokepoint and for the same reason: AccountScope.id is set on every
+        // path that reaches here, and the recorder's working directory is
+        // per-account.
+        //
+        // Spec §3.3 — with no segmentation, remuxing the truncated ADTS file a
+        // force-kill left behind is the ONLY crash protection this feature has,
+        // and it only ever happens on launch. `CallRecordingStore.recoverOrphans`
+        // was written for exactly this and had NO call site anywhere in the app,
+        // so a recording interrupted by a crash was lost and a failed upload was
+        // never retried at start (only the WorkManager lane could reach it).
+        //
+        // Deliberately NOT gated on `callRecordingEnabled`: a user who recorded
+        // while the flag was on must still get that file back if it is flipped
+        // off. It is a no-op — one directory listing — when nothing is pending.
+        unawaited(CallRecordingStore.I.recoverOrphans());
       }
     }
   }
