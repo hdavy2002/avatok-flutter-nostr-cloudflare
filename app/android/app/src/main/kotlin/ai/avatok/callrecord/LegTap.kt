@@ -83,6 +83,17 @@ internal class LegTap(val name: String, private val outRate: Int, ringMs: Int) {
     var reportedRateSeq: Int = 0
 
     /**
+     * [CALLREC-TELEM-1] Has the mixer already announced this leg's FIRST sample?
+     * Mixer-thread-only, so the announcement happens off the audio thread (§3.2).
+     *
+     * Deliberately NOT cleared by [rebaseAfterPause]: "how long after arming did
+     * this leg first deliver anything" is a once-per-session fact about whether the
+     * tap works at all, and re-emitting it after every hold would turn the one
+     * event that answers the feature's biggest open question into noise.
+     */
+    var firstReported: Boolean = false
+
+    /**
      * [CALLREC-NATIVE-3] Liveness latch. True while this leg has STARTED but has
      * stopped delivering batches. Mixer-thread-only, so a stall is reported on the
      * TRANSITION into it and not once per tick.

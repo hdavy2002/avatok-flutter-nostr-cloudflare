@@ -169,8 +169,11 @@ class CallRecordingStore {
       lastError.value = 'insufficient_storage';
       await Analytics.capture('callrec_storage_stop', {
         'call_id': callId,
+        'rec_id': recIdFor(callId),
         'stage': 'arm',
+        'reason': 'min_free_mb',
         'min_free_mb': RemoteConfig.callRecordingMinFreeMb,
+        if (peerUid.isNotEmpty) 'peer_uid': peerUid,
       });
       return false;
     }
@@ -209,7 +212,23 @@ class CallRecordingStore {
         await Analytics.capture('callrec_started', {
           'ok': false,
           'call_id': callId,
+          'rec_id': recIdFor(callId),
           'error': err,
+          // [CALLREC-TELEM-1] The failure family, split out of the free-text
+          // error so it is a breakdown dimension and not a string to LIKE
+          // against. `near_tap` is the one that matters most: it means the
+          // microphone-side callback could not be bound, i.e. the unproven half
+          // of this feature did not work on this device.
+          'failure': err.startsWith('near_adapter_unavailable')
+              ? 'near_tap'
+              : err.startsWith('far_adapter_unavailable')
+                  ? 'far_tap'
+                  : err.startsWith('subscribe_failed')
+                      ? 'subscribe'
+                      : err.startsWith('encoder_init_failed')
+                          ? 'encoder'
+                          : err,
+          'near_tap_failure': res.isNearTapFailure,
           'direction': direction,
           if (peerUid.isNotEmpty) 'peer_uid': peerUid,
         });
@@ -234,8 +253,13 @@ class CallRecordingStore {
       await Analytics.capture('callrec_started', {
         'ok': true,
         'call_id': callId,
+        'rec_id': recIdFor(callId),
         'direction': _pending!.direction,
         if (peerUid.isNotEmpty) 'peer_uid': peerUid,
+        // Mono vs stereo is a §3.3 decision that Phase 1 may flip on
+        // speakerphone evidence; recording which one produced a given file is
+        // what makes that measurement reviewable after the fact.
+        'stereo': false,
       });
       return true;
     } catch (e, st) {
@@ -352,10 +376,16 @@ class CallRecordingStore {
       }
       await Analytics.capture('callrec_hold', {
         'call_id': callId,
+        'rec_id': recIdFor(callId),
+        if (_pendingPeerUid.isNotEmpty) 'peer_uid': _pendingPeerUid,
         'held': held,
         'ok': res.ok,
         if (!res.ok) 'error': res.error ?? 'unknown',
         'duration_ms': progress.value?.durationMs ?? 0,
+        // [CALLREC-TELEM-1] Running totals, so one row answers "how much of this
+        // call was held" without summing the pairs.
+        'pause_count': _lastPauseCount,
+        'paused_total_ms': _lastPausedTotalMs,
       });
     } catch (e, st) {
       if (held) paused.value = false;
@@ -411,8 +441,12 @@ class CallRecordingStore {
         title: title, description: description);
     await Analytics.capture('callrec_title_edited', {
       'call_id': callId,
+      'rec_id': recIdFor(callId),
+      'source': 'local',
       'has_title': (title ?? '').trim().isNotEmpty,
       'has_description': (description ?? '').trim().isNotEmpty,
+      'title_len': (title ?? '').trim().length,
+      'description_len': (description ?? '').trim().length,
     });
     final row = await Db.I.callRecordingById(callId);
     if (row == null || row.uploadedAt == null) return; // nothing server-side yet
@@ -443,6 +477,7 @@ class CallRecordingStore {
     await Db.I.setCallRecordingMeta(callId, title: title, description: description);
     await Analytics.capture('callrec_meta_synced', {
       'call_id': callId,
+      'rec_id': recIdFor(callId),
       'has_title': (title ?? '').trim().isNotEmpty,
       'has_description': (description ?? '').trim().isNotEmpty,
     });
@@ -472,9 +507,13 @@ class CallRecordingStore {
     _clearIssue(callId);
     await Analytics.capture('callrec_deleted', {
       'call_id': callId,
+      'rec_id': recIdFor(callId),
+      'surface': 'store',
       'server_ok': serverOk,
       'was_uploaded': row?.uploadedAt != null,
       'bytes': row?.bytes ?? 0,
+      'duration_s': row?.durationS ?? 0,
+      if ((row?.peerUid ?? '').isNotEmpty) 'peer_uid': row!.peerUid,
     });
   }
 
@@ -530,18 +569,36 @@ class CallRecordingStore {
   /// leaked credential). Both surfaces call this rather than each keeping its own
   /// copy of the local-then-server order, so they can never disagree about
   /// whether a recording is playable.
+  /// [CALLREC-TELEM-1] Sets [lastAudioSource] on the way through, so the
+  /// playback events on both surfaces can say WHERE the bytes came from. "Play
+  /// was slow" means something completely different for a local blob (disk) and
+  /// for a presign + download (network, and a possible sign the local copy has
+  /// been evicted), and without this the two are indistinguishable in PostHog.
   Future<Uint8List?> audioBytesAnywhere(String callId) async {
     if (callId.isEmpty) return null;
+    lastAudioSource = 'unknown';
     try {
       final local = await audioBytes(callId);
-      if (local != null && local.isNotEmpty) return local;
+      if (local != null && local.isNotEmpty) {
+        lastAudioSource = 'local';
+        return local;
+      }
     } catch (_) {/* fall through to the server copy */}
     try {
       final url = await CallRecordingApi.playbackUrl(callId);
-      if (url == null || url.isEmpty) return null;
+      if (url == null || url.isEmpty) {
+        lastAudioSource = 'unavailable';
+        return null;
+      }
       final bytes = await CallRecordingApi.download(url);
-      return (bytes == null || bytes.isEmpty) ? null : bytes;
+      if (bytes == null || bytes.isEmpty) {
+        lastAudioSource = 'download_failed';
+        return null;
+      }
+      lastAudioSource = 'remote';
+      return bytes;
     } catch (_) {
+      lastAudioSource = 'error';
       return null;
     }
   }
@@ -614,10 +671,19 @@ class CallRecordingStore {
           reason: 'recovered',
         );
         if (saved != null) {
+          // [CALLREC-TELEM-1] With no segmentation, orphan recovery is the ONLY
+          // crash protection there is (spec §3.3). A rising count here is a
+          // crash-rate signal for the recorder, so it carries enough to size the
+          // loss: `duration_s` is what SURVIVED, not what was recorded.
           await Analytics.capture('callrec_recovered', {
             'call_id': callId,
+            'rec_id': recIdFor(callId),
             'duration_s': saved.durationS,
             'bytes': saved.bytes,
+            // A recovered file has no session, so the peer is unknown and the
+            // id may be a synthesised `recovered_<ms>`. Say which, rather than
+            // leaving a reader to infer it from the id's shape.
+            'had_meta': !callId.startsWith('recovered_'),
           });
         }
       }
@@ -679,14 +745,36 @@ class CallRecordingStore {
     );
     await Db.I.upsertCallRecording(_toCompanion(rec));
 
+    // [CALLREC-TELEM-1] The artifact event: what file actually came out, and
+    // from which path. `reason` is the one property that answers "did this come
+    // from a normal stop, from the degradation ladder, or from orphan recovery
+    // after a crash" — `stop` | `recovered` | `ring_overflow` | `encoder_failed`
+    // | `low_storage` | `near_leg_stalled` | `far_leg_stalled` | `detached`.
+    //
+    // The per-leg summary rides along (see [_lastLegSummary]) so this single row
+    // says whether the file holds two voices or one: `near_batches: 0` on a
+    // finalized recording is a silent near tap, and it is visible here without
+    // joining anything.
     await Analytics.capture('callrec_finalized', {
       'call_id': callId,
+      'rec_id': recIdFor(callId),
       'duration_s': rec.durationS,
       'bytes': rec.bytes,
       'reason': reason,
       'direction': rec.direction,
       if (rec.peerUid.isNotEmpty) 'peer_uid': rec.peerUid,
+      // Recorded vs wall clock. A user asking "why is my recording shorter than
+      // my call" is answered by these two, not by a guess: the held period is
+      // SPLICED OUT of the file by design ([CALLHOLD-1]).
+      'paused_total_ms': _lastPausedTotalMs,
+      'pause_count': _lastPauseCount,
+      'bytes_per_s': rec.durationS > 0 ? (rec.bytes / rec.durationS).round() : 0,
+      ..._lastLegSummary,
     });
+    // Consumed — a later recording must never inherit this one's summary.
+    _lastLegSummary = const <String, Object>{};
+    _lastPausedTotalMs = 0;
+    _lastPauseCount = 0;
     // NOTE: the upload is NOT kicked off here. Callers drain AFTER resetting the
     // session, so `phase` moves idle → uploading → idle instead of two writers
     // racing over the same notifier during teardown.
@@ -755,9 +843,72 @@ class CallRecordingStore {
     );
   }
 
+  // ── [CALLREC-TELEM-1] telemetry helpers ───────────────────────────────────
+  //
+  // Someone will read these events INSTEAD OF a debugger. Three rules hold
+  // across every `callrec_*` event in this file:
+  //
+  //  1. **`call_id` + `rec_id` on everything.** `rec_id` is `callrec:<callId>`,
+  //     which is byte-identical to the Worker's `clientIdFor(callId)` and to the
+  //     Inbox row's `client_id`. That is what makes one recording's whole
+  //     lifecycle — arm → capture → finalize → upload → Inbox row → playback —
+  //     a single funnel across client AND server events, instead of two
+  //     timelines a reader has to join by hand.
+  //  2. **Both parties, where the event has them.** `peer_uid` rides along so
+  //     either side of a two-sided feature retrieves the interaction. The
+  //     owner's own email/phone are stamped automatically by `Analytics._base`.
+  //  3. **A native event that matters gets a NAMED event, not just an
+  //     exception.** `$exception` is for crashes; a funnel cannot be built on
+  //     it, and "how many recordings had a stalled leg" is a funnel question.
+
+  /// The correlation id every event in a recording's lifecycle shares. Same
+  /// string the Worker uses for the Inbox row's `client_id`, deliberately.
+  static String recIdFor(String callId) => 'callrec:$callId';
+
+  /// Peer of the session in flight, for events raised by native (which knows
+  /// only a callId). Empty when there is no session or no peer.
+  String get _pendingPeerUid => _pending?.peerUid ?? '';
+
+  /// Correlation envelope for an event raised from a native session event.
+  Map<String, Object> _corr(String? callId) {
+    final id = callId ?? _pending?.callId ?? activeCallId.value ?? '';
+    final peer = _pendingPeerUid;
+    return <String, Object>{
+      'call_id': id,
+      if (id.isNotEmpty) 'rec_id': recIdFor(id),
+      if (peer.isNotEmpty) 'peer_uid': peer,
+    };
+  }
+
+  /// [CALLREC-TELEM-1] Wall-clock ms spliced out by holds, and how many holds,
+  /// reported by native on its `state` events. Held here so `callrec_finalized`
+  /// can answer "why is my recording shorter than my call" with the number
+  /// rather than a guess — by the time `_persist` runs the session is being torn
+  /// down and native has nothing left to ask.
+  int _lastPausedTotalMs = 0;
+  int _lastPauseCount = 0;
+
+  /// [CALLREC-TELEM-1] The closing per-leg capture summary from native's final
+  /// `state` event, forwarded onto `callrec_finalized`. This is what tells a
+  /// reader whether the file that just landed holds two voices or one.
+  Map<String, Object> _lastLegSummary = const <String, Object>{};
+
+  /// [CALLREC-TELEM-1] Where the bytes for the LAST playback load came from —
+  /// `local` (on-device blob) or `remote` (fresh presign + download) — so a
+  /// "playback was slow" report can be answered without guessing. Diagnostic
+  /// only; nothing branches on it.
+  String lastAudioSource = 'unknown';
+
   Future<void> _onEvent(CallRecorderEvent ev) async {
     switch (ev.type) {
       case 'state':
+        // [CALLREC-TELEM-1] Captured on EVERY state event, including the final
+        // one, because the final one is the only place the leg summary exists
+        // and it arrives on the same tick as the teardown.
+        _lastPausedTotalMs = _intOf(ev.data['pausedTotalMs']);
+        _lastPauseCount = _intOf(ev.data['pauseCount']);
+        final legs = _legSummaryOf(ev.data);
+        if (legs.isNotEmpty) _lastLegSummary = legs;
         if (ev.recording) {
           progress.value = CallRecordingProgress(
               durationMs: ev.durationMs, bytes: ev.bytes);
@@ -775,13 +926,40 @@ class CallRecordingStore {
         // to capture — a partial recording the user can play beats an orphaned
         // file nobody knows about.
         final path = ev.path;
-        AvaLog.I.log('callrec', 'self-finalized: ${ev.reason ?? 'degraded'}');
-        await Analytics.capture('callrec_storage_stop', {
-          'call_id': ev.callId ?? '',
-          'reason': ev.reason ?? 'degraded',
+        final reason = ev.reason ?? 'degraded';
+        AvaLog.I.warn('callrec', 'self-finalized: $reason');
+        // [CALLREC-TELEM-1] `callrec_degraded` is the EVERY-reason event and is
+        // what the degradation ladder should be queried on. It used to be
+        // reported as `callrec_storage_stop` regardless of reason, which meant
+        // `encoder_failed`, `ring_overflow` and both `*_leg_stalled` reasons all
+        // arrived under a name that says "the phone ran out of space" — a reader
+        // filtering for a storage problem would have found four unrelated bugs,
+        // and a reader looking for the ladder firing at all would not have
+        // thought to look here.
+        await Analytics.capture('callrec_degraded', {
+          ..._corr(ev.callId),
+          'reason': reason,
           'duration_ms': ev.durationMs,
           'bytes': ev.bytes,
+          'free_mb': _intOf(ev.data['freeMb']),
+          'dropped_ms': _intOf(ev.data['droppedMs']),
+          'pause_count': _intOf(ev.data['pauseCount']),
+          'paused_total_ms': _intOf(ev.data['pausedTotalMs']),
         });
+        // Kept, but ONLY for the reason it names — spec §7 lists
+        // `callrec_storage_stop {free_mb}` as the device-storage signal, and the
+        // arm-time refusal in [start] emits it too, so the two ends of the same
+        // problem stay on one event name.
+        if (reason == 'low_storage') {
+          await Analytics.capture('callrec_storage_stop', {
+            ..._corr(ev.callId),
+            'stage': 'mid_call',
+            'reason': reason,
+            'duration_ms': ev.durationMs,
+            'bytes': ev.bytes,
+            'free_mb': _intOf(ev.data['freeMb']),
+          });
+        }
         if (path != null && path.isNotEmpty) {
           await _persist(
             session: _pending,
@@ -795,26 +973,138 @@ class CallRecordingStore {
         break;
 
       case 'error':
-        AvaLog.I.log('callrec', 'native error ${ev.code}: ${ev.data['detail']}');
+        final code = ev.code ?? 'unknown';
+        final detail = '${ev.data['detail'] ?? ''}';
+        AvaLog.I.error('callrec', 'native error $code: $detail');
+        // [CALLREC-TELEM-1] A named event FIRST, then the exception.
+        //
+        // These used to land only as `$exception`, which is the wrong shape for
+        // the two questions actually being asked: "on what fraction of
+        // recordings did a leg go silent" and "which leg, on which device". Both
+        // are funnel/breakdown questions and neither can be asked of Error
+        // Tracking. The exception is still raised — an Issue is how this gets
+        // NOTICED — but the event is how it gets understood.
+        switch (code) {
+          case 'near_no_samples':
+          case 'far_no_samples':
+            // THE failure this feature's biggest risk describes: the adapter
+            // resolved, `addCallback` succeeded, and the callback never fired.
+            // `leg` is split out of the code so near and far are one breakdown
+            // rather than two event names to remember.
+            await Analytics.capture('callrec_leg_silent', {
+              ..._corr(ev.callId),
+              'leg': code.startsWith('near') ? 'near' : 'far',
+              'adapter_source': '${ev.data['adapterSource'] ?? ''}',
+              'detail': detail,
+            });
+            break;
+          case 'leg_stalled':
+            // Started, then stopped delivering. Both callbacks are clock-driven,
+            // so this is never "nobody spoke" — see the native doc comment.
+            await Analytics.capture('callrec_leg_stalled', {
+              ..._corr(ev.callId),
+              'leg': '${ev.data['leg'] ?? ''}',
+              'gap_ms': _intOf(ev.data['gapMs']),
+              'stall_events': _intOf(ev.data['stallEvents']),
+              'adapter_source': '${ev.data['adapterSource'] ?? ''}',
+            });
+            break;
+          default:
+            await Analytics.capture('callrec_native_error', {
+              ..._corr(ev.callId),
+              'code': code,
+              'detail': detail,
+            });
+        }
         await Analytics.captureException(
-          StateError('callrec_native:${ev.code ?? 'unknown'}'),
+          StateError('callrec_native:$code'),
           StackTrace.current,
           screen: 'callrec',
           handled: true,
           extra: {
-            'call_id': ev.callId ?? '',
-            'code': ev.code ?? '',
-            'detail': '${ev.data['detail'] ?? ''}',
+            ..._corr(ev.callId),
+            'code': code,
+            'detail': detail,
+            'leg': '${ev.data['leg'] ?? ''}',
+            'adapter_source': '${ev.data['adapterSource'] ?? ''}',
           },
         );
         break;
 
+      case 'legResumed':
+        // [CALLREC-TELEM-1] The other half of `callrec_leg_stalled`. Without it a
+        // stall looks permanent in PostHog even when the leg came back 400 ms
+        // later, and every Bluetooth SCO transition reads as a broken recording.
+        await Analytics.capture('callrec_leg_resumed', {
+          ..._corr(ev.callId),
+          'leg': '${ev.data['leg'] ?? ''}',
+          'stalled_ms': _intOf(ev.data['stalledMs']),
+          'stall_events': _intOf(ev.data['stallEvents']),
+        });
+        break;
+
+      case 'legFirstSample':
+        // [CALLREC-TELEM-1] ⭐ THE PROOF THAT THE TAP ACTUALLY WORKS.
+        //
+        // `callrec_adapter_probe` says the field resolved and the subscribe
+        // returned true. It does NOT say audio arrived — and for the near-end
+        // microphone tap, which nothing in this app has ever used, those are
+        // genuinely different outcomes. A session with `near=none` on the probe
+        // and NO `leg=near` row here is a bound-but-dead callback: the one
+        // failure that produces a plausible-looking file containing only the
+        // other person.
+        //
+        // Carries the ADM's OWN reported rate/channels per leg, which is where a
+        // pitch-shift or a one-sided-volume complaint has to be traced to.
+        await Analytics.capture('callrec_leg_first_sample', {
+          ..._corr(ev.callId),
+          'leg': '${ev.data['leg'] ?? ''}',
+          'first_sample_ms': _intOf(ev.data['firstSampleMs']),
+          'input_rate': _intOf(ev.data['inputRate']),
+          'input_channels': _intOf(ev.data['inputChannels']),
+          'out_rate': _intOf(ev.data['outRate']),
+          'rejected_batches': _intOf(ev.data['rejected']),
+          'adapter_source': '${ev.data['adapterSource'] ?? ''}',
+        });
+        break;
+
       case 'drift':
-        await Analytics.capture('callrec_drift_corrected', {
-          'call_id': ev.callId ?? '',
-          'leg_delta_ms': '${ev.data['legDeltaMs'] ?? 0}',
-          'near_drift_ms': '${ev.data['nearDriftMs'] ?? 0}',
-          'far_drift_ms': '${ev.data['farDriftMs'] ?? 0}',
+        // [CALLREC-TELEM-1] One periodic HEALTH row per 5 s, rich enough that a
+        // reader does not have to join five event types to judge a recording.
+        //
+        // `leg_delta_ms` is the number that matters — how far the two legs have
+        // moved relative to EACH OTHER — and it is the Phase 1 gate (<40 ms over
+        // 30 min). It was already emitted, but as a STRING, which silently made
+        // it unusable for every numeric aggregation PostHog can do: no average,
+        // no p95, no "show me sessions over 40 ms". Interpolated numbers land as
+        // strings in PostHog and sort lexicographically, so "9" > "40". All the
+        // numeric fields below are sent as real ints.
+        await Analytics.capture('callrec_drift', {
+          ..._corr(ev.callId),
+          'leg_delta_ms': _intOf(ev.data['legDeltaMs']),
+          'near_drift_ms': _intOf(ev.data['nearDriftMs']),
+          'far_drift_ms': _intOf(ev.data['farDriftMs']),
+          'near_corrected_ms': _intOf(ev.data['nearCorrectedMs']),
+          'far_corrected_ms': _intOf(ev.data['farCorrectedMs']),
+          'near_gap_ms': _intOf(ev.data['nearGapMs']),
+          'far_gap_ms': _intOf(ev.data['farGapMs']),
+          'near_stale_ms': _intOf(ev.data['nearStaleMs']),
+          'far_stale_ms': _intOf(ev.data['farStaleMs']),
+          'near_dropped_ms': _intOf(ev.data['nearDroppedMs']),
+          'far_dropped_ms': _intOf(ev.data['farDroppedMs']),
+          'near_stalls': _intOf(ev.data['nearStalls']),
+          'far_stalls': _intOf(ev.data['farStalls']),
+          'near_rate': _intOf(ev.data['nearRate']),
+          'far_rate': _intOf(ev.data['farRate']),
+          'near_channels': _intOf(ev.data['nearChannels']),
+          'far_channels': _intOf(ev.data['farChannels']),
+          'near_batches': _intOf(ev.data['nearBatches']),
+          'far_batches': _intOf(ev.data['farBatches']),
+          'near_rejected': _intOf(ev.data['nearRejected']),
+          'far_rejected': _intOf(ev.data['farRejected']),
+          'elapsed_ms': _intOf(ev.data['elapsedMs']),
+          'paused_total_ms': _intOf(ev.data['pausedTotalMs']),
+          'paused': ev.data['paused'] == true,
         });
         break;
 
@@ -823,24 +1113,118 @@ class CallRecordingStore {
         // mid-call (spec §3.3). Native resamples; this is here so a pitch-shift
         // report can be correlated against a real route change.
         await Analytics.capture('callrec_rate_change', {
-          'call_id': ev.callId ?? '',
+          ..._corr(ev.callId),
           'leg': '${ev.data['leg'] ?? ''}',
-          'from': '${ev.data['from'] ?? ''}',
-          'to': '${ev.data['to'] ?? ''}',
+          'from': _intOf(ev.data['from']),
+          'to': _intOf(ev.data['to']),
+          'channels': _intOf(ev.data['channels']),
         });
         break;
 
       case 'probe':
-        AvaLog.I.log(
-            'callrec',
-            'adapter probe: source=${ev.data['adapterSource']} '
-                'near=${ev.data['near']} far=${ev.data['far']}');
+        // [CALLREC-TELEM-1] ⭐ QUERY THIS FIRST when anyone reports that
+        // recording did not work.
+        //
+        // This was previously an info-level `AvaLog` line and NOTHING ELSE.
+        // Only non-info AvaLog lines are forwarded to PostHog Logs, so the
+        // single most diagnostic fact in the whole feature — whether the
+        // never-before-used microphone tap bound, and on what hardware — existed
+        // only in a local ring buffer on the tester's phone. It could not be
+        // pulled, which for a feature diagnosed entirely from PostHog is the
+        // same as not existing.
+        final nearTok = '${ev.data['near'] ?? 'unknown'}';
+        final farTok = '${ev.data['far'] ?? 'unknown'}';
+        final source = '${ev.data['adapterSource'] ?? 'unknown'}';
+        final bound = nearTok == 'none' && farTok == 'none';
+        await Analytics.capture('callrec_adapter_probe', {
+          ..._corr(ev.callId),
+          // The headline booleans, so a reader does not have to know the token
+          // vocabulary to answer "did it bind".
+          'ok': bound,
+          'near_ok': nearTok == 'none',
+          'far_ok': farTok == 'none',
+          // …and the exact tokens, so someone who does can tell
+          // `adapter_field_null` (R8 stripped it / the field was renamed by a
+          // flutter_webrtc bump) from `method_call_handler_null` (we probed
+          // before the plugin was ready) from `webrtc_plugin_null` (no plugin at
+          // all) from `exception:NoSuchFieldException`.
+          'near': nearTok,
+          'far': farTok,
+          // `engine_bound` is correct; `shared_singleton` is the fallback that
+          // produced the 2026-08-05 `adapter_field_null` bug; and
+          // `engine_bound_singleton_mismatch` means a second plugin instance
+          // owns the static — a working probe that is one engine restart away
+          // from not working.
+          'adapter_source': source,
+          // Device context. A binding failure is about the OEM's WebRTC build,
+          // the API level and the audio HAL — never about the user. This is what
+          // turns "it didn't work on his phone" into "it doesn't work on this
+          // SoC family".
+          'manufacturer': '${ev.data['manufacturer'] ?? ''}',
+          'model': '${ev.data['model'] ?? ''}',
+          'device_name': '${ev.data['device'] ?? ''}',
+          'api_level': _intOf(ev.data['apiLevel']),
+          // §9's open question: if the near tap is PRE-APM, a device without a
+          // hardware AEC records un-cancelled far-end leakage into the near leg
+          // and mono summing comb-filters it. "The recording echoes but the call
+          // was clean" should correlate with hw_aec=false, not with the mixer.
+          'hw_aec': ev.data['hwAec'] == true,
+          'out_rate': _intOf(ev.data['outRate']),
+          'stereo': ev.data['stereo'] == true,
+        });
+        if (bound) {
+          AvaLog.I.log('callrec', 'adapter probe ok (source=$source)');
+        } else {
+          // warn → forwarded to PostHog Logs, so the tokens are retrievable by
+          // severity as well as by event.
+          AvaLog.I.warn('callrec',
+              'adapter probe FAILED: source=$source near=$nearTok far=$farTok');
+        }
         break;
 
       default:
         // A native build newer than this client must never crash it.
         AvaLog.I.log('callrec', 'unhandled event ${ev.type}');
     }
+  }
+
+  /// Coerce a platform-channel value to an int. Native sends Long/Int/Boolean
+  /// across the channel; anything unexpected reads as 0 rather than throwing
+  /// inside a telemetry path.
+  static int _intOf(Object? v) {
+    if (v is num) return v.toInt();
+    if (v is bool) return v ? 1 : 0;
+    return int.tryParse('${v ?? ''}') ?? 0;
+  }
+
+  /// The per-leg closing summary native attaches to its FINAL `state` event.
+  /// Empty on every mid-session state event, which is how the caller knows not
+  /// to overwrite a good summary with nothing.
+  static Map<String, Object> _legSummaryOf(Map<String, dynamic> d) {
+    if (!d.containsKey('nearStarted') && !d.containsKey('farStarted')) {
+      return const <String, Object>{};
+    }
+    return <String, Object>{
+      'near_started': d['nearStarted'] == true,
+      'far_started': d['farStarted'] == true,
+      'near_batches': _intOf(d['nearBatches']),
+      'far_batches': _intOf(d['farBatches']),
+      'near_rate': _intOf(d['nearRate']),
+      'far_rate': _intOf(d['farRate']),
+      'near_channels': _intOf(d['nearChannels']),
+      'far_channels': _intOf(d['farChannels']),
+      'near_gap_ms': _intOf(d['nearGapMs']),
+      'far_gap_ms': _intOf(d['farGapMs']),
+      'near_dropped_ms': _intOf(d['nearDroppedMs']),
+      'far_dropped_ms': _intOf(d['farDroppedMs']),
+      'near_stalls': _intOf(d['nearStalls']),
+      'far_stalls': _intOf(d['farStalls']),
+      'near_rejected': _intOf(d['nearRejected']),
+      'far_rejected': _intOf(d['farRejected']),
+      'sample_rate': _intOf(d['sampleRate']),
+      'channels': _intOf(d['channels']),
+      'stereo': d['stereo'] == true,
+    };
   }
 
   void _resetSession() {

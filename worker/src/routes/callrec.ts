@@ -240,6 +240,11 @@ export async function callRecUploadBegin(req: Request, env: Env, exec: Execution
     .bind(key, uid).first<{ id: string }>()
     .catch(() => null);
   if (existing) {
+    // [CALLREC-TELEM-1] waitUntil, because this is an early return: workerd
+    // drops unawaited telemetry on exactly this shape of path.
+    exec.waitUntil(trackUserContactSafe(env, uid, "callrec_upload_begin", {
+      call_id: callId, bytes: total, parts: 0, dedup: true, ok: true,
+    }));
     return json({ ok: true, key, dedup: true, upload_id: null, part_size: PART_SIZE, parts: 0 });
   }
 
@@ -251,6 +256,13 @@ export async function callRecUploadBegin(req: Request, env: Env, exec: Execution
 
   try {
     const mp = await env.DIGITAL.createMultipartUpload(key, { httpMetadata: { contentType: mime } });
+    // [CALLREC-TELEM-1] The chunked lane's OPENING event. Paired with
+    // `callrec_finalized {transport:"chunked"}` it gives the drop-off rate for
+    // large recordings: a begin with no matching finalize is an upload the user
+    // started and never completed, which is invisible from either event alone.
+    exec.waitUntil(trackUserContactSafe(env, uid, "callrec_upload_begin", {
+      call_id: callId, bytes: total, parts: partCount, dedup: false, ok: true,
+    }));
     return json({
       ok: true, key, upload_id: mp.uploadId, dedup: false,
       part_size: PART_SIZE, parts: partCount, max_parts: MAX_PARTS,
@@ -258,7 +270,11 @@ export async function callRecUploadBegin(req: Request, env: Env, exec: Execution
   } catch (e) {
     exec.waitUntil(trackException(env, e, {
       uid, route: "/api/callrec/upload/begin", method: "POST", handled: true,
-      extra: { call_id: callId, bytes: total },
+      extra: { call_id: callId, rec_id: clientIdFor(callId), bytes: total },
+    }));
+    exec.waitUntil(trackUserContactSafe(env, uid, "callrec_upload_begin", {
+      call_id: callId, bytes: total, parts: partCount, dedup: false,
+      ok: false, error: "begin_failed",
     }));
     return json({ error: "begin_failed" }, 500);
   }
@@ -302,6 +318,13 @@ export async function callRecUploadPart(req: Request, env: Env, exec: ExecutionC
     exec.waitUntil(trackException(env, e, {
       uid, route: "/api/callrec/upload/part", method: "PUT", handled: true,
       extra: { part_number: partNumber, bytes: body.byteLength },
+    }));
+    // [CALLREC-TELEM-1] A named event as well as the exception: "which part
+    // number do uploads die on" is a distribution question, and Error Tracking
+    // cannot answer it. A cluster at part 1 is a dead upload_id; a cluster near
+    // the end is a client giving up on a long file.
+    exec.waitUntil(trackUserContactSafe(env, uid, "callrec_upload_part_failed", {
+      part_number: partNumber, bytes: body.byteLength, code: "upload_expired",
     }));
     return json({ error: "part_failed", code: "upload_expired" }, 409);
   }
@@ -440,6 +463,7 @@ async function finalizeRecording(
   });
 
   let appended = false;
+  let appendStatus = 0;
   try {
     const res = await inboxFetch(env, uid, "https://inbox/append", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -450,10 +474,23 @@ async function finalizeRecording(
       }),
     });
     appended = res.ok;
+    appendStatus = res.status;
   } catch (e) {
     exec.waitUntil(trackException(env, e, {
       uid, route, method: "POST", handled: true,
-      extra: { call_id: callId, stage: "inbox_append" },
+      extra: { call_id: callId, rec_id: clientId, stage: "inbox_append" },
+    }));
+  }
+  // [CALLREC-TELEM-1] The Inbox row is the RECORD OF TRUTH for this feature —
+  // the push is only an accelerator — so an append that failed means the bytes
+  // are safely in R2 and the user will never see them. That is the worst
+  // silent outcome the server side has, and it previously produced only a
+  // boolean riding on the success event (and nothing at all when the DO
+  // answered a non-OK status without throwing, which is the more likely shape).
+  if (!appended) {
+    exec.waitUntil(trackUserContactSafe(env, uid, "callrec_inbox_append_failed", {
+      call_id: callId, conv, status: appendStatus, transport,
+      bytes: stored.bytes, media_id: stored.mediaId,
     }));
   }
 
@@ -470,14 +507,29 @@ async function finalizeRecording(
     } catch { /* best-effort */ }
   })());
 
+  const playbackUrl = await presignDigitalReadUrl(env, stored.key).catch(() => null);
+
   // Telemetry carries the OWNER's email + phone so a future PostHog pull can find
-  // this recording by either (CLAUDE.md per-session workflow).
+  // this recording by either (CLAUDE.md per-session workflow), and `peer_uid` so
+  // the other side of the conversation is retrievable too.
+  //
+  // [CALLREC-TELEM-1] The client emits its OWN `callrec_finalized` when the FILE
+  // is written; this one fires when the SERVER has it. Same `call_id` / `rec_id`,
+  // different `side` — a client finalize with no matching server finalize is a
+  // recording that exists only on the phone, which is exactly the gap
+  // `callrec_upload` is meant to close and the pair that proves whether it did.
+  //
+  // Emitted AFTER the presign so `presigned` is a real observation: a false here
+  // means R2 S3 credentials or DIGITAL_BUCKET_NAME are unset, i.e. the recording
+  // saved fine and is not downloadable — a config failure that otherwise only
+  // shows up later as a 503 on playback.
   exec.waitUntil(trackUserContactSafe(env, uid, "callrec_finalized", {
-    call_id: callId, duration_s: durationS, bytes: stored.bytes, mime: stored.mime,
-    direction, dedup: stored.dedup, appended, transport, peer_uid: peerUid || null,
+    call_id: callId, side: "server", duration_s: durationS, bytes: stored.bytes,
+    mime: stored.mime, direction, dedup: stored.dedup, appended, transport,
+    peer_uid: peerUid || null, conv, media_id: stored.mediaId,
+    presigned: !!playbackUrl,
   }));
 
-  const playbackUrl = await presignDigitalReadUrl(env, stored.key).catch(() => null);
   return json({
     ok: true, media_id: stored.mediaId, conv, client_id: clientId,
     playback_url: playbackUrl, dedup: stored.dedup, bytes: stored.bytes,
@@ -529,12 +581,12 @@ export async function callRecMeta(req: Request, env: Env, exec: ExecutionContext
     return json({ error: "patch_failed" }, 500);
   }
 
-  exec.waitUntil((async () => {
-    const c = await contactFor(env, uid).catch(() => ({ email: null, phone: null }));
-    await trackUserContact(env, uid, c.email, c.phone, "callrec_title_edited", "avacall", {
-      call_id: callId, has_title: !!env0.title, has_description: !!env0.description,
-    }).catch(() => { /* best-effort */ });
-  })());
+  exec.waitUntil(trackUserContactSafe(env, uid, "callrec_title_edited", {
+    call_id: callId, source: "server",
+    has_title: !!env0.title, has_description: !!env0.description,
+    title_len: String(env0.title ?? "").length,
+    description_len: String(env0.description ?? "").length,
+  }));
 
   return json({ ok: true, call_id: callId, title: env0.title ?? "", description: env0.description ?? "" });
 }
@@ -593,12 +645,13 @@ export async function callRecDelete(req: Request, env: Env, exec: ExecutionConte
     }));
   }
 
-  exec.waitUntil((async () => {
-    const c = await contactFor(env, uid).catch(() => ({ email: null, phone: null }));
-    await trackUserContact(env, uid, c.email, c.phone, "callrec_deleted", "avacall", {
-      call_id: callId, quota_released: released,
-    }).catch(() => { /* best-effort */ });
-  })());
+  exec.waitUntil(trackUserContactSafe(env, uid, "callrec_deleted", {
+    call_id: callId, surface: "server", quota_released: released,
+    // Whether there was an R2 object to release at all. A delete with no key is
+    // a row that never finished uploading, which is a different (and benign)
+    // shape from one where the quota release itself failed.
+    had_key: !!r2Key,
+  }));
 
   return json({ ok: true, call_id: callId, quota_released: released });
 }
@@ -640,11 +693,13 @@ export async function callRecPlayback(req: Request, env: Env, exec: ExecutionCon
     return json({ error: "unavailable", code: "presign_unavailable" }, 503);
   }
 
-  exec.waitUntil((async () => {
-    const c = await contactFor(env, uid).catch(() => ({ email: null, phone: null }));
-    await trackUserContact(env, uid, c.email, c.phone, "callrec_playback", "avacall", { call_id: callId })
-      .catch(() => { /* best-effort */ });
-  })());
+  // `source: "presign"` — this route is ONLY reached when the client had no
+  // local blob, so a high rate of it against `callrec_playback {source:"local"}`
+  // on the client means on-device copies are being evicted (or the recording was
+  // made on another of the user's devices), not that playback is broken.
+  exec.waitUntil(trackUserContactSafe(env, uid, "callrec_playback", {
+    call_id: callId, surface: "server", source: "presign", media_id: media.id,
+  }));
 
   return json({ ok: true, call_id: callId, media_id: media.id, playback_url: url });
 }
@@ -737,13 +792,28 @@ function quotaFullResponse(): Response {
   }, 413);
 }
 
-/** Contact-tagged telemetry that never throws — for use inside `waitUntil`. */
+/** Contact-tagged telemetry that never throws — for use inside `waitUntil`.
+ *
+ *  [CALLREC-TELEM-1] Stamps `rec_id` automatically whenever `call_id` is present.
+ *  `rec_id` is `callrec:<callId>` — byte-identical to [clientIdFor], to the Inbox
+ *  row's `client_id`, and to the `rec_id` the CLIENT puts on every one of its own
+ *  `callrec_*` events. That shared key is what lets one recording's whole
+ *  lifecycle be replayed as a single funnel across client AND server, instead of
+ *  two timelines someone has to join by hand at 2am.
+ *
+ *  Every call site is inside `exec.waitUntil(...)`: workerd DROPS unawaited
+ *  telemetry on an early-return error path (CLAUDE.md), and every emit here is on
+ *  a path that returns immediately afterwards. */
 async function trackUserContactSafe(
   env: Env, uid: string, event: string, props: Record<string, unknown>,
 ): Promise<void> {
   try {
     const c = await contactFor(env, uid).catch(() => ({ email: null, phone: null }));
-    await trackUserContact(env, uid, c.email, c.phone, event, "avacall", props);
+    const callId = props.call_id;
+    const enriched = typeof callId === "string" && callId
+      ? { rec_id: clientIdFor(callId), ...props }
+      : props;
+    await trackUserContact(env, uid, c.email, c.phone, event, "avacall", enriched);
   } catch { /* best-effort */ }
 }
 

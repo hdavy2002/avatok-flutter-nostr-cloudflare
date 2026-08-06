@@ -1,6 +1,8 @@
 package ai.avatok.callrecord
 
 import android.media.AudioFormat
+import android.media.audiofx.AcousticEchoCanceler
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
@@ -795,6 +797,10 @@ class CallRecorderPlugin :
                 // stalled legs, and after LEG_STALL_ABORT_MS the ladder would close
                 // and BURN a recording the user only paused.
                 if (!held) {
+                    // [CALLREC-TELEM-1] Before the silence check, not after: a leg
+                    // that DID deliver must be recorded as having delivered even on
+                    // a session that later fails, or the two events disagree.
+                    reportFirstSamples(now)
                     if (!legSilenceReported && now - legClockBaseMs > LEG_SILENT_TIMEOUT_MS) {
                         legSilenceReported = true
                         reportSilentLegs()
@@ -945,6 +951,33 @@ class CallRecorderPlugin :
                 // stall count survives the MAX_STALL_REPORTS cap.
                 "nearStalls" to (n?.stallEvents ?: 0),
                 "farStalls" to (f?.stallEvents ?: 0),
+                // [CALLREC-TELEM-1] Everything else needed to judge recording HEALTH
+                // from this one periodic event, so a reader does not have to join
+                // five event types to answer "was this recording any good".
+                //
+                // `staleSkipped` is the counterpart of `gap`: a gap means a leg was
+                // BEHIND (silence written where its audio had not arrived), stale
+                // means it was AHEAD and audio was thrown away. A recording with a
+                // large number of one and none of the other is a clock problem; both
+                // together is jitter.
+                "nearStaleMs" to samplesToMs(n?.staleSkipped ?: 0L),
+                "farStaleMs" to samplesToMs(f?.staleSkipped ?: 0L),
+                // Per-leg ADM truth, repeated here so ANY drift sample is
+                // self-describing — a rate change that happened before telemetry
+                // was flushed is still visible in the next drift row.
+                "nearRate" to (n?.inputRate ?: 0),
+                "farRate" to (f?.inputRate ?: 0),
+                "nearChannels" to (n?.inputChannels ?: 0),
+                "farChannels" to (f?.inputChannels ?: 0),
+                "nearBatches" to (n?.batches ?: 0L),
+                "farBatches" to (f?.batches ?: 0L),
+                "nearRejected" to (n?.rejectedBatches ?: 0L),
+                "farRejected" to (f?.rejectedBatches ?: 0L),
+                // Recorded elapsed, so drift can be read as a RATE (ms per minute)
+                // rather than an unanchored absolute.
+                "elapsedMs" to (now - recStartMs()),
+                "pausedTotalMs" to pausedTotalMs,
+                "paused" to paused,
             ),
         )
     }
@@ -1125,6 +1158,13 @@ class CallRecorderPlugin :
     /** Ladder steps 2 + 3: close the recording, keep what was captured, burn the call. */
     private fun degradeAndFinish(reason: String) {
         val id = callId
+        // [CALLREC-TELEM-1] Read BEFORE finishSession clears outputDir, and read
+        // once: this is the number that distinguishes "the phone filled up" from
+        // "the encoder died", and after the teardown there is nothing left to
+        // measure. The reason string alone cannot make that distinction, because
+        // `low_storage` and `encoder_failed` arrive on the same code path.
+        val free = freeBytes(outputDir)
+        val droppedMs = samplesToMs(droppedSamplesTotal())
         val map = finishSession(remux = true, reason = reason)
         if (id != null) disabledCalls.add(id)
         selfFinalized = map
@@ -1136,6 +1176,10 @@ class CallRecorderPlugin :
                 "path" to map["path"],
                 "durationMs" to map["durationMs"],
                 "bytes" to map["bytes"],
+                "freeMb" to (if (free == Long.MAX_VALUE) -1L else free / (1024L * 1024L)),
+                "droppedMs" to droppedMs,
+                "pauseCount" to pauseCount,
+                "pausedTotalMs" to pausedTotalMs,
             ),
         )
     }
@@ -1189,6 +1233,36 @@ class CallRecorderPlugin :
         val sid = safeId
         val work = workFile
         val id = callId
+
+        // [CALLREC-TELEM-1] Snapshot the per-leg health BEFORE the legs are dropped.
+        // These fields are the closing summary of the capture — they are what tells
+        // a reader whether the file that just landed contains two voices or one —
+        // and reading them after the nulls below would report zeros for every
+        // recording, which is worse than not reporting them at all.
+        val nSnap = near
+        val fSnap = far
+        // Explicitly typed: `mapOf` over mixed Boolean/Int/Long infers an
+        // intersection type, and there is no local Kotlin toolchain to prove it
+        // still satisfies `plus` on a Map<String, Any?> — a wrong guess costs a
+        // 40–80 min CI round trip.
+        val legSummary: Map<String, Any?> = mapOf(
+            "nearStarted" to (nSnap?.started ?: false),
+            "farStarted" to (fSnap?.started ?: false),
+            "nearBatches" to (nSnap?.batches ?: 0L),
+            "farBatches" to (fSnap?.batches ?: 0L),
+            "nearRate" to (nSnap?.inputRate ?: 0),
+            "farRate" to (fSnap?.inputRate ?: 0),
+            "nearChannels" to (nSnap?.inputChannels ?: 0),
+            "farChannels" to (fSnap?.inputChannels ?: 0),
+            "nearGapMs" to samplesToMs(nSnap?.gapSamples ?: 0L),
+            "farGapMs" to samplesToMs(fSnap?.gapSamples ?: 0L),
+            "nearDroppedMs" to samplesToMs(nSnap?.ring?.droppedSamples ?: 0L),
+            "farDroppedMs" to samplesToMs(fSnap?.ring?.droppedSamples ?: 0L),
+            "nearStalls" to (nSnap?.stallEvents ?: 0),
+            "farStalls" to (fSnap?.stallEvents ?: 0),
+            "nearRejected" to (nSnap?.rejectedBatches ?: 0L),
+            "farRejected" to (fSnap?.rejectedBatches ?: 0L),
+        )
 
         near = null
         far = null
@@ -1249,7 +1323,14 @@ class CallRecorderPlugin :
                 // the number instead of a guess.
                 "pausedTotalMs" to pausedTotalMs.toInt(),
                 "pauseCount" to pauseCount,
-            ),
+                // [CALLREC-TELEM-1] The file's own shape, so `callrec_finalized`
+                // describes the artifact and not just its size. `sampleRate` is the
+                // FIXED output rate every batch was resampled to — the per-leg INPUT
+                // rates are in `legSummary` and are the ones that move.
+                "sampleRate" to OUT_RATE,
+                "channels" to (if (stereo) 2 else 1),
+                "stereo" to stereo,
+            ).plus(legSummary),
         )
         return out
     }
@@ -1322,6 +1403,36 @@ class CallRecorderPlugin :
         }
     }
 
+    /**
+     * [CALLREC-TELEM-1] THE event to read first when someone says "recording did
+     * not work on my phone".
+     *
+     * The near-end microphone tap has never fired in this app — nothing in the repo
+     * has ever subscribed to `recordSamplesReadyCallbackAdapter` (spec §3.1) — so
+     * "did it bind, and on what hardware" is the single highest-value fact this
+     * feature can report. It carries:
+     *
+     *  - `near` / `far`: the EXACT resolver token per leg (`none` = bound). The two
+     *    are separate because the far leg is proven in production and the near leg
+     *    is not: `near=adapter_field_null, far=none` is a completely different bug
+     *    from both legs failing.
+     *  - `adapterSource`: which binding path won — `engine_bound` (correct),
+     *    `shared_singleton` (the fallback that produced `adapter_field_null` before
+     *    `[CALL-TRANSLATE-BIND-1]`), or `engine_bound_singleton_mismatch` (bound,
+     *    but a second plugin instance owns the static — the shape of the 2026-08-05
+     *    bug, and worth knowing even when the probe succeeded).
+     *  - device context. A binding failure is almost never about the user; it is
+     *    about the OEM's WebRTC build, the API level and the audio HAL. Without
+     *    manufacturer/model/API/AEC this event answers "it didn't work on his
+     *    phone"; with them it answers "it doesn't work on this SoC family", which
+     *    is the difference between one more test cycle and a fix.
+     *
+     * `hwAec` is `AcousticEchoCanceler.isAvailable()` — the pre/post-APM question
+     * in §9. If the near tap is pre-APM, a device with NO hardware AEC records
+     * un-cancelled far-end leakage into the near leg and mono summing comb-filters
+     * it, so "the recording echoes but the call was clean" correlates with
+     * `hwAec=false`, not with anything in the mixer.
+     */
     private fun emitProbe() {
         emit(
             mapOf(
@@ -1329,6 +1440,76 @@ class CallRecorderPlugin :
                 "adapterSource" to adapterSource,
                 "near" to nearFailure,
                 "far" to farFailure,
+                "callId" to callId,
+                "manufacturer" to safeStr { Build.MANUFACTURER },
+                "model" to safeStr { Build.MODEL },
+                "device" to safeStr { Build.DEVICE },
+                "apiLevel" to Build.VERSION.SDK_INT,
+                "hwAec" to hasHardwareAec(),
+                "outRate" to OUT_RATE,
+                "stereo" to stereo,
+            ),
+        )
+    }
+
+    /**
+     * Does this device advertise a hardware acoustic echo canceller? Wrapped
+     * because `isAvailable()` reaches the audio HAL and has been seen to throw on
+     * odd OEM builds — a telemetry probe must never be able to fail a start.
+     */
+    private fun hasHardwareAec(): Boolean = try {
+        AcousticEchoCanceler.isAvailable()
+    } catch (_: Throwable) {
+        false
+    }
+
+    private fun safeStr(f: () -> String?): String = try {
+        f() ?: "unknown"
+    } catch (_: Throwable) {
+        "unknown"
+    }
+
+    /**
+     * [CALLREC-TELEM-1] "The adapter bound" and "the adapter delivers audio" are
+     * two different facts, and only the second one produces a recording. This is
+     * the second one: emitted from the MIXER thread (never from an audio callback —
+     * §3.2) the first time a leg has produced anything.
+     *
+     * `firstSampleMs` is measured from [legClockBaseMs], i.e. from the start of the
+     * session or from the last resume, so a hold does not inflate it. The ADM's own
+     * reported rate and channel count ride along because they are per-leg and can
+     * differ (mic at 48 kHz mono, playout at 16 kHz stereo is a perfectly normal
+     * pair) — and because a leg that reports a rate we then resample from is where
+     * a pitch-shift complaint has to be traced to.
+     *
+     * A leg with a probe token of `none` and NO `legFirstSample` event is the exact
+     * silent-failure this feature's biggest risk describes: bound, subscribed,
+     * never called. That pair of facts is the answer, and it needs both events.
+     */
+    private fun reportFirstSamples(now: Long) {
+        reportFirstSample(near, now)
+        reportFirstSample(far, now)
+    }
+
+    private fun reportFirstSample(leg: LegTap?, now: Long) {
+        if (leg == null || !leg.started || leg.firstReported) return
+        leg.firstReported = true
+        val anchor = leg.anchorMs
+        val base = legClockBaseMs
+        emit(
+            mapOf(
+                "type" to "legFirstSample",
+                "callId" to callId,
+                "leg" to leg.name,
+                "firstSampleMs" to (if (anchor > 0L && base > 0L) anchor - base else now - base),
+                "inputRate" to leg.inputRate,
+                "inputChannels" to leg.inputChannels,
+                "outRate" to OUT_RATE,
+                "adapterSource" to adapterSource,
+                // Non-PCM16 batches. Should be 0; anything else means this leg is
+                // delivering a format the tap cannot use, which looks identical to
+                // silence in the finished file.
+                "rejected" to leg.rejectedBatches,
             ),
         )
     }

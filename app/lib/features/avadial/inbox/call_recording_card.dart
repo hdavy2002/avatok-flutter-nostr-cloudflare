@@ -174,6 +174,13 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
         'ok': false,
         'surface': 'inbox_card',
         'call_id': _callId,
+        'rec_id': 'callrec:$_callId',
+        // [CALLREC-TELEM-1] WHY it could not be played: `unavailable` (no local
+        // copy and the server has no row — the recording is genuinely lost),
+        // `download_failed` (the presign worked, the fetch did not — network),
+        // or `error`. Without this every playback failure looked the same.
+        'source': CallRecordingStore.I.lastAudioSource,
+        'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
         if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
       }));
       return;
@@ -192,6 +199,12 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
         'ok': true,
         'surface': 'inbox_card',
         'call_id': _callId,
+        'rec_id': 'callrec:$_callId',
+        // `local` = on-device blob (disk); `remote` = fresh presign + download.
+        // "Playback is slow" means two completely different things for the two,
+        // and a `remote` on a recording made on THIS phone means the local blob
+        // has been evicted — which is a real defect wearing a latency costume.
+        'source': CallRecordingStore.I.lastAudioSource,
         'bytes': bytes.length,
         'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
         if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
@@ -627,6 +640,7 @@ Future<void> markCallRecordingHeard(InboxCard card) async {
       'conv_hash': card.conv.hashCode,
       'duration_s': card.durationSec,
       'call_id': callRecIdOf(card),
+      'rec_id': 'callrec:${callRecIdOf(card)}',
       if (card.recPeerUid.isNotEmpty) 'peer_uid': card.recPeerUid,
     }));
   } catch (_) {/* the dot simply stays; nothing is lost */}
@@ -646,6 +660,17 @@ Future<void> callRecShare(
   final messenger = ScaffoldMessenger.of(context);
   final bytes = await CallRecordingStore.I.audioBytesAnywhere(callId);
   if (bytes == null || bytes.isEmpty) {
+    // [CALLREC-TELEM-1] This branch reported NOTHING, so a share that failed
+    // because the audio could not be loaded was invisible — it looked exactly
+    // like a share the user never attempted.
+    unawaited(Analytics.capture('callrec_shared', {
+      'ok': false,
+      'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'stage': 'load',
+      'source': CallRecordingStore.I.lastAudioSource,
+      if (peerUid != null && peerUid.isNotEmpty) 'peer_uid': peerUid,
+    }));
     messenger.showSnackBar(const SnackBar(
         content: Text('Couldn’t load the recording to share.')));
     return;
@@ -654,18 +679,33 @@ Future<void> callRecShare(
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}/$fileName');
     await f.writeAsBytes(bytes, flush: true);
+    // `Share.shareXFiles` hands off to the OS chooser, which does NOT report
+    // which app the user picked (and on Android below API 22 reports nothing at
+    // all), so the share TARGET is deliberately not claimed here rather than
+    // guessed. `bytes` is the useful dimension: it is what decides whether the
+    // target app will accept the file.
     await Share.shareXFiles([XFile(f.path, mimeType: 'audio/mp4')],
         subject: fileName);
     unawaited(Analytics.capture('callrec_shared', {
       'ok': true,
       'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'stage': 'chooser_opened',
+      'bytes': bytes.length,
+      'source': CallRecordingStore.I.lastAudioSource,
       if (peerUid != null && peerUid.isNotEmpty) 'peer_uid': peerUid,
     }));
   } catch (e, st) {
     unawaited(Analytics.captureException(e, st,
-        screen: 'callrec', handled: true, extra: {'stage': 'share'}));
-    unawaited(
-        Analytics.capture('callrec_shared', {'ok': false, 'call_id': callId}));
+        screen: 'callrec', handled: true, extra: {'stage': 'share', 'call_id': callId}));
+    unawaited(Analytics.capture('callrec_shared', {
+      'ok': false,
+      'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'stage': 'chooser',
+      'bytes': bytes.length,
+      if (peerUid != null && peerUid.isNotEmpty) 'peer_uid': peerUid,
+    }));
     messenger.showSnackBar(
         const SnackBar(content: Text('Couldn’t share the recording.')));
   }
@@ -681,6 +721,14 @@ Future<void> callRecDownload(
   final messenger = ScaffoldMessenger.of(context);
   final bytes = await CallRecordingStore.I.audioBytesAnywhere(callId);
   if (bytes == null || bytes.isEmpty) {
+    // [CALLREC-TELEM-1] Same silent branch as share — see the note there.
+    unawaited(Analytics.capture('callrec_downloaded', {
+      'ok': false,
+      'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'stage': 'load',
+      'source': CallRecordingStore.I.lastAudioSource,
+    }));
     messenger.showSnackBar(const SnackBar(
         content: Text('Couldn’t load the recording to download.')));
     return;
@@ -694,15 +742,26 @@ Future<void> callRecDownload(
       filename: fileName,
       mime: 'audio/mp4',
     );
-    unawaited(
-        Analytics.capture('callrec_downloaded', {'ok': true, 'call_id': callId}));
+    unawaited(Analytics.capture('callrec_downloaded', {
+      'ok': true,
+      'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'stage': 'saved',
+      'bytes': bytes.length,
+      'source': CallRecordingStore.I.lastAudioSource,
+    }));
     messenger.showSnackBar(
         SnackBar(content: Text('Saved to Downloads/AvaTok/$fileName')));
   } catch (e, st) {
     unawaited(Analytics.captureException(e, st,
-        screen: 'callrec', handled: true, extra: {'stage': 'download'}));
-    unawaited(Analytics.capture(
-        'callrec_downloaded', {'ok': false, 'call_id': callId}));
+        screen: 'callrec', handled: true, extra: {'stage': 'download', 'call_id': callId}));
+    unawaited(Analytics.capture('callrec_downloaded', {
+      'ok': false,
+      'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'stage': 'mediastore',
+      'bytes': bytes.length,
+    }));
     messenger.showSnackBar(
         const SnackBar(content: Text('Couldn’t save the recording.')));
   }
@@ -748,6 +807,17 @@ Future<bool> callRecConfirmDelete(
     if (local != null) {
       await CallRecordingStore.I.delete(callId);
     } else if (!await CallRecordingApi.delete(callId)) {
+      // [CALLREC-TELEM-1] A refused delete used to report nothing at all, so a
+      // user repeatedly failing to remove a recording — which also means their
+      // storage quota is never released — produced no signal whatsoever.
+      unawaited(Analytics.capture('callrec_deleted', {
+        'ok': false,
+        'call_id': callId,
+        'rec_id': 'callrec:$callId',
+        'surface': 'inbox_card',
+        'stage': 'server',
+        'had_local_row': false,
+      }));
       messenger.showSnackBar(const SnackBar(
           content: Text('Couldn’t delete the recording. Nothing was '
               'removed — try again.')));
@@ -755,12 +825,24 @@ Future<bool> callRecConfirmDelete(
     }
   } catch (e, st) {
     unawaited(Analytics.captureException(e, st,
-        screen: 'callrec', handled: true, extra: {'stage': 'delete'}));
+        screen: 'callrec', handled: true, extra: {'stage': 'delete', 'call_id': callId}));
+    unawaited(Analytics.capture('callrec_deleted', {
+      'ok': false,
+      'call_id': callId,
+      'rec_id': 'callrec:$callId',
+      'surface': 'inbox_card',
+      'stage': 'exception',
+    }));
     messenger.showSnackBar(
         const SnackBar(content: Text('Couldn’t delete the recording.')));
     return false;
   }
-  unawaited(Analytics.capture('callrec_deleted', {'ok': true, 'call_id': callId}));
+  unawaited(Analytics.capture('callrec_deleted', {
+    'ok': true,
+    'call_id': callId,
+    'rec_id': 'callrec:$callId',
+    'surface': 'inbox_card',
+  }));
   return true;
 }
 

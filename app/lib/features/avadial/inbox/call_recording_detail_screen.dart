@@ -158,7 +158,14 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
       });
       unawaited(Analytics.capture('callrec_playback', {
         'ok': false,
+        // [CALLREC-TELEM-1] `surface` was missing on this branch only, so a
+        // failed play from the detail screen was indistinguishable from one on
+        // the Inbox card — the two have different loading paths.
+        'surface': 'callrec_detail',
         'call_id': _callId,
+        'rec_id': 'callrec:$_callId',
+        'source': CallRecordingStore.I.lastAudioSource,
+        'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
         if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
       }));
       return;
@@ -179,6 +186,8 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
         'ok': true,
         'surface': 'callrec_detail',
         'call_id': _callId,
+        'rec_id': 'callrec:$_callId',
+        'source': CallRecordingStore.I.lastAudioSource,
         'bytes': bytes.length,
         'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
         if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,

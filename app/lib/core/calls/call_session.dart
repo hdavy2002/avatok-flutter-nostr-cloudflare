@@ -3280,6 +3280,34 @@ class CallSession {
         'on': on,
         if (_remoteId != null) 'to': _remoteId,
       });
+      // [CALLREC-TELEM-1] The consent surface is the ONLY thing standing between
+      // this feature and recording someone who does not know — and until now its
+      // delivery was purely INFERRED. Nothing recorded that the frame was sent,
+      // and nothing recorded that the peer received it, so "the other person saw
+      // an indicator" was an assumption, not an observation.
+      //
+      // Both ends emit `callrec_peer_indicator`, tagged with each device's own
+      // email. `dir=sent` here, `dir=received` in the receive switch. Matching
+      // the two by `call_id` across the two testers' timelines is what turns the
+      // consent claim into evidence — which is exactly the two-sided pull
+      // CLAUDE.md's telemetry rule asks for.
+      //
+      // `addressed` distinguishes a directed frame (we know the peer id; the DO
+      // forwards it verbatim) from a broadcast fallback (we do not yet, which is
+      // normal on the SFU path where no peer `offer` is ever exchanged). A
+      // missing `received` on the other side is a different bug in each case.
+      Analytics.capture('callrec_peer_indicator', {
+        'call_id': config.room,
+        'rec_id': 'callrec:${config.room}',
+        'dir': 'sent',
+        'on': on,
+        'forced': force,
+        'addressed': _remoteId != null,
+        'connected': _connected,
+        // `seed` IS the peer uid on this config (there is no `peerUid` field) —
+        // the same value `call_controls_toggled` reports as `peer_uid`.
+        if (config.seed.isNotEmpty) 'peer_uid': config.seed,
+      });
     } catch (_) {/* never let a consent frame disturb the call */}
   }
 
@@ -5137,7 +5165,29 @@ class CallSession {
       // construction: anything that is not literally `true` reads as off, and a
       // frame from a client that predates this feature simply never arrives.
       case 'callrec':
-        peerRecording.value = d['on'] == true;
+        final peerRec = d['on'] == true;
+        // [CALLREC-TELEM-1] The receiving half of the consent proof. This event
+        // firing on the OTHER tester's timeline, with the same `call_id`, is the
+        // evidence that the "Recording" indicator was actually delivered — as
+        // opposed to sent into a socket and assumed. Emitted before the notifier
+        // so a UI exception could never swallow the record of delivery.
+        //
+        // `changed` is here because the sender re-announces with `force` on
+        // connect, rejoin and peer-joined: a burst of identical frames is normal
+        // and expected, and without this a reader would read it as a loop.
+        Analytics.capture('callrec_peer_indicator', {
+          'call_id': config.room,
+          'rec_id': 'callrec:${config.room}',
+          'dir': 'received',
+          'on': peerRec,
+          'changed': peerRecording.value != peerRec,
+          if (config.seed.isNotEmpty) 'peer_uid': config.seed,
+        });
+        if (peerRec != peerRecording.value) {
+          AvaLog.I.log('call',
+              'peer recording indicator ${peerRec ? 'ON' : 'OFF'}');
+        }
+        peerRecording.value = peerRec;
         break;
       // [CALLHOLD-1] The peer told us their hold state. Defensive by
       // construction, exactly like `callrec`: anything that is not literally

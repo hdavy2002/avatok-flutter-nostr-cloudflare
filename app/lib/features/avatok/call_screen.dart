@@ -2010,6 +2010,18 @@ class _CallRecordTileState extends State<_CallRecordTile> {
   Future<bool> _askConsent() async {
     final peer = widget.peerName.trim();
     final theirs = peer.isEmpty ? 'the other person’s' : '$peer’s';
+    // [CALLREC-TELEM-1] Consent is a THREE-outcome funnel — shown → accepted, or
+    // shown → declined — and only the accept was ever recorded. Without `shown`
+    // there is no denominator, so "how many people back out of recording once
+    // they read what it does" was unanswerable; and a decline was
+    // indistinguishable from the dialog never appearing, which is also how a
+    // broken Record tile would look.
+    unawaited(Analytics.capture('callrec_consent_shown', {
+      'call_id': widget.callId,
+      'rec_id': 'callrec:${widget.callId}',
+      'direction': widget.direction,
+      if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
+    }));
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
@@ -2069,13 +2081,33 @@ class _CallRecordTileState extends State<_CallRecordTile> {
         ],
       ),
     );
-    if (ok != true) return false;
+    if (ok != true) {
+      unawaited(Analytics.capture('callrec_consent_declined', {
+        'call_id': widget.callId,
+        'rec_id': 'callrec:${widget.callId}',
+        'direction': widget.direction,
+        if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
+        // A tap on "Not now" and a dismissed dialog are the same product
+        // outcome but not the same UX signal.
+        'dismissed': ok == null,
+      }));
+      return false;
+    }
+    var persisted = true;
     try {
       await DiskCache.write(_consentKey, '1');
-    } catch (_) {/* they'll simply be asked again next call */}
+    } catch (_) {
+      // They'll simply be asked again next call — but a device that can never
+      // persist the flag shows the dialog on EVERY call, which reads to the user
+      // as a bug and would otherwise be invisible.
+      persisted = false;
+    }
     unawaited(Analytics.capture('callrec_consent_accepted', {
       'call_id': widget.callId,
+      'rec_id': 'callrec:${widget.callId}',
+      'direction': widget.direction,
       if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
+      'persisted': persisted,
     }));
     return true;
   }
@@ -2085,11 +2117,36 @@ class _CallRecordTileState extends State<_CallRecordTile> {
     _busy = true;
     try {
       if (recording) {
-        await CallRecordingStore.I.stop();
+        // [CALLREC-TELEM-1] The USER-INITIATED stop, which is a different fact
+        // from `callrec_finalized` (that one also fires for the degradation
+        // ladder and for orphan recovery). Timed with `uiInteraction` rather
+        // than a bespoke `*_ms` event, per CLAUDE.md: finalize remuxes the whole
+        // ADTS stream, so on a long recording this is a real, visible wait on
+        // the call screen and is exactly what that helper exists to measure.
+        final t0 = DateTime.now().millisecondsSinceEpoch;
+        unawaited(Analytics.capture('callrec_stop_tapped', {
+          'call_id': widget.callId,
+          'rec_id': 'callrec:${widget.callId}',
+          'direction': widget.direction,
+          if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
+        }));
+        final saved = await CallRecordingStore.I.stop();
+        unawaited(Analytics.uiInteraction(
+          'callrec_finalize',
+          DateTime.now().millisecondsSinceEpoch - t0,
+          extra: {
+            'call_id': widget.callId,
+            'rec_id': 'callrec:${widget.callId}',
+            'ok': saved != null,
+            'duration_s': saved?.durationS ?? 0,
+            'bytes': saved?.bytes ?? 0,
+          },
+        ));
         return;
       }
       unawaited(Analytics.capture('callrec_armed', {
         'call_id': widget.callId,
+        'rec_id': 'callrec:${widget.callId}',
         'direction': widget.direction,
         if (widget.peerUid.isNotEmpty) 'peer_uid': widget.peerUid,
       }));
