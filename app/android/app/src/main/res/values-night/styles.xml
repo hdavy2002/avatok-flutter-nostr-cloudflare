@@ -15,6 +15,9 @@
     <!-- flutter_stripe requires the host activity's theme to descend from
          Theme.AppCompat / Theme.MaterialComponents. Flutter draws its own UI. -->
     <style name="NormalTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- [UI-COLDSTART-2 2026-08-06] Pinned, same as values/styles.xml.
+             Correct here already by luck (dark mode resolves dark), but pin it
+             so the two variants can never drift apart again. -->
+        <item name="android:windowBackground">@color/avatok_launch_bg</item>
     </style>
 </resources>

@@ -19,7 +19,21 @@
     <!-- flutter_stripe requires the host activity's theme to descend from
          Theme.AppCompat / Theme.MaterialComponents (the PaymentSheet uses
          AppCompat components). Flutter draws its own UI, so this is invisible. -->
+    <!-- [UI-COLDSTART-2 2026-08-06] windowBackground pinned to the app's real
+         background, NOT ?android:colorBackground.
+
+         This is the flash the owner still saw after [UI-COLDSTART-1]. That fix
+         patched LaunchTheme and launch_background.xml, but MISSED this one —
+         and NormalTheme is the window shown AFTER LaunchTheme and BEFORE
+         Flutter's first frame. `?android:colorBackground` resolves against
+         DayNight, so on a phone in LIGHT mode it is WHITE, while AvaTOK is dark
+         on every surface regardless of the system setting. Result: dark splash
+         -> white window -> dark app, every single cold start.
+
+         Keep the MaterialComponents parent: flutter_stripe's PaymentSheet needs
+         an AppCompat/MaterialComponents-descended host activity theme. Only the
+         window background is overridden. -->
     <style name="NormalTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:windowBackground">@color/avatok_launch_bg</item>
     </style>
 </resources>

@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../identity/identity.dart';
+
 /// Disk cache for profile photos. Avatars are content-addressed (the last path
 /// segment of the blossom URL is the sha256), so a given URL+size is immutable
 /// and safe to cache forever. We fetch the Cloudflare-transformed variant
@@ -21,7 +23,30 @@ class AvatarCache {
   static const int _memCap = 500;
   static final Map<String, File> _mem = {};
 
+  // [AVATAR-WARM-1] Per-account guard for the PROCESS-WIDE [_mem] index. The
+  // avatars/ directory itself is deliberately NOT account-scoped — entries are
+  // content-addressed (the filename is the sha256 of the bytes, from the last
+  // path segment of the blossom URL), so a key can only ever resolve to the one
+  // set of bytes it names and no account can be handed another account's photo
+  // by a key collision. The guard exists so a *switch* doesn't leave the
+  // previous account's working set resident: on the first touch after
+  // AccountScope.id changes we drop the index, which also stops a stale entry
+  // outliving a photo change made by the other account in the same process.
+  static String? _memScope;
+
+  static String get _scopeNow =>
+      (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'guest' : AccountScope.id!;
+
+  /// Cheap (one string compare) — safe to call from build() via [peek].
+  static void _ensureScope() {
+    final s = _scopeNow;
+    if (_memScope == s) return;
+    _memScope = s;
+    _mem.clear();
+  }
+
   static void _remember(String key, File f) {
+    _ensureScope();
     if (_mem.containsKey(key)) return;
     if (_mem.length >= _memCap) {
       // Cheap eviction: drop the oldest inserted key (Dart maps keep insert order).
@@ -35,14 +60,104 @@ class AvatarCache {
   /// via a FutureBuilder). Never touches disk — safe to call in build().
   static File? peek(String rawUrl, int px) {
     if (rawUrl.isEmpty) return null;
+    _ensureScope();
     return _mem[_name(rawUrl, px)];
   }
 
-  static Future<Directory> _dir() async {
+  // [AVATAR-WARM-1] getApplicationSupportDirectory() is a native platform-channel
+  // round-trip, and this used to run on EVERY get/getAny/putBytes — i.e. once per
+  // avatar, ~15-20 concurrent round-trips the moment a chat list painted. Memoise
+  // the FUTURE (not the value): with a plain `??=` on a value, every concurrent
+  // caller passes the null check before the first await resolves and they all make
+  // the native call anyway. Same fix, same reason, as DiskCache._baseFut — whose
+  // comment records that it removed most of the ~850ms list-loading cost.
+  static Future<Directory>? _dirFut;
+
+  static Future<Directory> _dir() => _dirFut ??= _openDir();
+
+  static Future<Directory> _openDir() async {
     final base = await getApplicationSupportDirectory();
     final d = Directory('${base.path}/avatars');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
+  }
+
+  static bool _warmed = false;
+
+  /// [AVATAR-WARM-1] Populate the synchronous [peek] index from what is ALREADY
+  /// on disk, so a cached avatar paints on the FIRST frame instead of showing an
+  /// initials circle and popping to the photo when a per-row FutureBuilder
+  /// resolves. Without this, [_mem] is empty on every cold start and *every*
+  /// avatar misses on frame 1 — the visible "settling" on launch.
+  ///
+  /// The disk filename IS the cache key ([_name] → `<safe>_<px>.img`), so one
+  /// directory listing reconstructs the whole index with no parsing and no
+  /// per-file async work.
+  ///
+  /// Uses SYNCHRONOUS I/O (`listSync`/`statSync`). That is deliberate and is
+  /// acceptable exactly ONCE, at boot, off the widget path — never per build and
+  /// never per avatar. Call it from boot only; do not call it from a widget.
+  ///
+  /// MUST be called AFTER any cache purge (`DiskCache.flushImageCachesOnce`,
+  /// `DiskCache.purgeAllCaches`) — warming first would index files that are
+  /// about to be deleted. Idempotent: a second call is a no-op. Never throws.
+  static Future<void> warm() async {
+    if (_warmed) return;
+    _warmed = true;
+    try {
+      final d = await _dir();
+      _ensureScope();
+      // Cap the scan so a pathological directory can't stall boot.
+      final entries = d.listSync(followLinks: false).take(2000).toList();
+      final files = <MapEntry<String, File>>[];
+      final stamps = <String, DateTime>{};
+      for (final e in entries) {
+        if (e is! File) continue;
+        final name = e.uri.pathSegments.isNotEmpty ? e.uri.pathSegments.last : '';
+        if (name.isEmpty || !name.endsWith('.img')) continue;
+        FileStat st;
+        try {
+          st = e.statSync();
+        } catch (_) {
+          continue;
+        }
+        if (st.size <= 0) continue; // truncated/poisoned entry — treat as absent
+        files.add(MapEntry(name, e));
+        stamps[name] = st.modified;
+      }
+      if (files.length > _memCap) {
+        // Keep the most recently used entries; the rest fall back to the async path.
+        files.sort((a, b) => (stamps[b.key] ?? DateTime(0)).compareTo(stamps[a.key] ?? DateTime(0)));
+      }
+      for (final e in files.take(_memCap)) {
+        _mem.putIfAbsent(e.key, () => e.value);
+      }
+    } catch (_) {/* never block boot on a cache warm */}
+  }
+
+  /// [AVATAR-WARM-1] Now that [_dir] is memoised it no longer re-creates the
+  /// directory on every call, so a cache purge (which deletes `avatars/`
+  /// recursively) can leave us holding a handle to a directory that no longer
+  /// exists — and every subsequent write would fail silently, permanently
+  /// disabling the avatar cache. Costs nothing on the happy path: only a failed
+  /// write drops the memo, re-creates the directory and retries once.
+  static Future<void> _write(File f, Uint8List bytes) async {
+    try {
+      await f.writeAsBytes(bytes, flush: true);
+    } catch (_) {
+      _dirFut = null;
+      await (await _dir()).create(recursive: true);
+      await f.writeAsBytes(bytes, flush: true);
+    }
+  }
+
+  /// Drop the synchronous index and the memoised directory future. Call after a
+  /// cache purge or a sign-out so nothing stale is served from memory.
+  static void reset() {
+    _mem.clear();
+    _memScope = null;
+    _warmed = false;
+    _dirFut = null;
   }
 
   /// [AVA-MEDIA-AUTHZ-1] [keyOverride], when given, replaces the URL-derived
@@ -89,7 +204,7 @@ class AvatarCache {
   static Future<void> putBytes(String rawUrl, int px, Uint8List bytes) async {
     try {
       final f = File('${(await _dir()).path}/${_name(rawUrl, px)}');
-      await f.writeAsBytes(bytes, flush: true);
+      await _write(f, bytes);
       _remember(_name(rawUrl, px), f); // warm the sync index so it shows instantly
     } catch (_) {/* best-effort */}
   }
@@ -103,7 +218,7 @@ class AvatarCache {
       if (await f.exists() && await f.length() > 0) { _remember(_name(rawUrl, px), f); return f; }
       final res = await http.get(Uri.parse(transformUrl(rawUrl, px))).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200 && _looksLikeImage(res.bodyBytes)) {
-        await f.writeAsBytes(res.bodyBytes, flush: true);
+        await _write(f, res.bodyBytes);
         _remember(_name(rawUrl, px), f);
         return f;
       }
@@ -133,7 +248,7 @@ class AvatarCache {
       final fetchUrl = host.endsWith('avatok.ai') ? transformUrl(rawUrl, px) : rawUrl;
       final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200 && _looksLikeImage(res.bodyBytes)) {
-        await f.writeAsBytes(res.bodyBytes, flush: true);
+        await _write(f, res.bodyBytes);
         _remember(name, f);
         return f;
       }

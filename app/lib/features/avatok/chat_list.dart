@@ -17,6 +17,7 @@ import '../../core/chat_state.dart';
 import '../../core/chat_list_snapshot.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
+import '../../core/disk_cache.dart';
 import '../../core/filter_store.dart';
 import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
@@ -54,6 +55,80 @@ import 'search_screen.dart';
 import 'stranger_gate_api.dart';
 import 'unknown_caller.dart';
 
+/// [UI-COLDSTART-HEADER-1 2026-08-06] Last-known URL of MY OWN profile photo,
+/// for the header status avatar.
+///
+/// WHY this exists: the header avatar was built as `Avatar(seed: …, name: 'You')`
+/// with NO `avatarUrl` at all, so it could only ever render initials — the user's
+/// actual photo never appeared there. The URL lives in [ProfileStore], behind an
+/// async secure-storage read, which is far too late for frame 1. So it is
+/// mirrored into a plain per-account file: the in-memory copy makes every
+/// re-entry within a session synchronous, and the disk copy makes the first cold
+/// frame after launch cost one local file read instead of a blank icon that
+/// changes later.
+///
+/// Per-account by construction: [DiskCache] namespaces every entry under
+/// `cache/<AccountScope.id>/`, and [_scope] drops the in-memory copy the moment
+/// the active account changes, so one account can never show another's photo.
+class _MyAvatarUrlCache {
+  static const _key = 'my_avatar_url_v1';
+  static String _mem = '';
+  static String? _memScope;
+  static bool _hydrateStarted = false;
+
+  static String _scope() {
+    final id = AccountScope.id;
+    return (id == null || id.isEmpty) ? 'guest' : id;
+  }
+
+  static void _syncScope() {
+    final s = _scope();
+    if (_memScope == s) return;
+    _memScope = s;
+    _mem = '';
+    _hydrateStarted = false;
+  }
+
+  /// Synchronous, in-memory value — safe to read while building.
+  static String get value {
+    _syncScope();
+    return _mem;
+  }
+
+  /// One local file read. Returns the URL if it changed something, else null.
+  /// Never awaited on the paint path.
+  static Future<String?> hydrate() async {
+    _syncScope();
+    if (_hydrateStarted) return null;
+    _hydrateStarted = true;
+    final scope = _memScope;
+    try {
+      final v = await DiskCache.read(_key);
+      if (v == null || v.isEmpty) return null;
+      if (_memScope != scope || _mem.isNotEmpty) return null; // superseded
+      _mem = v;
+      return v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Record the authoritative URL from [ProfileStore]. Returns true when the
+  /// value actually changed (i.e. a repaint is warranted).
+  static bool set(String url) {
+    _syncScope();
+    _hydrateStarted = true; // the profile beats anything on disk
+    if (_mem == url) return false;
+    _mem = url;
+    if (url.isEmpty) {
+      unawaited(DiskCache.delete(_key));
+    } else {
+      unawaited(DiskCache.write(_key, url));
+    }
+    return true;
+  }
+}
+
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
 class ChatListScreen extends StatefulWidget {
   final ClerkClient clerk;
@@ -69,6 +144,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   final _contactsStore = ContactsStore();
   final _groupStore = GroupStore();
   Identity? _id;
+  /// [UI-COLDSTART-HEADER-1] My own profile photo URL for the header avatar
+  /// ('' = fall back to initials). Seeded synchronously from
+  /// [_MyAvatarUrlCache] in initState so frame 1 already has it within a
+  /// session; hydrated from disk / corrected from ProfileStore afterwards.
+  String _myAvatarUrl = '';
   List<Contact> _contacts = [];
   List<Group> _groups = [];
   NostrClient? _inbox;
@@ -223,6 +303,80 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         for (final g in groups) 'g:${g.id.hashCode}',
       };
 
+  // ─── [UI-COLDSTART-DIFF-1 2026-08-06] Repaint-only-if-something-changed ────
+  //
+  // WHY: the post-first-frame refreshers replaced the WHOLE list unconditionally.
+  // `_bootstrap`'s big setState reassigned contacts/groups/previews/lastRead/
+  // flags/unread/drafts/statuses wholesale, and `refreshMissingAvatars()` called
+  // `setState(() => _contacts = list)` no matter what — even though it is
+  // TTL-throttled to 24h per contact and therefore resolves NOTHING on most
+  // launches. Either one rebuilds every row, which recreates every `Avatar` and
+  // restarts its async load: the rows visibly re-settle a beat after they first
+  // painted, for no new information at all.
+  //
+  // These comparators are the cheap "did anything the user can SEE change?"
+  // test. `_rowIdentity` (above) stays what it is — the telemetry-side row-set
+  // diff, deliberately identity-only. These go further because a repaint also
+  // depends on names, photos and previews, not just which rows exist.
+  //
+  // DELIBERATELY CONSERVATIVE: any field we cannot cheaply prove equal counts as
+  // CHANGED and we repaint. A missed repaint is a stale screen; a spare repaint
+  // is only the cost we already pay today.
+
+  /// Everything a chat row renders from a [Contact].
+  static bool _sameContacts(List<Contact> a, List<Contact> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final x = a[i], y = b[i];
+      if (x.uid != y.uid ||
+          x.name != y.name ||
+          x.avatarUrl != y.avatarUrl ||
+          x.phone != y.phone ||
+          x.number != y.number ||
+          x.email != y.email) return false;
+    }
+    return true;
+  }
+
+  /// Everything a group row renders from a [Group] (membership included — the
+  /// ≤25 conference gate and the member count both read it).
+  static bool _sameGroups(List<Group> a, List<Group> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final x = a[i], y = b[i];
+      if (x.id != y.id ||
+          x.name != y.name ||
+          x.avatarUrl != y.avatarUrl ||
+          !listEquals(x.members, y.members) ||
+          !listEquals(x.admins, y.admins)) return false;
+    }
+    return true;
+  }
+
+  /// `mapEquals` compares values with `==`, and two equal `Set`s are NOT `==`
+  /// (identity), so the flags map needs its own per-key set compare.
+  static bool _sameFlags(Map<String, Set<String>> a, Map<String, Set<String>> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      final other = b[e.key];
+      if (other == null || !setEquals(e.value, other)) return false;
+    }
+    return true;
+  }
+
+  /// [ChatFilter] has no `==`, so compare its two fields positionally.
+  static bool _sameFilters(List<ChatFilter> a, List<ChatFilter> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].name != b[i].name || a[i].query != b[i].query) return false;
+    }
+    return true;
+  }
+
   // [BLANK-GUARD] The chat list is derived entirely from _contacts, and the
   // per-account caches (DiskCache/Db) silently fall back to a 'default' bucket
   // whenever AccountScope.id is momentarily null — which happens on first mount
@@ -272,6 +426,21 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (days <= 0) return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (days == 1) return 'Yesterday';
     return '${d.day}/${d.month}';
+  }
+
+  /// [UI-COLDSTART-HEADER-1] Adopt the profile photo URL for the header avatar,
+  /// mirroring it into [_MyAvatarUrlCache] so the NEXT cold start has it on the
+  /// first frame. Repaints only on a real change.
+  ///
+  /// The `isNotEmpty || _scopeReady` guard matters: `ProfileStore` is
+  /// account-scoped, so a read that races ahead of `AccountScope.id` legitimately
+  /// returns an EMPTY profile. Accepting that blank would delete a perfectly good
+  /// cached URL and blank the header — the same class of bug [BLANK-GUARD]
+  /// already guards the chat list against.
+  void _adoptMyAvatarUrl(String url) {
+    if (url.isEmpty && !_scopeReady) return;
+    if (!_MyAvatarUrlCache.set(url)) return;
+    if (mounted && url != _myAvatarUrl) setState(() => _myAvatarUrl = url);
   }
 
   /// Recompute the status count + the set of authors with a live status (drives
@@ -637,6 +806,28 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // by email (auto-stamped) — the in-session snapshot path should be ~0ms.
     final renderSw = Stopwatch()..start();
     _screenT0 = DateTime.now().millisecondsSinceEpoch; // [UI-COLDSTART-TELEMETRY-1]
+    // [UI-COLDSTART-HEADER-1] Seed the header avatar SYNCHRONOUSLY — no await on
+    // the paint path.
+    //
+    // `_id` used to be set only in `_bootstrap`, i.e. AFTER the first frame. The
+    // header avatar seeds its colour off `_id?.uid ?? 'me'`, so the icon painted
+    // in the 'me' colour and then visibly changed colour when the real uid
+    // arrived. `ApiAuth.identity` is the same object `IdentityStore` caches in
+    // memory (it assigns it on every successful load), so when it is warm this
+    // costs nothing and the seed is right from frame 1. `AccountScope.id` is the
+    // second-best seed because `Identity.uid` IS `AccountScope.id` whenever the
+    // scope is set — same colour, no identity load needed.
+    _id ??= ApiAuth.identity;
+    _myAvatarUrl = _MyAvatarUrlCache.value;
+    // …then top it up off disk / from the profile, both off the paint path.
+    unawaited(_MyAvatarUrlCache.hydrate().then((url) {
+      if (url != null && mounted && url != _myAvatarUrl) {
+        setState(() => _myAvatarUrl = url);
+      }
+    }));
+    unawaited(ProfileStore().load()
+        .then((p) => _adoptMyAvatarUrl(p.avatarUrl))
+        .catchError((Object _) {/* profile unreadable — initials are fine */}));
     if (ChatListSnapshot.has) {
       _contacts = ChatListSnapshot.contacts;
       _groups = ChatListSnapshot.groups;
@@ -1161,28 +1352,97 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final beforeRows = flashSource == null
         ? const <String>{}
         : _rowIdentity(_contacts, _groups);
-    if (mounted) {
-      setState(() {
-        _id = id; _contacts = contacts; _groups = groups;
-        _hiddenThreads = hiddenThreads;
-        _lastRead = lastRead; _flags = flags; _setStatuses(status); _drafts = drafts;
-        _previews = previews;
-        _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
-        if (dbUnreadByConv.isNotEmpty || _unread.isEmpty) {
-          _unread
-            ..clear()
-            ..addAll(dbUnreadByConv);
-        }
-        _booted = true; // loading done → safe to show the empty state if truly empty
-        _authoritativeLoaded = true; // store data wins over the projection paint
-      });
-    } else {
-      if (dbUnreadByConv.isNotEmpty || _unread.isEmpty) {
+    // [UI-COLDSTART-DIFF-1 2026-08-06] Repaint ONLY if the authoritative data
+    // differs from what the projection/snapshot already put on screen.
+    //
+    // On a warm launch the projection paint is, by construction, built from the
+    // very same stores this method reads — so it is usually IDENTICAL. The old
+    // unconditional setState still rebuilt every row, recreating every `Avatar`
+    // and restarting its async load. That is the "the rows fill in a moment
+    // after the list appears" the owner sees.
+    //
+    // `_authoritativeLoaded` is assigned OUTSIDE any setState on purpose: it is
+    // a race guard read by `_paintFromProjection`, not something build() renders,
+    // so flipping it must never cost a frame.
+    _authoritativeLoaded = true; // store data wins over the projection paint
+    final unreadWillReplace = dbUnreadByConv.isNotEmpty || _unread.isEmpty;
+    if (!mounted) {
+      if (unreadWillReplace) {
         _unread
           ..clear()
           ..addAll(dbUnreadByConv);
       }
-      _authoritativeLoaded = true;
+    } else {
+      // `_setStatuses` is a pure recompute over `_statusCount` / `_iHaveStatus` /
+      // `_statusAuthorHex` / `_myStatusThumb` and it reads `_id`, so run it AFTER
+      // `_id` is assigned and snapshot its outputs to see whether it moved
+      // anything. (It memoises the thumbnail future on `_myStatusSig`, so calling
+      // it here does not re-trigger a decrypt.)
+      final idChanged = _id?.uid != id.uid;
+      _id = id;
+      final authorsBefore = Set<String>.from(_statusAuthorHex);
+      final statusCountBefore = _statusCount;
+      final iHaveStatusBefore = _iHaveStatus;
+      final statusSigBefore = _myStatusSig;
+      _setStatuses(status);
+      final statusChanged = statusCountBefore != _statusCount ||
+          iHaveStatusBefore != _iHaveStatus ||
+          statusSigBefore != _myStatusSig ||
+          !setEquals(authorsBefore, _statusAuthorHex);
+      final changed = idChanged ||
+          statusChanged ||
+          !_booted || // the empty state is gated on this — must repaint once
+          (unreadWillReplace && !mapEquals(_unread, dbUnreadByConv)) ||
+          !_sameContacts(_contacts, contacts) ||
+          !_sameGroups(_groups, groups) ||
+          !mapEquals(_hiddenThreads, hiddenThreads) ||
+          !mapEquals(_lastRead, lastRead) ||
+          !_sameFlags(_flags, flags) ||
+          !mapEquals(_drafts, drafts) ||
+          !mapEquals(_previews, previews) ||
+          !setEquals(_enabledApps, enabled) ||
+          _accountKind != kind ||
+          !_sameFilters(_customFilters, customFilters);
+      if (changed) {
+        setState(() {
+          _contacts = contacts; _groups = groups;
+          _hiddenThreads = hiddenThreads;
+          _lastRead = lastRead; _flags = flags; _drafts = drafts;
+          _previews = previews;
+          _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
+          if (unreadWillReplace) {
+            _unread
+              ..clear()
+              ..addAll(dbUnreadByConv);
+          }
+          _booted = true; // loading done → safe to show the empty state if truly empty
+        });
+      } else {
+        // Nothing visible changed. Keep the references fresh WITHOUT a repaint,
+        // so later diffs compare against the authoritative objects.
+        _contacts = contacts; _groups = groups;
+        _hiddenThreads = hiddenThreads;
+        _lastRead = lastRead; _flags = flags; _drafts = drafts;
+        _previews = previews;
+        _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
+        if (unreadWillReplace) {
+          _unread
+            ..clear()
+            ..addAll(dbUnreadByConv);
+        }
+        // Fire-and-forget: proves in PostHog that the cached paint was already
+        // correct, which is the whole point of the cold-start work. Pairs with
+        // `cache_event`/`ui_content_flash` — a launch with a cache hit and NO
+        // flash and a skip here is a launch that did not re-settle.
+        unawaited(Analytics.capture('chat_list_repaint_skipped', {
+          'trigger': 'bootstrap',
+          'first_source': _cachedPaintSource ?? 'none',
+          'contacts': contacts.length,
+          'groups': groups.length,
+          'ms_since_paint': DateTime.now().millisecondsSinceEpoch -
+              (_cachedPaintAtMs != 0 ? _cachedPaintAtMs : _screenT0),
+        }));
+      }
     }
     // [UI-COLDSTART-TELEMETRY-1] …and report the swap if the authoritative data
     // differs from what the user was already looking at.
@@ -1274,8 +1534,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       );
     });
     // Backfill profile photos for contacts saved before avatars existed — silent.
+    //
+    // [UI-COLDSTART-DIFF-1] This used to `setState(() => _contacts = list)`
+    // UNCONDITIONALLY. It is TTL-throttled to 24h per contact, so on the vast
+    // majority of launches it resolves nothing and hands back a list identical
+    // to the one already on screen — yet the setState rebuilt every row, which
+    // recreates every `Avatar` widget and restarts its async image load. Rows
+    // that were already painted correctly dropped back to initials and popped
+    // to the photo again, seconds after launch, for no new data whatsoever.
     _contactsStore.refreshMissingAvatars().then((list) {
-      if (mounted) setState(() => _contacts = list);
+      if (!mounted) return;
+      if (_sameContacts(_contacts, list)) return; // nothing resolved → no repaint
+      setState(() => _contacts = list);
     });
     // [ISSUE-THREAD-RESTORE-1] Resurrect chat threads from restored message
     // history: once shortly after boot, and again after the sync catch-up has
@@ -1301,6 +1571,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       try {
         final cu = await widget.clerk.currentUser();
         final prof = await ProfileStore().load();
+        // [UI-COLDSTART-HEADER-1] This read happens with the account scope
+        // resolved, so it is the authoritative one for the header photo.
+        _adoptMyAvatarUrl(prof.avatarUrl);
         // Phone + email are the human-facing ids — attach them to telemetry so this
         // user's errors / slow loads / log lines are retrievable by phone or email.
         Analytics.setUserKeys(email: cu?.email, phone: prof.phone);
@@ -2158,6 +2431,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// when I have any live status. Tap → status viewer.
   Widget _headerStatusButton() {
     const sz = 32.0;
+    // [UI-COLDSTART-HEADER-1] Two fixes here.
+    //
+    // 1. SEED. `_id?.uid ?? 'me'` changed from 'me' to the real uid after the
+    //    first frame (see initState), and `Avatar` derives its colour from the
+    //    seed — so the icon visibly changed colour on launch. `AccountScope.id`
+    //    is inserted as the middle fallback because `Identity.uid` returns
+    //    exactly that whenever the scope is set: same seed, no identity load.
+    // 2. PHOTO. No `avatarUrl` was passed AT ALL, so this could only ever render
+    //    initials (or a status thumbnail) — never the user's actual photo.
+    final seed = _id?.uid ?? AccountScope.id ?? 'me';
+    final url = _myAvatarUrl.isEmpty ? null : _myAvatarUrl;
+    Avatar me() => Avatar(seed: seed, name: 'You', size: sz, avatarUrl: url);
     Widget inner;
     if (_myStatusThumb != null) {
       inner = ClipOval(
@@ -2168,12 +2453,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             builder: (_, s) => s.hasData
                 ? Image.memory(s.data!, width: sz, height: sz, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => const SizedBox.shrink())
-                : Avatar(seed: _id?.uid ?? 'me', name: 'You', size: sz),
+                : me(),
           ),
         ),
       );
     } else {
-      inner = Avatar(seed: _id?.uid ?? 'me', name: 'You', size: sz);
+      inner = me();
     }
     return GestureDetector(
       onTap: _openStatuses,

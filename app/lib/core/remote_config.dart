@@ -26,6 +26,38 @@ class RemoteConfig {
   static Map<String, dynamic> _cfg = const {};
   static Timer? _timer;
 
+  /// [BOOT-FLASH-1] Disk cache of the LAST-KNOWN-GOOD server config.
+  ///
+  /// Until 2026-08-06 `_cfg` lived in memory only, so EVERY cold start began on
+  /// the hardcoded defaults below and flipped to the server's values a moment
+  /// later when the HTTP GET landed. With `RootFlow.build` wrapped in a
+  /// `ValueListenableBuilder<RemoteConfig.revision>`, that flip rebuilt the whole
+  /// tree — and for a UI-shaping flag like [shellV2] it repainted an entirely
+  /// different shell. That is the "settle / flash" on launch.
+  ///
+  /// DEVICE-LEVEL, not per-account: `/api/config` is unauthenticated and returns
+  /// the same platform-wide blob for everyone (the only per-account thing in this
+  /// class is [_isAdmin], which keeps its own account-scoped cache), so
+  /// [DiskCache.writeGlobal] is correct here. Scoping it per account would mean
+  /// every account on a shared phone re-flashed on its first launch, and would
+  /// also make the cache unavailable during the pre-`AccountScope` boot window
+  /// where we actually need it.
+  static const String _kCfgCache = 'platform_config_v1';
+
+  /// Max age of the disk cache. Past this we fall back to the compile-time
+  /// defaults rather than trusting a very old snapshot — see the kill-switch note
+  /// on [hydrateFromDisk]. Generous (7d) because the app is used daily; a device
+  /// that hasn't reached `/api/config` in a week is not a device we should be
+  /// letting a week-old "feature ON" decision drive.
+  static const int _cfgCacheMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+
+  /// Signature of the config currently in [_cfg]. Used to bump [revision] ONLY
+  /// when the values actually changed — a 15-minute poll that returns the same
+  /// blob used to rebuild the entire widget tree for nothing.
+  static String _cfgSig = '';
+
+  static Future<void>? _hydrated;
+
   /// Bumps whenever a fetch lands — listen to re-check flags (e.g. the
   /// minAppBuild gate in RootFlow).
   static final ValueNotifier<int> revision = ValueNotifier(0);
@@ -603,7 +635,12 @@ class RemoteConfig {
   static Future<void> _resolveInstalledBuild() async {
     try {
       final n = int.tryParse((await PackageInfo.fromPlatform()).buildNumber);
-      if (n != null && n > 0) {
+      // [BOOT-FLASH-1] Bump ONLY on a real change. This used to bump
+      // unconditionally on every launch, and since RootFlow's build is wrapped in
+      // a ValueListenableBuilder on [revision] that was one guaranteed
+      // whole-tree rebuild per cold start, even though the resolved versionCode
+      // is identical every single time for a given install.
+      if (n != null && n > 0 && n != _installedBuild) {
         _installedBuild = n;
         revision.value++; // re-evaluate the gate with the true number
       }
@@ -661,8 +698,59 @@ class RemoteConfig {
   /// paths stay live in `chat_thread.dart`'s `_stopAndSendRecording`/`_upload`.
   static bool get voiceNoteEncryptionEnabled => _b('voiceNoteEncryptionEnabled', false);
 
+  /// [BOOT-FLASH-1] Load the last-known-good server config from disk into [_cfg]
+  /// BEFORE the first frame, so the app paints the flags it is actually going to
+  /// run with instead of the compile-time defaults. One small local file read
+  /// (same critical-path budget as `FontScale.load()`); NEVER a network call.
+  ///
+  /// Idempotent, and never throws — a missing, truncated, corrupt or
+  /// wrong-shaped file simply leaves [_cfg] empty so every getter falls back to
+  /// its hardcoded default, exactly as before this cache existed.
+  ///
+  /// KILL-SWITCH NOTE: this makes a cached value outlive the process. For a
+  /// device that CAN reach `/api/config`, [refresh] overwrites it within a second
+  /// of launch, so the exposure window is the same one we already had. For a
+  /// device that cannot, the cache is honoured for at most [_cfgCacheMaxAgeMs]
+  /// and then expires back to defaults. Server-side enforcement (every gated
+  /// route re-checks the live flag) remains the real gate; these getters are UX.
+  /// Memoised so concurrent callers await the SAME read (and so a later call can
+  /// never clobber a config that [refresh] has since fetched from the network).
+  static Future<void> hydrateFromDisk() => _hydrated ??= _hydrateFromDisk();
+
+  static Future<void> _hydrateFromDisk() async {
+    try {
+      final raw = await DiskCache.readGlobal(_kCfgCache);
+      if (raw == null || raw.isEmpty) return;
+      final env = jsonDecode(raw);
+      if (env is! Map) return;
+      final Object? at = env['at'];
+      final Object? cfg = env['cfg'];
+      if (at is! num) return;
+      if (cfg is! Map) return;
+      final age = DateTime.now().millisecondsSinceEpoch - at.toInt();
+      // A negative age means the device clock moved backwards — treat as unusable
+      // rather than trusting a snapshot we cannot date.
+      if (age < 0 || age > _cfgCacheMaxAgeMs) return;
+      final typed = Map<String, dynamic>.from(cfg);
+      _cfg = typed;
+      _cfgSig = jsonEncode(typed);
+      // Cheap, pure-Dart field — safe to apply before runApp. PartyHub is
+      // deliberately NOT touched here: it starts a realtime layer and belongs in
+      // [refresh], off the critical path.
+      AvaDns.dohEnabled = dohFallbackEnabled;
+    } catch (e) {
+      // Corrupt/unreadable cache must never brick a launch. _cfg is left exactly
+      // as it was (empty on the boot path), so every getter falls back to its
+      // hardcoded default — the pre-cache behaviour.
+      AvaLog.I.log('config', 'config cache hydrate failed: $e');
+    }
+  }
+
   /// Fetch now + poll every 15 min. Never throws.
   static Future<void> start() async {
+    // Safety net: main() hydrates before runApp, but start() may also be reached
+    // from a path that didn't (tests, a future entry point). Guarded + idempotent.
+    await hydrateFromDisk();
     // Paint the active account's cached admin flag first so admin-only surfaces
     // (Marketplace) render correctly on cold boot before the network probe lands.
     await _loadAdminCache();
@@ -733,13 +821,33 @@ class RemoteConfig {
       if (res.statusCode == 200) {
         final m = jsonDecode(res.body);
         if (m is Map<String, dynamic>) {
+          final sig = jsonEncode(m);
           _cfg = m;
+          // The network answer supersedes any disk hydrate: mark hydration done
+          // so a late [hydrateFromDisk] can never overwrite it with older values.
+          _hydrated ??= Future.value();
           // PERF-DNS-2 kill switch: let KV disable the DoH fallback if needed.
           AvaDns.dohEnabled = dohFallbackEnabled;
           // PartyKit realtime layer master switch (replaces Ably). Ships dark
           // until the PartyDO is deployed + this flag flipped on server-side.
           PartyHub.I.setEnabled(m['partyEnabled'] == true);
-          revision.value++;
+          // [BOOT-FLASH-1] Bump ONLY when the values actually changed. RootFlow's
+          // build listens to this notifier, so an unconditional bump rebuilt the
+          // whole widget tree on every 15-minute poll AND on the first fetch after
+          // a cold start that had already hydrated the identical config from disk.
+          if (sig != _cfgSig) {
+            _cfgSig = sig;
+            revision.value++;
+          }
+          // [BOOT-FLASH-1] Persist for the next cold start. Written on every
+          // successful fetch (not only on change) so the `at` timestamp stays
+          // fresh and an unchanged-but-still-valid config doesn't age out.
+          try {
+            await DiskCache.writeGlobal(
+              _kCfgCache,
+              jsonEncode({'at': DateTime.now().millisecondsSinceEpoch, 'cfg': m}),
+            );
+          } catch (_) {/* best-effort — a write failure just costs one flash */}
         }
       }
     } catch (e) {

@@ -17,6 +17,7 @@ import 'core/net/ava_dns.dart';
 import 'core/api_auth.dart';
 import 'core/app_registry.dart';
 import 'core/apps.dart';
+import 'core/avatar_cache.dart';
 import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
 import 'core/badge_service.dart';
@@ -90,6 +91,15 @@ void main() async {
   // local prefs read — kept before runApp so the first frame's text scale is
   // right (everything else heavy is deferred to post-first-frame below).
   try { await FontScale.load(); } catch (_) {/* default scale */}
+  // [BOOT-FLASH-1] Hydrate the remote-config flags from the last-known-good local
+  // snapshot BEFORE the first frame. Without this, every cold start painted the
+  // COMPILE-TIME defaults and then flipped to the server's values a moment later
+  // — and because RootFlow.build listens to RemoteConfig.revision, that flip
+  // rebuilt the whole tree (and, for `shellV2`, swapped one entire shell for
+  // another). One small local file read on the critical path, same budget as
+  // FontScale.load() above; the network fetch stays in the background below.
+  // Guarded: a corrupt cache file must never be able to brick launch.
+  try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults */}
   // Remote kill switches (A2): fetch in the background; never blocks startup.
   unawaited(RemoteConfig.start());
   // Route every uncaught error to PostHog as a $exception so crashes are queryable.
@@ -138,6 +148,11 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
   } catch (_) {/* never block boot on a cache purge */}
+  // [BOOT-FLASH-1] Index the on-disk avatar cache so the first paint of any
+  // avatar comes from local bytes instead of a network round-trip. ORDER IS
+  // LOAD-BEARING: this must run AFTER the flush above, or it would index files
+  // that the one-time purge is about to delete.
+  try { await AvatarCache.warm(); } catch (_) {/* best-effort — cold cache */}
   // Product analytics + error tracking (best-effort) — init FIRST so we can
   // capture a Firebase init failure instead of silently swallowing it.
   await Analytics.init();
@@ -610,9 +625,16 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         'secure store un-decryptable (BAD_DECRYPT) — wiping local state, re-restoring from server');
     // 1. Drop every secure-storage entry (all corrupt on a Keystore mismatch).
     try { await _idStore.wipeAllSecureStorage(); } catch (_) {}
+    // [BOOT-FLASH-1] The profile now has an in-memory cache keyed by account
+    // scope. This path wipes the underlying store WITHOUT changing the scope, so
+    // the scope check alone would keep serving a profile that no longer exists.
+    ProfileStore.invalidateCache();
     // 2. Clear all on-disk caches + the remembered-account pointer so nothing
     //    stale renders; the server restore rebuilds them.
     try { await DiskCache.purgeAllCaches(); } catch (_) {}
+    // [BOOT-FLASH-1] purgeAllCaches deletes the avatar files on disk; drop the
+    // in-memory index that pointed at them so nothing resolves to a dead path.
+    AvatarCache.reset();
     // 3. Drop the open local DB handle so it reopens clean for the restored scope.
     try { await Db.reset(); } catch (_) {}
     AccountScope.id = null;

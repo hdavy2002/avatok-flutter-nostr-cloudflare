@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import '../identity/identity.dart' show AccountScope;
 import 'account_storage.dart';
 import 'analytics.dart';
 import 'api_auth.dart';
@@ -120,6 +121,45 @@ class ProfileStore {
   // re-fired `400 profile_incomplete` on EVERY launch (84×/3d for one tester).
   // We persist the payload fingerprint here and skip an unchanged re-publish.
   static const _launchPubFpKey = 'profile_launch_pub_fp_v1';
+  // ── [BOOT-FLASH-1] In-memory cache, mirroring IdentityStore's `_cached` /
+  // `_cachedScope` pattern (identity/identity.dart). `load()` used to go to
+  // FlutterSecureStorage (Android EncryptedSharedPreferences — slow, and slower
+  // still on some OEMs) on EVERY call, and it is called on the gate path
+  // (AvaShell.validateGates), from the sidebar, and again from a chat-list
+  // background task. That is several encrypted reads racing on the cold-start
+  // critical path for a value that cannot have changed between them.
+  //
+  // PER-ACCOUNT SCOPING IS MANDATORY here: one phone is shared by a parent and
+  // each child account, so a profile cached under one account must never be
+  // served to another. [_cachedScope] holds the AccountScope.id the entry was
+  // read under and every hit re-checks it, so an account switch is a miss.
+  //
+  // The 60s freshness window is belt-and-braces for a writer OUTSIDE this class:
+  // PrefsSync.pull() (core/prefs_sync.dart) writes the raw `avatok_profile` key
+  // straight into secure storage during account restore, behind our back. The
+  // window still absorbs the entire cold-start burst (which happens inside a few
+  // seconds) while guaranteeing the cache self-heals shortly after any such
+  // out-of-band write.
+  static Profile? _cached;
+  static String? _cachedScope;
+  static int _cachedAtMs = 0;
+  static const int _cacheTtlMs = 60 * 1000;
+
+  /// Drop the in-memory profile cache. Call after wiping secure storage (the
+  /// BAD_DECRYPT self-heal in main.dart) — there the scope does NOT change, so
+  /// the scope check alone would keep serving a profile that no longer exists.
+  static void invalidateCache() {
+    _cached = null;
+    _cachedScope = null;
+    _cachedAtMs = 0;
+  }
+
+  static void _remember(Profile p, String scope) {
+    _cached = p;
+    _cachedScope = scope;
+    _cachedAtMs = DateTime.now().millisecondsSinceEpoch;
+  }
+
   final FlutterSecureStorage _s;
   ProfileStore([FlutterSecureStorage? s])
       : _s = s ??
@@ -128,11 +168,24 @@ class ProfileStore {
             );
 
   Future<Profile> load() async {
+    final scope = AccountScope.id ?? '';
+    final hit = _cached;
+    if (hit != null &&
+        _cachedScope == scope &&
+        DateTime.now().millisecondsSinceEpoch - _cachedAtMs < _cacheTtlMs) {
+      return hit;
+    }
     final raw = await readScoped(_s, _key);
-    if (raw == null || raw.isEmpty) return const Profile();
+    if (raw == null || raw.isEmpty) {
+      // Cache the "nothing stored for this account" answer too — it is the state
+      // a fresh signup sits in while the gate + sidebar + chat list all ask.
+      const empty = Profile();
+      _remember(empty, scope);
+      return empty;
+    }
     try {
       final j = jsonDecode(raw) as Map<String, dynamic>;
-      return Profile(
+      final p = Profile(
         displayName: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
         phone: (j['phone'] ?? '').toString(),
@@ -150,12 +203,24 @@ class ProfileStore {
         privatePhoneVerified: j['privatePhoneVerified'] == true,
         gender: (j['gender'] ?? '').toString(),
       );
+      _remember(p, scope);
+      return p;
     } catch (_) {
+      // Do NOT cache a parse failure — a transient/corrupt read must not pin an
+      // empty profile in memory for the next 60s.
       return const Profile();
     }
   }
 
-  Future<void> save(Profile p) => _s.write(
+  Future<void> save(Profile p) async {
+    final scope = AccountScope.id ?? '';
+    await _write(p);
+    // Write-through: keep the in-memory cache authoritative after a save, so the
+    // sidebar/gate don't read a stale profile straight after the user edits it.
+    _remember(p, scope);
+  }
+
+  Future<void> _write(Profile p) => _s.write(
       key: scopedKey(_key),
       value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'birthDate': p.birthDate, 'birthTime': p.birthTime, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber, 'privatePhoneVerified': p.privatePhoneVerified, 'gender': p.gender}));
 

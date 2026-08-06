@@ -22,29 +22,60 @@ class Avatar extends StatelessWidget {
     return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
   }
 
+  /// [AVATAR-WARM-1] The ONE circle both states are drawn into. The initials
+  /// state used to draw a 2px border while the resolved photo was a bare
+  /// ClipOval, so the ring vanished the instant the photo landed — a visible
+  /// second "settle" on top of the initials→photo swap. Both states now use this
+  /// identical box (same outer [size], same border, same clip), so when a swap
+  /// does still happen only the fill changes.
+  Widget _circle({Color? fill, Widget? child}) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: fill,
+          shape: BoxShape.circle,
+          border: Border.all(color: AD.borderHairline, width: 2),
+        ),
+        clipBehavior: Clip.antiAlias,
+        alignment: Alignment.center,
+        child: child,
+      );
+
+  Widget get _initialsText => Text(_initials,
+      style: TextStyle(
+          fontFamily: ADText.family,
+          color: AD.selfAvatarInk,
+          fontWeight: FontWeight.w600,
+          fontSize: size * 0.38));
+
   Widget _initialsCircle() {
     // Deterministic dark-v2 avatar family for this seed — the SAME rotation the
     // groups tab and the chat rows already use, so one person is one colour
     // everywhere. The `solid` variants are mid-dark, so the initials are always
     // white (the old "white only on coral" rule belonged to the pale palette).
-    final fill = AD.family(seed).solid;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: fill,
-        shape: BoxShape.circle,
-        border: Border.all(color: AD.borderHairline, width: 2),
-      ),
-      alignment: Alignment.center,
-      child: Text(_initials,
-          style: TextStyle(
-              fontFamily: ADText.family,
-              color: AD.selfAvatarInk,
-              fontWeight: FontWeight.w600,
-              fontSize: size * 0.38)),
-    );
+    return _circle(fill: AD.family(seed).solid, child: _initialsText);
   }
+
+  /// Fallback for a decode failure INSIDE [_photoCircle]: the outer bordered box
+  /// is already drawn, so this fills it rather than nesting a second circle
+  /// (which would double the border and shrink the avatar).
+  Widget _initialsInner() => Container(
+        color: AD.family(seed).solid,
+        alignment: Alignment.center,
+        child: _initialsText,
+      );
+
+  /// The photo state. Same box as [_initialsCircle]; [gaplessPlayback] keeps the
+  /// previous frame on screen if the source ever swaps (cache → fresh file)
+  /// instead of blanking to the fill for a frame.
+  Widget _photoCircle(File f) => _circle(
+        child: Image.file(f,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => _initialsInner()),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -56,18 +87,18 @@ class Avatar extends StatelessWidget {
     // session, render the photo SYNCHRONOUSLY on the first frame — no FutureBuilder
     // waiting state, no initials-then-photo pop-in as a chat list paints. Falls
     // back to the async disk/network path only on a genuinely cold avatar.
+    // [AVATAR-WARM-1] `_mem` is now WARMED FROM DISK at boot (AvatarCache.warm()),
+    // so this hits on the very first frame of a cold launch for any avatar already
+    // cached — not just ones re-resolved later in the same session. That is what
+    // stops the chat list painting initials and popping to photos one by one.
     final warm = AvatarCache.peek(url, px);
-    if (warm != null) {
-      return ClipOval(child: Image.file(warm, width: size, height: size, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _initialsCircle()));
-    }
+    if (warm != null) return _photoCircle(warm);
     return FutureBuilder<File?>(
       future: AvatarCache.get(url, px),
       builder: (context, snap) {
         final f = snap.data;
         if (f == null) return _initialsCircle(); // placeholder while loading / on failure
-        return ClipOval(child: Image.file(f, width: size, height: size, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _initialsCircle()));
+        return _photoCircle(f);
       },
     );
   }
