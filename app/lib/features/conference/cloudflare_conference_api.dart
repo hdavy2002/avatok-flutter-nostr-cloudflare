@@ -291,10 +291,31 @@ class ConferenceRoomApi {
   }
 
   static Future<Map<String, dynamic>> start(String roomId, {required String groupId, String mediaKind = 'audio'}) => _post(roomId, 'start', {'group_id': groupId, 'media_kind': mediaKind});
-  static Future<Map<String, dynamic>> reserveMigration(String roomId, {required String callEpoch}) => _post(roomId, 'migration/reserve', {'call_epoch': callEpoch});
+
+  /// [ADDCALL-2-UI] NO `call_epoch` HERE. `ConferenceRoomDO.reserveMigration`
+  /// does not read one — it RETURNS the `generation` that `prepare` must echo
+  /// back. Sending an epoch to reserve was harmless (the DO ignores unknown
+  /// body keys) but it invited the far more expensive mistake of computing the
+  /// epoch from the wrong counter and only finding out at `prepare`, which 409s
+  /// `stale_epoch` three steps from the cause. Take the value from the server's
+  /// own answer and echo it; never derive it.
+  static Future<Map<String, dynamic>> reserveMigration(String roomId) => _post(roomId, 'migration/reserve', const {});
+
+  /// `callEpoch` is `ConferenceRoomDO`'s `generation` — NOT the 1:1 call's
+  /// epoch. They are different counters over different lifecycles. Pass the
+  /// `generation` returned by [start] or [reserveMigration].
   static Future<Map<String, dynamic>> prepareMigration(String roomId, {required String migrationId, required String callEpoch}) => _post(roomId, 'migration/prepare', {'migration_id': migrationId, 'call_epoch': callEpoch});
   static Future<Map<String, dynamic>> commitMigration(String roomId, {required String migrationId, required bool sfuReady}) => _post(roomId, 'migration/commit', {'migration_id': migrationId, 'sfu_ready': sfuReady});
-  static Future<Map<String, dynamic>> abortMigration(String roomId, {required String migrationId}) => _post(roomId, 'migration/abort', {'migration_id': migrationId});
+  static Future<Map<String, dynamic>> abortMigration(String roomId, {String? migrationId, String? reason}) => _post(roomId, 'migration/abort', {
+        if (migrationId != null) 'migration_id': migrationId,
+        if (reason != null) 'reason': reason,
+      });
+
+  /// [ADDCALL-2-UI] Spec §4.1 step 8 — the 1:1 leg is down and the escalation is
+  /// finished. POST-COMMIT ONLY (the DO 409s a release before commit, which is
+  /// the exact failure make-before-break exists to prevent). Returns
+  /// `overlap_ms`: how long this device ran two encoders and two audio sessions.
+  static Future<Map<String, dynamic>> releaseMigration(String roomId) => _post(roomId, 'migration/release', const {});
   static Future<Map<String, dynamic>> reserveParticipant(String roomId, {String? sessionId}) => _post(roomId, 'participant/reserve', {'session_id': sessionId});
   static Future<Map<String, dynamic>> joinParticipant(String roomId, {String? sessionId}) => _post(roomId, 'participant/join', {'session_id': sessionId});
   static Future<Map<String, dynamic>> leaveParticipant(String roomId) => _post(roomId, 'participant/leave', const {});

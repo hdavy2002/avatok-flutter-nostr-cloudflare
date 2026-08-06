@@ -17,13 +17,16 @@ import '../../core/call_recording/call_recording_model.dart'; // [CALLREC-UI-1]
 import '../../core/call_recording/call_recording_store.dart'; // [CALLREC-UI-1]
 import '../../core/call_routing_api.dart';
 import '../../core/calls/adhoc_room_api.dart'; // [ADDCALL-1-UI]
+import '../../core/calls/call_escalation_guard.dart'; // [ADDCALL-2-UI]
 import '../../core/calls/call_overlay.dart';
 import '../../core/calls/call_telemetry_events.dart'; // [ADDCALL-1-UI]
 import '../../core/disk_cache.dart'; // [CALLREC-UI-1] per-account consent store
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
+import '../conference/call_escalation_service.dart'; // [ADDCALL-2-UI]
 import '../conference/cloudflare_conference_controller.dart'; // [ADDCALL-1-UI]
 import '../conference/cloudflare_conference_screen.dart'; // [ADDCALL-1-UI]
+import '../conference/conference_migration_coordinator.dart'; // [ADDCALL-2-UI]
 import 'add_to_call_sheet.dart'; // [ADDCALL-1-UI]
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
@@ -175,6 +178,10 @@ Future<void> clearCallState() async {
   gOutgoingSince = 0;
   gIncomingRingingFrom = null;
   gIncomingRingingCallId = null;
+  // [ADDCALL-2-UI] An escalation lease belongs to the account that took it. It
+  // already expires on its own, but an account switch must not leave the NEW
+  // account inheriting permission to be in two calls at once.
+  CallEscalationGuard.reset();
   try {
     await FlutterCallkitIncoming.endAllCalls();
   } catch (_) {/* none active */}
@@ -703,54 +710,42 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  //  [ADDCALL-1-UI] ADD TO CALL — spec Specs/SPEC-ADD-TO-CALL-2026-08-06.md §9,
-  //  PHASE 1 ONLY.
+  //  [ADDCALL-2-UI] ADD TO CALL — spec Specs/SPEC-ADD-TO-CALL-2026-08-06.md §4,
+  //  PHASE 2: MAKE-BEFORE-BREAK. No gap.
   //
-  //  Phase 1 is deliberately the CHEAP version the spec calls "a valid
-  //  intermediate": create the invisible room, END the 1:1, join the conference
-  //  cold. There WILL be a 2–4 second gap. Make-before-break (carrying the live
-  //  capture stream onto the SFU leg and only then releasing the P2P leg) is
-  //  Phase 2 and is NOT here — do not add it piecemeal, it needs the migration
-  //  coordinator, the DO reservation and the relaxed busy guards together.
+  //  This REPLACES the Phase 1 cold join (create the room, end the 1:1, join
+  //  from scratch, 2–4 seconds of silence). The 1:1 is now released only after
+  //  the conference is up, carrying this call's own microphone, with confirmed
+  //  inbound audio, with the other original party already in it, and with the
+  //  server's commit in hand.
   //
   //  THE ORDER OF OPERATIONS IS THE WHOLE DESIGN. Read it before changing it:
   //
   //   1. Everything that can refuse is checked or attempted while the 1:1 is
-  //      STILL UP. The picker, the navigator lookup and the `create` round-trip
-  //      all happen first, so every refusal — flag off, identity gate, cap,
-  //      blocked contact, no network — leaves the user on exactly the call they
-  //      were on, with a sentence explaining why. Nothing is torn down on a
-  //      maybe.
-  //   2. Only after the server has returned a real `conv_id` do we end the 1:1.
-  //   3. We WAIT for the teardown before joining. This is the "most easily
-  //      missed blocker in the whole feature" (spec §4.3 item 3): both
-  //      `CloudflareConferenceController.activeGid` and `callIsGenuinelyActive()`
-  //      refuse a second call, and `gLiveCallScreens` is only decremented inside
-  //      `CallSession._teardown`. Joining before that lands presents as "Add to
-  //      call does nothing", silently, on the initiator's own device.
+  //      STILL UP — picker, navigator, `create`, the whole migration. Every
+  //      refusal leaves the user on exactly the call they were on, with a
+  //      sentence explaining why. Nothing is torn down on a maybe.
+  //   2. `ConferenceMigrationCoordinator` never touches this call. It builds a
+  //      second one alongside and reports whether it is good enough to switch
+  //      to. See its header for the full state machine and for why it reserves
+  //      the server's single-flight lock LAST rather than first.
+  //   3. Only when it returns `ok` does the microphone change hands and this
+  //      leg go away — in that order, so nothing can stop tracks the conference
+  //      is publishing.
   //
-  //  On the guards specifically: this path does NOT relax them and does not need
-  //  to, because Phase 1 never overlaps two calls. It SEQUENCES around them —
-  //  `await endByUser()` (which awaits `hangup` → `_teardown`) plus a bounded
-  //  poll on `callIsGenuinelyActive()`. Phase 2 is where they genuinely have to
-  //  be relaxed, because the overlap is the point.
+  //  ON THE ONE-CALL-AT-A-TIME GUARDS (spec §4.3 gap #3, "the most easily-missed
+  //  blocker in the whole feature"). During make-before-break there are
+  //  deliberately two calls on this device. The permission to do that is a
+  //  LEASE — `CallEscalationGuard` — not a flag: it names the escalation, names
+  //  the two calls allowed to coexist, is released in a `finally` on every path,
+  //  and expires on wall-clock time whether or not anyone releases it. A
+  //  permanently-relaxed guard means two real simultaneous calls, which is worse
+  //  than the bug it fixes; this one cannot latch. See that file's header.
+  //
+  //  Note what is NOT relaxed: `_cfGroupCall`'s refusal in chat_thread/calls.dart
+  //  and the auto-busy in push_service.dart both stay closed during the overlap.
+  //  The escalation is allowed a second call; the user is not.
   // ───────────────────────────────────────────────────────────────────────────
-
-  /// Bounded wait for the one-call-at-a-time guard to actually clear.
-  ///
-  /// `endByUser()` awaits the memoized teardown, so this is normally already
-  /// true on entry and costs nothing. It exists because the teardown time-boxes
-  /// every native await (`_safeAwait`, 2s each) and swallows failures — a wedged
-  /// method channel can therefore return from `hangup` with the counter still
-  /// up. Returns whether the guard cleared; the caller reports it rather than
-  /// hiding it.
-  Future<bool> _awaitCallGuardClear({int budgetMs = 4000}) async {
-    final sw = Stopwatch()..start();
-    while (callIsGenuinelyActive() && sw.elapsedMilliseconds < budgetMs) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    return !callIsGenuinelyActive();
-  }
 
   void _escalationSnack(String msg) {
     if (!mounted) return;
@@ -805,6 +800,11 @@ class _CallScreenState extends State<CallScreen> {
     final peerName = widget.title;
     final peerAvatar = widget.avatarUrl;
     final invitees = picked.map((c) => c.uid).toList();
+    // [ADDCALL-2-UI] Sent to the peer over the 1:1 socket so it can title its
+    // own conference screen. Our title is built from OUR side of the call and
+    // contains the peer's own name, which would read back to them as a group
+    // named after themselves.
+    final inviteeNames = picked.map((c) => c.name).toList();
     final title = _escalatedTitle(peerName, picked);
 
     setState(() => _escalating = true);
@@ -812,7 +812,7 @@ class _CallScreenState extends State<CallScreen> {
     Analytics.capture(CallEvents.groupcallEscalateStarted, {
       'escalation_id': escalationId,
       'call_id': callId,
-      'phase': 1,
+      'phase': 2,
       'peer_uid': peerUid,
       'invitee_count': invitees.length,
       'member_count': invitees.length + 2,
@@ -834,7 +834,11 @@ class _CallScreenState extends State<CallScreen> {
         'escalation_id': escalationId,
         'call_id': callId,
         'reason': res.raw,
-        'error': res.error?.name,
+        // `?? 'unknown'` is not defensive padding: `Analytics.capture` takes a
+        // `Map<String, Object>` (non-nullable values), so a bare `?.name` is a
+        // compile error — and with no local Dart toolchain that costs a CI round
+        // trip to discover.
+        'error': res.error?.name ?? 'unknown',
         'http': res.status,
         'stage': 'create',
         'invitee_count': invitees.length,
@@ -870,87 +874,163 @@ class _CallScreenState extends State<CallScreen> {
       'participants': res.members,
     });
 
-    // ── Step 2: end the 1:1. Past this line the call is gone and `mounted` is
-    // false (endByUser consumes the pop hook), so nothing below may touch
-    // `context` or `setState` — everything uses `nav` and `Analytics`.
-    try {
-      await _session.endByUser();
-    } catch (e, st) {
-      // Teardown swallows its own failures; if one escapes, the call is still
-      // going away, so we continue into the conference rather than stranding
-      // the user between two calls.
-      Analytics.captureException(e, st,
-          handled: true,
-          screen: 'call_screen',
-          extra: {'stage': 'escalate_hangup', 'escalation_id': escalationId});
-    }
-
-    // ── Step 3: wait for the guard, then join cold.
-    final guardCleared = await _awaitCallGuardClear();
-    Analytics.capture(CallEvents.groupcallReleaseP2p, {
-      'escalation_id': escalationId,
-      'call_id': callId,
-      'gid_hash': gid.hashCode.toString(),
-      'guard_cleared': guardCleared,
-      'phase': 1,
-    });
-
-    if (CloudflareConferenceController.activeGid != null) {
-      // Should be impossible — we were on a 1:1, not a conference — but if a
-      // stale gid is latched, joining would be refused deep inside the
-      // controller with no message. Say it here instead, and offer the 1:1 back.
-      Analytics.capture(CallEvents.groupcallEscalateFailed, {
-        'escalation_id': escalationId,
-        'call_id': callId,
-        'reason': 'conference_already_active',
-        'stage': 'join',
-      });
-      _offerCallBack(nav, peerUid, peerName, peerAvatar, wantVideo,
-          "We couldn't start the group call.");
+    // ── Step 2: take the overlap lease. Everything after this MUST release it,
+    // which is why the rest of the method is one try/finally. (The lease also
+    // expires on its own, so even a crash here cannot leave the device
+    // permanently willing to be in two calls.)
+    final lease = CallEscalationGuard.acquire(
+      escalationId: escalationId, callId: callId, gid: gid,
+    );
+    if (lease == null) {
+      _escalationSnack('Already adding someone to this call.');
+      if (mounted) setState(() => _escalating = false);
       return;
     }
 
-    final joinedAt = DateTime.now().millisecondsSinceEpoch;
-    await nav.push(MaterialPageRoute(
-      builder: (_) => CloudflareConferenceScreen(
+    // The capture stream is BORROWED, never owned (see
+    // `CallSession.borrowedLocalCaptureStream`). Handing it to the conference is
+    // what makes the escalation gapless: the SFU leg comes up on the microphone
+    // that is already open, with no second `getUserMedia` and no permission
+    // prompt.
+    final stream = _session.borrowedLocalCaptureStream;
+    if (stream == null) {
+      CallEscalationGuard.release(lease, outcome: 'no_capture_stream');
+      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+        'escalation_id': escalationId, 'call_id': callId,
+        'stage': 'preflight', 'reason': 'no_capture_stream', 'phase': 2,
+      });
+      _escalationSnack("We couldn't set up the group call. Please try again.");
+      if (mounted) setState(() => _escalating = false);
+      return;
+    }
+
+    final coordinator = ConferenceMigrationCoordinator(
+      // The DO is addressed by the 1:1 CALL ID, not the group id — that is what
+      // puts both parties on the same durable object so its single flight can
+      // pick a winner when both press Add.
+      roomId: callId,
+      groupId: gid,
+      escalationId: escalationId,
+      video: wantVideo,
+      sharedLocalStream: stream,
+      inviteeNames: inviteeNames,
+      sendToPeer: _session.sendEscalationFrame,
+      controllerFactory: (s) => CloudflareConferenceController(
         gid: gid,
         title: title,
-        video: wantVideo,
+        wantVideo: wantVideo,
         // We minted the room, so we are the starter — that is what writes the
         // OUTGOING call-history row, which is the only place an ad-hoc call
         // appears at all (the conversation itself is invisible by design).
         starter: true,
+        sharedLocalStream: s,
+        // Carry this call's route across. A conference otherwise default-routes
+        // to speaker, which would put an earpiece conversation on loudspeaker
+        // in whatever room the user happens to be standing in.
+        initialSpeakerOn: _session.speakerOn.value,
       ),
-    ));
+    );
+    CallEscalationService.instance.registerAdder(callId, coordinator);
 
-    // ── If the conference route came back almost immediately, the join failed
-    // (or the screen refused to mount) rather than a call having happened. We
-    // cannot read the controller's state from here — it is disposed with the
-    // route — so the duration is the honest available signal, and it is used
-    // ONLY to decide whether to OFFER the 1:1 back. It never redials on its own.
-    final lifeMs = DateTime.now().millisecondsSinceEpoch - joinedAt;
-    if (lifeMs < 10000) {
-      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+    var outcome = 'unknown';
+    try {
+      // ── Step 3: the migration. This does not touch the 1:1 at all.
+      final result = await coordinator.run();
+
+      if (!result.ok) {
+        outcome = result.reason.isEmpty ? 'failed' : result.reason;
+        await coordinator.rollback(outcome);
+        // `rollback` ended the conference, and with it the device's single
+        // native audio session — which the conference had taken over. Put this
+        // call's session back or it survives with no communication mode and no
+        // route: alive and completely silent. See
+        // `NativeVoiceAudio.endP2pSession`'s ownership note.
+        await _session.reassertAudioSession();
+
+        if (_session.isEnded) {
+          // The 1:1 died on its own while we were migrating (peer hung up, the
+          // network went). There is no call to return them to, so offer it back
+          // rather than claiming they are still on it.
+          _offerCallBack(nav, peerUid, peerName, peerAvatar, wantVideo,
+              "The group call didn't connect.");
+        } else {
+          _escalationSnack(result.message);
+        }
+        if (mounted) setState(() => _escalating = false);
+        return;
+      }
+
+      // ── Step 4: committed. The order below is load-bearing.
+      final conf = coordinator.conference!;
+      // 4a. The microphone changes hands FIRST. `CallSession._teardown` stops
+      //     and disposes the capture stream, and the conference is publishing
+      //     those exact track objects — so this must happen before anything can
+      //     end this call, including the peer's `bye` racing us.
+      _session.loanCaptureStream(() => conf.ownsSharedLocalStream);
+      conf.assumeSharedLocalStreamOwnership();
+      // 4b. Tell the peer to release its own leg. It has been holding the
+      //     overlap open waiting for exactly this.
+      _session.sendEscalationFrame({'type': 'addcall-go', 'gid': gid});
+      // 4c. This object is out of the loop now; a late peer frame must not roll
+      //     back a committed call.
+      coordinator.detach();
+
+      // 4d. Release the 1:1 leg. `hangup` rather than `endByUser`: this is not
+      //     the user hanging up, and `endByUser`'s `bye` would read to the peer
+      //     as us leaving the call we are in the middle of moving them into.
+      // NOTE: do NOT pre-set `_popped` here. `_popIfMounted` early-returns on
+      // it and latches it itself only once a pop is genuinely going to happen —
+      // setting it first is exactly how you get a call screen that never leaves.
+      try {
+        final pop = _session.onRequestPop;
+        _session.onRequestPop = null;
+        pop?.call();
+      } catch (_) {}
+      try { _session.minimized.value = false; } catch (_) {}
+      try {
+        await _session.hangup('escalated-to-group');
+      } catch (e, st) {
+        Analytics.captureException(e, st,
+            handled: true, screen: 'call_screen',
+            extra: {'stage': 'escalate_hangup', 'escalation_id': escalationId});
+      }
+
+      // 4e. Show the conference. It is ALREADY connected — `adopt` exists so
+      //     the screen does not build and join a second one.
+      nav.push(MaterialPageRoute(
+        builder: (_) => CloudflareConferenceScreen(
+          gid: gid, title: title, video: wantVideo, starter: true, adopt: conf,
+        ),
+      ));
+
+      // 4f. Close the record. Failure here is bookkeeping only — the call is up.
+      final overlapMs = await coordinator.release();
+      outcome = 'committed';
+      Analytics.capture(CallEvents.groupcallEscalateCompleted, {
         'escalation_id': escalationId,
         'call_id': callId,
         'gid_hash': gid.hashCode.toString(),
-        'reason': 'conference_ended_immediately',
-        'stage': 'join',
-        'conference_life_ms': lifeMs,
+        'member_count': res.members.length,
+        'invitee_count': invitees.length,
+        'overlap_ms': overlapMs,
+        'phase': 2,
+        'participants': res.members,
       });
-      _offerCallBack(nav, peerUid, peerName, peerAvatar, wantVideo,
-          "The group call didn't connect.");
-      return;
+    } catch (e, st) {
+      outcome = 'exception';
+      Analytics.captureException(e, st,
+          handled: true,
+          screen: 'call_screen',
+          extra: {'stage': 'escalate', 'escalation_id': escalationId});
+      await coordinator.rollback('exception');
+      await _session.reassertAudioSession();
+      _escalationSnack(
+          "We couldn't set up the group call, so you're still on your original call.");
+      if (mounted) setState(() => _escalating = false);
+    } finally {
+      CallEscalationService.instance.unregisterAdder(callId, coordinator);
+      CallEscalationGuard.release(lease, outcome: outcome);
     }
-
-    Analytics.capture(CallEvents.groupcallEscalateCompleted, {
-      'escalation_id': escalationId,
-      'call_id': callId,
-      'gid_hash': gid.hashCode.toString(),
-      'conference_life_ms': lifeMs,
-      'member_count': res.members.length,
-      'phase': 1,
-    });
   }
 
   /// The one place a failed escalation is made good: a snackbar that offers to

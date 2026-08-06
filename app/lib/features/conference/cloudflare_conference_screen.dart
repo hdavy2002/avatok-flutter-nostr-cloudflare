@@ -28,12 +28,27 @@ class CloudflareConferenceScreen extends StatefulWidget {
   final String title;
   final bool video;
   final bool starter;
+
+  /// [ADDCALL-2-UI] An ALREADY-CONNECTED controller to adopt instead of building
+  /// one (make-before-break — `Specs/SPEC-ADD-TO-CALL-2026-08-06.md` §4).
+  ///
+  /// The whole point of the migration is that the conference is up, verified
+  /// and carrying the live capture stream BEFORE the 1:1 leg is released, so by
+  /// the time this screen exists the call is already running. Building a second
+  /// controller here would `/join` twice, publish twice and re-prompt for the
+  /// microphone.
+  ///
+  /// Null for every other call site, which keeps their behaviour identical.
+  /// This screen still owns disposal either way.
+  final CloudflareConferenceController? adopt;
+
   const CloudflareConferenceScreen({
     super.key,
     required this.gid,
     required this.title,
     required this.video,
     required this.starter,
+    this.adopt,
   });
 
   @override
@@ -49,10 +64,14 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ctrl = CloudflareConferenceController(
-        gid: widget.gid, title: widget.title, wantVideo: widget.video, starter: widget.starter);
+    final adopted = widget.adopt;
+    _ctrl = adopted ??
+        CloudflareConferenceController(
+            gid: widget.gid, title: widget.title, wantVideo: widget.video, starter: widget.starter);
     _ctrl.addListener(_onChanged);
-    unawaited(_ctrl.connect());
+    // [ADDCALL-2-UI] An adopted controller is already connected — calling
+    // connect() on it a second time would re-run the entire join sequence.
+    if (adopted == null) unawaited(_ctrl.connect());
   }
 
   void _onChanged() {

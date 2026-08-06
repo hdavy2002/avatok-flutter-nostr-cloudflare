@@ -459,8 +459,34 @@ class NativeVoiceAudio {
   /// the communication device, abandons focus, stops proximity, and restores
   /// the prior mode exactly once. Safe to call after only partial setup or
   /// more than once.
+  /// [ADDCALL-2-UI] A STALE OWNER MUST NOT CLOSE SOMEONE ELSE'S SESSION.
+  ///
+  /// This took a `callId` from the day it was written and never looked at it,
+  /// which was harmless while exactly one call could exist at a time. Make-
+  /// before-break escalation (spec §4.4, "two audio sessions briefly claim the
+  /// route") breaks that assumption on purpose: the conference calls
+  /// [beginP2pSession] with its OWN call id while the 1:1 is still up, taking
+  /// over the singleton, and moments later the 1:1's teardown calls this with
+  /// the OLD id. Unguarded, that tears down communication mode, audio focus,
+  /// SCO and proximity out from under a conference that had just come up — the
+  /// escalated call would connect and then go silent, with nothing logged.
+  ///
+  /// So: if another call currently holds the session, this is a no-op. The
+  /// holder's own `endP2pSession` is what will close it.
+  ///
+  /// For an ordinary call `_p2pCallId == callId` and nothing changes. The only
+  /// behaviour this removes is one call closing another's session, which was
+  /// never correct.
   Future<void> endP2pSession({required String callId}) async {
     if (!_p2pSessionActive && _p2pCallId == null) return;
+    final holder = _p2pCallId;
+    if (holder != null && holder != callId) {
+      Analytics.capture('call_audio_session_end_declined', {
+        'requested_call_id': callId,
+        'held_by_call_id': holder,
+      });
+      return;
+    }
     _p2pSessionActive = false;
     _p2pCallId = null;
     _activeRoute = CallAudioRoute.unknown;

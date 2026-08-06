@@ -46,6 +46,7 @@ import 'features/auth/restore_screen.dart';
 import 'features/avadial/ava_contact_book.dart' show AvaContactBook;
 import 'features/avadial/contacts_daily_backup.dart';
 import 'features/avatok/contacts.dart';
+import 'features/conference/call_escalation_service.dart'; // [ADDCALL-2-UI]
 import 'features/avatok/media.dart' show MediaService; // [CHAT-MEDIA-FIRSTFRAME-1] boot warm
 import 'features/identity/liveness_v3/voice_packs.dart';
 import 'features/identity/public_action_gate.dart'; // [AVA-IDGATE-1] 403→consent flow
@@ -72,6 +73,11 @@ void main() async {
   // lifecycle observer so a 1:1 call keeps its foreground service + signaling WS
   // alive when the app is backgrounded (CALL-BG-A). Cheap; no I/O.
   CallSessionManager.instance.register();
+  // [ADDCALL-2-UI] Install the add-to-call signalling hook. It has to be here
+  // rather than in the call screen because the `addcall` frame can arrive while
+  // the call is MINIMIZED, with no widget listening. Idempotent, no I/O, and a
+  // pure no-op until someone actually presses Add on the other end.
+  CallEscalationService.instance.install();
   // CALL-BG-INT1: wire the ongoing-call notification actions to the P2P call
   // session. These MUST be set on NativeVoiceAudio.instance (the shared
   // singleton) — the FGS is started via the same instance, which owns the

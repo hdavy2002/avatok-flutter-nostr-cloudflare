@@ -475,9 +475,22 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
   Future<void> _cfGroupCall(bool video, {bool joinOnly = false}) async {
     final gid = widget.chat.gid;
     if (gid == null) return;
-    if (CloudflareConferenceController.activeGid != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are already in a call — leave it first')));
+    // [ADDCALL-2-UI] DELIBERATELY NOT RELAXED FOR THE OVERLAP.
+    //
+    // During make-before-break this device really is in two calls (spec §4.3
+    // gap #3), and `CallEscalationGuard` grants that permission — but it grants
+    // it to the ESCALATION, not to the user. Starting an unrelated group call
+    // from a chat thread mid-migration would be a third call on one microphone,
+    // which is the outcome the lease exists to avoid, not to enable. So the
+    // refusal stands; only the wording changes, because "leave it first" is
+    // wrong advice for a call the app is in the middle of moving on its own.
+    if (CloudflareConferenceController.activeGid != null ||
+        CallEscalationGuard.overlapping) {
+      final escalating = CallEscalationGuard.overlapping;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(escalating
+              ? 'Your call is being moved to a group call — one moment'
+              : 'You are already in a call — leave it first')));
       return;
     }
     // [GCALL-W4-BUSY] …and a 1:1 call counts too. This guarded conference vs

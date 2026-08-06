@@ -586,6 +586,132 @@ class CallSession {
   /// is deliberately no setter, because nothing outside this class may swap the
   /// stream a live [RTCPeerConnection]'s senders are bound to.
   MediaStream? get borrowedLocalCaptureStream => _stream;
+
+  /// [ADDCALL-2-UI] Ownership handoff for make-before-break escalation.
+  ///
+  /// THE PROBLEM THIS SOLVES. [_teardownImpl] stops every track on [_stream] and
+  /// then disposes it. That is correct for an ordinary call and it is fatal for
+  /// an escalation: the conference `RTCPeerConnection` is publishing those exact
+  /// track objects, so ending the 1:1 leg would silence the group call two
+  /// seconds after it came up — the precise failure make-before-break exists to
+  /// prevent, arriving from the one direction nobody watches.
+  ///
+  /// So there is exactly ONE owner of the capture stream at any instant, and
+  /// this is how it changes hands. The borrower ([CloudflareConferenceController])
+  /// flips its own `_ownsLocalStream` to true and hands us a predicate that
+  /// reports whether it STILL owns it; teardown skips stop+dispose only while
+  /// that predicate says yes.
+  ///
+  /// Why a predicate and not a bool: a flag would have to be un-set on every
+  /// rollback path, and a missed un-set means the 1:1 leaves the microphone hot
+  /// forever. Asking the borrower means the two can never disagree — if the
+  /// conference died, failed, or was rolled back, it no longer claims ownership
+  /// and this session disposes the stream exactly as it always has.
+  bool Function()? _captureLoanCheck;
+
+  /// True only while another object has taken responsibility for disposing
+  /// [_stream]. Any throw from the predicate is read as "no loan", so a broken
+  /// borrower can never make us leak a live microphone.
+  bool get _captureStreamLoaned {
+    try {
+      return _captureLoanCheck?.call() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Hand disposal responsibility to a borrower. [borrowerStillOwns] must be a
+  /// live read of the borrower's own ownership flag, never a captured constant.
+  void loanCaptureStream(bool Function() borrowerStillOwns) {
+    _captureLoanCheck = borrowerStillOwns;
+    Analytics.capture('addcall_capture_stream_loaned', {'call_id': config.room});
+  }
+
+  /// Take disposal responsibility back (escalation rolled back). The borrower
+  /// MUST have already dropped its own claim before this is called.
+  void endCaptureStreamLoan() {
+    if (_captureLoanCheck == null) return;
+    _captureLoanCheck = null;
+    Analytics.capture('addcall_capture_stream_returned', {'call_id': config.room});
+  }
+
+  /// [ADDCALL-2-UI] Re-establish this call's native audio session after an
+  /// escalation rolled back.
+  ///
+  /// `NativeVoiceAudio` holds ONE communication session for the whole device.
+  /// A conference that comes up during the overlap takes it over, and that
+  /// conference's `leave()` then ends it — so a rolled-back escalation leaves
+  /// this still-live 1:1 with no communication mode, no audio focus and no
+  /// route. Re-assert rather than assume: this is the same two calls
+  /// `_startMedia` makes, with the route the user currently has.
+  Future<void> reassertAudioSession() async {
+    if (_ended || !RemoteConfig.callAudioControllerV2) return;
+    try {
+      await NativeVoiceAudio.instance
+          .beginP2pSession(callId: config.room, video: config.video);
+      final r = await NativeVoiceAudio.instance.selectRoute(
+        _speaker ? CallAudioRoute.speaker : CallAudioRoute.earpiece,
+        source: 'escalation-rollback',
+      );
+      _speaker = r.active == CallAudioRoute.speaker;
+      speakerOn.value = _speaker;
+    } catch (_) {/* best effort — never let this end a live call */}
+  }
+
+  // ── [ADDCALL-2-UI] Add-to-call signalling over the live 1:1 socket ──────────
+  //
+  // Spec §4.2: the other original party is already on a signalling socket, so
+  // the new conference id goes to them over it rather than by ringing someone
+  // we are mid-conversation with.
+  //
+  // Modelled EXACTLY on `callrec` ([CALLREC-PEER-1]) and `hold` ([CALLHOLD-1]):
+  // CallRoom relays any frame carrying a `to` verbatim and BROADCASTS one
+  // without, with no allow-list of frame types, so this needs zero worker
+  // changes. `to` is omitted when `_remoteId` is still null — on the SFU path no
+  // peer `offer` is ever exchanged, so the first joiner's `_remoteId` can
+  // legitimately be null on a live call and the broadcast fallback is the only
+  // thing that reaches them.
+  //
+  // Four frame types, all handled by the SAME dispatcher so the switch below
+  // stays four one-line cases:
+  //   `addcall`        adder -> peer   "here is the gid, start building"
+  //   `addcall-ack`    peer  -> adder  "I am in the conference and hearing it"
+  //   `addcall-go`     adder -> peer   "committed; release your 1:1 leg"
+  //   `addcall-abort`  either          "it failed; stay on the call you have"
+  //
+  // An older client has no case for any of them and this switch has no
+  // `default:` — they are a no-op there, never an exception.
+
+  /// Installed once at boot by `features/conference/call_escalation_service.dart`.
+  /// Static because the frame can arrive while the call is minimized and no
+  /// widget is listening; the service owns the response either way.
+  ///
+  /// Lives here rather than in the conference layer so `core/` keeps no import
+  /// of `features/` — the service registers itself downward.
+  static void Function(CallSession session, Map<String, dynamic> frame)?
+      escalationFrameHandler;
+
+  /// Send one escalation frame to the peer. Public because the coordinator that
+  /// drives the migration lives outside this class by design — this file is
+  /// already 7k lines and the migration is not call-setup logic.
+  void sendEscalationFrame(Map<String, dynamic> frame) {
+    try {
+      if (_ended) return;
+      _send(<String, dynamic>{
+        ...frame,
+        if (_remoteId != null) 'to': _remoteId,
+      });
+    } catch (_) {/* never let an escalation frame disturb the call */}
+  }
+
+  void _dispatchEscalationFrame(Map<String, dynamic> d) {
+    try {
+      final h = escalationFrameHandler;
+      if (h == null) return;
+      h(this, d);
+    } catch (_) {/* a broken handler must never break the call */}
+  }
+
   // [CF-CALL-P2P-1] Monotonic generation stamped on every PC created by
   // [_newPC] / promoted by [_promoteMigratedPc]. Event closures (onTrack in
   // particular) capture the generation they were installed under and bail if
@@ -5220,6 +5346,17 @@ class CallSession {
       case 'hold':
         peerHold.value = d['on'] == true;
         break;
+      // [ADDCALL-2-UI] Add-to-call (spec §4.2). All four frames go to the one
+      // dispatcher, which is a no-op unless the escalation service installed a
+      // handler at boot. Nothing here touches call state: an escalation that
+      // fails, or a handler that is missing entirely, leaves this call exactly
+      // as it was.
+      case 'addcall':
+      case 'addcall-ack':
+      case 'addcall-go':
+      case 'addcall-abort':
+        _dispatchEscalationFrame(d);
+        break;
       // [CALLHOLD-1] The `mute` frame has been SENT by this client for a long
       // time (toggleMute's peers, the focus hold, the cellular hold) and there
       // was no case for it here, so every one of those frames was received and
@@ -7358,12 +7495,32 @@ class CallSession {
     _sfuActive = false;
     _sfuStarting = false;
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
-    try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    // [ADDCALL-2-UI] The ONE place the capture stream survives this teardown.
+    //
+    // Read ONCE, here, so the stop and the dispose below can never disagree
+    // with each other (the borrower could in principle drop its claim between
+    // the two, which would stop the tracks and then leak the stream object).
+    // Everything else in this teardown is unchanged: the PC still closes, the
+    // socket still closes, the renderers still detach and dispose. Only the two
+    // lines that would silence a conference publishing these exact tracks are
+    // conditional — and only while a borrower is actively claiming ownership.
+    // See [loanCaptureStream]. For every ordinary call this is false and the
+    // sequence is byte-for-byte what it has always been.
+    final loanedOut = _captureStreamLoaned;
+    if (loanedOut) {
+      Analytics.capture('addcall_capture_stream_survived_teardown', {
+        'call_id': config.room,
+        'reason': reason ?? 'hangup',
+      });
+    } else {
+      try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    }
     await _safeAwait(() => _pc?.close(), ms: 3000);
     await _safeAwait(() => _ws?.sink.close());
     try { localRenderer.srcObject = null; } catch (_) {}
     try { remoteRenderer.srcObject = null; } catch (_) {}
-    await _safeAwait(() => _stream?.dispose());
+    if (!loanedOut) await _safeAwait(() => _stream?.dispose());
+    _captureLoanCheck = null;
     _stream = null;
     _pc = null;
     _ringback.dispose();

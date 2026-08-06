@@ -84,6 +84,16 @@ class CloudflareConferenceController extends ChangeNotifier {
   /// microphone or reconfigures the active capturer.
   final MediaStream? sharedLocalStream;
 
+  /// [ADDCALL-2-UI] Starting audio route, expressed as "speaker on?".
+  ///
+  /// Defaults to `true`, which is the behaviour every conference has always
+  /// had (and which the telemetry contract documents: *"conference calls
+  /// default-route to speaker"*). Make-before-break passes the 1:1's CURRENT
+  /// route instead, because an escalation is a continuation of a conversation
+  /// already in progress — jumping an earpiece call to speakerphone mid-sentence
+  /// puts the other person on loudspeaker in a room the user did not choose.
+  final bool initialSpeakerOn;
+
   CloudflareConferenceController({
     required this.gid,
     required this.wantVideo,
@@ -91,7 +101,34 @@ class CloudflareConferenceController extends ChangeNotifier {
     this.title = 'Group call',
     this.maxVideoSubs = kDefaultMaxVideoSubs,
     this.sharedLocalStream,
+    this.initialSpeakerOn = true,
   });
+
+  /// [ADDCALL-2-UI] Does this controller currently claim disposal
+  /// responsibility for [sharedLocalStream]?
+  ///
+  /// `CallSession.loanCaptureStream` reads this live, on every teardown, to
+  /// decide whether to stop and dispose the capture stream. Exactly one of the
+  /// two objects owns it at any instant; see the doc on `loanCaptureStream`.
+  bool get ownsSharedLocalStream => _ownsLocalStream;
+
+  /// Take disposal responsibility for the borrowed capture stream. Called by
+  /// the migration coordinator at the moment of commit, immediately before the
+  /// 1:1 leg is torn down. No-op when there is no shared stream (an ordinary
+  /// conference already owns the stream it captured itself).
+  void assumeSharedLocalStreamOwnership() {
+    if (sharedLocalStream == null) return;
+    _ownsLocalStream = true;
+  }
+
+  /// Give disposal responsibility back to the call session. **Must** be called
+  /// before [leave] on any rollback path — otherwise `leave()` stops and
+  /// disposes the tracks of a 1:1 call that is still very much running, which
+  /// turns a recoverable failed escalation into a dead call.
+  void releaseSharedLocalStreamOwnership() {
+    if (sharedLocalStream == null) return;
+    _ownsLocalStream = false;
+  }
 
   // Local placeholder id used only before the server's `welcome` frame
   // arrives (op-queue bookkeeping pre-join). Once the WS handshake completes,
@@ -141,7 +178,9 @@ class CloudflareConferenceController extends ChangeNotifier {
   int _joinedAtMs = 0;
   bool _muted = false;
   bool _cameraOn = false;
-  bool _speaker = true;
+  // [ADDCALL-2-UI] `late` so it can read `initialSpeakerOn`, which defaults to
+  // true — i.e. unchanged for every existing call site.
+  late bool _speaker = initialSpeakerOn;
   bool _ended = false;
   bool _disposed = false;
   CfConnState state = CfConnState.connecting;
@@ -605,8 +644,12 @@ class CloudflareConferenceController extends ChangeNotifier {
       // ConferenceScreen's `_speaker = true` default and the telemetry
       // contract's cloudflare_route_state note ("conference calls default-
       // route to speaker").
+      // [ADDCALL-2-UI] `_speaker` is `initialSpeakerOn`, which is `true` for
+      // every non-escalation call site — so this is the same speaker route it
+      // has always requested. An escalated call carries the 1:1's route across
+      // instead of yanking the conversation onto loudspeaker.
       final r = await NativeVoiceAudio.instance.selectRoute(
-        CallAudioRoute.speaker,
+        _speaker ? CallAudioRoute.speaker : CallAudioRoute.earpiece,
         source: 'initial',
       );
       _speaker = r.active == CallAudioRoute.speaker;

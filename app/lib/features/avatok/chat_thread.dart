@@ -53,6 +53,7 @@ import '../../core/ava_identity.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
 import '../../core/config.dart';
+import '../../core/calls/call_escalation_guard.dart'; // [ADDCALL-2-UI]
 import '../../core/calls/call_session_manager.dart';
 import '../../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
 import '../../core/ice_cache.dart';
