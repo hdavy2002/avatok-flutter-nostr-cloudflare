@@ -345,6 +345,13 @@ class _InboxListScreenState extends State<InboxListScreen> {
         if ((c.summaryText ?? '').toLowerCase().contains(q)) return true;
         if ((c.callerPhone ?? '').toLowerCase().contains(q)) return true;
         if ((c.callerName ?? '').toLowerCase().contains(q)) return true;
+        // [CALLREC-UX-1] A call recording has NO transcript (removed by the
+        // owner) — the user-typed title and description are the only words it
+        // ever carries, so they are the only way it can be found by name.
+        // Empty strings for every non-recording card, so this is a no-op there.
+        if (c.recTitle.toLowerCase().contains(q)) return true;
+        if (c.recDescription.toLowerCase().contains(q)) return true;
+        if (c.recPeerName.toLowerCase().contains(q)) return true;
       }
       return false;
     }).toList();
@@ -457,7 +464,10 @@ class _InboxListScreenState extends State<InboxListScreen> {
         padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s1),
         child: AdSearchDock(
           controller: _searchCtrl,
-          hint: 'Search calls, numbers, transcripts',
+          // [CALLREC-UX-1] "titles" is now a real promise — `_filtered` matches
+          // a recording's user-typed title/description (recordings have no
+          // transcript; the owner removed all AI from that feature).
+          hint: 'Search calls, numbers, titles',
           onChanged: (v) => setState(() => _query = v),
         ),
       ),
@@ -506,8 +516,13 @@ class _InboxListScreenState extends State<InboxListScreen> {
           const SizedBox(height: 100),
           ShellEmptyState(
             icon: PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
-            title: 'No messages yet',
-            subtitle: 'Missed calls Ava answers for you will show up here.',
+            // [CALLREC-UX-1] The Inbox has held call recordings since
+            // [CALLREC-UI-1], but this copy still only described voicemails —
+            // so the one screen that tells a new user what the Inbox is for
+            // never mentioned half of what lands in it.
+            title: 'No messages or recordings yet',
+            subtitle: 'Missed calls Ava answers for you, and calls you record, '
+                'will show up here.',
             color: AD.iconShield,
           ),
         ]),

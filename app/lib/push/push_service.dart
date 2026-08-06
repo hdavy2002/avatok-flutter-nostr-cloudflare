@@ -40,6 +40,11 @@ import '../core/update_service.dart'; // [AVA-UPDATE-PUSH-1] instant app-update 
 import '../core/voice/native_voice_audio.dart';
 import '../features/avadial/contact_overrides.dart' show ContactOverrides;
 import '../features/avadial/device_contacts.dart' show DeviceContacts;
+// [CALLREC-UX-1] `show` deliberately narrow — these two Inbox files pull in a
+// large widget tree, and only the deep-link tap handler below needs them.
+import '../features/avadial/inbox/inbox_api.dart' show InboxApi, InboxThread;
+import '../features/avadial/inbox/inbox_thread_screen.dart'
+    show InboxThreadScreen;
 import '../features/avatok/call_screen.dart';
 import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
@@ -302,11 +307,92 @@ void _onNotifTap(String? payload) {
     unawaited(UpdateService.onUpdatePush());
     return;
   }
+  // [CALLREC-UX-1] Defect 4: `worker/src/routes/callrec.ts` has always pushed
+  // `type: "call_recording"` with the conv id, but nothing on the client
+  // referenced the recording screens — the bg handler fell through to
+  // `_showIncoming`, which drops anything that isn't `type == 'call'`, so the
+  // notification either never appeared or opened wherever the app happened to
+  // be. Tap now lands on the Inbox thread holding the recording.
+  if (payload.startsWith('callrec:')) {
+    _clearBadge('callrec_notif_tap');
+    unawaited(_openCallRecordingThread(payload.substring('callrec:'.length)));
+    return;
+  }
   // CALLFIX-R7: 'chat' payload opens inbox (main notification tap on missed-call or message).
   // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
   _clearBadge('chat_notif_tap');
   navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
+}
+
+/// [CALLREC-UX-1] Deep link for a `type: 'call_recording'` notification tap:
+/// open the Inbox thread that holds the recording.
+///
+/// The push carries only the conv id, so the thread object has to be resolved
+/// (`InboxApi.threads()` is cache-backed, so this is usually instant). We stop
+/// at the THREAD rather than pushing `CallRecordingDetailScreen` directly
+/// because the detail screen needs the `InboxCard`, and the thread is the honest
+/// landing place anyway: it shows the new recording plus everything else with
+/// that person. A miss (thread not fetched yet, offline) still leaves the user
+/// on the app's home rather than wherever they were.
+Future<void> _openCallRecordingThread(String conv) async {
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+  nav.popUntil((r) => r.isFirst);
+  if (conv.isEmpty) return;
+  try {
+    final threads = await InboxApi.threads();
+    InboxThread? match;
+    for (final t in threads) {
+      if (t.conv == conv) {
+        match = t;
+        break;
+      }
+    }
+    final found = match;
+    if (found == null) {
+      Analytics.capture('callrec_notif_open', {'ok': false, 'reason': 'no_thread'});
+      return;
+    }
+    navigatorKey.currentState?.push(MaterialPageRoute<void>(
+      builder: (_) => InboxThreadScreen(thread: found),
+    ));
+    Analytics.capture('callrec_notif_open', {'ok': true});
+  } catch (e, st) {
+    unawaited(Analytics.captureException(e, st,
+        screen: 'push_callrec_deeplink', handled: true));
+  }
+}
+
+/// [CALLREC-UX-1] Local banner for "Call recording saved" — the worker's
+/// `type: 'call_recording'` push (worker/src/routes/callrec.ts). Payload
+/// `callrec:<conv>` is what [_onNotifTap] routes on.
+Future<void> _showCallRecordingNotif(Map<String, dynamic> d) async {
+  final conv = (d['conv'] ?? '').toString();
+  final who = (d['fromName'] ?? '').toString();
+  final count = await _bumpBadge('call_recording');
+  await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+  final body = who.isEmpty || who == 'AvaTOK'
+      ? 'Your call recording was saved'
+      : 'Your call with $who was saved';
+  await _local.show(
+    8007, // dedicated id — must not overwrite the message/missed-call banners
+    'Call recording saved',
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _msgChannel.id, _msgChannel.name,
+        channelDescription: _msgChannel.description,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        number: count,
+        ticker: 'Call recording saved',
+        category: AndroidNotificationCategory.status,
+      ),
+    ),
+    payload: conv.isNotEmpty ? 'callrec:$conv' : 'chat',
+  );
+  await _bgTrack('push_shown', {'channel': 'messages', 'type': 'call_recording'});
 }
 
 /// Local banner for "X added you to <group>" (Phase D — owner request
@@ -396,6 +482,10 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       await _showMessageNotif(d);
     } else if (type == 'group_invite') {
       await _showGroupInviteNotif(d);
+    } else if (type == 'call_recording') {
+      // [CALLREC-UX-1] Used to fall through to `_showIncoming`, which discards
+      // anything that isn't `type == 'call'` — so this push did nothing at all.
+      await _showCallRecordingNotif(d);
     } else if (type == 'app_update') {
       // [AVA-UPDATE-PUSH-1] A new build was published and the app is asleep — post
       // a quiet "Update available" banner; the tap resumes us and prompts to update.
@@ -2815,6 +2905,13 @@ class PushService {
         // there's something new — kick a cursor sync even if the socket looks
         // alive, so the message lands immediately instead of after the zombie
         // watchdog eventually notices.
+        SyncHub.I.syncFromPush();
+        return;
+      }
+      // [CALLREC-UX-1] Foreground twin of the bg branch: banner (so the tap can
+      // deep-link) + a cursor sync so the recording's Inbox row lands now.
+      if (d['type'] == 'call_recording') {
+        unawaited(_showCallRecordingNotif(d));
         SyncHub.I.syncFromPush();
         return;
       }

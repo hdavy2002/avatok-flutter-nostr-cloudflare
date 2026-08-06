@@ -1,13 +1,25 @@
-import 'package:flutter/material.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../../core/analytics.dart';
+import '../../../core/audio_playback_service.dart';
 import '../../../core/avatar.dart';
+import '../../../core/call_recording/call_recording_api.dart';
+import '../../../core/call_recording/call_recording_store.dart';
 import '../../../core/profile_store.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../identity/identity.dart';
+import '../avadial_channel.dart';
+import '../avadial_theme.dart';
 import 'call_recording_detail_screen.dart';
 import 'inbox_api.dart';
+import 'inbox_heard_store.dart';
 
 /// [CALLREC-UI-1] The Inbox card for one call recording.
 ///
@@ -24,12 +36,34 @@ import 'inbox_api.dart';
 /// anywhere in this widget — the owner removed all AI from this feature in rev 11
 /// of the spec. If a future reader is tempted to add one, that is a product
 /// decision, not a gap.
-Widget buildCallRecordingCard(BuildContext context, InboxCard card) =>
-    _CallRecordingCard(card: card);
+///
+/// [CALLREC-UX-1] GESTURE MODEL — deliberately the SAME as `_VoicemailCard`
+/// (inbox_thread_screen.dart), because a user trained on voicemails brings that
+/// training here:
+///   • tap the play icon  → plays INLINE on the card (it used to be a purely
+///     decorative glyph: the whole card was one GestureDetector, so tapping the
+///     green play button pushed a screen instead of making a sound)
+///   • long-press the card → the bottom-sheet menu
+///   • tap the card BODY   → the detail screen, which is where title/description
+///     are edited. Long-press alone would hide that, so the body tap is kept.
+/// The play icon's own GestureDetector is nested INSIDE the card's, so the
+/// innermost recognizer wins the tap and the card tap never double-fires; the
+/// icon declares no long-press, so a long-press anywhere (icon included) falls
+/// through to the card's menu.
+Widget buildCallRecordingCard(
+  BuildContext context,
+  InboxCard card, {
+  VoidCallback? onDeleted,
+}) =>
+    _CallRecordingCard(card: card, onDeleted: onDeleted);
 
 class _CallRecordingCard extends StatefulWidget {
-  const _CallRecordingCard({required this.card});
+  const _CallRecordingCard({required this.card, this.onDeleted});
   final InboxCard card;
+
+  /// Called once the recording is really gone (menu → Delete, or Delete on the
+  /// detail screen), so the thread can drop the row without a full refetch.
+  final VoidCallback? onDeleted;
 
   @override
   State<_CallRecordingCard> createState() => _CallRecordingCardState();
@@ -40,6 +74,11 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
   /// once; a failure just leaves the initials avatar, never an error state.
   String _myName = '';
   String _myAvatar = '';
+
+  /// Inline-playback state, mirroring `_VoicemailCard`: a spinner while the
+  /// bytes are being found, and an honest one-liner if they cannot be.
+  bool _loading = false;
+  String? _error;
 
   InboxCard get _c => widget.card;
 
@@ -84,21 +123,204 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
     return DateTime.fromMillisecondsSinceEpoch(ms <= 0 ? 0 : ms);
   }
 
+  /// Same derivation as `CallRecordingDetailScreen._callId` — the envelope's
+  /// `call_id`, falling back to stripping the `callrec:` prefix off `client_id`
+  /// for a row whose body failed to parse.
+  String get _callId => callRecIdOf(_c);
+
+  /// Namespaced `callrec:` so a recording can never collide with the `ibx:`
+  /// voicemail tracks in the shared player — and IDENTICAL to the detail
+  /// screen's, so play here and pause there act on one track, not two.
+  String get _trackId => 'callrec:$_callId';
+
+  String get _fileName => callRecFileName(
+        title: _c.recTitle,
+        peerName: _peerName,
+        startedAt: _startedAt,
+      );
+
+  // ── playback ──────────────────────────────────────────────────────────────
+
+  /// Inline play/pause on the card — the same shape as
+  /// `_VoicemailCard._togglePlay`. Bytes come from the ONE shared local-first
+  /// path ([CallRecordingStore.audioBytesAnywhere]).
+  Future<void> _togglePlay() async {
+    final cur = AudioPlaybackService.I.state.value;
+    final isThis = AudioPlaybackService.I.isCurrent(_trackId);
+    if (isThis && cur != null && cur.playing) {
+      await AudioPlaybackService.I.pause();
+      return;
+    }
+    if (isThis && cur != null && !cur.playing) {
+      await AudioPlaybackService.I.resume();
+      unawaited(markCallRecordingHeard(_c));
+      return;
+    }
+    if (_callId.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final bytes = await CallRecordingStore.I.audioBytesAnywhere(_callId);
+    if (!mounted) return;
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'Not on this phone and couldn’t be downloaded. Nothing is '
+            'lost — try again when you are online.';
+      });
+      unawaited(Analytics.capture('callrec_playback', {
+        'ok': false,
+        'surface': 'inbox_card',
+        'call_id': _callId,
+        if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
+      }));
+      return;
+    }
+    try {
+      await AudioPlaybackService.I.play(
+        track: AudioTrack(
+          trackId: _trackId,
+          title: _title,
+          subtitle: 'Call recording',
+          originRoute: 'inbox:${_c.conv}',
+        ),
+        bytes: bytes,
+      );
+      unawaited(Analytics.capture('callrec_playback', {
+        'ok': true,
+        'surface': 'inbox_card',
+        'call_id': _callId,
+        'bytes': bytes.length,
+        'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+        if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
+      }));
+      // [CALLREC-UX-1] Defect 3: the unread dot used to be permanent because
+      // NOTHING ever marked a recording heard. Mark it at exactly the moment a
+      // voicemail does — on play, from whichever surface played it first.
+      unawaited(markCallRecordingHeard(_c));
+    } catch (e, st) {
+      unawaited(Analytics.captureException(e, st,
+          screen: 'inbox_callrec_card', handled: true, extra: {'stage': 'play'}));
+      if (mounted) setState(() => _error = 'Could not play this recording.');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  // ── navigation + menu ─────────────────────────────────────────────────────
+
+  /// The detail screen pops `true` when it deleted the recording.
+  Future<void> _openDetail() async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => CallRecordingDetailScreen(card: _c),
+      ),
+    );
+    if (deleted == true && mounted) widget.onDeleted?.call();
+  }
+
+  Future<void> _delete() async {
+    final gone = await callRecConfirmDelete(context, callId: _callId);
+    if (gone && mounted) widget.onDeleted?.call();
+  }
+
+  /// Long-press menu — same idiom and row style as `_showCardMenu`
+  /// (inbox_thread_screen.dart): grab handle, `isScrollControlled`, PhosphorIcon
+  /// leading rows. Every item is wired to real code; there are no stubs.
+  Future<void> _showMenu() async {
+    final playing = AudioPlaybackService.I.isCurrent(_trackId) &&
+        (AudioPlaybackService.I.state.value?.playing ?? false);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AvaDialTheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: AvaDialTheme.border, width: 1),
+        borderRadius: Msg.brSheetTop,
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: Msg.s2),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+                color: AvaDialTheme.textMute, borderRadius: Msg.brPill),
+          ),
+          const SizedBox(height: Msg.s1),
+          _RecMenuRow(
+            icon: playing
+                ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.bold)
+                : PhosphorIcons.playCircle(PhosphorIconsStyle.bold),
+            color: AD.bubbleOutPlay,
+            label: playing ? 'Pause' : 'Play',
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              unawaited(_togglePlay());
+            },
+          ),
+          _RecMenuRow(
+            icon: PhosphorIcons.textAa(PhosphorIconsStyle.bold),
+            color: AD.iconSearch,
+            label: 'Edit title & description',
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              unawaited(_openDetail());
+            },
+          ),
+          _RecMenuRow(
+            icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
+            color: AD.iconVideo,
+            label: 'Share',
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              unawaited(callRecShare(context,
+                  callId: _callId,
+                  fileName: _fileName,
+                  peerUid: _c.recPeerUid));
+            },
+          ),
+          _RecMenuRow(
+            icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
+            color: AD.iconSearch,
+            label: 'Download',
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              unawaited(callRecDownload(context,
+                  callId: _callId, fileName: _fileName));
+            },
+          ),
+          _RecMenuRow(
+            icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
+            color: AD.danger,
+            label: 'Delete',
+            danger: true,
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              unawaited(_delete());
+            },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dur = callRecDurationLabel(_c.durationSec);
     final size = callRecBytesLabel(_c.recBytes);
+    // Duration has moved onto the play row ("Play recording · 3:41"), so it is
+    // deliberately NOT repeated here.
     final meta = <String>[
       callRecDateLabel(_startedAt),
       callRecTimeLabel(_startedAt),
-      if (dur.isNotEmpty) dur,
       if (size.isNotEmpty) size,
     ].join(' · ');
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => CallRecordingDetailScreen(card: _c),
-      )),
+      onTap: _openDetail,
+      onLongPress: _showMenu,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -157,20 +379,75 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                         style: ADText.preview(c: AD.bubbleOutMeta)),
                   ],
                   const SizedBox(height: Msg.s2),
-                  Row(children: [
-                    PhosphorIcon(
-                      PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
-                      size: 22,
-                      color: AD.bubbleOutPlay,
-                    ),
-                    const SizedBox(width: Msg.s2),
-                    Expanded(
-                      child: Text(meta,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ADText.statCaption(c: AD.bubbleOutMeta)),
-                    ),
-                  ]),
+                  // ---- inline player (was a decorative glyph until
+                  // [CALLREC-UX-1]) — driven by the SHARED
+                  // AudioPlaybackService, so playback survives leaving this
+                  // thread and the detail screen shows the same play/pause
+                  // state for the same track. ----
+                  ValueListenableBuilder<PlaybackState?>(
+                    valueListenable: AudioPlaybackService.I.state,
+                    builder: (context, st, _) {
+                      final isThis =
+                          st != null && st.track.trackId == _trackId;
+                      final playing = isThis && st.playing;
+                      final live = (isThis ? st.duration : null) ??
+                          AudioPlaybackService.I.knownDuration(_trackId);
+                      final label = (live != null && live.inSeconds > 0)
+                          ? callRecDurationLabel(live.inSeconds)
+                          : callRecDurationLabel(_c.durationSec);
+                      return Row(children: [
+                        // Nested INSIDE the card's GestureDetector: the
+                        // innermost recognizer wins the tap, so the play icon
+                        // plays and does NOT also push the detail screen.
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _loading ? null : _togglePlay,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                                right: Msg.s2, top: 2, bottom: 2),
+                            child: _loading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AD.bubbleOutPlay),
+                                  )
+                                : PhosphorIcon(
+                                    playing
+                                        ? PhosphorIcons.pauseCircle(
+                                            PhosphorIconsStyle.fill)
+                                        : PhosphorIcons.playCircle(
+                                            PhosphorIconsStyle.fill),
+                                    size: 26,
+                                    color: AD.bubbleOutPlay,
+                                  ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            playing
+                                ? 'Playing${label.isEmpty ? '' : ' · $label'}'
+                                : (label.isEmpty
+                                    ? 'Play recording'
+                                    : 'Play recording · $label'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ADText.rowName(c: AD.bubbleOutPlay),
+                          ),
+                        ),
+                      ]);
+                    },
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: Msg.s1),
+                    Text(_error!, style: ADText.statCaption(c: AD.danger)),
+                  ],
+                  const SizedBox(height: Msg.s1),
+                  Text(meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ADText.statCaption(c: AD.bubbleOutMeta)),
                 ],
               ),
             ),
@@ -297,4 +574,219 @@ String callRecTimeLabel(DateTime dt) {
   if (dt.millisecondsSinceEpoch <= 0) return '';
   return '${dt.hour.toString().padLeft(2, '0')}:'
       '${dt.minute.toString().padLeft(2, '0')}';
+}
+
+// ── shared identity / actions ────────────────────────────────────────────────
+//
+// [CALLREC-UX-1] Play, share, download and delete are now reachable from BOTH
+// the Inbox card's long-press menu and the detail screen. The implementations
+// live here, once, so the two surfaces can never drift on what "Download"
+// writes, what "Delete" removes, or whether a recording counts as heard.
+
+/// The recording's primary key: the envelope's `call_id`, falling back to
+/// stripping the `callrec:` prefix off `client_id` for a row whose body failed
+/// to parse (which recovers the same id rather than leaving the UI inert).
+String callRecIdOf(InboxCard card) {
+  final id = card.recCallId.trim();
+  if (id.isNotEmpty) return id;
+  final cid = (card.clientId ?? '').trim();
+  if (cid.startsWith('callrec:')) return cid.substring('callrec:'.length);
+  return '';
+}
+
+/// "Call with Alice 2026-08-06.m4a" — the share/download filename, sanitized
+/// against filesystem-illegal characters.
+String callRecFileName({
+  required String title,
+  required String peerName,
+  required DateTime startedAt,
+}) {
+  final base = (title.trim().isEmpty ? 'Call with $peerName' : title.trim())
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  final date = startedAt.millisecondsSinceEpoch <= 0
+      ? ''
+      : ' ${startedAt.year}-${startedAt.month.toString().padLeft(2, '0')}-'
+          '${startedAt.day.toString().padLeft(2, '0')}';
+  return '$base$date.m4a';
+}
+
+/// [CALLREC-UX-1] Defect 3. `InboxHeardStore` is what clears the Inbox's orange
+/// unread dot (`_unreadCount` in inbox_list_screen.dart counts cards with a
+/// recording that are NOT in it) — and until this existed it was only ever
+/// written by `_VoicemailCard`, so a call recording you made, opened and played
+/// kept its "new" highlight forever.
+///
+/// Called on PLAY from both surfaces, exactly like the voicemail trigger
+/// (`_VoicemailCard._markHeardOnce`), never on mere screen-open. Idempotent and
+/// best-effort: a write failure just leaves the dot for next time, which is safe.
+Future<void> markCallRecordingHeard(InboxCard card) async {
+  try {
+    if (await InboxHeardStore.I.isHeard(card.stableId)) return;
+    await InboxHeardStore.I.markHeard(card.stableId);
+    unawaited(Analytics.capture('callrec_heard_marked', {
+      'conv_hash': card.conv.hashCode,
+      'duration_s': card.durationSec,
+      'call_id': callRecIdOf(card),
+      if (card.recPeerUid.isNotEmpty) 'peer_uid': card.recPeerUid,
+    }));
+  } catch (_) {/* the dot simply stays; nothing is lost */}
+}
+
+/// System share sheet with the audio file. The OS chooser covers WhatsApp,
+/// Telegram, email and every other target — there is deliberately no per-app
+/// share button.
+Future<void> callRecShare(
+  BuildContext context, {
+  required String callId,
+  required String fileName,
+  String? peerUid,
+}) async {
+  // Captured BEFORE the first await: the widget that opened the menu may be
+  // gone by the time the bytes land.
+  final messenger = ScaffoldMessenger.of(context);
+  final bytes = await CallRecordingStore.I.audioBytesAnywhere(callId);
+  if (bytes == null || bytes.isEmpty) {
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Couldn’t load the recording to share.')));
+    return;
+  }
+  try {
+    final dir = await getTemporaryDirectory();
+    final f = File('${dir.path}/$fileName');
+    await f.writeAsBytes(bytes, flush: true);
+    await Share.shareXFiles([XFile(f.path, mimeType: 'audio/mp4')],
+        subject: fileName);
+    unawaited(Analytics.capture('callrec_shared', {
+      'ok': true,
+      'call_id': callId,
+      if (peerUid != null && peerUid.isNotEmpty) 'peer_uid': peerUid,
+    }));
+  } catch (e, st) {
+    unawaited(Analytics.captureException(e, st,
+        screen: 'callrec', handled: true, extra: {'stage': 'share'}));
+    unawaited(
+        Analytics.capture('callrec_shared', {'ok': false, 'call_id': callId}));
+    messenger.showSnackBar(
+        const SnackBar(content: Text('Couldn’t share the recording.')));
+  }
+}
+
+/// Writes the audio into the public Downloads/AvaTok folder via the native
+/// MediaStore bridge.
+Future<void> callRecDownload(
+  BuildContext context, {
+  required String callId,
+  required String fileName,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final bytes = await CallRecordingStore.I.audioBytesAnywhere(callId);
+  if (bytes == null || bytes.isEmpty) {
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Couldn’t load the recording to download.')));
+    return;
+  }
+  try {
+    final tmpDir = await getTemporaryDirectory();
+    final tmp = File('${tmpDir.path}/$fileName');
+    await tmp.writeAsBytes(bytes, flush: true);
+    await AvaDialChannel.I.saveToDownloads(
+      path: tmp.path,
+      filename: fileName,
+      mime: 'audio/mp4',
+    );
+    unawaited(
+        Analytics.capture('callrec_downloaded', {'ok': true, 'call_id': callId}));
+    messenger.showSnackBar(
+        SnackBar(content: Text('Saved to Downloads/AvaTok/$fileName')));
+  } catch (e, st) {
+    unawaited(Analytics.captureException(e, st,
+        screen: 'callrec', handled: true, extra: {'stage': 'download'}));
+    unawaited(Analytics.capture(
+        'callrec_downloaded', {'ok': false, 'call_id': callId}));
+    messenger.showSnackBar(
+        const SnackBar(content: Text('Couldn’t save the recording.')));
+  }
+}
+
+/// Confirms, then deletes. Returns true ONLY when the recording is really gone,
+/// so a caller can drop its row / pop itself.
+///
+/// With a local drift row the store deletes server-side FIRST, then the blob and
+/// the row, so a server failure can't strand a quota-consuming R2 object with no
+/// local row to retry from. Without one (recorded on another device) the API is
+/// the only thing to call, and its failure is a real failure.
+Future<bool> callRecConfirmDelete(
+  BuildContext context, {
+  required String callId,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      backgroundColor: AvaDialTheme.surface2,
+      title: Text('Delete this recording?',
+          style: ADText.threadName(c: AvaDialTheme.text)),
+      content: Text(
+        'The audio is removed from this phone and from your AvaStorage, and '
+        'the space it used is freed. This cannot be undone.',
+        style: ADText.preview(c: AvaDialTheme.textSoft),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child:
+                Text('Cancel', style: ADText.preview(c: AvaDialTheme.textSoft))),
+        TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: Text('Delete', style: ADText.preview(c: AD.danger))),
+      ],
+    ),
+  );
+  if (ok != true || callId.isEmpty) return false;
+  try {
+    final local = await CallRecordingStore.I.byCallId(callId);
+    if (local != null) {
+      await CallRecordingStore.I.delete(callId);
+    } else if (!await CallRecordingApi.delete(callId)) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Couldn’t delete the recording. Nothing was '
+              'removed — try again.')));
+      return false;
+    }
+  } catch (e, st) {
+    unawaited(Analytics.captureException(e, st,
+        screen: 'callrec', handled: true, extra: {'stage': 'delete'}));
+    messenger.showSnackBar(
+        const SnackBar(content: Text('Couldn’t delete the recording.')));
+    return false;
+  }
+  unawaited(Analytics.capture('callrec_deleted', {'ok': true, 'call_id': callId}));
+  return true;
+}
+
+/// One long-press menu row — the same leading/label/onTap shape as
+/// `_CardMenuRow` in inbox_thread_screen.dart, kept local so the recording card
+/// does not have to reach into that (large, shared) file's private widgets.
+class _RecMenuRow extends StatelessWidget {
+  const _RecMenuRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        leading: PhosphorIcon(icon, color: color),
+        title: Text(label,
+            style: ADText.rowName(c: danger ? AD.danger : AvaDialTheme.text)),
+        onTap: onTap,
+      );
 }

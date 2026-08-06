@@ -520,6 +520,32 @@ class CallRecordingStore {
     return bytes;
   }
 
+  /// [CALLREC-UX-1] The audio for [callId] from wherever it can be had — the ONE
+  /// playback path shared by the Inbox card and the detail screen.
+  ///
+  /// [audioBytes] returns null the moment there is no LOCAL drift row, which is
+  /// the normal state for a recording made on another of the user's devices. So
+  /// this falls through to a FRESH presign in that case. The URL is used
+  /// immediately and never stored (a persisted presign is a stale link plus a
+  /// leaked credential). Both surfaces call this rather than each keeping its own
+  /// copy of the local-then-server order, so they can never disagree about
+  /// whether a recording is playable.
+  Future<Uint8List?> audioBytesAnywhere(String callId) async {
+    if (callId.isEmpty) return null;
+    try {
+      final local = await audioBytes(callId);
+      if (local != null && local.isNotEmpty) return local;
+    } catch (_) {/* fall through to the server copy */}
+    try {
+      final url = await CallRecordingApi.playbackUrl(callId);
+      if (url == null || url.isEmpty) return null;
+      final bytes = await CallRecordingApi.download(url);
+      return (bytes == null || bytes.isEmpty) ? null : bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Total on-disk bytes of all recordings for this account.
   Future<int> totalBytes() => Db.I.callRecordingTotalBytes();
 

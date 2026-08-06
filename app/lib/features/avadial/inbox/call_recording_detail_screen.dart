@@ -1,11 +1,7 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/audio_playback_service.dart';
@@ -16,7 +12,6 @@ import '../../../core/profile_store.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../identity/identity.dart';
-import '../avadial_channel.dart';
 import '../avadial_theme.dart';
 import 'call_recording_card.dart';
 import 'inbox_api.dart';
@@ -62,16 +57,9 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
   InboxCard get _c => widget.card;
 
   /// The envelope's `call_id` is the primary key everywhere (local drift PK,
-  /// wire, `client_id = callrec:<callId>`). The `client_id` fallback exists for
-  /// a row whose body failed to parse: stripping the `callrec:` prefix recovers
-  /// the same id rather than leaving the screen inert.
-  String get _callId {
-    final id = _c.recCallId.trim();
-    if (id.isNotEmpty) return id;
-    final cid = (_c.clientId ?? '').trim();
-    if (cid.startsWith('callrec:')) return cid.substring('callrec:'.length);
-    return '';
-  }
+  /// wire, `client_id = callrec:<callId>`) — see [callRecIdOf], which the Inbox
+  /// card shares so the two surfaces can never resolve to different ids.
+  String get _callId => callRecIdOf(_c);
 
   String get _peerName {
     final n = _c.recPeerName.trim();
@@ -143,24 +131,6 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
 
   // ── audio ─────────────────────────────────────────────────────────────────
 
-  /// Local blob first (free and offline), then a FRESH presign. The URL is used
-  /// immediately and never stored — a persisted presign is a stale link plus a
-  /// leaked credential.
-  Future<Uint8List?> _bytesForPlayback() async {
-    if (_callId.isEmpty) return null;
-    try {
-      final local = await CallRecordingStore.I.audioBytes(_callId);
-      if (local != null && local.isNotEmpty) return local;
-    } catch (_) {/* fall through to the server copy */}
-    try {
-      final url = await CallRecordingApi.playbackUrl(_callId);
-      if (url == null || url.isEmpty) return null;
-      return await CallRecordingApi.download(url);
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _togglePlay() async {
     final cur = AudioPlaybackService.I.state.value;
     final isThis = AudioPlaybackService.I.isCurrent(_trackId);
@@ -170,6 +140,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
     }
     if (isThis && cur != null && !cur.playing) {
       await AudioPlaybackService.I.resume();
+      unawaited(markCallRecordingHeard(_c));
       return;
     }
     setState(() {
@@ -177,7 +148,7 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
       _error = null;
     });
     final t0 = DateTime.now().millisecondsSinceEpoch;
-    final bytes = await _bytesForPlayback();
+    final bytes = await CallRecordingStore.I.audioBytesAnywhere(_callId);
     if (!mounted) return;
     if (bytes == null || bytes.isEmpty) {
       setState(() {
@@ -206,11 +177,15 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
       );
       unawaited(Analytics.capture('callrec_playback', {
         'ok': true,
+        'surface': 'callrec_detail',
         'call_id': _callId,
         'bytes': bytes.length,
         'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
         if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
       }));
+      // [CALLREC-UX-1] Defect 3 — either surface can be where the user first
+      // hears this, so both clear the Inbox unread dot.
+      unawaited(markCallRecordingHeard(_c));
     } catch (e, st) {
       unawaited(Analytics.captureException(e, st,
           screen: 'callrec_detail', handled: true, extra: {'stage': 'play'}));
@@ -260,136 +235,28 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
 
   // ── share / download / delete ────────────────────────────────────────────
 
-  String get _fileName {
-    final base = (_title.text.trim().isEmpty
-            ? 'Call with $_peerName'
-            : _title.text.trim())
-        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final dt = _startedAt;
-    final date = dt.millisecondsSinceEpoch <= 0
-        ? ''
-        : ' ${dt.year}-${dt.month.toString().padLeft(2, '0')}-'
-            '${dt.day.toString().padLeft(2, '0')}';
-    return '$base$date.m4a';
-  }
-
-  Future<void> _share() async {
-    final bytes = await _bytesForPlayback();
-    if (bytes == null || bytes.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Couldn’t load the recording to share.')));
-      }
-      return;
-    }
-    try {
-      final dir = await getTemporaryDirectory();
-      final f = File('${dir.path}/$_fileName');
-      await f.writeAsBytes(bytes, flush: true);
-      // The OS chooser covers WhatsApp, Telegram, email and every other target —
-      // there is deliberately no per-app share button here.
-      await Share.shareXFiles([XFile(f.path, mimeType: 'audio/mp4')],
-          subject: _fileName);
-      unawaited(Analytics.capture('callrec_shared', {
-        'ok': true,
-        'call_id': _callId,
-        if (_c.recPeerUid.isNotEmpty) 'peer_uid': _c.recPeerUid,
-      }));
-    } catch (e, st) {
-      unawaited(Analytics.captureException(e, st,
-          screen: 'callrec_detail', handled: true, extra: {'stage': 'share'}));
-      unawaited(Analytics.capture('callrec_shared', {'ok': false, 'call_id': _callId}));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t share the recording.')));
-      }
-    }
-  }
-
-  Future<void> _download() async {
-    final bytes = await _bytesForPlayback();
-    if (bytes == null || bytes.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Couldn’t load the recording to download.')));
-      }
-      return;
-    }
-    try {
-      final tmpDir = await getTemporaryDirectory();
-      final tmp = File('${tmpDir.path}/$_fileName');
-      await tmp.writeAsBytes(bytes, flush: true);
-      await AvaDialChannel.I.saveToDownloads(
-        path: tmp.path,
-        filename: _fileName,
-        mime: 'audio/mp4',
+  /// The live edit box wins over the saved title, so sharing right after typing
+  /// a name uses the name the user is looking at.
+  String get _fileName => callRecFileName(
+        title: _title.text,
+        peerName: _peerName,
+        startedAt: _startedAt,
       );
-      unawaited(Analytics.capture(
-          'callrec_downloaded', {'ok': true, 'call_id': _callId}));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Saved to Downloads/AvaTok/$_fileName')));
-      }
-    } catch (e, st) {
-      unawaited(Analytics.captureException(e, st,
-          screen: 'callrec_detail', handled: true, extra: {'stage': 'download'}));
-      unawaited(Analytics.capture(
-          'callrec_downloaded', {'ok': false, 'call_id': _callId}));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t save the recording.')));
-      }
-    }
-  }
+
+  // [CALLREC-UX-1] Share / Download / Delete moved into call_recording_card.dart
+  // as shared helpers, because the Inbox card's long-press menu now offers the
+  // same three actions. One implementation, two entry points.
+
+  Future<void> _share() =>
+      callRecShare(context,
+          callId: _callId, fileName: _fileName, peerUid: _c.recPeerUid);
+
+  Future<void> _download() =>
+      callRecDownload(context, callId: _callId, fileName: _fileName);
 
   Future<void> _delete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        backgroundColor: AvaDialTheme.surface2,
-        title: Text('Delete this recording?',
-            style: ADText.threadName(c: AvaDialTheme.text)),
-        content: Text(
-          'The audio is removed from this phone and from your AvaStorage, and '
-          'the space it used is freed. This cannot be undone.',
-          style: ADText.preview(c: AvaDialTheme.textSoft),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: Text('Cancel',
-                  style: ADText.preview(c: AvaDialTheme.textSoft))),
-          TextButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: Text('Delete', style: ADText.preview(c: AD.danger))),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      if (_local != null) {
-        // The store deletes server-side FIRST, then the blob and the local row,
-        // so a server failure can't strand a quota-consuming R2 object with no
-        // local row to retry from.
-        await CallRecordingStore.I.delete(_callId);
-      } else if (!await CallRecordingApi.delete(_callId)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Couldn’t delete the recording. Nothing was '
-                  'removed — try again.')));
-        }
-        return;
-      }
-    } catch (e, st) {
-      unawaited(Analytics.captureException(e, st,
-          screen: 'callrec_detail', handled: true, extra: {'stage': 'delete'}));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t delete the recording.')));
-      }
-      return;
-    }
-    if (mounted) Navigator.of(context).pop(true);
+    final gone = await callRecConfirmDelete(context, callId: _callId);
+    if (gone && mounted) Navigator.of(context).pop(true);
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────

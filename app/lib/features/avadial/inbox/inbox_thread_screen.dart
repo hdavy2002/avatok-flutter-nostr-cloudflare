@@ -556,7 +556,22 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                 if (card.isCallRecording) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: Msg.s3),
-                    child: buildCallRecordingCard(context, card),
+                    // [CALLREC-UX-1] The card's long-press menu (and the detail
+                    // screen) can really delete a recording — drop the row
+                    // immediately rather than waiting on a refetch, exactly as
+                    // _deleteCard does for a voicemail.
+                    child: buildCallRecordingCard(
+                      context,
+                      card,
+                      onDeleted: () {
+                        if (!mounted) return;
+                        setState(() {
+                          _future = _future.then((list) => list
+                              .where((c) => c.stableId != card.stableId)
+                              .toList());
+                        });
+                      },
+                    ),
                   );
                 }
                 // [AVA-CAMP-FL-NAV] ADDITIVE ONLY: a campaign row (sender ==
