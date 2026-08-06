@@ -19,11 +19,50 @@ Map<String, dynamic> avaMicConstraints() => {
       'optional': [],
     };
 
+/// Phone-first video profile for human calls. 540p is clear on a handset while
+/// staying well below HD bandwidth; cellular starts at 360p.
+Map<String, dynamic> avaVideoConstraints({required bool cellular}) => {
+      'facingMode': 'user',
+      'width': {'ideal': cellular ? 640 : 960, 'max': cellular ? 640 : 960},
+      'height': {'ideal': cellular ? 360 : 540, 'max': cellular ? 360 : 540},
+      'frameRate': {'ideal': cellular ? 24 : 30, 'max': 30},
+    };
+
+/// Sender-side video bitrate ceiling, defined HERE so it can never drift away
+/// from the capture profile in [avaVideoConstraints] that it was chosen for.
+/// 960x540@30 sits comfortably at 700-900 kbps; 640x360@24 at 350-500 kbps.
+///
+/// [degradeLevel] is the congestion ladder used by the QoS adapter: 0 is the
+/// healthy ceiling, 1 is the thin-link step, 2 is "video is being switched off,
+/// leave only enough for the last frames in flight".
+///
+/// Level 0 deliberately returns the SAME value the healthy path applies rather
+/// than a separate constant. The pre-[CALL-MEDIA-540P-1] code hard-coded
+/// 1_200_000 for the recovery step, so the first congestion-then-recovery cycle
+/// of any call silently restored the old 1.2 Mbps cap and the new profile only
+/// survived until the network hiccuped once.
+int avaVideoMaxBitrateBps({required bool cellular, int degradeLevel = 0}) {
+  if (degradeLevel >= 2) return 150000;
+  if (degradeLevel == 1) return cellular ? 250000 : 400000;
+  return cellular ? 450000 : 850000;
+}
+
+/// The `maxBitrate` to put on the AUDIO sender for a given Opus target.
+///
+/// RED (RFC 2198) is a WIRE-level wrapper: at [kOpusRedDistance] = 1 every
+/// packet also carries the previous frame, so the RTP payload is about twice
+/// the encoder's own rate. `RTCRtpEncoding.maxBitrate` bounds what leaves the
+/// sender, redundancy included — so capping the sender at the Opus target while
+/// RED is on squeezes the PRIMARY stream down to roughly half its target and
+/// makes RED a net quality LOSS. Give the redundancy its own headroom instead.
+int avaAudioSenderCapBps(int opusTargetBps, {required bool redActive}) =>
+    redActive ? opusTargetBps * (kOpusRedDistance + 1) : opusTargetBps;
+
 /// Tune the Opus encoder on a LOCAL SDP for voice — in-band FEC (packet-loss
 /// resilience), DTX **OFF** ([CALL-AUDIO-DTX-1] 2026-08-03: DTX converts
 /// "quiet talker / gated AEC" into digital silence the far end synthesises
 /// over — continuous transmission is the right default for a voice product),
-/// and a 56 kbps average-bitrate cap (CALLFIX-17: enough FEC headroom without
+/// and a 40 kbps average-bitrate cap (enough FEC headroom without
 /// starving primary audio). Only the opus `a=fmtp` line is rewritten;
 /// everything else is untouched. No-op when no opus payload exists.
 /// [CALL-SURVIVE-1 2026-08-04]: this is now the ONLY Opus tuner — the 1:1
@@ -80,7 +119,7 @@ String tuneOpusSdp(String? sdp, {bool enableRed = false}) {
 /// congestion causes more loss than it prevents.
 const int kOpusRedDistance = 1;
 
-const String _kOpusMaxAvgBitrate = '56000';
+const String _kOpusMaxAvgBitrate = '40000';
 
 /// [CALL-RED-1 2026-08-05] Actually turn RED on. Previously a no-op.
 ///

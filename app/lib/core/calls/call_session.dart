@@ -553,7 +553,7 @@ class CallSession {
   // feature existed.
   bool _localCellular = false;
   bool _peerCellular = false;
-  int _qosAudioBitrateBps = 56000;
+  int _qosAudioBitrateBps = 40000;
   int _qosStableSamples = 0;
   double? _qosLastAvailableOutKbps;
   int _videoDegradeLevel = 0;
@@ -1758,8 +1758,14 @@ class CallSession {
         (lossPct != null && lossPct >= RemoteConfig.callQosLossDownshiftPct);
     if (congested) {
       _qosStableSamples = 0;
-      final next = _qosAudioBitrateBps == 56000 ? 40000 :
-          (_qosAudioBitrateBps == 40000 ? 32000 : 32000);
+      // [CALL-MEDIA-540P-1] Ladder rungs 40 / 32 / 24 kbps. 40000 is the TOP,
+      // not a middle rung: it is the same number as `maxaveragebitrate` in the
+      // Opus fmtp line, and a sender cap above the negotiated encoder cap is a
+      // ceiling that can never be reached — the ladder would report an upshift
+      // that changes nothing on the wire.
+      final next = _qosAudioBitrateBps > 32000
+          ? 32000
+          : (_qosAudioBitrateBps > 24000 ? 24000 : 24000);
       if (next != _qosAudioBitrateBps) {
         _qosAudioBitrateBps = next;
         await _applyAudioBitrate(next);
@@ -1771,8 +1777,7 @@ class CallSession {
     if (!stable) { _qosStableSamples = 0; return; }
     if (++_qosStableSamples < RemoteConfig.callQosStableSamples) return;
     _qosStableSamples = 0;
-    final next = _qosAudioBitrateBps == 32000 ? 40000 :
-        (_qosAudioBitrateBps == 40000 ? 56000 : 56000);
+    final next = _qosAudioBitrateBps < 32000 ? 32000 : 40000;
     if (next != _qosAudioBitrateBps) {
       _qosAudioBitrateBps = next;
       await _applyAudioBitrate(next);
@@ -1783,21 +1788,34 @@ class CallSession {
     final pc = _pc;
     if (pc == null) return;
     try {
+      // [CALL-MEDIA-540P-1] `bitrateBps` is the OPUS target. When RED is on the
+      // wire carries a redundant copy alongside it, and this cap bounds the wire
+      // — so hand the sender the padded figure or RED eats half the primary
+      // stream and the "packet-loss protection" makes the call sound worse.
+      final wireCapBps = audio_tuning.avaAudioSenderCapBps(
+        bitrateBps,
+        redActive: RemoteConfig.callAudioRedExperimentV1,
+      );
       final senders = await pc.getSenders();
       for (final sender in senders) {
         if (sender.track?.kind != 'audio') continue;
         final params = sender.parameters;
         final encodings = params.encodings;
         if (encodings == null || encodings.isEmpty) {
-          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: bitrateBps)];
+          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: wireCapBps)];
         } else {
-          for (final encoding in encodings) encoding.maxBitrate = bitrateBps;
+          for (final encoding in encodings) encoding.maxBitrate = wireCapBps;
         }
         await sender.setParameters(params);
       }
       Analytics.capture('call_qos_bitrate_changed', {
         'call_id': config.room,
         'max_bitrate_kbps': bitrateBps ~/ 1000,
+        // [CALL-MEDIA-540P-1] Both numbers, because they now differ. Reading
+        // only the Opus target would hide a doubled wire rate; reading only the
+        // wire cap would look like the ladder had drifted off its rungs.
+        'wire_cap_kbps': wireCapBps ~/ 1000,
+        'opus_red_active': RemoteConfig.callAudioRedExperimentV1,
         'available_out_kbps': _qosLastAvailableOutKbps ?? -1,
       });
     } catch (e, st) {
@@ -1839,7 +1857,16 @@ class CallSession {
         if (sender.track?.kind != 'video') continue;
         final params = sender.parameters;
         final encodings = params.encodings;
-        final maxBitrate = level == 0 ? 1200000 : (level == 1 ? 450000 : 180000);
+        // [CALL-MEDIA-540P-1] Was `level == 0 ? 1200000 : …` — a SECOND,
+        // hard-coded copy of the sender ceiling that knew nothing about the
+        // capture profile or the network class. It made the 540p cap survive
+        // only until the first congestion-and-recovery cycle, after which this
+        // recovery step handed the encoder 1.2 Mbps again for the rest of the
+        // call. One source of truth now, and cellular is honoured on every rung.
+        final maxBitrate = audio_tuning.avaVideoMaxBitrateBps(
+          cellular: _localCellular,
+          degradeLevel: level,
+        );
         if (encodings == null || encodings.isEmpty) {
           params.encodings = [RTCRtpEncoding(active: true, maxBitrate: maxBitrate)];
         } else {
@@ -2417,8 +2444,8 @@ class CallSession {
   /// [CALL-SURVIVE-1 2026-08-04] Now DELEGATES to the shared tuner in
   /// core/audio_tuning.dart — this file used to carry its own copy with
   /// `maxaveragebitrate=40000`, silently regressing the CALLFIX-17 decision
-  /// (56 kbps) on exactly the 1:1 path that needed the FEC headroom most.
-  /// One tuner, one bitrate: 56000, `useinbandfec=1`, `usedtx=0` (DTX
+  /// (40 kbps) on exactly the 1:1 path that needed the FEC headroom most.
+  /// One tuner, one bitrate: 40000, `useinbandfec=1`, `usedtx=0` (DTX
   /// rationale lives with the shared tuner and in [CALL-AUDIO-DTX-1]),
   /// `stereo=0`.
   static String _tuneOpusSdp(String? sdp) => audio_tuning.tuneOpusSdp(
@@ -2494,18 +2521,13 @@ class CallSession {
         // (AEC/NS/AGC/high-pass) are defined ONCE in core/audio_tuning.dart.
         'audio': audio_tuning.avaMicConstraints(),
         // [CF-CALL-P2P-1] Explicit, bounded capture constraints (proposal
-        // Phase 5 "camera constraints"): 1280x720@30 max on wifi/unknown,
-        // 960x540@30 on a detected cellular network. `ideal` lets the camera
+        // Phase 5 "camera constraints"): 960x540@30 max on wifi/unknown,
+        // 640x360@24 on a detected cellular network. `ideal` lets the camera
         // pick a supported mode near this; `max` is the hard ceiling so a
         // high-end camera never captures (and encodes) far above what a 1:1
         // call needs.
         'video': config.video
-            ? {
-                'facingMode': 'user',
-                'width': {'ideal': cellularCapture ? 960 : 1280, 'max': 1280},
-                'height': {'ideal': cellularCapture ? 540 : 720, 'max': 720},
-                'frameRate': {'ideal': 30, 'max': 30},
-              }
+            ? audio_tuning.avaVideoConstraints(cellular: cellularCapture)
             : false,
       });
       // Future.timeout cannot cancel the platform acquisition. If Android
@@ -3147,14 +3169,18 @@ class CallSession {
   ///    smooth lower-res video. THIS IS THE ONE-LINE, EASILY REVERTABLE
   ///    CHANGE called out in the CF-CALL-P2P-1 report — revert by restoring
   ///    `RTCDegradationPreference.MAINTAIN_RESOLUTION` below.
-  ///  - a `maxBitrate` cap per encoding: 1.2 Mbps on wifi/unknown, 800 kbps on
+  ///  - a `maxBitrate` cap per encoding: 850 kbps on wifi/unknown, 450 kbps on
   ///    a detected cellular network — previously unbounded, so a strong link
   ///    could push an outbound bitrate the callee's link (or ours, on the way
   ///    back down after a network change) couldn't sustain.
   Future<void> _preferResolutionOnVideo(RTCPeerConnection pc, {bool cellular = false}) async {
     try {
       final senders = await pc.getSenders();
-      final maxBitrateBps = cellular ? 800000 : 1200000;
+      // [CALL-MEDIA-540P-1] Shared with the degrade ladder's level-0 rung so a
+      // recovery cannot restore a different (higher) ceiling than the one the
+      // healthy path applies. See [audio_tuning.avaVideoMaxBitrateBps].
+      final maxBitrateBps =
+          audio_tuning.avaVideoMaxBitrateBps(cellular: cellular);
       for (final s in senders) {
         if (s.track?.kind != 'video') continue;
         final params = s.parameters;
@@ -3213,7 +3239,13 @@ class CallSession {
   /// Best-effort and non-fatal by construction: anything unexpected leaves the
   /// transceiver untouched and the call proceeds on libwebrtc's default order.
   Future<void> _applyVideoCodecPreference(RTCPeerConnection pc) async {
-    if (!RemoteConfig.callVideoCodecPrefV1 || !config.video) return;
+    // [CALL-MEDIA-540P-1] The `!config.video` half of this guard was dropped.
+    // `config.video` is what the call STARTED as, so an audio call that later
+    // turns the camera on skipped codec preference entirely and fell back to
+    // libwebrtc's VP8-first order — on the upgrade path, where the link is
+    // least likely to carry it. The transceiver loop below already filters to
+    // video, so with no video transceivers this is a no-op regardless.
+    if (!RemoteConfig.callVideoCodecPrefV1) return;
     try {
       final caps = await getRtpSenderCapabilities('video');
       final codecs = caps.codecs;
@@ -4459,6 +4491,13 @@ class CallSession {
     final transport = CallSfuTransport(
       room: room,
       createPeerConnection: (iceServers) => _newPC(sfuIce: iceServers),
+      configurePeerConnection: (pc) async {
+        await _applyVideoCodecPreference(pc);
+        await _preferResolutionOnVideo(pc, cellular: await _isLikelyCellular());
+      },
+      // [CALL-MEDIA-540P-1] Same flag the P2P tuner reads, so RED does not
+      // switch itself off the moment a call lands on the SFU instead.
+      enableRed: RemoteConfig.callAudioRedExperimentV1,
     );
     _sfu = transport;
     final result = await transport.connect(
@@ -4475,6 +4514,7 @@ class CallSession {
       _sfuActive = true;
       _resetPlayoutHealthBaselines();
       _pc = result.pc;
+      await _preferResolutionOnVideo(_pc!, cellular: await _isLikelyCellular());
       _telemetry.setMediaPath('sfu');
       Analytics.capture('call_sfu_active', {
         'call_id': config.room,
@@ -4541,13 +4581,9 @@ class CallSession {
   Future<void> _enableSfuVideo() async {
     if (_ended || !_sfuActive || _sfu == null || _stream == null) return;
     try {
+      final cellular = await _isLikelyCellular();
       final v = await navigator.mediaDevices.getUserMedia({
-        'video': {
-          'facingMode': 'user',
-          'width': {'ideal': 1280, 'max': 1280},
-          'height': {'ideal': 720, 'max': 720},
-          'frameRate': {'ideal': 30, 'max': 30},
-        },
+        'video': audio_tuning.avaVideoConstraints(cellular: cellular),
         'audio': false,
       });
       final track = v.getVideoTracks().first;
@@ -4559,6 +4595,9 @@ class CallSession {
         Analytics.capture('call_sfu_video_publish_failed', {'call_id': config.room});
         return;
       }
+      // NOTE: the sender limits for this new track are applied INSIDE
+      // publishVideo, via `configurePeerConnection`, because they must land
+      // before its offer is created. Do not re-apply them here.
       _video = true;
       _camOn = true;
       videoActive.value = true;
@@ -5215,12 +5254,7 @@ class CallSession {
       MediaStream v;
       try {
         v = await navigator.mediaDevices.getUserMedia({
-          'video': {
-            'facingMode': 'user',
-            'width': {'ideal': cellular ? 960 : 1280, 'max': 1280},
-            'height': {'ideal': cellular ? 540 : 720, 'max': 720},
-            'frameRate': {'ideal': 30, 'max': 30},
-          },
+          'video': audio_tuning.avaVideoConstraints(cellular: cellular),
           'audio': false,
         });
       } catch (e, st) {
@@ -5243,7 +5277,14 @@ class CallSession {
           _telemetry.runtimeError(stage: 'video_upgrade_add_track_failed', error: e, stack: st);
         }
       }
-      if (_pc != null) await _preferResolutionOnVideo(_pc!, cellular: cellular);
+      if (_pc != null) {
+        // [CALL-MEDIA-540P-1] Codec preference belongs here too, and must be
+        // set before the re-offer three lines down — the P2P upgrade path was
+        // capping the bitrate but still letting libwebrtc pick VP8 first, which
+        // also left the L1T3 temporal layering inert.
+        await _applyVideoCodecPreference(_pc!);
+        await _preferResolutionOnVideo(_pc!, cellular: cellular);
+      }
       if (!_ended && _pc != null && identical(_pc, pcAtStart) && _remoteId != null) {
         final offer = _tuned(await _pc!.createOffer());
         await _pc!.setLocalDescription(offer);

@@ -47,6 +47,7 @@ import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../ava_log.dart';
+import '../audio_tuning.dart' as audio_tuning;
 import 'call_sfu_api.dart';
 
 /// Why a connect attempt gave up. Carried into `call_sfu_fallback` so a bad day
@@ -94,6 +95,8 @@ class CallSfuTransport {
   CallSfuTransport({
     required this.room,
     required this.createPeerConnection,
+    this.configurePeerConnection,
+    this.enableRed = false,
   });
 
   /// The same room id the P2P signalling uses. Both transports are keyed on it,
@@ -111,6 +114,17 @@ class CallSfuTransport {
   /// wiring here would have created a second, silently diverging copy.
   final Future<RTCPeerConnection> Function(List<Map<String, dynamic>> iceServers)
       createPeerConnection;
+
+  /// Apply codec and sender limits after SFU tracks exist, before publishing.
+  final Future<void> Function(RTCPeerConnection pc)? configurePeerConnection;
+
+  /// [CALL-MEDIA-540P-1] Opus RED (RFC 2198), passed in rather than read here
+  /// so this transport stays free of RemoteConfig and both call paths are
+  /// driven by the SAME `callAudioRedExperimentV1` flag. It was previously
+  /// hard-coded `false` at three call sites while the P2P path honoured the
+  /// flag — which is prod-`true` — so moving a call onto the SFU silently
+  /// dropped the redundancy the flag was switched on to provide.
+  final bool enableRed;
 
   String? _sessionId;
   RTCPeerConnection? _pc;
@@ -195,10 +209,16 @@ class CallSfuTransport {
         }
       }
 
+      await configurePeerConnection?.call(_pc!);
+
       // PUBLISH — we offer, the SFU answers.
       final offer = await _pc!.createOffer();
-      await _pc!.setLocalDescription(offer);
-      final answer = await CallSfuApi.publish(room, join.sessionId, offer.sdp ?? '', tracks);
+      final tunedOffer = RTCSessionDescription(
+        audio_tuning.tuneOpusSdp(offer.sdp, enableRed: enableRed),
+        offer.type,
+      );
+      await _pc!.setLocalDescription(tunedOffer);
+      final answer = await CallSfuApi.publish(room, join.sessionId, tunedOffer.sdp ?? '', tracks);
       if (answer == null || answer['sdp'] == null) {
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_answer_sdp');
       }
@@ -296,8 +316,20 @@ class CallSfuTransport {
       }
       await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
       final answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await CallSfuApi.renegotiate(room, sid, answer.sdp ?? '');
+      // [CALL-MEDIA-540P-1] `enableRed: false` here is deliberate and is NOT an
+      // oversight to be "fixed" for symmetry with the two publish sites. This
+      // is the PULL answer: these m-sections are recvonly, carrying the PEER's
+      // media. RED is a sender-side choice, and the RED branch of the tuner
+      // promotes the red payload type to the front of the m=audio line — doing
+      // that on a recvonly section asks the SFU to forward a payload type the
+      // publisher is not producing, which is a way to get silence, not
+      // redundancy. The fmtp cap still applies as a receive-side hint.
+      final tunedAnswer = RTCSessionDescription(
+        audio_tuning.tuneOpusSdp(answer.sdp, enableRed: false),
+        answer.type,
+      );
+      await pc.setLocalDescription(tunedAnswer);
+      await CallSfuApi.renegotiate(room, sid, tunedAnswer.sdp ?? '');
       for (final t in r.tracks) {
         final mid = (t as Map?)?['mid']?.toString();
         if (mid != null) _openMids.add(mid);
@@ -322,9 +354,22 @@ class CallSfuTransport {
     if (sid == null || pc == null) return false;
     try {
       await pc.addTrack(videoTrack, stream);
+      // [CALL-MEDIA-540P-1] Configure BEFORE the offer, not after. This is the
+      // first moment a video sender exists on this connection, so the limits
+      // applied during `connect()` never saw it — a camera turned on mid-call
+      // published with no bitrate ceiling, no BALANCED degradation and no codec
+      // preference. Codec preference in particular only takes effect if it is
+      // set before `createOffer`; applying it afterwards would look correct in
+      // the diff and do nothing on the wire until some later renegotiation that
+      // this transport, by design, never performs.
+      await configurePeerConnection?.call(pc);
       final offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      final answer = await CallSfuApi.publish(room, sid, offer.sdp ?? '', [
+      final tunedOffer = RTCSessionDescription(
+        audio_tuning.tuneOpusSdp(offer.sdp, enableRed: enableRed),
+        offer.type,
+      );
+      await pc.setLocalDescription(tunedOffer);
+      final answer = await CallSfuApi.publish(room, sid, tunedOffer.sdp ?? '', [
         {'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(sid)},
       ]);
       if (answer == null || answer['sdp'] == null) return false;
