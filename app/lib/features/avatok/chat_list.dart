@@ -2,6 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+// [BOOT-FLASH-1 fix 2026-08-06] `material.dart` does NOT re-export the
+// collection helpers, contrary to a reasonable assumption — it re-exports
+// widgets/foundation types but not `listEquals`/`setEquals`/`mapEquals`. They
+// are used by the diff-and-skip comparators below (`_sameContacts`,
+// `_sameGroups`, `_sameFlags`) that stop `_bootstrap` rebuilding every row when
+// nothing actually changed. Imported with `show` so nothing else in foundation
+// can collide with a material symbol.
+import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
