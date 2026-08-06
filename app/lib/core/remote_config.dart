@@ -186,6 +186,21 @@ class RemoteConfig {
   static num get callRecordingMinFreeMb =>
       _asNum(_cfg['callRecordingMinFreeMb']) ?? 500;
 
+  /// [ADDCALL-1-UI] "Add to call" — turning a live 1:1 into a group call
+  /// (spec `Specs/SPEC-ADD-TO-CALL-2026-08-06.md`).
+  ///
+  /// MASTER KILL SWITCH, and the server means it: both `/api/adhoc-room/create`
+  /// and `/api/adhoc-room/add` answer **403 `disabled`** while this is false
+  /// (`worker/src/routes/adhoc_room.ts`). Declared in the Worker's
+  /// `PlatformConfig` AND `DEFAULTS` (`worker/src/routes/config.ts:119/993`), so
+  /// it is a REAL flag — `flags.sh set addToCallEnabled=true` will not 400 —
+  /// not one of the fake ones CLAUDE.md warns about.
+  ///
+  /// The compile-time fallback is `false` deliberately, and while it is false the
+  /// Add tile is not rendered at all: the control panel's third row is then
+  /// byte-for-byte what it was before this feature existed.
+  static bool get addToCallEnabled => _b('addToCallEnabled', false);
+
   static bool get brainEnabled => _b('brainEnabled', false);
   /// [ONEBRAIN-B4] Global kill-switch for cloud reasoning over device_private
   /// brain content (SPEC §6, B-D6). Default TRUE (owner decision 2026-07-18:

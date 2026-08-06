@@ -16,10 +16,15 @@ import '../../core/account_storage.dart'; // [CALLREC-UI-1] per-account consent 
 import '../../core/call_recording/call_recording_model.dart'; // [CALLREC-UI-1]
 import '../../core/call_recording/call_recording_store.dart'; // [CALLREC-UI-1]
 import '../../core/call_routing_api.dart';
+import '../../core/calls/adhoc_room_api.dart'; // [ADDCALL-1-UI]
 import '../../core/calls/call_overlay.dart';
+import '../../core/calls/call_telemetry_events.dart'; // [ADDCALL-1-UI]
 import '../../core/disk_cache.dart'; // [CALLREC-UI-1] per-account consent store
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
+import '../conference/cloudflare_conference_controller.dart'; // [ADDCALL-1-UI]
+import '../conference/cloudflare_conference_screen.dart'; // [ADDCALL-1-UI]
+import 'add_to_call_sheet.dart'; // [ADDCALL-1-UI]
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -251,6 +256,13 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   late final CallSession _session;
   bool _popped = false;
+
+  /// [ADDCALL-1-UI] True from the moment the user confirms the picker until the
+  /// escalation either fails (call untouched) or hands off to the conference.
+  /// Exists so the Add tile cannot be tapped twice — the second create would
+  /// mint a SECOND ad-hoc room, and the first would be an orphan row nothing
+  /// deletes (spec §11 item 1).
+  bool _escalating = false;
 
   // [CALL-UI-COLLAPSE-1] Collapsible control panel — VIDEO CALLS ONLY.
   //
@@ -688,6 +700,304 @@ class _CallScreenState extends State<CallScreen> {
       return;
     }
     _session.endByUser();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  //  [ADDCALL-1-UI] ADD TO CALL — spec Specs/SPEC-ADD-TO-CALL-2026-08-06.md §9,
+  //  PHASE 1 ONLY.
+  //
+  //  Phase 1 is deliberately the CHEAP version the spec calls "a valid
+  //  intermediate": create the invisible room, END the 1:1, join the conference
+  //  cold. There WILL be a 2–4 second gap. Make-before-break (carrying the live
+  //  capture stream onto the SFU leg and only then releasing the P2P leg) is
+  //  Phase 2 and is NOT here — do not add it piecemeal, it needs the migration
+  //  coordinator, the DO reservation and the relaxed busy guards together.
+  //
+  //  THE ORDER OF OPERATIONS IS THE WHOLE DESIGN. Read it before changing it:
+  //
+  //   1. Everything that can refuse is checked or attempted while the 1:1 is
+  //      STILL UP. The picker, the navigator lookup and the `create` round-trip
+  //      all happen first, so every refusal — flag off, identity gate, cap,
+  //      blocked contact, no network — leaves the user on exactly the call they
+  //      were on, with a sentence explaining why. Nothing is torn down on a
+  //      maybe.
+  //   2. Only after the server has returned a real `conv_id` do we end the 1:1.
+  //   3. We WAIT for the teardown before joining. This is the "most easily
+  //      missed blocker in the whole feature" (spec §4.3 item 3): both
+  //      `CloudflareConferenceController.activeGid` and `callIsGenuinelyActive()`
+  //      refuse a second call, and `gLiveCallScreens` is only decremented inside
+  //      `CallSession._teardown`. Joining before that lands presents as "Add to
+  //      call does nothing", silently, on the initiator's own device.
+  //
+  //  On the guards specifically: this path does NOT relax them and does not need
+  //  to, because Phase 1 never overlaps two calls. It SEQUENCES around them —
+  //  `await endByUser()` (which awaits `hangup` → `_teardown`) plus a bounded
+  //  poll on `callIsGenuinelyActive()`. Phase 2 is where they genuinely have to
+  //  be relaxed, because the overlap is the point.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /// Bounded wait for the one-call-at-a-time guard to actually clear.
+  ///
+  /// `endByUser()` awaits the memoized teardown, so this is normally already
+  /// true on entry and costs nothing. It exists because the teardown time-boxes
+  /// every native await (`_safeAwait`, 2s each) and swallows failures — a wedged
+  /// method channel can therefore return from `hangup` with the counter still
+  /// up. Returns whether the guard cleared; the caller reports it rather than
+  /// hiding it.
+  Future<bool> _awaitCallGuardClear({int budgetMs = 4000}) async {
+    final sw = Stopwatch()..start();
+    while (callIsGenuinelyActive() && sw.elapsedMilliseconds < budgetMs) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return !callIsGenuinelyActive();
+  }
+
+  void _escalationSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _addToCall() async {
+    if (_escalating) return;
+    // Defensive: the tile is not rendered when the flag is off, so reaching this
+    // means the config flipped mid-call. The server would 403 `disabled` anyway.
+    if (!RemoteConfig.addToCallEnabled) return;
+
+    final callId = widget.room;
+    // Shared funnel key across client and worker (spec §10) — `adhoc_room.ts`
+    // builds the byte-identical string from the same call id, so one escalation
+    // reconstructs as one funnel in PostHog the way `rec_id` does for recordings.
+    final escalationId = 'addcall:$callId';
+    final peerUid = widget.seed;
+    if (peerUid.isEmpty) {
+      _escalationSnack("We couldn't work out who else is on this call.");
+      return;
+    }
+
+    final picked = await showAddToCallSheet(
+      context,
+      callId: callId,
+      // You + the peer. The cap counts everyone in the room, so the picker
+      // offers at most 8.
+      alreadyOnCall: 2,
+      excludeUids: {peerUid},
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+
+    // Resolve the navigator BEFORE tearing anything down. Without it we could
+    // end the 1:1 and then have nowhere to put the conference — the exact
+    // "lost their call for nothing" outcome this whole ordering exists to avoid.
+    final nav = navigatorKey.currentState;
+    if (nav == null) {
+      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+        'escalation_id': escalationId,
+        'call_id': callId,
+        'reason': 'no_navigator',
+        'stage': 'preflight',
+      });
+      _escalationSnack("We couldn't open the group call. Please try again.");
+      return;
+    }
+
+    // Snapshot everything we need AFTER the call is gone: the session's own
+    // notifiers are reset by teardown, and `widget`/`context` die with the pop.
+    final wantVideo = _session.videoActive.value && _session.cameraOn.value;
+    final peerName = widget.title;
+    final peerAvatar = widget.avatarUrl;
+    final invitees = picked.map((c) => c.uid).toList();
+    final title = _escalatedTitle(peerName, picked);
+
+    setState(() => _escalating = true);
+
+    Analytics.capture(CallEvents.groupcallEscalateStarted, {
+      'escalation_id': escalationId,
+      'call_id': callId,
+      'phase': 1,
+      'peer_uid': peerUid,
+      'invitee_count': invitees.length,
+      'member_count': invitees.length + 2,
+      'kind': wantVideo ? 'video' : 'audio',
+      // Tag every participant (CLAUDE.md): a multi-party event must be
+      // retrievable from ANY of the people in it, not just whoever pressed Add.
+      'participants': [peerUid, ...invitees],
+    });
+
+    // ── Step 1: create the room. The 1:1 is untouched no matter what this does.
+    final res = await AdhocRoomApi.create(
+      callId: callId,
+      peerUid: peerUid,
+      invitees: invitees,
+      title: title,
+    );
+    if (!res.ok) {
+      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+        'escalation_id': escalationId,
+        'call_id': callId,
+        'reason': res.raw,
+        'error': res.error?.name,
+        'http': res.status,
+        'stage': 'create',
+        'invitee_count': invitees.length,
+      });
+      // The identity gate is the ONE case we stay silent on: `ApiAuth`'s global
+      // interceptor has already put the consent/Didit flow on screen, and a
+      // snackbar underneath it would be a second, competing instruction.
+      if (res.error != AdhocRoomError.identityRequired) {
+        _escalationSnack(res.message);
+      }
+      if (mounted) setState(() => _escalating = false);
+      return;
+    }
+    final gid = res.convId ?? '';
+    if (gid.isEmpty) {
+      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+        'escalation_id': escalationId,
+        'call_id': callId,
+        'reason': 'empty_conv_id',
+        'stage': 'create',
+      });
+      _escalationSnack("We couldn't set up the group call. Please try again.");
+      if (mounted) setState(() => _escalating = false);
+      return;
+    }
+
+    Analytics.capture(CallEvents.groupcallInviteCreated, {
+      'escalation_id': escalationId,
+      'call_id': callId,
+      'gid_hash': gid.hashCode.toString(),
+      'member_count': res.members.length,
+      'invitee_count': invitees.length,
+      'participants': res.members,
+    });
+
+    // ── Step 2: end the 1:1. Past this line the call is gone and `mounted` is
+    // false (endByUser consumes the pop hook), so nothing below may touch
+    // `context` or `setState` — everything uses `nav` and `Analytics`.
+    try {
+      await _session.endByUser();
+    } catch (e, st) {
+      // Teardown swallows its own failures; if one escapes, the call is still
+      // going away, so we continue into the conference rather than stranding
+      // the user between two calls.
+      Analytics.captureException(e, st,
+          handled: true,
+          screen: 'call_screen',
+          extra: {'stage': 'escalate_hangup', 'escalation_id': escalationId});
+    }
+
+    // ── Step 3: wait for the guard, then join cold.
+    final guardCleared = await _awaitCallGuardClear();
+    Analytics.capture(CallEvents.groupcallReleaseP2p, {
+      'escalation_id': escalationId,
+      'call_id': callId,
+      'gid_hash': gid.hashCode.toString(),
+      'guard_cleared': guardCleared,
+      'phase': 1,
+    });
+
+    if (CloudflareConferenceController.activeGid != null) {
+      // Should be impossible — we were on a 1:1, not a conference — but if a
+      // stale gid is latched, joining would be refused deep inside the
+      // controller with no message. Say it here instead, and offer the 1:1 back.
+      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+        'escalation_id': escalationId,
+        'call_id': callId,
+        'reason': 'conference_already_active',
+        'stage': 'join',
+      });
+      _offerCallBack(nav, peerUid, peerName, peerAvatar, wantVideo,
+          "We couldn't start the group call.");
+      return;
+    }
+
+    final joinedAt = DateTime.now().millisecondsSinceEpoch;
+    await nav.push(MaterialPageRoute(
+      builder: (_) => CloudflareConferenceScreen(
+        gid: gid,
+        title: title,
+        video: wantVideo,
+        // We minted the room, so we are the starter — that is what writes the
+        // OUTGOING call-history row, which is the only place an ad-hoc call
+        // appears at all (the conversation itself is invisible by design).
+        starter: true,
+      ),
+    ));
+
+    // ── If the conference route came back almost immediately, the join failed
+    // (or the screen refused to mount) rather than a call having happened. We
+    // cannot read the controller's state from here — it is disposed with the
+    // route — so the duration is the honest available signal, and it is used
+    // ONLY to decide whether to OFFER the 1:1 back. It never redials on its own.
+    final lifeMs = DateTime.now().millisecondsSinceEpoch - joinedAt;
+    if (lifeMs < 10000) {
+      Analytics.capture(CallEvents.groupcallEscalateFailed, {
+        'escalation_id': escalationId,
+        'call_id': callId,
+        'gid_hash': gid.hashCode.toString(),
+        'reason': 'conference_ended_immediately',
+        'stage': 'join',
+        'conference_life_ms': lifeMs,
+      });
+      _offerCallBack(nav, peerUid, peerName, peerAvatar, wantVideo,
+          "The group call didn't connect.");
+      return;
+    }
+
+    Analytics.capture(CallEvents.groupcallEscalateCompleted, {
+      'escalation_id': escalationId,
+      'call_id': callId,
+      'gid_hash': gid.hashCode.toString(),
+      'conference_life_ms': lifeMs,
+      'member_count': res.members.length,
+      'phase': 1,
+    });
+  }
+
+  /// The one place a failed escalation is made good: a snackbar that offers to
+  /// put the original 1:1 back, on a tap. Deliberately NOT an automatic redial —
+  /// silently ringing someone again is worse than leaving the user in control,
+  /// and the peer may already have been rung by the conference.
+  ///
+  /// Runs after this State is disposed, so it takes the navigator explicitly and
+  /// never reads `context` / `mounted`.
+  void _offerCallBack(NavigatorState nav, String peerUid, String peerName,
+      String peerAvatar, bool video, String why) {
+    final ctx = nav.context;
+    final messenger = ScaffoldMessenger.maybeOf(ctx);
+    if (messenger == null) return;
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 8),
+      content: Text('$why Call $peerName back?'),
+      action: SnackBarAction(
+        label: 'Call back',
+        onPressed: () {
+          Analytics.capture('addcall_call_back_tapped', {'peer_uid': peerUid});
+          unawaited(place1to1Call(ctx,
+              uid: peerUid,
+              name: peerName,
+              avatarUrl: peerAvatar,
+              video: video));
+        },
+      ),
+    ));
+  }
+
+  /// "Ana & Ben" — the call-history title for the escalated call. The server
+  /// derives its own when we send none; we send one because we know the display
+  /// names the user actually sees, and it has to match the row they will find in
+  /// their call log.
+  String _escalatedTitle(String peerName, List<Contact> picked) {
+    final names = <String>[
+      if (peerName.trim().isNotEmpty) peerName.trim(),
+      ...picked.map((c) => c.name.trim()).where((n) => n.isNotEmpty),
+    ];
+    if (names.isEmpty) return 'Group call';
+    if (names.length == 1) return names.first;
+    final head = names.take(3).toList();
+    final extra = names.length - head.length;
+    final base =
+        '${head.sublist(0, head.length - 1).join(', ')} & ${head.last}';
+    return extra > 0 ? '$base +$extra' : base;
   }
 
   /// Back gesture / header ⌄ button: MINIMIZE, not hang up. Keeps the call alive
@@ -1473,11 +1783,12 @@ class _CallScreenState extends State<CallScreen> {
                 //
                 // Still three Expanded thirds: the equal-thirds geometry is
                 // what stops a control moving under the user's thumb when an
-                // optional tile appears or vanishes. The third slot is
-                // RESERVED, not decorative — an "Add to call" control belongs
-                // there and is not built yet. It stays empty on purpose; a
-                // greyed-out placeholder button would be a dead control, which
-                // is worse than a gap.
+                // optional tile appears or vanishes. The third slot was
+                // RESERVED for "Add to call"; [ADDCALL-1-UI] fills it. It still
+                // collapses to nothing when `addToCallEnabled` is off, for the
+                // same reason it used to be left empty: a greyed-out placeholder
+                // for a feature that cannot run is a dead control, which is
+                // worse than a gap.
                 const SizedBox(height: Msg.s4),
                 Row(children: [
                   Expanded(
@@ -1520,7 +1831,40 @@ class _CallScreenState extends State<CallScreen> {
                       },
                     ),
                   ),
-                  const Expanded(child: SizedBox.shrink()),
+                  // [ADDCALL-1-UI] The reserved third slot, now filled — spec
+                  // §9 Phase 1. HIDDEN ENTIRELY when `addToCallEnabled` is
+                  // false, so with the flag off this row is byte-for-byte the
+                  // Record / Hold / empty it has always been. (The row itself
+                  // still renders unconditionally: Hold has no flag.)
+                  //
+                  // `userPlus` is a real phosphor_flutter 2.1.0 name — already
+                  // used at search_screen.dart:515, chat_list.dart:2016 and
+                  // group_info_screen.dart:727. A GUESSED Phosphor name compiles
+                  // fine and fails at kernel snapshot, i.e. only in CI ~5 minutes
+                  // into a release build (same trap as the `numpad` note on the
+                  // Keypad tile above). Verify against the repo, not intuition.
+                  Expanded(
+                    child: RemoteConfig.addToCallEnabled
+                        ? Builder(builder: (_) {
+                            // Dimmed and inert until connected, exactly like the
+                            // Record and Hold tiles beside it: escalating a call
+                            // that has not connected would tear down a ringing
+                            // leg and join a conference nobody is in. `_escalating`
+                            // keeps it inert through the create round-trip too, so
+                            // a double tap cannot mint two ad-hoc rooms.
+                            final live = connected && !_escalating;
+                            final tile = _CallTile(
+                              icon: PhosphorIcons.userPlus(
+                                  PhosphorIconsStyle.bold),
+                              label: 'Add',
+                              onTap: live ? () => unawaited(_addToCall()) : null,
+                            );
+                            return live
+                                ? tile
+                                : Opacity(opacity: 0.45, child: tile);
+                          })
+                        : const SizedBox.shrink(),
+                  ),
                 ]),
               ]),
                   ),
