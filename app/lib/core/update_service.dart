@@ -6,7 +6,15 @@ import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../push/push_service.dart' show navigatorKey;
+// [CALL-UPDATE-GUARD-1] Read-only access to the call globals so an update can
+// never interrupt a call. `show`-limited on purpose: this service must not
+// acquire any other dependency on the call feature, and must never WRITE these.
+// Note they live in two different files — `gIncomingRingingCallId` is owned by
+// push_service.dart (it is set by the ring handlers), the other two by
+// call_screen.dart. `call_session.dart` imports the same globals the same way.
+import '../push/push_service.dart' show navigatorKey, gIncomingRingingCallId;
+import '../features/avatok/call_screen.dart'
+    show callIsGenuinelyActive, gOutgoingCallId;
 import 'analytics.dart';
 import 'ava_log.dart';
 import 'disk_cache.dart';
@@ -105,6 +113,25 @@ class UpdateService {
 
   static bool get _supported =>
       Platform.isAndroid && RemoteConfig.inAppUpdateEnabled;
+
+  /// [CALL-UPDATE-GUARD-1] Is a call live, dialling, or ringing right now?
+  ///
+  /// All three states matter and none of them is covered by the others:
+  ///
+  /// * `callIsGenuinelyActive()` — a live call screen is attached. This is the
+  ///   connected case.
+  /// * `gOutgoingCallId` — we are dialling and it has not connected yet. This is
+  ///   the state the 2026-08-05 incident was actually in; note that
+  ///   `gOutgoingCallTo` is explicitly nulled the moment a call connects, so the
+  ///   *id* is the field to test, not the peer.
+  /// * `gIncomingRingingCallId` — their phone is ringing ours. Interrupting the
+  ///   user mid-ring with a full-screen dialog is how a call gets missed.
+  ///
+  /// Read-only use of the call globals; this service never writes them.
+  static bool get _callInProgress =>
+      callIsGenuinelyActive() ||
+      gOutgoingCallId != null ||
+      gIncomingRingingCallId != null;
 
   // ── stable UI handles (survive the drawer opening/closing) ────────────────
   static BuildContext? get _dialogCtx =>
@@ -230,6 +257,30 @@ class UpdateService {
   /// without a tap.
   static Future<void> _maybeDetect({required String trigger}) async {
     if (!_supported) return;
+    // [CALL-UPDATE-GUARD-1 2026-08-06] Never interrupt a call.
+    //
+    // This is not a politeness rule, it is a data-loss rule. On 2026-08-05 a
+    // tester's outgoing call was ringing when he switched apps and came back;
+    // the `resume` trigger fired, the dialog rendered OVER the call screen, and
+    // he tapped Update one second before the call connected. Play's immediate
+    // flow then killed the process mid-call. He came back 20 seconds later on
+    // the new build with no call, redialled four times chasing it, and the
+    // fourth attempt tore down a working call to answer one that was already
+    // dead. Every downstream symptom in that session started here.
+    //
+    // The dialog has no idea what is underneath it — it renders on the root
+    // navigator overlay — so the check has to live at the decision, not the
+    // paint.
+    if (_callInProgress) {
+      // Deferred, not dismissed: `_dismissedThisSession` and `_lastPromptAtMs`
+      // are deliberately NOT touched, so the prompt returns on the next trigger
+      // once the call is over rather than being suppressed for the session.
+      unawaited(Analytics.capture('update_prompt_deferred', {
+        'trigger': trigger,
+        'reason': 'call_in_progress',
+      }));
+      return;
+    }
     if (_dismissedThisSession) return; // no re-prompt after "Not now" this session
     if (_promptOpen || _immediateInFlight || _downloadInFlight) return;
 
@@ -452,6 +503,21 @@ class UpdateService {
     required int available,
   }) async {
     if (_immediateInFlight) return;
+    // [CALL-UPDATE-GUARD-1] Last line of defence, and not redundant with the
+    // check in `_maybeDetect`. A call can start AFTER the dialog is on screen —
+    // an incoming ring paints over it — and the user then taps Update on a
+    // dialog that was legitimate when it appeared. `performImmediateUpdate`
+    // hands the process to Play and it does not come back, so there is no
+    // recovering from this one; refuse it.
+    if (_callInProgress) {
+      unawaited(Analytics.capture('update_immediate_blocked', {
+        'trigger': trigger,
+        'reason': 'call_in_progress',
+        'available_build': available,
+      }));
+      _snack('Update paused until your call ends.');
+      return;
+    }
     _immediateInFlight = true;
     Analytics.capture('update_immediate_started', {
       'trigger': trigger,
