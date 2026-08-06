@@ -130,8 +130,12 @@ async function existingUids(env: Env, uids: string[]): Promise<Set<string>> {
  * has blocked into a live audio room is as wrong as pulling in someone who
  * blocked the caller. One query, `blocks` is the single consolidated table
  * (authz.ts:84, safety.ts writes it).
+ *
+ * [ADDCALL-3-SRV] Exported so `POST /api/groupcall/:id/invite` (spec §5) applies
+ * the IDENTICAL rule when it rings someone into a call that is already running.
+ * Re-deriving it there would be a second, drifting copy of a safety check.
  */
-async function blockedEitherWay(env: Env, me: string, uids: string[]): Promise<Set<string>> {
+export async function blockedEitherWay(env: Env, me: string, uids: string[]): Promise<Set<string>> {
   const out = new Set<string>();
   if (!uids.length) return out;
   const ph = uids.map((_, i) => `?${i + 2}`).join(",");

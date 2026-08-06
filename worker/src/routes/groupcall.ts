@@ -22,6 +22,9 @@
 //   PUT  /api/groupcall/:groupId/renegotiate {sessionId, answer} → { ok }
 //   POST /api/groupcall/:groupId/close       {sessionId, mids[], tracks?[]} → { ok }
 //   GET  /api/groupcall/:groupId/status      → { live, count, max }
+//   POST /api/groupcall/:groupId/invite      {uids[]} → { ok, rung[], failed[{uid,reason}] }
+//                                            [ADDCALL-3-SRV] ring specific people
+//                                            INTO a call that is already running.
 //
 // [CF-CALL-001] Non-negotiable migration rules honored here:
 //   - every call gets a unique OPAQUE call_id (never the group id).
@@ -34,9 +37,16 @@
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { isFail, requireUser } from "../authz";
-import { trackUser } from "../hooks";
-import { emailFor } from "../lib/identity";
+import { trackUser, trackUserContact, trackException } from "../hooks";
+import { emailFor, contactFor } from "../lib/identity";
 import { mintIceServersWithStatus } from "./media";
+// [ADDCALL-3-SRV] Add-to-call Phase 3. `blockedEitherWay` and `escalationIdFor`
+// are REUSED from the Phase 1 room routes rather than re-derived — the block rule
+// must be one implementation, and the escalation id must be one value or the
+// PostHog funnel silently splits in two (see adhoc_room.ts).
+import { blockedEitherWay, escalationIdFor } from "./adhoc_room";
+import { readConfig } from "./config";
+import { CallEvent } from "../lib/call_telemetry_events";
 
 const MAX_GROUP = 32;              // legacy audio-only backstop (groupAudioSfuEnabled)
 const MAX_CONF_PARTICIPANTS = 25;  // [CF-CALL-001] A/V cap — parity with conference.ts, never weakened
@@ -239,15 +249,41 @@ async function emitConf(
 // The push reuses the EXISTING `kind:"call"` consumer branch rather than adding
 // a new push kind, so no consumers deploy is required for this to ring: the
 // group-ness rides along as extra fields the client reads.
+//
+// ── KNOWN, DELIBERATE GAP: THERE IS NO DECLINE FOR A GROUP RING ────────────────
+// [ADDCALL-3-SRV] Spec §5 and §11 item 2. A group ring has no receipt token, no
+// per-callee record on any DO, and no server-side ring deadline (GROUP_RING_TTL_MS
+// is a payload FIELD the handset honours, not an alarm anyone enforces). So a
+// recipient who taps Decline cannot tell the server, and nothing propagates back
+// to the caller: the ring simply expires at 45 s and the handset writes a
+// `missed` call-log entry.
+//
+// This is ACCEPTED FOR v1 by the owner — it is not an oversight and not a
+// regression introduced by the invite route below, which inherits exactly the
+// same behaviour as the start-of-call broadcast that has been shipping for
+// weeks. Building it properly means a per-callee record + a signed decline
+// token + a server deadline, i.e. most of the 1:1 CallRoom ring FSM.
+//
+// If you are here because "declining a group call does nothing", that is this
+// note, not a new bug. `CallEvent.groupcall_invite_declined` is catalogued and
+// intentionally has no server emit site.
 const GROUP_RING_TTL_MS = 45_000;
+
+/** [ADDCALL-3-SRV] Per-target delivery outcome, so the invite route can report
+ *  WHICH person was reached rather than a single boolean for the batch. */
+type RingOutcome = { uid: string; ws: boolean; push: boolean };
 
 async function ringGroup(
   env: Env, req: Request,
   a: {
     groupId: string; uid: string; email: string | null; callId: string; callTraceId: string;
     mediaKind: string; targets: string[]; generation: number;
+    // [ADDCALL-3-SRV] Set only by the targeted-invite path (spec §5). The
+    // start-of-call broadcast leaves both undefined and its frame, push payload
+    // and telemetry are byte-for-byte what they were before this issue.
+    invite?: boolean; escalationId?: string | null;
   },
-): Promise<void> {
+): Promise<RingOutcome[]> {
   const [callerName, groupName] = await Promise.all([
     displayNameOf(env, a.uid),
     groupTitleOf(env, a.groupId),
@@ -270,6 +306,11 @@ async function ringGroup(
     tokenExpiresAt: now + GROUP_RING_TTL_MS,
     trace_id: a.callTraceId,
     ts: now,
+    // [ADDCALL-3-SRV] Only present on a targeted invite into a call that is
+    // already running, so the client can render "X added you to a call" and emit
+    // groupcall_invite_received against the same escalation funnel.
+    ...(a.invite ? { invite: true } : {}),
+    ...(a.escalationId ? { escalation_id: a.escalationId } : {}),
   };
   const body = JSON.stringify(frame);
 
@@ -277,17 +318,22 @@ async function ringGroup(
   // completely different causes — the WS frame never went, the push never went,
   // or both went and the handset dropped them — and without recording which leg
   // landed for WHICH person there is no way to tell them apart afterwards.
-  let wsLive = 0, wsFailed = 0, pushQueued = 0, pushFailed = 0;
-  await Promise.all(a.targets.map(async (to) => {
+  // [ADDCALL-3-SRV] The loop now RETURNS its per-target result instead of only
+  // bumping shared counters. The aggregate counters below are derived from those
+  // results, so the existing `cloudflare_conference_ring_sent` numbers are
+  // unchanged; the per-uid detail is what `POST /invite` needs to answer "which
+  // of the three people I added actually got a ring?".
+  const outcomes: RingOutcome[] = await Promise.all(a.targets.map(async (to): Promise<RingOutcome> => {
+    let ws = false, push = false;
     // WS fast path — instant for anyone with the app open.
     try {
       const r = await env.INBOX.get(env.INBOX.idFromName(to)).fetch("https://inbox/event", {
         method: "POST", headers: { "content-type": "application/json" }, body,
       });
       try {
-        if (((await r.json()) as { live?: boolean })?.live) wsLive++; else wsFailed++;
-      } catch { wsFailed++; }
-    } catch { wsFailed++; /* offline: the push below is the backstop */ }
+        ws = !!((await r.json()) as { live?: boolean })?.live;
+      } catch { ws = false; }
+    } catch { ws = false; /* offline: the push below is the backstop */ }
     // FCM path — for a phone in a pocket, which is the whole point.
     try {
       await env.Q_PUSH.send({
@@ -295,10 +341,16 @@ async function ringGroup(
         callType: kind, traceId: a.callTraceId, ts: now,
         tokenExpiresAt: now + GROUP_RING_TTL_MS,
         group: true, gid: a.groupId, groupName,
+        ...(a.invite ? { invite: true } : {}),
       });
-      pushQueued++;
-    } catch { pushFailed++; /* the WS frame may still have landed */ }
+      push = true;
+    } catch { push = false; /* the WS frame may still have landed */ }
+    return { uid: to, ws, push };
   }));
+  const wsLive = outcomes.filter((o) => o.ws).length;
+  const wsFailed = outcomes.length - wsLive;
+  const pushQueued = outcomes.filter((o) => o.push).length;
+  const pushFailed = outcomes.length - pushQueued;
 
   await emitConf(env, req, a.uid, a.email, "cloudflare_conference_ring_sent", {
     groupId: a.groupId, call_id: a.callId, call_trace_id: a.callTraceId, generation: a.generation,
@@ -311,8 +363,14 @@ async function ringGroup(
       // says "he called and my phone never rang". `emitConf` already carries
       // the caller's email, so the pair is retrievable from either end.
       target_uids: a.targets,
+      // [ADDCALL-3-SRV] Which ring this was. Without it a start broadcast and a
+      // mid-call invite are indistinguishable in PostHog, and "he added me but
+      // my phone never rang" cannot be separated from the start-of-call case.
+      ring_reason: a.invite ? "invite" : "start",
+      ...(a.escalationId ? { escalation_id: a.escalationId } : {}),
     },
   });
+  return outcomes;
 }
 
 /** Best-effort display name for the caller shown on the ringing screen. */
@@ -339,7 +397,12 @@ async function groupTitleOf(env: Env, conv: string): Promise<string> {
 // [R6 2026-08-01] `lkConf` removed with LiveKit. `flags()` no longer returns it,
 // and nothing read it — it survived the cutover only in this type and in the
 // return below, which is what made the build stop compiling.
-type Guard = { uid: string; email: string | null; cfConf: boolean } | Response;
+// [ADDCALL-3-SRV] `members` is additive — guard() already reads the roster for
+// its own membership check, and `POST /invite` needs the same list to classify
+// each requested uid. Returning it costs nothing and avoids a second D1 read
+// (and, more importantly, avoids a SECOND roster query that could disagree with
+// the one admission was decided on).
+type Guard = { uid: string; email: string | null; cfConf: boolean; members: string[] } | Response;
 
 async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?: boolean } = {}): Promise<Guard> {
   const f = await flags(env);
@@ -425,7 +488,7 @@ async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?:
       return json({ error: `call is full (${cap})`, cap }, 409);
     }
   }
-  return { uid: u.uid, email, cfConf: f.cfConf };
+  return { uid: u.uid, email, cfConf: f.cfConf, members: mem };
 }
 
 // ---- POST /join ------------------------------------------------------------------
@@ -593,6 +656,229 @@ export async function groupCallRejoin(req: Request, env: Env, groupId: string): 
     media: { audio: true, video: auth.data.media_kind !== "audio" },
     max_participants: auth.data.max_participants, generation: auth.data.generation,
     ws_url: `wss://${url.host}/api/groupcall/${groupId}/ws?ticket=${encodeURIComponent(ticket)}`,
+  });
+}
+
+// ---- POST /invite (ring specific people INTO a running call) --------------------
+//
+// [ADDCALL-3-SRV] Spec: Specs/SPEC-ADD-TO-CALL-2026-08-06.md §5.
+//
+// ── WHAT THIS IS ────────────────────────────────────────────────────────────────
+// `/join` rings the whole roster exactly ONCE, at the start of the call
+// (`authority.started_by === g.uid && preJoin.count === 0`). `ringGroup` itself
+// was never start-of-call specific — it has always been a per-uid loop — so the
+// entire cost of "add another person mid-call" is this route plus the DO's
+// `/authority/ring_add`.
+//
+// ── MEMBERSHIP IS A PRECONDITION, NOT SOMETHING THIS ROUTE GRANTS ───────────────
+// **This route does NOT insert `conversation_members` rows.** A uid that is not
+// already in the conversation comes back in `failed` with `reason:"not_a_member"`
+// and is NOT rung. The client must call `POST /api/adhoc-room/add` FIRST and only
+// then call this.
+//
+// That split is deliberate and is the contract:
+//   • `guard()` is the single authorization path for every groupcall endpoint and
+//     it fails CLOSED on the roster ([ADDCALL-0]). If this route inserted the row
+//     it needs in order to pass, it would be authorizing itself — a second
+//     admission path, and the exact hole [ADDCALL-0] just closed.
+//   • `/api/adhoc-room/add` already owns membership: it enforces the 10-person
+//     PRODUCT cap (spec §8), validates that each uid exists, applies the two-way
+//     block rule, refuses any conversation that is not `kind='call'`, and emits
+//     `groupcall_invite_created`. Duplicating any of that here means two copies
+//     that will drift.
+//   • The two steps are independently retryable. `/add` is idempotent
+//     (INSERT OR IGNORE) and so is this route, so a client that loses the
+//     response to either can simply repeat both.
+//
+// ── WHY IT RINGS WITH THE EXISTING call_id AND generation ───────────────────────
+// A ring carrying a fresh generation would make the recipient present a join
+// ticket the DO rejects as stale, so the call would ring and then refuse to open.
+// Both values come back from `/authority/ring_add` in the SAME round trip that
+// records the ring target, so they cannot be read from a call that ends in
+// between.
+//
+// Decline: see the ring-gap note above GROUP_RING_TTL_MS. Not implemented, on
+// purpose, for v1.
+
+/** Why one requested uid was not rung. Stable strings — the client renders a
+ *  per-person state from them, so treat them as part of the wire contract. */
+type InviteFailReason =
+  | "self"            // you cannot invite yourself
+  | "not_a_member"    // no conversation_members row — call /api/adhoc-room/add first
+  | "blocked"         // a block exists in either direction with the inviter
+  | "already_present" // already has a live socket in this call
+  | "ring_target_cap" // the call's ring-target list is full (64)
+  | "ring_failed";    // both the WS frame and the FCM push failed for this uid
+
+export async function groupCallInvite(req: Request, env: Env, groupId: string, exec?: ExecutionContext): Promise<Response> {
+  const t0 = Date.now();
+  // Flags + membership + size cap, exactly as every other endpoint. No second
+  // authorization path (see the header note).
+  const g = await guard(req, env, groupId);
+  if (g instanceof Response) return g;
+
+  const escalationId = escalationIdFor(groupId);
+  // Telemetry helper: email AND phone, per CLAUDE.md, and never throws.
+  const emit = async (event: string, props: Record<string, unknown>): Promise<void> => {
+    try {
+      const c = await contactFor(env, g.uid).catch(() => ({ email: null, phone: null }));
+      await trackUserContact(env, g.uid, c.email, c.phone, event, "avatok", {
+        escalation_id: escalationId, group_id: groupId, provider: PROVIDER, ...confGeo(req), ...props,
+      });
+    } catch { /* best-effort */ }
+  };
+
+  // Dark until the owner flips it, like the rest of add-to-call (Phase 1/2 gate
+  // on the same key). This is a NEW ring surface on a live-production call path;
+  // it must not become reachable the moment the Worker deploys.
+  const cfg = await readConfig(env).catch(() => null);
+  if (cfg?.addToCallEnabled !== true) {
+    return json({ error: "disabled", flag: "addToCallEnabled" }, 403);
+  }
+
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  // `uids: string[]` is the contract; a bare `uid: string` is accepted as a
+  // one-element convenience so the client can add one person without wrapping.
+  const rawList: unknown[] = Array.isArray(b?.uids) ? b.uids : (b?.uid != null ? [b.uid] : []);
+  const seen = new Set<string>();
+  for (const x of rawList) {
+    const s = String(x ?? "").trim();
+    if (s && s.length <= 128) seen.add(s);
+  }
+  const requested = [...seen];
+  if (!requested.length) return json({ error: "uids required" }, 400);
+
+  const failed: { uid: string; reason: InviteFailReason }[] = [];
+  const roster = new Set(g.members);
+  let candidates = requested.filter((u) => {
+    if (u === g.uid) { failed.push({ uid: u, reason: "self" }); return false; }
+    if (!roster.has(u)) { failed.push({ uid: u, reason: "not_a_member" }); return false; }
+    return true;
+  });
+
+  // Same two-way block rule as room creation — reused, not re-derived.
+  if (candidates.length) {
+    try {
+      const blocked = await blockedEitherWay(env, g.uid, candidates);
+      if (blocked.size) {
+        candidates = candidates.filter((u) => {
+          if (blocked.has(u)) { failed.push({ uid: u, reason: "blocked" }); return false; }
+          return true;
+        });
+      }
+    } catch (e) {
+      exec?.waitUntil(trackException(env, e, {
+        uid: g.uid, route: "/api/groupcall/:id/invite", method: "POST", handled: true,
+        extra: { escalation_id: escalationId, group_id: groupId, stage: "block_check" },
+      }));
+      return json({ error: "lookup_failed" }, 500);
+    }
+  }
+
+  // Record the ring targets BEFORE ringing anyone. If this fails, nobody is rung
+  // — which is the correct trade: a ring we cannot cancel leaves a phone ringing
+  // after the call is over (the failure mode spec §5 calls out explicitly).
+  // The same call returns the live authority, so the ring below carries the
+  // EXISTING call_id/generation.
+  const ra = await roomFetch<{
+    ok?: boolean; call_id?: string; call_trace_id?: string; generation?: number; state?: string;
+    media_kind?: string; max_participants?: number; count?: number;
+    added?: string[]; already?: string[]; present?: string[]; capped?: string[];
+    error?: string; cap?: number;
+  }>(env, groupId, "/authority/ring_add", { uids: candidates, gid: groupId });
+
+  if (ra.status === 404) {
+    exec?.waitUntil(emit(CallEvent.groupcall_escalate_failed, {
+      stage: "invite", reason: "call_not_live", requested: requested.length,
+    }));
+    return json({ error: "call is no longer active", code: "not_live" }, 409);
+  }
+  if (ra.status === 409) {
+    exec?.waitUntil(emit(CallEvent.groupcall_full_rejected, {
+      stage: "invite", cap: ra.data?.cap ?? null, count: ra.data?.count ?? null,
+      requested: requested.length,
+    }));
+    return json({
+      error: ra.data?.error ?? "call is full", code: "call_full",
+      cap: ra.data?.cap ?? null, count: ra.data?.count ?? null,
+    }, 409);
+  }
+  if (!ra.ok || !ra.data?.call_id) {
+    exec?.waitUntil(emit(CallEvent.groupcall_escalate_failed, {
+      stage: "invite", reason: "ring_add_failed", status: ra.status, requested: requested.length,
+    }));
+    return json({ error: "could not reach the call authority" }, 502);
+  }
+  // Read off `ra.data` (not the `auth` alias) so the truthiness check above
+  // actually narrows away `undefined`. Every ring below uses THIS call_id — the
+  // whole point of the endpoint is that it is the call's EXISTING one.
+  const liveCallId: string = ra.data.call_id;
+  const auth = ra.data;
+  const liveTraceId: string = auth.call_trace_id ?? liveCallId;
+
+  for (const u of auth.present ?? []) failed.push({ uid: u, reason: "already_present" });
+  for (const u of auth.capped ?? []) failed.push({ uid: u, reason: "ring_target_cap" });
+
+  // `added` = newly recorded; `already` = a repeat invite for someone whose phone
+  // should still be ringing. Ring BOTH: `already` is the retry case (the first
+  // ring may have been lost), and both the WS frame and the FCM push are
+  // idempotent on the client — the push even shares a collapse key on callId.
+  const toRing = [...(auth.added ?? []), ...(auth.already ?? [])];
+
+  let outcomes: RingOutcome[] = [];
+  if (toRing.length) {
+    try {
+      outcomes = await ringGroup(env, req, {
+        groupId, uid: g.uid, email: g.email, callId: liveCallId,
+        callTraceId: liveTraceId,
+        mediaKind: auth.media_kind ?? "audio",
+        targets: toRing, generation: auth.generation ?? 0,
+        invite: true, escalationId,
+      });
+    } catch (e) {
+      exec?.waitUntil(trackException(env, e, {
+        uid: g.uid, route: "/api/groupcall/:id/invite", method: "POST", handled: true,
+        extra: { escalation_id: escalationId, group_id: groupId, call_id: liveCallId, stage: "ring" },
+      }));
+      return json({ error: "ring_failed" }, 502);
+    }
+  }
+
+  const rung: string[] = [];
+  for (const o of outcomes) {
+    if (o.ws || o.push) rung.push(o.uid);
+    else failed.push({ uid: o.uid, reason: "ring_failed" });
+  }
+
+  // ONE event for the whole invite, tagging EVERY participant so any of their
+  // emails retrieves it (CLAUDE.md: a multi-party event must be pullable from
+  // either side). `groupcall_invite_created` is NOT emitted here — it belongs to
+  // the membership insert in routes/adhoc_room.ts, and emitting it twice would
+  // double-count the funnel step.
+  exec?.waitUntil(emit(CallEvent.groupcall_invite_sent, {
+    call_id: liveCallId, call_trace_id: auth.call_trace_id ?? null,
+    generation: auth.generation ?? null, media_kind: auth.media_kind ?? null,
+    requested: requested.length, rung_count: rung.length, failed_count: failed.length,
+    roster_size: g.members.length, live_count: auth.count ?? null,
+    elapsed_ms: Date.now() - t0,
+    // Raw uids, deliberately (same reasoning as cloudflare_conference_ring_sent):
+    // this is the event a tester's "he added me and my phone never rang" has to
+    // be joined against, from either end.
+    rung_uids: rung,
+    failed_uids: failed.map((f) => `${f.uid}:${f.reason}`),
+    participants: [g.uid, ...requested],
+  }));
+
+  return json({
+    ok: true,
+    call_id: auth.call_id,
+    call_trace_id: auth.call_trace_id ?? null,
+    generation: auth.generation ?? null,
+    media_kind: auth.media_kind ?? null,
+    max_participants: auth.max_participants ?? null,
+    count: auth.count ?? null,
+    rung,
+    failed,
   });
 }
 

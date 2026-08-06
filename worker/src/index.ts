@@ -127,7 +127,7 @@ import { uploadAgentDoc, listAgentDocs, deleteAgentDoc } from "./routes/agent_do
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
-import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
+import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus, groupCallInvite } from "./routes/groupcall";
 import { callSfuJoin, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuHeartbeat, callSfuClose } from "./routes/call_sfu";
 import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
@@ -449,7 +449,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // ([CF-CALL-001/002] audio+video); LiveKit /api/conference/* was removed
     // [CF-CALL-007A] (2026-07-24) and now always 410s. Keyed by group id so all
     // members meet on one room instance.
-    const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|rejoin|publish|pull|renegotiate|close|status|ws)$/);
+    // [ADDCALL-3-SRV] `invite` added to the verb list (spec §5 — ring specific
+    // people into a call that is already running). The <verb> group is a CLOSED
+    // ENUMERATION, not a wildcard: a handler exported from routes/groupcall.ts
+    // but missing from this alternation 404s here, which reads like a routing
+    // bug in the client rather than a missing word in a regex.
+    const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|rejoin|publish|pull|renegotiate|close|status|invite|ws)$/);
     if (gc) {
       const groupId = gc[1];
       if (gc[2] === "ws") {
@@ -463,6 +468,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (gc[2] === "renegotiate" && req.method === "PUT") return await groupCallRenegotiate(req, env, groupId);
       if (gc[2] === "close" && req.method === "POST") return await groupCallClose(req, env, groupId);
       if (gc[2] === "status" && req.method === "GET") return await groupCallStatus(req, env, groupId);
+      // `ctx` is passed because every invite emit sits on an early-return error
+      // path, and workerd drops unawaited telemetry there (CLAUDE.md).
+      if (gc[2] === "invite" && req.method === "POST") return await groupCallInvite(req, env, groupId, ctx);
     }
 
     // [CALL-SFU-1 2026-08-06] 1:1 calls on the Cloudflare Realtime SFU. Keyed by

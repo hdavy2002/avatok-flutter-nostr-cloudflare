@@ -22,6 +22,7 @@
 //   GET  /presence                 → {live, count, max, call_id, state}
 //   POST /authority/start          {uid, media_kind, max_participants} → authority
 //   POST /authority/join           {uid}                                → authority | 404/409
+//   POST /authority/ring_add       {uids[], gid?}                       → authority + {added, already, present, capped} | 404/409
 //   POST /authority/session_check  {uid, session_id}                    → {ok, generation, media_kind, call_id, max_participants} | 404/409
 //   POST /authority/pull           {uid, session_id, remote_uid, kind, track_name, max_video?}
 //   POST /authority/pull_close     {uid, session_id, kind, track_name}
@@ -103,6 +104,13 @@ const TICKET_NONCE_PREFIX = "ticket_nonce:";
 const EVICT_PREFIX = "evicted:";
 const EVICT_BLOCK_MS = 120_000;
 
+// [ADDCALL-3-SRV] Hard ceiling on the stored `ring_targets` list. Was an inline
+// `.slice(0, 64)` in authorityStart and is now shared with /authority/ring_add,
+// which APPENDS to the same list — a late invitee must be counted against the
+// same bound, or a long-running call could grow the list without limit and
+// eventually blow the storage value.
+const RING_TARGETS_MAX = 64;
+
 // [GCALL-W4-ATTCAP] Hibernation attachments are capped (~2 KB). `Att` carries two
 // client-supplied track names plus two pull lists, so unbounded 128-char names
 // could be used to overflow the attachment and make serializeAttachment throw
@@ -180,6 +188,7 @@ export class GroupCallRoom {
       }
       case "/authority/start": return this.authorityStart(req);
       case "/authority/join": return this.authorityJoin(req);
+      case "/authority/ring_add": return this.authorityRingAdd(req);
       case "/authority/session_check": return this.authoritySessionCheck(req);
       case "/authority/pull": return this.authorityPull(req);
       case "/authority/pull_close": return this.authorityPullClose(req);
@@ -198,7 +207,7 @@ export class GroupCallRoom {
     // eviction), but it has no view of group membership — so the caller hands it
     // the roster to cancel against, once, at start.
     const ringTargets: string[] = Array.isArray(b?.ring_targets)
-      ? b.ring_targets.map((u: unknown) => String(u).slice(0, 128)).filter(Boolean).slice(0, 64)
+      ? b.ring_targets.map((u: unknown) => String(u).slice(0, 128)).filter(Boolean).slice(0, RING_TARGETS_MAX)
       : [];
     const requestedCap = Number(b?.max_participants) || MAX_CONF_PARTICIPANTS;
     const maxParticipants = Math.max(2, Math.min(requestedCap, MAX_CONF_PARTICIPANTS));
@@ -257,6 +266,103 @@ export class GroupCallRoom {
     return json({
       call_id: a.call_id, call_trace_id: a.call_trace_id, generation: a.generation,
       state: a.state, media_kind: a.media_kind, max_participants: a.max_participants, started_by: a.started_by,
+    });
+  }
+
+  /**
+   * [ADDCALL-3-SRV] Append late invitees to the ring-cancel list of a call that
+   * is ALREADY RUNNING. Spec: Specs/SPEC-ADD-TO-CALL-2026-08-06.md §5.
+   *
+   * ── WHY THIS ENDPOINT HAS TO EXIST ──────────────────────────────────────────
+   * `ring_targets` was written exactly ONCE, in `authorityStart`, because until
+   * now the only ring was the broadcast at the start of the call. `cancelRing`
+   * (below) reads that same key when the call ends and un-rings everyone on it.
+   *
+   * So a person rung LATER — by `POST /api/groupcall/:id/invite` — would not be
+   * on the list, would never receive `group_call_ring_cancel`, and **their phone
+   * would keep ringing after everyone else had hung up**, with an "answer" that
+   * drops them into a call that no longer exists. That is the single worst
+   * failure mode in this phase, and this endpoint is the whole fix: the invite
+   * route appends here BEFORE it rings anybody, so the cancel can never be
+   * missed even if the ring itself half-fails.
+   *
+   * Internal only — reached through `roomFetch` from routes/groupcall.ts, which
+   * has already run `guard()` (flags + membership + caps). This object is never
+   * addressable from the internet except via the ticket-authenticated WS upgrade,
+   * so it follows the same idiom as its sibling `/authority/*` handlers and does
+   * not re-authenticate.
+   *
+   * Idempotent: inviting the same person twice appends nothing the second time
+   * (they come back under `already`), so the list cannot be corrupted or a cancel
+   * frame duplicated by a client that retries.
+   *
+   * Also returns the live authority, so the caller rings with the EXISTING
+   * call_id/generation instead of reading them in a separate round trip that
+   * could race a call ending in between.
+   */
+  private async authorityRingAdd(req: Request): Promise<Response> {
+    let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+    const uids: string[] = Array.isArray(b?.uids)
+      ? b.uids.map((u: unknown) => String(u ?? "").slice(0, 128)).filter(Boolean)
+      : [];
+
+    const a = await this.loadAuthority();
+    if (!a || a.state === "ended") return json({ error: "no live call" }, 404);
+
+    // Capacity is checked against the authoritative live-socket count, exactly
+    // as authorityStart/authorityJoin do. Refuse the WHOLE invite rather than
+    // ringing people into a room that will bounce them at the door.
+    const count = this.liveCount();
+    if (count >= a.max_participants) {
+      return json({ error: `call is full (${a.max_participants})`, cap: a.max_participants, count }, 409);
+    }
+
+    let targets: string[] = [];
+    try { targets = (await this.state.storage.get<string[]>("ring_targets")) ?? []; } catch { /* treat as empty */ }
+
+    const known = new Set(targets);
+    const added: string[] = [];
+    const already: string[] = [];
+    const present: string[] = [];
+    const capped: string[] = [];
+    for (const u of uids) {
+      // Someone who is already IN the call is not ringing and must not be added:
+      // `ring_targets` means "phones that are ringing for this call", and a
+      // cancel frame to a live participant is noise at best.
+      if (this.hasLiveUid(u)) { present.push(u); continue; }
+      if (known.has(u)) { already.push(u); continue; }
+      if (targets.length + added.length >= RING_TARGETS_MAX) { capped.push(u); continue; }
+      known.add(u);
+      added.push(u);
+    }
+
+    if (added.length) {
+      try {
+        await this.state.storage.put("ring_targets", [...targets, ...added]);
+        // The DO is addressed by idFromName(groupId) and cannot recover the group
+        // id from its own identity. authorityStart stores it only when it rang
+        // somebody, so a call that started alone has none — fill it in here, and
+        // never overwrite one that is already set.
+        const gid = String(b?.gid ?? "").slice(0, 128);
+        if (gid) {
+          const cur = await this.state.storage.get<string>("ring_gid");
+          if (!cur) await this.state.storage.put("ring_gid", gid);
+        }
+      } catch {
+        // A failed persist means the cancel would not reach these people, which
+        // is precisely the bug this endpoint exists to prevent — so fail the
+        // invite rather than ring someone we can never un-ring.
+        return json({ error: "could not record ring targets" }, 500);
+      }
+    }
+
+    return json({
+      ok: true,
+      call_id: a.call_id, call_trace_id: a.call_trace_id, generation: a.generation,
+      state: a.state, media_kind: a.media_kind, max_participants: a.max_participants,
+      started_by: a.started_by, count,
+      added, already, present, capped,
+      ring_target_count: targets.length + added.length,
     });
   }
 
@@ -639,7 +745,9 @@ export class GroupCallRoom {
     } catch { /* best-effort cleanup */ }
   }
 
-  /** [GCALL-W4-RING] Fan a ring-cancel to everyone who was rung for this call. */
+  /** [GCALL-W4-RING] Fan a ring-cancel to everyone who was rung for this call.
+   *  [ADDCALL-3-SRV] "Everyone" now includes people rung AFTER the call started,
+   *  because /authority/ring_add appends them to this same `ring_targets` key. */
   private async cancelRing(a: Authority): Promise<void> {
     let targets: string[] = [];
     try { targets = (await this.state.storage.get<string[]>("ring_targets")) ?? []; } catch { /* none */ }
