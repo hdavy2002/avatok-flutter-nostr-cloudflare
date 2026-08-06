@@ -117,7 +117,7 @@ import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
 import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
-import { callSfuJoin, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuClose } from "./routes/call_sfu";
+import { callSfuJoin, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuHeartbeat, callSfuClose } from "./routes/call_sfu";
 import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop, callTranslationToken, callTranslationLanguage } from "./routes/call_translation";
@@ -454,7 +454,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // ringing, the 2-peer cap and the participant identities — is the authority for
     // both transports. There is deliberately no `ws` verb here: 1:1 signalling
     // stays on the existing CallRoom socket, only the MEDIA path is new.
-    const cs = p.match(/^\/api\/callsfu\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|peer|pull|renegotiate|close)$/);
+    const cs = p.match(/^\/api\/callsfu\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|peer|pull|renegotiate|heartbeat|close)$/);
     if (cs) {
       const room = cs[1];
       if (cs[2] === "join" && req.method === "POST") return await callSfuJoin(req, env, room);
@@ -462,6 +462,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (cs[2] === "peer" && req.method === "GET") return await callSfuPeer(req, env, room);
       if (cs[2] === "pull" && req.method === "POST") return await callSfuPull(req, env, room);
       if (cs[2] === "renegotiate" && req.method === "PUT") return await callSfuRenegotiate(req, env, room);
+      if (cs[2] === "heartbeat" && req.method === "POST") return await callSfuHeartbeat(req, env, room);
       if (cs[2] === "close" && req.method === "POST") return await callSfuClose(req, env, room);
     }
 

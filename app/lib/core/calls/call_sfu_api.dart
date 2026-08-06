@@ -147,6 +147,14 @@ class CallSfuApi {
     );
   }
 
+  /// POST /heartbeat — renew this phone's server-owned SFU lease.
+  static Future<void> heartbeat(String room, String sessionId) async {
+    final res = await ApiAuth.postJson('$_base/$room/heartbeat', {
+      'sessionId': sessionId,
+    }, timeout: const Duration(seconds: 8));
+    if (res.statusCode != 200) _fail(res.statusCode, res.body);
+  }
+
   /// POST /pull — the SFU offers us the peer's track. Note we do NOT send the
   /// remote session id: the server reads it from the seat registry, because a
   /// client-nameable session id would let any signed-in user pull anyone's audio.

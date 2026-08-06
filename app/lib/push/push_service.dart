@@ -1762,6 +1762,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     return;
   }
   final ringCallId = (d['callId'] ?? '').toString();
+  final ringCaller = (d['fromPub'] ?? d['from'] ?? '').toString();
+  if (route != 'ws' && route != 'fcm_fg' &&
+      _suppressSameCallerRetry(ringCallId, ringCaller)) {
+    PushService._signalStatus(ringCallId, 'busy', ringCaller,
+        busyReason: 'active_call', receptionistEnabled: true);
+    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    return;
+  }
   // [CALL-CALLEE-SEQ-1 2026-08-03] Seed the callee's ordering baseline from the
   // ring itself, on every ring route.
   //
@@ -2162,6 +2170,11 @@ class PushService {
           {'call_id': incomingId, 'reason': 'ws_dedup_window'});
       return;
     }
+    if (_suppressSameCallerRetry(incomingId, fromPub)) {
+      _signalStatus(incomingId, 'busy', fromPub,
+          busyReason: 'active_call', receptionistEnabled: true);
+      return;
+    }
     // [CALL-GLARE-3] mutual dial → symmetric busy, same as the FCM branch.
     if (fromPub.isNotEmpty && hasPendingOutgoingTo(fromPub) &&
         gOutgoingCallId != null && incomingId != gOutgoingCallId) {
@@ -2216,12 +2229,37 @@ class PushService {
   // talking to the caller at the same time (issues 2 & 3). Keyed by callId with a
   // short TTL so a genuine later call (new id) still rings.
   static final Map<String, int> _recentIncoming = {};
+  static final Map<String, int> _recentIncomingByCaller = {};
+  static const int _sameCallerRetryWindowMs = 20000;
   static bool _seenIncoming(String callId) {
     if (callId.isEmpty) return false;
     final now = DateTime.now().millisecondsSinceEpoch;
     _recentIncoming.removeWhere((_, t) => now - t > 60000);
     if (_recentIncoming.containsKey(callId)) return true;
     _recentIncoming[callId] = now;
+    return false;
+  }
+
+  /// A caller retrying with a fresh call id is still the same ring. Suppress it
+  /// while we are already talking to that caller, and suppress rapid retries
+  /// after the first ring so a stale fourth Accept cannot replace a live call.
+  static bool _suppressSameCallerRetry(String callId, String caller) {
+    if (caller.isEmpty) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _recentIncomingByCaller.removeWhere((_, t) => now - t > _sameCallerRetryWindowMs);
+    final active = CallSessionManager.instance.current;
+    final activePeer = active != null && !active.isEnded ? active.config.seed : '';
+    final sameLiveCaller = callIsGenuinelyActive() && activePeer == caller;
+    final previous = _recentIncomingByCaller[caller];
+    _recentIncomingByCaller[caller] = now;
+    if (sameLiveCaller || (previous != null && callId != gActiveCallId)) {
+      Analytics.capture('call_same_caller_retry_suppressed', {
+        'call_id': callId,
+        'caller': caller,
+        'reason': sameLiveCaller ? 'already_in_call' : 'rapid_retry',
+      });
+      return true;
+    }
     return false;
   }
 
@@ -2847,6 +2885,12 @@ class PushService {
         if (_seenIncoming(incomingId)) {
           Analytics.capture('call_duplicate_push_ignored',
               {'call_id': incomingId, 'reason': 'dedup_window'});
+          return;
+        }
+        final retryCaller = (d['fromPub'] ?? d['from'] ?? '').toString();
+        if (_suppressSameCallerRetry(incomingId, retryCaller)) {
+          _signalStatus(incomingId, 'busy', retryCaller,
+              busyReason: 'active_call', receptionistEnabled: true);
           return;
         }
         // [CALL-GLARE-3] (owner decision 2026-07-07 — REPLACES the CALL-GLARE-1
@@ -3996,6 +4040,15 @@ class PushService {
         if (authoritative == null && claim.statusCode == 409) {
           authoritative = 'ended';
         }
+      } else {
+        // A successful command response can still race a caller cancellation
+        // already committed by the time the native Accept event reaches us.
+        // Re-read the DO immediately so this stale accept cannot tear down a
+        // live call in prepareForAccept().
+        authoritative = await fetchDurableCallStatus(
+          room,
+          timeout: const Duration(milliseconds: 1200),
+        );
       }
     } catch (_) {
       authoritative = await fetchDurableCallStatus(

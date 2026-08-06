@@ -3515,10 +3515,13 @@ class CallSession {
   }
 
   Future<void> _tryIceRestart(String why) async {
-    // SFU recovery is a server rejoin. Never let a timer, network callback, or
-    // stale signalling event enter the phone-to-phone ICE ladder while SFU is
-    // active or while its replacement PC/session is being established.
-    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
+    // SFU recovery is a server rejoin. Every legacy entry point now dispatches
+    // to the SFU recovery owner instead of entering the phone-to-phone ladder.
+    if (_sfuActive) {
+      await _reconnectSfu();
+      return;
+    }
+    if (_sfuStarting || _sfuReconnectInFlight) return;
     final pc = _pc;
     if (pc == null || _ended || !_weOffered || _remoteId == null) return;
     // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation rather
@@ -3551,7 +3554,11 @@ class CallSession {
   /// Either endpoint may request recovery (REL-3 fix). Guards to exactly one
   /// active attempt at a time (plan §4.1: "no overlapping restarts").
   Future<void> _requestRecovery(RecoveryReason why) async {
-    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
+    if (_sfuActive) {
+      await _reconnectSfu();
+      return;
+    }
+    if (_sfuStarting || _sfuReconnectInFlight) return;
     if (!RemoteConfig.callIceRecoveryV2) return;
     if (_ended || !_connected) return;
     // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation —

@@ -115,6 +115,7 @@ class CallSfuTransport {
   String? _sessionId;
   RTCPeerConnection? _pc;
   bool _disposed = false;
+  Timer? _heartbeatTimer;
 
   /// Mids we have opened, for the close call on teardown.
   final List<String> _openMids = <String>[];
@@ -229,6 +230,7 @@ class CallSfuTransport {
         await _pull('video');
       }
 
+      _startHeartbeat();
       return CallSfuResult.ok(_pc!, sessionId: join.sessionId, relayDegraded: join.relayDegraded);
     } on CallSfuException catch (e) {
       await _closePc();
@@ -341,6 +343,19 @@ class CallSfuTransport {
   /// Pull the peer's video when they turn their camera on mid-call.
   Future<bool> pullPeerVideo() => _pull('video');
 
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      final sid = _sessionId;
+      if (_disposed || sid == null) return;
+      try {
+        await CallSfuApi.heartbeat(room, sid);
+      } catch (e) {
+        AvaLog.I.log('call', 'SFU lease heartbeat failed: $e');
+      }
+    });
+  }
+
   Future<void> _closePc() async {
     try { await _pc?.close(); } catch (_) {}
     _pc = null;
@@ -351,6 +366,8 @@ class CallSfuTransport {
   /// no error on either side.
   Future<void> dispose() async {
     _disposed = true;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
     final sid = _sessionId;
     if (sid != null) {
       await CallSfuApi.close(room, sid, List<String>.from(_openMids));

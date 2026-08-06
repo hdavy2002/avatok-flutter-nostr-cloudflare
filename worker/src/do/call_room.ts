@@ -96,6 +96,8 @@ interface SfuSeat {
   session_id: string;
   audio_track: string | null;
   video_track: string | null;
+  audio_mid?: string | null;
+  video_mid?: string | null;
   updated_at: number;
 }
 
@@ -127,6 +129,7 @@ interface BillingState {
  *  down to ~20 s AS WELL would just re-create the tight coupling in the other
  *  direction. */
 const RECONNECT_GRACE_MS = 45_000;
+const SFU_LEASE_MS = 45_000;
 const MAX_BUFFERED_MESSAGES = 100;
 /** [CALL-AWAYBUF-BYTES-1 2026-08-03] (audit H2) Byte budget for the away-peer
  *  replay buffer, measured on the JSON-SERIALIZED AwayPeer — not on the raw
@@ -343,6 +346,34 @@ export class CallRoom {
       this.sfuSeats = (await this.state.storage.get<Record<string, SfuSeat>>("sfuSeats")) ?? {};
     }
     return this.sfuSeats;
+  }
+
+  /** Close every published track recorded for this room and retire the seats.
+   * This is the server-side backstop for crashes, force-kills, and expired
+   * reconnect grace; client /close remains the fast path. */
+  private async cleanupSfuSeats(): Promise<void> {
+    const seats = await this.loadSfuSeats();
+    const appId = this.env.CF_RT_SFU_APP_ID;
+    const token = this.env.CF_RT_SFU_APP_TOKEN;
+    if (appId && token) {
+      await Promise.all(Object.values(seats).map(async (seat) => {
+        const mids = [seat.audio_mid, seat.video_mid]
+          .filter((mid): mid is string => typeof mid === "string" && mid.length > 0);
+        if (mids.length === 0) return;
+        try {
+          await fetch(`https://rtc.live.cloudflare.com/v1/apps/${appId}/sessions/${encodeURIComponent(seat.session_id)}/tracks/close`, {
+            method: "PUT",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ tracks: mids.map((mid) => ({ mid })), force: true }),
+          });
+        } catch { /* terminal cleanup remains idempotent and best-effort */ }
+      }));
+    }
+    this.sfuSeats = {};
+    try { await this.state.storage.put("sfuSeats", {}); } catch { /* best-effort */ }
   }
 
   private async loadCallState(): Promise<void> {
@@ -903,6 +934,7 @@ export class CallRoom {
     const wasEnded = this.ended === true;
     this.ended = true;
     try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
+    await this.cleanupSfuSeats();
     if (!wasEnded) {
       // [ONEBRAIN-B2] Record the completed call in the brain BEFORE retirement
       // clears the billing state (which holds the two account ids). Fire-and-forget
@@ -1060,6 +1092,10 @@ export class CallRoom {
     if (away) candidates.push(away.awaySince + RECONNECT_GRACE_MS);
     if (billing && !billing.stopped) candidates.push(billing.next_tick);
     if (this.ringDeadline != null) candidates.push(this.ringDeadline);
+    const sfuSeats = await this.loadSfuSeats();
+    const sfuLeaseDeadlines = Object.values(sfuSeats)
+      .map((seat) => seat.updated_at + SFU_LEASE_MS);
+    if (sfuLeaseDeadlines.length > 0) candidates.push(Math.min(...sfuLeaseDeadlines));
     if (candidates.length === 0) {
       try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
       return;
@@ -1076,7 +1112,7 @@ export class CallRoom {
     // inside alarm(), so the runtime retries the alarm itself. Legacy billing
     // alone stays best-effort — a missed refund tick is money, not a stuck call,
     // and failing dial setup over it would be a worse trade.
-    const critical = away != null || this.ringDeadline != null;
+    const critical = away != null || this.ringDeadline != null || sfuLeaseDeadlines.length > 0;
     const at = Math.min(...candidates);
     try {
       await this.state.storage.setAlarm(at);
@@ -1529,19 +1565,40 @@ export class CallRoom {
         if (uid !== s.caller_uid && uid !== s.callee_uid) {
           return Response.json({ ok: false, error: "not_a_participant" }, { status: 403 });
         }
+        const previous = (await this.loadSfuSeats())[uid];
         const seat: SfuSeat = {
           uid,
           session_id: sessionId,
           // Track names are client-chosen and echoed back verbatim to the peer, so
           // they are bounded here rather than trusted. 128 matches the group path's
           // MAX_TRACK_NAME_LEN so both transports agree on the ceiling.
-          audio_track: typeof body.audioTrack === "string" ? body.audioTrack.slice(0, 128) : null,
-          video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : null,
+          audio_track: typeof body.audioTrack === "string" ? body.audioTrack.slice(0, 128) : (previous?.audio_track ?? null),
+          video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : (previous?.video_track ?? null),
+          audio_mid: typeof body.audioMid === "string" ? body.audioMid.slice(0, 16) : (previous?.audio_mid ?? null),
+          video_mid: typeof body.videoMid === "string" ? body.videoMid.slice(0, 16) : (previous?.video_mid ?? null),
           updated_at: Date.now(),
         };
         this.sfuSeats = { ...(await this.loadSfuSeats()), [uid]: seat };
         try { await this.state.storage.put("sfuSeats", this.sfuSeats); } catch { /* best-effort */ }
+        await this.scheduleNextAlarm();
         return Response.json({ ok: true, seat });
+      }
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/sfu-seat-heartbeat")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const uid = typeof body.uid === "string" ? body.uid : "";
+        const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+        const seats = { ...(await this.loadSfuSeats()) };
+        const seat = seats[uid];
+        if (!uid || !sessionId || !seat || seat.session_id !== sessionId) {
+          return Response.json({ ok: false, error: "session_not_owned" }, { status: 409 });
+        }
+        seat.updated_at = Date.now();
+        seats[uid] = seat;
+        this.sfuSeats = seats;
+        try { await this.state.storage.put("sfuSeats", seats); } catch { /* best-effort */ }
+        await this.scheduleNextAlarm();
+        return Response.json({ ok: true, updated_at: seat.updated_at });
       }
       /**
        * [CALL-SFU-1] The other seat, for pulling. Returns `ok:true, seat:null` when
@@ -1588,6 +1645,7 @@ export class CallRoom {
         delete seats[uid];
         this.sfuSeats = seats;
         try { await this.state.storage.put("sfuSeats", seats); } catch { /* best-effort */ }
+        await this.scheduleNextAlarm();
         return Response.json({ ok: true });
       }
       // [CALL-FSM-1] Read the authoritative aggregate (late-joining client,
@@ -2552,6 +2610,19 @@ export class CallRoom {
         }
       }
       } // ← end of the connected-guard `else` (ring branch). Fall through.
+    }
+    // [CALL-SFU-LEASE-1] If every signalling socket is gone and every SFU seat
+    // has missed its lease, terminate the room and close its Cloudflare tracks.
+    // This covers simultaneous socket loss/force-kill where no one client can
+    // reach /close and there is no surviving peer to start reconnect grace.
+    const leasedSeats = await this.loadSfuSeats();
+    if (Object.keys(leasedSeats).length > 0 &&
+        this.state.getWebSockets().length === 0 &&
+        Object.values(leasedSeats).every((seat) => now >= seat.updated_at + SFU_LEASE_MS)) {
+      await this.runCommand(String(this.state.id.name ?? ""), "end_call", "server");
+      await this.markEnded();
+      await this.scheduleNextAlarm();
+      return;
     }
     const away = await this.loadAway();
     if (away && now >= away.awaySince + RECONNECT_GRACE_MS - 500) {

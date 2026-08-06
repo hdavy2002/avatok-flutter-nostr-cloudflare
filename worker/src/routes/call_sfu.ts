@@ -276,8 +276,10 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
     // `mid` "1" is video by the same convention the conference controller uses.
     if (rawTracks.some((rt) => (rt as Record<string, unknown>).trackName === name && (rt as Record<string, unknown>).kind === "video")) {
       names.videoTrack = name;
+      names.videoMid = String(t.mid);
     } else {
       names.audioTrack = name;
+      names.audioMid = String(t.mid);
     }
   }
   await roomFetch(env, room, "/sfu-seat", {
@@ -307,6 +309,23 @@ export async function callSfuPeer(req: Request, env: Env, room: string): Promise
   const r = await roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
   const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   return json(body, r.status);
+}
+
+/** POST /api/callsfu/:room/heartbeat — renew the server-owned SFU lease. */
+export async function callSfuHeartbeat(req: Request, env: Env, room: string): Promise<Response> {
+  const g = await guard(req, env);
+  if (g instanceof Response) return g;
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
+  if (!sessionId) return json({ error: "session_required" }, 400);
+  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+    return json({ error: "session_not_owned" }, 403);
+  }
+  const r = await roomFetch(env, room, "/sfu-seat-heartbeat", {
+    method: "POST",
+    body: JSON.stringify({ uid: g.uid, sessionId }),
+  });
+  return json(await r.json().catch(() => ({ ok: false })), r.status);
 }
 
 /**
@@ -403,14 +422,24 @@ export async function callSfuClose(req: Request, env: Env, room: string): Promis
   const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
   const mids = Array.isArray(b.mids) ? b.mids.filter((m) => typeof m === "string") : [];
 
-  if (sessionId && mids.length > 0) {
+  if (sessionId) {
     if (!(await ownsSession(env, room, g.uid, sessionId))) {
       return json({ error: "session_not_owned" }, 403);
     }
-    await sfu(env, `/sessions/${sessionId}/tracks/close`, {
-      method: "PUT",
-      body: JSON.stringify({ tracks: mids.map((mid) => ({ mid })), force: b.force === true }),
-    }).catch(() => undefined);
+    const seatRes = await roomFetch(env, room, `/sfu-seat-self?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
+    const seatBody = seatRes.ok
+      ? (await seatRes.json().catch(() => ({}))) as { seat?: Record<string, unknown> | null }
+      : {};
+    const seat = seatBody.seat ?? null;
+    const effectiveMids = mids.length > 0
+      ? mids
+      : [seat?.audio_mid, seat?.video_mid].filter((m): m is string => typeof m === "string" && m.length > 0);
+    if (effectiveMids.length > 0) {
+      await sfu(env, `/sessions/${sessionId}/tracks/close`, {
+        method: "PUT",
+        body: JSON.stringify({ tracks: effectiveMids.map((mid) => ({ mid })), force: b.force === true }),
+      }).catch(() => undefined);
+    }
   }
   await roomFetch(env, room, "/sfu-seat-clear", {
     method: "POST",
