@@ -21,6 +21,8 @@ import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../avatok/add_to_call_sheet.dart'; // [ADDCALL-3-UI] the ONE people picker
+import 'add_to_call_ring.dart'; // [ADDCALL-3-UI]
 import 'cloudflare_conference_controller.dart';
 
 class CloudflareConferenceScreen extends StatefulWidget {
@@ -109,6 +111,65 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
   Future<void> _leave() async {
     await _ctrl.leave(reason: 'voluntary');
     if (mounted) Navigator.of(context).maybePop();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  //  [ADDCALL-3-UI] Add someone once the call is ALREADY a conference.
+  //
+  //  Spec: `Specs/SPEC-ADD-TO-CALL-2026-08-06.md` §5.
+  //
+  //  The 1:1 screen's Add tile is gone by the time the user is here — they
+  //  escalated, or they were rung into a group call — so without this control
+  //  "add one more person" is simply impossible after the first add.
+  //
+  //  ── THE SAME PICKER, NOT A SECOND ONE ────────────────────────────────────
+  //  `showAddToCallSheet` is reused verbatim. It needs two things from the live
+  //  roster and gets both from the controller rather than from a guess:
+  //   · `alreadyOnCall` — remote participants PLUS you, so the remaining
+  //     allowance against the cap of 10 is computed from what is actually in the
+  //     room, not from the 2 the 1:1 path can assume.
+  //   · `excludeUids` — everyone already here, so nobody is offered a person the
+  //     server would only answer `already_present` for.
+  //
+  //  ── TWO STEPS HERE, ONE IN THE ESCALATION ────────────────────────────────
+  //  Nobody has written a `conversation_members` row for these people, so this
+  //  path runs `/adhoc-room/add` and THEN `/invite` (`addMembership: true`). The
+  //  escalation path skips the add because `/adhoc-room/create` already did it.
+  //  That single flag is the only difference; see `add_to_call_ring.dart`.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  bool _adding = false;
+
+  Future<void> _addPeople() async {
+    if (_adding) return;
+    // Defensive: the control is not rendered with the flag off, so reaching this
+    // means the config flipped mid-call. The server 403s `disabled` anyway.
+    if (!RemoteConfig.addToCallEnabled) return;
+
+    // The roster is REMOTE participants; you are rendered separately as the
+    // local tile. Both the count and the exclusion list have to include you.
+    final present = _ctrl.roster.map((p) => p.uid).toSet()..add(_ctrl.myId);
+    final picked = await showAddToCallSheet(
+      context,
+      callId: widget.gid,
+      alreadyOnCall: present.length,
+      excludeUids: present,
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+
+    setState(() => _adding = true);
+    final names = <String, String>{for (final c in picked) c.uid: c.name};
+    final outcome = await AddToCallRing.run(
+      gid: widget.gid,
+      uids: picked.map((c) => c.uid).toList(),
+      // Byte-identical to the Worker's `escalationIdFor(groupId)`, so both
+      // halves of this funnel join on one key.
+      escalationId: 'addcall:${widget.gid}',
+      addMembership: true,
+    );
+    if (!mounted) return;
+    setState(() => _adding = false);
+    AddToCallRing.report(ScaffoldMessenger.maybeOf(context), outcome, names);
   }
 
   @override
@@ -249,6 +310,26 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                     _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.regular), 'Flip', _ctrl.flipCamera, active: true),
                   _ctl(_ctrl.speakerOn ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.regular) : PhosphorIcons.ear(PhosphorIconsStyle.regular),
                       'Speaker', _ctrl.toggleSpeaker, active: _ctrl.speakerOn),
+                  // [ADDCALL-3-UI] Add more people. Hidden entirely when
+                  // `addToCallEnabled` is off — with the flag off this row is
+                  // byte-for-byte what it has always been — and dimmed while a
+                  // add/ring round trip is in flight so a double tap cannot ring
+                  // the same person twice.
+                  //
+                  // `userPlus` is a real phosphor_flutter 2.1.0 name, matching
+                  // the 1:1 screen's Add tile (call_screen.dart) and
+                  // search_screen.dart:515. A GUESSED Phosphor name compiles and
+                  // then fails at kernel snapshot, i.e. only in CI — verify
+                  // against the repo, never intuition.
+                  if (RemoteConfig.addToCallEnabled)
+                    Opacity(
+                      opacity: _adding ? 0.45 : 1,
+                      child: _ctl(
+                          PhosphorIcons.userPlus(PhosphorIconsStyle.regular),
+                          'Add',
+                          _adding ? () {} : () => unawaited(_addPeople()),
+                          active: true),
+                    ),
                   GestureDetector(
                     onTap: _leave,
                     child: Container(

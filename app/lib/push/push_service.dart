@@ -1981,6 +1981,33 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       if (deliveryAgeMs != null) 'delivery_age_ms': deliveryAgeMs,
       'ring_remaining_ms': ringDurationMs,
     });
+    // [ADDCALL-3-UI] The RECEIVE half of a targeted invite (spec §5). The
+    // Worker sets `invite:true` ONLY on `POST /api/groupcall/:gid/invite` — a
+    // start-of-call broadcast leaves it unset — so this separates "someone
+    // added me to a call already in progress" from "a group call started",
+    // which are indistinguishable in `group_call_ring_received`.
+    //
+    // `escalation_id` rides the WS frame; the FCM push does not carry it, so it
+    // is rebuilt from the gid, which is exactly how `escalationIdFor(groupId)`
+    // computes the Worker's copy. Both routes therefore land on one key.
+    //
+    // There is no `groupcall_invite_accepted`/`_declined` counterpart on this
+    // device and that is deliberate: a group ring has no receipt token and no
+    // decline path (spec §5, accepted for v1). Do not "complete the pair" here
+    // without the server half, or the funnel will claim knowledge it lacks.
+    if (d['invite'] == true || d['invite'] == 'true') {
+      final inviteGid = (d['gid'] ?? '').toString();
+      Analytics.capture(CallEvents.groupcallInviteReceived, {
+        'call_id': ringCallId,
+        'gid_hash': inviteGid.hashCode.toString(),
+        'escalation_id': (d['escalation_id'] ?? 'addcall:$inviteGid').toString(),
+        'from_uid': (d['fromPub'] ?? '').toString(),
+        'kind': (d['kind'] ?? 'audio').toString(),
+        'route': route,
+        if (deliveryAgeMs != null) 'delivery_age_ms': deliveryAgeMs,
+        'ring_remaining_ms': ringDurationMs,
+      });
+    }
   }
   final params = CallKitParams(
     id: (d['callId'] ?? '').toString(),

@@ -23,6 +23,7 @@ import '../../core/calls/call_telemetry_events.dart'; // [ADDCALL-1-UI]
 import '../../core/disk_cache.dart'; // [CALLREC-UI-1] per-account consent store
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
+import '../conference/add_to_call_ring.dart'; // [ADDCALL-3-UI]
 import '../conference/call_escalation_service.dart'; // [ADDCALL-2-UI]
 import '../conference/cloudflare_conference_controller.dart'; // [ADDCALL-1-UI]
 import '../conference/cloudflare_conference_screen.dart'; // [ADDCALL-1-UI]
@@ -1003,7 +1004,53 @@ class _CallScreenState extends State<CallScreen> {
         ),
       ));
 
-      // 4f. Close the record. Failure here is bookkeeping only — the call is up.
+      // ── 4f. [ADDCALL-3-UI] RING THE INVITEES. Spec §5.
+      //
+      // WHY HERE, AND NOWHERE EARLIER. Phase 2 ends with the two original
+      // parties in the conference and the invitees as MEMBERS BUT UNRUNG; this
+      // is the line that closes that gap. Three constraints pin it to exactly
+      // this point:
+      //
+      //  · NOT before commit. Everything up to `coordinator.run()` returning ok
+      //    can still roll back to the 1:1. Ringing there means a phone rings for
+      //    a conference that is about to be abandoned, and — because a group
+      //    ring has no cancel receipt and no decline (spec §5) — it would keep
+      //    ringing for the full 45s TTL into a call that no longer exists.
+      //  · NOT between commit and the P2P release. The invite is an HTTP round
+      //    trip that rings every target over WS and FCM before it answers.
+      //    Putting it there extends the overlap window — two encoders, two audio
+      //    sessions, the worst CPU moment in the app (spec §4.4) — by the length
+      //    of a network call, for no benefit to anyone.
+      //  · NOT later than this. `/authority/ring_add` needs the call live, and
+      //    every second here is a second the invitees' phones are silent.
+      //
+      // So: the instant the conference is the user's real call and the 1:1 is
+      // gone. `/authority/ring_add` records the targets so the ring is cancelled
+      // when the call ends — the failure mode spec §5 names explicitly.
+      //
+      // NO STEP 1 (`AdhocRoomApi.add`) HERE. `create` already wrote every
+      // invitee's `conversation_members` row, which is precisely the
+      // precondition the invite route requires. Calling `add` again would be a
+      // redundant round trip on a live call. The conference-screen Add tile is
+      // the path that needs both steps.
+      //
+      // A RING FAILURE IS NOT A CALL FAILURE. The escalation has already
+      // succeeded — the group call is real, connected and on screen. This block
+      // therefore never rolls anything back and never reports "your call
+      // failed"; the worst it says is that we could not reach someone.
+      final inviteNames = <String, String>{
+        for (final c in picked) c.uid: c.name,
+      };
+      await _ringInvitees(
+        nav: nav,
+        gid: gid,
+        uids: invitees,
+        names: inviteNames,
+        escalationId: escalationId,
+        callId: callId,
+      );
+
+      // 4g. Close the record. Failure here is bookkeeping only — the call is up.
       final overlapMs = await coordinator.release();
       outcome = 'committed';
       Analytics.capture(CallEvents.groupcallEscalateCompleted, {
@@ -1030,6 +1077,47 @@ class _CallScreenState extends State<CallScreen> {
     } finally {
       CallEscalationService.instance.unregisterAdder(callId, coordinator);
       CallEscalationGuard.release(lease, outcome: outcome);
+    }
+  }
+
+  /// [ADDCALL-3-UI] Ring the people we added, and say per-person what happened.
+  ///
+  /// Runs AFTER the conference screen has been pushed, so this State is on its
+  /// way out — it takes the navigator explicitly and never reads `context` or
+  /// `mounted`, exactly like [_offerCallBack].
+  ///
+  /// Never throws and never rolls anything back. By the time this runs the
+  /// escalation has committed, the 1:1 is gone and the group call is on screen;
+  /// the worst thing that can happen here is that we could not reach someone,
+  /// which is a sentence, not a failed call.
+  Future<void> _ringInvitees({
+    required NavigatorState nav,
+    required String gid,
+    required List<String> uids,
+    required Map<String, String> names,
+    required String escalationId,
+    required String callId,
+  }) async {
+    try {
+      final outcome = await AddToCallRing.run(
+        gid: gid,
+        uids: uids,
+        escalationId: escalationId,
+        callId: callId,
+        // `/adhoc-room/create` already wrote every invitee's membership row.
+        addMembership: false,
+        // The Worker's invite route keys its own funnel on the GROUP id, while
+        // this escalation keys on the 1:1 call id. Carry both or the funnel
+        // splits.
+        serverEscalationId: 'addcall:$gid',
+      );
+      AddToCallRing.report(
+          ScaffoldMessenger.maybeOf(nav.context), outcome, names);
+    } catch (e, st) {
+      Analytics.captureException(e, st,
+          handled: true,
+          screen: 'call_screen',
+          extra: {'stage': 'escalate_ring', 'escalation_id': escalationId});
     }
   }
 
