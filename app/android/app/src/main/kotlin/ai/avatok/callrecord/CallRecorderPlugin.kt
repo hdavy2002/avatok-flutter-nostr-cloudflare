@@ -80,11 +80,18 @@ class CallRecorderPlugin :
         /**
          * Fixed output rate. Every batch is resampled to this on the fly, because with
          * no segmentation there is no part boundary at which a rate change could be
-         * absorbed (spec §3.3). 16 kHz is wideband voice and keeps a recording at
-         * roughly 11 MB/hour mono, which is what the storage-pool arithmetic in §6.1
-         * assumes.
+         * absorbed (spec §3.3).
+         *
+         * **32 kHz, and do NOT drop it back to 16 kHz to hit a storage number.**
+         * [CALLREC-NATIVE-1] chose 16 kHz to reach the "~11 MB/hour" figure in §6.1.
+         * That reasoning was wrong: **an AAC file's size is set by its BITRATE, not by
+         * its sample rate.** Halving the sample rate at a fixed bitrate buys zero bytes
+         * — it only throws away the 4–16 kHz band and permanently bakes telephone-band
+         * quality into an artifact a user may play back months later in a dispute.
+         * Storage is controlled by [MONO_BITRATE] / [STEREO_BITRATE] below and nowhere
+         * else.
          */
-        const val OUT_RATE = 16000
+        const val OUT_RATE = 32000
 
         /** One AAC-LC frame. The mixer produces exactly this many samples at a time. */
         const val FRAME = 1024
@@ -92,8 +99,14 @@ class CallRecorderPlugin :
         /** `Arrays.fill` on a ShortArray needs a Short — an Int literal will not compile. */
         private const val SILENCE: Short = 0
 
-        private const val MONO_BITRATE = 24_000
-        private const val STEREO_BITRATE = 40_000
+        /**
+         * THE storage knob (see [OUT_RATE]). 32 kbps mono ≈ 14 MB/hour, so the 5 GB free
+         * pool still holds roughly 360 hours and §6.1's "free in practice for nearly
+         * everyone" conclusion is unchanged. Stereo carries two decorrelated voices, so
+         * it gets 48 kbps rather than a naive double.
+         */
+        private const val MONO_BITRATE = 32_000
+        private const val STEREO_BITRATE = 48_000
 
         /** Ring depth per leg. Deep enough to ride out a stalled encoder, not a stalled call. */
         private const val RING_MS = 4_000
@@ -115,7 +128,19 @@ class CallRecorderPlugin :
         /** Cumulative dropped audio past which the recording is closed early (ladder step 2). */
         private val DROP_ABORT_SAMPLES = OUT_RATE.toLong() * 5                   // 5 s
 
-        /** Hard device-storage floor. Dart owns the soft floor (`callRecordingMinFreeMb`). */
+        /**
+         * Hard device-storage floor — the last line of defence, checked at `start` AND
+         * once a second during the session. Dart owns the SOFT, user-facing floor
+         * (`callRecordingMinFreeMb`, default 500 MB) via the `freeBytes` method.
+         *
+         * **The two must not be able to contradict each other: this number has to stay
+         * BELOW the Dart flag.** 48 MB ≪ 500 MB, so the soft check always trips first
+         * and the user gets "your phone is low on storage" instead of a bare
+         * `insufficient_storage` after tapping Record. If anyone ever lowers
+         * `callRecordingMinFreeMb` below 48 MB the flag stops meaning anything, because
+         * this floor rejects the start first — that is a deliberately safe direction to
+         * fail in, but it is why the flag should not be set that low.
+         */
         private val STORAGE_FLOOR_BYTES = 48L * 1024L * 1024L
 
         /** A leg that has produced nothing this long after start is reported once. */
@@ -234,6 +259,7 @@ class CallRecorderPlugin :
             "stop" -> handleStop(result)
             "cancel" -> handleCancel(result)
             "state" -> result.success(stateMap())
+            "freeBytes" -> handleFreeBytes(call, result)
             "recoverOrphans" -> handleRecoverOrphans(call, result)
             else -> result.notImplemented()
         }
@@ -390,6 +416,33 @@ class CallRecorderPlugin :
             finishSession(remux = false, reason = "cancel")
             main.post { result.success(mapOf("ok" to true)) }
         }, "avatok-callrec-cancel").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * [CALLREC-NATIVE-2] Free bytes on the volume holding `outputDir`.
+     *
+     * This is what makes `callRecordingMinFreeMb` a real flag. Without it,
+     * `CallRecordingStore.hasFreeSpace()` hit `notImplemented()`, failed open, and
+     * ALWAYS returned true — so the only storage check in the product was
+     * [STORAGE_FLOOR_BYTES] here, a lower and non-configurable number that only fires
+     * after the user has already tapped Record.
+     *
+     * Dart owns the SOFT, user-facing floor ("your phone is low on storage", before
+     * arming — spec §5.2); the hard floor below stays as the last line of defence.
+     *
+     * Returns null rather than a number when there is nothing to measure — Dart reads
+     * a non-`num` as "could not measure" and fails open, which is the correct
+     * degradation. Never `!!` the argument: this is called on the platform thread and
+     * an NPE here would surface as a crash, not a missing pre-check.
+     */
+    private fun handleFreeBytes(call: MethodCall, result: MethodChannel.Result) {
+        val dirPath = call.argument<String>("outputDir")
+        if (dirPath.isNullOrBlank()) {
+            result.success(null)
+            return
+        }
+        val free = freeBytes(File(dirPath))
+        result.success(if (free == Long.MAX_VALUE) null else free)
     }
 
     private fun handleRecoverOrphans(call: MethodCall, result: MethodChannel.Result) {

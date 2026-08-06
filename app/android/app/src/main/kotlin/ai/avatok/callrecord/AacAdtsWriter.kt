@@ -35,13 +35,21 @@ internal class AacAdtsWriter(
             24000, 22050, 16000, 12000, 11025, 8000, 7350,
         )
 
+        /**
+         * Fallback index for a rate not in the table — the recorder's own output rate
+         * ([CallRecorderPlugin.OUT_RATE]), resolved from the table rather than written
+         * as a literal so it cannot drift out of sync with it again.
+         */
+        private val DEFAULT_INDEX =
+            SAMPLE_RATES.indexOf(CallRecorderPlugin.OUT_RATE).let { if (it < 0) 8 else it }
+
         fun freqIndex(rate: Int): Int {
             for (i in SAMPLE_RATES.indices) if (SAMPLE_RATES[i] == rate) return i
-            return 8 // 16 kHz — the recorder's own output rate
+            return DEFAULT_INDEX
         }
 
         fun rateForIndex(index: Int): Int =
-            if (index in SAMPLE_RATES.indices) SAMPLE_RATES[index] else 16000
+            if (index in SAMPLE_RATES.indices) SAMPLE_RATES[index] else SAMPLE_RATES[DEFAULT_INDEX]
     }
 
     private val codec: MediaCodec = MediaCodec.createEncoderByType(MIME)

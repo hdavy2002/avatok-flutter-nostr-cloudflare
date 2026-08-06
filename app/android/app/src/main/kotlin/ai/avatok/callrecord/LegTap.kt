@@ -22,12 +22,20 @@ internal class LegTap(val name: String, private val outRate: Int, ringMs: Int) {
         /** ~42 ms of input at 48 kHz — comfortably larger than a 10 ms WebRTC batch. */
         private const val MAX_IN = 2048
 
-        /**
-         * Worst case is upsampling 8 kHz → 16 kHz, i.e. two output samples per input
-         * frame. +8 of slack so a fractional-phase carry can never run off the end.
-         */
-        private const val MAX_OUT = MAX_IN * 2 + 8
+        /** Lowest capture rate a route can plausibly report (narrowband SCO). */
+        private const val MIN_IN_RATE = 8000
     }
+
+    /**
+     * Worst case is upsampling [MIN_IN_RATE] to [outRate], i.e. `outRate / 8000` output
+     * samples per input frame. **Derived from [outRate], never a literal** — when the
+     * output rate went 16 kHz → 32 kHz in `[CALLREC-NATIVE-2]` a hard-coded `MAX_IN * 2`
+     * would have silently truncated every 8 kHz batch to half its samples and shown up
+     * only as unexplained drift. +8 of slack so a fractional-phase carry can never run
+     * off the end.
+     */
+    private val maxOut =
+        MAX_IN * ((outRate + MIN_IN_RATE - 1) / MIN_IN_RATE).coerceAtLeast(1) + 8
 
     val ring = PcmRing(outRate / 1000 * ringMs)
 
@@ -79,7 +87,7 @@ internal class LegTap(val name: String, private val outRate: Int, ringMs: Int) {
 
     // --- resampler state (audio thread only) --------------------------------
     private val monoIn = ShortArray(MAX_IN)
-    private val outBuf = ShortArray(MAX_OUT)
+    private val outBuf = ShortArray(maxOut)
     private var phase: Double = 0.0
     private var prev: Short = 0
     private var primed: Boolean = false
@@ -158,7 +166,7 @@ internal class LegTap(val name: String, private val outRate: Int, ringMs: Int) {
             // fractional phase survives batch boundaries without a click.
             var out = 0
             var p = phase
-            while (p < n && out < MAX_OUT) {
+            while (p < n && out < maxOut) {
                 val idx = p.toInt()
                 val frac = p - idx
                 val a = if (idx == 0) prev.toInt() else monoIn[idx - 1].toInt()

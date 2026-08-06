@@ -64,7 +64,9 @@ internal object AdtsRemuxer {
         var muxer: MediaMuxer? = null
         var input: BufferedInputStream? = null
         var frames = 0L
-        var rate = 16000
+        // Overwritten from the first ADTS header below; this is only the value used if
+        // the file has no readable frame at all.
+        var rate = CallRecorderPlugin.OUT_RATE
         try {
             val ins = BufferedInputStream(FileInputStream(work), 64 * 1024)
             input = ins
