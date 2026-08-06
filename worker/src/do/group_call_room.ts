@@ -34,13 +34,17 @@
 //                                                          camera-off = kind:"video", trackName:null, enabled:false)
 //                  {t:"level", v}                     (0..1 mic level, ~4×/sec)
 //                  {t:"roster"}                       (request a fresh roster)
-//   server→client: {t:"welcome", you, call_id, call_trace_id, generation, roster}
-//                  {t:"roster", roster:[{uid,session,audio_track,video_track,video_enabled}]}
+//                  {t:"recording", on}                ([ADDCALL-4-SRV] I am/am not recording)
+//   server→client: {t:"welcome", you, call_id, call_trace_id, generation, roster, recording}
+//                  {t:"roster", roster:[{uid,session,audio_track,video_track,video_enabled,muted,recording}]}
 //                  {t:"speakers", uids:[...]}
+//                  {t:"recording", on, uids:[...], count} ([ADDCALL-4-SRV] room recording state)
 //                  {t:"left", uid}
 //                  {t:"full", reason}
 import type { Env } from "../types";
 import { verifyJoinTicket } from "../routes/groupcall";
+import { contactFor } from "../lib/identity";
+import { trackUserContact, trackException } from "../hooks";
 
 export type MediaKind = "audio" | "video" | "audio_video";
 export type CallState = "starting" | "live" | "ending" | "ended";
@@ -136,6 +140,19 @@ interface Att {
   /// `audioTrack == null`, which is only ever true BEFORE the first publish.
   /// Everyone therefore appeared unmuted no matter what they did.
   muted: boolean;
+  /// [ADDCALL-4-SRV] Server-known call-recording state for THIS socket.
+  /// Spec: Specs/SPEC-ADD-TO-CALL-2026-08-06.md §7 — "the indicator must show on
+  /// the conference screen for every participant whenever any participant is
+  /// recording, which means the `callrec` state frame has to be relayed through
+  /// GroupCallRoom rather than the 1:1 CallRoom relay."
+  ///
+  /// In a 1:1 the ToS clause plus an on-screen indicator means both parties are
+  /// informed. In a 10-way call the clause is doing all the work for nine people
+  /// unless this field exists and is fanned out.
+  ///
+  /// OPTIONAL on purpose: attachments written by a build that predates this field
+  /// deserialize with it `undefined`, so every read is `=== true`.
+  recording?: boolean;
   audioPulls: string[]; // remote trackNames this client currently pulls (audio)
   videoPulls: string[]; // remote trackNames this client currently pulls (video)
   level: number;        // smoothed 0..1
@@ -144,6 +161,17 @@ interface Att {
   hot?: number;
   cold?: number;
   speaking?: boolean;
+}
+
+interface RosterRow {
+  uid: string;
+  session: string;
+  audio_track: string | null;
+  video_track: string | null;
+  video_enabled: boolean;
+  muted: boolean;
+  /** [ADDCALL-4-SRV] True when this participant has told the room it is recording. */
+  recording: boolean;
 }
 
 function json(obj: unknown, status = 200): Response {
@@ -461,6 +489,8 @@ export class GroupCallRoom {
       this.sendTo(other, { t: "left", uid });
     }
     this.broadcastRoster(gone);
+    // [ADDCALL-4-SRV] An evicted member's recording flag leaves with them.
+    this.broadcastRecording(gone);
     this.recomputeSpeakers(gone);
     if (this.state.getWebSockets().filter((w) => !gone.has(w)).length === 0) {
       await this.endAuthority();
@@ -523,6 +553,14 @@ export class GroupCallRoom {
     // making the new device's own session_check 409. Track it as excluded from
     // here on so every read below sees the room as it will actually be.
     const superseded = this.findWsByUid(ticket.uid);
+    // [ADDCALL-4-SRV] Read the doomed attachment BEFORE closing it, so a recorder
+    // who merely reconnects does not silently go dark for everyone else. The room
+    // state is derived from live sockets, so without this carry-forward a network
+    // blip on the recorder's phone would drop the indicator on the other nine
+    // screens until their client happened to re-announce — the exact ambiguous
+    // moment the "fail toward showing" rule is about. A terminal departure still
+    // clears (webSocketClose / evict / sweep); only a same-uid takeover inherits.
+    const supersededAtt = superseded ? this.att(superseded) : null;
     if (superseded) {
       try { superseded.close(1000, "superseded by reconnect"); } catch { /* ignore */ }
     }
@@ -538,16 +576,33 @@ export class GroupCallRoom {
     const att: Att = {
       uid: ticket.uid, session: ticket.session_id, generation: ticket.generation,
       audioTrack: null, videoTrack: null, videoEnabled: false, muted: false,
+      recording: supersededAtt?.recording === true,
       audioPulls: [], videoPulls: [], level: 0, ts: now, born: now,
     };
     (server as any).serializeAttachment(att);
 
     if (a.state === "starting") { a.state = "live"; await this.saveAuthority(a); }
 
+    // [ADDCALL-4-SRV] Computed AFTER this socket's attachment is written, so a
+    // reconnecting recorder's carried-forward state is already reflected.
+    const recUids = this.recordingUids();
+
     this.sendTo(server, {
       t: "welcome", you: ticket.uid, call_id: a.call_id, call_trace_id: a.call_trace_id,
       generation: a.generation, v: WIRE_VERSION, media_kind: a.media_kind, roster: this.roster(),
+      // [ADDCALL-4-SRV] A LATE JOINER IS EXACTLY THE PERSON LEAST LIKELY TO KNOW.
+      // Someone dropped into a call that is already being recorded must learn it
+      // immediately, not on the next change — the same failure the 1:1 `callrec`
+      // frame had to fix with its re-announce-on-connect, and worse here because
+      // in a group nobody has any reason to re-announce for the new arrival.
+      // Carried on `welcome` AND repeated as a standalone frame below, so a
+      // client that implements either one is informed.
+      recording: { on: recUids.length > 0, uids: recUids, count: recUids.length },
     });
+    if (recUids.length > 0) {
+      this.sendTo(server, { t: "recording", on: true, uids: recUids, count: recUids.length });
+      this.emitRecordingTelemetry(a, ticket.uid, true, [ticket.uid], "join", recUids);
+    }
     this.broadcastRoster(server);
     void this.ensureSweep();
     return new Response(null, { status: 101, webSocket: client });
@@ -565,6 +620,10 @@ export class GroupCallRoom {
       case "hello":
         (ws as any).serializeAttachment(att);
         this.broadcastRoster();
+        // [ADDCALL-4-SRV] `hello` is the client saying "I am up" — the second
+        // chance for a joiner to learn the room is being recorded, in case the
+        // frames sent alongside `welcome` were dropped in the handshake window.
+        this.sendRecordingTo(ws);
         break;
       // Publish/clear ONE track kind. uid is never taken from the message — it is
       // fixed to this socket's ticket-verified attachment. Camera-off is
@@ -616,9 +675,50 @@ export class GroupCallRoom {
         this.recomputeSpeakers();
         break;
       }
+      // [ADDCALL-4-SRV] Recording state, relayed through the room.
+      // Spec §7: the conference indicator must light for EVERY participant
+      // whenever ANY participant is recording. This is the transport for that —
+      // deliberately the SAME socket that already carries roster/mute/speakers
+      // rather than a second channel, and deliberately tiny (one boolean).
+      //
+      // FAIL TOWARD SHOWING THE INDICATOR. `on` is true unless the client says
+      // an explicit falsey OFF, so a malformed or truncated frame lights the
+      // indicator instead of hiding it. The asymmetry is the whole point: a
+      // spurious indicator is a minor annoyance, a missing one is the consent
+      // failure this feature exists to prevent. A client that has stopped
+      // recording sends `on:false` and that is honoured exactly.
+      //
+      // uid is NEVER read from the message — it is fixed to this socket's
+      // ticket-verified attachment, so nobody can flip someone else's flag
+      // (in either direction; falsely clearing another person's indicator
+      // would be the more dangerous of the two).
+      case "recording": {
+        const on = !(data.on === false || data.on === 0 || data.on === "false");
+        const changed = (att.recording === true) !== on;
+        att.recording = on;
+        (ws as any).serializeAttachment(att);
+        // Broadcast unconditionally, even when unchanged: a re-announce is a few
+        // dozen bytes and is the cheap repair for anyone whose earlier frame was
+        // lost. Change-detection is used only to keep telemetry from duplicating.
+        this.broadcastRecording();
+        this.broadcastRoster();
+        if (changed) {
+          void this.loadAuthority().then((a) => {
+            if (a) this.emitRecordingTelemetry(a, att.uid, on, this.liveUids(), "toggle", this.recordingUids());
+          }).catch(() => { /* best-effort */ });
+        }
+        break;
+      }
       case "roster":
         this.sendTo(ws, { t: "roster", roster: this.roster() });
+        // [ADDCALL-4-SRV] A client asking to resync its roster is a client that
+        // thinks its view may be stale. Recording state is part of that view and
+        // costs one small frame, so never make them ask twice for it.
+        this.sendRecordingTo(ws);
         break;
+      // [ADDCALL-4-SRV] Unknown frame types remain a silent no-op — an older
+      // client that has never heard of `recording` is unaffected, and this
+      // `default` must never start throwing.
       default:
         break;
     }
@@ -631,6 +731,10 @@ export class GroupCallRoom {
     }
     try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* already closed */ }
     this.broadcastRoster(ws);
+    // [ADDCALL-4-SRV] A recorder who drops off must not leave a phantom
+    // indicator lit forever. State is derived from live sockets, so excluding
+    // this one from the recompute IS the clear.
+    this.broadcastRecording(ws);
     this.recomputeSpeakers(ws);
     // Last participant leaving ends the call — a fresh /authority/start mints a
     // brand-new call_id + bumped generation next time (Phase 1 identity rule).
@@ -680,6 +784,10 @@ export class GroupCallRoom {
         }
       }
       this.broadcastRoster(evicted);
+      // [ADDCALL-4-SRV] Same reason as webSocketClose: a swept zombie must not
+      // leave the survivors staring at a "Recording" pill for a phone that is no
+      // longer in the call.
+      this.broadcastRecording(evicted);
       this.recomputeSpeakers(evicted);
     }
 
@@ -835,8 +943,8 @@ export class GroupCallRoom {
   // that follows a departure still listed the departing member — and since the
   // client applies a roster by clear-and-rebuild, that frame re-added the very
   // participant the preceding {t:'left'} had just removed.
-  private roster(exclude?: WebSocket | Set<WebSocket>): { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean; muted: boolean }[] {
-    const out: { uid: string; session: string; audio_track: string | null; video_track: string | null; video_enabled: boolean; muted: boolean }[] = [];
+  private roster(exclude?: WebSocket | Set<WebSocket>): RosterRow[] {
+    const out: RosterRow[] = [];
     const seen = new Set<string>();
     for (const ws of this.state.getWebSockets()) {
       if (this.isExcluded(ws, exclude)) continue;
@@ -850,6 +958,11 @@ export class GroupCallRoom {
       out.push({
         uid: a.uid, session: a.session, audio_track: a.audioTrack,
         video_track: a.videoTrack, video_enabled: a.videoEnabled, muted: a.muted === true,
+        // [ADDCALL-4-SRV] Per-participant so the client can name the recorder
+        // ("Ana is recording") rather than only saying "Recording". Deliberately
+        // redundant with the {t:"recording"} frame: whichever of the two a client
+        // happens to apply, it ends up showing the indicator.
+        recording: a.recording === true,
       });
     }
     return out;
@@ -894,5 +1007,129 @@ export class GroupCallRoom {
 
   private sendTo(ws: WebSocket, obj: unknown): void {
     try { ws.send(JSON.stringify(obj)); } catch { /* gone */ }
+  }
+
+  // ---- [ADDCALL-4-SRV] recording relay -------------------------------------------
+  // Spec: Specs/SPEC-ADD-TO-CALL-2026-08-06.md §7.
+  //
+  // The whole reason this lives in the DO rather than in the 1:1 CallRoom relay:
+  // CallRoom forwards a frame to ONE peer (or broadcasts to the other seat of a
+  // two-seat room). A conference has up to 25 sockets and the roster IS the set
+  // of live sockets, so the fan-out has to be computed here, from the same source
+  // of truth that already drives roster and active-speaker updates.
+
+  /** Every uid currently telling the room it is recording. Derived from LIVE
+   *  sockets only, which is what makes disconnect-clears-it free: a socket that
+   *  is gone (closed, evicted, swept, superseded) simply is not counted. */
+  private recordingUids(exclude?: WebSocket | Set<WebSocket>): string[] {
+    const out = new Set<string>();
+    for (const ws of this.state.getWebSockets()) {
+      if (this.isExcluded(ws, exclude)) continue;
+      const a = this.att(ws);
+      if (a?.recording === true && a.uid) out.add(a.uid);
+    }
+    return [...out].sort();
+  }
+
+  /** All live uids — the participant list a multi-party telemetry event tags so
+   *  ANY participant's email retrieves the interaction (CLAUDE.md telemetry rule). */
+  private liveUids(exclude?: WebSocket | Set<WebSocket>): string[] {
+    const out = new Set<string>();
+    for (const ws of this.state.getWebSockets()) {
+      if (this.isExcluded(ws, exclude)) continue;
+      const a = this.att(ws);
+      if (a?.uid) out.add(a.uid);
+    }
+    return [...out];
+  }
+
+  /** Push room recording state to one socket. */
+  private sendRecordingTo(ws: WebSocket): void {
+    const uids = this.recordingUids();
+    this.sendTo(ws, { t: "recording", on: uids.length > 0, uids, count: uids.length });
+  }
+
+  /** Fan room recording state to everyone, following the broadcastRoster idiom
+   *  (same `exclude` semantics: excluded sockets are left OUT of the computed
+   *  state as well as the send list — the departure case). */
+  private broadcastRecording(exclude?: WebSocket | Set<WebSocket>): void {
+    const uids = this.recordingUids(exclude);
+    const msg = JSON.stringify({ t: "recording", on: uids.length > 0, uids, count: uids.length });
+    for (const ws of this.state.getWebSockets()) {
+      if (this.isExcluded(ws, exclude)) continue;
+      try { ws.send(msg); } catch { /* gone */ }
+    }
+  }
+
+  /**
+   * [ADDCALL-4-SRV] `callrec_peer_indicator` — the consent proof, group edition.
+   *
+   * The 1:1 version of this event (client-side, [CALLREC-TELEM-1]) pairs a
+   * `dir:sent` on the recorder's timeline with a `dir:received` on the peer's, so
+   * "the other person saw an indicator" is an observation rather than an
+   * assumption. In a conference the server is the only component that knows the
+   * full participant set, so it emits the RELAY half: one event per live
+   * participant, each stamped with THAT participant's own email/phone, so any of
+   * up to ten testers' emails retrieves the same moment. The client's own
+   * `dir:received` remains the genuine proof of receipt — this does not replace
+   * it and does not reuse its `dir` value.
+   *
+   * `dir` values used here:
+   *   "sent"    — the recorder's own row (they are the one who toggled)
+   *   "relayed" — a row for each other participant the frame was fanned out to
+   *
+   * Entirely best-effort and detached from the call path: a telemetry failure
+   * must never affect whether the indicator is delivered. Failures are routed to
+   * `trackException` rather than swallowed, per CLAUDE.md ("no silent catch").
+   */
+  private emitRecordingTelemetry(
+    a: Authority,
+    actorUid: string,
+    on: boolean,
+    recipients: string[],
+    reason: "toggle" | "join",
+    recordingUids: string[],
+  ): void {
+    const p = (async () => {
+      // De-duplicate and bound: the cap is 25 sockets, but never let a malformed
+      // roster turn one toggle into an unbounded PostHog fan-out.
+      const targets = [...new Set([actorUid, ...recipients].filter(Boolean))].slice(0, MAX_CONF_PARTICIPANTS + 1);
+      await Promise.all(targets.map(async (uid) => {
+        const c = await contactFor(this.env, uid).catch(() => ({ email: null, phone: null }));
+        await trackUserContact(this.env, uid, c.email, c.phone, "callrec_peer_indicator", "avatok", {
+          surface: "conference",
+          dir: uid === actorUid && reason === "toggle" ? "sent" : "relayed",
+          reason,
+          on,
+          call_id: a.call_id,
+          rec_id: `callrec:${a.call_id}`,
+          generation: a.generation,
+          media_kind: a.media_kind,
+          // Who is recording, and everyone the state was fanned out to. Both are
+          // uids (never emails) — the per-event email above is what makes a pull
+          // by tester possible, and duplicating other people's emails into one
+          // event would spread PII across timelines that should not carry it.
+          recorder_uid: actorUid,
+          recording_uids: recordingUids,
+          recording_count: recordingUids.length,
+          participants: targets,
+          participant_count: targets.length,
+        }, a.call_trace_id);
+      }));
+    })().catch((e) => {
+      // A DO WebSocket handler has no ExecutionContext, so there is no
+      // ctx.waitUntil to reach for; `state.waitUntil` is the DO equivalent and is
+      // used below to keep this alive past the handler return.
+      void trackException(this.env, e, {
+        route: "do/group_call_room#recording", handled: true, uid: actorUid,
+        extra: { call_id: a.call_id, reason },
+      }).catch(() => { /* give up quietly */ });
+    });
+    // [ADDCALL-4-SRV] workerd drops unawaited telemetry when the surrounding
+    // invocation returns — the trap recorded in Graphiti as
+    // "avatok-worker-error-path-telemetry-dropped". `state.waitUntil` is the DO's
+    // waitUntil; the `void p` fallback covers a runtime where it is absent.
+    try { (this.state as unknown as { waitUntil?: (pr: Promise<unknown>) => void }).waitUntil?.(p); } catch { /* ignore */ }
+    void p;
   }
 }
