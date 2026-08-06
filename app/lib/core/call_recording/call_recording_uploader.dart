@@ -27,17 +27,19 @@
 /// the file's content hash, so an edited/re-recorded file can never resume onto
 /// a stale session.
 ///
-/// ── ⚠️ ONE WORKMANAGER DISPATCHER PER PROCESS ────────────────────────────────
-/// `Workmanager().initialize(cb)` stores ONE callback handle. Whichever
-/// `initialize` runs last wins for EVERY task in the app, and a dispatcher that
-/// doesn't recognise a task name just returns true — i.e. the task silently
-/// never runs. This app already has one dispatcher
-/// (`features/avadial/contacts_daily_backup.dart`), so [callRecordingDispatcher]
-/// below handles BOTH task names: if ours registers last, the contacts backup
-/// still runs. If theirs registers last, our background retry is dropped — which
-/// is survivable, because [uploadPending] is also driven from app start and from
-/// the store's own post-call attempt, and NOT survivable silently: we log it.
-/// The real fix is a single app-wide dispatcher; see the handover note.
+/// ── ⚠️ THE DISPATCHER LIVES IN `core/background_tasks.dart` ──────────────────
+/// `Workmanager().initialize(cb)` stores ONE callback handle for the whole
+/// process — last writer wins — and a dispatcher that doesn't recognise a task
+/// name just returns true, so the losing feature's job silently never runs.
+/// This file therefore owns NO dispatcher and never calls `initialize`. There is
+/// exactly one entry point in the app (`avatokBackgroundDispatcher`) and one
+/// initialize call site ([BackgroundTasks.ensureInitialized]).
+///
+/// Our task name [kCallRecUploadTask] is mapped to its handler in
+/// `registerBuiltInBackgroundTasks()` in that file — which is also where the
+/// headless-isolate bootstrap and the `RemoteConfig.refresh()` before
+/// [uploadPending] now live. Adding a new background lane here means adding it
+/// THERE, not calling `initialize` again.
 library;
 
 import 'dart:async';
@@ -45,24 +47,18 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:workmanager/workmanager.dart';
 
-import '../../auth/clerk_client.dart';
-import '../../features/avadial/contacts_daily_backup.dart'
-    show kContactsDailyBackupTask, runDailyContactsBackup;
 import '../../features/avatok/media.dart';
 import '../../identity/identity.dart';
 import '../analytics.dart';
-import '../api_auth.dart';
 import '../ava_log.dart';
+import '../background_tasks.dart';
 import '../db.dart';
 import '../disk_cache.dart';
-import '../remote_config.dart';
 import 'call_recording_api.dart';
 
 /// Task name reported back to `Workmanager.executeTask`.
@@ -72,65 +68,6 @@ const String kCallRecUploadTask = 'ai.avatok.callrec.upload';
 /// registration instead of coexisting with it (same convention as the contacts
 /// backup work).
 const String kCallRecUploadWork = 'avatok-callrec-upload-v1';
-
-/// Device-global key holding the ACTIVE Clerk account id. MUST match `_kAcct` in
-/// `main.dart` and `_kAcctGlobal` in `contacts_daily_backup.dart` — it is the
-/// same value, and it is what lets a headless isolate scope itself to the right
-/// account on a shared phone instead of uploading under the guest scope.
-const String _kAcctGlobal = 'clerk_account_id';
-
-/// Headless entry point. MUST be top-level and MUST carry
-/// `@pragma('vm:entry-point')`, or the AOT tree-shaker drops it and the task
-/// silently never runs in a release APK.
-@pragma('vm:entry-point')
-void callRecordingDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    try {
-      // Deliberate cross-feature delegation — see the dispatcher note above.
-      // Handling the other feature's task here is what stops OUR initialize()
-      // from breaking THEIR daily backup.
-      if (task == kContactsDailyBackupTask) return await runDailyContactsBackup();
-      if (task != kCallRecUploadTask) return true;
-      if (!await _bootstrapIsolate()) return true;
-      await RemoteConfig.refresh();
-      await CallRecordingUploader.uploadPending(source: 'workmanager');
-      return true;
-    } catch (e, st) {
-      // Never let the OS penalise/retry-storm us over an upload, but never
-      // swallow it either (CLAUDE.md: no silent catch).
-      AvaLog.I.log('callrec', 'upload task threw: $e');
-      await Analytics.captureException(e, st,
-          screen: 'callrec', handled: true, extra: {'stage': 'workmanager_task'});
-      return true;
-    }
-  });
-}
-
-/// Re-create, inside the headless isolate, the slice of app state an upload
-/// needs: the account scope (so [Db.I] opens the RIGHT per-account file) and a
-/// Clerk bearer (so [ApiAuth] can sign). Mirrors `_bootstrapIsolate` in
-/// `contacts_daily_backup.dart` — duplicated rather than shared because that one
-/// is private to its own library and this must not depend on it loading first.
-///
-/// Returns false when nobody is signed in: a guest has no server copy to make.
-Future<bool> _bootstrapIsolate() async {
-  try {
-    WidgetsFlutterBinding.ensureInitialized();
-    DartPluginRegistrant.ensureInitialized();
-    final acct = await DiskCache.readGlobal(_kAcctGlobal);
-    if (acct == null || acct.isEmpty) return false;
-    // Without this the job reads the 'guest' scope — a different SQLite file and
-    // a different media dir, i.e. it would find nothing and, worse, could write
-    // one account's recording under another's scope on a shared phone.
-    AccountScope.id = acct;
-    final clerk = ClerkClient();
-    ApiAuth.clerkBearer = clerk.sessionToken;
-    return true;
-  } catch (e) {
-    AvaLog.I.log('callrec', 'upload bootstrap failed: $e');
-    return false;
-  }
-}
 
 /// The result of trying to upload one recording, for the caller's telemetry and
 /// for the per-card "why isn't this backed up" state.
@@ -610,7 +547,7 @@ class CallRecordingUploader {
   static Future<void> scheduleRetry() async {
     if (!Platform.isAndroid) return;
     try {
-      await Workmanager().initialize(callRecordingDispatcher);
+      await BackgroundTasks.ensureInitialized();
       await Workmanager().registerOneOffTask(
         kCallRecUploadWork,
         kCallRecUploadTask,
