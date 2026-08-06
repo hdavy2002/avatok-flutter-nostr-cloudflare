@@ -4,6 +4,51 @@ part of '../chat_thread.dart';
 // field/method of `_ChatThreadScreenState` resolves unchanged.
 // ignore_for_file: invalid_use_of_protected_member
 
+// ─────────────────────────────────────────────────────────────────────────────
+// [CHAT-UI-STATIC-1] Per-attachment decrypt-future cache.
+//
+// `_mediaContent` used to build `FutureBuilder(future: MediaService
+// .downloadAndDecrypt(m.media!))` INLINE inside `build`. A `FutureBuilder`
+// restarts whenever it is handed a NEW Future instance, so every rebuild kicked
+// off a fresh download+decrypt AND dropped the bubble straight back to the
+// loading placeholder before re-showing the image. Because `_msgsRev` is a
+// single thread-wide counter, ANY message change invalidates EVERY row — so
+// during the staged load right after a thread opens, every media bubble
+// re-decrypted and flashed at least once. That is the flicker the owner sees.
+//
+// Keyed by [ChatMedia.id], which is the sha256 of the ciphertext — content
+// addressed, so it is stable across rebuilds AND correct across threads (the
+// same blob genuinely is the same bytes). NOT keyed by message id, which is
+// per-thread-local.
+//
+// RETRY CONTRACT: a cached future that COMPLETED WITH AN ERROR would be
+// re-awaited forever and silently kill the retry affordance. Every path that
+// clears `m.localBytes` to force a re-fetch MUST also call
+// [_forgetChatMediaFuture] — see the `onRetry` in `_mediaContent`.
+final Map<String, Future<Uint8List>> _chatMediaFutures = {};
+
+/// Soft cap. Each entry retains the decrypted bytes for as long as it lives, so
+/// this is a memory bound, not just a tidy-up. Well past a screenful of media.
+const int _kChatMediaFutureCap = 32;
+
+Future<Uint8List> _chatMediaFuture(ChatMedia media) {
+  final cached = _chatMediaFutures[media.id];
+  if (cached != null) return cached;
+  if (_chatMediaFutures.length >= _kChatMediaFutureCap) {
+    // Insertion-ordered (LinkedHashMap): drop the oldest.
+    _chatMediaFutures.remove(_chatMediaFutures.keys.first);
+  }
+  final f = MediaService.downloadAndDecrypt(media);
+  _chatMediaFutures[media.id] = f;
+  return f;
+}
+
+/// Drop the cached future so the next build starts a genuinely NEW
+/// download+decrypt. Call this from every retry path.
+void _forgetChatMediaFuture(ChatMedia? media) {
+  if (media != null) _chatMediaFutures.remove(media.id);
+}
+
 extension _ChatThreadBubbles on _ChatThreadScreenState {
 
   Widget _bubble(_Msg m) {
@@ -455,7 +500,11 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
       if (bytes != null) return StickerMediaView(bytes: bytes, mine: m.me);
       if (m.media != null) {
         return FutureBuilder<Uint8List>(
-          future: MediaService.downloadAndDecrypt(m.media!),
+          // [CHAT-UI-STATIC-1] Cached per attachment — same defect as the other
+          // media FutureBuilders: an inline `downloadAndDecrypt(...)` is a NEW
+          // Future on every rebuild, restarting the decrypt and flashing the
+          // sticker back to an empty box.
+          future: _chatMediaFuture(m.media!),
           builder: (c, snap) {
             if (snap.hasData) m.localBytes = snap.data; // cache decrypted bytes
             return snap.hasData
@@ -779,7 +828,10 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
       if (bytes != null) return StickerMediaView(bytes: bytes, mine: m.me);
       if (m.media != null) {
         return FutureBuilder<Uint8List>(
-          future: MediaService.downloadAndDecrypt(m.media!),
+          // [CHAT-UI-STATIC-1] Cached per attachment — an inline
+          // `downloadAndDecrypt(...)` here restarted the decrypt (and flashed
+          // the sticker back to an empty box) on every single rebuild.
+          future: _chatMediaFuture(m.media!),
           builder: (c, snap) => snap.hasData
               ? StickerMediaView(bytes: snap.data!, mine: m.me)
               : const SizedBox(width: kStickerRenderSize, height: kStickerRenderSize),
@@ -797,35 +849,41 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
     switch (kind) {
       case MediaKind.image:
         if (m.localBytes != null) {
-          // [UI-BUBBLE-2] edge-to-edge, 78%-wide, ≤320dp, overlaid meta.
-          // [CHAT-UI-VIEWER-1] Shared Hero tag between this thumbnail and the
-          // fullscreen viewer it opens into.
-          final heroTag = 'chat_img_${m.id}';
+          // [UI-BUBBLE-2] edge-to-edge, 78%-wide, overlaid meta.
+          // [CHAT-UI-STATIC-1] The Hero flight is GONE (owner: no animation, no
+          // effects). It lifted a third copy of the photo into the Navigator
+          // overlay and tweened it at interpolated sizes, which read as the
+          // photo appearing twice. Both the source wrapper here and the
+          // `heroTag:` arguments are removed; `_openImageBytes` hard-cuts.
           if (overlayMeta) {
             return ChatImageCard(
               bytes: m.localBytes!,
-              onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType, heroTag: heroTag),
+              onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
               overlays: _mediaMetaOverlays(m),
               theme: t,
-              heroTag: heroTag,
             );
           }
           // Tap → full-screen, pinch-to-zoom viewer with an X to close (and a
           // Copy button). Long-press still opens the message action sheet.
           return GestureDetector(
-            onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType, heroTag: heroTag),
+            onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(Msg.rMd),
               // [CHAT-UI-MEDIA-1] cacheWidth bounds the decoded bitmap to ~2x the
-              // 220dp layout width (DPR-aware) instead of decoding at full source
+              // layout width (DPR-aware) instead of decoding at full source
               // resolution — a scrolling thread of full-res photos was a memory
               // spike + jank source per the audit.
-              child: Hero(
-                tag: heroTag,
-                child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover,
-                    cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
-                    errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(m: m, kind: 'image', reason: 'decode_failed')),
-              ),
+              // [CHAT-UI-STATIC-1] FIXED width AND height: with a width only,
+              // the row had no height until the bitmap decoded and then grew.
+              child: Image.memory(m.localBytes!,
+                  width: kChatInlineImageWidth,
+                  height: kChatInlineImageHeight,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  cacheWidth: (kChatInlineImageWidth * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                  errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
+                      m: m, kind: 'image', reason: 'decode_failed',
+                      width: kChatInlineImageWidth, height: kChatInlineImageHeight)),
             ),
           );
         }
@@ -833,12 +891,18 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
           // STREAM J (D17): auto-download off + no local bytes -> tap-to-download
           // placeholder instead of eagerly fetching. Tapping is a MANUAL fetch
           // (always allowed); it caches into m.localBytes and repaints the preview.
+          // [CHAT-UI-STATIC-1] The loading/placeholder states must use the SAME
+          // box the finished image will occupy, or the row shifts when the real
+          // bytes land. `overlayMeta` picks between the edge-to-edge card
+          // (bubble-wide × kChatImageBoxHeight) and the inline thumbnail.
+          final phW = overlayMeta ? double.infinity : kChatInlineImageWidth;
+          final phH = overlayMeta ? kChatImageBoxHeight : kChatInlineImageHeight;
           if (!_mediaAutoFetch) {
             return MediaDownloadPlaceholder(
               key: ValueKey('imgph_${m.media!.id}'),
               media: m.media!,
-              width: 220,
-              height: 160,
+              width: phW,
+              height: phH,
               onFetched: (bytes) {
                 if (!mounted) return;
                 _mutMsgs(() => m.localBytes = bytes);
@@ -846,44 +910,65 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
             );
           }
           return FutureBuilder<Uint8List>(
-            future: MediaService.downloadAndDecrypt(m.media!),
+            // [CHAT-UI-STATIC-1] Cached per attachment. Built INLINE here it was
+            // a brand-new Future on every rebuild, so the FutureBuilder restarted
+            // the decrypt and dropped back to the placeholder each time — with
+            // `_msgsRev` being thread-wide, that meant every media bubble in the
+            // thread flashed whenever any one message changed.
+            future: _chatMediaFuture(m.media!),
             builder: (ctx, snap) {
               if (snap.hasData) {
                 m.localBytes = snap.data; // cache decrypted bytes
-                // [UI-BUBBLE-2] edge-to-edge, 78%-wide, ≤320dp, overlaid meta.
-                final heroTag = 'chat_img_${m.id}';
+                // [UI-BUBBLE-2] edge-to-edge, 78%-wide, overlaid meta.
+                // [CHAT-UI-STATIC-1] No Hero — see the local-bytes branch above.
                 if (overlayMeta) {
                   return ChatImageCard(
                     bytes: snap.data!,
-                    onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType, heroTag: heroTag),
+                    onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                     overlays: _mediaMetaOverlays(m),
                     theme: t,
-                    heroTag: heroTag,
                   );
                 }
                 return GestureDetector(
-                  onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType, heroTag: heroTag),
+                  onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(Msg.rMd),
                     // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the local-bytes
                     // branch above.
-                    child: Hero(
-                      tag: heroTag,
-                      child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover,
-                          cacheWidth: (220 * MediaQuery.of(context).devicePixelRatio * 2).round(),
-                          errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
-                              m: m, kind: 'image', reason: 'decode_failed',
-                              onRetry: () { _mutMsgs(() => m.localBytes = null); })),
-                    ),
+                    // [CHAT-UI-STATIC-1] Same FIXED width AND height too.
+                    child: Image.memory(snap.data!,
+                        width: kChatInlineImageWidth,
+                        height: kChatInlineImageHeight,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        cacheWidth: (kChatInlineImageWidth * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                        errorBuilder: (_, __, ___) => _brokenMediaPlaceholder(
+                            m: m, kind: 'image', reason: 'decode_failed',
+                            width: kChatInlineImageWidth, height: kChatInlineImageHeight,
+                            // [CHAT-UI-STATIC-1] RETRY CONTRACT: clearing
+                            // `localBytes` alone is no longer enough — the future
+                            // is cached now, so without the eviction below the
+                            // retry would re-await the SAME failed/stale future
+                            // forever and silently do nothing.
+                            onRetry: () {
+                              _forgetChatMediaFuture(m.media);
+                              _mutMsgs(() => m.localBytes = null);
+                            })),
                   ),
                 );
               }
-              if (snap.hasError) return _fileChip(m, PhosphorIcons.imageBroken(PhosphorIconsStyle.bold), 'Photo');
-              // [CHAT-UI-MEDIA-1] Fixed-size shimmer instead of a bare spinner —
-              // the box is already fixed 220x140 so the row never resizes when
-              // the decrypted image lands; the shimmer just reads as "loading"
-              // rather than "stuck".
-              return const MediaShimmerPlaceholder(width: 220, height: 140);
+              if (snap.hasError) {
+                // [CHAT-UI-STATIC-1] A cached future that completed with an error
+                // would be re-awaited forever; drop it so the next rebuild (or an
+                // explicit retry) starts a real new fetch.
+                _forgetChatMediaFuture(m.media);
+                return _fileChip(m, PhosphorIcons.imageBroken(PhosphorIconsStyle.bold), 'Photo');
+              }
+              // [CHAT-UI-MEDIA-1] Fixed-size placeholder instead of a bare
+              // spinner. [CHAT-UI-STATIC-1] Sized to the EXACT box the decoded
+              // image will occupy (it used to be 220x140 regardless), so the row
+              // does not resize when the decrypted image lands.
+              return MediaShimmerPlaceholder(width: phW, height: phH);
             },
           );
         }

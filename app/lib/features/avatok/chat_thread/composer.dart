@@ -18,12 +18,12 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
             decoration: BoxDecoration(
                 color: AD.sendActiveBg, shape: BoxShape.circle,
                 border: Border.all(color: AD.borderControl, width: 1), boxShadow: const []),
-            child: AnimatedSwitcher(
-              duration: Msg.base,
-              transitionBuilder: (child, anim) =>
-                  ScaleTransition(scale: anim, child: FadeTransition(opacity: anim, child: child)),
-              child: Icon(icon, key: ValueKey(icon), color: AD.sendActiveInk, size: 20),
-            )),
+            // [UI-NOMOTION-1 2026-08-06] Was an AnimatedSwitcher that scaled +
+            // faded the glyph on every swap. It fired right after a thread
+            // opened, because restoring a saved draft sets the controller text
+            // and flips mic→send — so the composer animated as part of the
+            // "settling" the owner reported. The icon now swaps instantly.
+            child: Icon(icon, color: AD.sendActiveInk, size: 20)),
       );
 
   /// [VOICE-REC-1] (owner report 2026-07-16, pic 5) The recording bar.

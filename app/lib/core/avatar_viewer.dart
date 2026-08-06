@@ -28,13 +28,13 @@ Future<void> showAvatarViewer(
     barrierLabel: 'Profile photo',
     barrierColor: Colors.black.withValues(alpha: 0.86),
     barrierDismissible: true,
-    transitionDuration: Msg.base,
+    // [UI-NOMOTION-1 2026-08-06] Hard cut. This used to fade in while scaling
+    // from 0.92 — the same "grows into place" motion the owner objected to on
+    // the chat thread and the photo viewer. Opening a profile photo is a jump,
+    // not a journey. `transitionBuilder` omitted entirely: showGeneralDialog's
+    // default passes the child straight through.
+    transitionDuration: Duration.zero,
     pageBuilder: (ctx, _, __) => _AvatarViewer(seed: seed, name: name, avatarUrl: avatarUrl),
-    transitionBuilder: (ctx, anim, _, child) =>
-        FadeTransition(opacity: anim, child: ScaleTransition(
-            scale: Tween(begin: 0.92, end: 1.0).animate(
-                CurvedAnimation(parent: anim, curve: Msg.curve)),
-            child: child)),
   );
 }
 

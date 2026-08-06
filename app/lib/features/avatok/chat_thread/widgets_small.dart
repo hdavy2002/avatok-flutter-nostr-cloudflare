@@ -72,21 +72,29 @@ class _SwipeToReplyState extends State<_SwipeToReply> {
   }
 }
 
-/// [CHAT-UI-VIEWER-1] Fullscreen, pinch-to-zoom image viewer pushed via a
-/// fade `PageRouteBuilder` from `_openImageBytes` (replacing the old bare
-/// `showDialog`). `heroTag` — when it matches the tag on the thumbnail that
-/// was tapped — lets the platform Navigator's HeroController fly the image
-/// from its list position into the fullscreen frame instead of a hard cut.
-/// Swipe-down-to-dismiss: a vertical drag translates + fades the image; past
-/// ~120px (or a fast downward fling) the viewer pops itself.
+/// [CHAT-UI-VIEWER-1] Fullscreen, pinch-to-zoom image viewer, pushed as a
+/// zero-duration opaque route from `_openImageBytes`.
+///
+/// [UI-NOMOTION-1 2026-08-06] There is no entry animation and no Hero. The
+/// `heroTag` field is retained but UNUSED and no longer required — it used to
+/// fly the image from the thumbnail's rect, which painted a third copy of the
+/// photo in the Navigator overlay mid-flight (the owner's screenshot caught
+/// exactly that). Do not re-wire it.
+///
+/// Swipe-down-to-dismiss is UNAFFECTED and deliberately kept: a vertical drag
+/// translates + fades the image, and past ~120px (or a fast downward fling) the
+/// viewer pops itself. That motion is driven by the user's finger, not by a
+/// controller, so it is not "an animation" in the sense being removed here.
 class _FullscreenImageViewer extends StatefulWidget {
   const _FullscreenImageViewer({
     required this.bytes,
-    required this.heroTag,
     required this.onCopy,
+    this.heroTag,
     this.onDecodeError,
   });
   final Uint8List bytes;
+
+  /// Retained for source compatibility; deliberately never read. See above.
   final Object? heroTag;
   final VoidCallback onCopy;
   final VoidCallback? onDecodeError;
@@ -113,13 +121,27 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
   Widget build(BuildContext context) {
     final h = MediaQuery.of(context).size.height;
     final progress = (_dy.abs() / (h * 0.4)).clamp(0.0, 1.0);
-    final image = Image.memory(widget.bytes, errorBuilder: (_, __, ___) {
-      widget.onDecodeError?.call();
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text("Couldn't load image", style: TextStyle(color: Colors.white)),
-      );
-    });
+    // [UI-NOMOTION-1 2026-08-06] `fit: contain` + `gaplessPlayback`.
+    //
+    // This was a bare `Image.memory(bytes)` with no fit and no cacheWidth. Two
+    // consequences the owner saw as "it settles after a second": the bytes are
+    // decoded a SECOND time here at full resolution (the thumbnail decoded them
+    // at cacheWidth ~220*dpr), and until that decode lands the image has no
+    // intrinsic size, so `Center` gives it zero and the layout pops when the
+    // bitmap arrives. `contain` pins the final layout to the viewport from the
+    // first frame; `gaplessPlayback` holds the last frame instead of blanking.
+    final image = Image.memory(
+      widget.bytes,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) {
+        widget.onDecodeError?.call();
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: Text("Couldn't load image", style: TextStyle(color: Colors.white)),
+        );
+      },
+    );
     return Scaffold(
       backgroundColor: Colors.black.withOpacity(1 - progress * 0.7),
       body: GestureDetector(
@@ -141,11 +163,14 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
                 child: InteractiveViewer(
                   minScale: 0.8,
                   maxScale: 5,
-                  child: Center(
-                    child: widget.heroTag == null
-                        ? image
-                        : Hero(tag: widget.heroTag!, child: image),
-                  ),
+                  // [UI-NOMOTION-1] No Hero. A Hero flight paints a THIRD copy
+                  // of the photo in the Navigator overlay at an interpolated
+                  // rect while the source thumbnail and this destination are
+                  // both on screen — which is exactly the "same photo twice at
+                  // different sizes" in the owner's screenshot. The source-side
+                  // Hero wrappers are gone from bubbles.dart too. `heroTag` is
+                  // still accepted on the widget but is deliberately unused.
+                  child: Center(child: image),
                 ),
               ),
             ),

@@ -137,56 +137,36 @@ class ChatLinkText extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// [CHAT-UI-MEDIA-1] Fixed-size shimmer placeholder — swapped in wherever media
-// is loading/decrypting/downloading in place of a bare `CircularProgressIndicator`
-// so a media-heavy thread reads as "content incoming" rather than "stuck", and
-// (paired with a fixed-size box at every call site) the row never resizes when
-// the real media lands. No new package — a small AnimatedBuilder gradient sweep.
+// [CHAT-UI-MEDIA-1] Fixed-size media placeholder — swapped in wherever media
+// is loading/decrypting/downloading in place of a bare `CircularProgressIndicator`,
+// and (paired with a fixed-size box at every call site) so the row never resizes
+// when the real media lands.
+//
+// [CHAT-UI-STATIC-1] (owner report 2026-08-06 — "bouncy, jittery, photos
+// visibly settle") This used to be an ANIMATED shimmer: a repeating 1200ms
+// `AnimationController` driving a sweeping `LinearGradient` via an
+// `AnimatedBuilder`. One controller ran PER loading media bubble, so opening a
+// thread with several photos kicked off several looping animations at once —
+// exactly the "jittery" effect the owner wants gone. It is now a STATIC grey
+// fill of the same dimensions: no controller, no ticker, no rebuilds. The name
+// is kept so no call site changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class MediaShimmerPlaceholder extends StatefulWidget {
+class MediaShimmerPlaceholder extends StatelessWidget {
   const MediaShimmerPlaceholder({super.key, required this.width, required this.height, this.borderRadius = 14});
   final double width;
   final double height;
   final double borderRadius;
 
   @override
-  State<MediaShimmerPlaceholder> createState() => _MediaShimmerPlaceholderState();
-}
-
-class _MediaShimmerPlaceholderState extends State<MediaShimmerPlaceholder>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(widget.borderRadius),
+      borderRadius: BorderRadius.circular(borderRadius),
       child: SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) {
-            final t = _c.value; // 0..1 sweep
-            return DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment(-1 + 2 * t - 0.6, 0),
-                  end: Alignment(-1 + 2 * t + 0.6, 0),
-                  colors: const [Color(0xFFE7E7EC), Color(0xFFF4F4F7), Color(0xFFE7E7EC)],
-                ),
-              ),
-            );
-          },
-        ),
+        width: width,
+        height: height,
+        // Flat mid-grey — the same tone the old sweep averaged out to.
+        child: const ColoredBox(color: Color(0xFFE7E7EC)),
       ),
     );
   }
@@ -637,10 +617,32 @@ class MediaForwardedLabel extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [CHAT-UI-STATIC-1] The ONE fixed geometry every image-bubble state must use.
+// The placeholder, the loading state and the decoded image all lay out at these
+// exact dimensions, so an image bubble's height is known at layout time and the
+// row can never resize when the bitmap finishes decoding.
+//
+//  * [kChatImageBoxHeight]  — edge-to-edge card (`ChatImageCard`): the width is
+//    the bubble's own (78% of the thread), so only the height needs pinning.
+//  * [kChatInlineImageWidth]/[kChatInlineImageHeight] — the smaller inline
+//    thumbnail branch, which sets its own width.
+// ─────────────────────────────────────────────────────────────────────────────
+const double kChatImageBoxHeight = 240;
+const double kChatInlineImageWidth = 220;
+const double kChatInlineImageHeight = 220;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // [UI-BUBBLE-2] Image card — the media IS the bubble: fills the bubble width
-// edge-to-edge, aspect-fits within a 320dp height cap (cover-crops extreme
-// sources), rounded clip, NO inner padding. Timestamp + forwarded overlays are
-// composed by the caller via the Stack children passed in [overlays].
+// edge-to-edge, rounded clip, NO inner padding. Timestamp + forwarded overlays
+// are composed by the caller via the Stack children passed in [overlays].
+//
+// [CHAT-UI-STATIC-1] The box is now a FIXED height, not a `maxHeight` cap.
+// Before: `Image.memory(width: double.infinity, fit: cover)` inside a
+// `ConstrainedBox(maxHeight: 320)`. Until the bitmap decoded the image had NO
+// intrinsic height, so the row laid out at ~0 and then GREW to up to 320dp a
+// frame (or more) later — the "photos visibly settle" the owner reported. A
+// fixed height means the row's geometry is known before a single byte is
+// decoded, so nothing ever moves.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ChatImageCard extends StatelessWidget {
@@ -649,24 +651,30 @@ class ChatImageCard extends StatelessWidget {
     required this.bytes,
     this.onTap,
     this.overlays = const [],
-    this.maxHeight = 320,
+    this.height = kChatImageBoxHeight,
     this.theme,
     this.heroTag,
   });
   final Uint8List bytes;
   final VoidCallback? onTap;
   final List<Widget> overlays; // forwarded label, timestamp scrim
-  final double maxHeight;
+
+  /// [CHAT-UI-STATIC-1] FIXED render height of the card (was `maxHeight`).
+  /// Every loading/placeholder state at the call site must use the SAME value
+  /// or the row shifts when the real image lands.
+  final double height;
 
   /// Accepted for signature parity but deliberately UNUSED — the image IS the
   /// bubble (no inner fill/ink of its own to theme); the pale bubble fill and
   /// border are painted by the caller's outer bubble container.
   final BubbleTheme? theme;
 
-  /// [CHAT-UI-VIEWER-1] When set, wraps the image in a `Hero` with this tag so
-  /// tapping through to the fullscreen viewer (which must use the SAME tag)
-  /// animates instead of hard-cutting. Null keeps the old plain `Image.memory`
-  /// (e.g. any caller that hasn't wired a matching fullscreen Hero yet).
+  /// [CHAT-UI-VIEWER-1] Historic: used to wrap the image in a `Hero` with this
+  /// tag so tapping through to the fullscreen viewer animated instead of
+  /// hard-cutting.
+  ///
+  /// [CHAT-UI-STATIC-1] The Hero is GONE (see [_maybeHero]) — the parameter is
+  /// retained only so no call site breaks. It is now ignored entirely.
   final Object? heroTag;
   @override
   Widget build(BuildContext context) {
@@ -675,13 +683,21 @@ class ChatImageCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(Msg.rMd),
         child: Stack(children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight),
+          SizedBox(
+            // [CHAT-UI-STATIC-1] FIXED box, not a max constraint — see the class
+            // doc. Both dimensions are known before the bitmap decodes.
+            width: double.infinity,
+            height: height,
             child: _maybeHero(Image.memory(
               bytes,
               // Fill the bubble width; cover-crop only the vertical excess.
               width: double.infinity,
+              height: height,
               fit: BoxFit.cover,
+              // [CHAT-UI-STATIC-1] Hold the last painted frame when the byte
+              // source is swapped (decrypt lands / retry) instead of blanking
+              // to nothing for a frame.
+              gaplessPlayback: true,
               // [MEDIA-RETRY-KIND-1] A failed decode used to render as
               // literally nothing (`SizedBox.shrink()`) — confirmed in prod as
               // "the message vanished". Show a broken-image placeholder and
@@ -709,8 +725,16 @@ class ChatImageCard extends StatelessWidget {
     );
   }
 
-  Widget _maybeHero(Widget child) =>
-      heroTag == null ? child : Hero(tag: heroTag!, child: child);
+  /// [CHAT-UI-STATIC-1] Deliberately a NO-OP (owner decision 2026-08-06: no
+  /// animation, no effects). This used to return `Hero(tag: heroTag!, ...)`.
+  /// A Hero flight lifts a THIRD copy of the photo into the Navigator overlay
+  /// and tweens it at interpolated sizes between the bubble and the fullscreen
+  /// viewer — which is why tapping a photo looked like the photo appeared
+  /// twice and slid into place. The tap now hard-cuts to the viewer.
+  ///
+  /// [heroTag] is kept on the constructor purely so no call site breaks; it is
+  /// intentionally unused.
+  Widget _maybeHero(Widget child) => child;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

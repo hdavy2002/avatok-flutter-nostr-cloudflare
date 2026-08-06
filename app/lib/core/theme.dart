@@ -20,6 +20,25 @@ import 'ui/messenger_theme.dart';
 // regardless of the OS light/dark setting; a "light" fallback in the global
 // ThemeData is what produced the cream flashes this theme now fixes.
 
+/// [UI-NOMOTION-1 2026-08-06] A `PageTransitionsBuilder` that does nothing.
+///
+/// `buildTransitions` returns the child untouched, so a push/pop is an instant
+/// cut with no scale, no fade and no slide. Used for Android in
+/// [AvaTheme.light] — see the note there for why iOS keeps Cupertino.
+class _NoPageTransition extends PageTransitionsBuilder {
+  const _NoPageTransition();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T>? route,
+    BuildContext? context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) =>
+      child;
+}
+
 class AvaTheme {
   /// The app's ONLY theme. Still named `light` because `MaterialApp(theme:)`
   /// takes the light slot and ~every reference in the app says `AvaTheme.light`
@@ -50,15 +69,28 @@ class AvaTheme {
       scaffoldBackgroundColor: AD.bg,
       canvasColor: AD.bg,
       fontFamily: ADText.family,
-      // [AVA-FLASH-1] 2026-07-17 — the "bright light then the page appears"
-      // flash on every push/pop. Material 3 on Android uses
-      // ZoomPageTransitionsBuilder, which paints the route's snapshot over a
-      // solid fill defaulting to colorScheme.surface — which used to be a
-      // near-white. Pinning the transition fill to the real page background
-      // kills it. Now that the scheme itself is dark this is belt and braces,
-      // but keep it explicit: it documents the intent.
+      // [UI-NOMOTION-1 2026-08-06] Android pushes are a HARD CUT.
+      //
+      // Android was on `ZoomPageTransitionsBuilder` — Material 3's zoom, which
+      // scales the incoming route up from ~0.85 with a cross-fade while scaling
+      // the outgoing one. That is the "bouncy, jittery, then it settles" the
+      // owner reported on opening a chat thread: the whole screen was literally
+      // growing into place over ~300ms, and every staged data load landing
+      // during that window (cached messages, receipts, wallpaper) repainted
+      // mid-zoom. Owner decision: no animation, no effects.
+      //
+      // iOS/macOS KEEP `CupertinoPageTransitionsBuilder` on purpose. Its slide
+      // is inseparable from the interactive back-swipe gesture — replacing it
+      // with a no-op would silently remove edge-swipe-to-go-back, which is a
+      // behaviour loss, not a visual one. AvaTOK ships Android today, so the
+      // platform the owner sees is a hard cut either way.
+      //
+      // Supersedes [AVA-FLASH-1] (2026-07-17), which fixed a WHITE FLASH during
+      // this same transition by pinning its fill to `AD.bg`. With no transition
+      // there is no fill to pin, so that flash cannot return here — but do NOT
+      // reintroduce a zoom without also reinstating `backgroundColor: AD.bg`.
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: ZoomPageTransitionsBuilder(backgroundColor: AD.bg),
+        TargetPlatform.android: _NoPageTransition(),
         TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
       }),

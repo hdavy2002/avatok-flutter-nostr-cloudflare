@@ -40,32 +40,44 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// Full-screen, pinch-to-zoom view of a DECRYPTED chat photo (received or
   /// sent). Tap any photo bubble to open it in-session; an X closes it and a
   /// copy button puts the image on the clipboard so it can be pasted elsewhere.
-  /// [CHAT-UI-VIEWER-1] Fullscreen viewer. When [heroTag] matches the tag on
-  /// the thumbnail that was tapped (see `_mediaContent`'s image branches), the
-  /// push animates as a Hero flight (fade + grow from the thumbnail's rect)
-  /// instead of a hard-cut dialog; swipe-down-to-dismiss and pinch-to-zoom
-  /// both work regardless of whether a hero tag was supplied.
+  /// [CHAT-UI-VIEWER-1] Fullscreen viewer — HARD CUT, no transition.
+  ///
+  /// [UI-NOMOTION-1 2026-08-06] This used to open with THREE stacked effects,
+  /// and the owner's screenshot caught all three in one frame — the same photo
+  /// drawn twice at different sizes with the thread's bubbles ghosting through:
+  ///
+  ///   1. `opaque: false` kept the chat thread route mounted and PAINTING
+  ///      underneath for the whole 220ms. That is the ghosted bubbles.
+  ///   2. `FadeTransition(opacity: anim)` wrapped the entire viewer page, so
+  ///      the destination image was painted at partial opacity.
+  ///   3. A `Hero` flight painted a THIRD copy in the Navigator overlay at an
+  ///      interpolated rect — a different size again, because the thumbnail is
+  ///      `fit: cover` at width 220 while the viewer is unconstrained.
+  ///
+  /// Now: opaque route, zero-duration both ways, no fade, no hero (the Hero
+  /// wrappers are gone from `bubbles.dart` / `chat_media_cards.dart` too).
+  /// [heroTag] is accepted and IGNORED so no call site breaks; do not re-wire
+  /// it. Swipe-down-to-dismiss and pinch-to-zoom are unaffected — those live in
+  /// `_FullscreenImageViewer` and are driven by gesture, not by a controller.
   void _openImageBytes(Uint8List bytes, {String? mime, Object? heroTag}) {
     Analytics.capture('chat_image_open', {
       'conv_kind': _isGroup ? 'group' : 'dm',
       'size': bytes.length,
     });
     Navigator.of(context).push(PageRouteBuilder<void>(
-      opaque: false,
+      // opaque: true (the default) — the viewer is a full black Scaffold, so
+      // nothing underneath should be composited. This is what stops the thread
+      // showing through.
       barrierColor: Colors.black,
-      transitionDuration: const Duration(milliseconds: 220),
-      reverseTransitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (pctx, anim, __) => FadeTransition(
-        opacity: anim,
-        child: _FullscreenImageViewer(
-          bytes: bytes,
-          heroTag: heroTag,
-          onCopy: () => _copyImageBytes(bytes, mime: mime),
-          onDecodeError: () => Analytics.capture('chat_media_load_failed', {
-            'kind': 'image', 'reason': 'decode_failed', 'stage': 'fullscreen_view',
-            'conv_kind': _isGroup ? 'group' : 'dm',
-          }),
-        ),
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      pageBuilder: (pctx, anim, __) => _FullscreenImageViewer(
+        bytes: bytes,
+        onCopy: () => _copyImageBytes(bytes, mime: mime),
+        onDecodeError: () => Analytics.capture('chat_media_load_failed', {
+          'kind': 'image', 'reason': 'decode_failed', 'stage': 'fullscreen_view',
+          'conv_kind': _isGroup ? 'group' : 'dm',
+        }),
       ),
     ));
   }
