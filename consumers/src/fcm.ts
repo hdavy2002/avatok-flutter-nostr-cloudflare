@@ -661,6 +661,21 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       // first place. One is "when does the ring end", the other is "when does
       // this token stop working".
       ...(msg.ringDeadlineMs != null ? { ringDeadlineMs: String(msg.ringDeadlineMs) } : {}),
+      // [ADDCALL-3-SRV] Group-ness. `ringGroup` (worker routes/groupcall.ts) has
+      // enqueued group/gid/groupName on every group ring since [GCALL-W4-RING],
+      // but this branch dropped them, so the FCM leg arrived indistinguishable
+      // from a 1:1 ring — the client tests `d['group'] == 'true'` and `d['gid']`
+      // (app/lib/push/push_service.dart) and got neither. Only the WS fast path
+      // rang a group correctly, i.e. only for people who already had the app
+      // open. Emitted ONLY when the producer set `group`, so 1:1 ring payloads
+      // are byte-for-byte unchanged. FCM data values must be strings.
+      ...(msg.group ? {
+        group: "true",
+        gid: msg.gid ?? "",
+        groupName: msg.groupName ?? "",
+        // Mid-call add (spec §5) vs the start-of-call broadcast.
+        ...(msg.invite ? { invite: "true" } : {}),
+      } : {}),
     } };
   }
   if (msg.kind === "call-status") {

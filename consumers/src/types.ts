@@ -241,7 +241,22 @@ export interface PushMsg {
   // kind === "group_invite": the inviter added the recipient to a group. Carries
   // the group name + conv id so the app can deep-link straight to the group and
   // show the Accept/Decline prompt.
+  // kind === "call": ALSO set by a group-call ring (routes/groupcall.ts ringGroup)
+  // alongside `group`/`gid` below.
   groupName?: string;
+  // [ADDCALL-3-SRV] kind === "call": this ring is for a GROUP call, not a 1:1.
+  // routes/groupcall.ts's ringGroup has always enqueued these three, but
+  // buildPayload's `call` branch dropped them on the floor, so the FCM leg of a
+  // group ring reached the handset looking exactly like a 1:1 ring: the client
+  // reads `d['group'] == 'true'` and `d['gid']` (app/lib/push/push_service.dart)
+  // and, finding neither, would open the 1:1 call screen for a call id that has
+  // no CallRoom. Only the WS fast path ever rang a group correctly — i.e. only
+  // for people who already had the app open, which is the opposite of the case a
+  // push exists to serve. `invite` distinguishes a mid-call add from the
+  // start-of-call broadcast.
+  group?: boolean;
+  gid?: string;
+  invite?: boolean;
   // kind === "notify": optional short message preview (WhatsApp-style expandable
   // banner). Omitted → content-less banner (sender name only).
   preview?: string;
