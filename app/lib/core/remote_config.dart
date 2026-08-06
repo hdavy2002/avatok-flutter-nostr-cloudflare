@@ -148,6 +148,44 @@ class RemoteConfig {
   // the rollback if the SFU is unavailable or the peer aborts it.
   static bool get callSfuV1 => _b('callSfuV1', false);
   static bool get callSfuAudioOnly => _b('callSfuAudioOnly', false);
+
+  /// [CALLREC-CORE-1] On-demand call recording (spec
+  /// `Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md`, rev 11).
+  ///
+  /// MASTER KILL SWITCH — ships OFF, and the server means it: all four
+  /// `/api/callrec/*` routes answer **403 `disabled`** while this is false
+  /// (`worker/src/routes/callrec.ts`). So flipping it client-side alone gets you
+  /// a Record button that captures audio nothing will accept. Both sides read
+  /// the SAME key, declared in `PlatformConfig` AND `DEFAULTS`
+  /// (`worker/src/routes/config.ts:90/975`) — i.e. it is a REAL flag, not one of
+  /// the fake ones CLAUDE.md warns about, and `flags.sh set
+  /// callRecordingEnabled=true` will not 400.
+  ///
+  /// The compile-time fallback is `false` deliberately: a config-fetch failure
+  /// must never arm a recorder. This is the one feature where failing open is a
+  /// consent problem, not a convenience problem.
+  static bool get callRecordingEnabled => _b('callRecordingEnabled', false);
+
+  /// The persistent "Recording" indicator on BOTH call screens (spec §4).
+  /// Defaults TRUE and should stay true — with on-demand recording the other
+  /// party gets no warning at all until something on screen tells them, and the
+  /// indicator is a load-bearing part of the consent story, not decoration.
+  /// Exists as a flag only so a rendering bug can be switched off without a
+  /// build; turning it off is a deliberate, temporary act.
+  static bool get callRecordingIndicatorEnabled =>
+      _b('callRecordingIndicatorEnabled', true);
+
+  /// Device free-space floor, in MEGABYTES, below which we refuse to arm
+  /// (spec §5.2). NUMERIC — so it is listed in the Worker's `numericKeys`
+  /// (`config.ts:1445`); without that entry `flags.sh set
+  /// callRecordingMinFreeMb=750` 400s `bad type`.
+  ///
+  /// Read through [_asNum] like every other numeric getter: a raw
+  /// `_cfg[k] as num` throws if the value ever arrives as anything else, whereas
+  /// [_asNum] returns null and this falls back to the documented default.
+  static num get callRecordingMinFreeMb =>
+      _asNum(_cfg['callRecordingMinFreeMb']) ?? 500;
+
   static bool get brainEnabled => _b('brainEnabled', false);
   /// [ONEBRAIN-B4] Global kill-switch for cloud reasoning over device_private
   /// brain content (SPEC §6, B-D6). Default TRUE (owner decision 2026-07-18:

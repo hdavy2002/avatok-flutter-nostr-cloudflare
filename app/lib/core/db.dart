@@ -152,12 +152,52 @@ class InviteSends extends Table {
   Set<Column> get primaryKey => {phoneNorm, channel};
 }
 
-@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache, DeviceContactsCache, InviteSends])
+/// [CALLREC-CORE-1] One row per on-demand call recording (spec
+/// `Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md` §5.2).
+///
+/// METADATA ONLY. The audio lives as a [MediaService] blob under
+/// `getApplicationSupportDirectory()/media/<AccountScope.id>/`, referenced by
+/// [blobKey]; a multi-megabyte `.m4a` in a sqlite BLOB column would bloat every
+/// query, every backup and every vacuum of a DB the chat list reads on cold
+/// start. Per-account scoping is free here — the DB FILE is already per-account
+/// (`avatok_<scope>.sqlite`), so a parent and a child on one phone can never see
+/// each other's recordings.
+///
+/// [callId] is the primary key on purpose: it is the same identifier the Worker
+/// uses (`call_id`), the Inbox row uses (`client_id = callrec:<callId>`) and the
+/// native recorder uses, so a re-finalize or a re-recovery is an idempotent
+/// upsert rather than a duplicate.
+///
+/// [uploadedAt]/[mediaId] NULL ⇒ the server has no copy yet. That is a normal,
+/// possibly long-lived state: uploads are deferred and retried, and an
+/// over-quota user (413 `storage_full`) keeps the local file indefinitely — the
+/// storage rulebook is read-only-over-quota, never delete.
+@DataClassName('CallRecordingRow')
+class CallRecordings extends Table {
+  TextColumn get callId => text()();
+  TextColumn get convKey => text().withDefault(const Constant(''))();
+  TextColumn get peerUid => text().withDefault(const Constant(''))();
+  TextColumn get peerName => text().withDefault(const Constant(''))();
+  TextColumn get peerAvatar => text().withDefault(const Constant(''))();
+  TextColumn get direction => text().withDefault(const Constant(''))(); // incoming|outgoing
+  IntColumn get startedAt => integer().withDefault(const Constant(0))(); // epoch MS
+  IntColumn get durationS => integer().withDefault(const Constant(0))();
+  IntColumn get bytes => integer().withDefault(const Constant(0))();
+  TextColumn get title => text().withDefault(const Constant(''))(); // user-supplied only
+  TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get blobKey => text().nullable()(); // MediaService blob holding the audio
+  TextColumn get mediaId => text().nullable()(); // user_media id once uploaded
+  IntColumn get uploadedAt => integer().nullable()(); // epoch MS of a successful upload
+  @override
+  Set<Column> get primaryKey => {callId};
+}
+
+@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache, DeviceContactsCache, InviteSends, CallRecordings])
 class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
   // DeviceContactsCache (instant add-contact + on-AvaTOK match). v5: contact
@@ -165,6 +205,8 @@ class AppDb extends _$AppDb {
   // v6: the npub → uid column rename. v7: Messages gained [kind] (the badge's
   // countable-frame filter). v8: Messages gained [senderPub] (group bubble
   // avatar/tint survives a cold open with no JSON disk cache — AVAGRP-DBPUB-1).
+  // v9: DeviceContactsCache.company. v10: CallRecordings (on-demand call
+  // recording metadata — CALLREC-CORE-1).
   // All added in-place so an existing on-device DB upgrades without wiping data.
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -241,6 +283,14 @@ class AppDb extends _$AppDb {
             // background contacts sync backfills it from the device book.
             await m.addColumn(deviceContactsCache, deviceContactsCache.company);
           }
+          if (from < 10) {
+            // [CALLREC-CORE-1] CallRecordings — on-demand call recordings. A NEW
+            // table, so there is nothing to backfill and no existing row to
+            // migrate: a phone that updates into this build simply starts with an
+            // empty recordings list, which is exactly right (nothing was recorded
+            // before the feature existed).
+            await m.createTable(callRecordings);
+          }
         },
       );
 
@@ -258,6 +308,84 @@ class AppDb extends _$AppDb {
   static const List<String> kCountableKinds = <String>[
     'text', 'media', 'gtext', 'gmedia', 'recept', 'marketplace_deal',
   ];
+
+  // ── call recordings (CALLREC-CORE-1, per-account) ──
+  /// Newest-first list of every recording on this device, uploaded or not.
+  Future<List<CallRecordingRow>> callRecordingsOnce() => (select(callRecordings)
+        ..orderBy([(t) => OrderingTerm(expression: t.startedAt, mode: OrderingMode.desc)]))
+      .get();
+
+  /// Reactive version — the recordings list/Inbox card binds to this so a
+  /// finished recording, a background upload completing, or a title edit
+  /// repaints without anyone plumbing a callback through.
+  Stream<List<CallRecordingRow>> watchCallRecordings() => (select(callRecordings)
+        ..orderBy([(t) => OrderingTerm(expression: t.startedAt, mode: OrderingMode.desc)]))
+      .watch();
+
+  Future<CallRecordingRow?> callRecordingById(String callId) =>
+      (select(callRecordings)..where((t) => t.callId.equals(callId)))
+          .getSingleOrNull();
+
+  /// Upsert on the callId PK. INSERT OR REPLACE (not OR IGNORE) because a
+  /// re-finalize legitimately carries newer truth (a mediaId the first write
+  /// didn't have); callers pass the FULL row so nothing is silently blanked.
+  Future<void> upsertCallRecording(CallRecordingsCompanion row) =>
+      into(callRecordings).insert(row, mode: InsertMode.insertOrReplace);
+
+  /// Patch the user-supplied title/description ONLY. Deliberately narrow: the
+  /// generic upsert would let a stale in-memory copy overwrite an upload that
+  /// completed in the background between read and write.
+  Future<void> setCallRecordingMeta(String callId,
+      {String? title, String? description}) {
+    if (title == null && description == null) return Future.value();
+    return (update(callRecordings)..where((t) => t.callId.equals(callId))).write(
+      CallRecordingsCompanion(
+        title: title == null ? const Value.absent() : Value(title),
+        description:
+            description == null ? const Value.absent() : Value(description),
+      ),
+    );
+  }
+
+  /// Record that the server now holds a copy. Same narrow-write reasoning as
+  /// [setCallRecordingMeta] — this runs from a background isolate that must not
+  /// clobber a title the user typed in the foreground a moment earlier.
+  Future<void> markCallRecordingUploaded(String callId,
+          {required String mediaId, required int uploadedAt, String? convKey}) =>
+      (update(callRecordings)..where((t) => t.callId.equals(callId))).write(
+        CallRecordingsCompanion(
+          mediaId: Value(mediaId),
+          uploadedAt: Value(uploadedAt),
+          convKey: convKey == null ? const Value.absent() : Value(convKey),
+        ),
+      );
+
+  /// Forget the local blob reference (the file itself is deleted by the caller).
+  Future<void> clearCallRecordingBlob(String callId) =>
+      (update(callRecordings)..where((t) => t.callId.equals(callId)))
+          .write(const CallRecordingsCompanion(blobKey: Value<String?>(null)));
+
+  Future<void> deleteCallRecording(String callId) =>
+      (delete(callRecordings)..where((t) => t.callId.equals(callId))).go();
+
+  /// Everything still waiting for a server copy, OLDEST first — the deferred
+  /// upload queue drains in the order recordings were made, so a user who made
+  /// three calls offline gets them back in the order they happened.
+  Future<List<CallRecordingRow>> pendingCallRecordingUploads({int limit = 20}) =>
+      (select(callRecordings)
+            ..where((t) => t.uploadedAt.isNull())
+            ..orderBy([(t) => OrderingTerm(expression: t.startedAt)])
+            ..limit(limit))
+          .get();
+
+  /// Total on-disk bytes of all recordings (what the settings/storage screen
+  /// shows). SUM in SQL rather than summing a fetched list — the row count is
+  /// unbounded over a user's lifetime.
+  Future<int> callRecordingTotalBytes() async {
+    final sum = callRecordings.bytes.sum();
+    final q = selectOnly(callRecordings)..addColumns([sum]);
+    return (await q.getSingle()).read(sum) ?? 0;
+  }
 
   // ── invite-sends (AvaInvite "Sent" state, per-account) ──
   /// Reactive set of every invite we've sent — the Invite screen watches this so
