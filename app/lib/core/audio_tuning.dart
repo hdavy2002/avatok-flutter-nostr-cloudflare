@@ -1,5 +1,6 @@
 // Shared voice audio tuning (FREE LAUNCH §2, Specs/FREE-LAUNCH-DIRECTION.md).
-// Used by the 1:1 P2P path (call_screen.dart) and the CF-SFU group-audio path
+// Used by the 1:1 P2P path (call_screen.dart), the 1:1 CF-SFU path
+// (core/calls/call_sfu_transport.dart) and the CF-SFU group-audio path
 // (features/conference/sfu_group_call_screen.dart) so capture DSP + Opus encoder
 // settings are defined ONCE.
 

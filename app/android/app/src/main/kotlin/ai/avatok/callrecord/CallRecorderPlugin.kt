@@ -147,6 +147,33 @@ class CallRecorderPlugin :
         private const val LEG_SILENT_TIMEOUT_MS = 3_000L
 
         /**
+         * [CALLREC-NATIVE-3] A leg that HAS started but has delivered nothing for this
+         * long is reported as stalled.
+         *
+         * **2.5 s, and the number is not arbitrary.** Both ADM callbacks are
+         * clock-driven: WebRTC hands over a 10 ms batch on a fixed cadence whether
+         * anyone is speaking or not, and the far-end playback loop keeps running
+         * through silence because it is feeding the speaker. So a gap is never "nobody
+         * talked" — it means delivery itself stopped. 2.5 s is 250 consecutive missed
+         * batches, far past any scheduling hiccup, and it clears the slowest legitimate
+         * pause we know of (a Bluetooth SCO transition tearing down and rebuilding the
+         * ADM, which is typically under a second and worth knowing about if it isn't).
+         * It also sits below [RING_MS] = 4 s, so the stall is visible before the ring
+         * could have quietly absorbed it.
+         */
+        private const val LEG_STALL_TIMEOUT_MS = 2_500L
+
+        /**
+         * How long ONE leg may stay stalled while the other keeps producing before the
+         * degradation ladder closes the recording. See [checkLegLiveness] for why this
+         * escalates at all and why it is this slow.
+         */
+        private const val LEG_STALL_ABORT_MS = 30_000L
+
+        /** Stall reports emitted per leg per session; the counters keep counting past it. */
+        private const val MAX_STALL_REPORTS = 5
+
+        /**
          * [CALLREC-NATIVE-1] The flutter_webrtc plugin belonging to the engine we are
          * actually running in, set by `MainActivity.configureFlutterEngine` AFTER
          * `super.configureFlutterEngine` (GeneratedPluginRegistrant is what registers
@@ -179,6 +206,17 @@ class CallRecorderPlugin :
     // --- session state ------------------------------------------------------
     @Volatile
     private var recording = false
+
+    /**
+     * [CALLREC-NATIVE-3] Admission gate covering the window between `start` being
+     * accepted on the platform thread and [startSession] finishing on its own thread.
+     * Guarded by [startLock] together with [recording], so a second `start` cannot
+     * slip in while the encoder is still being acquired.
+     */
+    @Volatile
+    private var starting = false
+
+    private val startLock = Any()
 
     @Volatile
     private var callId: String? = null
@@ -269,6 +307,31 @@ class CallRecorderPlugin :
     // start / stop / cancel
     // ------------------------------------------------------------------------
 
+    /**
+     * [CALLREC-NATIVE-3] `start` does its cheap admission checks on the platform
+     * thread and then hands the whole session setup to a background thread.
+     *
+     * **Why:** [AacAdtsWriter]'s constructor calls `MediaCodec.createEncoderByType` +
+     * `configure` + `start`. Acquiring a codec while a 540p30 video encoder session is
+     * already running can block for tens to hundreds of milliseconds on a low-end
+     * device — i.e. a visible UI stall on the call screen at the exact moment the user
+     * taps Record. `StatFs`, `mkdirs` and the reflective adapter probe are filesystem
+     * and reflection work in the same breath. Every other heavy operation in this file
+     * (`stop`, `cancel`, `recoverOrphans`) was already off the platform thread; this
+     * one was the omission.
+     *
+     * **The result contract is unchanged.** `start` still answers exactly one
+     * `{ok, path, error}` map — it just answers it a few milliseconds later, after
+     * setup has really succeeded or really failed. Nothing reports `ok:true` before
+     * the encoder exists, so an async `encoder_init_failed` is still a loud, explicit
+     * failure and never a silent non-start.
+     *
+     * **No new race.** Ordering inside [startSession] is untouched: the encoder is
+     * constructed BEFORE the ADM callbacks are subscribed, so PCM can never arrive
+     * without somewhere to put it. [starting] holds the admission gate across the
+     * async window so a second `start` still gets `busy_other_call` rather than
+     * racing into a half-built session.
+     */
     private fun handleStart(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String>("callId")
         val dirPath = call.argument<String>("outputDir")
@@ -277,24 +340,44 @@ class CallRecorderPlugin :
             result.success(fail("invalid_arguments"))
             return
         }
-        if (recording) {
-            result.success(fail(if (callId == id) "already_recording" else "busy_other_call"))
-            return
+        synchronized(startLock) {
+            if (recording || starting) {
+                result.success(
+                    fail(if (callId == id) "already_recording" else "busy_other_call"),
+                )
+                return
+            }
+            if (disabledCalls.contains(id)) {
+                // Ladder step 3: this call already burned its recording.
+                result.success(fail("disabled_for_call"))
+                return
+            }
+            starting = true
         }
-        if (disabledCalls.contains(id)) {
-            // Ladder step 3: this call already burned its recording.
-            result.success(fail("disabled_for_call"))
-            return
-        }
+        Thread({
+            val map = try {
+                startSession(id, dirPath, wantStereo)
+            } catch (t: Throwable) {
+                // Belt and braces: an unexpected throw must still produce a clear
+                // {ok:false} answer, never an unresolved Dart future.
+                fail("start_failed:" + t.javaClass.simpleName)
+            } finally {
+                // Cleared AFTER `recording` has been set, so the admission gate above
+                // is continuously closed for a successful start.
+                starting = false
+            }
+            main.post { result.success(map) }
+        }, "avatok-callrec-start").apply { isDaemon = true }.start()
+    }
 
+    /** The real work of `start`. Runs on `avatok-callrec-start`, never on the platform thread. */
+    private fun startSession(id: String, dirPath: String, wantStereo: Boolean): Map<String, Any?> {
         val dir = File(dirPath)
         if (!dir.exists() && !dir.mkdirs()) {
-            result.success(fail("output_dir_unavailable"))
-            return
+            return fail("output_dir_unavailable")
         }
         if (freeBytes(dir) < STORAGE_FLOOR_BYTES) {
-            result.success(fail("insufficient_storage"))
-            return
+            return fail("insufficient_storage")
         }
 
         // Resolve BOTH adapters before committing to anything.
@@ -302,15 +385,13 @@ class CallRecorderPlugin :
         val farAd = resolveAdapter("playbackSamplesReadyCallbackAdapter") { farFailure = it }
         emitProbe()
         if (farAd == null) {
-            result.success(fail("far_adapter_unavailable:$farFailure"))
-            return
+            return fail("far_adapter_unavailable:$farFailure")
         }
         if (nearAd == null) {
             // Deliberately fatal. A "recording" holding only the other party's voice is
             // worse than no recording — it is misleading, and the near-end tap is the
             // unproven half of this feature (spec §3.1), so it must fail loudly.
-            result.success(fail("near_adapter_unavailable:$nearFailure"))
-            return
+            return fail("near_adapter_unavailable:$nearFailure")
         }
 
         val sid = AdtsRemuxer.sanitize(id)
@@ -327,8 +408,7 @@ class CallRecorderPlugin :
             )
         } catch (t: Throwable) {
             work.delete()
-            result.success(fail("encoder_init_failed:" + t.javaClass.simpleName))
-            return
+            return fail("encoder_init_failed:" + t.javaClass.simpleName)
         }
 
         // Subscribe LAST, so nothing can arrive before the session is coherent.
@@ -339,10 +419,7 @@ class CallRecorderPlugin :
             if (farOk) adapterCall(farAd, "removeCallback", this)
             w.close()
             work.delete()
-            result.success(
-                fail("subscribe_failed:near=" + nearOk + ",far=" + farOk),
-            )
-            return
+            return fail("subscribe_failed:near=" + nearOk + ",far=" + farOk)
         }
 
         callId = id
@@ -373,12 +450,10 @@ class CallRecorderPlugin :
                 "sampleRate" to OUT_RATE,
             ),
         )
-        result.success(
-            mapOf(
-                "ok" to true,
-                "path" to AdtsRemuxer.finalFile(dir, sid).absolutePath,
-                "error" to null,
-            ),
+        return mapOf(
+            "ok" to true,
+            "path" to AdtsRemuxer.finalFile(dir, sid).absolutePath,
+            "error" to null,
         )
     }
 
@@ -518,7 +593,15 @@ class CallRecorderPlugin :
         workerRunning = true
         worker = Thread(this::workerLoop, "avatok-callrec-mix").apply {
             isDaemon = true
-            priority = Thread.NORM_PRIORITY + 1
+            // [CALLREC-NATIVE-3] NORM_PRIORITY, and it must never be raised.
+            //
+            // Java thread priority maps to a Linux nice value, so NORM_PRIORITY + 1
+            // scheduled this mixer ABOVE the video encoder's feeding threads — on a
+            // device that may already be thermally throttled, that is the recorder
+            // taking CPU from the live call, which inverts the governing invariant
+            // (spec §3.2). Nothing here needs the head start: [RING_MS] is a 4-second
+            // jitter budget, and falling behind costs frames in the recording only.
+            priority = Thread.NORM_PRIORITY
             start()
         }
     }
@@ -564,14 +647,13 @@ class CallRecorderPlugin :
                     legSilenceReported = true
                     reportSilentLegs()
                 }
+                // [CALLREC-NATIVE-3] Continuous liveness. Cheap (two volatile reads),
+                // reports only on a transition, and can escalate to the ladder.
+                if (checkLegLiveness(now)) return
                 if (droppedSamplesTotal() > DROP_ABORT_SAMPLES) {
                     // Ladder step 2: the recording is losing more audio than it is
                     // keeping. Close it cleanly rather than write minutes of holes.
                     degradeAndFinish("ring_overflow")
-                    return
-                }
-                if (freeBytes(outputDir) < STORAGE_FLOOR_BYTES) {
-                    degradeAndFinish("low_storage")
                     return
                 }
             }
@@ -580,6 +662,17 @@ class CallRecorderPlugin :
                 lastAlign = now
                 realign(now)
                 reportRateChanges()
+                // [CALLREC-NATIVE-3] The storage floor lives on the 5 s cadence, not
+                // the 1 s one. `freeBytes` is a StatFs syscall — filesystem I/O on the
+                // thread that also feeds MediaCodec every 20 ms. The floor itself is
+                // unchanged ([STORAGE_FLOOR_BYTES], same `degradeAndFinish` reason);
+                // only how often we go and ask the kernel changed. Dart's soft floor
+                // (`callRecordingMinFreeMb`, ≥ 10× larger) is what the user actually
+                // hits, and `start` has already checked this one.
+                if (freeBytes(outputDir) < STORAGE_FLOOR_BYTES) {
+                    degradeAndFinish("low_storage")
+                    return
+                }
             }
 
             try {
@@ -685,6 +778,10 @@ class CallRecorderPlugin :
                 "farGapMs" to samplesToMs(f?.gapSamples ?: 0L),
                 "nearDroppedMs" to samplesToMs(n?.ring?.droppedSamples ?: 0L),
                 "farDroppedMs" to samplesToMs(f?.ring?.droppedSamples ?: 0L),
+                // [CALLREC-NATIVE-3] Ride along on the periodic event so the true
+                // stall count survives the MAX_STALL_REPORTS cap.
+                "nearStalls" to (n?.stallEvents ?: 0),
+                "farStalls" to (f?.stallEvents ?: 0),
             ),
         )
     }
@@ -755,6 +852,107 @@ class CallRecorderPlugin :
                     "adapterSource" to adapterSource,
                 ),
             )
+        }
+    }
+
+    /**
+     * [CALLREC-NATIVE-3] Continuous liveness for a leg that already started.
+     *
+     * [reportSilentLegs] only ever answered "did this leg EVER produce anything", once,
+     * three seconds in. A leg that started fine and then stopped delivering at minute
+     * 12 was completely invisible: half the recording silent, no event, and the user
+     * believing they hold a two-sided file. [LegTap.lastSampleMs] was being written on
+     * every batch and read by nobody. This reads it.
+     *
+     * Reports the TRANSITION into stalled (and out of it), never per tick, and caps
+     * emissions at [MAX_STALL_REPORTS] per leg so a flapping route cannot spam the
+     * sink. `stallEvents` keeps counting past the cap and rides along on every `drift`
+     * event, so the true count is always retrievable.
+     *
+     * ## Does a stalled leg trigger the degradation ladder? Only after 30 s, and only
+     * ## when the OTHER leg is still alive.
+     *
+     * `near_adapter_unavailable` is fatal at `start` because a recording that never
+     * contained the user's own voice is misleading from its first byte. A mid-call
+     * stall is a different shape: minutes of good two-sided audio are already on disk,
+     * and short stalls are usually transient (SCO transition, route switch, an ADM
+     * rebuild), so aborting on the first blip would throw the rest of every Bluetooth
+     * call away for nothing. But a leg that is still dead 30 s later is not a
+     * transition, and everything recorded from here on is one-sided — the misleading
+     * outcome the start-time rule exists to prevent. So the ladder closes it, keeping
+     * the good prefix (finalize never deletes) instead of accumulating a long
+     * half-silent tail.
+     *
+     * BOTH legs stalled is deliberately NOT escalated: the output is then honest
+     * silence, not a misleading one-sided recording, and it is the shape a hold or a
+     * PSTN interruption takes — which can resume.
+     *
+     * @return true if the ladder fired and the caller must return from the worker loop.
+     */
+    private fun checkLegLiveness(now: Long): Boolean {
+        val n = near
+        val f = far
+        updateStall(n, now)
+        updateStall(f, now)
+        val nearDead = n != null && n.stalled && now - n.stalledSinceMs >= LEG_STALL_ABORT_MS
+        val farDead = f != null && f.stalled && now - f.stalledSinceMs >= LEG_STALL_ABORT_MS
+        if (nearDead && !farDead) {
+            degradeAndFinish("near_leg_stalled")
+            return true
+        }
+        if (farDead && !nearDead) {
+            degradeAndFinish("far_leg_stalled")
+            return true
+        }
+        return false
+    }
+
+    private fun updateStall(leg: LegTap?, now: Long) {
+        if (leg == null || !leg.started) return
+        val last = leg.lastSampleMs
+        if (last <= 0L) return
+        val gap = now - last
+        if (!leg.stalled) {
+            if (gap < LEG_STALL_TIMEOUT_MS) return
+            leg.stalled = true
+            leg.stalledSinceMs = now
+            leg.stallEvents++
+            if (leg.stallsReported < MAX_STALL_REPORTS) {
+                leg.stallsReported++
+                emit(
+                    mapOf(
+                        "type" to "error", "callId" to callId,
+                        "code" to "leg_stalled",
+                        "leg" to leg.name,
+                        "gapMs" to gap,
+                        "stallEvents" to leg.stallEvents,
+                        "detail" to (
+                            "leg " + leg.name + " started but has delivered no samples for " +
+                                gap + "ms; playout is clock-driven, so this is stopped " +
+                                "delivery, not silence"
+                            ),
+                        "adapterSource" to adapterSource,
+                    ),
+                )
+            }
+            return
+        }
+        if (gap < LEG_STALL_TIMEOUT_MS) {
+            // Recovered. Clear the latch (silently past the cap) so a LATER stall is
+            // still reported, and record how long the hole was.
+            val stalledMs = now - leg.stalledSinceMs
+            leg.stalled = false
+            leg.stalledSinceMs = 0L
+            if (leg.stallsReported <= MAX_STALL_REPORTS) {
+                emit(
+                    mapOf(
+                        "type" to "legResumed", "callId" to callId,
+                        "leg" to leg.name,
+                        "stalledMs" to stalledMs,
+                        "stallEvents" to leg.stallEvents,
+                    ),
+                )
+            }
         }
     }
 

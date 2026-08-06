@@ -82,6 +82,27 @@ internal class LegTap(val name: String, private val outRate: Int, ringMs: Int) {
     /** Last reported rate-change sequence, so the mixer emits each change once. */
     var reportedRateSeq: Int = 0
 
+    /**
+     * [CALLREC-NATIVE-3] Liveness latch. True while this leg has STARTED but has
+     * stopped delivering batches. Mixer-thread-only, so a stall is reported on the
+     * TRANSITION into it and not once per tick.
+     *
+     * Before this existed, [lastSampleMs] was written on every batch and read by
+     * nobody: a leg that started fine and then died at minute 12 produced a
+     * half-silent recording with zero telemetry, which is the worst outcome this
+     * feature has — the user believes they have both voices and does not.
+     */
+    var stalled: Boolean = false
+
+    /** elapsedRealtime at which the current stall began; 0 when not stalled. */
+    var stalledSinceMs: Long = 0L
+
+    /** How many times this leg has gone silent. Published even once reporting caps. */
+    var stallEvents: Int = 0
+
+    /** Stall events actually emitted, so a flapping route cannot spam the sink. */
+    var stallsReported: Int = 0
+
     /** Cumulative correction the re-alignment pass has applied, in samples. */
     var correctedSamples: Long = 0L
 
