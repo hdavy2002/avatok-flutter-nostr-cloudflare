@@ -97,6 +97,23 @@ internal class PcmRing(capacitySamples: Int) {
         return n
     }
 
+    /**
+     * [CALLHOLD-1] Rewind both cursors to zero for a deliberate splice (hold →
+     * resume). NOT part of the lock-free contract: the caller MUST have quiesced
+     * the producer first (`CallRecorderPlugin.paused` is set before this runs, and
+     * both ADM callbacks return early while it is set), because this is the one
+     * operation that moves `writeIndex` backwards and a concurrent [write] would
+     * then place its samples at a timeline position that no longer exists.
+     *
+     * [droppedSamples] is deliberately NOT cleared — it is a cumulative session
+     * health counter that feeds the degradation ladder, and zeroing it on every
+     * hold would hand a flapping device an unlimited drop budget.
+     */
+    fun reset() {
+        wIdx.set(0L)
+        rIdx.set(0L)
+    }
+
     /** Consumer — discards up to [count] samples (used to shed stale backlog). */
     fun skip(count: Long): Long {
         if (count <= 0L) return 0L

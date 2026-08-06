@@ -464,6 +464,44 @@ class CallSession {
   /// [CALLREC-PEER-1] The last value we announced to the peer, so an unchanged
   /// store notification does not put a frame on the wire.
   bool _lastRecordingAnnounced = false;
+
+  /// [CALLHOLD-1] WE have put the call on hold. See [toggleHold].
+  final ValueNotifier<bool> holdActive = ValueNotifier<bool>(false);
+
+  /// [CALLHOLD-1] THEY have put the call on hold — set from the peer's `hold`
+  /// frame. Purely informational: we do not mute ourselves when the peer holds,
+  /// because their side has already stopped sending and stopped listening, and
+  /// silently muting a user who can still be heard nowhere is worse than
+  /// letting them talk into a hold they can SEE on screen.
+  final ValueNotifier<bool> peerHold = ValueNotifier<bool>(false);
+
+  /// [CALLHOLD-1] The peer's mute state.
+  ///
+  /// The client has been SENDING `{'type':'mute','muted':…}` since long before
+  /// this change and there was no `case 'mute':` in the receive switch, so every
+  /// one of those frames was transmitted and dropped on the floor. The receive
+  /// case costs two lines; wiring it here means the UI can finally distinguish
+  /// "they muted" from "they're on hold" from "they went quiet", which is the
+  /// difference between an explained silence and a support ticket.
+  ///
+  /// NOTE the automatic holds below (GSM call, audio-focus loss) also send mute
+  /// frames, so this notifier can move without the peer touching their mute
+  /// button. That is honest — their microphone really is off.
+  final ValueNotifier<bool> peerMuted = ValueNotifier<bool>(false);
+
+  /// [CALLHOLD-1] User hold, kept DISTINCT from `_onCellularHold`/`_onFocusHold`
+  /// — see [toggleHold] for why they must not share state.
+  bool _userHold = false;
+
+  /// The last hold value we put on the wire, so an unchanged toggle does not
+  /// re-send. Bypassed by `force` on connect/rejoin.
+  bool _lastHoldAnnounced = false;
+
+  /// [CALLHOLD-1] Latch mirroring what the RECORDER has been told, so overlapping
+  /// holds (user hold started during a GSM call, say) produce exactly one pause
+  /// and exactly one resume — and the resume only happens once EVERY hold is
+  /// gone. See [_syncRecorderHold].
+  bool _recorderHeld = false;
   /// [CALLREC-PEER-1] Our listener on the recording store, held so it can be
   /// removed in teardown — the store is a process-wide singleton, so a session
   /// that forgot to detach would keep announcing after its call had ended.
@@ -920,6 +958,12 @@ class CallSession {
       muted.value = false;
       _send({'type': 'mute', 'muted': false});
     }
+    // [CALLHOLD-1] The watchdog is the ONLY release for a permanent
+    // AUDIOFOCUS_LOSS (see the field doc above), so it is also the only thing
+    // that can un-pause a recorder held by that focus hold. Without this line a
+    // recording could stay paused for the rest of the call — the same
+    // never-released latch this watchdog exists to break.
+    _syncRecorderHold();
     Analytics.capture('call_audio_focus_hold_released', {
       'call_id': config.room,
       'held_ms': heldMs,
@@ -2708,6 +2752,7 @@ class CallSession {
           muted.value = true;
           _send({'type': 'mute', 'muted': true});
         }
+        _syncRecorderHold(); // [CALLHOLD-1] our capture is gone — hold the recorder
         Analytics.capture('call_audio_focus_lost', {'call_id': config.room});
         // [CALL-FOCUS-DEADLOCK-1] Arm the release watchdog — see the field doc.
         // A permanent AUDIOFOCUS_LOSS never produces a regain callback, so
@@ -2731,6 +2776,7 @@ class CallSession {
           muted.value = false;
           _send({'type': 'mute', 'muted': false});
         }
+        _syncRecorderHold(); // [CALLHOLD-1] capture is back — resume the recorder
         Analytics.capture('call_audio_focus_regained', {
           'call_id': config.room,
           'held_ms': heldMs,
@@ -2750,6 +2796,7 @@ class CallSession {
               muted.value = true;
               _send({'type': 'mute', 'muted': true});
             }
+            _syncRecorderHold(); // [CALLHOLD-1]
             Analytics.capture('call_cellular_held', {'call_id': config.room});
           } else if (state == 'resumed' && _onCellularHold) {
             _onCellularHold = false;
@@ -2759,6 +2806,7 @@ class CallSession {
               muted.value = false;
               _send({'type': 'mute', 'muted': false});
             }
+            _syncRecorderHold(); // [CALLHOLD-1]
             Analytics.capture('call_cellular_resumed', {'call_id': config.room});
           }
         });
@@ -3241,7 +3289,22 @@ class CallSession {
   /// would leave the peer's indicator stuck on after capture had ended.
   void _attachRecordingBridge() {
     if (_recordingListener != null) return;
-    void onChange() => _announceRecordingState();
+    void onChange() {
+      _announceRecordingState();
+      // [CALLHOLD-1] Closes the arm-while-held race: the user holds the call and
+      // THEN taps Record (or a `start` that was already in flight completes), so
+      // the recorder arms into a call that is already on hold and nothing would
+      // otherwise have told it. `_recorderHeld` is already true in that case, so
+      // [_syncRecorderHold] would short-circuit — re-assert directly. The store
+      // ignores it unless this room is the active recording, and native's
+      // `pause` is idempotent.
+      if (_recorderHeld && _localRecordingActive) {
+        try {
+          // ignore: unawaited_futures
+          CallRecordingStore.I.setHeld(config.room, true);
+        } catch (_) {}
+      }
+    }
     _recordingListener = onChange;
     try {
       CallRecordingStore.I.phase.addListener(onChange);
@@ -3259,6 +3322,195 @@ class CallSession {
       CallRecordingStore.I.phase.removeListener(l);
       CallRecordingStore.I.activeCallId.removeListener(l);
     } catch (_) {/* already gone */}
+  }
+
+  // ── [CALLHOLD-1] User-initiated hold ────────────────────────────────────────
+  //
+  // ## WHY THIS IS NOT SDP RENEGOTIATION — READ BEFORE "UPGRADING" IT
+  //
+  // The textbook hold is `a=inactive` / `a=sendonly` in a re-offer. Do NOT do
+  // that here. `[CALL-GLARE-OBS-1]` (see `case 'offer':` below) states plainly
+  // that this app does NOT implement perfect negotiation: glare is prevented
+  // STRUCTURALLY — the DO's newcomer-offers rule, the `_weOffered` guard on
+  // every renegotiation, and a server-side pair-keyed glare DO — and a collision
+  // is only DETECTED AND REPORTED, never recovered from. Hold is a control the
+  // user can hit at any instant from EITHER side, so a hold-triggered re-offer
+  // is a re-offer from an arbitrary side at an arbitrary time: precisely the
+  // case those invariants do not cover. The failure mode is not "hold is
+  // glitchy", it is `setRemoteDescription` throwing in the wrong signaling state
+  // and the CALL hanging.
+  //
+  // So hold is: (a) disable outgoing audio tracks, (b) disable the incoming
+  // audio tracks so nothing is rendered or played, (c) tell the peer with one
+  // typed frame. The media session is never touched — no offer, no answer, no
+  // ICE, no transceiver direction change. It survives ICE restarts and relay
+  // migration for free, because there is nothing in the SDP to survive.
+  //
+  // The frame is modelled exactly on `callrec` ([CALLREC-PEER-1]): CallRoom
+  // relays any frame carrying a `to` verbatim and BROADCASTS one without, so no
+  // worker change is needed. `to` is omitted when `_remoteId` is still null —
+  // on the SFU path no peer `offer` is ever exchanged, so the first joiner's
+  // `_remoteId` can legitimately be null on a live call, and the broadcast
+  // fallback is the only thing that reaches them. An unknown `hold` frame on an
+  // older client falls through the receive switch, which has no `default:` — a
+  // no-op, never an exception.
+  //
+  // ## USER HOLD AND AUTOMATIC HOLD ARE INDEPENDENT STATE. ON PURPOSE.
+  //
+  // `_onCellularHold` (a GSM call arrived) and `_onFocusHold` (another app took
+  // audio focus) are pseudo-holds owned by OS callbacks, each with its own
+  // resume signal, and they express themselves by driving `_muted`. If user hold
+  // shared any of that, an audio-focus REGAIN arriving while the user is holding
+  // would run `_muted = false` and un-hold a call the user deliberately held —
+  // and, worse, `_releaseStuckFocusHold`'s watchdog would do the same six
+  // seconds after a focus blip. Two authorities, two independent latches. They
+  // meet in exactly two places, both of which take the union rather than
+  // letting either clobber the other: [_applyLocalAudioEnabled] (the mic is off
+  // if ANY of mute / user hold says so) and [_syncRecorderHold] (the recorder is
+  // paused if ANY hold says so, and resumes only when they all clear).
+  //
+  // `onCellularHold` (the notifier) therefore keeps its exact current meaning —
+  // automatic hold only. [holdActive] is the user's.
+  //
+  // ## THE RELEASE PROPERTY
+  //
+  // `[CALL-FOCUS-DEADLOCK-1]` cost a whole call's microphone because a hold
+  // latched with no way out: "a hold that can never be released is worse than no
+  // hold at all". This hold cannot latch:
+  //  - [toggleHold] awaits nothing that can hang before it flips the latch and
+  //    updates the notifier, so the next tap always reverses it;
+  //  - the media work is best-effort inside try/catch — a failure there cannot
+  //    leave the latch disagreeing with the UI;
+  //  - `_send` already swallows a dead socket, so a hold taken while
+  //    disconnected still releases locally, and the re-announce on
+  //    welcome/peer-joined/peer-rejoined repairs the PEER's copy after any
+  //    reconnect;
+  //  - it is local-only state: nothing the peer, the DO or the OS sends can set
+  //    it, so there is no remote party that can hold us hostage.
+  // Deliberately NOT time-capped: unlike a focus hold, this one is a thing a
+  // human chose, and auto-releasing it would put a user back on a live mic they
+  // believed was off.
+
+  /// Tell the peer whether WE are holding.
+  ///
+  /// [force] re-sends even when nothing changed — used on connect/rejoin. A
+  /// missed frame here leaves the peer sitting in silence with no explanation,
+  /// which is the whole failure this indicator exists to prevent.
+  void _announceHoldState({bool force = false}) {
+    try {
+      if (_ended) return;
+      final on = _userHold;
+      // [force] also means "something about the transport just changed", which
+      // is precisely when the media state can have been rebuilt underneath us:
+      // an ICE restart, the relay-migration cutover and a fresh `_newPC()` all
+      // produce NEW receivers, and a new receiver's track arrives enabled. Left
+      // alone, a hold taken before a reconnect would quietly start playing the
+      // peer again while the UI still said "on hold". Re-assert, don't assume.
+      if (force && on) {
+        _applyLocalAudioEnabled();
+        // ignore: unawaited_futures
+        _applyRemoteAudioEnabled(false);
+      }
+      if (!force && on == _lastHoldAnnounced) return;
+      _lastHoldAnnounced = on;
+      _send(<String, dynamic>{
+        'type': 'hold',
+        'on': on,
+        if (_remoteId != null) 'to': _remoteId,
+      });
+    } catch (_) {/* never let a hold frame disturb the call */}
+  }
+
+  /// The ONE place outgoing mic tracks are enabled/disabled, so mute and hold
+  /// can never overwrite each other. Off if EITHER says off.
+  void _applyLocalAudioEnabled() {
+    try {
+      final on = !_muted && !_userHold;
+      _stream?.getAudioTracks().forEach((t) => t.enabled = on);
+    } catch (_) {/* stream torn down mid-toggle */}
+  }
+
+  /// Stop (or restore) rendering and playing the peer's audio.
+  ///
+  /// Done on the RECEIVERS rather than on `remoteRenderer.srcObject`, because
+  /// the renderer is repointed at several places (P2P `onTrack`, the SFU
+  /// transport, the relay-migration cutover) and a receiver-level disable holds
+  /// across all of them. Awaited but never fatal: hold is already correct
+  /// locally before this runs.
+  Future<void> _applyRemoteAudioEnabled(bool on) async {
+    try {
+      final receivers = await _pc?.getReceivers();
+      for (final r in receivers ?? const <RTCRtpReceiver>[]) {
+        final t = r.track;
+        if (t != null && t.kind == 'audio') t.enabled = on;
+      }
+    } catch (_) {/* pc closed / plugin refused — hold is still local-correct */}
+    try {
+      final s = remoteRenderer.srcObject;
+      s?.getAudioTracks().forEach((t) => t.enabled = on);
+    } catch (_) {/* renderer disposed */}
+  }
+
+  /// Drive the recorder from the HOLD, not from the UI — so it follows whichever
+  /// way the call got held, including a tap on a screen this session has never
+  /// seen.
+  ///
+  /// **Automatic holds pause the recorder too, and that is the deliberate
+  /// choice.** The argument against is that a GSM interruption is not something
+  /// the user asked to cut out of their recording. The argument for wins on
+  /// evidence: during either automatic hold our own capture is gone (the whole
+  /// reason `[CALL-FOCUS-1]` holds the call is that "our capture goes nowhere —
+  /// the peer heard silence"), so the near leg delivers nothing while the far
+  /// leg keeps running clock-driven. That is exactly the one-sided shape
+  /// `[CALLREC-NATIVE-3]`'s ladder escalates: 30 s of it and `near_leg_stalled`
+  /// CLOSES the recording and adds the call to `disabledCalls`, so the user
+  /// loses recording for the remainder of a call they never stopped recording.
+  /// Pausing turns "silently lose the rest of the recording" into "a clean
+  /// splice around the interruption". A one-minute GSM call costs a gap either
+  /// way; only one of the two options also costs the next twenty minutes.
+  void _syncRecorderHold() {
+    final held = _userHold || _onCellularHold || _onFocusHold;
+    if (held == _recorderHeld) return;
+    _recorderHeld = held;
+    try {
+      // ignore: unawaited_futures
+      CallRecordingStore.I.setHeld(config.room, held);
+    } catch (_) {/* the recorder must never be able to break a hold */}
+  }
+
+  /// Put this call on hold, or take it off hold. THE public entry point.
+  ///
+  /// Ordering is the safety argument: latch and notifier first (so the control
+  /// is always reversible and the UI never disagrees with reality), then the
+  /// peer frame, then the media, then the recorder.
+  Future<void> toggleHold() async {
+    if (_ended) return;
+    final next = !_userHold;
+    _userHold = next;
+    holdActive.value = next;
+
+    // Outgoing mic: restores to the user's ACTUAL mute state on resume, never
+    // unconditionally unmuted — un-muting someone who deliberately muted before
+    // holding is the one unrecoverable mistake this control can make.
+    _applyLocalAudioEnabled();
+
+    _announceHoldState();
+    _syncRecorderHold();
+    _bump();
+
+    Analytics.capture('call_hold_toggled', {
+      'call_id': config.room,
+      'on': next,
+      'muted': _muted,
+      'auto_hold': _onCellularHold || _onFocusHold,
+      'elapsed_s': _secs,
+      'recording': _localRecordingActive,
+    });
+    AvaLog.I.log('call', 'user hold ${next ? 'ON' : 'OFF'} (muted=$_muted)');
+
+    // Incoming audio last: it is the only awaited step, and nothing above
+    // depends on it.
+    await _applyRemoteAudioEnabled(!next);
   }
 
   /// [CF-CALL-P2P-1] Bounded 1:1-video sender encoding (proposal Phase 5:
@@ -4866,6 +5118,10 @@ class CallSession {
         // reconnect). Re-announce unconditionally: on a reconnect this is the
         // only thing that restores an indicator the peer lost with the socket.
         _announceRecordingState(force: true);
+        // [CALLHOLD-1] Same reasoning, same three points: a peer who missed the
+        // hold frame is sitting in silence with no explanation, and a peer who
+        // missed the RESUME frame thinks we are still away.
+        _announceHoldState(force: true);
         break;
       // [CALLREC-PEER-1] The DO tells existing peers when someone joins
       // (call_room.ts:2197). Nothing used to handle it. It is the ONLY hook for
@@ -4875,12 +5131,29 @@ class CallSession {
       // decide who offers, and this must not touch that.
       case 'peer-joined':
         _announceRecordingState(force: true);
+        _announceHoldState(force: true); // [CALLHOLD-1]
         break;
       // [CALLREC-PEER-1] The peer told us their recorder state. Defensive by
       // construction: anything that is not literally `true` reads as off, and a
       // frame from a client that predates this feature simply never arrives.
       case 'callrec':
         peerRecording.value = d['on'] == true;
+        break;
+      // [CALLHOLD-1] The peer told us their hold state. Defensive by
+      // construction, exactly like `callrec`: anything that is not literally
+      // `true` reads as off, and a frame from a client that predates this
+      // feature simply never arrives (so `peerHold` stays false and the call
+      // behaves as it always did).
+      case 'hold':
+        peerHold.value = d['on'] == true;
+        break;
+      // [CALLHOLD-1] The `mute` frame has been SENT by this client for a long
+      // time (toggleMute's peers, the focus hold, the cellular hold) and there
+      // was no case for it here, so every one of those frames was received and
+      // discarded. Two lines, no behaviour change to anything that already
+      // works, and the peer's mic state stops being invisible.
+      case 'mute':
+        peerMuted.value = d['muted'] == true;
         break;
       case 'sfu-start':
         if (!_ended && !_connected && !_sfuAborted) {
@@ -5079,6 +5352,7 @@ class CallSession {
         // our recording state went with it. Re-announce outside the `_connected`
         // guard above — a peer who reconnected must relearn this either way.
         _announceRecordingState(force: true);
+        _announceHoldState(force: true); // [CALLHOLD-1]
         break;
       case 'peer-left':
         // Alarm expired with no rejoin — the call is over for real.
@@ -5162,7 +5436,12 @@ class CallSession {
 
   void toggleMute() {
     _muted = !_muted;
-    _stream?.getAudioTracks().forEach((t) => t.enabled = !_muted);
+    // [CALLHOLD-1] Was `t.enabled = !_muted` inline. It has to go through the
+    // shared applier now: un-muting while the call is HELD would otherwise open
+    // the microphone of someone who is on hold, and it would do it silently.
+    // Un-holding later reads `_muted` at that moment, so a mute taken during a
+    // hold is still honoured on resume.
+    _applyLocalAudioEnabled();
     muted.value = _muted;
   }
 

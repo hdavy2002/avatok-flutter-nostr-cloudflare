@@ -235,6 +235,58 @@ class CallRecorderPlugin :
     @Volatile
     private var startMs = 0L
 
+    // --- [CALLHOLD-1] hold / splice ----------------------------------------
+    //
+    // When the user puts the CALL on hold, the RECORDING holds too, and the held
+    // period is SPLICED OUT — absent from the file, not present as dead air. So a
+    // recording is shorter than wall clock, and `durationMs` (which
+    // [AacAdtsWriter.durationMs] derives from frames actually written, never from
+    // a clock) is the RECORDED duration. That is the number Dart persists.
+    //
+    // The mechanism is a moving origin. Every timeline in the mixer is measured
+    // from [recStartMs] = `startMs + pausedTotalMs` instead of `startMs`, so the
+    // output clock simply does not advance while held. On resume each leg is
+    // re-anchored ([LegTap.rebaseAfterPause]) so its own anchor post-dates the
+    // pause and lands exactly on the current output position.
+    //
+    // Why not "keep recording silence": a hold is often minutes, and minutes of
+    // silence is both bytes the user pays for and a file whose timeline no longer
+    // matches the conversation. Why not "stop and start a new file": the encoder
+    // would be finalized and reopened, producing two recordings for one call and
+    // a second Inbox row.
+
+    @Volatile
+    private var paused = false
+
+    /** elapsedRealtime at which the current pause began; 0 when not paused. */
+    @Volatile
+    private var pauseAtMs = 0L
+
+    /** Wall-clock ms spliced out of this session so far (COMPLETED pauses only). */
+    @Volatile
+    private var pausedTotalMs = 0L
+
+    @Volatile
+    private var pauseCount = 0
+
+    /**
+     * Origin of the "silent-leg" grace window: `startMs` at start, and the resume
+     * instant after every hold. Without it, a leg that has been deliberately
+     * re-anchored (and so reads `started == false` for the ~10 ms until its first
+     * post-resume batch) could be reported as `near_no_samples` — a hold masquerading
+     * as the one failure that report exists to catch.
+     */
+    @Volatile
+    private var legClockBaseMs = 0L
+
+    /**
+     * The recorded-output origin. `startMs` shifted forward by everything spliced
+     * out, so `now - recStartMs()` is RECORDED elapsed, not wall-clock elapsed.
+     * Identical to `startMs` until the first hold, which is why an un-held call
+     * behaves byte-for-byte as it did before [CALLHOLD-1].
+     */
+    private fun recStartMs(): Long = startMs + pausedTotalMs
+
     // The two legs are read on WebRTC's audio threads and written on the platform
     // thread — volatile is not optional here.
     @Volatile
@@ -295,6 +347,8 @@ class CallRecorderPlugin :
         when (call.method) {
             "start" -> handleStart(call, result)
             "stop" -> handleStop(result)
+            "pause" -> handlePause(result)
+            "resume" -> handleResume(result)
             "cancel" -> handleCancel(result)
             "state" -> result.success(stateMap())
             "freeBytes" -> handleFreeBytes(call, result)
@@ -434,6 +488,12 @@ class CallRecorderPlugin :
         far = LegTap("far", OUT_RATE, RING_MS)
         selfFinalized = null
         startMs = SystemClock.elapsedRealtime()
+        // [CALLHOLD-1] A fresh session never inherits a previous one's splice state.
+        paused = false
+        pauseAtMs = 0L
+        pausedTotalMs = 0L
+        pauseCount = 0
+        legClockBaseMs = startMs
         recording = true
 
         writeMeta(dir, sid, id)
@@ -479,6 +539,71 @@ class CallRecorderPlugin :
             val map = finishSession(remux = true, reason = "stop")
             main.post { result.success(map) }
         }, "avatok-callrec-final").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * [CALLHOLD-1] Pause capture. Cheap, synchronous and safe on the platform
+     * thread: it sets two volatiles and returns.
+     *
+     * From this instant both ADM callbacks return early, so nothing new enters
+     * either ring, and the mixer's output clock freezes at [pauseAtMs] — which
+     * also lets the worker DRAIN whatever already sits in the rings up to the
+     * pause instant, so the last ~250 ms of real speech before the tap is kept
+     * rather than thrown away with the jitter budget.
+     *
+     * Idempotent: a second `pause` is `ok:true`, because a hold that answers
+     * "error" to a duplicate would leave callers writing recovery code for a state
+     * that is already correct.
+     */
+    private fun handlePause(result: MethodChannel.Result) {
+        synchronized(startLock) {
+            if (!recording) {
+                result.success(mapOf("ok" to false, "error" to "not_recording"))
+                return
+            }
+            if (!paused) {
+                pauseAtMs = SystemClock.elapsedRealtime()
+                pauseCount++
+                paused = true
+            }
+        }
+        emit(stateMap().plus("type" to "state"))
+        result.success(mapOf("ok" to true, "error" to null))
+    }
+
+    /**
+     * [CALLHOLD-1] Resume capture, splicing the held period out of the timeline.
+     *
+     * Order is load-bearing and is the whole correctness argument:
+     *  1. accumulate the pause into [pausedTotalMs] — this is what moves
+     *     [recStartMs] forward and keeps the output clock continuous;
+     *  2. re-anchor both legs while the producer is STILL quiesced;
+     *  3. only then clear [paused], which is the volatile write that releases the
+     *     ADM callbacks and publishes (1) and (2) to the mixer thread.
+     *
+     * Doing (3) first would let a batch land against a ring that is about to be
+     * reset, and doing (2) after it would let the first post-resume batch anchor
+     * against the pre-pause origin — a hole exactly the length of the hold.
+     */
+    private fun handleResume(result: MethodChannel.Result) {
+        synchronized(startLock) {
+            if (!recording) {
+                result.success(mapOf("ok" to false, "error" to "not_recording"))
+                return
+            }
+            if (paused) {
+                val now = SystemClock.elapsedRealtime()
+                val heldMs = now - pauseAtMs
+                if (heldMs > 0L) pausedTotalMs += heldMs
+                pauseAtMs = 0L
+                legClockBaseMs = now
+                near?.rebaseAfterPause()
+                far?.rebaseAfterPause()
+                paused = false
+            }
+        }
+        emit(stateMap().plus("type" to "state"))
+        result.success(mapOf("ok" to true, "error" to null))
     }
 
     private fun handleCancel(result: MethodChannel.Result) {
@@ -562,6 +687,10 @@ class CallRecorderPlugin :
     override fun onWebRtcAudioRecordSamplesReady(samples: JavaAudioDeviceModule.AudioSamples) {
         val leg = near ?: return
         if (!recording) return
+        // [CALLHOLD-1] Held: drop the batch. One volatile read, no allocation — the
+        // §3.2 invariant is untouched. This is ALSO what stops a long hold from
+        // overflowing the ring and tripping the drop-abort ladder.
+        if (paused) return
         if (samples.audioFormat != AudioFormat.ENCODING_PCM_16BIT) {
             leg.rejectBatch()
             return
@@ -575,6 +704,7 @@ class CallRecorderPlugin :
     override fun onWebRtcAudioTrackSamplesReady(samples: JavaAudioDeviceModule.AudioSamples) {
         val leg = far ?: return
         if (!recording) return
+        if (paused) return // [CALLHOLD-1] — see the near-end callback above.
         if (samples.audioFormat != AudioFormat.ENCODING_PCM_16BIT) {
             leg.rejectBatch()
             return
@@ -619,7 +749,20 @@ class CallRecorderPlugin :
 
         while (workerRunning) {
             val now = SystemClock.elapsedRealtime()
-            val target = (now - startMs - TARGET_LATENCY_MS) * OUT_RATE / 1000L
+            // [CALLHOLD-1] Two changes, and neither one moves for an un-held call
+            // (`pausedTotalMs` is 0 and `held` is false, so this is the original
+            // expression verbatim):
+            //  - the origin is `recStartMs()`, so held time never becomes output
+            //    samples — that IS the splice;
+            //  - while held the clock is FROZEN at `pauseAtMs` and the jitter
+            //    budget is not subtracted, so the worker drains the rings right up
+            //    to the moment of the tap and then naturally goes idle (target
+            //    stops moving). Without dropping the budget we would discard the
+            //    last TARGET_LATENCY_MS of genuine speech at every hold.
+            val held = paused
+            val clockNow = if (held) pauseAtMs else now
+            val latency = if (held) 0L else TARGET_LATENCY_MS
+            val target = (clockNow - recStartMs() - latency) * OUT_RATE / 1000L
 
             while (workerRunning && outSamples + FRAME <= target) {
                 pullLeg(near, nearBuf, outSamples)
@@ -642,23 +785,39 @@ class CallRecorderPlugin :
 
             if (now - lastState >= STATE_INTERVAL_MS) {
                 lastState = now
+                // Still emitted while held — the UI has to see a recording that is
+                // paused rather than one that silently stopped ticking. `durationMs`
+                // simply stops advancing, which is exactly what is happening.
                 emit(stateMap().plus("type" to "state"))
-                if (!legSilenceReported && now - startMs > LEG_SILENT_TIMEOUT_MS) {
-                    legSilenceReported = true
-                    reportSilentLegs()
-                }
-                // [CALLREC-NATIVE-3] Continuous liveness. Cheap (two volatile reads),
-                // reports only on a transition, and can escalate to the ladder.
-                if (checkLegLiveness(now)) return
-                if (droppedSamplesTotal() > DROP_ABORT_SAMPLES) {
-                    // Ladder step 2: the recording is losing more audio than it is
-                    // keeping. Close it cleanly rather than write minutes of holes.
-                    degradeAndFinish("ring_overflow")
-                    return
+                // [CALLHOLD-1] EVERY health check below is suspended while held.
+                // A hold is a deliberate discontinuity: no samples are arriving
+                // because we asked for none, so leg liveness would read it as two
+                // stalled legs, and after LEG_STALL_ABORT_MS the ladder would close
+                // and BURN a recording the user only paused.
+                if (!held) {
+                    if (!legSilenceReported && now - legClockBaseMs > LEG_SILENT_TIMEOUT_MS) {
+                        legSilenceReported = true
+                        reportSilentLegs()
+                    }
+                    // [CALLREC-NATIVE-3] Continuous liveness. Cheap (two volatile reads),
+                    // reports only on a transition, and can escalate to the ladder.
+                    if (checkLegLiveness(now)) return
+                    if (droppedSamplesTotal() > DROP_ABORT_SAMPLES) {
+                        // Ladder step 2: the recording is losing more audio than it is
+                        // keeping. Close it cleanly rather than write minutes of holes.
+                        degradeAndFinish("ring_overflow")
+                        return
+                    }
                 }
             }
 
-            if (now - lastAlign >= ALIGN_INTERVAL_MS) {
+            if (held) {
+                // [CALLHOLD-1] Keep the re-alignment cadence rolling forward while
+                // held, so a 10-minute hold does not fire an immediate realign the
+                // instant we resume — against legs that were re-anchored 20 ms ago
+                // and whose measured "drift" would be pure noise.
+                lastAlign = now
+            } else if (now - lastAlign >= ALIGN_INTERVAL_MS) {
                 lastAlign = now
                 realign(now)
                 reportRateChanges()
@@ -696,11 +855,15 @@ class CallRecorderPlugin :
             java.util.Arrays.fill(dst, 0, FRAME, SILENCE)
             return
         }
-        var skew = leg.headTimeline(startMs) - outStart
+        // [CALLHOLD-1] `recStartMs()`, not `startMs`: the leg is placed on the
+        // RECORDED timeline. Identical until the first hold, and after one the leg
+        // has been re-anchored to match this origin exactly.
+        val origin = recStartMs()
+        var skew = leg.headTimeline(origin) - outStart
         if (skew < 0L) {
             val skipped = leg.ring.skip(-skew)
             leg.staleSkipped += skipped
-            skew = leg.headTimeline(startMs) - outStart
+            skew = leg.headTimeline(origin) - outStart
             if (skew < 0L) skew = 0L
         }
         var written = 0
@@ -998,6 +1161,12 @@ class CallRecorderPlugin :
             return out
         }
         recording = false
+        // [CALLHOLD-1] Stopping while held is normal — the user can end a call they
+        // put on hold. Clearing the latch here means the encoder is finalized with
+        // exactly what it captured (the splice is already baked into the frames
+        // written) and nothing carries into the next session.
+        paused = false
+        pauseAtMs = 0L
 
         // Detach FIRST so no further PCM can arrive while we tear down.
         nearAdapter?.let { adapterCall(it, "removeCallback", this) }
@@ -1074,6 +1243,12 @@ class CallRecorderPlugin :
                 "reason" to reason,
                 "path" to path,
                 "error" to error,
+                "paused" to false,
+                // [CALLHOLD-1] How much wall clock was spliced out, so a "my
+                // recording is shorter than the call" report can be answered with
+                // the number instead of a guess.
+                "pausedTotalMs" to pausedTotalMs.toInt(),
+                "pauseCount" to pauseCount,
             ),
         )
         return out
@@ -1167,8 +1342,14 @@ class CallRecorderPlugin :
         return mapOf(
             "recording" to recording,
             "callId" to callId,
+            // [CALLHOLD-1] RECORDED duration — frames actually written. Held time is
+            // not in it, which is the point: this is the number Dart persists and
+            // the Inbox card shows, and it must describe the file, not the call.
             "durationMs" to (w?.durationMs() ?: 0L).toInt(),
             "bytes" to (w?.bytesWritten ?: 0L).toInt(),
+            "paused" to paused,
+            "pausedTotalMs" to pausedTotalMs.toInt(),
+            "pauseCount" to pauseCount,
         )
     }
 

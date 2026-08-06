@@ -89,6 +89,22 @@ class CallRecordingStore {
   /// once. Cleared on the next successful [start].
   final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
 
+  /// [CALLHOLD-1] True while the active recording is HELD — capture stopped, the
+  /// encoder still open, the held period spliced out of the file.
+  ///
+  /// A separate notifier and deliberately NOT a new [CallRecordingPhase] value:
+  /// `phase` is switched on in UI this change does not own, and adding an enum
+  /// case would silently change the meaning of every existing `switch` over it
+  /// (or break exhaustiveness in a file another agent is editing right now).
+  /// A paused recording is still `phase == recording` — it is armed, the file is
+  /// open, and stop still finalizes it. Anything drawing a live indicator must
+  /// read BOTH, or a held call looks like it is still capturing.
+  ///
+  /// [progress] freezes while this is true (native keeps its 1 s cadence but
+  /// `durationMs` stops advancing), which is the honest rendering: the counter
+  /// tracks the FILE, not the call.
+  final ValueNotifier<bool> paused = ValueNotifier<bool>(false);
+
   // ── internals ─────────────────────────────────────────────────────────────
 
   StreamSubscription<CallRecorderEvent>? _events;
@@ -211,6 +227,7 @@ class CallRecordingStore {
       );
       activeCallId.value = callId;
       progress.value = const CallRecordingProgress(durationMs: 0, bytes: 0);
+      paused.value = false; // [CALLHOLD-1] never inherit a previous hold
       phase.value = CallRecordingPhase.recording;
       lastError.value = null;
 
@@ -283,6 +300,69 @@ class CallRecordingStore {
       return null;
     } finally {
       _busy = false;
+    }
+  }
+
+  /// [CALLHOLD-1] Hold the recording because the CALL went on hold.
+  ///
+  /// Owner's rule: "if a person holds that call then recorder should hold too,
+  /// till user is back into the call." The held stretch is spliced out natively,
+  /// so the saved file contains the conversation and not the wait.
+  ///
+  /// [callId] is required and checked: the recorder is process-wide, and a stale
+  /// [CallSession] from a previous call must never be able to pause the
+  /// recording of the CURRENT one. Everything else is a silent no-op — a hold on
+  /// a call nobody is recording has nothing to do.
+  ///
+  /// Never throws and never awaits anything slow, because it sits on the call's
+  /// hold path: a recorder problem must not be able to stop a user holding a
+  /// call. Deliberately does NOT take [_busy] — that guard serializes
+  /// start/stop, and blocking a resume behind an in-flight finalize is exactly
+  /// how a hold becomes unreleasable.
+  Future<void> setHeld(String callId, bool held) async {
+    if (callId.isEmpty) return;
+    if (activeCallId.value != callId) return;
+    if (phase.value != CallRecordingPhase.recording) return;
+    if (paused.value == held) return;
+    // Optimistic: the notifier moves FIRST so the UI can never sit showing
+    // "recording" through a slow channel round-trip, and so a failed native
+    // call cannot leave the indicator lying in the dangerous direction.
+    paused.value = held;
+    try {
+      final res =
+          held ? await CallRecorderNative.pause() : await CallRecorderNative.resume();
+      if (!res.ok) {
+        final err = res.error ?? 'unknown';
+        // `not_recording` is benign: the degradation ladder finalized the
+        // session while the call was held. Anything else means capture did NOT
+        // follow the hold — on a pause that is a privacy-relevant miss (we kept
+        // recording), so it is reported, not swallowed.
+        if (err != 'not_recording') {
+          AvaLog.I.log('callrec', 'hold ${held ? 'pause' : 'resume'} failed: $err');
+          await Analytics.captureException(
+            StateError('callrec_hold_failed:$err'),
+            StackTrace.current,
+            screen: 'callrec',
+            handled: true,
+            extra: {'call_id': callId, 'held': held, 'error': err},
+          );
+        }
+        // Fall back to the truth: capture is still running, so say so.
+        if (held) paused.value = false;
+      }
+      await Analytics.capture('callrec_hold', {
+        'call_id': callId,
+        'held': held,
+        'ok': res.ok,
+        if (!res.ok) 'error': res.error ?? 'unknown',
+        'duration_ms': progress.value?.durationMs ?? 0,
+      });
+    } catch (e, st) {
+      if (held) paused.value = false;
+      await Analytics.captureException(e, st,
+          screen: 'callrec',
+          handled: true,
+          extra: {'stage': 'hold', 'call_id': callId, 'held': held});
     }
   }
 
@@ -655,6 +735,12 @@ class CallRecordingStore {
         if (ev.recording) {
           progress.value = CallRecordingProgress(
               durationMs: ev.durationMs, bytes: ev.bytes);
+          // [CALLHOLD-1] Native is the authority on whether capture is actually
+          // held; this reconciles the optimistic flip in [setHeld] (and covers a
+          // pause/resume issued by anything other than this store). On an older
+          // native build the key is absent and reads false — the pre-hold
+          // behaviour exactly.
+          if (paused.value != ev.paused) paused.value = ev.paused;
         }
         break;
 
@@ -735,6 +821,11 @@ class CallRecordingStore {
     _pending = null;
     activeCallId.value = null;
     progress.value = null;
+    // [CALLHOLD-1] A finished session is never "paused". Clearing it here is what
+    // guarantees the next recording cannot inherit a stale hold — the same
+    // "a hold that can never be released is worse than no hold at all" property
+    // the call layer's focus-hold watchdog exists for.
+    paused.value = false;
     phase.value = CallRecordingPhase.idle;
   }
 

@@ -55,17 +55,44 @@ class CallRecorderStopResult {
   });
 }
 
+/// Result of `pause` / `resume`.
+///
+/// [CALLHOLD-1] Same `{ok, error}` convention as everything else on this channel
+/// (invariant 4 in the store): a refusal is `ok:false` with a reason, NEVER a
+/// thrown [PlatformException]. Both are idempotent native-side, so pausing an
+/// already-paused recorder is `ok:true` — the only `ok:false` you should ever
+/// see is `not_recording`, and that is benign (the degradation ladder can have
+/// finalized the session while the user was holding).
+class CallRecorderAckResult {
+  final bool ok;
+  final String? error;
+  const CallRecorderAckResult({required this.ok, this.error});
+}
+
 /// Snapshot of `state`.
 class CallRecorderState {
   final bool recording;
   final String? callId;
   final int durationMs;
   final int bytes;
+
+  /// [CALLHOLD-1] True while capture is held. A paused recorder is still an
+  /// ARMED recorder — `recording` stays true — so anything rendering "live"
+  /// state has to read both or a held call looks like it is still capturing.
+  final bool paused;
+
+  /// [CALLHOLD-1] Wall-clock ms spliced OUT of the file so far. `durationMs` is
+  /// the recorded length; `durationMs + pausedTotalMs` is roughly the call
+  /// length. Diagnostic only — nothing is persisted from it.
+  final int pausedTotalMs;
+
   const CallRecorderState({
     required this.recording,
     this.callId,
     this.durationMs = 0,
     this.bytes = 0,
+    this.paused = false,
+    this.pausedTotalMs = 0,
   });
 }
 
@@ -97,6 +124,10 @@ class CallRecorderEvent {
   int get durationMs => _int(data['durationMs']);
   int get bytes => _int(data['bytes']);
   bool get recording => data['recording'] == true;
+
+  /// [CALLHOLD-1] Only meaningful on a `state` event. Absent on an older native
+  /// build, which reads as false — i.e. exactly the pre-hold behaviour.
+  bool get paused => data['paused'] == true;
   String? get path => _str(data['path']);
   String? get code => _str(data['code']);
   String? get reason => _str(data['reason']);
@@ -177,6 +208,34 @@ class CallRecorderNative {
     }
   }
 
+  /// [CALLHOLD-1] Hold capture without closing the encoder.
+  ///
+  /// The held period is SPLICED OUT — it does not appear in the file as silence,
+  /// so the finished recording is shorter than the call. The encoder stays open
+  /// across the pause deliberately: finalizing and reopening would produce two
+  /// files and two Inbox rows for one conversation.
+  ///
+  /// Cheap and synchronous native-side (it sets a volatile and returns), so this
+  /// is safe to call from a call-control path.
+  static Future<CallRecorderAckResult> pause() => _ack('pause');
+
+  /// [CALLHOLD-1] Resume capture, re-anchoring both legs onto the current output
+  /// position so the splice leaves no hole and no drift artefact.
+  static Future<CallRecorderAckResult> resume() => _ack('resume');
+
+  static Future<CallRecorderAckResult> _ack(String method) async {
+    try {
+      final r = _map(await _method.invokeMethod<dynamic>(method));
+      return CallRecorderAckResult(ok: r['ok'] == true, error: _str(r['error']));
+    } on MissingPluginException {
+      // An older native build has no pause/resume. Reported, never thrown: the
+      // call must still be holdable on a client whose recorder cannot follow.
+      return const CallRecorderAckResult(ok: false, error: 'unavailable');
+    } on PlatformException catch (e) {
+      return CallRecorderAckResult(ok: false, error: 'platform:${e.code}');
+    }
+  }
+
   /// Abandon the current session and delete its working file. Never throws.
   static Future<void> cancel() async {
     try {
@@ -196,6 +255,8 @@ class CallRecorderNative {
         callId: _str(r['callId']),
         durationMs: _int(r['durationMs']),
         bytes: _int(r['bytes']),
+        paused: r['paused'] == true,
+        pausedTotalMs: _int(r['pausedTotalMs']),
       );
     } on MissingPluginException {
       return const CallRecorderState(recording: false);

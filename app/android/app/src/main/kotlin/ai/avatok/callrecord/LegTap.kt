@@ -209,4 +209,40 @@ internal class LegTap(val name: String, private val outRate: Int, ringMs: Int) {
     fun rejectBatch() {
         rejectedBatches++
     }
+
+    /**
+     * [CALLHOLD-1] Re-anchor this leg after a hold, so the recording SPLICES the
+     * held period out instead of containing it as dead air.
+     *
+     * Called on the platform thread from `resume`, while the producer is quiesced
+     * (`CallRecorderPlugin.paused` is still true and both ADM callbacks return
+     * early), and BEFORE `paused` is cleared. That ordering is what makes touching
+     * the otherwise audio-thread-only resampler state below safe.
+     *
+     * Everything reset here is POSITION state — where this leg sits on the output
+     * timeline. Everything left alone is CUMULATIVE session health
+     * ([batches], [gapSamples], [staleSkipped], [correctedSamples], [stallEvents],
+     * [ring].droppedSamples): a hold must not hand the degradation ladder a fresh
+     * budget, and the drift/stall telemetry has to stay comparable across a call.
+     *
+     * [started] going false is what stops a pause from being read as a stall:
+     * `updateStall` skips a leg that has not started, and [lastSampleMs] = 0 makes
+     * it skip again until the first real batch after the resume.
+     */
+    fun rebaseAfterPause() {
+        ring.reset()
+        started = false
+        anchorMs = 0L
+        lastSampleMs = 0L
+        adjustSamples = 0L
+        stalled = false
+        stalledSinceMs = 0L
+        // Resampler: force a re-prime so the first batch after the splice does not
+        // interpolate against a sample from before it.
+        primed = false
+        phase = 0.0
+        // `.toShort()` and not a bare `0`: no local Kotlin toolchain to prove the
+        // literal narrows here, and a wrong guess costs a 40–80 min CI round trip.
+        prev = 0.toShort()
+    }
 }
