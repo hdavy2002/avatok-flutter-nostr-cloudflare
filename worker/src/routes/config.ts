@@ -77,6 +77,34 @@ export interface PlatformConfig {
    * this true from KV and video is back on P2P in a minute.
    */
   callSfuAudioOnly: boolean;
+  /**
+   * [CALLREC-SERVER-1] MASTER kill switch for on-demand call recording
+   * (Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md). Gates the Record tile on
+   * the client AND every /api/callrec/* route on the server, so flipping it off
+   * stops new recordings AND new uploads without a build. Ships FALSE — the
+   * capture layer is Android-only and unproven, and a recording feature must
+   * never turn itself on by accident. Existing recordings stay in AvaStorage
+   * either way (they are the user's files, paid for by their storage quota).
+   * Boolean → NOT in numericKeys. Client mirror: RemoteConfig.callRecordingEnabled.
+   */
+  callRecordingEnabled: boolean;
+  /**
+   * [CALLREC-SERVER-1] The persistent "Recording" indicator on BOTH call screens
+   * (§4 of the spec — the peer gets no other warning that on-demand recording
+   * started). Default TRUE: this is the consent surface, not a preference, and it
+   * exists as a flag only so a rendering bug can be neutralised from KV without
+   * pulling the whole feature. Boolean → NOT in numericKeys.
+   */
+  callRecordingIndicatorEnabled: boolean;
+  /**
+   * [CALLREC-SERVER-1] Device free-space floor, in MB, below which the client
+   * refuses to arm the recorder (and finalizes cleanly if crossed mid-call).
+   * Tunable from KV because the right floor depends on real devices, not on a
+   * number picked here. NUMERIC → it MUST also appear in `numericKeys` below or
+   * `flags.sh set callRecordingMinFreeMb=750` 400s `bad type` (fake-flag rule,
+   * CLAUDE.md). Client mirror: RemoteConfig.callRecordingMinFreeMb.
+   */
+  callRecordingMinFreeMb: number;
   /** 1:1 P2P call translation. Independent gate: remains dark by default. */
   callTranslationEnabled: boolean;
   /**
@@ -941,6 +969,12 @@ const DEFAULTS: PlatformConfig = {
   // flipping this back to false is a full, instant rollback with no rebuild.
   callSfuV1: false,
   callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
+  // [CALLREC-SERVER-1] On-demand call recording. Ships OFF — the Android capture
+  // layer is unproven and /api/callrec/* 403s while this is false. The indicator
+  // (the peer's only warning that recording started) defaults ON.
+  callRecordingEnabled: false,
+  callRecordingIndicatorEnabled: true,
+  callRecordingMinFreeMb: 500,     // device free-space floor before arming (numeric → numericKeys)
   callTranslationEnabled: false,   // [CALL-TRANSLATE-1] dark until CI + two-device verification
   // [CALL-TRANSLATE-FREE-1] ON per owner 2026-08-05, reversing the 2026-08-04
   // paid-only ruling: testers hold only welcome/daily grants, so paid-only made
@@ -1406,6 +1440,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "callQosHeadroomFactor", "callQosLossDownshiftPct", "callQosStableLossPct",
     "callQosStableRttMs", "callQosStableSamples",
     "callVideoLossDegradePct", "callVideoLossPausePct", "callVideoStableSamples",
+    // [CALLREC-SERVER-1] device free-space floor for the call recorder — numeric,
+    // must be here or `flags.sh set callRecordingMinFreeMb=750` 400s `bad type`.
+    "callRecordingMinFreeMb",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",

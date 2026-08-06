@@ -88,6 +88,9 @@ import { getPaidCallOfferRoute, getPaidCallSettingsRoute, putPaidCallSettingsRou
 import { getAgentSettings, putAgentSettings, listAgentServices, createAgentService, updateAgentService, deleteAgentService, listAgentCalls, getAgentCallTranscript } from "./routes/agent_profiles";
 // [WP3] Voicemail bot session start (plan §3 step 4 / §7 item 5 / §15.5).
 import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
+// [CALLREC-SERVER-1] On-demand call recording — upload/meta/delete/playback.
+// All four 403 while `callRecordingEnabled` is false (it ships false).
+import { callRecFinalize, callRecMeta, callRecDelete, callRecPlayback } from "./routes/callrec";
 import { pstnRoute } from "./routes/pstn";
 // [AVA-CAMP-B2-WIRE] Outbound AI calling campaigns — PSTN bridge + CRUD API
 // (dark behind campaignDialerEnabled; Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md).
@@ -801,6 +804,16 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/voicemail/start" && req.method === "POST") return await voicemailStart(req, env);
       // GAP-3: owner-authed voicemail recording playback (mirrors /api/receptionist/recording).
       if (p === "/api/voicemail/recording" && req.method === "GET") return await voicemailRecording(req, env);
+      // [CALLREC-SERVER-1] On-demand call recording (Specs/FEASIBILITY-CALL-RECORDING-
+      // 2026-08-04.md §5.1). Bytes are captured on-device and land here AFTER the call;
+      // storage/quota/dedup all ride registerArtifactMedia. Gated on callRecordingEnabled.
+      if (p === "/api/callrec/finalize" && req.method === "POST") return await callRecFinalize(req, env, ctx);
+      // PATCH is the contract; POST is accepted as an alias because util.ts's shared
+      // CORS header advertises GET,POST,PUT,DELETE,OPTIONS only — a browser client
+      // would fail the PATCH preflight, and util.ts is not this issue's file to change.
+      if (p === "/api/callrec/meta" && (req.method === "PATCH" || req.method === "POST")) return await callRecMeta(req, env, ctx);
+      if (p === "/api/callrec/delete" && req.method === "POST") return await callRecDelete(req, env, ctx);
+      if (p === "/api/callrec/playback" && req.method === "GET") return await callRecPlayback(req, env, ctx);
       // PSTN gateway + voicemail execution mode (Canonical Architecture v1.0,
       // Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md). Single
       // startsWith dispatcher — routes/pstn.ts parses the sub-path itself.

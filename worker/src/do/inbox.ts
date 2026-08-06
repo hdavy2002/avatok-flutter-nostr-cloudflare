@@ -472,6 +472,23 @@ export class InboxDO {
           headers: { "content-type": "application/json" },
         });
       }
+      // [CALLREC-SERVER-1] Read / patch ONE of the owner's OWN message rows by
+      // client_id. The ONLY in-place body edit path in this DO: a call recording's
+      // Inbox card carries a JSON envelope whose `title`/`description` are USER-
+      // SUPPLIED and edited after the fact (routes/callrec.ts PATCH /api/callrec/meta),
+      // and neither /append (idempotent insert — a re-send is deduped, never an
+      // update) nor /hide can rewrite a body. Ownership is structural: the router
+      // only ever addresses this at env.INBOX.idFromName(<the authenticated uid>),
+      // so a caller can only ever reach their own rows.
+      //   GET  ?client_id=…            → {ok, found, row?}
+      //   POST {client_id, body}       → {ok, found, conv?, live?}
+      // The patch broadcasts a {type:'edit'} frame so the owner's other open
+      // sockets re-render live (same multi-device pattern as hide/read). Older
+      // clients ignore an unknown frame type and converge on their next /sync.
+      if (url.pathname.endsWith("/msg_body")) {
+        if (req.method === "GET") return this.msgBodyGet(url.searchParams.get("client_id") || "");
+        return this.msgBodyPatch(await req.json());
+      }
       // [G2] Guardian safety flag: upsert the owner's red-bubble/dismiss state,
       // then broadcast it live (store-and-forward). Replaces the old broadcast-only
       // /event push for this frame type so red bubbles survive reinstall + reach
@@ -868,6 +885,40 @@ export class InboxDO {
     this.sql.exec(`UPDATE messages SET hidden=?1 WHERE conv=?2 AND client_id=?3`, hidden, conv, target);
     const live = this.broadcast(JSON.stringify({ type: "hide", conv, target, hidden: !!b.hidden }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // [CALLREC-SERVER-1] One row by client_id (the owner's own copy). `client_id` is
+  // unique per (conv, client_id); a callrec id is minted from the call id so the
+  // LIMIT 1 is exact in practice. Returns found:false rather than an error so a
+  // caller can distinguish "never appended" from "failed".
+  private msgBodyGet(clientId: string): Response {
+    const H = { "content-type": "application/json" };
+    if (!clientId) return new Response(JSON.stringify({ ok: false, error: "client_id required" }), { headers: H });
+    const rows = this.sql.exec(
+      `SELECT id, conv, sender, kind, body, media_ref, created_at, edited_at, hidden
+         FROM messages WHERE client_id=? LIMIT 1`, clientId,
+    ).toArray();
+    if (!rows.length) return new Response(JSON.stringify({ ok: true, found: false }), { headers: H });
+    return new Response(JSON.stringify({ ok: true, found: true, row: rows[0] }), { headers: H });
+  }
+
+  // [CALLREC-SERVER-1] Replace one row's body (and stamp edited_at). Scoped to the
+  // row's OWN conv so a duplicate client_id in another conversation can never be
+  // rewritten by the same call.
+  private msgBodyPatch(b: { client_id?: string; body?: string }): Response {
+    const H = { "content-type": "application/json" };
+    const clientId = String(b.client_id ?? "");
+    if (!clientId || b.body == null) {
+      return new Response(JSON.stringify({ ok: false, error: "client_id + body required" }), { headers: H });
+    }
+    const rows = this.sql.exec(`SELECT conv FROM messages WHERE client_id=? LIMIT 1`, clientId).toArray();
+    if (!rows.length) return new Response(JSON.stringify({ ok: true, found: false }), { headers: H });
+    const conv = String(rows[0].conv);
+    const now = Date.now();
+    const body = String(b.body);
+    this.sql.exec(`UPDATE messages SET body=?1, edited_at=?2 WHERE conv=?3 AND client_id=?4`, body, now, conv, clientId);
+    const live = this.broadcast(JSON.stringify({ type: "edit", conv, target: clientId, body, edited_at: now }));
+    return new Response(JSON.stringify({ ok: true, found: true, conv, live }), { headers: H });
   }
 
   // [ONEBRAIN-B0-CONSUMERS] HARD-delete ONE conversation across every DO-local table
