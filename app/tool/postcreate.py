@@ -468,6 +468,12 @@ def patch_signing() -> None:
         "-keepclassmembers class org.webrtc.audio.JavaAudioDeviceModule { *** audioOutput; }\n"
         "-keepclassmembers class org.webrtc.audio.WebRtcAudioTrack { *** audioTrack; }\n"
         "-keep class ai.avatok.calltranslation.** { *; }\n"
+        "# [CALLREC-NATIVE-1] Call recording taps the NEAR-END mic adapter on the same\n"
+        "# MethodCallHandlerImpl. R8 is on in release, and without this keep the\n"
+        "# reflected field is stripped: the build works in debug and silently records\n"
+        "# silence in release. Verify on a release build, never a debug one.\n"
+        "-keepclassmembers class com.cloudwebrtc.webrtc.MethodCallHandlerImpl { *** recordSamplesReadyCallbackAdapter; }\n"
+        "-keep class ai.avatok.callrecord.** { *; }\n"
     )
     print("proguard: wrote android/app/proguard-rules.pro (Stripe/WebRTC/LiveKit keeps)")
 
