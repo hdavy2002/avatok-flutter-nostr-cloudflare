@@ -32,6 +32,8 @@ import '../../core/analytics.dart';
 import '../../core/audio_tuning.dart';
 import '../../core/ava_log.dart';
 import '../../core/call_log_store.dart'; // [GCALL-W4-LOG]
+import '../../core/call_recording/call_recording_model.dart'; // [ADDCALL-4-UI]
+import '../../core/call_recording/call_recording_store.dart'; // [ADDCALL-4-UI]
 import '../../core/remote_config.dart';
 import '../../core/voice/native_voice_audio.dart';
 import 'cloudflare_conference_api.dart';
@@ -248,6 +250,161 @@ class CloudflareConferenceController extends ChangeNotifier {
   String? get dominantSpeakerUid => _dominantSpeakerUid;
   bool get hasMediaEvidence => state == CfConnState.connected && (_lastAudioBytes != null || _lastVideoFrames != null);
 
+  // ---- [ADDCALL-4-UI] recording state, both directions ---------------------------
+  //
+  // Spec §7 (`Specs/SPEC-ADD-TO-CALL-2026-08-06.md`): *"the indicator must show
+  // on the conference screen for EVERY participant whenever ANY participant is
+  // recording"*. In a 1:1 the ToS clause plus an on-screen pill informs both
+  // parties; in a 10-way call the clause carries nine people on its own unless
+  // this works. So the whole path — send, receive, render — is written to FAIL
+  // TOWARD SHOWING the indicator, exactly like the server half ([ADDCALL-4-SRV]),
+  // because a missing pill is the consent failure and a spurious one is an
+  // annoyance.
+  //
+  // Two independent sources, deliberately:
+  //   · `_recFrameUids`  — the dedicated `{t:"recording", uids, count}` frame,
+  //     which is the only one that fires on CHANGE.
+  //   · `_recRosterUids` — the per-row `recording` boolean on every roster/welcome
+  //     push, which is what stops a late joiner missing an in-progress recording.
+  // Both derive from the same `att.recording` on the DO, so they agree once both
+  // have landed; the UNION is used so a lagging frame can only ever over-show.
+  Set<String> _recFrameUids = <String>{};
+  Set<String> _recRosterUids = <String>{};
+
+  /// Everyone the server says is recording, INCLUDING us.
+  Set<String> get recordingUids => {..._recFrameUids, ..._recRosterUids};
+
+  /// Everyone OTHER than us who is recording. This is what the pill renders.
+  Set<String> get peerRecordingUids =>
+      recordingUids.where((u) => !_isSelf(u)).toSet();
+
+  /// True when at least one other participant is recording this call.
+  bool get peerRecording => peerRecordingUids.isNotEmpty;
+
+  /// The last value we put on the wire, so an unchanged store tick does not
+  /// re-send. Bypassed by `force` on welcome/rejoin.
+  bool _lastRecordingAnnounced = false;
+  VoidCallback? _recordingListener;
+
+  /// Are WE recording the call this screen is showing?
+  ///
+  /// Deliberately `activeCallId != null` rather than `== gid`: a recording that
+  /// started before an escalation keeps the PRE-ESCALATION 1:1 call id, because
+  /// the recorder taps the audio device module below the transport and is never
+  /// restarted (spec §7). Matching on the gid would report "not recording" in
+  /// precisely the case §7 exists for. The recorder is process-wide and refuses a
+  /// second call, so a live recorder while this controller is up IS this call.
+  bool get _localRecordingActive {
+    try {
+      return CallRecordingStore.I.activeCallId.value != null &&
+          CallRecordingStore.I.phase.value == CallRecordingPhase.recording;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The recording's own id, for `rec_id` correlation. The 1:1 call id when a
+  /// local recording is running (that is what `callrec_*` events are keyed by),
+  /// otherwise this conference's call id.
+  String get _recCallId =>
+      CallRecordingStore.I.activeCallId.value ?? (_join?.callId ?? gid);
+
+  /// Bind to the recording store. Bound to the NOTIFIERS rather than to
+  /// `start`/`stop`, because native's degradation ladder can finalize a recording
+  /// with nobody calling stop (store invariant 3) — a hook on stop would leave
+  /// everyone else's indicator stuck on after capture had ended.
+  void _attachRecordingBridge() {
+    if (_recordingListener != null) return;
+    void onChange() => _announceRecordingState();
+    _recordingListener = onChange;
+    try {
+      CallRecordingStore.I.phase.addListener(onChange);
+      CallRecordingStore.I.activeCallId.addListener(onChange);
+    } catch (_) {/* never let the consent bridge break a call */}
+  }
+
+  void _detachRecordingBridge() {
+    final l = _recordingListener;
+    _recordingListener = null;
+    if (l == null) return;
+    try {
+      CallRecordingStore.I.phase.removeListener(l);
+      CallRecordingStore.I.activeCallId.removeListener(l);
+    } catch (_) {}
+  }
+
+  /// Tell the room whether we are recording.
+  ///
+  /// [force] re-sends even when nothing changed, and is used on every `welcome`
+  /// — i.e. on connect AND on every rejoin. Joining a call while already
+  /// recording has to announce itself, and a socket that was replaced mid-call
+  /// left the DO's flag on a socket that no longer exists. A frame costs
+  /// nothing; a missed one is someone being recorded with no indicator.
+  void _announceRecordingState({bool force = false}) {
+    try {
+      if (_ended) return;
+      final on = _localRecordingActive;
+      if (!force && on == _lastRecordingAnnounced) return;
+      _lastRecordingAnnounced = on;
+      // The server never reads a uid from this frame — it uses the socket's
+      // ticket-verified identity — so nobody can set or clear anyone else's flag.
+      _send({'t': 'recording', 'on': on});
+      Analytics.capture('callrec_peer_indicator', {
+        'dir': 'sent',
+        'surface': 'conference',
+        'call_id': _join?.callId ?? 'pending',
+        'rec_id': 'callrec:$_recCallId',
+        'rec_id_source': CallRecordingStore.I.activeCallId.value != null
+            ? 'local_recorder'
+            : 'conference',
+        'gid_hash': gid.hashCode.toString(),
+        'on': on,
+        'forced': force,
+        'participants': _roster.length + 1,
+      });
+    } catch (_) {/* never let a consent frame disturb the call */}
+  }
+
+  /// Apply the server's room-recording state. Anything malformed counts as ON,
+  /// mirroring the DO's own bias: a frame we cannot parse is not evidence that
+  /// nobody is recording.
+  void _onRecordingFrame(Map<String, dynamic> d) {
+    final raw = (d['uids'] as List?) ?? const [];
+    final uids = raw.map((e) => e.toString()).where((u) => u.isNotEmpty).toSet();
+    // `on:true` with no usable uid list still has to show something — hence the
+    // synthetic marker, which `peerRecordingUids` counts and the pill renders as
+    // "Someone".
+    if (uids.isEmpty && d['on'] != false) uids.add('_unknown_recorder');
+    final was = peerRecording;
+    _recFrameUids = uids;
+    final now = peerRecording;
+    Analytics.capture('callrec_peer_indicator', {
+      // The genuine proof-of-receipt: this row on ANOTHER tester's timeline,
+      // with the same gid, is the evidence that the consent surface reached a
+      // screen rather than merely being sent into a socket.
+      'dir': 'received',
+      'surface': 'conference',
+      'call_id': _join?.callId ?? 'pending',
+      'rec_id': 'callrec:$_recCallId',
+      'rec_id_source': CallRecordingStore.I.activeCallId.value != null
+          ? 'local_recorder'
+          : 'conference',
+      'gid_hash': gid.hashCode.toString(),
+      'on': d['on'] != false,
+      'peer_recording': now,
+      // The sender re-announces with `force` on every welcome, so a burst of
+      // identical frames is normal and expected; without this a reader would
+      // read it as a loop.
+      'changed': was != now,
+      'count': (d['count'] as num?)?.toInt() ?? uids.length,
+      'recording_uids': uids.toList(),
+    });
+    if (was != now) {
+      AvaLog.I.log('cfconf', 'peer recording indicator ${now ? 'ON' : 'OFF'}');
+    }
+    _safeNotify();
+  }
+
   // ---- lifecycle ---------------------------------------------------------------
 
   /// [GCALL-W1-ORDER] Join sequence. The ORDER here is the whole feature:
@@ -264,6 +421,10 @@ class CloudflareConferenceController extends ChangeNotifier {
   Future<void> connect() async {
     final t0 = DateTime.now().millisecondsSinceEpoch;
     activeGid = gid;
+    // [ADDCALL-4-UI] Bound BEFORE the socket exists: a recording armed on the
+    // 1:1 that this conference is escalating from is already running, and the
+    // announce on `welcome` is what tells the room about it.
+    _attachRecordingBridge();
     // [GCALL-W1-TEL] Telemetry exists BEFORE the first network call. It was
     // previously constructed after /join returned, so a failing /join emitted
     // nothing at all client-side — the one stage most likely to fail was the
@@ -810,12 +971,26 @@ class CloudflareConferenceController extends ChangeNotifier {
         final you = d['you']?.toString();
         if (you != null && you.isNotEmpty) _selfUid = you;
         _applyRoster((d['roster'] as List?) ?? const []);
+        // [ADDCALL-4-UI] The welcome carries the room's recording state nested,
+        // so a LATE JOINER learns about an in-progress recording immediately
+        // rather than waiting for the next change (which may never come).
+        final rec = d['recording'];
+        if (rec is Map) _onRecordingFrame(rec.cast<String, dynamic>());
         // The DO has accepted the upgrade and our attachment exists — this, and
         // only this, is what makes a /publish legal.
         _completeWelcome(wsEpoch);
+        // …and the other direction: announce OUR state unconditionally. A
+        // rejoin leaves the DO's flag on a socket that no longer exists, so a
+        // reconnect while recording would silently drop everyone's indicator.
+        _announceRecordingState(force: true);
         break;
       case 'roster':
         _applyRoster((d['roster'] as List?) ?? const []);
+        break;
+      // [ADDCALL-4-UI] The dedicated room-recording frame — the only one that
+      // fires on a CHANGE, and the one this feature actually rests on.
+      case 'recording':
+        _onRecordingFrame(d);
         break;
       case 'speakers':
         final uids = ((d['uids'] as List?) ?? const [])
@@ -832,6 +1007,11 @@ class CloudflareConferenceController extends ChangeNotifier {
         final uid = d['uid']?.toString();
         if (uid != null) {
           _roster.remove(uid);
+          // [ADDCALL-4-UI] Someone who has LEFT is not recording this call any
+          // more. The DO also pushes a fresh `recording` frame on departure;
+          // this covers the ordering where that frame has not landed yet.
+          _recRosterUids.remove(uid);
+          _recFrameUids.remove(uid);
           await _closePulled(uid);
           _tel?.participantLeft(subjectUid: uid, rosterSizeAfter: _roster.length, leaveReason: 'disconnected');
           _safeNotify();
@@ -851,9 +1031,14 @@ class CloudflareConferenceController extends ChangeNotifier {
   void _applyRoster(List<dynamic> raw) {
     final prevUids = _roster.keys.toSet();
     _roster.clear();
+    // [ADDCALL-4-UI] Rebuilt wholesale from this push, so a row that has stopped
+    // recording clears; the union with `_recFrameUids` is what keeps a lagging
+    // roster from hiding a live recording.
+    final recFromRoster = <String>{};
     for (final r in raw) {
       if (r is Map && r['uid'] != null) {
         final uid = r['uid'].toString();
+        if (r['recording'] == true) recFromRoster.add(uid);
         // Never insert self into the local roster — self is filtered here
         // once, at the source, so every consumer (screen participant count,
         // pull sites, video policy, telemetry) is automatically correct
@@ -869,6 +1054,7 @@ class CloudflareConferenceController extends ChangeNotifier {
         );
       }
     }
+    _recRosterUids = recFromRoster;
     final nowUids = _roster.keys.toSet();
     for (final uid in nowUids.difference(prevUids)) {
       if (_isSelf(uid)) continue; // defense-in-depth; _roster never holds self
@@ -1549,6 +1735,10 @@ class CloudflareConferenceController extends ChangeNotifier {
     _reconnectRetryTimer?.cancel();
     _reconnectRetryTimer = null;
     _failWelcome(_welcomeEpoch, StateError('call ended'));
+    // [ADDCALL-4-UI] The recording store is a process-wide singleton, so a
+    // controller that forgot to detach would keep announcing after its call had
+    // ended — onto a socket belonging to somebody else's call.
+    _detachRecordingBridge();
 
     try {
       final senders = await _pc?.getSenders() ?? const [];

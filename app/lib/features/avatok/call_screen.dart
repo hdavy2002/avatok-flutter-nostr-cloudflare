@@ -975,6 +975,13 @@ class _CallScreenState extends State<CallScreen> {
       // 4c. This object is out of the loop now; a late peer frame must not roll
       //     back a committed call.
       coordinator.detach();
+      // [ADDCALL-4-UI] If a recording is running it keeps running (the recorder
+      // sits below the transport and is never restarted — spec §7), so its
+      // metadata has to stop describing a two-person call. A no-op when nothing
+      // is being recorded. Spec §11 item 4.
+      CallRecordingStore.I.markEscalatedToGroup(
+        callId: callId, gid: gid, groupLabel: title,
+      );
 
       // 4d. Release the 1:1 leg. `hangup` rather than `endByUser`: this is not
       //     the user hanging up, and `endByUser`'s `bye` would read to the peer

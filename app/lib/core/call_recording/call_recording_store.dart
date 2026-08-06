@@ -396,6 +396,75 @@ class CallRecordingStore {
     }
   }
 
+  /// [ADDCALL-4-UI] The call being recorded has become a GROUP call.
+  ///
+  /// Spec `Specs/SPEC-ADD-TO-CALL-2026-08-06.md` §7 / §11 item 4: *"the
+  /// recording's `peer_uid` / `peer_name` metadata is 1:1-shaped. Decide what an
+  /// escalated recording is titled and attributed to."*
+  ///
+  /// ── THE DECISION, AND WHAT IT DELIBERATELY DOES NOT CHANGE ────────────────
+  ///
+  /// A recording that survives an escalation keeps running (the recorder taps
+  /// the audio device module, below the transport, and is never restarted), so
+  /// the FILE contains a group conversation while every piece of metadata around
+  /// it still says "a call with one person". Left alone, the Inbox card would
+  /// read *"Call between Ana and you"* for a file with five voices on it — a
+  /// claim about who is on a recording, which is exactly the kind of claim this
+  /// feature must not get wrong.
+  ///
+  /// What this changes:
+  ///  · **`peerName` becomes the GROUP label** ("Ana, Bob & Cara"), so the card's
+  ///    consent line renders *"Call between Ana, Bob & Cara and you"* and the
+  ///    untitled fallback renders *"Call with Ana, Bob & Cara"*.
+  ///  · **`title` is pre-filled** with "Group call with <label>". `title` is
+  ///    normally user-supplied and empty, and the store already re-pushes a
+  ///    non-empty local title to the server after upload ([_pushMetaIfNeeded]) —
+  ///    so this one write is what makes the SERVER-rendered card (the one another
+  ///    device sees) say "group" too. The user can still edit it.
+  ///
+  /// What this deliberately does NOT change:
+  ///  · **`peerUid` stays the original 1:1 peer.** It is the Inbox thread key
+  ///    (`convKey = callrec_<owner>__<peerKey>`, computed server-side from
+  ///    `peer_uid`) and the `callrec_*` telemetry join key. Rewriting it would
+  ///    move the recording to a different thread — or to no thread at all, since
+  ///    the ad-hoc room is `kind='call'` and invisible by design (spec §2). The
+  ///    original peer is a genuine participant, so filing it under them is true.
+  ///  · **`callId` stays the pre-escalation 1:1 id.** Phase 0 relies on that and
+  ///    the recorder is never restarted; changing it would orphan the working
+  ///    file, the blob key and every event already emitted.
+  ///  · **No new wire field.** The Inbox card renders from the SERVER envelope,
+  ///    and a new "is_group" flag would need a Worker change plus a shipped-client
+  ///    migration. Riding in `title`/`peer_name` reaches both the local row and
+  ///    the server row with the client change alone.
+  ///
+  /// A no-op unless [callId] is the recording actually in flight — the recorder
+  /// is process-wide and a stale call must never be able to relabel the current
+  /// one.
+  void markEscalatedToGroup({
+    required String callId,
+    required String gid,
+    required String groupLabel,
+  }) {
+    try {
+      if (callId.isEmpty) return;
+      if (activeCallId.value != callId) return;
+      final label = groupLabel.trim().isEmpty ? 'Group call' : groupLabel.trim();
+      _escalation = _EscalatedTo(callId: callId, gid: gid, label: label);
+      AvaLog.I.log('callrec', 'recording $callId escalated to group $label');
+      unawaited(Analytics.capture('callrec_escalated_to_group', {
+        'call_id': callId,
+        'rec_id': recIdFor(callId),
+        'gid_hash': gid.hashCode.toString(),
+        if (_pendingPeerUid.isNotEmpty) 'peer_uid': _pendingPeerUid,
+        'duration_ms': progress.value?.durationMs ?? 0,
+      }));
+    } catch (_) {/* never let attribution disturb a live call */}
+  }
+
+  /// Set by [markEscalatedToGroup]; consumed by [_persist]; cleared with the
+  /// session so the NEXT recording can never inherit it.
+  _EscalatedTo? _escalation;
+
   /// Abandon the current recording and delete its working file. Nothing is
   /// saved and nothing is uploaded.
   Future<void> cancel() async {
@@ -732,11 +801,21 @@ class CallRecordingStore {
     // leaving both doubles the disk cost of every recording.
     await _deleteFile(path);
 
+    // [ADDCALL-4-UI] Group attribution, if this call was escalated mid-recording.
+    // Matched on callId so a stale marker from a previous call can never relabel
+    // this one. See [markEscalatedToGroup] for what changes and what does not.
+    final esc = _escalation;
+    final escalated = esc != null && esc.callId == callId;
+
     final rec = CallRecording(
       callId: callId,
       peerUid: session?.peerUid ?? '',
-      peerName: session?.peerName ?? '',
+      // The group label REPLACES the single peer's name. The file holds a group
+      // conversation, and every string the card builds from `peerName` ("Call
+      // with X", "Call between X and you") would otherwise name one of five.
+      peerName: escalated ? esc!.label : (session?.peerName ?? ''),
       peerAvatar: session?.peerAvatar ?? '',
+      title: escalated ? 'Group call with ${esc!.label}' : '',
       direction: session?.direction ?? 'outgoing',
       startedAt: session?.startedAt ?? DateTime.now().millisecondsSinceEpoch,
       durationS: (durationMs / 1000).round(),
@@ -763,6 +842,12 @@ class CallRecordingStore {
       'reason': reason,
       'direction': rec.direction,
       if (rec.peerUid.isNotEmpty) 'peer_uid': rec.peerUid,
+      // [ADDCALL-4-UI] Did this file cross an escalation? A group recording has
+      // different consent, different attribution and (per spec §7) a different
+      // CPU profile, so it must be a breakdown dimension rather than something a
+      // reader infers from the title string.
+      'escalated_to_group': escalated,
+      if (escalated) 'gid_hash': esc!.gid.hashCode.toString(),
       // Recorded vs wall clock. A user asking "why is my recording shorter than
       // my call" is answered by these two, not by a guess: the held period is
       // SPLICED OUT of the file by design ([CALLHOLD-1]).
@@ -1229,6 +1314,9 @@ class CallRecordingStore {
 
   void _resetSession() {
     _pending = null;
+    // [ADDCALL-4-UI] Consumed — the NEXT recording must never inherit this
+    // call's group attribution.
+    _escalation = null;
     activeCallId.value = null;
     progress.value = null;
     // [CALLHOLD-1] A finished session is never "paused". Clearing it here is what
@@ -1340,6 +1428,25 @@ class CallRecordingStore {
       return DateTime.now().millisecondsSinceEpoch;
     }
   }
+}
+
+/// [ADDCALL-4-UI] The group a recording-in-flight was escalated into. Held
+/// separately from [_PendingSession] rather than added to it: that class is
+/// constructed at `start` (and by orphan recovery) with all-final fields, and
+/// escalation is something that happens LATER to a session that already exists.
+class _EscalatedTo {
+  final String callId;
+  final String gid;
+
+  /// The conference's display title — "Ana, Bob & Cara" — built by the same
+  /// helper that titles the conference screen, so the recording and the call it
+  /// came from are named identically.
+  final String label;
+  const _EscalatedTo({
+    required this.callId,
+    required this.gid,
+    required this.label,
+  });
 }
 
 /// Who and what the in-flight session is about. Native holds only a callId, so

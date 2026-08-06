@@ -22,6 +22,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/add_to_call_sheet.dart'; // [ADDCALL-3-UI] the ONE people picker
+import '../avatok/contacts.dart'; // [ADDCALL-4-UI] uid -> display name
 import 'add_to_call_ring.dart'; // [ADDCALL-3-UI]
 import 'cloudflare_conference_controller.dart';
 
@@ -74,6 +75,31 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
     // [ADDCALL-2-UI] An adopted controller is already connected — calling
     // connect() on it a second time would re-run the entire join sequence.
     if (adopted == null) unawaited(_ctrl.connect());
+    unawaited(_loadNames());
+  }
+
+  // [ADDCALL-4-UI] uid -> display name, for the recording indicator.
+  //
+  // The conference roster carries UIDS ONLY (it is why the tile name pill still
+  // shows a raw uid), so "Ana is recording" has to come from somewhere else.
+  // The local contact book is that somewhere: it is on disk, per-account, and
+  // needs no network call on a live call. A uid that is not in it simply renders
+  // as "Someone", which is still the consent surface — the pill NEVER waits for
+  // a name it cannot get.
+  Map<String, String> _names = const <String, String>{};
+
+  Future<void> _loadNames() async {
+    try {
+      final cs = await ContactsStore().load();
+      if (!mounted) return;
+      setState(() {
+        _names = {
+          for (final c in cs)
+            if (c.uid.isNotEmpty && c.name.trim().isNotEmpty)
+              c.uid: c.name.trim(),
+        };
+      });
+    } catch (_) {/* names are a nicety; the pill shows regardless */}
   }
 
   void _onChanged() {
@@ -170,6 +196,24 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
     if (!mounted) return;
     setState(() => _adding = false);
     AddToCallRing.report(ScaffoldMessenger.maybeOf(context), outcome, names);
+
+    // [ADDCALL-4-UI] Keep an in-flight recording's group label current. Without
+    // this, a call escalated with one person and then grown by two more would be
+    // filed under the FIRST set of names only — the same "the metadata names
+    // fewer people than the file contains" defect the escalation fix exists for.
+    // A no-op unless this device is recording (spec §7 / §11 item 4).
+    final rung = outcome.invite?.rung ?? const <String>[];
+    final activeRec = CallRecordingStore.I.activeCallId.value;
+    if (rung.isNotEmpty && activeRec != null) {
+      final added = rung.map((u) => (names[u] ?? '').trim()).where((n) => n.isNotEmpty);
+      CallRecordingStore.I.markEscalatedToGroup(
+        callId: activeRec,
+        gid: widget.gid,
+        groupLabel: <String>[widget.title.trim(), ...added]
+            .where((s) => s.isNotEmpty)
+            .join(', '),
+      );
+    }
   }
 
   @override
@@ -253,7 +297,17 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
               // Renders nothing when nobody is recording, so the ordinary case
               // costs no layout.
               if (RemoteConfig.callRecordingIndicatorEnabled)
-                Center(child: _ConferenceRecordingPill(gid: widget.gid)),
+                Center(
+                  child: _ConferenceRecordingPill(
+                    gid: widget.gid,
+                    // [ADDCALL-4-UI] Real state now — see the controller's
+                    // recording section. `peerRecordingUids` excludes us, so
+                    // "you and…" versus "…is recording" is decided by the two
+                    // independent facts and never by one guess.
+                    peerRecordingUids: _ctrl.peerRecordingUids,
+                    names: _names,
+                  ),
+                ),
               if (_ctrl.notice != null) _noticeBar(_ctrl.notice!),
               Expanded(
                 child: pages == 1
@@ -424,36 +478,45 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
 /// same filled dot, same `Recording · m:ss` / `Saving recording…` copy — so a
 /// user who has seen one recognises the other instantly.
 ///
-/// ⚠️ **The remote half is NOT wired yet — [peerRecording] is always false
-/// today.** The 1:1 pill learns about the other side from the `callrec` frame,
-/// which rides the `CallRoom` relay; a conference does not use `CallRoom` at
-/// all, so that state has to be relayed through `GroupCallRoom` instead. That is
-/// new transport, not a copy of the existing frame, and it is **Phase 4** work
-/// per spec §7 / §9 — see the TODO on [peerRecording]. Until it lands this pill
-/// is honest about exactly one thing: whether THIS device is recording.
+/// [ADDCALL-4-UI] The remote half is LIVE. `CloudflareConferenceController`
+/// relays the recording state through `GroupCallRoom` (`{t:"recording"}` both
+/// ways, plus the nested `welcome` copy and the per-row roster boolean), so this
+/// pill now shows whenever ANY participant is recording — which is what spec §7
+/// requires before recording may survive an escalation at all.
+///
+/// **It fails toward SHOWING.** A recording frame we cannot parse, a uid we
+/// cannot name, a roster and a change-frame that briefly disagree — every one of
+/// those renders the pill rather than hiding it. A missing pill is the consent
+/// failure this exists to prevent; a spurious one is an annoyance.
 class _ConferenceRecordingPill extends StatelessWidget {
   const _ConferenceRecordingPill({
     required this.gid,
-    // TODO(ADDCALL-4): wire this to real peer recording state. Requires
-    // relaying the `callrec` state frame through `GroupCallRoom` (spec §7:
-    // "the indicator must show ... for EVERY participant whenever ANY
-    // participant is recording"). Hard-coded false until then — do NOT read
-    // this as "no one else is recording", it means "we cannot know yet".
-    this.peerRecording = false,
-    this.peerRecordingLabel = 'Someone',
+    this.peerRecordingUids = const <String>{},
+    this.names = const <String, String>{},
   });
 
   /// The conversation id of the group call this screen is showing.
   final String gid;
 
-  /// True when at least one OTHER participant is recording. Always false today —
-  /// see the class doc and the TODO above.
-  final bool peerRecording;
+  /// Everyone OTHER than this device who the server says is recording. Empty
+  /// means nobody else is — which, unlike the Phase 0 stub, is now a fact rather
+  /// than an absence of transport.
+  final Set<String> peerRecordingUids;
 
-  /// How to name the recording peer(s) once [peerRecording] can be true. With no
-  /// transport there is no name to show, so the default is deliberately generic
-  /// rather than a fabricated participant.
-  final String peerRecordingLabel;
+  /// uid -> display name, from the local contact book. A uid that is missing
+  /// renders as "Someone"; the pill never withholds itself for want of a name.
+  final Map<String, String> names;
+
+  bool get peerRecording => peerRecordingUids.isNotEmpty;
+
+  /// Who to name. One recognised peer gets their name; anyone we cannot name
+  /// (including the synthetic `_unknown_recorder` the controller inserts for a
+  /// malformed frame) is "Someone".
+  String get _peerLabel {
+    if (peerRecordingUids.length != 1) return '';
+    final n = (names[peerRecordingUids.first] ?? '').trim();
+    return n.isEmpty ? 'Someone' : n;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -484,13 +547,22 @@ class _ConferenceRecordingPill extends StatelessWidget {
               final elapsed = (recording && progress != null)
                   ? _recElapsed(progress.durationMs)
                   : '';
+              // Naming the people is the point — "Recording" tells a
+              // participant that SOMETHING is being recorded; "Ana is
+              // recording" tells them who has the file.
+              final n = peerRecordingUids.length;
+              final label = _peerLabel;
               final String text;
               if (finalizing && !peerRecording) {
                 text = 'Saving recording…';
               } else if (recording && peerRecording) {
-                text = 'You and $peerRecordingLabel are recording';
+                text = n == 1
+                    ? 'You and $label are recording'
+                    : 'You and $n others are recording';
               } else if (peerRecording && !recording) {
-                text = '$peerRecordingLabel is recording';
+                text = n == 1
+                    ? '$label is recording'
+                    : '$n people are recording';
               } else {
                 text = elapsed.isEmpty ? 'Recording' : 'Recording · $elapsed';
               }

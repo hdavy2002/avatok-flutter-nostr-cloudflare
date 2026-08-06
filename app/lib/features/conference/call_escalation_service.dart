@@ -42,6 +42,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
+import '../../core/call_recording/call_recording_store.dart'; // [ADDCALL-4-UI]
 import '../../core/calls/call_escalation_guard.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_telemetry_events.dart';
@@ -325,6 +326,14 @@ class _PeerEscalation {
     //    racing it — cannot stop the tracks the conference is publishing.
     session.loanCaptureStream(() => c.ownsSharedLocalStream);
     c.assumeSharedLocalStreamOwnership();
+
+    // [ADDCALL-4-UI] The PEER can be the one recording, so the attribution fix
+    // has to live on both halves of the escalation, not just the adder's. A
+    // no-op unless this device has a recording in flight for this call.
+    // Spec §7 / §11 item 4.
+    CallRecordingStore.I.markEscalatedToGroup(
+      callId: session.config.room, gid: gid, groupLabel: title,
+    );
 
     // Pop the call screen if one is attached, and clear `minimized` so the
     // floating call pill does not outlive the call it points at.
