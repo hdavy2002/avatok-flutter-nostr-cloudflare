@@ -37,14 +37,19 @@ a=rtcp-fb:111 transport-cc
 
 void main() {
   group('tuneOpusSdp opus params', () {
-    test('sets FEC on, DTX off, 56k cap, mono — and preserves minptime', () {
+    test('sets FEC on, DTX off, 40k cap, mono — and preserves minptime', () {
       final out = tuneOpusSdp(_sdpWithRed);
       final fmtp = out
           .split('\r\n')
           .firstWhere((l) => l.startsWith('a=fmtp:111 '));
       expect(fmtp, contains('useinbandfec=1'));
       expect(fmtp, contains('usedtx=0'), reason: 'DTX must stay OFF');
-      expect(fmtp, contains('maxaveragebitrate=56000'));
+      // [CALL-MEDIA-540P-1 2026-08-06] 56000 -> 40000. This is an OWNER
+      // DECISION, not a drift: the phone-first profile targets 40 kbps mono
+      // Opus. If this assertion fails again, confirm the intended target
+      // before changing the number — the constant and this test are meant to
+      // move together and only on purpose.
+      expect(fmtp, contains('maxaveragebitrate=40000'));
       expect(fmtp, contains('stereo=0'));
       expect(fmtp, contains('minptime=10'),
           reason: 'pre-existing params must survive the override');
