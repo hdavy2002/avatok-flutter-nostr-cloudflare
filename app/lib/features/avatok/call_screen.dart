@@ -689,14 +689,20 @@ class _CallScreenState extends State<CallScreen> {
     // [CALL-UI-GRID-2026-08-05] Was 222 for the old 3+2 circles + isolated
     // hang-up. The labelled 2x3 panel is taller: 14 card margin + 18 pad +
     // 2x(64 circle + 6 + ~15 label) + 18 row gap + 18 pad ≈ 238.
-    // [CALLREC-UI-1] The Record row is a THIRD grid row when call recording is
-    // enabled (spec §5.2 — an on-demand feature buried in the More sheet does
-    // not get used), so the reserved footprint has to grow with it or the hero
-    // avatar scrolls under the panel again. Following the same arithmetic:
-    // one more row gap (Msg.s4 = 16) + one more tile (64 circle + Msg.s1 = 4 +
-    // ~15 label) ≈ 99, rounded to 100 for the same slack the 250 above carries.
-    final controlPanelHeight =
-        RemoteConfig.callRecordingEnabled ? 350.0 : 250.0;
+    // [CALLREC-UI-1] The Record row is a THIRD grid row (spec §5.2 — an
+    // on-demand feature buried in the More sheet does not get used), so the
+    // reserved footprint has to grow with it or the hero avatar scrolls under
+    // the panel again. Following the same arithmetic: one more row gap
+    // (Msg.s4 = 16) + one more tile (64 circle + Msg.s1 = 4 + ~15 label) ≈ 99,
+    // rounded to 100 for the same slack the 250 above carries.
+    // [CALL-UI-GRID-2] This used to be `callRecordingEnabled ? 350 : 250`,
+    // because row 3 held Record and nothing else. Row 3 now also holds Hold,
+    // which is UNCONDITIONAL (it is not a recording feature and has no flag),
+    // so the third row always renders and the reservation is always 350. With
+    // the recording flag off, Record's third collapses to SizedBox.shrink()
+    // INSIDE a row that still occupies its full height — a shorter reservation
+    // would put the panel back over the avatar.
+    const controlPanelHeight = 350.0;
     // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] Keyboard height (0 when closed) — the
     // video outcome-menu overlay bottoms out at its top edge while typing.
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
@@ -726,21 +732,70 @@ class _CallScreenState extends State<CallScreen> {
               right: 0,
               height: 128,
               child: Container(color: Colors.black.withValues(alpha: 0.45))),
+          // [CALL-UI-GRID-2] Tap the self-view to flip the camera.
+          //
+          // Camera flip used to live ONLY in the More sheet, which is gone; and
+          // the self-view preview — the one place every other calling app puts
+          // this gesture — was not tappable at all. It is now the single flip
+          // affordance, with a small camera-rotate glyph in the corner so it is
+          // discoverable rather than a hidden hotspot.
+          //
+          // No `canFlipCamera` gate is needed: this Positioned only builds when
+          // `showVideo` (video && camOn), i.e. exactly when a live camera is
+          // being sent, which is the condition the old sheet tested for.
           Positioned(
             top: 56,
             right: 16,
             width: 78,
             height: 112,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AD.rListCard),
-                border: Border.all(color: AD.borderControl, width: 1),
-                boxShadow: const [],
+            child: Semantics(
+              button: true,
+              label: 'Switch camera',
+              child: GestureDetector(
+                // `opaque`, not the default `deferToChild`: the child is a
+                // platform view (RTCVideoView) and a Stack of Positioned-only
+                // children, neither of which is a reliable hit-test target.
+                behavior: HitTestBehavior.opaque,
+                // flipCamera is a Future<void>; nothing here needs its
+                // completion, and an un-awaited call trips the analyzer.
+                onTap: () => unawaited(s.flipCamera()),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(AD.rListCard),
+                          border:
+                              Border.all(color: AD.borderControl, width: 1),
+                          boxShadow: const [],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: RTCVideoView(s.localRenderer,
+                            mirror: true,
+                            objectFit: RTCVideoViewObjectFit
+                                .RTCVideoViewObjectFitCover),
+                      ),
+                    ),
+                    // Understated corner glyph — the affordance, not a button.
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          shape: BoxShape.circle,
+                        ),
+                        child: PhosphorIcon(
+                          PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: RTCVideoView(s.localRenderer,
-                  mirror: true,
-                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
             ),
           ),
         ],
@@ -804,6 +859,15 @@ class _CallScreenState extends State<CallScreen> {
                           ),
                         ],
                       ),
+                      // [CALL-UI-GRID-2] The PEER's hold/mute state. Rendered
+                      // here, in the header, so it appears on BOTH the audio
+                      // and the video layout from one call site — and directly
+                      // under the status line, which is where a user looks
+                      // when a call goes quiet. It collapses to nothing when
+                      // the peer is neither holding nor muted, so the normal
+                      // call costs no layout.
+                      _PeerStateLine(
+                          session: s, name: widget.title, onVideo: showVideo),
                     ],
                   ),
                 ),
@@ -1148,14 +1212,21 @@ class _CallScreenState extends State<CallScreen> {
             // vanished mid-call; and up to six controls competed for the same
             // level of attention.
             //
-            // Now: one raised card, six FIXED slots on a 3-column grid, each an
+            // Now: one raised card, FIXED slots on a 3-column grid, each an
             // icon circle with a text label under it. Row one is the three
             // controls people reach for constantly (Speaker / Video / Mute);
-            // row two is More / Translate / End. Every slot is an Expanded
-            // third, so a hidden Translate leaves its slot empty instead of
-            // re-centring the row under the user's thumb. The controls that
-            // lost their top-level slot — chat, dialpad, camera flip — live in
-            // the More sheet.
+            // row two is Keypad / Translate / End; row three is Record / Hold /
+            // (reserved). Every slot is an Expanded third, so a hidden
+            // Translate leaves its slot empty instead of re-centring the row
+            // under the user's thumb.
+            //
+            // [CALL-UI-GRID-2] The More sheet is GONE. An overflow sheet
+            // holding three items on a screen with a nine-slot grid was pure
+            // indirection: Keypad is promoted into More's own slot, camera flip
+            // moved onto the self-view preview (where every other calling app
+            // puts it), and chat/minimize needed no replacement — the header
+            // back button, the ⌄ button and the system back gesture all already
+            // minimize.
             child: Container(
               margin: EdgeInsets.fromLTRB(
                   12, 0, 12, 12 + (bottomInset > 0 ? bottomInset : 4)),
@@ -1205,11 +1276,23 @@ class _CallScreenState extends State<CallScreen> {
                 const SizedBox(height: Msg.s4),
                 Row(children: [
                   Expanded(
+                    // [CALL-UI-GRID-2] Was "More". The overflow sheet is gone:
+                    // it held exactly three things, and two of them (chat
+                    // /minimize, camera flip) already have — or now have — a
+                    // better home, while the third (the DTMF keypad) had NO
+                    // other route at all and is the one control on this screen
+                    // a user genuinely hunts for mid-call (IVR menus). It takes
+                    // More's slot outright.
+                    //
+                    // phosphor_flutter 2.1.0 names this icon `numpad`. The
+                    // obvious guess (the one starting "dial") does NOT exist
+                    // and fails at kernel snapshot — i.e. only in CI, ~5
+                    // minutes into a release build. Verify icon names against
+                    // the package, not intuition.
                     child: _CallTile(
-                      icon: PhosphorIcons.dotsThree(PhosphorIconsStyle.bold),
-                      label: 'More',
-                      onTap: () => _showMoreSheet(s,
-                          canFlipCamera: video && camOn),
+                      icon: PhosphorIcons.numpad(PhosphorIconsStyle.bold),
+                      label: 'Keypad',
+                      onTap: () => _showDtmfPad(s),
                     ),
                   ),
                   Expanded(
@@ -1248,36 +1331,68 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                   ),
                 ]),
-                // [CALLREC-UI-1] Third row: Record. Present ONLY while
-                // `callRecordingEnabled` is on — with the flag off the panel is
-                // byte-for-byte the 2x3 grid it was, and `controlPanelHeight`
-                // above reverts with it.
+                // [CALLREC-UI-1] Third row: Record (spec §5.2 — an on-demand
+                // feature buried in the More sheet does not get used).
+                // Deliberately NOT gated on video: recording is audio-only and
+                // unaffected by the camera (spec §3.4).
                 //
-                // Still three Expanded thirds even though only the middle one is
-                // filled: the equal-thirds geometry is what stops a control
-                // moving under the user's thumb when an optional tile appears,
-                // and centring a lone Row child would break that promise for
-                // this row alone. Deliberately NOT gated on video — recording is
-                // audio-only and unaffected by the camera (spec §3.4).
-                if (RemoteConfig.callRecordingEnabled) ...[
-                  const SizedBox(height: Msg.s4),
-                  Row(children: [
-                    const Expanded(child: SizedBox.shrink()),
-                    Expanded(
-                      child: Center(
-                        child: _CallRecordTile(
-                          callId: s.room,
-                          peerUid: widget.seed,
-                          peerName: widget.title,
-                          peerAvatar: widget.avatarUrl,
-                          direction: widget.outgoing ? 'outgoing' : 'incoming',
-                          callConnected: connected,
-                        ),
-                      ),
+                // [CALL-UI-GRID-2] The row itself is no longer gated on
+                // `callRecordingEnabled`. Hold shares it and has no flag, so
+                // the row ALWAYS renders and only Record's own third collapses
+                // when recording is off. (`controlPanelHeight` above is a flat
+                // 350 for the same reason.)
+                //
+                // Still three Expanded thirds: the equal-thirds geometry is
+                // what stops a control moving under the user's thumb when an
+                // optional tile appears or vanishes. The third slot is
+                // RESERVED, not decorative — an "Add to call" control belongs
+                // there and is not built yet. It stays empty on purpose; a
+                // greyed-out placeholder button would be a dead control, which
+                // is worse than a gap.
+                const SizedBox(height: Msg.s4),
+                Row(children: [
+                  Expanded(
+                    child: RemoteConfig.callRecordingEnabled
+                        ? Center(
+                            child: _CallRecordTile(
+                              callId: s.room,
+                              peerUid: widget.seed,
+                              peerName: widget.title,
+                              peerAvatar: widget.avatarUrl,
+                              direction:
+                                  widget.outgoing ? 'outgoing' : 'incoming',
+                              callConnected: connected,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  // [CALL-UI-GRID-2] Hold. `holdActive` is bumped through the
+                  // session revision by `toggleHold`, but this binds to the
+                  // notifier directly so the tile can never lag the latch.
+                  Expanded(
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: s.holdActive,
+                      builder: (context, held, _) {
+                        final tile = _CallTile(
+                          icon: PhosphorIcons.pause(PhosphorIconsStyle.bold),
+                          label: held ? 'On hold' : 'Hold',
+                          active: held,
+                          // Holding a call that has not connected would hold
+                          // ringback and nothing else — same reasoning, and the
+                          // same dimmed-and-inert treatment, as the Record
+                          // tile beside it.
+                          onTap: connected
+                              ? () => unawaited(s.toggleHold())
+                              : null,
+                        );
+                        return connected
+                            ? tile
+                            : Opacity(opacity: 0.45, child: tile);
+                      },
                     ),
-                    const Expanded(child: SizedBox.shrink()),
-                  ]),
-                ],
+                  ),
+                  const Expanded(child: SizedBox.shrink()),
+                ]),
               ]),
             ),
           ),
@@ -1476,63 +1591,86 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  // [CALL-UI-GRID-2026-08-05] Overflow for the controls that lost a top-level
-  // slot when the panel became a fixed 2x3 grid. Chat and dialpad are things
-  // you use once, deliberately, mid-call; camera flip only exists while a
-  // camera is actually sending. None of them earn a permanent tile next to
-  // mute.
+  // [CALL-UI-GRID-2] `_showMoreSheet` lived here and is DELETED, along with its
+  // `canFlipCamera` plumbing. It held Chat, Keypad and Flip; nothing was
+  // stranded by its removal — Keypad is now a permanent grid tile, Flip is the
+  // self-view tap, and Chat/minimize was already reachable three other ways
+  // (header back button, the ⌄ button, the system back gesture via PopScope).
   //
-  // `_controlRow` / `_btn` (the old bare 56px circles) are gone with the rows
-  // that used them — every control on this screen is now a `_CallTile`.
-  void _showMoreSheet(CallSession session, {required bool canFlipCamera}) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: Msg.brSheetTop),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s5, Msg.s2, Msg.s5),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _CallTile(
-                icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                label: 'Chat',
-                // Minimizes the call (it stays alive as a pill/PiP) so the user
-                // lands back on the thread and can read/send messages.
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _minimize();
-                },
-              ),
-              _CallTile(
-                // phosphor_flutter 2.1.0 names this icon `numpad`. The obvious
-                // guess (the one starting "dial") does NOT exist and fails at
-                // kernel snapshot — i.e. only in CI, ~5 minutes into a release
-                // build. Verify icon names against the package, not intuition.
-                icon: PhosphorIcons.numpad(PhosphorIconsStyle.bold),
-                label: 'Keypad',
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _showDtmfPad(session);
-                },
-              ),
-              // [CF-CALL-P2P-1] Front/back camera flip — only meaningful (and
-              // only shown) while a live camera feed is actually being sent.
-              if (canFlipCamera)
-                _CallTile(
-                  icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
-                  label: 'Flip',
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    // flipCamera is a Future<void>; nothing here needs its
-                    // completion, and an un-awaited call trips the analyzer.
-                    unawaited(session.flipCamera());
-                  },
+  // `_controlRow` / `_btn` (the old bare 56px circles) went earlier with the
+  // rows that used them — every control on this screen is a `_CallTile`.
+}
+
+/// [CALL-UI-GRID-2] The PEER's hold / mute state, rendered under the call
+/// status line.
+///
+/// A call that goes silent with no explanation is a support ticket: the user
+/// cannot tell "they put me on hold" from "they muted" from "the call broke",
+/// and their only recourse is to hang up. `CallSession` now knows both facts
+/// ([CallSession.peerHold], [CallSession.peerMuted]), so this says which.
+///
+/// Neither notifier bumps the session revision — they are set straight from the
+/// peer's `hold` / `mute` data-channel frames — so this binds to them DIRECTLY.
+/// A `setState`-driven parent would simply never rebuild for them.
+///
+/// Hold takes precedence over mute when both are set: holding already stops
+/// their capture, so "on hold" is the fact that explains the silence, and
+/// stacking two lines in the header would push the layout around.
+class _PeerStateLine extends StatelessWidget {
+  const _PeerStateLine({
+    required this.session,
+    required this.name,
+    required this.onVideo,
+  });
+
+  final CallSession session;
+  final String name;
+  final bool onVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: session.peerHold,
+      builder: (context, held, _) => ValueListenableBuilder<bool>(
+        valueListenable: session.peerMuted,
+        builder: (context, peerMuted, __) {
+          if (!held && !peerMuted) return const SizedBox.shrink();
+          final peer = name.trim();
+          final who = peer.isEmpty ? 'They' : peer;
+          final text =
+              held ? '$who put the call on hold' : '$who is muted';
+          // Hold is the accent state — it is the one the user must read to
+          // understand the silence. Mute is quieter, matching the status line.
+          final tint = held
+              ? AD.primaryBadge
+              : (onVideo ? AD.textSecondary : AD.textTertiary);
+          return Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                PhosphorIcon(
+                  held
+                      ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                      : PhosphorIcons.microphoneSlash(
+                          PhosphorIconsStyle.fill),
+                  size: 11,
+                  color: tint,
                 ),
-            ],
-          ),
-        ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ADText.sectionLabel(c: tint),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -1563,7 +1701,12 @@ class _CallTile extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+
+  /// [CALL-UI-GRID-2] Nullable: a null [onTap] makes the tile genuinely inert
+  /// (`ZinePressable.onTap` is already nullable), which is what the Hold tile
+  /// needs before the call connects. Callers pair it with the same `Opacity`
+  /// dimming `_CallRecordTile` uses so an inert tile also LOOKS inert.
+  final VoidCallback? onTap;
   final bool active;
   final Color? bg;
   final Color? border;
