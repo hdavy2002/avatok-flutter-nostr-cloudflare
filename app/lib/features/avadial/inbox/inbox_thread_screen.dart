@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+// `SynchronousFuture` is NOT re-exported by material.dart (widgets.dart's
+// foundation export is a selective `show` list) — import it explicitly.
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -16,6 +19,7 @@ import '../../../core/config.dart';
 import '../../../core/local_brain/local_brain.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
+import '../../../sync/sync_hub.dart' show HubEvent, SyncHub;
 // [AVAINBOX-3] `show` is REQUIRED, not tidiness: contacts.dart declares its own
 // `Directory` (the AvaTOK user directory), which collides with dart:io's
 // `Directory` used by the download fallback below. An unqualified import here
@@ -165,6 +169,10 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   ResolvedCallerName? _resolved;
   StreamSubscription<List<Contact>>? _contactsSub;
 
+  /// [CALLREC-BG-1] Live `edit` frames for THIS conversation — a recording
+  /// renamed on another of my devices. See [_onLiveFrame].
+  StreamSubscription<HubEvent>? _editSub;
+
   String? get _phone => widget.thread.telPhone ??
       (widget.thread.cards.isNotEmpty ? widget.thread.cards.last.callerPhone : null);
 
@@ -211,8 +219,39 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
     unawaited(InboxApi.markRead(widget.thread.conv));
     unawaited(_loadResolvedName());
     _contactsSub = ContactsStore.changes.listen((_) => _loadResolvedName());
+    // [CALLREC-BG-1] A title/description edited on another of my devices
+    // arrives here as an `edit` frame (SyncHub._ingestEdit). convKey for a
+    // non-`dm_` conv is `g:<conv>` (sync_hub.dart), which is what every
+    // voicemail/recept/callrec thread is.
+    _editSub = SyncHub.I.incoming
+        .where((e) => e.convKey == 'g:${widget.thread.conv}')
+        .listen(_onLiveFrame);
     _future.then((cards) => unawaited(_ingestToBrain(cards)));
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToEnd());
+  }
+
+  /// [CALLREC-BG-1] Patch the rendered card in place for a live `edit` frame —
+  /// no refetch, no spinner. Anything that isn't an edit frame is ignored here
+  /// (this screen's other live behaviour is unchanged).
+  ///
+  /// The patched list is handed back as a [SynchronousFuture] on purpose: the
+  /// FutureBuilder below re-subscribes whenever `_future` changes, and an
+  /// ordinary future would leave it in `waiting` for a frame — i.e. the whole
+  /// thread would blink through its spinner on a rename.
+  void _onLiveFrame(HubEvent e) {
+    final edit = InboxEditFrame.parse(e.payload);
+    if (edit == null) return;
+    unawaited(edit.applyToLocalRecording());
+    _future.then((cards) {
+      if (!mounted) return;
+      if (!cards.any((c) => c.stableId == edit.target)) return;
+      final patched = [
+        for (final c in cards)
+          c.stableId == edit.target ? c.withRawBody(edit.body) : c,
+      ];
+      setState(() => _future = SynchronousFuture<List<InboxCard>>(patched));
+      Analytics.capture('inbox_edit_frame_applied', {'screen': 'thread'});
+    });
   }
 
   Future<void> _loadResolvedName() async {
@@ -363,6 +402,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   void dispose() {
     ActiveThread.leave(_routeKey);
     _contactsSub?.cancel();
+    _editSub?.cancel();
     _scroll.dispose();
     super.dispose();
   }

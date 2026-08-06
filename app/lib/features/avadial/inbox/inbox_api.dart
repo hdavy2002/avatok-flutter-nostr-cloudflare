@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/api_auth.dart';
 import '../../../core/ava_log.dart';
+import '../../../core/call_recording/call_recording_store.dart';
 import '../../../core/config.dart';
 import '../../../identity/identity.dart';
 
@@ -178,6 +179,29 @@ class InboxCard {
   /// `hide` target — prefers the real `client_id` column, falls back to the
   /// sync-cursor row [id] for any legacy row that somehow lacks one.
   String get stableId => (clientId != null && clientId!.isNotEmpty) ? clientId! : id;
+
+  /// [CALLREC-BG-1] The same card with a NEW parsed envelope — used when an
+  /// `edit` frame patches a recording's title/description live (see
+  /// [InboxEditFrame]). Only [rawBody] changes: every scalar column
+  /// (`created_at`, `duration_s` → [durationSec], …) is the row's, not the
+  /// envelope's, and an edit never touches those.
+  InboxCard withRawBody(Map<String, dynamic> body) => InboxCard(
+        id: id,
+        conv: conv,
+        kind: kind,
+        createdAtMs: createdAtMs,
+        sessionId: sessionId,
+        callerName: callerName,
+        callerPhone: callerPhone,
+        transcript: transcript,
+        summaryText: summaryText,
+        durationSec: durationSec,
+        mediaRef: mediaRef,
+        hasRecording: hasRecording,
+        clientId: clientId,
+        sender: sender,
+        rawBody: body,
+      );
 
   /// [AVA-INBOX-READSTATE] Compact JSON for the on-disk, per-account inbox
   /// thread cache (inbox_thread_cache.dart) — NOT the wire shape; this is our
@@ -375,6 +399,15 @@ class InboxThread {
   /// The bare E.164 number for a [isTel] thread, else null.
   String? get telPhone => isTel ? callerKey!.substring(4) : null;
 
+  /// [CALLREC-BG-1] The same thread with a new card list — for an in-place live
+  /// patch (an `edit` frame) that must NOT cost a full network reload.
+  InboxThread withCards(List<InboxCard> next) => InboxThread(
+        conv: conv,
+        callerKey: callerKey,
+        cards: next,
+        unread: unread,
+      );
+
   /// [AVA-INBOX-READSTATE] JSON for the per-account inbox thread cache
   /// (inbox_thread_cache.dart). Serializes every card so the cached paint is
   /// identical to a fresh fetch (unread badge, preview text, timestamps).
@@ -394,6 +427,79 @@ class InboxThread {
             .map((m) => InboxCard.fromJson(m.cast<String, dynamic>()))
             .toList(),
       );
+}
+
+/// [CALLREC-BG-1] One live `edit` frame off the Inbox socket.
+///
+/// THE LANE: `worker/src/routes/callrec.ts` PATCHes a recording's
+/// title/description → `InboxDO.msgBodyPatch` rewrites the row's `body` and
+/// broadcasts `{type:'edit', conv, target, body, edited_at}` to the owner's
+/// other sockets → `SyncHub._ingestEdit` re-emits it on `incoming` as a
+/// [HubEvent] whose `payload` is `{"t":"edit","target","body","edited_at"}` and
+/// whose `convKey` is `g:<conv>` (a callrec conv never starts with `dm_`).
+///
+/// Until this class existed the frame had an emitter and NO consumer: a rename
+/// on one device only reached the other on a full resync or a screen reopen.
+///
+/// [target] is the `messages.client_id` column — i.e. exactly
+/// [InboxCard.stableId], which is what the screens match on.
+class InboxEditFrame {
+  final String target;
+
+  /// The re-parsed envelope (`title`, `description`, `call_id`, …), ready to go
+  /// straight into [InboxCard.withRawBody].
+  final Map<String, dynamic> body;
+
+  const InboxEditFrame({required this.target, required this.body});
+
+  /// Parses a `SyncHub.incoming` payload. Returns null for ANY other frame —
+  /// a plain chat message, a malformed body, an unknown `t` — so a caller can
+  /// use it as its filter and never disturb the other frame types.
+  static InboxEditFrame? parse(String payload) {
+    final p = payload.trimLeft();
+    if (!p.startsWith('{')) return null; // ordinary message text
+    try {
+      final j = jsonDecode(p);
+      if (j is! Map || j['t'] != 'edit') return null;
+      final target = (j['target'] ?? '').toString();
+      if (target.isEmpty) return null;
+      final raw = j['body'];
+      var body = <String, dynamic>{};
+      if (raw is Map) {
+        body = raw.cast<String, dynamic>();
+      } else if (raw is String && raw.trimLeft().startsWith('{')) {
+        final b = jsonDecode(raw);
+        if (b is Map) body = b.cast<String, dynamic>();
+      }
+      if (body.isEmpty) return null;
+      return InboxEditFrame(target: target, body: body);
+    } catch (_) {
+      return null; // a malformed frame must never break the socket handler
+    }
+  }
+
+  String get title => (body['title'] ?? '').toString();
+  String get description => (body['description'] ?? '').toString();
+
+  /// The recording this edit belongs to, if the envelope is a callrec one.
+  String get callId => (body['call_id'] ?? '').toString();
+
+  /// Keep the LOCAL drift row (`callRecordings`, core/db.dart) in step when the
+  /// recording was made on THIS device, so the recordings screen and the Inbox
+  /// card can't disagree about the title.
+  ///
+  /// Deliberately [CallRecordingStore.applyRemoteMeta] and NOT `updateMeta`:
+  /// the latter also PATCHes the server, which would echo this very broadcast
+  /// back at it. A no-op when there is no local row.
+  Future<void> applyToLocalRecording() async {
+    if (callId.isEmpty) return;
+    try {
+      await CallRecordingStore.I
+          .applyRemoteMeta(callId, title: title, description: description);
+    } catch (e) {
+      AvaLog.I.warn('callrec', 'local meta sync from edit frame failed: $e');
+    }
+  }
 }
 
 class InboxApi {

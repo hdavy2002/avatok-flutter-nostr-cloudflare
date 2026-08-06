@@ -130,7 +130,12 @@ class _InboxListScreenState extends State<InboxListScreen> {
             // after a manual pull-to-refresh — the exact bug INBOX-LIVE-1 fixed
             // for voicemail.
             e.convKey.startsWith('g:callrec_'))
-        .listen((_) {
+        .listen((e) {
+      // [CALLREC-BG-1] An `edit` frame (a recording renamed on another of my
+      // devices) is patched into the already-loaded list in place and does NOT
+      // fall through to the reload below — a rename changes one preview line,
+      // not the thread set, so a full network refetch would be wasted work.
+      if (_applyEditFrame(e)) return;
       _liveDebounce?.cancel();
       _liveDebounce = Timer(const Duration(milliseconds: 400), () {
         if (mounted) _reload();
@@ -174,6 +179,39 @@ class _InboxListScreenState extends State<InboxListScreen> {
       });
     }
     await _loadThreads();
+  }
+
+  /// [CALLREC-BG-1] Consume a live `edit` frame: swap the edited card's
+  /// envelope in the loaded thread list so the row's preview (which reads
+  /// `t.latest.recTitle`, see `_row`) updates in place, and keep the local
+  /// drift row in step. Returns true when the event WAS an edit frame — the
+  /// caller then skips its reload — regardless of whether this device happened
+  /// to be holding the edited card.
+  bool _applyEditFrame(HubEvent e) {
+    final edit = InboxEditFrame.parse(e.payload);
+    if (edit == null) return false;
+    unawaited(edit.applyToLocalRecording());
+    final threads = _threads;
+    if (threads == null) return true; // nothing painted yet; the load will win
+    var changed = false;
+    final next = <InboxThread>[];
+    for (final t in threads) {
+      final i = t.cards.indexWhere((c) => c.stableId == edit.target);
+      if (i < 0) {
+        next.add(t);
+        continue;
+      }
+      final cards = [...t.cards];
+      cards[i] = cards[i].withRawBody(edit.body);
+      next.add(t.withCards(cards));
+      changed = true;
+    }
+    if (!changed) return true;
+    if (mounted) setState(() => _threads = next);
+    // Persist so a cold open doesn't paint the OLD title from cache first.
+    unawaited(InboxThreadCache.I.save(next));
+    Analytics.capture('inbox_edit_frame_applied', {'screen': 'list'});
+    return true;
   }
 
   Future<void> _reload() => _loadThreads();

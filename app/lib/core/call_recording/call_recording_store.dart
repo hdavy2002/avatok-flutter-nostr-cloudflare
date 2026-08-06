@@ -340,6 +340,34 @@ class CallRecordingStore {
         title: title, description: description);
   }
 
+  /// [CALLREC-BG-1] Apply a title/description that was edited on ANOTHER of my
+  /// devices and arrived over the Inbox socket as an `edit` frame (SyncHub
+  /// `_ingestEdit` → `{t:'edit', target, body}`).
+  ///
+  /// LOCAL ONLY, deliberately: [updateMeta] also PATCHes the server, and calling
+  /// it from a socket frame would echo the server's own broadcast straight back
+  /// at it — an edit loop between two devices. Nothing here talks to the network.
+  ///
+  /// A no-op when this device has no local row for [callId] (the recording was
+  /// made on the other phone) — the Inbox card renders from the server envelope
+  /// in that case, so there is nothing to keep in step.
+  Future<void> applyRemoteMeta(String callId,
+      {String? title, String? description}) async {
+    if (callId.isEmpty || (title == null && description == null)) return;
+    final row = await Db.I.callRecordingById(callId);
+    if (row == null) return;
+    if (row.title == (title ?? row.title) &&
+        row.description == (description ?? row.description)) {
+      return; // already in step — don't churn the reactive watch()
+    }
+    await Db.I.setCallRecordingMeta(callId, title: title, description: description);
+    await Analytics.capture('callrec_meta_synced', {
+      'call_id': callId,
+      'has_title': (title ?? '').trim().isNotEmpty,
+      'has_description': (description ?? '').trim().isNotEmpty,
+    });
+  }
+
   /// Delete everywhere: the local blob, the local row, and (if uploaded) the
   /// server copy + its storage quota. The server call is attempted FIRST so a
   /// failure there doesn't leave an orphaned, quota-consuming R2 object with no

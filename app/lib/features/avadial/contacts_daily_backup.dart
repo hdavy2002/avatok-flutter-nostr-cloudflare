@@ -44,6 +44,7 @@ import 'package:workmanager/workmanager.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
+import '../../core/background_tasks.dart';
 import '../../core/disk_cache.dart';
 import '../../core/remote_config.dart';
 import '../../identity/identity.dart';
@@ -72,22 +73,16 @@ const String kContactsDailyBackupWork = 'avatok-contacts-daily-backup-v1';
 /// here; the common case (one account per phone) is fully covered.
 const String _kAcctGlobal = 'clerk_account_id';
 
-/// Entry point for the headless isolate. MUST be a top-level function and MUST
-/// carry `@pragma('vm:entry-point')` or the AOT tree-shaker drops it and the task
-/// silently never runs in a release APK.
-@pragma('vm:entry-point')
-void contactsBackupDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    try {
-      if (task != kContactsDailyBackupTask) return true;
-      return await runDailyContactsBackup();
-    } catch (e) {
-      AvaLog.I.log('avadial', 'daily contacts backup task threw: $e');
-      return true; // never let the OS penalise/retry-storm us over a backup
-    }
-  });
-}
-
+/// [CALLREC-BG-1] This file no longer owns a WorkManager dispatcher. It used to
+/// declare its own `@pragma('vm:entry-point') contactsBackupDispatcher` and call
+/// `Workmanager().initialize(...)` with it — but `initialize` stores ONE callback
+/// handle per process, so once a second feature (the call-recording uploader) did
+/// the same, last-writer-won and one of the two lanes silently stopped running.
+/// The entry point is now the single app-wide [avatokBackgroundDispatcher]
+/// (`core/background_tasks.dart`), which routes [kContactsDailyBackupTask] to
+/// [runDailyContactsBackup] via `registerBuiltInBackgroundTasks()`. Nothing about
+/// WHAT this job does, or when it is scheduled, changed.
+///
 /// The actual job. Exposed (not private) so it can be driven directly in a test
 /// or from a debug action without going through WorkManager.
 Future<bool> runDailyContactsBackup() async {
@@ -159,8 +154,10 @@ Future<bool> _bootstrapIsolate() async {
 Future<void> scheduleDailyContactsBackup() async {
   if (!Platform.isAndroid) return;
   try {
-    // No isInDebugMode: deprecated in 0.9.x in favour of WorkmanagerDebug handlers.
-    await Workmanager().initialize(contactsBackupDispatcher);
+    // [CALLREC-BG-1] ONE dispatcher for the whole app (core/background_tasks
+    // .dart) — never `Workmanager().initialize` from a feature, or the last
+    // caller wins and every other feature's background job stops firing.
+    await BackgroundTasks.ensureInitialized();
     await Workmanager().registerPeriodicTask(
       kContactsDailyBackupWork,
       kContactsDailyBackupTask,
