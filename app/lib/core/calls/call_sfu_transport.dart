@@ -97,6 +97,7 @@ class CallSfuTransport {
     required this.createPeerConnection,
     this.configurePeerConnection,
     this.enableRed = false,
+    this.onRedNegotiated,
   });
 
   /// The same room id the P2P signalling uses. Both transports are keyed on it,
@@ -125,6 +126,19 @@ class CallSfuTransport {
   /// flag — which is prod-`true` — so moving a call onto the SFU silently
   /// dropped the redundancy the flag was switched on to provide.
   final bool enableRed;
+
+  /// [CALL-RED-SFU-OBS-1 2026-08-06] Reports whether RED actually ENGAGED on a
+  /// publish offer — red payload first on the `m=audio` line and carrying an
+  /// fmtp block list, i.e. `audio_tuning.sdpHasActiveRed`.
+  ///
+  /// The P2P tuner has emitted `call_audio_red_negotiated` since [CALL-RED-1];
+  /// this path never has. Since `callSfuV1` is true in production, that meant
+  /// RED engagement was unobservable on the ONLY path carrying real 1:1 calls,
+  /// and the 2026-08-06 bandwidth investigation had to infer it from byte rates
+  /// and `opus_red_active` on `call_qos_bitrate_changed`. A callback rather than
+  /// a direct `Analytics.capture` keeps this transport free of the analytics and
+  /// RemoteConfig imports it has deliberately avoided.
+  final void Function(bool applied, String sdpType)? onRedNegotiated;
 
   String? _sessionId;
   RTCPeerConnection? _pc;
@@ -218,6 +232,12 @@ class CallSfuTransport {
         offer.type,
       );
       await _pc!.setLocalDescription(tunedOffer);
+      if (enableRed) {
+        onRedNegotiated?.call(
+          audio_tuning.sdpHasActiveRed(tunedOffer.sdp),
+          'offer',
+        );
+      }
       final answer = await CallSfuApi.publish(room, join.sessionId, tunedOffer.sdp ?? '', tracks);
       if (answer == null || answer['sdp'] == null) {
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_answer_sdp');
@@ -369,6 +389,12 @@ class CallSfuTransport {
         offer.type,
       );
       await pc.setLocalDescription(tunedOffer);
+      if (enableRed) {
+        onRedNegotiated?.call(
+          audio_tuning.sdpHasActiveRed(tunedOffer.sdp),
+          'offer_video',
+        );
+      }
       final answer = await CallSfuApi.publish(room, sid, tunedOffer.sdp ?? '', [
         {'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(sid)},
       ]);
@@ -387,6 +413,16 @@ class CallSfuTransport {
 
   /// Pull the peer's video when they turn their camera on mid-call.
   Future<bool> pullPeerVideo() => _pull('video');
+
+  /// [CALL-SFU-REPULL-1 2026-08-06] Re-pull the peer's AUDIO after they rejoined
+  /// the SFU with a new session id.
+  ///
+  /// Their track name is `audio-<their new sid>`; the one we are currently
+  /// pulling is `audio-<their old sid>` and no longer resolves to anything. The
+  /// SFU does not tell us that — the pull simply goes quiet — so the peer's
+  /// `sfu-rejoined` signal is the only trigger there is. Without it a network
+  /// recovery that "succeeded" leaves that direction permanently silent.
+  Future<bool> pullPeerAudio() => _pull('audio');
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();

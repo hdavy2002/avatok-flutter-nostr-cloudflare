@@ -1008,6 +1008,27 @@ class CallSession {
   // avatok-999a650b / avatok-10d4696b (2026-08-04): WiFi↔cell flaps killed
   // live calls with `relay_migration_timeout` after ~50s of dead air.
   int _survivalRetries = 0;
+  // [CALL-SFU-SURVIVE-1 2026-08-06] The SFU ladder gets its OWN counter and
+  // timer rather than sharing `_survivalRetries`/`_survivalRetryTimer` with the
+  // P2P ladder.
+  //
+  // Sharing looked tidy and was wrong. The two ladders are kept apart only by
+  // the `_sfuActive || _sfuStarting || _sfuReconnectInFlight` guard on
+  // [_scheduleSurvivalRetry] / [_requestRecovery] / [_tryIceRestart] — and
+  // during the SFU BACKOFF WINDOW all three of those are false, because
+  // [_reconnectSfu]'s `finally` has already cleared them. Media is stalled by
+  // definition during that window, which is exactly what drives
+  // `_pollPlayoutHealth` into `_requestRecovery`. So a shared timer would be
+  // cancelled by the P2P ladder mid-backoff (killing the pending SFU retry
+  // outright), and a shared counter would be zeroed by any P2P success
+  // (uncapping the SFU ladder). Separate state, and [_sfuRetryPending] closes
+  // the guard so the P2P ladder does not run on an SFU call at all.
+  int _sfuRetries = 0;
+  Timer? _sfuRetryTimer;
+  bool _sfuRetryPending = false;
+  /// [CALL-SFU-REPULL-1 2026-08-06] A peer `sfu-rejoined` that arrived while we
+  /// were mid-rejoin ourselves, to be drained once our own session is up.
+  bool _sfuPeerRepullPending = false;
   Timer? _survivalRetryTimer;
   static const List<int> _kSurvivalBackoffSec = [2, 4, 8, 16, 30];
   // Interface class ('wifi'/'cell'/'none'/'other') we last ACTED on — lets
@@ -1113,10 +1134,48 @@ class CallSession {
     // recording could stay paused for the rest of the call — the same
     // never-released latch this watchdog exists to break.
     _syncRecorderHold();
+    // [CALL-FOCUS-REASSERT-1 2026-08-06] Un-muting is not enough — re-assert the
+    // ROUTE too.
+    //
+    // The field doc above reasons that after a permanent AUDIOFOCUS_LOSS "the
+    // route was never reassigned at all and audio simply comes back". That holds
+    // when the loss came from another player inside this app. It does NOT hold
+    // when another app took focus for real: Android reassigns the communication
+    // device and drops us out of MODE_IN_COMMUNICATION, and nothing here ever
+    // put us back — so capture resumed into a route that goes nowhere and the
+    // call stayed silent while RTP kept flowing perfectly. Prod 2026-08-06
+    // (avatok-c7cdc3ea, s.rgoavilla): `call_audio_focus_lost` 12:03:04.707 →
+    // `watchdog_no_regain` 12:03:10.707, media_flow_state `rtp_flowing`
+    // throughout, and roughly 30 s of one-way silence with no transport fault of
+    // any kind. That is invisible to every recovery ladder we have, because
+    // nothing is broken at the transport layer.
+    //
+    // This is the same pair of calls `toggleSpeaker` makes, and for the same
+    // reason ([CALL-SPEAKER-RAMP]): the native `setSpeaker` re-asserts
+    // MODE_IN_COMMUNICATION together with the route, which is the half that
+    // actually recovers the session. Best-effort — a platform that refuses
+    // leaves us exactly where we already were.
+    // Both calls return Futures. A plain try/catch around them would catch
+    // nothing — the failure arrives asynchronously, long after the block exits —
+    // so the errors are attached to the futures themselves. `route_reasserted`
+    // below therefore means "requested", not "confirmed"; the confirmation is
+    // the existing `call_native_audio_event` route callback.
+    unawaited(Helper.setSpeakerphoneOn(_speaker).catchError((Object e) {
+      AvaLog.I.log('call', 'speakerphone re-assert after focus watchdog failed: $e');
+    }));
+    if (NativeVoiceAudio.isSupported) {
+      unawaited(NativeVoiceAudio.instance.setSpeaker(_speaker).catchError((Object e) {
+        AvaLog.I.log('call', 'native route re-assert after focus watchdog failed: $e');
+      }));
+    }
     Analytics.capture('call_audio_focus_hold_released', {
       'call_id': config.room,
       'held_ms': heldMs,
       'reason': 'watchdog_no_regain',
+      // Lets "we released the hold" be separated from "and we asked for the
+      // route back", so a future silence report can rule this line in or out.
+      'route_reasserted': true,
+      'requested_route': _speaker ? 'speaker' : 'earpiece',
     });
     AvaLog.I.log('call',
         'focus hold released by watchdog after ${heldMs}ms — no AUDIOFOCUS_GAIN arrived');
@@ -1965,9 +2024,32 @@ class CallSession {
     required int rttMs,
   }) async {
     if (_ended || !_connected) return;
+    // [CALL-QOS-RED-1 2026-08-06] Compare the link's headroom against what we
+    // actually put ON THE WIRE, not against the Opus target.
+    //
+    // `_qosAudioBitrateBps` is the ENCODER target. With RED at
+    // [kOpusRedDistance] = 1 the sender is capped at twice that
+    // (`avaAudioSenderCapBps`, applied in [_applyAudioBitrate]), so this test
+    // was measuring congestion against half the demand it was creating: on a
+    // link with ~70 kbps of headroom it read "not congested" while the sender
+    // was asking for 80. Measured in prod on 2026-08-06 (avatok-597ba662): the
+    // cellular leg averaged 55.6 kbps and peaked at 80.5 — exactly the RED wire
+    // cap — against ~28 kbps on every WiFi leg in the same session, and it was
+    // the only leg that moved the ladder at all.
+    //
+    // Reads the FLAG rather than a measured "RED actually engaged" signal
+    // deliberately, to stay in lock-step with [_applyAudioBitrate], which pads
+    // the sender cap off the same flag. If the two ever disagree the ladder
+    // fights the cap; if RED is capability-absent in a build, both
+    // over-estimate together and the ladder is merely conservative.
+    final wireTargetKbps = audio_tuning.avaAudioSenderCapBps(
+          _qosAudioBitrateBps,
+          redActive: RemoteConfig.callAudioRedExperimentV1,
+        ) /
+        1000.0;
     final congested = (availableOutgoingKbps != null &&
-            availableOutgoingKbps < _qosAudioBitrateBps / 1000.0 *
-                RemoteConfig.callQosHeadroomFactor) ||
+            availableOutgoingKbps <
+                wireTargetKbps * RemoteConfig.callQosHeadroomFactor) ||
         (lossPct != null && lossPct >= RemoteConfig.callQosLossDownshiftPct);
     if (congested) {
       _qosStableSamples = 0;
@@ -3844,6 +3926,47 @@ class CallSession {
     return m?.group(1) ?? '';
   }
 
+  /// [CALL-PCRETIRE-1 2026-08-06] Close a peer connection we are DELIBERATELY
+  /// replacing or abandoning, without letting its own teardown end the call.
+  ///
+  /// ## The bug this exists to prevent
+  ///
+  /// Every PC built by [_newPC] installs an `onConnectionState` handler whose
+  /// `Closed` rung calls `_endWith('ended')`. That rung is a legitimate backstop
+  /// for a connection that dies under us — but it cannot tell "the transport
+  /// collapsed" from "we closed this ourselves a moment ago because we are
+  /// mid-rescue". Its only guard was `if (_ended || !_connected) return;`, and
+  /// `_connected` is never cleared during a reconnect, so on the SFU recovery
+  /// path [_reconnectSfu]'s own `oldPc.close()` re-entered `_endWith('ended')`
+  /// and hung up the live call it was trying to save.
+  ///
+  /// Prod, 2026-08-06 (avatok-597ba662, hdavy2002 ↔ s.rgoavilla): the interface
+  /// flipped, `call_network_handover` fired at 11:51:59.478, and `call_ended`
+  /// with reason `ended` followed **133 ms later** — the innocuous
+  /// normal-hangup reason string, which is why this read as a clean hangup in
+  /// every dashboard. The peer sat in silence for 8.5 s before its own
+  /// `call_media_stalled`.
+  ///
+  /// ## Why detaching first is the whole fix
+  ///
+  /// The `Closed` rung now guards on `identical(pc, _pc)` — "am I still the
+  /// session's current connection?". Clearing `_pc` BEFORE closing is therefore
+  /// load-bearing: close-then-detach inverts the ordering and the guard passes
+  /// on the way out, which is exactly the bug. Any future teardown site must
+  /// go through here rather than calling `close()` directly.
+  ///
+  /// Deliberately not generation-based: [_pcGeneration] is bumped by
+  /// [_promoteMigratedPc] BEFORE the outgoing PC is closed, so a generation
+  /// bump here would invalidate the freshly-promoted connection instead of the
+  /// retired one. Identity is correct on every path; generation is not.
+  Future<void> _retirePc(RTCPeerConnection? old) async {
+    if (old == null) return;
+    if (identical(_pc, old)) _pc = null;
+    try {
+      await old.close();
+    } catch (_) {/* already gone — retiring it is still the right outcome */}
+  }
+
   Future<RTCPeerConnection> _newPC({
     bool forceRelay = false,
     List<Map<String, dynamic>>? sfuIce,
@@ -3902,6 +4025,14 @@ class CallSession {
       // `onTrack` in flight; never let it clobber the renderer out from under
       // the CURRENT PC's own stream.
       if (myPcGen != _pcGeneration) return;
+      // [CALL-PCRETIRE-1 2026-08-06] A call that is OVER must not come back to
+      // life. Without this, a track event still in flight when the call ended
+      // ran the whole connect ladder — `call_connected`, `_connected = true`,
+      // phase `connected`, the media watchdog and the playout sampler all
+      // restarted on a dead session. Prod 2026-08-06 (avatok-8ed2b95f):
+      // `call_connected` landed 333 ms AFTER this client's own `call_ended`.
+      // Any funnel keyed on `call_connected` counts that as a success.
+      if (_ended) return;
       if (e.streams.isNotEmpty) {
         remoteRenderer.srcObject = e.streams[0];
         _ringTimeout?.cancel();
@@ -3957,13 +4088,44 @@ class CallSession {
       // With it the funnel accept → transport → media is finally separable: no
       // transport event means signalling or ICE; transport but no
       // `call_connected` means media or tracks.
+      // [CALL-PCRETIRE-1 2026-08-06] A RETIRED connection may not speak for the
+      // session. See [_retirePc]: `_pc` is cleared before a deliberate close, so
+      // `identical` is false for exactly the connections we replaced ourselves —
+      // an SFU reconnect's old PC, a relay-migration cutover's outgoing PC, a
+      // superseded relay-fallback PC. Without this, their `Closed` callback ends
+      // the live call.
+      //
+      // `_ended` is checked HERE rather than below because a call that is over
+      // must stop emitting transport telemetry: prod 2026-08-06 shows
+      // `call_transport_connected` landing 1.16 s AFTER this client's own
+      // `call_ended` (avatok-701e404b) and `call_connected` 333 ms after it
+      // (avatok-8ed2b95f), which corrupts any funnel built on those events. The
+      // `!_connected` half stays below, deliberately: per [CALL-OBS-1] the
+      // transport rung must still fire BEFORE first media, and gating it on
+      // `_connected` is what blinded the accept → transport → media funnel.
+      if (_ended || !identical(pc, _pc)) return;
       _noteTransportConnected(s);
-      if (_ended || !_connected) return;
+      if (!_connected) return;
       _telemetry.mediaFlowState(
         state: 'transport_${s.toString().split('.').last.toLowerCase()}',
         transportState: s.toString(),
       );
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        // [CALL-PCRETIRE-1 2026-08-06] The identity guard above cannot see this
+        // one. `CallSfuTransport.connect()` closes its OWN `_pc` on failure
+        // (`_closePc()`), and that is the same object the session already
+        // adopted as `_pc` — because the transport builds it through `_newPC`,
+        // which assigns `_pc` as a side effect. So `identical` is true and the
+        // guard passes, while the call is merely mid-rejoin. Ending here would
+        // reintroduce the exact regression this change exists to remove, one
+        // layer further down. The reconnect ladder owns the outcome instead.
+        if (_sfuStarting || _sfuReconnectInFlight) {
+          _telemetry.mediaFlowState(
+            state: 'transport_closed_during_sfu_setup',
+            transportState: s.toString(),
+          );
+          return;
+        }
         _telemetry.runtimeError(
           stage: 'pc_closed',
           error: StateError('Peer connection closed during an active call'),
@@ -4085,6 +4247,7 @@ class CallSession {
       return;
     }
     if (_sfuStarting || _sfuReconnectInFlight) return;
+    if (_sfuRetryPending) return; // [CALL-SFU-SURVIVE-1] see _requestRecovery
     final pc = _pc;
     if (pc == null || _ended || !_weOffered || _remoteId == null) return;
     // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation rather
@@ -4122,6 +4285,12 @@ class CallSession {
       return;
     }
     if (_sfuStarting || _sfuReconnectInFlight) return;
+    // [CALL-SFU-SURVIVE-1 2026-08-06] An SFU retry is armed and waiting out its
+    // backoff. During that window `_sfuActive`/`_sfuStarting`/
+    // `_sfuReconnectInFlight` are ALL false, so without this the P2P ICE ladder
+    // starts up on an SFU call — and media is stalled by definition while we
+    // wait, which is exactly what drives `_pollPlayoutHealth` in here.
+    if (_sfuRetryPending) return;
     if (!RemoteConfig.callIceRecoveryV2) return;
     if (_ended || !_connected) return;
     // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation —
@@ -4430,6 +4599,7 @@ class CallSession {
   /// ended live calls with `relay_migration_timeout` after ~50s of dead air.
   void _scheduleSurvivalRetry(RecoveryReason why, {required String from}) {
     if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
+    if (_sfuRetryPending) return; // [CALL-SFU-SURVIVE-1] see _requestRecovery
     if (_ended || !_connected) return;
     _setPhase('reconnecting');
     final max = RemoteConfig.callRecoveryMaxAttempts;
@@ -4887,9 +5057,15 @@ class CallSession {
     _migrationAttempted = true;
     _migrationDeadlineTimer?.cancel();
     final oldPc = _pc;
+    // [CALL-PCRETIRE-1 2026-08-06] `_pc` FIRST, then install the handlers.
+    // `_promoteMigratedPc` installs an `onConnectionState` that guards on
+    // `identical(pc, _pc)`; with the old ordering the newly promoted — and
+    // live — connection failed its own guard until the assignment two lines
+    // later. That is safe today only because nothing between them awaits, which
+    // is far too subtle an invariant to leave standing.
+    _pc = newPc;
     _promoteMigratedPc(newPc);
     _resetPlayoutHealthBaselines();
-    _pc = newPc;
     // [CALL-REL-6 SHOULD-FIX-4] Repoint the renderer to the NEW PC's remote
     // stream at cutover. `attempt.remoteTrackSeen` (required above) proves
     // `onTrack` already fired once on the migration PC — that already
@@ -4903,7 +5079,10 @@ class CallSession {
     }
     _relayForced = true;
     _telemetry.setMediaPath('relay');
-    try { await oldPc?.close(); } catch (_) {}
+    // [CALL-PCRETIRE-1] `_pc` is already the new PC (two lines above), so this
+    // only closes — but it must go through the one retirement path so the
+    // ordering invariant holds if this block is ever reordered.
+    await _retirePc(oldPc);
     if (identical(_activeMigration, a)) _activeMigration = null;
     final elapsedMs = DateTime.now().millisecondsSinceEpoch - a.startedAtMs;
     Analytics.capture('call_recovery_completed', {
@@ -4941,9 +5120,14 @@ class CallSession {
       if (e.streams.isNotEmpty) remoteRenderer.srcObject = e.streams[0];
     };
     pc.onConnectionState = (s) {
+      // [CALL-PCRETIRE-1 2026-08-06] Same retirement guard as _newPC(). A
+      // migration that is later superseded (a second cutover, or an SFU
+      // reconnect after a relay migration) must not have its outgoing PC end
+      // the call from its own `Closed` callback.
+      if (_ended || !identical(pc, _pc)) return;
       // [CALL-OBS-1] Same missing rung on the post-migration PC — see _newPC().
       _noteTransportConnected(s, postMigration: true);
-      if (_ended || !_connected) return;
+      if (!_connected) return;
       _telemetry.mediaFlowState(
         state: 'transport_${s.toString().split('.').last.toLowerCase()}',
         transportState: s.toString(),
@@ -5029,6 +5213,19 @@ class CallSession {
       // [CALL-MEDIA-540P-1] Same flag the P2P tuner reads, so RED does not
       // switch itself off the moment a call lands on the SFU instead.
       enableRed: RemoteConfig.callAudioRedExperimentV1,
+      // [CALL-RED-SFU-OBS-1 2026-08-06] Same event, same shape and same
+      // `applied` semantics as the P2P emit in [_tuned], plus `path` so the two
+      // are separable. Without this, RED engagement was invisible on the path
+      // that carries every production 1:1 call.
+      onRedNegotiated: (applied, sdpType) {
+        Analytics.capture('call_audio_red_negotiated', {
+          'call_id': config.room,
+          'applied': applied,
+          'distance': audio_tuning.kOpusRedDistance,
+          'sdp_type': sdpType,
+          'path': 'sfu',
+        });
+      },
     );
     _sfu = transport;
     final result = await transport.connect(
@@ -5052,6 +5249,15 @@ class CallSession {
         'video': config.video && !RemoteConfig.callSfuAudioOnly,
         'relay_degraded': result.relayDegraded,
       });
+      // [CALL-SFU-REPULL-1] Drain a peer re-pull that arrived while we were
+      // still setting up. `_sfuPeerRepullPending` is set whenever `sfu-rejoined`
+      // lands with `_sfuActive` false, which includes this initial-join window
+      // and any abort/re-start cycle — draining it only in [_reconnectSfu] would
+      // leave those cases permanently one-way.
+      if (_sfuPeerRepullPending) {
+        _sfuPeerRepullPending = false;
+        await _repullPeerMedia('deferred_initial_join');
+      }
       return;
     }
 
@@ -5059,8 +5265,10 @@ class CallSession {
     _sfuAborted = true;
     await transport.dispose();
     _sfu = null;
-    await _pc?.close();
-    _pc = null;
+    // [CALL-PCRETIRE-1] Detach before closing — see [_retirePc]. The previous
+    // close-then-null ordering let this PC's own `Closed` callback run while it
+    // was still `_pc`.
+    await _retirePc(_pc);
     Analytics.capture('call_sfu_fallback', {
       'call_id': config.room,
       'failure': result.failure?.name ?? 'unknown',
@@ -5070,43 +5278,236 @@ class CallSession {
     if (_sfuDecider) await _startP2pOffer();
   }
 
-  Future<void> _reconnectSfu() async {
-    if (_ended || !_sfuActive || _sfuReconnectInFlight || _sfu == null || _stream == null) return;
+  /// Rejoin the Cloudflare SFU after this phone's network leg moved.
+  ///
+  /// [retry] is set only by [_scheduleSfuReconnectRetry]. A retry runs with
+  /// `_sfuActive == false` (the previous attempt cleared it), so without this
+  /// the guard below would swallow every scheduled attempt and the ladder added
+  /// by [CALL-SFU-SURVIVE-1] would be inert — the same shape of bug as the
+  /// [CALL-RED-1] empty `if` body.
+  Future<void> _reconnectSfu({bool retry = false}) async {
+    if (_ended || _sfuReconnectInFlight || _sfu == null || _stream == null) return;
+    if (!_sfuActive && !retry) return;
     _sfuReconnectInFlight = true;
     _sfuStarting = true;
     _sfuActive = false;
     _resetPlayoutHealthBaselines();
     _setPhase('reconnecting');
+    // [CALL-SFU-MBB-1 2026-08-06] Do NOT close the outgoing PC here.
+    //
+    // It used to be closed before the rejoin even started, which left `_pc` null
+    // for the whole attempt — several seconds during which `_applyAudioBitrate`,
+    // the stats poll, mute and the translate bridge all no-op'd against nothing,
+    // and (before [CALL-PCRETIRE-1]) the close itself ended the call. Holding it
+    // until the replacement exists also lets the jitter buffer keep playing out
+    // whatever it still has instead of cutting to silence instantly.
+    //
+    // HONEST LIMIT: this narrows the dead-air window, it does not remove it.
+    // `CallSfuTransport.reconnect()` still disposes the old Cloudflare SEAT
+    // before minting the new one, so the old PC has nothing left to receive
+    // shortly after this point. True make-before-break needs two concurrent
+    // seats in the same room, which is a server-side contract change and needs
+    // a two-device test — do not fake it by reordering these lines alone.
     final oldPc = _pc;
-    _pc = null;
-    await _safeAwait(() => oldPc?.close());
     try {
       final result = await _sfu!.reconnect(
         localStream: _stream!,
         fallbackIceServers: _ice,
         video: config.video && !RemoteConfig.callSfuAudioOnly,
       );
-      if (_ended) return;
+      if (_ended) {
+        // Retire BOTH. `CallSfuTransport.connect()` builds its PC through
+        // `_newPC`, which assigns `_pc` as a side effect — so by now `_pc` is
+        // the NEW connection, and retiring only `oldPc` would leak a live
+        // PeerConnection past hangup.
+        //
+        // Snapshot `_pc` BEFORE the first await: `_retirePc` awaits `close()`,
+        // and an inbound `offer` handled in that gap can install a brand-new,
+        // live `_pc` that the second call would then close.
+        final failedPc = identical(_pc, oldPc) ? null : _pc;
+        await _retirePc(oldPc);
+        await _retirePc(failedPc);
+        return;
+      }
       if (result.connected) {
         _resetPlayoutHealthBaselines();
+        // Retire the old PC only now that a replacement exists. Order matters:
+        // `_pc` must already point at the new connection so [_retirePc]'s
+        // identity check leaves it alone.
         _pc = result.pc;
+        if (!identical(oldPc, result.pc)) await _retirePc(oldPc);
         _sfuActive = true;
+        // Read the counter BEFORE resetting it — reporting it afterwards would
+        // pin `attempt` at 0 and make the ladder look like it never ran.
+        final attemptNo = _sfuRetries;
+        _sfuRetries = 0; // success resets the ladder, as on the P2P path
+        _sfuRetryTimer?.cancel();
+        _sfuRetryPending = false;
         _setPhase('connected');
         Analytics.capture('call_sfu_reconnected', {
           'call_id': config.room,
           'relay_degraded': result.relayDegraded,
+          'attempt': attemptNo,
         });
+        // [CALL-SFU-REPULL-1 2026-08-06] Tell the peer we are back on a NEW
+        // session so it re-pulls our audio.
+        //
+        // Track names are namespaced by session id — `audio-$sid` — and
+        // `reconnect()` mints a new sid, so after a rejoin the peer is still
+        // pulling a track name that no longer exists. Nothing signalled it to
+        // do otherwise: the only re-pull trigger was `sfu-video`. The result is
+        // a "successful" recovery in which we hear them and they hear silence,
+        // permanently, with no error event anywhere — indistinguishable from a
+        // quiet caller until someone hangs up. Same class of defect as the
+        // group-call track-name trap found on 2026-08-03.
+        // Addressed when we know the peer, broadcast otherwise: `_remoteId` is
+        // null for the first joiner until `welcome`/`offer` populates it, and a
+        // silent `if (_remoteId != null)` drop would make this fix work in only
+        // one direction. In a 1:1 room a broadcast reaches exactly one peer.
+        _send({'type': 'sfu-rejoined', if (_remoteId != null) 'to': _remoteId});
+        // [CALL-SFU-REPULL-1] Drain a re-pull request that arrived while we
+        // were ourselves mid-rejoin. A dual handover — both legs flapping,
+        // which is the common case on a moving phone — otherwise loses the
+        // peer's `sfu-rejoined` to the `_sfuActive` guard in the handler, and
+        // that direction stays silent for the rest of the call.
+        if (_sfuPeerRepullPending) {
+          _sfuPeerRepullPending = false;
+          await _repullPeerMedia('deferred_dual_rejoin');
+        }
       } else {
         Analytics.capture('call_sfu_reconnect_failed', {
           'call_id': config.room,
           'failure': result.failure?.name ?? 'unknown',
+          'attempt': _sfuRetries,
         });
-        _endWith('ended', reason: 'sfu-reconnect-failed');
+        // Snapshot before awaiting — see the `_ended` branch above.
+        final failedPc = identical(_pc, oldPc) ? null : _pc;
+        await _retirePc(oldPc);
+        await _retirePc(failedPc); // the failed replacement
+        // [CALL-SFU-SURVIVE-1 2026-08-06] A failed rejoin is NOT terminal.
+        //
+        // This was `_endWith('ended', reason: 'sfu-reconnect-failed')` — one
+        // attempt, then hang up. Because `callSfuV1` is true in production,
+        // every 1:1 call takes this path, which meant the whole [CALL-SURVIVE-1]
+        // apparatus (backoff ladder, `callRecoveryMaxAttempts`,
+        // `callRecoveryDeadlineSec`, relay migration) was dead code on the only
+        // path that carries real calls. The 2026-08-06 session shows it: two
+        // network handovers, zero `call_recovery_*` events of any kind.
+        _scheduleSfuReconnectRetry(result.failure?.name ?? 'unknown');
       }
+    } catch (e, st) {
+      // [CALL-SFU-SURVIVE-1] `reconnect()` awaits `dispose()` OUTSIDE the broad
+      // try/catch inside `connect()`, so a failing `CallSfuApi.close` throws
+      // straight through here. Before the ladder existed that only skipped a
+      // hangup; now it would skip the RETRY too and strand the call in
+      // `reconnecting` with a dead PC and nothing scheduled — a silent hang
+      // rather than a recoverable failure. Treat a throw exactly as a failed
+      // result.
+      _telemetry.runtimeError(stage: 'sfu_reconnect_threw', error: e, stack: st);
+      // Snapshot before awaiting — see the `_ended` branch above.
+      final failedPc = identical(_pc, oldPc) ? null : _pc;
+      await _retirePc(oldPc);
+      await _retirePc(failedPc);
+      if (!_ended) _scheduleSfuReconnectRetry('threw');
     } finally {
       _sfuStarting = false;
       _sfuReconnectInFlight = false;
     }
+  }
+
+  /// [CALL-SFU-REPULL-1 2026-08-06] Re-pull the peer's media because their SFU
+  /// session id changed. See [CallSfuTransport.pullPeerAudio] for why nothing
+  /// else can detect this: the old track name simply stops resolving, with no
+  /// error on either side.
+  Future<void> _repullPeerMedia(String why) async {
+    final sfu = _sfu;
+    if (_ended || !_sfuActive || sfu == null) return;
+    final okAudio = await sfu.pullPeerAudio();
+    Analytics.capture('call_sfu_peer_repulled', {
+      'call_id': config.room,
+      'why': why,
+      'audio_ok': okAudio,
+    });
+    // Video is best-effort: the peer may simply not have a camera on, and a
+    // failure here must never take audio down with it.
+    if (_video || config.video) {
+      // ignore: unawaited_futures
+      sfu.pullPeerVideo();
+    }
+  }
+
+  /// [CALL-SFU-SURVIVE-1 2026-08-06] The SFU half of the survival ladder.
+  ///
+  /// Mirrors [_scheduleSurvivalRetry] — same `_kSurvivalBackoffSec` rungs, same
+  /// `callRecoveryMaxAttempts` cap, same never-terminal contract — but keeps its
+  /// OWN `_sfuRetries` counter and `_sfuRetryTimer` (the field docs explain why
+  /// sharing them is a bug) and drives [_reconnectSfu] instead of the P2P
+  /// ICE-restart coordinator. It cannot reuse [_scheduleSurvivalRetry] directly:
+  /// that method returns immediately when `_sfuActive || _sfuStarting ||
+  /// _sfuReconnectInFlight`, which is precisely the state an SFU call is in.
+  ///
+  /// Exhaustion leaves the call alive in `reconnecting`, exactly as on the P2P
+  /// path: the signalling-WS ladder ends a call whose peer is genuinely gone,
+  /// and otherwise the users decide when to hang up.
+  void _scheduleSfuReconnectRetry(String from) {
+    if (_ended) return;
+    // The peer has left the SFU; rejoining it can only fail. Falling back is
+    // `sfu-abort`'s job, not the ladder's.
+    if (_sfuAborted) return;
+    if (!_connected) {
+      // Narrow window: `_sfuActive` was true but `onTrack` never fired, so this
+      // call never became a call. There is nothing to keep alive and nobody to
+      // keep it alive FOR — ending cleanly is the honest outcome, and it is what
+      // this path did before the ladder existed. Staying in `reconnecting`
+      // forever would replace a clean end with a silent hang.
+      _sfuRetryPending = false;
+      _endWith('ended', reason: 'sfu-reconnect-failed');
+      return;
+    }
+    _setPhase('reconnecting');
+    final max = RemoteConfig.callRecoveryMaxAttempts;
+    if (_sfuRetries >= max) {
+      _sfuRetryPending = false;
+      Analytics.capture('call_recovery_exhausted', {
+        'call_id': config.room,
+        'attempts': _sfuRetries,
+        'last_failure': from,
+        'kind': 'sfu',
+      });
+      return; // stay alive in `reconnecting`; no further automatic attempts
+    }
+    final idx = _sfuRetries.clamp(0, _kSurvivalBackoffSec.length - 1);
+    _sfuRetries++;
+    _sfuRetryPending = true;
+    _sfuRetryTimer?.cancel();
+    _sfuRetryTimer = Timer(Duration(seconds: _kSurvivalBackoffSec[idx]), () {
+      _sfuRetryPending = false;
+      if (_ended || !_connected) return;
+      if (_sfuReconnectInFlight || _sfuStarting || _sfuActive) return;
+      if (_sfu == null || _stream == null) {
+        // [_reconnectSfu]'s own guard would return silently here, leaving the
+        // call parked in `reconnecting` with nothing scheduled and no event.
+        // Reachable via the `sfu-abort` handler (which nulls `_sfu` while we
+        // were starting or active). Say so, then let the signalling-WS ladder
+        // own termination as it does everywhere else.
+        Analytics.capture('call_recovery_abandoned', {
+          'call_id': config.room,
+          'kind': 'sfu',
+          'why': _sfu == null ? 'transport_gone' : 'stream_gone',
+          'attempts': _sfuRetries,
+        });
+        return;
+      }
+      // ignore: unawaited_futures
+      _reconnectSfu(retry: true);
+    });
+    Analytics.capture('call_recovery_retry_scheduled', {
+      'call_id': config.room,
+      'attempt': _sfuRetries,
+      'delay_s': _kSurvivalBackoffSec[idx],
+      'last_failure': from,
+      'kind': 'sfu',
+    });
   }
 
   Future<void> _enableSfuVideo() async {
@@ -5372,18 +5773,45 @@ class CallSession {
         break;
       case 'sfu-abort':
         _sfuAborted = true;
+        // [CALL-SFU-SURVIVE-1 2026-08-06] Disarm the ladder BEFORE the `if`.
+        // During a backoff window `_sfuStarting` and `_sfuActive` are both
+        // false, so the block below is skipped entirely — leaving a retry timer
+        // armed to rejoin an SFU room the peer has just abandoned, while
+        // `_sfuRetryPending` keeps P2P recovery switched off for the rest of the
+        // backoff (up to 30s).
+        _sfuRetryTimer?.cancel();
+        _sfuRetryPending = false;
         if (_sfuStarting || _sfuActive) {
           await _sfu?.dispose();
           _sfu = null;
           _sfuStarting = false;
           _sfuActive = false;
-          await _pc?.close();
-          _pc = null;
+          // [CALL-PCRETIRE-1] Detach before closing — see [_retirePc].
+          await _retirePc(_pc);
         }
         if (_sfuDecider && !_ended && !_connected) await _startP2pOffer();
         break;
       case 'sfu-video':
         if (_sfuActive) await _sfu?.pullPeerVideo();
+        break;
+      // [CALL-SFU-REPULL-1 2026-08-06] The peer rejoined the SFU on a NEW
+      // session, so the track name we are pulling is stale and that direction
+      // has gone quiet. Re-pull. See `pullPeerAudio` for why nothing else can
+      // detect this — there is no error, only silence.
+      case 'sfu-rejoined':
+        if (_sfuActive && _sfu != null) {
+          await _repullPeerMedia('peer_rejoined');
+        } else if (!_ended) {
+          // We are mid-rejoin ourselves (dual handover) or not on the SFU yet.
+          // Remember it — dropping it here is how one direction ends up
+          // permanently silent, which is the whole failure this fix addresses.
+          _sfuPeerRepullPending = true;
+          Analytics.capture('call_sfu_peer_repull_deferred', {
+            'call_id': config.room,
+            'sfu_active': _sfuActive,
+            'reconnect_in_flight': _sfuReconnectInFlight,
+          });
+        }
         break;
       case 'offer':
         // [CALL-GLARE-OBS-1 2026-08-05] Detect and REPORT offer collisions.
@@ -7486,6 +7914,11 @@ class CallSession {
     _recoveryDeadlineTimer?.cancel(); // [CALL-REL-5]
     _activeRecovery = null;
     _survivalRetryTimer?.cancel(); // [CALL-SURVIVE-1]
+    // [CALL-SFU-SURVIVE-1] The SFU ladder has its own timer (see the field doc
+    // for why it is not shared); teardown must cancel it too or a backoff of up
+    // to 30s outlives the call and fires `_reconnectSfu` on a dead session.
+    _sfuRetryTimer?.cancel();
+    _sfuRetryPending = false;
     _netDebounceTimer?.cancel(); // [CALL-SURVIVE-2]
     _migrationDeadlineTimer?.cancel(); // [CALL-REL-6]
     await _safeAwait(() => _activeMigration?.newPc?.close());
