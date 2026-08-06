@@ -1097,13 +1097,25 @@ class _CallScreenState extends State<CallScreen> {
         //
         // The pill renders NOTHING when no recording is running, so the
         // non-recording case costs no layout at all.
-        if (RemoteConfig.callRecordingEnabled &&
-            RemoteConfig.callRecordingIndicatorEnabled)
+        //
+        // [CALLREC-PEER-1] Gated on `callRecordingIndicatorEnabled` ALONE.
+        // `callRecordingEnabled` used to be ANDed in here and that was a real
+        // defect: it is the master switch on RECORDING, and a device with it off
+        // (or a build that predates the feature flag being flipped on) can never
+        // record — but it can absolutely BE recorded, and it is precisely that
+        // device which needs to see the pill. Gating the display on the ability
+        // to record hid the indicator from exactly the wrong person.
+        if (RemoteConfig.callRecordingIndicatorEnabled)
           Positioned(
             top: MediaQuery.of(context).padding.top + 104,
             left: 0,
             right: 0,
-            child: const Center(child: _RecordingIndicatorPill()),
+            child: Center(
+              child: _RecordingIndicatorPill(
+                session: s,
+                peerName: widget.title,
+              ),
+            ),
           ),
 
         // [CALL-TRANSLATE-UI-1 2026-08-05] The translate control used to live
@@ -1685,9 +1697,17 @@ class _CallRecordTileState extends State<_CallRecordTile> {
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s3),
+            // [CALLREC-PEER-1] This line used to be a flat promise, and it was
+            // FALSE: nothing signalled the recording state to the peer, so only
+            // the recorder ever saw a pill. The signalling now exists
+            // (CallSession.peerRecording), but the promise is still not
+            // unconditional — the peer's phone has to be running a build that
+            // understands the frame — so the copy says "up-to-date" rather than
+            // claiming something the code cannot guarantee for every device.
             Text(
-              'The other person sees a “Recording” indicator on their call '
-              'screen for as long as you are recording.',
+              'AvaTOK tells the other person: on an up-to-date version of the '
+              'app they see a “Recording” indicator on their call screen for as '
+              'long as you are recording.',
               style: ADText.preview(c: AD.textSecondary),
             ),
             const SizedBox(height: Msg.s3),
@@ -1908,48 +1928,97 @@ class _CallRecordTileState extends State<_CallRecordTile> {
 /// costs no layout on an ordinary call. It paints its own fill and ink so the
 /// one widget reads correctly on both the paper/dialer audio screen and the dark
 /// video chrome.
+///
+/// [CALLREC-PEER-1] It now shows when EITHER side is recording, and says which.
+/// Before this it bound only to [CallRecordingStore] — local state, with no peer
+/// signalling anywhere in the app — so the only person who ever saw a "Recording"
+/// pill was the person who had pressed Record, while the consent dialog told
+/// them the other party could see one. Spec §4 makes this indicator one of the
+/// two load-bearing consent surfaces, so that gap was the feature's last real
+/// hole. [CallSession.peerRecording] is the other half of the wire.
 class _RecordingIndicatorPill extends StatelessWidget {
-  const _RecordingIndicatorPill();
+  const _RecordingIndicatorPill({required this.session, required this.peerName});
+
+  final CallSession session;
+
+  /// Display name of the other party, for "<peer> is recording". May be empty.
+  final String peerName;
+
+  /// First name only — the pill is one line on a phone, and "Amy is recording"
+  /// fits where "Amy Williams is recording" wraps or ellipsises away the verb.
+  String get _peerFirst {
+    final t = peerName.trim();
+    if (t.isEmpty) return 'The other person';
+    return t.split(RegExp(r'\s+')).first;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<CallRecordingPhase>(
-      valueListenable: CallRecordingStore.I.phase,
-      builder: (context, phase, _) {
-        final recording = phase == CallRecordingPhase.recording;
-        final finalizing = phase == CallRecordingPhase.finalizing;
-        if (!recording && !finalizing) return const SizedBox.shrink();
-        return ValueListenableBuilder<CallRecordingProgress?>(
-          valueListenable: CallRecordingStore.I.progress,
-          builder: (context, progress, __) {
-            final elapsed = (recording && progress != null)
-                ? _hhmmss(progress.durationMs)
-                : '';
-            return Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: Msg.s3, vertical: Msg.s1),
-              decoration: BoxDecoration(
-                color: AD.destructiveBg,
-                // A genuine status pill — one of the shapes rPill is for.
-                borderRadius: Msg.brPill,
-                border: Border.all(color: AD.destructiveBg, width: 1),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
-                    size: 10, color: AD.destructiveInk),
-                const SizedBox(width: Msg.s2),
-                Text(
-                  finalizing
-                      ? 'Saving recording…'
-                      : (elapsed.isEmpty ? 'Recording' : 'Recording · $elapsed'),
-                  style: ADText.timestamp(c: AD.destructiveInk)
-                      .copyWith(fontWeight: FontWeight.w700),
-                ),
-              ]),
+    return ValueListenableBuilder<bool>(
+      valueListenable: session.peerRecording,
+      builder: (context, peerRec, _) => ValueListenableBuilder<CallRecordingPhase>(
+        valueListenable: CallRecordingStore.I.phase,
+        builder: (context, phase, __) => ValueListenableBuilder<String?>(
+          valueListenable: CallRecordingStore.I.activeCallId,
+          builder: (context, activeId, ___) {
+            // The recorder is process-wide, so "recording" is not enough — it
+            // has to be recording THIS call before we claim it in this pill.
+            final mine = activeId == session.room;
+            final recording = mine && phase == CallRecordingPhase.recording;
+            final finalizing = mine && phase == CallRecordingPhase.finalizing;
+            if (!recording && !finalizing && !peerRec) {
+              return const SizedBox.shrink();
+            }
+            return ValueListenableBuilder<CallRecordingProgress?>(
+              valueListenable: CallRecordingStore.I.progress,
+              builder: (context, progress, ____) {
+                final elapsed = (recording && progress != null)
+                    ? _hhmmss(progress.durationMs)
+                    : '';
+                final String text;
+                if (finalizing && !peerRec) {
+                  text = 'Saving recording…';
+                } else if (recording && peerRec) {
+                  // Both sides. Say so plainly — "Recording" alone would let the
+                  // user think only their own recorder was running.
+                  text = 'You and $_peerFirst are recording';
+                } else if (peerRec && !recording && !finalizing) {
+                  text = '$_peerFirst is recording';
+                } else if (peerRec) {
+                  // We are finalizing, they are still going.
+                  text = '$_peerFirst is recording';
+                } else {
+                  text = elapsed.isEmpty ? 'Recording' : 'Recording · $elapsed';
+                }
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: Msg.s3, vertical: Msg.s1),
+                  decoration: BoxDecoration(
+                    color: AD.destructiveBg,
+                    // A genuine status pill — one of the shapes rPill is for.
+                    borderRadius: Msg.brPill,
+                    border: Border.all(color: AD.destructiveBg, width: 1),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
+                        size: 10, color: AD.destructiveInk),
+                    const SizedBox(width: Msg.s2),
+                    Flexible(
+                      child: Text(
+                        text,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ADText.timestamp(c: AD.destructiveInk)
+                            .copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ]),
+                );
+              },
             );
           },
-        );
-      },
+        ),
+      ),
     );
   }
 }

@@ -18,6 +18,8 @@ import '../api_auth.dart';
 import '../audio_tuning.dart' as audio_tuning; // [CALL-SURVIVE-1] shared Opus tuner
 import '../ava_log.dart';
 import '../call_log_store.dart';
+import '../call_recording/call_recording_model.dart';
+import '../call_recording/call_recording_store.dart';
 import '../call_telemetry.dart';
 import '../config.dart';
 import '../ice_cache.dart';
@@ -448,6 +450,24 @@ class CallSession {
   /// may still be flowing (today: set on 'peer-left', cleared on reconnect /
   /// 'welcome'). WS-D wires the grace-period semantics onto it.
   final ValueNotifier<bool> peerAway = ValueNotifier<bool>(false);
+  /// [CALLREC-PEER-1] True while the OTHER party has told us their device is
+  /// recording this call. Consent surface, spec §4 — the peer gets no other
+  /// warning, and twelve US states are all-party consent, so this is the thing
+  /// that makes the on-screen indicator honest instead of local-only decoration.
+  ///
+  /// Deliberately NOT gated on any flag. `callRecordingIndicatorEnabled` gates
+  /// the DISPLAY (call_screen.dart); the frame is always sent and always
+  /// recorded here so the flag can be flipped on without needing a new client
+  /// build on the SENDER's side, and so a client with `callRecordingEnabled`
+  /// off — which can never record — can still show that it is BEING recorded.
+  final ValueNotifier<bool> peerRecording = ValueNotifier<bool>(false);
+  /// [CALLREC-PEER-1] The last value we announced to the peer, so an unchanged
+  /// store notification does not put a frame on the wire.
+  bool _lastRecordingAnnounced = false;
+  /// [CALLREC-PEER-1] Our listener on the recording store, held so it can be
+  /// removed in teardown — the store is a process-wide singleton, so a session
+  /// that forgot to detach would keep announcing after its call had ended.
+  VoidCallback? _recordingListener;
   /// [CALL-NETHUD-1] Live network health for the in-call HUD. Updated on every
   /// media-watchdog tick from the same getStats() poll (no second poller).
   final ValueNotifier<CallNetStats> netStats =
@@ -1938,6 +1958,10 @@ class CallSession {
     });
     // Keep the device awake for the whole call (released in _teardown).
     try { WakelockPlus.enable(); } catch (_) {}
+    // [CALLREC-PEER-1] Watch the recording store so the peer is told, for the
+    // life of this call, whenever we start or stop recording. Detached in
+    // teardown. Purely additive — nothing below depends on it.
+    _attachRecordingBridge();
     // [INSTANT-CALL-MOUNT-1] An optimistically-mounted call (screen shown before
     // the place-call POST resolved) MUST run the honest guard flow regardless of
     // the server flag: 'connecting' + searching tone, no fake ringback, ring
@@ -3157,6 +3181,84 @@ class CallSession {
     // an old client never sees it, so this is fully backward compatible.
     if (_gen != null && !o.containsKey('gen')) o['gen'] = _gen;
     try { _ws?.sink.add(jsonEncode(o)); } catch (_) {/* socket closed / gone */}
+  }
+
+  // ── [CALLREC-PEER-1] Peer-visible recording state ───────────────────────────
+  //
+  // The consent design (spec §4) rests on two surfaces: the ToS clause and a
+  // "Recording" indicator on BOTH call screens. Until this landed, the pill was
+  // bound to `CallRecordingStore.I.phase` — purely local state — so only the
+  // person doing the recording ever saw it, while the consent dialog told them
+  // the other party could. This is the wire that makes that true.
+  //
+  // It is modelled exactly on `sfu-video`: one typed frame through the CallRoom
+  // relay, which forwards any frame with a `to` verbatim (call_room.ts:2373) and
+  // BROADCASTS any frame without one (call_room.ts:2430) — so no worker change
+  // was needed. `to` is included when we know the peer id and omitted when we do
+  // not, because the broadcast fallback is the only thing that reaches a peer we
+  // have not yet learned an id for (the SFU path never exchanges a peer `offer`,
+  // so the first joiner's `_remoteId` can still be null on a live call).
+  //
+  // An unknown `callrec` frame on an older client falls through the receive
+  // switch with no `default:` branch — a no-op, never an exception.
+
+  /// Are WE recording THIS call right now? The recorder is process-wide and
+  /// refuses a second call, so "recording" is not enough — it has to be this
+  /// room, or we would tell a peer they are being recorded when they are not.
+  bool get _localRecordingActive {
+    try {
+      return CallRecordingStore.I.activeCallId.value == config.room &&
+          CallRecordingStore.I.phase.value == CallRecordingPhase.recording;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tell the peer whether we are recording.
+  ///
+  /// [force] re-sends even when nothing changed — used on connect/rejoin, where
+  /// the peer may never have seen the original frame (armed before they joined,
+  /// or they reconnected mid-call). A missed frame here means someone is being
+  /// recorded with no indicator, which is the exact failure this prevents, so
+  /// re-announcing costs one tiny frame and is always worth it.
+  void _announceRecordingState({bool force = false}) {
+    try {
+      if (_ended) return;
+      final on = _localRecordingActive;
+      if (!force && on == _lastRecordingAnnounced) return;
+      _lastRecordingAnnounced = on;
+      _send(<String, dynamic>{
+        'type': 'callrec',
+        'on': on,
+        if (_remoteId != null) 'to': _remoteId,
+      });
+    } catch (_) {/* never let a consent frame disturb the call */}
+  }
+
+  /// Bind to the recording store. Bound to the notifiers rather than to
+  /// `start`/`stop`, because native's degradation ladder can FINALIZE a
+  /// recording with nobody calling stop (store invariant 3) — a hook on stop
+  /// would leave the peer's indicator stuck on after capture had ended.
+  void _attachRecordingBridge() {
+    if (_recordingListener != null) return;
+    void onChange() => _announceRecordingState();
+    _recordingListener = onChange;
+    try {
+      CallRecordingStore.I.phase.addListener(onChange);
+      CallRecordingStore.I.activeCallId.addListener(onChange);
+    } catch (_) {
+      _recordingListener = null;
+    }
+  }
+
+  void _detachRecordingBridge() {
+    final l = _recordingListener;
+    if (l == null) return;
+    _recordingListener = null;
+    try {
+      CallRecordingStore.I.phase.removeListener(l);
+      CallRecordingStore.I.activeCallId.removeListener(l);
+    } catch (_) {/* already gone */}
   }
 
   /// [CF-CALL-P2P-1] Bounded 1:1-video sender encoding (proposal Phase 5:
@@ -4760,6 +4862,25 @@ class CallSession {
             }
           }
         }
+        // [CALLREC-PEER-1] We now know the peer id (fresh join OR our own
+        // reconnect). Re-announce unconditionally: on a reconnect this is the
+        // only thing that restores an indicator the peer lost with the socket.
+        _announceRecordingState(force: true);
+        break;
+      // [CALLREC-PEER-1] The DO tells existing peers when someone joins
+      // (call_room.ts:2197). Nothing used to handle it. It is the ONLY hook for
+      // "I armed recording before they arrived" — the announce broadcasts (no
+      // `to` yet on this side) and reaches the newcomer. Deliberately does NOT
+      // adopt `_remoteId`: call setup, SFU election and the P2P fallback all
+      // decide who offers, and this must not touch that.
+      case 'peer-joined':
+        _announceRecordingState(force: true);
+        break;
+      // [CALLREC-PEER-1] The peer told us their recorder state. Defensive by
+      // construction: anything that is not literally `true` reads as off, and a
+      // frame from a client that predates this feature simply never arrives.
+      case 'callrec':
+        peerRecording.value = d['on'] == true;
         break;
       case 'sfu-start':
         if (!_ended && !_connected && !_sfuAborted) {
@@ -4954,6 +5075,10 @@ class CallSession {
             _tryIceRestart('peer-rejoined');
           }
         }
+        // [CALLREC-PEER-1] Their socket dropped and came back, so their copy of
+        // our recording state went with it. Re-announce outside the `_connected`
+        // guard above — a peer who reconnected must relearn this either way.
+        _announceRecordingState(force: true);
         break;
       case 'peer-left':
         // Alarm expired with no rejoin — the call is over for real.
@@ -6856,6 +6981,10 @@ class CallSession {
     _placeCallTimeout?.cancel();
     _netSub?.cancel();
     _statusSub?.cancel();
+    // [CALLREC-PEER-1] Stop announcing for a call that is over, and clear the
+    // peer's indicator so a stale "is recording" can never outlive the call.
+    _detachRecordingBridge();
+    peerRecording.value = false;
     // CALL-RC-D2: cancel every reconnect/ping timer so nothing keeps firing
     // after teardown (acceptance criterion — no leaked timers post-hangup).
     _reconnecting = false;
