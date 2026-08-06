@@ -2109,6 +2109,25 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   final brandedOn = RemoteConfig.brandedIncomingUi ||
       (RemoteConfig.businessCallUx && (d['via'] ?? '') == 'dialpad');
   if (brandedOn && !PushService.wasCallTerminated(ringCallId)) {
+    // [CALL-ACCEPT-LIVENESS-1 2026-08-06] Do not paint an Accept button while a
+    // call is already live.
+    //
+    // The WS ring lane and the FCM foreground lane BOTH check
+    // `callIsGenuinelyActive()`, signal busy and return (`call_incoming_autobusy`
+    // — five sites, all above). This branded/FSI lane did not, so on 2026-08-05
+    // the owner got a full-screen Accept for `avatok-7e634735` while he was mid
+    // call, even though the app had already told the caller he was busy. He
+    // tapped it, and the accept path tore down his working call.
+    //
+    // Auto-busy is only honest if EVERY ring surface honours it. Anything else
+    // is telling the caller "he's busy" and the callee "answer this".
+    if (callIsGenuinelyActive()) {
+      Analytics.capture('call_branded_fsi_suppressed', {
+        'call_id': ringCallId,
+        'reason': 'on_another_call',
+      });
+      return;
+    }
     // [CALL-REL-R4-B] MUST use the same reading as the suppression above. If
     // these two ever disagree — suppress the OS ring but decline to push the
     // branded screen — the call rings on no surface at all.
@@ -4128,6 +4147,57 @@ class PushService {
       // audio owner we still block: handing the mic to a second session while
       // Ava is mid-sentence is the 2026-07-05 bug and is worth the wait.
       if (CallSessionManager.instance.hasOtherLiveAudioSession(room)) {
+        // [CALL-ACCEPT-LIVENESS-1 2026-08-06] Do not kill a WORKING call to
+        // answer a DEAD one.
+        //
+        // Prod, 2026-08-05 21:51:28. The owner was on a live call and a fourth
+        // ring from the same person arrived. He tapped Accept. In this order:
+        //
+        //   21:51:28.183  call_ended_for_accept  owner-accepted-other-call
+        //   21:51:29.531  call_accepted_dead     remote-cancelled-preaccept
+        //   21:51:30.693  call_late_accept_blocked
+        //
+        // The live call was torn down 1.3 SECONDS BEFORE the app discovered the
+        // call it switched to had already been cancelled. He lost a working
+        // call and got nothing in return.
+        //
+        // The teardown is irreversible and the check is cheap, so the check goes
+        // first. Two sources, both already used elsewhere on this path:
+        //
+        //  1. `wasCallTerminated` — a local marker, free, no network.
+        //  2. `fetchDurableCallStatus` — a strongly-consistent read of the
+        //     CallRoom DO, which is the authority on terminal status.
+        //
+        // Deliberately FAIL-OPEN and tightly bounded (1200ms): if the probe is
+        // slow or errors we proceed with the accept exactly as before. Refusing
+        // an accept because a probe timed out would turn a rare bad outcome into
+        // a common one. This only ever fires on the branch where another call is
+        // already live, so it costs a normal accept nothing.
+        var incomingIsDead = wasCallTerminated(room);
+        if (!incomingIsDead) {
+          final status = await fetchDurableCallStatus(
+            room,
+            timeout: const Duration(milliseconds: 1200),
+          );
+          // RING lifecycle, not CALL lifecycle — the question here is exactly
+          // "has this ring stopped being answerable", which is what
+          // `_terminalCallStatus` decides.
+          incomingIsDead = status != null && _terminalCallStatus(status);
+        }
+        if (incomingIsDead) {
+          Analytics.capture('call_accept_refused_dead_incoming', {
+            'call_id': room,
+            'kept_live_call': true,
+          });
+          // Fold it into the terminal cache so no other lane (a late FCM, a
+          // retried WS ring) re-surfaces the same dead call.
+          _noteTerminalCall(room);
+          // Safe to just stop: `_finishAcceptedRing` already removed every ring
+          // surface further up `acceptRingingCall`, BEFORE `_openCall` was ever
+          // invoked. The user sees their existing call, uninterrupted, which is
+          // the whole point.
+          return;
+        }
         try {
           await CallSessionManager.instance
               .prepareForAccept(room)
