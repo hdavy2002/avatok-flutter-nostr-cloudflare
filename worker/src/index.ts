@@ -95,6 +95,10 @@ import {
   // [CALLREC-UPLOAD-1] the resumable lane for long recordings (spec §5.1).
   callRecUploadBegin, callRecUploadPart, callRecUploadComplete, callRecUploadAbort,
 } from "./routes/callrec";
+// [ADDCALL-1-SRV] Add-to-call — the invisible ad-hoc conversation an escalating
+// 1:1 needs so the conference stack will admit its participants
+// (Specs/SPEC-ADD-TO-CALL-2026-08-06.md §2). Dark behind addToCallEnabled.
+import { adhocRoomCreate, adhocRoomAdd } from "./routes/adhoc_room";
 import { pstnRoute } from "./routes/pstn";
 // [AVA-CAMP-B2-WIRE] Outbound AI calling campaigns — PSTN bridge + CRUD API
 // (dark behind campaignDialerEnabled; Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md).
@@ -825,6 +829,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/callrec/meta" && (req.method === "PATCH" || req.method === "POST")) return await callRecMeta(req, env, ctx);
       if (p === "/api/callrec/delete" && req.method === "POST") return await callRecDelete(req, env, ctx);
       if (p === "/api/callrec/playback" && req.method === "GET") return await callRecPlayback(req, env, ctx);
+      // [ADDCALL-1-SRV] Add-to-call room creation/extension. Exact-string matches
+      // on their own /api/adhoc-room/ prefix: they cannot shadow, or be shadowed
+      // by, the /api/groupcall/<id>/<verb> regex above (different first segment,
+      // and that regex's <verb> group is a closed list). Both handlers gate on
+      // addToCallEnabled themselves and 403 while it is off.
+      if (p === "/api/adhoc-room/create" && req.method === "POST") return await adhocRoomCreate(req, env, ctx);
+      if (p === "/api/adhoc-room/add" && req.method === "POST") return await adhocRoomAdd(req, env, ctx);
       // PSTN gateway + voicemail execution mode (Canonical Architecture v1.0,
       // Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md). Single
       // startsWith dispatcher — routes/pstn.ts parses the sub-path itself.

@@ -105,6 +105,18 @@ export interface PlatformConfig {
    * CLAUDE.md). Client mirror: RemoteConfig.callRecordingMinFreeMb.
    */
   callRecordingMinFreeMb: number;
+  /**
+   * [ADDCALL-1-SRV] MASTER kill switch for "Add to call" — escalating a live 1:1
+   * into a small group conference (Specs/SPEC-ADD-TO-CALL-2026-08-06.md). Gates
+   * the Add-to-call tile on the client AND both /api/adhoc-room/* routes on the
+   * server, so flipping it off stops new escalations without a build. Ships
+   * FALSE: the room this creates is a NEW `kind='call'` conversation and the
+   * make-before-break migration (spec §4, Phase 2) does not exist yet, so nothing
+   * should be able to reach it by accident. Rooms already created stay in D1
+   * either way — nothing deletes conversations today (spec §11 item 1).
+   * Boolean → NOT in numericKeys. Client mirror: RemoteConfig.addToCallEnabled.
+   */
+  addToCallEnabled: boolean;
   /** 1:1 P2P call translation. Independent gate: remains dark by default. */
   callTranslationEnabled: boolean;
   /**
@@ -975,6 +987,10 @@ const DEFAULTS: PlatformConfig = {
   callRecordingEnabled: false,
   callRecordingIndicatorEnabled: true,
   callRecordingMinFreeMb: 500,     // device free-space floor before arming (numeric → numericKeys)
+  // [ADDCALL-1-SRV] "Add to call" master kill switch. Ships OFF — /api/adhoc-room/*
+  // 403s and the client tile stays hidden until the Phase 2 migration lands and is
+  // device-verified. Flip true in KV to open it, no rebuild.
+  addToCallEnabled: false,
   callTranslationEnabled: false,   // [CALL-TRANSLATE-1] dark until CI + two-device verification
   // [CALL-TRANSLATE-FREE-1] ON per owner 2026-08-05, reversing the 2026-08-04
   // paid-only ruling: testers hold only welcome/daily grants, so paid-only made
