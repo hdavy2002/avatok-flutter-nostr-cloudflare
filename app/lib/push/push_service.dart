@@ -1763,8 +1763,13 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   }
   final ringCallId = (d['callId'] ?? '').toString();
   final ringCaller = (d['fromPub'] ?? d['from'] ?? '').toString();
+  // `_showIncoming` is a TOP-LEVEL function, not a member of PushService, so a
+  // private static of that class has to be named through it — exactly as the
+  // `PushService._signalStatus` call on the next line already does. Unqualified,
+  // this is `Method not found: '_suppressSameCallerRetry'` and it broke the
+  // compile gate on run 31062575013.
   if (route != 'ws' && route != 'fcm_fg' &&
-      _suppressSameCallerRetry(ringCallId, ringCaller)) {
+      PushService._suppressSameCallerRetry(ringCallId, ringCaller)) {
     PushService._signalStatus(ringCallId, 'busy', ringCaller,
         busyReason: 'active_call', receptionistEnabled: true);
     try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
