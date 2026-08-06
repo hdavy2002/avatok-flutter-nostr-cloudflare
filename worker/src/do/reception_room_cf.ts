@@ -1422,6 +1422,13 @@ export class ReceptionRoomCf {
       caller_name: init.caller_name, caller_phone: init.caller_phone,
       call_id: init.call_id, duration_s: durationS, activation_mode: init.activation_mode ?? null,
       summary, transcript, has_recording: !!recordingUrl,
+      // [RECEPT-EMPTY-CARD-1 2026-08-06] Twin of reception_room.ts — see the
+      // long note there. `receptionistUseCf` is false in prod today, so the
+      // Gemini lane is the one that produced the 2026-08-05 report, but these
+      // two envelopes must stay identical or the card renders differently
+      // depending on a flag the user cannot see.
+      had_conversation: hadConversation,
+      turns: this.turnCount,
     });
     const payload = {
       conv, sender: init.caller_uid || `tel:${init.caller_phone}`, kind: "receptionist",

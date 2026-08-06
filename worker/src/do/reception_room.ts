@@ -1523,6 +1523,21 @@ export class ReceptionRoom {
       call_id: init.call_id, duration_s: durationS,
       activation_mode: init.activation_mode ?? null,
       summary, transcript, has_recording: !!recordingUrl,
+      // [RECEPT-EMPTY-CARD-1 2026-08-06] Machine-readable "was there actually a
+      // call". `bodyText` above has said the right thing for months — on
+      // 2026-08-05 22:12 IST it correctly read "Missed call — they hung up
+      // before leaving a message" — but the client's receptionist card ignores
+      // `text` entirely and hardcodes "Ava took a message / Left a message.",
+      // so the owner saw a message card for a 0.7-second call with no recording
+      // and reasonably concluded the recording had been lost.
+      //
+      // A boolean the client can branch on, rather than making it string-match
+      // on human copy. `turns` rides along because it is the number that
+      // actually explains the case (Gemini connected, socket dropped 170ms
+      // later, turns: 0) and it was previously only visible in telemetry, never
+      // in the payload the client renders from.
+      had_conversation: hadConversation,
+      turns: this.turnCount,
     });
     const payload = {
       conv,

@@ -602,11 +602,23 @@ class _InboxListScreenState extends State<InboxListScreen> {
     final titleInk = isCampaign ? _campaignTitleInk : (hasUnread ? _unreadTitleInk : _readTitleInk);
     final secondaryInk =
         isCampaign ? _campaignSecondaryInk : (hasUnread ? _unreadSecondaryInk : _readSecondaryInk);
+    // [RECEPT-EMPTY-CARD-1 2026-08-06] The final fallback used to assert
+    // "Left a message" for every row that had no summary and no transcript —
+    // including a caller who rang off before Ava got a word in, which leaves no
+    // recording, no transcript and a zero duration. The owner hit exactly that
+    // on 2026-08-05 and went looking for a recording that had never existed.
+    //
+    // Inferred rather than read from a new field, because InboxCard already
+    // carries every piece of evidence and older rows have no new field to read.
+    final noContent = !t.latest.hasRecording &&
+        (t.latest.transcript ?? '').trim().isEmpty &&
+        (t.latest.summaryText ?? '').trim().isEmpty &&
+        t.latest.durationSec <= 0;
     final preview = t.latest.summaryText ??
         (t.latest.transcript != null && t.latest.transcript!.length > 60
             ? '${t.latest.transcript!.substring(0, 60)}…'
             : t.latest.transcript) ??
-        'Left a message';
+        (noContent ? 'Hung up before leaving a message' : 'Left a message');
     // A campaign thread has no "caller" to have missed — this row is a
     // campaign result, not a missed call, so skip that copy for it.
     final titleText = isCampaign ? label.title : 'Missed call from ${label.title}';

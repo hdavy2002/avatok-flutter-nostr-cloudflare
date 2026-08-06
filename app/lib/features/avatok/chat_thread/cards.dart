@@ -321,13 +321,48 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     return name.toString();
   }
 
+  /// [RECEPT-EMPTY-CARD-1 2026-08-06] Did a conversation actually happen?
+  ///
+  /// The server has always known this and has been sending the right sentence in
+  /// `text` — for a 0.7-second call on 2026-08-05 it read "Missed call — they
+  /// hung up before leaving a message". This card ignored `text` entirely and
+  /// hardcoded "Ava took a message" + "Left a message.", so the owner saw a
+  /// message card with no Play button and reasonably concluded a recording had
+  /// been lost. Nothing was lost; there was never any audio.
+  ///
+  /// `had_conversation` is the explicit signal. Older messages predate it, so
+  /// absence falls back to the recording/transcript/duration evidence rather
+  /// than defaulting either way — an existing card in someone's thread must not
+  /// suddenly re-label itself as a missed call.
+  bool get _hadConversation {
+    final flag = _e['had_conversation'];
+    if (flag is bool) return flag;
+    return _hasRec ||
+        (_e['transcript'] ?? '').toString().trim().isNotEmpty ||
+        ((_e['duration_s'] as num?)?.toInt() ?? 0) > 0;
+  }
+
+  /// The card's subtitle. "Ava took a message" is a claim, and it has to be true.
+  String get _headline => _hadConversation ? 'Ava took a message' : 'Missed call';
+
   String get _reason {
     final summary = _e['summary'];
     if (summary is Map && (summary['reason'] ?? '').toString().trim().isNotEmpty) {
       return summary['reason'].toString();
     }
-    return 'Left a message.';
+    if (!_hadConversation) {
+      // Says what happened instead of implying a message exists. `turns: 0` with
+      // no recording means the caller rang off before Ava could take anything.
+      return 'They hung up before leaving a message.';
+    }
+    return _hasRec ? 'Left a message.' : 'Ava answered.';
   }
+
+  /// A recording actually exists. The envelope carries `has_recording`;
+  /// `recording_url` is the older shape and is still accepted.
+  bool get _hasRec =>
+      _e['has_recording'] == true ||
+      (_e['recording_url'] ?? '').toString().isNotEmpty;
 
   String get _durationLabel {
     final s = (_e['duration_s'] as num?)?.toInt() ?? 0;
@@ -394,7 +429,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   @override
   Widget build(BuildContext context) {
     final transcript = (_e['transcript'] ?? '').toString().trim();
-    final hasRec = _e['has_recording'] == true || (_e['recording_url'] ?? '').toString().isNotEmpty;
+    final hasRec = _hasRec;
     final dur = _durationLabel;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       Row(mainAxisSize: MainAxisSize.min, children: [
@@ -403,7 +438,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         Flexible(child: Text('$_caller called', style: ADText.rowName(c: AD.bubbleInInk))),
       ]),
       const SizedBox(height: 2),
-      Text('Ava took a message', style: ADText.sectionLabel(c: AD.bubbleInMeta)),
+      // [RECEPT-EMPTY-CARD-1] Was 'Ava took a message', hardcoded. It is a claim
+      // about a recording existing, so it has to be earned — see [_headline].
+      Text(_headline, style: ADText.sectionLabel(c: AD.bubbleInMeta)),
       // Caller's phone number — always shown when present, even if Ava also
       // captured a name, so the owner can identify/return the call.
       if (_phone.isNotEmpty) ...[
