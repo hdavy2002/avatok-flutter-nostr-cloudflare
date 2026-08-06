@@ -252,6 +252,70 @@ class _CallScreenState extends State<CallScreen> {
   late final CallSession _session;
   bool _popped = false;
 
+  // [CALL-UI-COLLAPSE-1] Collapsible control panel — VIDEO CALLS ONLY.
+  //
+  // The 2x3 labelled grid ([CALL-UI-GRID-2]) reserves 350px, roughly a third of
+  // a handset screen, and on a video call it sits ON TOP of the thing the user
+  // opened the call to look at. Collapsing it leaves a small chevron pill and
+  // gives the remote video the whole screen back.
+  //
+  // This is deliberately NOT applied to the audio layout: there the panel IS
+  // the screen (paper/dialer skin, hero avatar, status sticker), there is
+  // nothing behind it worth revealing, and there would be no tap target to
+  // bring it back. Everywhere below, the effective state is derived as
+  // `showVideo && _panelCollapsed`, never read raw — so the audio path is
+  // byte-for-byte unchanged and the "collapsed, then camera off" case
+  // (see _toggleControlPanel) can never strand a user with hidden controls.
+  //
+  // In-memory only, and the CallScreen State dies with the call, so the
+  // collapsed state lasts for THIS call and is not remembered across calls.
+  bool _panelCollapsed = false;
+  // Accumulated dy for the current vertical drag; reset on every drag end.
+  double _panelDragDy = 0;
+
+  static const double _panelDragDistance = 40; // px before a drag counts
+  static const double _panelFlickVelocity = 320; // px/s for a flick
+
+  /// Flip the control panel between expanded and collapsed. No-op on audio:
+  /// `showVideo` is the only place the state is honoured, but guarding here as
+  /// well keeps a stray call site from setting a flag that nothing can clear.
+  void _toggleControlPanel(String source) {
+    if (!(_session.videoActive.value && _session.cameraOn.value)) return;
+    setState(() => _panelCollapsed = !_panelCollapsed);
+    Analytics.capture('call_controls_toggled', {
+      'call_id': widget.room,
+      'collapsed': _panelCollapsed,
+      'source': source, // 'tap_video' | 'drag_panel' | 'tap_handle'
+      'peer_uid': widget.seed,
+      'video': true,
+    });
+  }
+
+  void _onPanelDragUpdate(DragUpdateDetails d) {
+    _panelDragDy += d.delta.dy;
+  }
+
+  void _onPanelDragEnd(DragEndDetails d) {
+    final dy = _panelDragDy;
+    _panelDragDy = 0;
+    final v = d.velocity.pixelsPerSecond.dy;
+    // Velocity first so a flick works even when the finger barely travelled;
+    // otherwise fall back to distance, and a small accidental drag snaps back
+    // by simply leaving the state alone.
+    bool? next;
+    if (v > _panelFlickVelocity) {
+      next = true;
+    } else if (v < -_panelFlickVelocity) {
+      next = false;
+    } else if (dy > _panelDragDistance) {
+      next = true;
+    } else if (dy < -_panelDragDistance) {
+      next = false;
+    }
+    if (next == null || next == _panelCollapsed) return;
+    _toggleControlPanel('drag_panel');
+  }
+
   // [WP3-ACT-1] After-ring routing (plan §3 step 4) — fetched ONCE when the
   // outgoing call genuinely goes to 'no-answer' while businessCallUx is on.
   // [RECEPT-SETTINGS-1] voicemail removed; the routing probe is retained for the
@@ -702,7 +766,29 @@ class _CallScreenState extends State<CallScreen> {
     // the recording flag off, Record's third collapses to SizedBox.shrink()
     // INSIDE a row that still occupies its full height — a shorter reservation
     // would put the panel back over the avatar.
+    //
+    // [CALL-UI-COLLAPSE-1] This constant is NOT touched by the collapsible
+    // panel. It is read in exactly one place — the `if (light)` audio subtree
+    // below, as scroll padding / minHeight so the hero avatar cannot scroll
+    // under the panel — and the audio panel never collapses. On video the
+    // panel is a plain bottom-anchored overlay over a Positioned.fill video
+    // surface, so it reserves nothing and collapsing it hands the full frame
+    // back with no layout arithmetic at all.
     const controlPanelHeight = 350.0;
+    // [CALL-UI-COLLAPSE-1] Collapsed ONLY ever on video. Deriving it here
+    // rather than reading `_panelCollapsed` raw is what makes the camera-off
+    // edge case safe: the instant `showVideo` goes false the audio layout
+    // renders with its controls fully visible, whatever the remembered flag
+    // says. Turning the camera back on restores the user's last choice.
+    final panelCollapsed = showVideo && _panelCollapsed;
+    // [CALL-UI-COLLAPSE-1] Hoisted out of the `if (...)` that used to guard the
+    // control panel inline, so the collapsed handle below can share it — a
+    // handle offering to reveal a panel that the outcome surface has taken
+    // over would be a dead control.
+    final showControls = !s.showOutcomeMenu &&
+        !s.showBusyCard &&
+        phase != 'no-answer' &&
+        phase != 'agent-handoff';
     // [ISSUE-VIDEO-TEXTNOTE-KEYBOARD-1] Keyboard height (0 when closed) — the
     // video outcome-menu overlay bottoms out at its top edge while typing.
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
@@ -726,12 +812,37 @@ class _CallScreenState extends State<CallScreen> {
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                 : Container(color: AD.bg),
           ),
+          // [CALL-UI-COLLAPSE-1] Tap anywhere on the video to show/hide the
+          // controls. A drag-only affordance is easy to miss, and this is the
+          // gesture every other video-calling app trains people on. It also
+          // settles the End-button question: hang-up is never more than one tap
+          // (reveal) plus one tap (End) away, so no second floating End button
+          // is needed — and adding one would put a destructive control on the
+          // video surface with nothing to stop a mis-tap.
+          //
+          // It sits EARLY in the Stack on purpose. Stack hit-tests children in
+          // reverse paint order, so the self-view flip target, the header, the
+          // control panel and the outcome menu — all added after this — win any
+          // overlap; this only ever receives taps on bare video.
+          Positioned.fill(
+            child: GestureDetector(
+              // `opaque`: the child is an empty box over a platform view, which
+              // is not a reliable hit-test target on its own.
+              behavior: HitTestBehavior.opaque,
+              onTap: showControls ? () => _toggleControlPanel('tap_video') : null,
+              onVerticalDragUpdate: showControls ? _onPanelDragUpdate : null,
+              onVerticalDragEnd: showControls ? _onPanelDragEnd : null,
+              child: const SizedBox.expand(),
+            ),
+          ),
           Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 128,
-              child: Container(color: Colors.black.withValues(alpha: 0.45))),
+              child: IgnorePointer(
+                  child:
+                      Container(color: Colors.black.withValues(alpha: 0.45)))),
           // [CALL-UI-GRID-2] Tap the self-view to flip the camera.
           //
           // Camera flip used to live ONLY in the More sheet, which is gone; and
@@ -1194,10 +1305,7 @@ class _CallScreenState extends State<CallScreen> {
         // dialing leg has ended. Do not leave live-call controls underneath it:
         // they look tappable but the peer connection and tracks are already
         // stopped, which caused speaker/audio state to appear broken.
-        if (!s.showOutcomeMenu &&
-            !s.showBusyCard &&
-            phase != 'no-answer' &&
-            phase != 'agent-handoff')
+        if (showControls)
           Positioned(
             left: 0,
             right: 0,
@@ -1227,7 +1335,28 @@ class _CallScreenState extends State<CallScreen> {
             // puts it), and chat/minimize needed no replacement — the header
             // back button, the ⌄ button and the system back gesture all already
             // minimize.
-            child: Container(
+            //
+            // [CALL-UI-COLLAPSE-1] On VIDEO the whole card slides out of the
+            // bottom edge and fades when collapsed. AnimatedSlide/AnimatedOpacity
+            // rather than DraggableScrollableSheet: that widget is built for
+            // scrollable content and fights a fixed tile grid. On audio both
+            // wrappers are handed their identity values (offset zero, opacity
+            // one) and the vertical-drag callbacks are null, so the audio panel
+            // is exactly what it was.
+            child: GestureDetector(
+              behavior: HitTestBehavior.deferToChild,
+              // Tile taps still win: a tap and a vertical drag are different
+              // gestures, so the arena hands each to the right recogniser.
+              onVerticalDragUpdate: showVideo ? _onPanelDragUpdate : null,
+              onVerticalDragEnd: showVideo ? _onPanelDragEnd : null,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                offset: panelCollapsed ? const Offset(0, 1) : Offset.zero,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: panelCollapsed ? 0 : 1,
+                  child: Container(
               margin: EdgeInsets.fromLTRB(
                   12, 0, 12, 12 + (bottomInset > 0 ? bottomInset : 4)),
               padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s5, Msg.s2, Msg.s5),
@@ -1394,6 +1523,65 @@ class _CallScreenState extends State<CallScreen> {
                   const Expanded(child: SizedBox.shrink()),
                 ]),
               ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // [CALL-UI-COLLAPSE-1] The collapsed affordance: a small translucent
+        // chevron pill centred on the bottom edge. Understated on purpose — it
+        // should read as "there is something here", not as chrome competing
+        // with the video. Pull it up (or tap it, or tap the video) to bring the
+        // controls back.
+        //
+        // VIDEO ONLY, and gated on `showControls` for the same reason the panel
+        // is: once the outcome surface owns the screen there is no panel left
+        // to reveal.
+        //
+        // NOTE ON THE ICON: `caretUp` is a real phosphor_flutter 2.1.0 name —
+        // it is already used at ava_sidebar.dart:427 and chat_list.dart:556.
+        // A guessed Phosphor name compiles fine and fails at kernel snapshot,
+        // i.e. only in CI ~5 minutes into a release build (same trap as the
+        // `numpad` note on the Keypad tile above).
+        if (showVideo && showControls)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 8 + (bottomInset > 0 ? bottomInset : 4),
+            child: IgnorePointer(
+              ignoring: !panelCollapsed,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: panelCollapsed ? 1 : 0,
+                child: Center(
+                  child: Semantics(
+                    button: true,
+                    label: 'Show call controls',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _toggleControlPanel('tap_handle'),
+                      onVerticalDragUpdate: _onPanelDragUpdate,
+                      onVerticalDragEnd: _onPanelDragEnd,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: Msg.s5, vertical: Msg.s2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(AD.rSheet),
+                          border:
+                              Border.all(color: AD.borderControl, width: 1),
+                        ),
+                        child: PhosphorIcon(
+                          PhosphorIcons.caretUp(PhosphorIconsStyle.bold),
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
 
