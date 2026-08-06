@@ -93,15 +93,14 @@ class CallSfuResult {
 class CallSfuTransport {
   CallSfuTransport({
     required this.room,
-    required this.onPeerConnection,
+    required this.createPeerConnection,
   });
 
   /// The same room id the P2P signalling uses. Both transports are keyed on it,
   /// so `CallRoom` stays the single authority on who is on this call.
   final String room;
 
-  /// Invoked with the freshly-created peer connection BEFORE any track is added
-  /// or any SDP is exchanged.
+  /// Creates the peer connection through CallSession's canonical `_newPC`.
   ///
   /// This exists so `CallSession` installs its OWN `onTrack`,
   /// `onConnectionState` and stats wiring, exactly as it does for P2P. The
@@ -110,7 +109,8 @@ class CallSfuTransport {
   /// bridge all already read `_pc`, and every one of them keeps working
   /// unchanged if the SFU simply hands back a peer connection. Duplicating that
   /// wiring here would have created a second, silently diverging copy.
-  final void Function(RTCPeerConnection pc) onPeerConnection;
+  final Future<RTCPeerConnection> Function(List<Map<String, dynamic>> iceServers)
+      createPeerConnection;
 
   String? _sessionId;
   RTCPeerConnection? _pc;
@@ -163,22 +163,9 @@ class CallSfuTransport {
 
       final wantVideo = video && join.videoAllowed;
 
-      _pc = await createPeerConnection({
-        // Cloudflare's own ICE servers from /join. The fallback exists only for
-        // the pathological case of an empty list; a peer connection with no ICE
-        // servers at all cannot reach anything.
-        'iceServers': join.iceServers.isNotEmpty ? join.iceServers : fallbackIceServers,
-        'sdpSemantics': 'unified-plan',
-        // Same NetEq bounds as the P2P path (`_newPC`) and the conference
-        // controller. Prod calls showed jitter-buffer delay sitting at 600-745ms
-        // on flappy cellular with no cap; 50 packets is a ~1s ceiling and
-        // fastAccelerate drains it once the network recovers. These three
-        // transports must agree or the same call sounds different depending on
-        // which one carried it.
-        'audioJitterBufferMaxPackets': 50,
-        'audioJitterBufferFastAccelerate': true,
-        'iceCandidatePoolSize': 2,
-      });
+      _pc = await createPeerConnection(
+        join.iceServers.isNotEmpty ? join.iceServers : fallbackIceServers,
+      );
       if (_disposed) {
         await _pc?.close();
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_during_setup');
@@ -186,8 +173,6 @@ class CallSfuTransport {
 
       // Hand it over before any track exists, so the caller's onTrack is armed
       // before the pull below can deliver remote media.
-      onPeerConnection(_pc!);
-
       // Track order defines the mids: audio first is mid '0', video is mid '1'.
       // The conference controller relies on the same convention. It is an
       // assumption about flutter_webrtc's addTrack ordering, not a guarantee
@@ -255,6 +240,24 @@ class CallSfuTransport {
       await _closePc();
       return CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
     }
+  }
+
+  /// Rejoin Cloudflare after this phone's network leg changes. The peer's SFU
+  /// session is intentionally left alone; only this side mints a new session
+  /// and re-publishes its tracks.
+  Future<CallSfuResult> reconnect({
+    required MediaStream localStream,
+    required List<Map<String, dynamic>> fallbackIceServers,
+    required bool video,
+  }) async {
+    _disposed = false;
+    _sessionId = null;
+    _openMids.clear();
+    return connect(
+      localStream: localStream,
+      fallbackIceServers: fallbackIceServers,
+      video: video,
+    );
   }
 
   /// Poll until the peer has registered an audio track, or the window expires.

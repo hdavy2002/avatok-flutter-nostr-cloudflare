@@ -1563,6 +1563,17 @@ export class CallRoom {
         const seat = peerUid ? (seats[peerUid] ?? null) : null;
         return Response.json({ ok: true, seat, peer_uid: peerUid ?? null });
       }
+      if (req.method === "GET" && stateUrl.pathname.endsWith("/sfu-seat-self")) {
+        const callId = stateUrl.searchParams.get("callId") ?? "";
+        const uid = stateUrl.searchParams.get("uid") ?? "";
+        if (!uid) return Response.json({ ok: false, error: "uid_required" }, { status: 400 });
+        const s = await this.loadSession(callId);
+        if (uid !== s.caller_uid && uid !== s.callee_uid) {
+          return Response.json({ ok: false, error: "not_a_participant" }, { status: 403 });
+        }
+        const seat = (await this.loadSfuSeats())[uid] ?? null;
+        return Response.json({ ok: true, seat });
+      }
       /**
        * [CALL-SFU-1] Drop a seat. Called on hangup and, importantly, before a
        * reconnect that mints a NEW Cloudflare session: a stale seat would have the

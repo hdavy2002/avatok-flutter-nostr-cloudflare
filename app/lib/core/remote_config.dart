@@ -111,6 +111,11 @@ class RemoteConfig {
   /// CF Realtime SFU group-audio path — dormant until its build lands + is
   /// CI/device-verified. While false, group calls use the existing LiveKit path.
   static bool get groupAudioSfuEnabled => _b('groupAudioSfuEnabled', false);
+  // [CALL-SFU-1] 1:1 media transport selector. When enabled, CallSession
+  // attempts Cloudflare Realtime first and retains the existing P2P path as
+  // the rollback if the SFU is unavailable or the peer aborts it.
+  static bool get callSfuV1 => _b('callSfuV1', false);
+  static bool get callSfuAudioOnly => _b('callSfuAudioOnly', false);
   static bool get brainEnabled => _b('brainEnabled', false);
   /// [ONEBRAIN-B4] Global kill-switch for cloud reasoning over device_private
   /// brain content (SPEC §6, B-D6). Default TRUE (owner decision 2026-07-18:

@@ -38,6 +38,7 @@ import '../../features/avatok/call_screen.dart';
 // call_session_manager.dart also imports this file — same permitted library
 // cycle as call_screen.dart above.
 import 'call_session_manager.dart';
+import 'call_sfu_transport.dart';
 
 /// Coarse call lifecycle exposed via [CallSession.phase]. Wave 2 (PiP/pill,
 /// reconnect, Gemini parity) keys off THIS enum; the full call view also reads
@@ -535,6 +536,15 @@ class CallSession {
   bool _speaker = true;
   String? _lastAudioRouteRequestId;
   bool _connected = false;
+  // [CALL-SFU-1] SFU is selected per call, while the P2P implementation remains
+  // intact as a rollback. `_sfuAborted` is sticky so one side can never return
+  // to SFU after the other side has fallen back to P2P.
+  CallSfuTransport? _sfu;
+  bool _sfuActive = false;
+  bool _sfuStarting = false;
+  bool _sfuAborted = false;
+  bool _sfuDecider = false;
+  bool _sfuReconnectInFlight = false;
   // [CALL-SURVIVE-3] Best-effort local/remote network-class flags used to
   // gate the conservative cellular resolution/bitrate preset. Refreshed by
   // [_refreshAndAnnounceNetClass] / [_isLikelyCellular]; remote value arrives
@@ -3261,16 +3271,22 @@ class CallSession {
     return m?.group(1) ?? '';
   }
 
-  Future<RTCPeerConnection> _newPC({bool forceRelay = false}) async {
+  Future<RTCPeerConnection> _newPC({
+    bool forceRelay = false,
+    List<Map<String, dynamic>>? sfuIce,
+  }) async {
     if (RemoteConfig.callCellPresetV1) {
       _localCellular = await _isLikelyCellular();
       _announceNetClass();
     }
     final cellPair = RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
     final pc = await createPeerConnection({
-      'iceServers': _ice,
+      'iceServers': sfuIce ?? _ice,
       'iceCandidatePoolSize': 2,
-      if (CallDiag.turnOnly || forceRelay || cellPair) 'iceTransportPolicy': 'relay',
+      // Cloudflare Realtime is the SFU. Do not force relay-only against its
+      // ICE list: normal ICE may use Cloudflare STUN/TURN as appropriate.
+      if (sfuIce == null && (CallDiag.turnOnly || forceRelay || cellPair))
+        'iceTransportPolicy': 'relay',
       // [CALL-SURVIVE-1 2026-08-04] Bound the NetEq jitter buffer. Prod calls
       // showed inbound jitter-buffer delay sitting at 600-745ms on flappy
       // cellular ("distant/underwater" voice) because the buffer had no cap
@@ -3285,8 +3301,10 @@ class CallSession {
     // callback closure below, so every closure's guard check is meaningful
     // from the moment it can first fire.
     final myPcGen = ++_pcGeneration;
-    await _addStreamTracks(pc, _stream!, stage: 'add_track_failed');
-    if (config.video) {
+    if (sfuIce == null) {
+      await _addStreamTracks(pc, _stream!, stage: 'add_track_failed');
+    }
+    if (config.video && sfuIce == null) {
       // [CALL-VIDEO-CODEC-1] Codec preference must be applied BEFORE the offer
       // is created — setCodecPreferences changes the m-line payload order, and
       // an offer already generated cannot be retro-fitted.
@@ -3296,7 +3314,9 @@ class CallSession {
     _telemetry.onIceGatheringStart();
     pc.onIceCandidate = (c) {
       _telemetry.onLocalCandidate(_candTypeOf(c.candidate));
-      if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
+      if (sfuIce == null && _remoteId != null) {
+        _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
+      }
     };
     pc.onIceGatheringState = (s) {
       if (s == RTCIceGatheringState.RTCIceGatheringStateComplete) {
@@ -3328,7 +3348,9 @@ class CallSession {
           _abortPrewarm('callee_answered');
         }
         _telemetry.connected(pc);
-        _telemetry.setMediaPath(_relayForced ? 'relay' : 'direct'); // [CALL-REL-4/5]
+        _telemetry.setMediaPath(
+          _sfuActive || _sfuStarting ? 'sfu' : (_relayForced ? 'relay' : 'direct'),
+        ); // [CALL-REL-4/5]
         HapticFeedback.mediumImpact();
         if (gOutgoingCallId == config.room) {
           gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
@@ -3377,6 +3399,14 @@ class CallSession {
         _endWith('ended');
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
                  s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        if (_sfuActive || _sfuStarting) {
+          _telemetry.runtimeError(
+            stage: 'sfu_pc_disconnected',
+            error: StateError('Cloudflare Realtime peer connection disconnected'),
+          );
+          unawaited(_reconnectSfu());
+          return;
+        }
         final isFailed = s == RTCPeerConnectionState.RTCPeerConnectionStateFailed;
         if (RemoteConfig.callIceRecoveryV2) {
           // [CALL-REL-5 / REL-3 fix] Either endpoint may now request recovery
@@ -4383,6 +4413,125 @@ class CallSession {
     }
   }
 
+  Future<void> _startP2pOffer() async {
+    if (_ended || _connected || _pc != null || _remoteId == null) return;
+    final pc = await _newPC();
+    final offer = _tuned(await pc.createOffer());
+    await pc.setLocalDescription(offer);
+    _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+  }
+
+  Future<void> _startSfuMedia() async {
+    if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted) return;
+    final stream = _stream;
+    if (stream == null) return;
+    _sfuStarting = true;
+    final transport = CallSfuTransport(
+      room: room,
+      createPeerConnection: (iceServers) => _newPC(sfuIce: iceServers),
+    );
+    _sfu = transport;
+    final result = await transport.connect(
+      localStream: stream,
+      fallbackIceServers: _ice,
+      video: config.video && !RemoteConfig.callSfuAudioOnly,
+    );
+    if (_ended) {
+      await transport.dispose();
+      return;
+    }
+    if (result.connected) {
+      _sfuStarting = false;
+      _sfuActive = true;
+      _pc = result.pc;
+      _telemetry.setMediaPath('sfu');
+      Analytics.capture('call_sfu_active', {
+        'call_id': config.room,
+        'video': config.video && !RemoteConfig.callSfuAudioOnly,
+        'relay_degraded': result.relayDegraded,
+      });
+      return;
+    }
+
+    _sfuStarting = false;
+    _sfuAborted = true;
+    await transport.dispose();
+    _sfu = null;
+    await _pc?.close();
+    _pc = null;
+    Analytics.capture('call_sfu_fallback', {
+      'call_id': config.room,
+      'failure': result.failure?.name ?? 'unknown',
+      'detail': result.detail ?? '',
+    });
+    if (_remoteId != null) _send({'type': 'sfu-abort', 'to': _remoteId});
+    if (_sfuDecider) await _startP2pOffer();
+  }
+
+  Future<void> _reconnectSfu() async {
+    if (_ended || !_sfuActive || _sfuReconnectInFlight || _sfu == null || _stream == null) return;
+    _sfuReconnectInFlight = true;
+    _sfuActive = false;
+    _setPhase('reconnecting');
+    final oldPc = _pc;
+    _pc = null;
+    await _safeAwait(() => oldPc?.close());
+    final result = await _sfu!.reconnect(
+      localStream: _stream!,
+      fallbackIceServers: _ice,
+      video: config.video && !RemoteConfig.callSfuAudioOnly,
+    );
+    if (_ended) return;
+    if (result.connected) {
+      _pc = result.pc;
+      _sfuActive = true;
+      _setPhase('connected');
+      Analytics.capture('call_sfu_reconnected', {
+        'call_id': config.room,
+        'relay_degraded': result.relayDegraded,
+      });
+    } else {
+      Analytics.capture('call_sfu_reconnect_failed', {
+        'call_id': config.room,
+        'failure': result.failure?.name ?? 'unknown',
+      });
+      _endWith('ended', reason: 'sfu-reconnect-failed');
+    }
+    _sfuReconnectInFlight = false;
+  }
+
+  Future<void> _enableSfuVideo() async {
+    if (_ended || !_sfuActive || _sfu == null || _stream == null) return;
+    try {
+      final v = await navigator.mediaDevices.getUserMedia({
+        'video': {
+          'facingMode': 'user',
+          'width': {'ideal': 1280, 'max': 1280},
+          'height': {'ideal': 720, 'max': 720},
+          'frameRate': {'ideal': 30, 'max': 30},
+        },
+        'audio': false,
+      });
+      final track = v.getVideoTracks().first;
+      await _stream!.addTrack(track);
+      localRenderer.srcObject = _stream;
+      final ok = await _sfu!.publishVideo(track, _stream!);
+      if (!ok) {
+        track.stop();
+        Analytics.capture('call_sfu_video_publish_failed', {'call_id': config.room});
+        return;
+      }
+      _video = true;
+      _camOn = true;
+      videoActive.value = true;
+      cameraOn.value = true;
+      _send({'type': 'sfu-video', 'to': _remoteId});
+      Analytics.capture('call_sfu_video_upgraded', {'call_id': config.room});
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'sfu_video_upgrade_failed', error: e, stack: st);
+    }
+  }
+
   Future<void> _onSignal(dynamic raw) async {
     if (_receptionistActive) {
       String? t;
@@ -4522,12 +4671,38 @@ class CallSession {
             _completeReconnect();
             await _tryIceRestart('ws-reconnect');
           } else {
-            final pc = await _newPC();
-            final offer = _tuned(await pc.createOffer());
-            await pc.setLocalDescription(offer);
-            _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+            if (RemoteConfig.callSfuV1 && !_sfuAborted) {
+              // The newcomer/second socket is the existing CallRoom offerer.
+              // Announce SFU before starting so both phones select one media
+              // transport and can never silently split into SFU + P2P.
+              _sfuDecider = true;
+              _send({'type': 'sfu-start', 'to': _remoteId});
+              await _startSfuMedia();
+            } else {
+              await _startP2pOffer();
+            }
           }
         }
+        break;
+      case 'sfu-start':
+        if (!_ended && !_connected && !_sfuAborted) {
+          await _startSfuMedia();
+        }
+        break;
+      case 'sfu-abort':
+        _sfuAborted = true;
+        if (_sfuStarting || _sfuActive) {
+          await _sfu?.dispose();
+          _sfu = null;
+          _sfuStarting = false;
+          _sfuActive = false;
+          await _pc?.close();
+          _pc = null;
+        }
+        if (_sfuDecider && !_ended && !_connected) await _startP2pOffer();
+        break;
+      case 'sfu-video':
+        if (_sfuActive) await _sfu?.pullPeerVideo();
         break;
       case 'offer':
         // [CALL-GLARE-OBS-1 2026-08-05] Detect and REPORT offer collisions.
@@ -4967,6 +5142,10 @@ class CallSession {
   /// also defer to an in-flight video upgrade rather than racing it.
   Future<void> _restartWithVideo() async {
     if (_ended) return;
+    if (_sfuActive) {
+      await _enableSfuVideo();
+      return;
+    }
     if (_videoRenegoInFlight) {
       _telemetry.runtimeError(
         stage: 'video_upgrade_skipped_concurrent',
@@ -6614,6 +6793,10 @@ class CallSession {
     _migrationDeadlineTimer?.cancel(); // [CALL-REL-6]
     await _safeAwait(() => _activeMigration?.newPc?.close());
     _activeMigration = null;
+    await _safeAwait(() => _sfu?.dispose());
+    _sfu = null;
+    _sfuActive = false;
+    _sfuStarting = false;
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     await _safeAwait(() => _pc?.close(), ms: 3000);

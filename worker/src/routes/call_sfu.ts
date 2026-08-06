@@ -109,6 +109,13 @@ async function roomFetch(env: Env, room: string, path: string, init?: RequestIni
   return await roomStub(env, room).fetch(`https://call${path}`, init);
 }
 
+async function ownsSession(env: Env, room: string, uid: string, sessionId: string): Promise<boolean> {
+  const r = await roomFetch(env, room, `/sfu-seat-self?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(uid)}`);
+  if (!r.ok) return false;
+  const b = (await r.json().catch(() => ({}))) as { seat?: { session_id?: string } | null };
+  return b.seat?.session_id === sessionId;
+}
+
 /**
  * Every route starts here. The uid is resolved BEFORE the flag refusals so a
  * block is attributable to a person — the same rule `groupcall.ts` follows,
@@ -227,6 +234,9 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
   if (!sessionId || !offerSdp || rawTracks.length === 0) {
     return json({ error: "session_offer_and_tracks_required" }, 400);
   }
+  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+    return json({ error: "session_not_owned" }, 403);
+  }
 
   const tracks: Array<Record<string, unknown>> = [];
   for (const t of rawTracks.slice(0, 2)) { // at most one audio + one video
@@ -316,6 +326,9 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
   const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
   const kind = b.kind === "video" ? "video" : "audio";
   if (!sessionId) return json({ error: "session_required" }, 400);
+  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+    return json({ error: "session_not_owned" }, 403);
+  }
   if (kind === "video" && !g.video) return json({ error: "video_not_allowed", reason: "audio_only" }, 409);
 
   const peerRes = await roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
@@ -357,6 +370,9 @@ export async function callSfuRenegotiate(req: Request, env: Env, room: string): 
   const answer = b.answer as { sdp?: unknown } | undefined;
   const answerSdp = typeof answer?.sdp === "string" ? answer.sdp : "";
   if (!sessionId || !answerSdp) return json({ error: "session_and_answer_required" }, 400);
+  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+    return json({ error: "session_not_owned" }, 403);
+  }
 
   const r = await sfu(env, `/sessions/${sessionId}/renegotiate`, {
     method: "PUT",
@@ -388,6 +404,9 @@ export async function callSfuClose(req: Request, env: Env, room: string): Promis
   const mids = Array.isArray(b.mids) ? b.mids.filter((m) => typeof m === "string") : [];
 
   if (sessionId && mids.length > 0) {
+    if (!(await ownsSession(env, room, g.uid, sessionId))) {
+      return json({ error: "session_not_owned" }, 403);
+    }
     await sfu(env, `/sessions/${sessionId}/tracks/close`, {
       method: "PUT",
       body: JSON.stringify({ tracks: mids.map((mid) => ({ mid })), force: b.force === true }),
