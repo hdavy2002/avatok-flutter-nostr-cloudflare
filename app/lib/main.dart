@@ -46,6 +46,7 @@ import 'features/auth/restore_screen.dart';
 import 'features/avadial/ava_contact_book.dart' show AvaContactBook;
 import 'features/avadial/contacts_daily_backup.dart';
 import 'features/avatok/contacts.dart';
+import 'features/avatok/media.dart' show MediaService; // [CHAT-MEDIA-FIRSTFRAME-1] boot warm
 import 'features/identity/liveness_v3/voice_packs.dart';
 import 'features/identity/public_action_gate.dart'; // [AVA-IDGATE-1] 403→consent flow
 import 'features/onboarding/handle_claim_screen.dart';
@@ -155,6 +156,19 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
   // LOAD-BEARING: this must run AFTER the flush above, or it would index files
   // that the one-time purge is about to delete.
   try { await AvatarCache.warm(); } catch (_) {/* best-effort — cold cache */}
+  // [CHAT-MEDIA-FIRSTFRAME-1 2026-08-06] Index the on-disk chat-media cache so a
+  // photo the device ALREADY HAS paints on the first frame.
+  //
+  // The bytes were never the problem — `downloadAndDecrypt` has always hit its
+  // disk cache. What the owner saw as "the photos load and there's a flash" was
+  // a guaranteed cache HIT that still could not paint synchronously: four async
+  // hops (dir -> exists -> length -> readAsBytes) before the widget had
+  // anything, so every open went placeholder -> photo. This builds the id->File
+  // index once so `MediaService.peekFile` can answer inside `build()`.
+  //
+  // SAME ORDERING RULE as AvatarCache.warm above: must run AFTER the one-time
+  // flush, or it indexes files that are about to be deleted.
+  try { await MediaService.warm(); } catch (_) {/* best-effort — cold cache */}
   // Product analytics + error tracking (best-effort) — init FIRST so we can
   // capture a Firebase init failure instead of silently swallowing it.
   await Analytics.init();

@@ -49,7 +49,40 @@ void _forgetChatMediaFuture(ChatMedia? media) {
   if (media != null) _chatMediaFutures.remove(media.id);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// [CHAT-MEDIA-FIRSTFRAME-1] One `cache_event` per attachment per session for the
+// synchronous first-frame path. `build()` runs many times per bubble, so this
+// MUST be deduped or one scroll would emit hundreds of identical events.
+// ─────────────────────────────────────────────────────────────────────────────
+final Set<String> _chatMediaPeekReported = <String>{};
+
+void _noteChatMediaPeek(String id) {
+  if (_chatMediaPeekReported.length > 300) _chatMediaPeekReported.clear();
+  if (!_chatMediaPeekReported.add(id)) return;
+  // ms: 0 — this path does NO async work at all; the photo is on screen in the
+  // same frame the bubble lays out. That is the whole point of the signal:
+  // `source == 'memory'` vs `'disk'` vs `'network'` is now chartable.
+  MediaService.noteCacheEvent('hit', source: 'memory', ms: 0);
+}
+
 extension _ChatThreadBubbles on _ChatThreadScreenState {
+
+  /// [CHAT-MEDIA-FIRSTFRAME-1] Tap-through for the first-frame (file-backed)
+  /// image branch. The fullscreen viewer still takes BYTES, and the bubble no
+  /// longer holds any — so read them here, off the paint path, on the tap. The
+  /// read is a warm-page-cache hit in practice (we are literally displaying
+  /// that file), and a failure is reported rather than swallowed.
+  Future<void> _openImageCachedFile(File f, {String? mime}) async {
+    try {
+      final b = await f.readAsBytes();
+      if (!mounted) return;
+      _openImageBytes(b, mime: mime);
+    } catch (e) {
+      Analytics.capture('chat_media_load_failed', {
+        'kind': 'image', 'stage': 'open_from_cache', 'err': e.runtimeType.toString(),
+      });
+    }
+  }
 
   Widget _bubble(_Msg m) {
     // [AVAGRP-BUBBLE-2] Group SYSTEM announcement — a centered pill, never a
@@ -888,6 +921,84 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
           );
         }
         if (m.media != null) {
+          // ─────────────────────────────────────────────────────────────────
+          // [CHAT-MEDIA-FIRSTFRAME-1] FIRST-FRAME PATH — a photo this device has
+          // already downloaded once paints in the SAME frame the bubble lays
+          // out: no FutureBuilder, no placeholder, no await.
+          //
+          // Two separate things were making a previously-seen photo still
+          // "load in" on every thread open:
+          //   1. `MediaService._cacheRead` is four async hops (dir → exists →
+          //      length → readAsBytes), so even a guaranteed cache HIT could
+          //      not be on screen for frame 1 — placeholder, then photo, every
+          //      single time.
+          //   2. `Image.memory` defeats Flutter's decoded-image cache:
+          //      `MemoryImage` is keyed on the byte buffer's IDENTITY, so bytes
+          //      freshly read from disk are a NEW key and the JPEG is decoded
+          //      from scratch again. That decode IS the flash. `Image.file`
+          //      keys on the PATH, so the decoded frame comes straight back out
+          //      of `PaintingBinding.imageCache` (capped in main.dart at 300
+          //      images / 64 MB).
+          //
+          // Checked AFTER `m.localBytes` on purpose: a still-uploading send has
+          // bytes but no stable file yet, and a photo already decoded from
+          // memory this session must not be swapped onto a different image
+          // provider mid-session (that swap would itself cost a decode).
+          //
+          // The async FutureBuilder below remains the fallback for a genuine
+          // miss (first ever view) and for a poisoned entry.
+          // ─────────────────────────────────────────────────────────────────
+          final cachedFile = MediaService.peekFile(m.media!.id);
+          if (cachedFile != null) {
+            _noteChatMediaPeek(m.media!.id);
+            final mediaId = m.media!.id;
+            // RETRY / CORRUPT-FILE CONTRACT. `errorBuilder` fires DURING build,
+            // so this must never call setState. Both actions here are safe:
+            // `forgetPeek` is a plain map removal (the next rebuild therefore
+            // misses the peek and takes the async path) and `evictCached` is a
+            // fire-and-forget disk delete, so that async path performs a real
+            // re-download instead of re-reading the same bad bytes forever.
+            void onDecodeError() {
+              MediaService.forgetPeek(mediaId);
+              unawaited(MediaService.evictCached(mediaId));
+              _forgetChatMediaFuture(m.media);
+            }
+            if (overlayMeta) {
+              return ChatImageCard(
+                file: cachedFile,
+                onTap: () => _openImageCachedFile(cachedFile, mime: m.media?.contentType),
+                overlays: _mediaMetaOverlays(m),
+                theme: t,
+                onDecodeError: onDecodeError,
+              );
+            }
+            return GestureDetector(
+              onTap: () => _openImageCachedFile(cachedFile, mime: m.media?.contentType),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(Msg.rMd),
+                // Same FIXED box and the same DPR-aware `cacheWidth` bound as
+                // the byte-backed branches, so nothing resizes and a full-res
+                // camera photo is never decoded at full resolution into a
+                // 220dp thumbnail.
+                child: Image.file(cachedFile,
+                    width: kChatInlineImageWidth,
+                    height: kChatInlineImageHeight,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    cacheWidth: (kChatInlineImageWidth * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                    errorBuilder: (_, __, ___) {
+                      onDecodeError();
+                      return _brokenMediaPlaceholder(
+                          m: m, kind: 'image', reason: 'decode_failed',
+                          width: kChatInlineImageWidth, height: kChatInlineImageHeight,
+                          onRetry: () {
+                            _forgetChatMediaFuture(m.media);
+                            _mutMsgs(() => m.localBytes = null);
+                          });
+                    }),
+              ),
+            );
+          }
           // STREAM J (D17): auto-download off + no local bytes -> tap-to-download
           // placeholder instead of eagerly fetching. Tapping is a MANUAL fetch
           // (always allowed); it caches into m.localBytes and repaints the preview.

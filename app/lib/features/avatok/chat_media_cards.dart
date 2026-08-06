@@ -646,16 +646,38 @@ const double kChatInlineImageHeight = 220;
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ChatImageCard extends StatelessWidget {
+  /// Exactly ONE of [bytes] / [file] must be given. [bytes] is the original
+  /// (still-uploading send, or a decrypt that has just landed); [file] is the
+  /// on-disk plaintext cache entry and is STRONGLY preferred whenever it exists
+  /// — see [CHAT-MEDIA-FIRSTFRAME-1] on [file].
   const ChatImageCard({
     super.key,
-    required this.bytes,
+    this.bytes,
+    this.file,
     this.onTap,
     this.overlays = const [],
     this.height = kChatImageBoxHeight,
     this.theme,
     this.heroTag,
-  });
-  final Uint8List bytes;
+    this.onDecodeError,
+  }) : assert(bytes != null || file != null, 'ChatImageCard needs bytes or a file');
+  final Uint8List? bytes;
+
+  /// [CHAT-MEDIA-FIRSTFRAME-1] The cached plaintext file for this attachment
+  /// (`MediaService.peekFile`). When set we render `Image.file`, NOT
+  /// `Image.memory`, and that swap is the whole point of this change:
+  /// `MemoryImage` is keyed in `PaintingBinding.imageCache` on the byte
+  /// buffer's IDENTITY, so bytes re-read from disk are a NEW key every time and
+  /// the JPEG is re-decoded from scratch on every thread open — the decode IS
+  /// the flash the owner sees. `FileImage` keys on the path, so the decoded
+  /// frame is reused from the image cache and paints synchronously once warm.
+  final File? file;
+
+  /// Called (during build) when the decoder rejects this source. The caller
+  /// uses it to evict the poisoned cache entry and fall back to a real
+  /// re-fetch — a corrupt file must never become a permanent broken bubble.
+  /// MUST NOT call setState: it fires from inside `errorBuilder`.
+  final VoidCallback? onDecodeError;
   final VoidCallback? onTap;
   final List<Widget> overlays; // forwarded label, timestamp scrim
 
@@ -678,6 +700,65 @@ class ChatImageCard extends StatelessWidget {
   final Object? heroTag;
   @override
   Widget build(BuildContext context) {
+    // [MEDIA-RETRY-KIND-1] A failed decode used to render as literally nothing
+    // (`SizedBox.shrink()`) — confirmed in prod as "the message vanished". Show
+    // a broken-image placeholder and report it instead of silently dropping the
+    // bubble's content.
+    Widget onError(BuildContext _, Object __, StackTrace? ___) {
+      Analytics.capture('chat_media_load_failed', {
+        'kind': 'image',
+        'reason': 'decode_failed',
+        'stage': 'bubble_card',
+        'source': file != null ? 'file' : 'memory',
+      });
+      // [CHAT-MEDIA-FIRSTFRAME-1] Let the caller drop the poisoned cache entry
+      // so the next attempt is a genuine re-fetch, not the same bad bytes.
+      onDecodeError?.call();
+      return Container(
+        color: Colors.black12,
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
+              size: 26, color: Colors.white70),
+          const SizedBox(height: Msg.s1),
+          const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
+        ]),
+      );
+    }
+
+    // [CHAT-MEDIA-FIRSTFRAME-1] Bound the decode. The card is `height` tall and
+    // at most the screen wide, so decoding a 12-megapixel camera photo at full
+    // resolution into it is pure cost — and the decode is what the eye reads as
+    // a flash. Keyed consistently (ResizeImage's cache key includes the target
+    // width), so the same photo in the same slot is one cache entry.
+    final int cw =
+        (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).round();
+
+    final f = file;
+    final Widget image = f != null
+        ? Image.file(
+            f,
+            width: double.infinity,
+            height: height,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            cacheWidth: cw,
+            errorBuilder: onError,
+          )
+        : Image.memory(
+            bytes!,
+            // Fill the bubble width; cover-crop only the vertical excess.
+            width: double.infinity,
+            height: height,
+            fit: BoxFit.cover,
+            // [CHAT-UI-STATIC-1] Hold the last painted frame when the byte
+            // source is swapped (decrypt lands / retry) instead of blanking
+            // to nothing for a frame.
+            gaplessPlayback: true,
+            cacheWidth: cw,
+            errorBuilder: onError,
+          );
+
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
@@ -688,36 +769,7 @@ class ChatImageCard extends StatelessWidget {
             // doc. Both dimensions are known before the bitmap decodes.
             width: double.infinity,
             height: height,
-            child: _maybeHero(Image.memory(
-              bytes,
-              // Fill the bubble width; cover-crop only the vertical excess.
-              width: double.infinity,
-              height: height,
-              fit: BoxFit.cover,
-              // [CHAT-UI-STATIC-1] Hold the last painted frame when the byte
-              // source is swapped (decrypt lands / retry) instead of blanking
-              // to nothing for a frame.
-              gaplessPlayback: true,
-              // [MEDIA-RETRY-KIND-1] A failed decode used to render as
-              // literally nothing (`SizedBox.shrink()`) — confirmed in prod as
-              // "the message vanished". Show a broken-image placeholder and
-              // report it instead of silently dropping the bubble's content.
-              errorBuilder: (_, __, ___) {
-                Analytics.capture('chat_media_load_failed', {
-                  'kind': 'image', 'reason': 'decode_failed', 'stage': 'bubble_card',
-                });
-                return Container(
-                  color: Colors.black12,
-                  alignment: Alignment.center,
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
-                        size: 26, color: Colors.white70),
-                    const SizedBox(height: Msg.s1),
-                    const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  ]),
-                );
-              },
-            )),
+            child: _maybeHero(image),
           ),
           ...overlays,
         ]),

@@ -325,9 +325,16 @@ class MediaService {
     // playback…) gets unencrypted-voice-note support with no call-site
     // changes required.
     if (m.storage == 'digital') return _downloadPlaintext(m);
+    final tRead = DateTime.now().millisecondsSinceEpoch;
     final cached = await _cacheRead(m.id);
     if (cached != null) {
       AvaLog.I.log('media', 'download cache-HIT kind=${m.kind.name} key=${_short(m.id)} ${cached.length}B');
+      // [CHAT-MEDIA-FIRSTFRAME-1] A disk hit is still 4 async hops, so it can
+      // never paint on frame 1 — the ms here is what `peekFile` removes.
+      noteCacheEvent('hit',
+          source: 'disk',
+          ms: DateTime.now().millisecondsSinceEpoch - tRead,
+          bytes: cached.length);
       return cached;
     }
     final t0 = DateTime.now().millisecondsSinceEpoch;
@@ -362,6 +369,7 @@ class MediaService {
       await _cacheWrite(m.id, bytes);
       final ms = DateTime.now().millisecondsSinceEpoch - t0;
       AvaLog.I.log('media', 'download+decrypt ok kind=${m.kind.name} key=${_short(m.id)} ${res.bodyBytes.length}B->${bytes.length}B ${ms}ms');
+      noteCacheEvent('miss', source: 'network', ms: ms, bytes: bytes.length);
       return bytes;
     } catch (e) {
       // A MAC/key mismatch means the envelope and the ciphertext disagree — the
@@ -428,9 +436,14 @@ class MediaService {
   /// falls back to a best-effort AvaLibrary round-trip
   /// ([_resolveStaleDigitalUrl]) instead of hanging or failing silently.
   static Future<Uint8List> _downloadPlaintext(ChatMedia m) async {
+    final tRead = DateTime.now().millisecondsSinceEpoch;
     final cached = await _cacheRead(m.id);
     if (cached != null) {
       AvaLog.I.log('media', 'download cache-HIT(plaintext) kind=${m.kind.name} key=${_short(m.id)} ${cached.length}B');
+      noteCacheEvent('hit',
+          source: 'disk',
+          ms: DateTime.now().millisecondsSinceEpoch - tRead,
+          bytes: cached.length);
       return cached;
     }
     Future<http.Response> fetchOnce(String u) =>
@@ -483,6 +496,7 @@ class MediaService {
     await _cacheWrite(m.id, bytes);
     final ms = DateTime.now().millisecondsSinceEpoch - t0;
     AvaLog.I.log('media', 'download(plaintext) ok kind=${m.kind.name} key=${_short(m.id)} ${bytes.length}B ${ms}ms');
+    noteCacheEvent('miss', source: 'network', ms: ms, bytes: bytes.length);
     return bytes;
   }
 
@@ -514,28 +528,221 @@ class MediaService {
   }
 
   // ---- per-account on-disk media cache ----
-  static Future<Directory> _cacheDir() async {
+  //
+  // [CHAT-MEDIA-FIRSTFRAME-1] Three things live here now, and the ORDER of the
+  // comments matches the order of the three costs they remove:
+  //
+  //  1. [_dirFut] — `getApplicationSupportDirectory()` is a native
+  //     platform-channel round-trip. It used to run on EVERY read and EVERY
+  //     write, i.e. once per photo in the thread, plus an `exists()` and
+  //     sometimes a `create()`. Same fix (and the same reason) as
+  //     `AvatarCache._dirFut` and `DiskCache._baseFut` — whose comment records
+  //     that memoising it removed most of the ~850ms list-loading cost. The
+  //     FUTURE is memoised, not the value: with a `??=` on a value every
+  //     concurrent caller passes the null check before the first await resolves
+  //     and they all make the native call anyway.
+  //
+  //  2. [_mem] + [peekFile] — a synchronous index of files ALREADY on disk, so a
+  //     previously-seen attachment can be rendered on the FIRST frame. Even a
+  //     guaranteed cache HIT could not paint on frame 1 before, because
+  //     [_cacheRead] is four async hops (dir → exists → length → readAsBytes):
+  //     the bubble showed the placeholder, then the photo. Every open. Forever.
+  //     Only the PATH is cached — never decrypted bytes: decoded/undecoded image
+  //     bytes are RAM-heavy, and Flutter's own `imageCache` (capped in main.dart
+  //     at 300 images / 64 MB) is the right owner of the decoded frame.
+  //
+  //  3. [warm] — builds that index once, from ONE `listSync()` at boot, so the
+  //     very first thread opened after launch is instant too (an index that only
+  //     fills as bubbles render is empty exactly when it matters).
+  //
+  // ACCOUNT SCOPING: the media dir is per-account (`media/<AccountScope.id>`) —
+  // mandatory in this repo, a parent and a child share one phone and must never
+  // be served each other's attachments. Both the memoised directory AND the
+  // in-memory index are therefore guarded by [_ensureScope], which drops
+  // everything the first time it notices `AccountScope.id` has changed.
+  static const int _memCap = 400;
+  static final Map<String, File> _mem = {};
+  static String? _memScope;
+  static bool _warmed = false;
+  static Future<Directory>? _dirFut;
+
+  static String get _scopeNow =>
+      (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'default' : AccountScope.id!;
+
+  /// Cheap (one string compare) — safe to call from `build()` via [peekFile].
+  static void _ensureScope() {
+    final s = _scopeNow;
+    if (_memScope == s) return;
+    _memScope = s;
+    _mem.clear();
+    _warmed = false;
+    _dirFut = null;
+  }
+
+  static void _remember(String name, File f) {
+    if (_mem.containsKey(name)) return;
+    if (_mem.length >= _memCap) {
+      // Cheap eviction: drop the oldest inserted key (Dart maps keep insert order).
+      _mem.remove(_mem.keys.first);
+    }
+    _mem[name] = f;
+  }
+
+  static Future<Directory> _cacheDir() {
+    _ensureScope();
+    return _dirFut ??= _openCacheDir();
+  }
+
+  static Future<Directory> _openCacheDir() async {
     final base = await getApplicationSupportDirectory();
-    final scope = AccountScope.id == null || AccountScope.id!.isEmpty ? 'default' : AccountScope.id!;
-    final d = Directory('${base.path}/media/$scope');
+    final d = Directory('${base.path}/media/$_scopeNow');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   static String _cacheName(String id) => id.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
 
-  static Future<Uint8List?> _cacheRead(String id) async {
+  /// [CHAT-MEDIA-FIRSTFRAME-1] SYNCHRONOUS, best-effort lookup of an
+  /// already-cached attachment's file. Returns null on a cold index (the caller
+  /// falls back to the async [downloadAndDecrypt] path). Never touches disk, so
+  /// it is safe to call from `build()`.
+  ///
+  /// Render the returned File with `Image.file(f)`, NOT `Image.memory(...)`:
+  /// `MemoryImage` is keyed on the byte buffer's IDENTITY, so freshly-read bytes
+  /// are a brand-new key and Flutter re-decodes the JPEG from scratch on every
+  /// thread open — that decode is the "flash". `FileImage` is keyed on the path,
+  /// so the decoded frame is reused straight out of `PaintingBinding.imageCache`
+  /// and paints synchronously on a warm cache.
+  static File? peekFile(String id) {
+    if (id.isEmpty) return null;
+    _ensureScope();
+    // Self-heal. `warm()` is called once at boot, but boot may happen BEFORE
+    // `AccountScope.id` is restored (index built under 'default'), and an
+    // account SWITCH deliberately drops the index — in both cases nobody would
+    // ever re-warm and every photo would silently fall back to the async path
+    // forever. This kicks off exactly one re-index per scope, asynchronously:
+    // it never blocks this frame (we still return the current answer below),
+    // it just means the NEXT frame has a populated index. `warm()` sets its own
+    // guard synchronously, so concurrent builds cannot start it twice.
+    if (!_warmed) unawaited(warm());
+    return _mem[_cacheName(id)];
+  }
+
+  /// Drop ONE entry from the synchronous index (sync, no I/O — safe to call
+  /// from an `errorBuilder`). The async path still works; it just re-reads.
+  static void forgetPeek(String id) {
+    if (id.isEmpty) return;
+    _mem.remove(_cacheName(id));
+  }
+
+  /// A cached file that could not be DECODED is poison: leaving it there means
+  /// every retry re-reads the same bad bytes and the bubble can never recover.
+  /// Drop the index entry AND delete the file so the next fetch is a genuine
+  /// re-download. Never throws; fire-and-forget.
+  static Future<void> evictCached(String id) async {
+    forgetPeek(id);
+    noteCacheEvent('stale', source: 'disk');
     try {
       final f = File('${(await _cacheDir()).path}/${_cacheName(id)}');
-      if (await f.exists() && await f.length() > 0) return await f.readAsBytes();
+      if (await f.exists()) await f.delete();
+    } catch (_) {/* best-effort */}
+  }
+
+  /// [CHAT-MEDIA-FIRSTFRAME-1] Populate the synchronous [peekFile] index from
+  /// what is ALREADY on disk. Without this, [_mem] is empty on every cold start,
+  /// so the first thread opened after launch misses on frame 1 for every photo —
+  /// which is exactly the case the owner reports ("it feels like it downloaded").
+  ///
+  /// The disk filename IS the index key ([_cacheName] of the media id), so one
+  /// directory listing reconstructs the whole index with no parsing and no
+  /// per-file async work.
+  ///
+  /// Uses SYNCHRONOUS I/O (`listSync`/`statSync`). That is deliberate and is
+  /// acceptable exactly ONCE, at boot, off the widget path — never per build and
+  /// never per attachment. Call it from boot only; do not call it from a widget.
+  /// Idempotent, and never throws.
+  static Future<void> warm() async {
+    _ensureScope();
+    if (_warmed) return;
+    _warmed = true;
+    try {
+      final d = await _cacheDir();
+      _ensureScope();
+      // Cap the scan so a pathological directory can't stall boot.
+      final entries = d.listSync(followLinks: false).take(4000).toList();
+      final files = <MapEntry<String, File>>[];
+      final stamps = <String, DateTime>{};
+      for (final e in entries) {
+        if (e is! File) continue;
+        final name = e.uri.pathSegments.isNotEmpty ? e.uri.pathSegments.last : '';
+        if (name.isEmpty) continue;
+        FileStat st;
+        try {
+          st = e.statSync();
+        } catch (_) {
+          continue;
+        }
+        if (st.size <= 0) continue; // truncated/poisoned entry — treat as absent
+        files.add(MapEntry(name, e));
+        stamps[name] = st.modified;
+      }
+      if (files.length > _memCap) {
+        // Keep the most recent entries; the rest fall back to the async path.
+        files.sort((a, b) => (stamps[b.key] ?? DateTime(0)).compareTo(stamps[a.key] ?? DateTime(0)));
+      }
+      for (final e in files.take(_memCap)) {
+        _mem.putIfAbsent(e.key, () => e.value);
+      }
+    } catch (_) {/* never block boot on a cache warm */}
+  }
+
+  /// [CHAT-MEDIA-FIRSTFRAME-1] Standardized cache signal for the chat-media
+  /// path, which was previously uninstrumented end to end (there was no event at
+  /// all distinguishing a memory hit, a disk hit and a download — which is why
+  /// this had to be diagnosed from source rather than from telemetry).
+  ///
+  /// FIRE-AND-FORGET — never awaited on a paint path. Carries no message
+  /// content and no contact identifier; the standard [Analytics] envelope
+  /// already carries the user's email so a future pull can find it.
+  static void noteCacheEvent(String result, {required String source, int? ms, int? bytes}) {
+    unawaited(Analytics.cacheEvent('chat_media', result,
+        renderMs: ms, bytes: bytes, accountScoped: true, extra: {'source': source}));
+  }
+
+  static Future<Uint8List?> _cacheRead(String id) async {
+    try {
+      final name = _cacheName(id);
+      final f = File('${(await _cacheDir()).path}/$name');
+      if (await f.exists() && await f.length() > 0) {
+        final b = await f.readAsBytes();
+        _remember(name, f); // so the NEXT open can paint this on frame 1
+        return b;
+      }
     } catch (_) {/* miss */}
     return null;
   }
 
+  /// [CHAT-MEDIA-FIRSTFRAME-1] Now that [_cacheDir] is memoised it no longer
+  /// re-`create()`s the directory on every call, so a purge (or an OS cache
+  /// eviction) that deletes `media/<scope>/` could otherwise leave us holding a
+  /// handle to a directory that no longer exists — and every later write would
+  /// fail silently, permanently disabling the media cache. Costs nothing on the
+  /// happy path: only a FAILED write drops the memo, re-creates the directory
+  /// and retries once. Same shape as `AvatarCache._write`.
   static Future<void> _cacheWrite(String id, Uint8List bytes) async {
+    final name = _cacheName(id);
     try {
-      final f = File('${(await _cacheDir()).path}/${_cacheName(id)}');
-      await f.writeAsBytes(bytes, flush: true);
+      var f = File('${(await _cacheDir()).path}/$name');
+      try {
+        await f.writeAsBytes(bytes, flush: true);
+      } catch (_) {
+        _dirFut = null;
+        final d = await _cacheDir();
+        await d.create(recursive: true);
+        f = File('${d.path}/$name');
+        await f.writeAsBytes(bytes, flush: true);
+      }
+      _remember(name, f);
     } catch (_) {/* best-effort */}
   }
 
