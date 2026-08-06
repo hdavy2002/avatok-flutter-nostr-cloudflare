@@ -250,6 +250,10 @@ class CallSfuTransport {
     required List<Map<String, dynamic>> fallbackIceServers,
     required bool video,
   }) async {
+    // Close the old Cloudflare seat/session before minting the replacement.
+    // Clearing _sessionId first leaks the old Realtime session and leaves the
+    // peer holding a stale seat on every network recovery.
+    await dispose();
     _disposed = false;
     _sessionId = null;
     _openMids.clear();

@@ -1244,9 +1244,11 @@ class CallSession {
       RemoteConfig.callIceRecoveryV2 ||
       RemoteConfig.callRelayMigrationV1;
 
-  void _startPlayoutHealthSampler() {
-    if (!_playoutSamplerWanted) return;
-    _playoutHealthTimer?.cancel();
+  /// Drop every cumulative stat and recovery streak whenever the active peer
+  /// connection changes. Stats counters belong to a PC generation; carrying
+  /// them across an SFU reconnect (or any migration) makes the first sample
+  /// look unhealthy because it is compared with the old connection's totals.
+  void _resetPlayoutHealthBaselines() {
     _phBytes = _phPackets = _phLost = null;
     _phJbufEmitted = null;
     _phJbufDelaySec = null;
@@ -1254,10 +1256,18 @@ class CallSession {
     _phTotalAudioEnergy = null;
     _phBytesSent = _phPacketsSent = null;
     _phOutboundAudioEnergy = null;
+    _lastOutVideoPacketsSent = _lastOutVideoPacketsLost = null;
+    _phVideoBytes = _phVideoFramesDecoded = _phVideoFramesDropped = null;
     _noRtpStreak = 0;
     _noPlayoutStreak = 0;
-    _phVideoBytes = _phVideoFramesDecoded = _phVideoFramesDropped = null;
+    _relayThresholdStreak = 0;
     _lastPlayoutHealthClass = MediaHealthClass.unknown;
+  }
+
+  void _startPlayoutHealthSampler() {
+    if (!_playoutSamplerWanted) return;
+    _playoutHealthTimer?.cancel();
+    _resetPlayoutHealthBaselines();
     _playoutHealthTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _pollPlayoutHealth());
   }
@@ -3453,6 +3463,7 @@ class CallSession {
         _failTimer?.cancel();
       }
     };
+    _resetPlayoutHealthBaselines();
     _pc = pc;
     if (cellPair) unawaited(_applyAudioBitrate(40000));
     return pc;
@@ -3504,6 +3515,10 @@ class CallSession {
   }
 
   Future<void> _tryIceRestart(String why) async {
+    // SFU recovery is a server rejoin. Never let a timer, network callback, or
+    // stale signalling event enter the phone-to-phone ICE ladder while SFU is
+    // active or while its replacement PC/session is being established.
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     final pc = _pc;
     if (pc == null || _ended || !_weOffered || _remoteId == null) return;
     // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation rather
@@ -3536,6 +3551,7 @@ class CallSession {
   /// Either endpoint may request recovery (REL-3 fix). Guards to exactly one
   /// active attempt at a time (plan §4.1: "no overlapping restarts").
   Future<void> _requestRecovery(RecoveryReason why) async {
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     if (!RemoteConfig.callIceRecoveryV2) return;
     if (_ended || !_connected) return;
     // [CF-CALL-P2P-1] Defer to an in-flight video-enable renegotiation —
@@ -3843,6 +3859,7 @@ class CallSession {
   /// incident avatok-999a650b / avatok-10d4696b (2026-08-04): WiFi↔cell flaps
   /// ended live calls with `relay_migration_timeout` after ~50s of dead air.
   void _scheduleSurvivalRetry(RecoveryReason why, {required String from}) {
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     if (_ended || !_connected) return;
     _setPhase('reconnecting');
     final max = RemoteConfig.callRecoveryMaxAttempts;
@@ -3859,6 +3876,7 @@ class CallSession {
     _survivalRetryTimer?.cancel();
     _survivalRetryTimer = Timer(Duration(seconds: _kSurvivalBackoffSec[idx]), () {
       if (_ended || !_connected) return;
+      if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
       if (_activeRecovery != null || _activeMigration != null) return;
       // ignore: unawaited_futures
       _requestRecovery(why);
@@ -3950,6 +3968,7 @@ class CallSession {
   /// the generic `to`-scoped relay `CallRoom` already applies to every other
   /// signaling message type — no server change needed.
   void _requestRelayMigration(RecoveryReason why) {
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     if (_migrationAttempted || _activeMigration != null) return;
     final remoteId = _remoteId;
     if (remoteId == null) return;
@@ -3963,6 +3982,7 @@ class CallSession {
   /// no-op if not (e.g. a stale/duplicate request after migration already
   /// completed).
   void _onRelayMigrateRequest(Map<String, dynamic> d) {
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     if (!RemoteConfig.callRelayMigrationV1 || _ended || !_connected) return;
     if (!_isMigrationInitiator) return; // peer mis-elected us; don't race it.
     if (_migrationAttempted || _activeMigration != null || _relayForced) return;
@@ -3993,6 +4013,7 @@ class CallSession {
   /// tracks re-added, offer sent via `relay-migrate-offer`. The OLD `_pc`
   /// keeps running (still audible) until [_maybeCompleteMigration] cuts over.
   Future<void> _migrateToRelay(RecoveryReason why) async {
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     if (!RemoteConfig.callRelayMigrationV1) {
       // [CALL-SURVIVE-1] Flag off is not a reason to end a live call — fall
       // back to the plain ICE-recovery retry ladder.
@@ -4106,6 +4127,7 @@ class CallSession {
   /// Receiver side: gets `relay-migrate-offer`, builds its OWN new relay-only
   /// PC, and answers. Symmetric with [_migrateToRelay] above.
   Future<void> _onRelayMigrateOffer(Map<String, dynamic> d) async {
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
     if (!RemoteConfig.callRelayMigrationV1 || _ended || !_connected) return;
     final id = d['attemptId']?.toString();
     if (id == null || id.isEmpty) return;
@@ -4296,6 +4318,7 @@ class CallSession {
     _migrationDeadlineTimer?.cancel();
     final oldPc = _pc;
     _promoteMigratedPc(newPc);
+    _resetPlayoutHealthBaselines();
     _pc = newPc;
     // [CALL-REL-6 SHOULD-FIX-4] Repoint the renderer to the NEW PC's remote
     // stream at cutover. `attempt.remoteTrackSeen` (required above) proves
@@ -4443,6 +4466,7 @@ class CallSession {
     if (result.connected) {
       _sfuStarting = false;
       _sfuActive = true;
+      _resetPlayoutHealthBaselines();
       _pc = result.pc;
       _telemetry.setMediaPath('sfu');
       Analytics.capture('call_sfu_active', {
@@ -4471,33 +4495,40 @@ class CallSession {
   Future<void> _reconnectSfu() async {
     if (_ended || !_sfuActive || _sfuReconnectInFlight || _sfu == null || _stream == null) return;
     _sfuReconnectInFlight = true;
+    _sfuStarting = true;
     _sfuActive = false;
+    _resetPlayoutHealthBaselines();
     _setPhase('reconnecting');
     final oldPc = _pc;
     _pc = null;
     await _safeAwait(() => oldPc?.close());
-    final result = await _sfu!.reconnect(
-      localStream: _stream!,
-      fallbackIceServers: _ice,
-      video: config.video && !RemoteConfig.callSfuAudioOnly,
-    );
-    if (_ended) return;
-    if (result.connected) {
-      _pc = result.pc;
-      _sfuActive = true;
-      _setPhase('connected');
-      Analytics.capture('call_sfu_reconnected', {
-        'call_id': config.room,
-        'relay_degraded': result.relayDegraded,
-      });
-    } else {
-      Analytics.capture('call_sfu_reconnect_failed', {
-        'call_id': config.room,
-        'failure': result.failure?.name ?? 'unknown',
-      });
-      _endWith('ended', reason: 'sfu-reconnect-failed');
+    try {
+      final result = await _sfu!.reconnect(
+        localStream: _stream!,
+        fallbackIceServers: _ice,
+        video: config.video && !RemoteConfig.callSfuAudioOnly,
+      );
+      if (_ended) return;
+      if (result.connected) {
+        _resetPlayoutHealthBaselines();
+        _pc = result.pc;
+        _sfuActive = true;
+        _setPhase('connected');
+        Analytics.capture('call_sfu_reconnected', {
+          'call_id': config.room,
+          'relay_degraded': result.relayDegraded,
+        });
+      } else {
+        Analytics.capture('call_sfu_reconnect_failed', {
+          'call_id': config.room,
+          'failure': result.failure?.name ?? 'unknown',
+        });
+        _endWith('ended', reason: 'sfu-reconnect-failed');
+      }
+    } finally {
+      _sfuStarting = false;
+      _sfuReconnectInFlight = false;
     }
-    _sfuReconnectInFlight = false;
   }
 
   Future<void> _enableSfuVideo() async {
