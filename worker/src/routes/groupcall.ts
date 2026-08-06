@@ -370,10 +370,41 @@ async function guard(req: Request, env: Env, groupId: string, opts: { checkCap?:
   if (isFail(u)) return json({ error: u.error }, u.status);
   const email = await emailFor(env, u.uid).catch(() => null);
 
+  // [ADDCALL-0] FAIL CLOSED. This used to read
+  //   `if (mem.length > 0 && !mem.includes(u.uid))`
+  // which let a group id with ZERO member rows admit ANYONE — the roster being
+  // empty was read as "no roster to check" rather than "you are not on it".
+  // That is the opposite of `ConferenceRoomDO.isGroupMember`
+  // (`worker/src/do/conference_room.ts:161-172`), which fails closed on purpose
+  // and says why: "a caller who learns a room id must not be able to consume a
+  // roster slot".
+  //
+  // Verified before changing: nothing legitimate depends on the empty case.
+  // Every writer of a `conversations` row inserts at least one
+  // `conversation_members` row in the same D1 batch — convCreate
+  // (`messaging.ts:1572-1578`, owner inserted even when `groupInvitesEnabled`
+  // holds the invitees back), convAdopt (`:1615-1621`), DM creation — and no
+  // deletion can strand one (`convRemoveMember` refuses to remove the owner;
+  // `convLeave` reassigns or deletes the conversation; `convDelete` removes
+  // both). A PENDING invitee leaves the roster non-empty, so that case was
+  // already handled by the `!mem.includes` half and is unchanged. Every
+  // `groupId` reaching here comes from the `/api/groupcall/:id/...` route match
+  // in `index.ts` and is always a real conversation id. The only thing that
+  // could have relied on fail-open was a legacy local-only group whose
+  // `convAdopt` never succeeded — and that group is already non-functional
+  // (message fan-out and `ringGroup` both read the same empty roster, so nobody
+  // is notified and nobody is rung).
+  //
+  // A D1 failure inside `groupMembers` throws, which surfaces as a 500 rather
+  // than an admission — also closed.
+  //
+  // Telemetry distinguishes the two causes so an empty-roster hit is visible in
+  // PostHog rather than hiding inside the ordinary not-a-member count.
   const mem = await groupMembers(env, groupId);
-  if (mem.length > 0 && !mem.includes(u.uid)) {
+  if (!mem.includes(u.uid)) {
+    const reason = mem.length === 0 ? "empty_roster" : "not_member";
     await trackUser(env, u.uid, email, "groupcall_blocked", "avatok",
-      { reason: "not_member", group_id: groupId, provider: PROVIDER, ...confGeo(req) });
+      { reason, group_id: groupId, provider: PROVIDER, ...confGeo(req) });
     return json({ error: "not a member" }, 403);
   }
   // Phase-2 A/V mode respects the SAME ≤25 group-conference cap as the LiveKit

@@ -563,6 +563,29 @@ class CallSession {
   WebSocketChannel? _ws;
   RTCPeerConnection? _pc;
   MediaStream? _stream;
+
+  /// [ADDCALL-0] The live local capture stream, **borrowed, never owned**.
+  ///
+  /// Exposed for make-before-break escalation (Specs/SPEC-ADD-TO-CALL-2026-08-06.md
+  /// §4.3 gap #1): the migration coordinator hands this same stream to the
+  /// conference `RTCPeerConnection` so the SFU leg comes up on the mic that is
+  /// already open, with no re-`getUserMedia` and no audible gap.
+  ///
+  /// **The caller MUST NOT dispose it, stop its tracks, or retain it past the
+  /// call.** [CallSession] created this stream and [CallSession] disposes it in
+  /// teardown; a borrower that disposes it kills the audio of the call that is
+  /// still running. `CloudflareConferenceController` gets this contract right
+  /// already — it sets `_ownsLocalStream = false` whenever a `sharedLocalStream`
+  /// is passed in (`cloudflare_conference_controller.dart:568-579`, `:1547`) and
+  /// therefore leaves disposal to us. Any new borrower must do the same.
+  ///
+  /// Mutating the stream (e.g. toggling track `enabled`) is also off-limits —
+  /// mute and camera state are owned by this session's own controls.
+  ///
+  /// Null before capture starts and after teardown. Read-only by design: there
+  /// is deliberately no setter, because nothing outside this class may swap the
+  /// stream a live [RTCPeerConnection]'s senders are bound to.
+  MediaStream? get borrowedLocalCaptureStream => _stream;
   // [CF-CALL-P2P-1] Monotonic generation stamped on every PC created by
   // [_newPC] / promoted by [_promoteMigratedPc]. Event closures (onTrack in
   // particular) capture the generation they were installed under and bail if

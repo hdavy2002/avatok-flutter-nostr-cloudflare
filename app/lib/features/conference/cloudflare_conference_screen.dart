@@ -15,6 +15,9 @@ import 'package:permission_handler/permission_handler.dart' show openAppSettings
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
+import '../../core/call_recording/call_recording_model.dart';
+import '../../core/call_recording/call_recording_store.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -160,6 +163,17 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
                   ])),
                 ]),
               ),
+              // [ADDCALL-0] Recording indicator — the conference twin of the 1:1
+              // pill (`call_screen.dart` `_RecordingIndicatorPill`). Gated on
+              // `callRecordingIndicatorEnabled` ALONE, exactly as the 1:1 pill
+              // is: `callRecordingEnabled` is the switch on the ability to
+              // RECORD, and the device that most needs to see this pill is the
+              // one that cannot record but can be recorded.
+              //
+              // Renders nothing when nobody is recording, so the ordinary case
+              // costs no layout.
+              if (RemoteConfig.callRecordingIndicatorEnabled)
+                Center(child: _ConferenceRecordingPill(gid: widget.gid)),
               if (_ctrl.notice != null) _noticeBar(_ctrl.notice!),
               Expanded(
                 child: pages == 1
@@ -294,6 +308,137 @@ class _CloudflareConferenceScreenState extends State<CloudflareConferenceScreen>
       }),
     );
   }
+}
+
+/// [ADDCALL-0] "Recording" pill for the group-call screen.
+///
+/// The 1:1 screen has had one since [CALLREC-PEER-1]; the conference screen had
+/// nothing, so in a group call one person could record and everyone else saw no
+/// sign of it. Spec §7 (`Specs/SPEC-ADD-TO-CALL-2026-08-06.md`) makes this a
+/// hard prerequisite for recording through an escalation: in a 1:1 the ToS
+/// clause plus an on-screen indicator informs both parties, but in a 10-way call
+/// the clause is carrying nine people on its own without this.
+///
+/// Deliberately mirrors `_RecordingIndicatorPill` in
+/// `app/lib/features/avatok/call_screen.dart` — same destructive-token pill,
+/// same filled dot, same `Recording · m:ss` / `Saving recording…` copy — so a
+/// user who has seen one recognises the other instantly.
+///
+/// ⚠️ **The remote half is NOT wired yet — [peerRecording] is always false
+/// today.** The 1:1 pill learns about the other side from the `callrec` frame,
+/// which rides the `CallRoom` relay; a conference does not use `CallRoom` at
+/// all, so that state has to be relayed through `GroupCallRoom` instead. That is
+/// new transport, not a copy of the existing frame, and it is **Phase 4** work
+/// per spec §7 / §9 — see the TODO on [peerRecording]. Until it lands this pill
+/// is honest about exactly one thing: whether THIS device is recording.
+class _ConferenceRecordingPill extends StatelessWidget {
+  const _ConferenceRecordingPill({
+    required this.gid,
+    // TODO(ADDCALL-4): wire this to real peer recording state. Requires
+    // relaying the `callrec` state frame through `GroupCallRoom` (spec §7:
+    // "the indicator must show ... for EVERY participant whenever ANY
+    // participant is recording"). Hard-coded false until then — do NOT read
+    // this as "no one else is recording", it means "we cannot know yet".
+    this.peerRecording = false,
+    this.peerRecordingLabel = 'Someone',
+  });
+
+  /// The conversation id of the group call this screen is showing.
+  final String gid;
+
+  /// True when at least one OTHER participant is recording. Always false today —
+  /// see the class doc and the TODO above.
+  final bool peerRecording;
+
+  /// How to name the recording peer(s) once [peerRecording] can be true. With no
+  /// transport there is no name to show, so the default is deliberately generic
+  /// rather than a fabricated participant.
+  final String peerRecordingLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CallRecordingPhase>(
+      valueListenable: CallRecordingStore.I.phase,
+      builder: (context, phase, _) => ValueListenableBuilder<String?>(
+        valueListenable: CallRecordingStore.I.activeCallId,
+        builder: (context, activeId, __) {
+          // The recorder is process-wide and this device can only be in one
+          // call, so a live recorder while this screen is up IS this call.
+          //
+          // Note we deliberately do NOT compare `activeId == gid` the way the
+          // 1:1 pill compares against `session.room`. A recording that started
+          // before an escalation keeps the pre-escalation 1:1 call id (the
+          // recorder taps the audio device module, below the transport, and is
+          // never restarted — spec §7), so matching on the gid would hide the
+          // pill in precisely the case §7 exists for. `activeId != null` is the
+          // honest test: some call on this device is being recorded.
+          final mine = activeId != null;
+          final recording = mine && phase == CallRecordingPhase.recording;
+          final finalizing = mine && phase == CallRecordingPhase.finalizing;
+          if (!recording && !finalizing && !peerRecording) {
+            return const SizedBox.shrink();
+          }
+          return ValueListenableBuilder<CallRecordingProgress?>(
+            valueListenable: CallRecordingStore.I.progress,
+            builder: (context, progress, ___) {
+              final elapsed = (recording && progress != null)
+                  ? _recElapsed(progress.durationMs)
+                  : '';
+              final String text;
+              if (finalizing && !peerRecording) {
+                text = 'Saving recording…';
+              } else if (recording && peerRecording) {
+                text = 'You and $peerRecordingLabel are recording';
+              } else if (peerRecording && !recording) {
+                text = '$peerRecordingLabel is recording';
+              } else {
+                text = elapsed.isEmpty ? 'Recording' : 'Recording · $elapsed';
+              }
+              return Container(
+                // Margin lives on the pill, not on the caller, so the
+                // not-recording case (a `SizedBox.shrink`) leaves no gap in the
+                // column at all.
+                margin: const EdgeInsets.only(bottom: Msg.s2),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Msg.s3, vertical: Msg.s1),
+                decoration: BoxDecoration(
+                  color: AD.destructiveBg,
+                  borderRadius: Msg.brPill,
+                  border: Border.all(color: AD.destructiveBg, width: 1),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.circle(PhosphorIconsStyle.fill),
+                      size: 10, color: AD.destructiveInk),
+                  const SizedBox(width: Msg.s2),
+                  Flexible(
+                    child: Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ADText.timestamp(c: AD.destructiveInk)
+                          .copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ]),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// `m:ss`, or `h:mm:ss` past an hour. Same formatting as the 1:1 screen's
+/// `_hhmmss`, duplicated because that one is library-private to `call_screen.dart`.
+String _recElapsed(int ms) {
+  final total = ms <= 0 ? 0 : ms ~/ 1000;
+  final h = total ~/ 3600;
+  final m = (total % 3600) ~/ 60;
+  final s = total % 60;
+  final ss = s.toString().padLeft(2, '0');
+  if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:$ss';
+  return '$m:$ss';
 }
 
 class _LocalTile extends StatelessWidget {

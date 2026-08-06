@@ -2034,9 +2034,24 @@ export class CallRoom {
       } catch { /* best-effort telemetry */ }
     }
 
-    // STANDARD RULE: AvaTOK calls are strictly 1:1 (P2P). Never allow a third
-    // participant — there are no group calls in AvaTOK (group calling lives in
-    // AvaConsult). Refuse the join with a 'busy' so the extra caller ends cleanly.
+    // STANDARD RULE: a CallRoom is strictly TWO SEATS. Never allow a third
+    // participant here. Refuse the join with a 'busy' so the extra caller ends
+    // cleanly.
+    //
+    // [ADDCALL-0] Corrected 2026-08-06. This comment used to add "there are no
+    // group calls in AvaTOK (group calling lives in AvaConsult)", which predates
+    // the 2026-06-10 Phase-10 rule change and now contradicts CLAUDE.md. Group
+    // conferences of up to 25 DO exist in AvaTOK, via Cloudflare Realtime — but
+    // on a completely different path: `worker/src/routes/groupcall.ts` and the
+    // `GroupCallRoom` DO. They never touch this object.
+    //
+    // The 2-seat cap is therefore unchanged and must stay unchanged (CLAUDE.md
+    // is explicit: "1:1 calls stay P2P (CallRoom DO, 2-peer cap unchanged — group
+    // conferences never touch it; do NOT raise the cap)"). Escalating a 1:1 into
+    // a group MOVES the call off CallRoom onto GroupCallRoom rather than widening
+    // this room; see Specs/SPEC-ADD-TO-CALL-2026-08-06.md §8. Note the seat model
+    // is `"side:caller" | "side:callee"` at the TYPE level, so widening it would
+    // not be a one-line change even if it were permitted.
     // An away-peer rejoin doesn't count against the cap: the stale socket for
     // that peer is already gone (webSocketClose already fired for it).
     // CALL-DUP-SESSION-2: count only sockets belonging to a DIFFERENT peer id — any
