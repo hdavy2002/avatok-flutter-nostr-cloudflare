@@ -417,12 +417,15 @@ class CallRecordingStore {
 
   /// Is there room to record, per `callRecordingMinFreeMb`?
   ///
-  /// FAILS OPEN. The native plugin as shipped does not implement the optional
-  /// `freeBytes` method, so this returns true when it cannot measure — native
-  /// `start` still enforces its own hard floor and answers
-  /// `insufficient_storage`, so the worst case is that the user finds out one
-  /// tap later instead of before arming. Failing CLOSED here would disable
-  /// recording outright on every device, which is far worse than a late error.
+  /// FAILS OPEN. `CallRecorderPlugin` does implement `freeBytes`
+  /// (`[CALLREC-NATIVE-2]`), but it answers null when the volume cannot be
+  /// measured — and an app running against an older native build gets a
+  /// [MissingPluginException], which surfaces as null too. Either way this
+  /// returns true rather than guessing: native `start` still enforces its own
+  /// hard floor and answers `insufficient_storage`, so the worst case is that
+  /// the user finds out one tap later instead of before arming. Failing CLOSED
+  /// here would disable recording outright on every device it cannot measure,
+  /// which is far worse than a late error.
   Future<bool> hasFreeSpace() async {
     try {
       final dir = await _workDir();

@@ -90,7 +90,11 @@ import { getAgentSettings, putAgentSettings, listAgentServices, createAgentServi
 import { voicemailStart, voicemailRecording } from "./routes/voicemail_routes";
 // [CALLREC-SERVER-1] On-demand call recording — upload/meta/delete/playback.
 // All four 403 while `callRecordingEnabled` is false (it ships false).
-import { callRecFinalize, callRecMeta, callRecDelete, callRecPlayback } from "./routes/callrec";
+import {
+  callRecFinalize, callRecMeta, callRecDelete, callRecPlayback,
+  // [CALLREC-UPLOAD-1] the resumable lane for long recordings (spec §5.1).
+  callRecUploadBegin, callRecUploadPart, callRecUploadComplete, callRecUploadAbort,
+} from "./routes/callrec";
 import { pstnRoute } from "./routes/pstn";
 // [AVA-CAMP-B2-WIRE] Outbound AI calling campaigns — PSTN bridge + CRUD API
 // (dark behind campaignDialerEnabled; Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md).
@@ -808,6 +812,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // 2026-08-04.md §5.1). Bytes are captured on-device and land here AFTER the call;
       // storage/quota/dedup all ride registerArtifactMedia. Gated on callRecordingEnabled.
       if (p === "/api/callrec/finalize" && req.method === "POST") return await callRecFinalize(req, env, ctx);
+      // [CALLREC-UPLOAD-1] Resumable lane for long recordings — a 3-hour call is
+      // ~33 MB, which does not survive a single-shot base64 POST on mobile. R2
+      // multipart; ownership rides on the key's `u/<uid>/` prefix (callrec.ts).
+      if (p === "/api/callrec/upload/begin" && req.method === "POST") return await callRecUploadBegin(req, env, ctx);
+      if (p === "/api/callrec/upload/part" && req.method === "PUT") return await callRecUploadPart(req, env, ctx);
+      if (p === "/api/callrec/upload/complete" && req.method === "POST") return await callRecUploadComplete(req, env, ctx);
+      if (p === "/api/callrec/upload/abort" && req.method === "POST") return await callRecUploadAbort(req, env, ctx);
       // PATCH is the contract; POST is accepted as an alias because util.ts's shared
       // CORS header advertises GET,POST,PUT,DELETE,OPTIONS only — a browser client
       // would fail the PATCH preflight, and util.ts is not this issue's file to change.

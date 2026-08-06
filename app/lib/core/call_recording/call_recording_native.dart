@@ -235,13 +235,15 @@ class CallRecorderNative {
 
   /// Free bytes on the volume holding [outputDir].
   ///
-  /// OPTIONAL METHOD — the plugin as shipped answers `notImplemented()` for it,
-  /// which arrives here as [MissingPluginException]. We return null in that case
-  /// rather than guessing, and the caller fails OPEN: native `start` enforces
-  /// its own hard `STORAGE_FLOOR_BYTES` regardless, so a missing pre-check
-  /// degrades to "you find out one tap later", never to a full disk.
-  /// (Wire `"freeBytes" -> result.success(freeBytes(File(dir)))` into
-  /// `CallRecorderPlugin.onMethodCall` to light this up.)
+  /// IMPLEMENTED by `CallRecorderPlugin.onMethodCall` since `[CALLREC-NATIVE-2]`.
+  ///
+  /// The null-return paths below are NOT dead code: an app running against an
+  /// older native build (or a platform that has no plugin at all) still answers
+  /// [MissingPluginException], and a `StatFs` failure on an odd volume comes
+  /// back as [PlatformException]. Null means "could not measure", and the caller
+  /// fails OPEN on it — native `start` enforces its own hard
+  /// `STORAGE_FLOOR_BYTES` regardless, so a missing pre-check degrades to "you
+  /// find out one tap later", never to a full disk.
   static Future<int?> freeBytes(String outputDir) async {
     try {
       final v = await _method
