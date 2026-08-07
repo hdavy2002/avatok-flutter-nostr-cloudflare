@@ -59,6 +59,15 @@ const TURQUOISE: [number, number, number] = [0x8f / 255, 0xf2 / 255, 0xec / 255]
  */
 const SKIP_COARSE = '(pointer: coarse)';
 
+/**
+ * THE opacity dials. Both shaders drive their own alpha toward saturation (see the
+ * `intensity` note on the Liquid config below), so their numeric options cannot make
+ * either layer subtle — compositing the whole canvas at reduced opacity can, and it
+ * is exact. Raise these to make the water more present; lower to fade it back.
+ */
+const LIQUID_OPACITY = 0.34;
+const RAIN_OPACITY = 0.4;
+
 export default function LiquidOverlay() {
   const hostRef = useRef<HTMLDivElement>(null);
   const liquidCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,13 +97,19 @@ export default function LiquidOverlay() {
       {
         color: TURQUOISE,
         rainbow: false,
-        // `intensity` is the opacity dial: the shader derives the overlay alpha as
-        // (1 - exp(-|flow| * intensity * 0.5)) * 0.82, which saturates fast. Kept
-        // low so the trail stays a translucent current beneath the rain rather
-        // than competing with it.
-        densityDissipation: 0.9,
+        // NOTE: `intensity` is NOT a usable opacity dial here, despite reading like
+        // one. The shader computes alpha as (1 - exp(-|flow| * intensity * 0.5)) * 0.82,
+        // but the splat pass writes the dye colour as vec3(dx, dy, 10) — that
+        // hardcoded 10 in the blue channel makes |flow| ~10 at every splat centre, so
+        // the exponential saturates and alpha pins near the 0.82 ceiling no matter
+        // what intensity is set to. That is why lowering it from 2.4 to 0.9 barely
+        // changed anything on screen. Translucency is therefore done in CSS instead
+        // (LIQUID_OPACITY below), which is the only reliable dial.
+        densityDissipation: 0.88,
         curl: 2.2,
-        radius: 0.16,
+        // Splat gaussian is exp(-d²/(radius/100)), so 0.08 → a ~30px core that the
+        // advection then smears into a trail, rather than the ~250px blobs 0.16 gave.
+        radius: 0.08,
         force: 1.0,
         intensity: 0.9,
       },
@@ -109,21 +124,27 @@ export default function LiquidOverlay() {
       { source: makeSource(), content: rainContent, output: rainOutput },
       {
         // A drizzle, not a downpour — this sits over marketing copy that has to
-        // stay readable.
-        intensity: 0.34,
+        // stay readable. 0.34 already covered the viewport in drops.
+        intensity: 0.16,
         speed: 0.75,
-        scale: 0.5,
-        dropWidth: 0.9,
-        dropLength: 1.05,
-        staticDrops: 0.28,
+        // `scale` is inverted: HIGHER means SMALLER drops. Small beads of water
+        // read as glass; large ones read as grey blobs over the copy.
+        scale: 1.1,
+        dropWidth: 0.62,
+        dropLength: 0.9,
+        staticDrops: 0.12,
         fallSpeed: 0.85,
         wiggle: 1.1,
         // `refraction` and `blur` only do anything on the html-in-canvas path
         // (they warp captured page pixels), so they are left at defaults; the
         // glassiness we actually see comes from the drop normals' specular and
         // rim lighting in the self-lit branch.
+        //
+        // The self-lit branch bases each drop on `mix(vec3(0.72), tint, tintStrength)`,
+        // i.e. mid-grey unless the tint is pushed hard. At 0.4 the rain read as dirty
+        // grey teardrops on the cream paper; near 1 it becomes brand-tinted water.
         tint: TURQUOISE,
-        tintStrength: 0.4,
+        tintStrength: 0.92,
         interactive: true,
         interactionRadius: 0.26,
         interactionStrength: 0.75,
@@ -209,11 +230,11 @@ export default function LiquidOverlay() {
         pointerEvents: 'none',
       }}
     >
-      <canvas ref={liquidCanvasRef} style={fill} />
+      <canvas ref={liquidCanvasRef} style={{ ...fill, opacity: LIQUID_OPACITY }} />
       <div ref={rainWrapRef} style={fill}>
         {/* Sizing reference for the Droplets render window — see the note above. */}
         <div ref={rainContentRef} style={fill} />
-        <canvas ref={rainCanvasRef} style={fill} />
+        <canvas ref={rainCanvasRef} style={{ ...fill, opacity: RAIN_OPACITY }} />
       </div>
     </div>
   );
