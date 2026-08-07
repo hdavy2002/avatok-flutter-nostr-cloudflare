@@ -39,12 +39,13 @@ import { createLiquid, type LiquidInstance } from '../../components/canvasui/Liq
  *   --zine-blue    #A0F7F1  (light turquoise — surfaces, marks)
  *   --zine-blueInk #007D7F  (deep teal — focus rings, ink)
  *
- * #A0F7F1 alone is too pale to read as a trail over the cream --zine-paper
- * background, and #007D7F reads as navy-teal rather than turquoise. This sits
- * between them (#3EDDD4) so the trail is legible on both the paper sections and
- * the photographic ones. Change this single triplet to retune the colour.
+ * #007D7F reads as navy-teal rather than turquoise, so we stay at the light end.
+ * #8FF2EC is a hair deeper than the raw --zine-blue token — just enough to stay
+ * visible over the cream --zine-paper, without the trail reading as paint.
+ * Change this single triplet to retune the colour; pair it with `intensity`
+ * below, which is what actually controls how opaque the trail is.
  */
-const TURQUOISE: [number, number, number] = [0x3e / 255, 0xdd / 255, 0xd4 / 255];
+const TURQUOISE: [number, number, number] = [0x8f / 255, 0xf2 / 255, 0xec / 255];
 
 export default function LiquidOverlay() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -66,13 +67,20 @@ export default function LiquidOverlay() {
       {
         color: TURQUOISE,
         rainbow: false,
-        // Slightly longer-lived, softer trail than the component defaults, so it
-        // reads as a wash following the cursor rather than a hard paint stroke.
-        densityDissipation: 0.94,
+        // Tuned for a light, translucent wash rather than a thick paint stroke.
+        //
+        // `intensity` is the opacity dial: the display shader computes the
+        // overlay alpha as (1 - exp(-|flow| * intensity * 0.5)) * 0.82, so it
+        // saturates fast. 2.4 pushed most of the trail near that 0.82 ceiling
+        // and read as solid colour; 0.9 keeps it well down the curve and mostly
+        // translucent. `densityDissipation` (closer to 1 = lasts longer) shortens
+        // the tail so colour never piles up on itself on a slow drag, and the
+        // smaller `radius` keeps the stroke thin.
+        densityDissipation: 0.9,
         curl: 2.2,
-        radius: 0.22,
+        radius: 0.16,
         force: 1.0,
-        intensity: 2.4,
+        intensity: 0.9,
       },
     );
     // No WebGL2 (or a lost context): leave the page exactly as it was.
