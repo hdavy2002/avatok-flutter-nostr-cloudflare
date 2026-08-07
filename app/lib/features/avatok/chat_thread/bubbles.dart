@@ -56,13 +56,22 @@ void _forgetChatMediaFuture(ChatMedia? media) {
 // ─────────────────────────────────────────────────────────────────────────────
 final Set<String> _chatMediaPeekReported = <String>{};
 
-void _noteChatMediaPeek(String id) {
+/// [CHAT-MEDIA-THUMB-1] [source] distinguishes the two synchronous tiers:
+///   * `'thumb'` — a ~480px derived JPEG; nothing left to parse, genuinely
+///     instant. This is the tier the flash fix adds.
+///   * `'memory'` — the index hit but only the FULL 1–3 MB file exists, so
+///     Flutter still parses megabytes before it can paint (measured at ~99ms on
+///     build 10521). Seeing this in the data means the backfill hasn't caught
+///     up for that photo yet.
+/// Deduped per (id, source) so one scroll can't emit hundreds of events, but a
+/// photo that moves from `memory` to `thumb` still reports the promotion.
+void _noteChatMediaPeek(String id, {required String source}) {
   if (_chatMediaPeekReported.length > 300) _chatMediaPeekReported.clear();
-  if (!_chatMediaPeekReported.add(id)) return;
+  if (!_chatMediaPeekReported.add('$source:$id')) return;
   // ms: 0 — this path does NO async work at all; the photo is on screen in the
   // same frame the bubble lays out. That is the whole point of the signal:
-  // `source == 'memory'` vs `'disk'` vs `'network'` is now chartable.
-  MediaService.noteCacheEvent('hit', source: 'memory', ms: 0);
+  // `source == 'thumb'` vs `'memory'` vs `'disk'` vs `'network'` is chartable.
+  MediaService.noteCacheEvent('hit', source: source, ms: 0);
 }
 
 extension _ChatThreadBubbles on _ChatThreadScreenState {
@@ -80,6 +89,36 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
     } catch (e) {
       Analytics.capture('chat_media_load_failed', {
         'kind': 'image', 'stage': 'open_from_cache', 'err': e.runtimeType.toString(),
+      });
+    }
+  }
+
+  /// [CHAT-MEDIA-THUMB-1] Tap-through when the BUBBLE is showing a ~480px
+  /// thumbnail. The fullscreen viewer must never be handed the thumb — it is
+  /// pinch-to-zoom, and 480px is unacceptable zoomed in — so this always
+  /// resolves the FULL-SIZE bytes: the cached full file when we have it,
+  /// otherwise the ordinary download/decrypt future (which caches as it goes).
+  ///
+  /// Runs on the TAP, never on the paint path.
+  ///
+  /// NOTE the name: `_openImageFull` is ALREADY an extension member on this
+  /// same State (`chat_thread/media.dart`, which opens a URL). Two extensions
+  /// on the same type cannot both declare it — every call site would become
+  /// ambiguous.
+  Future<void> _openFullSizeImage(ChatMedia media) async {
+    final full = MediaService.peekFile(media.id);
+    if (full != null) {
+      await _openImageCachedFile(full, mime: media.contentType);
+      return;
+    }
+    try {
+      final b = await _chatMediaFuture(media);
+      if (!mounted) return;
+      _openImageBytes(b, mime: media.contentType);
+    } catch (e) {
+      _forgetChatMediaFuture(media);
+      Analytics.capture('chat_media_load_failed', {
+        'kind': 'image', 'stage': 'open_full_from_thumb', 'err': e.runtimeType.toString(),
       });
     }
   }
@@ -948,39 +987,88 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
           // The async FutureBuilder below remains the fallback for a genuine
           // miss (first ever view) and for a poisoned entry.
           // ─────────────────────────────────────────────────────────────────
-          final cachedFile = MediaService.peekFile(m.media!.id);
-          if (cachedFile != null) {
-            _noteChatMediaPeek(m.media!.id);
-            final mediaId = m.media!.id;
+          // ─────────────────────────────────────────────────────────────────
+          // [CHAT-MEDIA-THUMB-1] THUMBNAIL TIER — what was still left after
+          // [CHAT-MEDIA-FIRSTFRAME-1] landed.
+          //
+          // Telemetry from build 10521 (owner's device) closed the loop: the
+          // index hits (`source:memory`, render_ms 0) but the DISK reads still
+          // cost 99ms for a 3,151,102-byte photo. `cacheWidth` bounds the
+          // decoded BITMAP; it does not stop Flutter reading and parsing the
+          // whole multi-megabyte JPEG first. That parse is the flash.
+          //
+          // So the bubble now prefers a ~480px derived thumbnail and the FULL
+          // image is reserved for the fullscreen viewer — the WhatsApp shape.
+          // Render order, most-instant first:
+          //   (a) `peekThumb` hit  -> paint the thumb NOW. No FutureBuilder, no
+          //       placeholder, nothing to await.
+          //   (b) `peekFile` hit   -> paint the full file exactly as before
+          //       (correct, just slower) AND queue thumbnail generation so the
+          //       NEXT open takes path (a). This IS the backfill for every
+          //       photo already on the phone.
+          //   (c) neither          -> the existing async download/decrypt path
+          //       below; `downloadAndDecrypt` derives the thumbnail itself once
+          //       the bytes land.
+          // ─────────────────────────────────────────────────────────────────
+          final mediaId = m.media!.id;
+          final thumbFile = MediaService.peekThumb(mediaId);
+          final cachedFile = MediaService.peekFile(mediaId);
+          if (thumbFile != null || cachedFile != null) {
+            final bool viaThumb = thumbFile != null;
+            final File shown = thumbFile ?? cachedFile!;
+            _noteChatMediaPeek(mediaId, source: viaThumb ? 'thumb' : 'memory');
+            // (b) BACKFILL. Fire-and-forget, bounded and serialized inside
+            // MediaService; never awaited, never on the paint path.
+            if (!viaThumb) MediaService.ensureThumb(mediaId);
+
             // RETRY / CORRUPT-FILE CONTRACT. `errorBuilder` fires DURING build,
-            // so this must never call setState. Both actions here are safe:
-            // `forgetPeek` is a plain map removal (the next rebuild therefore
-            // misses the peek and takes the async path) and `evictCached` is a
-            // fire-and-forget disk delete, so that async path performs a real
-            // re-download instead of re-reading the same bad bytes forever.
+            // so this must never call setState. Every action here is safe:
+            // `forgetPeek`/`evictThumb` are map removals + fire-and-forget disk
+            // deletes, so the next rebuild misses the peek and takes a genuine
+            // re-fetch instead of re-reading the same bad bytes forever.
             void onDecodeError() {
+              if (viaThumb) {
+                // A bad THUMB must degrade to the full image, never to a
+                // re-download and never to a broken bubble: the card/branch
+                // below already swapped in `cachedFile` in this same frame.
+                // Drop only the thumb so it is regenerated next time.
+                unawaited(MediaService.evictThumb(mediaId));
+                // …unless we have no full file to fall back to, in which case
+                // this bubble genuinely does need the async path.
+                if (cachedFile == null) _forgetChatMediaFuture(m.media);
+                return;
+              }
               MediaService.forgetPeek(mediaId);
               unawaited(MediaService.evictCached(mediaId));
               _forgetChatMediaFuture(m.media);
             }
+
+            // The viewer ALWAYS gets the full-size image — a 480px thumb is not
+            // acceptable pinch-zoomed.
+            void openFull() => unawaited(_openFullSizeImage(m.media!));
+
             if (overlayMeta) {
               return ChatImageCard(
-                file: cachedFile,
-                onTap: () => _openImageCachedFile(cachedFile, mime: m.media?.contentType),
+                file: shown,
+                // Null when we're already showing the full file (nothing better
+                // to fall back to).
+                fallbackFile: viaThumb ? cachedFile : null,
+                onTap: openFull,
                 overlays: _mediaMetaOverlays(m),
                 theme: t,
                 onDecodeError: onDecodeError,
               );
             }
             return GestureDetector(
-              onTap: () => _openImageCachedFile(cachedFile, mime: m.media?.contentType),
+              onTap: openFull,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(Msg.rMd),
                 // Same FIXED box and the same DPR-aware `cacheWidth` bound as
                 // the byte-backed branches, so nothing resizes and a full-res
                 // camera photo is never decoded at full resolution into a
-                // 220dp thumbnail.
-                child: Image.file(cachedFile,
+                // 220dp thumbnail. (`ResizeImage` never upscales, so the same
+                // bound is a no-op on a 480px thumb.)
+                child: Image.file(shown,
                     width: kChatInlineImageWidth,
                     height: kChatInlineImageHeight,
                     fit: BoxFit.cover,
@@ -988,6 +1076,22 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
                     cacheWidth: (kChatInlineImageWidth * MediaQuery.of(context).devicePixelRatio * 2).round(),
                     errorBuilder: (_, __, ___) {
                       onDecodeError();
+                      // Same-frame degrade to the full image when the THUMB is
+                      // the thing that failed.
+                      final fb = viaThumb ? cachedFile : null;
+                      if (fb != null) {
+                        return Image.file(fb,
+                            width: kChatInlineImageWidth,
+                            height: kChatInlineImageHeight,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            cacheWidth: (kChatInlineImageWidth * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                            // Distinct names: nested inside the outer
+                            // `errorBuilder`, whose `_ __ ___` would shadow.
+                            errorBuilder: (fc, fe, fs) => _brokenMediaPlaceholder(
+                                m: m, kind: 'image', reason: 'decode_failed',
+                                width: kChatInlineImageWidth, height: kChatInlineImageHeight));
+                      }
                       return _brokenMediaPlaceholder(
                           m: m, kind: 'image', reason: 'decode_failed',
                           width: kChatInlineImageWidth, height: kChatInlineImageHeight,

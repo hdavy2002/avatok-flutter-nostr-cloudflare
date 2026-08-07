@@ -654,6 +654,7 @@ class ChatImageCard extends StatelessWidget {
     super.key,
     this.bytes,
     this.file,
+    this.fallbackFile,
     this.onTap,
     this.overlays = const [],
     this.height = kChatImageBoxHeight,
@@ -672,6 +673,18 @@ class ChatImageCard extends StatelessWidget {
   /// the flash the owner sees. `FileImage` keys on the path, so the decoded
   /// frame is reused from the image cache and paints synchronously once warm.
   final File? file;
+
+  /// [CHAT-MEDIA-THUMB-1] A SECOND on-disk source to fall back to IN THE SAME
+  /// FRAME when [file] fails to decode. Used for the thumbnail tier: [file] is
+  /// the small `<id>.thumb` and this is the full-size plaintext.
+  ///
+  /// Why not just let the caller drop the bad entry and rebuild? Because
+  /// `onDecodeError` fires from inside `errorBuilder`, i.e. DURING build, and
+  /// therefore cannot call setState — the recovery would only land on the NEXT
+  /// rebuild, and until then the owner sees a "Couldn't load" box in place of a
+  /// photo the device demonstrably has. A corrupt thumbnail must degrade to the
+  /// full image, never to a broken bubble.
+  final File? fallbackFile;
 
   /// Called (during build) when the decoder rejects this source. The caller
   /// uses it to evict the poisoned cache entry and fall back to a real
@@ -700,39 +713,66 @@ class ChatImageCard extends StatelessWidget {
   final Object? heroTag;
   @override
   Widget build(BuildContext context) {
-    // [MEDIA-RETRY-KIND-1] A failed decode used to render as literally nothing
-    // (`SizedBox.shrink()`) — confirmed in prod as "the message vanished". Show
-    // a broken-image placeholder and report it instead of silently dropping the
-    // bubble's content.
-    Widget onError(BuildContext _, Object __, StackTrace? ___) {
-      Analytics.capture('chat_media_load_failed', {
-        'kind': 'image',
-        'reason': 'decode_failed',
-        'stage': 'bubble_card',
-        'source': file != null ? 'file' : 'memory',
-      });
-      // [CHAT-MEDIA-FIRSTFRAME-1] Let the caller drop the poisoned cache entry
-      // so the next attempt is a genuine re-fetch, not the same bad bytes.
-      onDecodeError?.call();
-      return Container(
-        color: Colors.black12,
-        alignment: Alignment.center,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
-              size: 26, color: Colors.white70),
-          const SizedBox(height: Msg.s1),
-          const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
-        ]),
-      );
-    }
-
     // [CHAT-MEDIA-FIRSTFRAME-1] Bound the decode. The card is `height` tall and
     // at most the screen wide, so decoding a 12-megapixel camera photo at full
     // resolution into it is pure cost — and the decode is what the eye reads as
     // a flash. Keyed consistently (ResizeImage's cache key includes the target
     // width), so the same photo in the same slot is one cache entry.
+    //
+    // [CHAT-MEDIA-THUMB-1] Declared BEFORE `onError` because the fallback
+    // branch inside it needs the same bound (a closure cannot reference a local
+    // declared after it). Harmless for a `.thumb` source: `ResizeImage` does
+    // not upscale, so a 480px thumb with a larger `cacheWidth` decodes at its
+    // natural size.
     final int cw =
         (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).round();
+
+    // [MEDIA-RETRY-KIND-1] A failed decode used to render as literally nothing
+    // (`SizedBox.shrink()`) — confirmed in prod as "the message vanished". Show
+    // a broken-image placeholder and report it instead of silently dropping the
+    // bubble's content.
+    Widget broken() => Container(
+          color: Colors.black12,
+          alignment: Alignment.center,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
+                size: 26, color: Colors.white70),
+            const SizedBox(height: Msg.s1),
+            const Text("Couldn't load", style: TextStyle(color: Colors.white70, fontSize: 12)),
+          ]),
+        );
+
+    Widget onError(BuildContext _, Object __, StackTrace? ___) {
+      Analytics.capture('chat_media_load_failed', {
+        'kind': 'image',
+        'reason': 'decode_failed',
+        'stage': 'bubble_card',
+        // [CHAT-MEDIA-THUMB-1] 'thumb' is distinguishable from a full-file
+        // failure, so a systematically bad generator is one query away.
+        'source': file == null
+            ? 'memory'
+            : (fallbackFile != null ? 'thumb' : 'file'),
+      });
+      // [CHAT-MEDIA-FIRSTFRAME-1] Let the caller drop the poisoned cache entry
+      // so the next attempt is a genuine re-fetch, not the same bad bytes.
+      onDecodeError?.call();
+      // [CHAT-MEDIA-THUMB-1] Same-frame degrade to the full-size image.
+      final fb = fallbackFile;
+      if (fb != null) {
+        return Image.file(
+          fb,
+          width: double.infinity,
+          height: height,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          cacheWidth: cw,
+          // Distinct parameter names: this closure is NESTED inside `onError`,
+          // whose own `_ __ ___` would otherwise be shadowed.
+          errorBuilder: (fc, fe, fs) => broken(),
+        );
+      }
+      return broken();
+    }
 
     final f = file;
     final Widget image = f != null

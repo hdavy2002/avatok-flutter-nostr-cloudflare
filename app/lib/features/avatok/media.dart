@@ -2,10 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+// [CHAT-MEDIA-THUMB-1] `dart:ui` is the PLATFORM image decoder. It is imported
+// with the `ui` prefix (there is nothing else named `ui` in this file) purely
+// for `ImmutableBuffer`/`ImageDescriptor`/`Codec`, which can decode a JPEG
+// DIRECTLY at a target size — see [_downscale].
+import 'dart:ui' as ui;
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+// [CHAT-MEDIA-THUMB-1] Only ever used to RE-ENCODE an already-downscaled
+// (<=480px) bitmap to JPEG. It never decodes, and never sees a full-size image.
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/analytics.dart';
@@ -210,6 +218,10 @@ class MediaService {
     // this, reopening the chat re-downloaded + re-decrypted media we just sent;
     // now our own photos/videos/voice/files load instantly local-first too.
     await _cacheWrite(media.id, bytes);
+    // [CHAT-MEDIA-THUMB-1] …and derive the sender's own thumbnail from the
+    // bytes already in hand, so reopening a thread with a photo I JUST sent
+    // takes the instant path too. Fire-and-forget, off the send path.
+    if (kind == MediaKind.image) ensureThumb(media.id, bytes: bytes);
     return media;
   }
 
@@ -335,6 +347,10 @@ class MediaService {
           source: 'disk',
           ms: DateTime.now().millisecondsSinceEpoch - tRead,
           bytes: cached.length);
+      // [CHAT-MEDIA-THUMB-1] Backfill: we are already holding the plaintext of
+      // a photo that has no thumbnail yet — derive one now so the NEXT open
+      // takes the instant thumb path. Fire-and-forget, no-op if it exists.
+      if (m.kind == MediaKind.image) ensureThumb(m.id, bytes: cached);
       return cached;
     }
     final t0 = DateTime.now().millisecondsSinceEpoch;
@@ -370,6 +386,10 @@ class MediaService {
       final ms = DateTime.now().millisecondsSinceEpoch - t0;
       AvaLog.I.log('media', 'download+decrypt ok kind=${m.kind.name} key=${_short(m.id)} ${res.bodyBytes.length}B->${bytes.length}B ${ms}ms');
       noteCacheEvent('miss', source: 'network', ms: ms, bytes: bytes.length);
+      // [CHAT-MEDIA-THUMB-1] First-ever view of this photo: derive the
+      // thumbnail from the bytes we just decrypted (no second read, no second
+      // decode of the full file). Fire-and-forget.
+      if (m.kind == MediaKind.image) ensureThumb(m.id, bytes: bytes);
       return bytes;
     } catch (e) {
       // A MAC/key mismatch means the envelope and the ciphertext disagree — the
@@ -560,7 +580,12 @@ class MediaService {
   // be served each other's attachments. Both the memoised directory AND the
   // in-memory index are therefore guarded by [_ensureScope], which drops
   // everything the first time it notices `AccountScope.id` has changed.
-  static const int _memCap = 400;
+  // [CHAT-MEDIA-THUMB-1] Raised from 400: the directory now holds up to TWO
+  // entries per attachment (`<name>` and `<name>.thumb`), and the index is the
+  // only thing that makes a photo paint on frame 1 — halving its effective
+  // reach would undo [CHAT-MEDIA-FIRSTFRAME-1] for older attachments. Entries
+  // are `File` handles (a path string), not bytes, so this is cheap.
+  static const int _memCap = 800;
   static final Map<String, File> _mem = {};
   static String? _memScope;
   static bool _warmed = false;
@@ -630,9 +655,14 @@ class MediaService {
 
   /// Drop ONE entry from the synchronous index (sync, no I/O — safe to call
   /// from an `errorBuilder`). The async path still works; it just re-reads.
+  ///
+  /// [CHAT-MEDIA-THUMB-1] Drops the derived THUMBNAIL entry too. If the full
+  /// file is poison the thumbnail derived from it is at best suspect, and
+  /// leaving it indexed would keep serving a stale bubble forever.
   static void forgetPeek(String id) {
     if (id.isEmpty) return;
     _mem.remove(_cacheName(id));
+    _mem.remove(_thumbName(id));
   }
 
   /// A cached file that could not be DECODED is poison: leaving it there means
@@ -643,9 +673,253 @@ class MediaService {
     forgetPeek(id);
     noteCacheEvent('stale', source: 'disk');
     try {
-      final f = File('${(await _cacheDir()).path}/${_cacheName(id)}');
+      final d = await _cacheDir();
+      final f = File('${d.path}/${_cacheName(id)}');
+      if (await f.exists()) await f.delete();
+      // [CHAT-MEDIA-THUMB-1] and the derived thumbnail with it.
+      final t = File('${d.path}/${_thumbName(id)}');
+      if (await t.exists()) await t.delete();
+    } catch (_) {/* best-effort */}
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // [CHAT-MEDIA-THUMB-1] LOCAL THUMBNAIL TIER
+  //
+  // WHY (measured on build 10521, owner's device, not guessed): with the
+  // frame-1 index warm, `cache_event{store:chat_media,result:hit,source:disk}`
+  // still reported render_ms 99 for a 3,151,102-byte photo (and 1.4 MB / 957 KB
+  // for the others). The photos are 1–3 MB full-size camera JPEGs being painted
+  // into a ~240dp bubble. `cacheWidth` bounds the DECODED BITMAP but Flutter
+  // must still READ AND PARSE the whole multi-megabyte JPEG first — that parse
+  // is the ~100ms "flash". WhatsApp is instant because the bubble shows a small
+  // thumbnail and only the fullscreen viewer ever touches the original.
+  //
+  // WHAT: a second, derived file per photo — ~480px on the long edge, JPEG —
+  // stored BESIDE the full plaintext in the SAME per-account media dir with a
+  // `.thumb` suffix. Derived entirely on-device from bytes we already have:
+  //   * NO wire-format change (`ChatMedia` is untouched),
+  //   * NO server work,
+  //   * works for photos ALREADY on the phone (generated on first view).
+  //
+  // SIZE: 480px covers a 240dp bubble at 2x DPR exactly and is oversampled at
+  // the common 2.x–3x range; the card's own `cacheWidth` clamps the rest. A
+  // 480px JPEG is typically 30–60 KB — one to two orders of magnitude less to
+  // parse than the original, which is the entire point.
+  //
+  // ACCOUNT SCOPING: thumbnails go through [_cacheDir], so they inherit
+  // `media/<AccountScope.id>` unchanged — a child can never be served a
+  // parent's thumbnail, and [_ensureScope] drops thumbs from the index on an
+  // account switch exactly like full files.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /// Long-edge target, in pixels.
+  static const int kThumbMaxEdge = 480;
+  static const int _kThumbJpegQuality = 82;
+  static const String _kThumbSuffix = '.thumb';
+
+  /// Index/disk name of the thumbnail derived from [id]. Media ids are R2 keys
+  /// (`u/<uid>/<sha256>`), so a real full-file name can never end in
+  /// `.thumb` — the two namespaces cannot collide.
+  static String _thumbName(String id) => '${_cacheName(id)}$_kThumbSuffix';
+
+  /// [CHAT-MEDIA-THUMB-1] SYNCHRONOUS, best-effort lookup of an already-
+  /// generated thumbnail. Exact mirror of [peekFile]: in-memory only, no I/O,
+  /// safe to call from `build()`. Null → the caller falls back to the full file
+  /// (and should kick off [ensureThumb] so the NEXT open is instant).
+  static File? peekThumb(String id) {
+    if (id.isEmpty) return null;
+    _ensureScope();
+    if (!_warmed) unawaited(warm());
+    return _mem[_thumbName(id)];
+  }
+
+  /// Drop ONLY the thumbnail (index + disk) — used when the THUMB itself fails
+  /// to decode. Deliberately does NOT touch the full file: a bad thumbnail must
+  /// degrade to the full image, never to a re-download or a broken bubble.
+  /// Never throws; fire-and-forget.
+  static Future<void> evictThumb(String id) async {
+    if (id.isEmpty) return;
+    final name = _thumbName(id);
+    _mem.remove(name);
+    noteCacheEvent('stale', source: 'thumb');
+    try {
+      final f = File('${(await _cacheDir()).path}/$name');
       if (await f.exists()) await f.delete();
     } catch (_) {/* best-effort */}
+  }
+
+  // Generation is SERIALIZED (one at a time) and BOUNDED. Opening a thread with
+  // a dozen unthumbed photos must not become a dozen concurrent decodes — that
+  // is the "CPU storm" this tier exists to avoid, not to create.
+  static const int _kThumbQueueCap = 24;
+  static final Set<String> _thumbPending = <String>{};
+  static final List<_ThumbJob> _thumbQueue = <_ThumbJob>[];
+  static bool _thumbDraining = false;
+
+  /// [CHAT-MEDIA-THUMB-1] FIRE-AND-FORGET request to derive the thumbnail for
+  /// [id]. Returns immediately — NEVER awaited on a paint path, never called
+  /// with an `await` from `build()`.
+  ///
+  /// [bytes] is the plaintext when the caller already holds it (the download/
+  /// decrypt path); omit it and the worker reads the cached full file from disk
+  /// itself, OFF the paint path. Cheap and idempotent: an already-indexed,
+  /// already-queued or already-on-disk thumbnail is a no-op.
+  ///
+  /// BACKFILL POLICY: this is the ONLY trigger. There is deliberately no boot
+  /// batch and no opportunistic sweep — photos already on the phone get their
+  /// thumbnail the first time their bubble is actually rendered, so nothing is
+  /// ever added to the launch critical path.
+  static void ensureThumb(String id, {Uint8List? bytes}) {
+    if (id.isEmpty) return;
+    _ensureScope();
+    final name = _thumbName(id);
+    if (_mem.containsKey(name)) return;
+    if (!_thumbPending.add(id)) return;
+    if (_thumbQueue.length >= _kThumbQueueCap) {
+      // Bounded: drop the OLDEST request rather than growing without limit.
+      // A dropped request costs nothing — the next render re-queues it.
+      final dropped = _thumbQueue.removeAt(0);
+      _thumbPending.remove(dropped.id);
+    }
+    _thumbQueue.add(_ThumbJob(id, bytes));
+    if (!_thumbDraining) unawaited(_drainThumbQueue());
+  }
+
+  static Future<void> _drainThumbQueue() async {
+    if (_thumbDraining) return;
+    _thumbDraining = true;
+    try {
+      while (_thumbQueue.isNotEmpty) {
+        final job = _thumbQueue.removeAt(0);
+        try {
+          await _generateThumb(job.id, job.bytes);
+        } catch (_) {/* one bad photo must never stall the queue */}
+        _thumbPending.remove(job.id);
+        // Yield to the event loop between photos so a backlog can never hold
+        // the UI isolate for several consecutive decodes.
+        await Future<void>.delayed(Duration.zero);
+      }
+    } finally {
+      _thumbDraining = false;
+    }
+  }
+
+  static Future<void> _generateThumb(String id, Uint8List? src) async {
+    final name = _thumbName(id);
+    if (_mem.containsKey(name)) return;
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final d = await _cacheDir();
+    final tf = File('${d.path}/$name');
+    // Already on disk from a previous session — just index it (this is the
+    // cheap path after a cold start with a cold [_mem]).
+    try {
+      if (await tf.exists() && await tf.length() > 0) {
+        _remember(name, tf);
+        return;
+      }
+    } catch (_) {/* fall through and regenerate */}
+
+    // Explicitly a NEW non-nullable local rather than reassigning [src] — no
+    // reliance on null-promotion across a try/catch boundary.
+    final Uint8List? source = src ?? await _readFullForThumb(d, id);
+    if (source == null || source.isEmpty) return;
+
+    final small = await _downscale(source);
+    if (small == null || small.isEmpty) return;
+    try {
+      await tf.writeAsBytes(small, flush: true);
+      _remember(name, tf);
+    } catch (_) {
+      return; // a write failure just means the next open retries
+    }
+    // FIRE-AND-FORGET. No message content, no contact identifier — sizes and a
+    // duration only; the standard [Analytics] envelope carries the email that
+    // makes a future pull possible.
+    unawaited(Analytics.capture('chat_media_thumb_generated', {
+      'bytes': small.length,
+      'src_bytes': source.length,
+      'gen_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      'max_edge': kThumbMaxEdge,
+    }));
+  }
+
+  /// Reads the cached FULL plaintext for [id]. Null when it isn't on disk (the
+  /// photo has never been fetched) or the read fails — either way there is
+  /// simply nothing to derive a thumbnail from yet.
+  static Future<Uint8List?> _readFullForThumb(Directory d, String id) async {
+    try {
+      final full = File('${d.path}/${_cacheName(id)}');
+      if (!await full.exists()) return null;
+      return await full.readAsBytes();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [CHAT-MEDIA-THUMB-1] Decode [bytes] DIRECTLY at ~[kThumbMaxEdge] on the
+  /// long edge and re-encode as JPEG. Returns null on anything that isn't a
+  /// decodable image (a mislabelled attachment must never throw into a bubble).
+  ///
+  /// The `dart:ui` codec is the whole trick: `instantiateCodec(targetWidth:)`
+  /// hands the target to the PLATFORM decoder, which never materialises the
+  /// full-resolution bitmap at all. Decoding at full size and then resizing
+  /// would pay exactly the cost this tier exists to remove.
+  ///
+  /// [ui.ImageDescriptor.encoded] parses only the HEADER, so the source
+  /// dimensions are known before any pixels are produced — needed to pick
+  /// width-vs-height, because a bare `targetWidth: 480` on a tall portrait
+  /// leaves the LONG edge far above 480.
+  static Future<Uint8List?> _downscale(Uint8List bytes) async {
+    ui.Codec? codec;
+    ui.Image? im;
+    try {
+      final ui.ImmutableBuffer buf = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final ui.ImageDescriptor desc = await ui.ImageDescriptor.encoded(buf);
+      final int sw = desc.width, sh = desc.height;
+      if (sw <= 0 || sh <= 0) {
+        buf.dispose();
+        return null;
+      }
+      int? tw, th;
+      if (sw >= sh) {
+        if (sw > kThumbMaxEdge) tw = kThumbMaxEdge;
+      } else {
+        if (sh > kThumbMaxEdge) th = kThumbMaxEdge;
+      }
+      final ui.Codec c = await desc.instantiateCodec(targetWidth: tw, targetHeight: th);
+      // Same ownership contract as `PaintingBinding.instantiateImageCodecWithSize`:
+      // the buffer is released once the codec exists. (On the throw path above,
+      // the outer catch takes over and the buffer is collected with the frame —
+      // a rare error path, not worth a try/finally that would muddy the
+      // definite-assignment analysis of `c`.)
+      buf.dispose();
+      codec = c;
+      final frame = await c.getNextFrame();
+      final ui.Image image = frame.image;
+      im = image;
+      final bd = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bd == null) return null;
+      // The RGBA round-trip is pure bytes, so the JPEG encode CAN safely leave
+      // the UI isolate — and it is the most expensive step left. (The codec
+      // work above cannot: `dart:ui` handles are not sendable across isolates.)
+      return await compute(
+        _encodeThumbJpeg,
+        _ThumbEncodeInput(
+          rgba: Uint8List.fromList(
+              bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes)),
+          width: image.width,
+          height: image.height,
+          quality: _kThumbJpegQuality,
+        ),
+      );
+    } catch (_) {
+      // Not an image, a corrupt file, an unsupported codec — the caller simply
+      // keeps rendering the full-size file.
+      return null;
+    } finally {
+      try { im?.dispose(); } catch (_) {}
+      try { codec?.dispose(); } catch (_) {}
+    }
   }
 
   /// [CHAT-MEDIA-FIRSTFRAME-1] Populate the synchronous [peekFile] index from
@@ -656,6 +930,11 @@ class MediaService {
   /// The disk filename IS the index key ([_cacheName] of the media id), so one
   /// directory listing reconstructs the whole index with no parsing and no
   /// per-file async work.
+  ///
+  /// [CHAT-MEDIA-THUMB-1] Thumbnails live in the SAME directory under
+  /// `<name>.thumb`, so this ONE `listSync` indexes them too with no extra I/O
+  /// and no extra code — `_mem` is keyed by filename, and [peekThumb] looks up
+  /// the suffixed key. That is why the tier costs nothing at boot.
   ///
   /// Uses SYNCHRONOUS I/O (`listSync`/`statSync`). That is deliberate and is
   /// acceptable exactly ONCE, at boot, off the widget path — never per build and
@@ -763,6 +1042,50 @@ class MediaUploadException implements Exception {
   MediaUploadException(this.message);
   @override
   String toString() => message;
+}
+
+// ---- [CHAT-MEDIA-THUMB-1] thumbnail generation plumbing ----
+
+/// One queued thumbnail request. [bytes] is the plaintext when the caller
+/// already had it; null means "read the cached full file yourself".
+class _ThumbJob {
+  final String id;
+  final Uint8List? bytes;
+  _ThumbJob(this.id, this.bytes);
+}
+
+class _ThumbEncodeInput {
+  final Uint8List rgba;
+  final int width;
+  final int height;
+  final int quality;
+  _ThumbEncodeInput({
+    required this.rgba,
+    required this.width,
+    required this.height,
+    required this.quality,
+  });
+}
+
+/// Runs on a background isolate via `compute`. PURE BYTES — no `dart:ui`
+/// handles cross the isolate boundary (they are not sendable), which is why the
+/// decode stays on the main isolate and only this encode moves.
+///
+/// JPEG, not `toByteData(format: png)`: the source is a photo, and PNG is
+/// lossless — a 480x640 PNG of a camera frame is commonly 400–700 KB, an order
+/// of magnitude larger than the ~30–60 KB JPEG, which would put a meaningful
+/// slice of the parse cost straight back into the bubble.
+Uint8List _encodeThumbJpeg(_ThumbEncodeInput inp) {
+  final image = img.Image.fromBytes(
+    width: inp.width,
+    height: inp.height,
+    bytes: inp.rgba.buffer,
+    numChannels: 4,
+  );
+  // `Uint8List.fromList` for the same reason as `profile/qr_share.dart` and
+  // `avatar_crop_screen.dart` do it — keeps the declared return type honest
+  // regardless of what `encodeJpg` is statically typed as in this version.
+  return Uint8List.fromList(img.encodeJpg(image, quality: inp.quality));
 }
 
 // ---- [CHAT-UPLOAD-1] off-main-thread AES-GCM encryption ----
