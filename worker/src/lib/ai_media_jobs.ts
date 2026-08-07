@@ -43,13 +43,42 @@ import { track, trackException } from "../hooks";
 // from `routes/` is an established pattern in this codebase (lib/ai_billing.ts
 // already imports readConfig/walletOp from routes/config.ts, routes/wallet.ts).
 import { presignDigitalReadUrl } from "../routes/media";
+// [AVA-IMG-TIERS-1 / WS-19d] Only for the DARK flat-per-action tariff lookup
+// (flatPriceTokensFor, below). This file still never decides a price for the
+// live metered path — ai_billing.ts remains the sole pricing authority. The
+// lib/ -> routes/config precedent is the same one ai_billing.ts already sets.
+import { readConfig } from "../routes/config";
 
 export type AiMediaJobKind =
   | "image_generate"
+  // [AVA-IMG-TIERS-1 / WS-10] The on-demand high-resolution rendition of an
+  // image_generate result. A SEPARATE job, deliberately: it is a separate
+  // provider call, so it needs its own reservation, its own settlement and its
+  // own terminal state. Folding it into the original job would mean either
+  // charging twice against one reservation or re-opening a succeeded job —
+  // both of which break the "settle exactly once by job_id" contract this
+  // file exists to hold.
+  //
+  // Unlike image_generate, this kind IS queue-dispatched (see
+  // queues/ai_media.ts's handleImageUpgrade). image_generate is route-owned
+  // ONLY because its input is an ephemeral PROMPT that §41/§42 forbids
+  // persisting, so a job_id-only redelivery could never redo the work. An
+  // upgrade has no such problem: its input is the preview artifact, which is
+  // already durably stored in R2 and referenced by source_media_id, and its
+  // prompt is a fixed, non-sensitive instruction constant. That is exactly
+  // the shape doc_summarize/audio_transcribe already have.
+  | "image_upgrade"
   | "doc_summarize"
   | "doc_translate"
   | "audio_transcribe"
   | "audio_translate";
+
+/** [AVA-IMG-TIERS-1 / WS-10] Which rendition of a job's image an artifact row
+ *  holds. See worker/migrations/2026-08-07-ai-media-renditions.sql for why a
+ *  discriminating column was unavoidable (the table allowed several rows per
+ *  job but said nothing about what each one was, and a second rendition cannot
+ *  be derived at the CDN edge for a private, presigned R2 object). */
+export type AiMediaRendition = "primary" | "full";
 
 export type AiMediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
@@ -64,6 +93,12 @@ export interface AiMediaJobRecord {
   progress: number;
   target_language: string | null;
   artifact_media_id: string | null;
+  /** [AVA-IMG-TIERS-1 / WS-10] For an `image_upgrade` job, the
+   *  `image_generate` job whose preview this upgrades. NULL for every other
+   *  kind. Lets the upgrade endpoint answer "already upgraded / already in
+   *  flight?" with one indexed read instead of reserving a second charge for
+   *  work that is already happening. */
+  upgrade_of_job_id: string | null;
   /** [AVA-MEDIA-JOB-2] Computed, NEVER persisted — resolved fresh on every
    *  read from the artifact's user_media row (resolveArtifactUrl below): a
    *  stable public CDN URL for a public artifact, or a short-lived (15 min)
@@ -81,7 +116,7 @@ export interface AiMediaJobRecord {
 }
 
 const VALID_KINDS = new Set<AiMediaJobKind>([
-  "image_generate", "doc_summarize", "doc_translate", "audio_transcribe", "audio_translate",
+  "image_generate", "image_upgrade", "doc_summarize", "doc_translate", "audio_transcribe", "audio_translate",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -92,6 +127,12 @@ const VALID_KINDS = new Set<AiMediaJobKind>([
 // ---------------------------------------------------------------------------
 const CAPABILITY_BY_KIND: Record<AiMediaJobKind, string> = {
   image_generate: "media_image_generate",
+  // Its OWN capability, not media_image_generate: the two are separately
+  // priced actions on the owner's tariff (preview 1 token, 2K upgrade 4) and
+  // the billing ledger must be able to tell them apart when someone asks
+  // where the money went. Not in ai_billing.ts's FREE_CAPABILITIES or
+  // SAFETY_CAPABILITIES sets, so it meters exactly like every other media kind.
+  image_upgrade: "media_image_upgrade",
   doc_summarize: "media_doc_summarize",
   doc_translate: "media_doc_translate",
   audio_transcribe: "media_audio_transcribe",
@@ -99,6 +140,7 @@ const CAPABILITY_BY_KIND: Record<AiMediaJobKind, string> = {
 };
 export const MODALITY_BY_KIND: Record<AiMediaJobKind, AiModality> = {
   image_generate: "image",
+  image_upgrade: "image",
   doc_summarize: "text",
   doc_translate: "text",
   audio_transcribe: "audio",
@@ -109,6 +151,11 @@ export const MODALITY_BY_KIND: Record<AiMediaJobKind, AiModality> = {
 // (settlement.modelActual) — this is only the reserve-time sizing lookup.
 export const MODEL_BY_KIND: Record<AiMediaJobKind, string> = {
   image_generate: "openai/gpt-5-image-mini",
+  // Same reserve-time sizing lane as image_generate — an upgrade is one more
+  // image out of the same provider. The ACTUAL model (and the actual, higher
+  // 2K cost) is read from the provider response at settle time via
+  // settlement.modelActual/providerCostUsdMicro, exactly as image_generate does.
+  image_upgrade: "openai/gpt-5-image-mini",
   doc_summarize: "mistralai/mistral-nemo",
   doc_translate: "mistralai/mistral-nemo",
   audio_transcribe: "openai/whisper-large-v3",
@@ -130,6 +177,10 @@ export interface AiMediaJobEstimate {
 // settle, never eaten as under-reserved platform loss.
 const DEFAULT_ESTIMATE: Record<AiMediaJobKind, AiMediaJobEstimate> = {
   image_generate: { maxInputTokens: 200, maxOutputTokens: 0, images: 1 },
+  // One image out, plus the preview fed back in as an input reference. The
+  // fixed upscale instruction is a short constant, hence the small token
+  // allowance — it is not a user prompt.
+  image_upgrade: { maxInputTokens: 200, maxOutputTokens: 0, images: 1 },
   doc_summarize: { maxInputTokens: 40_000, maxOutputTokens: 1_500 },
   doc_translate: { maxInputTokens: 40_000, maxOutputTokens: 40_000 },
   audio_transcribe: { maxInputTokens: 0, maxOutputTokens: 4_000, avSeconds: 600 },
@@ -164,6 +215,7 @@ function rowToRecord(r: any): AiMediaJobRecord {
     label: r.label ?? null, progress: Number(r.progress ?? 0),
     target_language: r.target_language ?? null,
     artifact_media_id: r.artifact_media_id ?? null,
+    upgrade_of_job_id: r.upgrade_of_job_id ?? null,
     artifact_url: null, // computed below in fetchJob — never read from the row
     error_code: r.error_code ?? null,
     reservation_id: r.reservation_id ?? null,
@@ -366,6 +418,65 @@ export interface CreateAiMediaJobInput {
    * same job instead of double-reserving). Server generates one if omitted. */
   jobId?: string;
   email?: string | null;
+  /** [AVA-IMG-TIERS-1 / WS-10] For kind='image_upgrade' only: the
+   *  `image_generate` job this upgrades. Persisted so the upgrade endpoint can
+   *  dedupe (see findUpgradeJobFor below) rather than reserve a second charge
+   *  for an upgrade that is already running or already done. */
+  upgradeOfJobId?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// [AVA-IMG-TIERS-1 / WS-19d] FLAT PER-ACTION PRICING — WIRED, DARK, AND NOT
+// YET AUTHORITATIVE. READ THIS BEFORE ASSUMING THE TARIFF IS LIVE.
+//
+// The owner's tariff is: preview image = 1 token, 2K upgrade = 4 tokens
+// (`imageCostTokens` / `image2kUpgradeCostTokens` in routes/config.ts). Flat
+// pricing REPLACES the live metered billing rather than adding to it, so it
+// sits behind `avaFlatPricingEnabled`, which ships false. Metered billing
+// (ai_billing.ts: provider cost x 1.20 markup x 100 tokens/USD) remains the
+// live behaviour until the owner flips it.
+//
+// ⚠️ WHAT IS AND IS NOT DONE. The tariff is resolved here and reported on
+// every job event (see `flat_price_tokens` in the telemetry below), so the
+// owner can compare what flat pricing WOULD have charged against what metered
+// actually charged, on real traffic, BEFORE flipping anything. That comparison
+// is the whole point of shipping this dark.
+//
+// It is NOT yet the amount debited. `ai_billing.ts`'s reserveAiJob() derives
+// its reservation from the model price catalog and accepts no caller-supplied
+// amount, and settleAiJob() charges marked-up ACTUAL provider cost. Making the
+// flat tariff authoritative needs an optional `flatPriceTokens` override on
+// those two functions — and `ai_billing.ts` is NOT this workstream's file
+// ownership. Faking it from here (by back-computing a `providerCostUsdMicro`
+// that happens to settle to N tokens) was considered and REJECTED: it would
+// write a fabricated provider cost into the money ledger, which is the one
+// place in this codebase that has to stay ground truth.
+//
+// So: this returns the intended price, nothing debits it yet, and that gap is
+// deliberate and reported rather than silently papered over.
+// ---------------------------------------------------------------------------
+const FLAT_PRICE_CONFIG_KEY_BY_KIND: Partial<Record<AiMediaJobKind, "imageCostTokens" | "image2kUpgradeCostTokens">> = {
+  image_generate: "imageCostTokens",
+  image_upgrade: "image2kUpgradeCostTokens",
+};
+
+/**
+ * The flat token price for `kind` under the owner's per-action tariff, or null
+ * when flat pricing is off or the kind has no flat price. Never throws: a
+ * config-read failure returns null (metered billing stays in charge), matching
+ * ai_billing.ts's own fail-closed-into-not-metered posture.
+ */
+export async function flatPriceTokensFor(env: Env, kind: AiMediaJobKind): Promise<number | null> {
+  const key = FLAT_PRICE_CONFIG_KEY_BY_KIND[kind];
+  if (!key) return null;
+  try {
+    const cfg = await readConfig(env);
+    if (cfg.avaFlatPricingEnabled !== true) return null;
+    const v = Number((cfg as unknown as Record<string, unknown>)[key]);
+    return Number.isFinite(v) && v >= 0 ? Math.trunc(v) : null;
+  } catch {
+    return null;
+  }
 }
 
 export type CreateAiMediaJobResult =
@@ -438,9 +549,10 @@ export async function createAiMediaJob(env: Env, input: CreateAiMediaJobInput): 
   try {
     await env.DB_MEDIA.prepare(
       `INSERT INTO ai_media_jobs
-         (job_id, owner_uid, conv_id, source_media_id, kind, status, label, progress, target_language, artifact_media_id, error_code, reservation_id, created_at, updated_at, completed_at)
-       VALUES (?1,?2,?3,?4,?5,'queued',?6,0,?7,NULL,NULL,?8,?9,?9,NULL)`,
-    ).bind(jobId, ownerUid, convId, sourceMediaId, input.kind, label, targetLanguage, reservationId, ts).run();
+         (job_id, owner_uid, conv_id, source_media_id, kind, status, label, progress, target_language, artifact_media_id, error_code, reservation_id, created_at, updated_at, completed_at, upgrade_of_job_id)
+       VALUES (?1,?2,?3,?4,?5,'queued',?6,0,?7,NULL,NULL,?8,?9,?9,NULL,?10)`,
+    ).bind(jobId, ownerUid, convId, sourceMediaId, input.kind, label, targetLanguage, reservationId, ts,
+      input.upgradeOfJobId ? String(input.upgradeOfJobId) : null).run();
   } catch (e) {
     // The row insert failed AFTER a successful reservation — release it so we
     // never leave a dangling hold with no job row to ever settle/fail it.
@@ -449,7 +561,18 @@ export async function createAiMediaJob(env: Env, input: CreateAiMediaJobInput): 
     return { ok: false, error: "internal_error", status: 500 };
   }
 
-  void track(env, ownerUid, "ai_media_job_created", "ai_media_jobs", { job_id: jobId, kind: input.kind, conv_id: convId, metered: reservation.metered });
+  // [AVA-IMG-TIERS-1] `flat_price_tokens` is the tariff this job WOULD have
+  // cost under flat per-action pricing, or null when that is off (the live
+  // case). It is reported, never charged — see flatPriceTokensFor's header for
+  // why, and for what ai_billing.ts still needs before it can be authoritative.
+  // Emitting it dark is what lets the owner compare tariff vs metered on real
+  // traffic before flipping `avaFlatPricingEnabled`.
+  const flatPriceTokens = await flatPriceTokensFor(env, input.kind).catch(() => null);
+  void track(env, ownerUid, "ai_media_job_created", "ai_media_jobs", {
+    job_id: jobId, kind: input.kind, conv_id: convId, metered: reservation.metered,
+    flat_price_tokens: flatPriceTokens,
+    upgrade_of_job_id: input.upgradeOfJobId ?? null,
+  });
   const job = await fetchJob(env, jobId);
   return { ok: true, job: job! };
 }
@@ -490,6 +613,69 @@ export async function requeueAiMediaJob(env: Env, jobId: string): Promise<boolea
 }
 
 // ---------------------------------------------------------------------------
+// [AVA-IMG-PROGRESS-1 / WS-9] updateAiMediaJobProgress — the progress writer
+// that did not exist. Before this, `progress` was written exactly twice: 0 at
+// insert (above) and 100 at completion (below), so every client progress bar
+// (app/lib/core/ai_media_jobs.dart:116-125 normalises /100, rendered by
+// ai_media_job_card.dart) sat frozen at 0% for the entire 10-25 s of a job and
+// then jumped to done. That is worse than no bar: it reads as "stuck".
+//
+// THE HONESTY DECISION — READ THIS BEFORE "IMPROVING" THE NUMBERS.
+// None of our providers report a real completion fraction. OpenRouter's Images
+// API (/v1/images, routes/ava_image.ts) is a single request/response call: it
+// returns nothing at all until it returns everything. Workers AI STT and the
+// text models are the same shape. So a genuine percentage is NOT AVAILABLE and
+// cannot be invented.
+//
+// What we write instead are COARSE PHASE MARKERS, not a fraction of work done.
+// The values below are deliberately NOT evenly spaced and deliberately do NOT
+// creep: each one means "this job has reached this named phase", nothing more.
+// A client MUST NOT present them as a percentage. The honest presentation while
+// `status='running'` is ELAPSED TIME ("18s…") — an honest counter beats a fake
+// bar — with the phase used only for a label ("generating…", "saving…").
+// `updated_at` moves on every phase write, so a client can also show "last
+// progress N s ago" and detect a genuinely wedged job.
+//
+// ⚠️ CLIENT FOLLOW-UP (not this file's ownership): ai_media_job_card.dart still
+// renders `progress` as a determinate bar. Until it switches to elapsed time,
+// these markers make the bar move in steps rather than move truthfully. That
+// client change is the other half of WS-9 and is reported, not done here.
+// ---------------------------------------------------------------------------
+export const AI_MEDIA_JOB_PHASE_PROGRESS = {
+  /** Job claimed (queued -> running); no provider work started yet. */
+  claimed: 5,
+  /** The provider request has been dispatched. This is where nearly all of the
+   *  wall-clock time is spent, and where nothing can be known. */
+  provider_called: 15,
+  /** The provider returned bytes/text. Storage + settlement remain. */
+  provider_returned: 70,
+  /** The artifact is durably stored (R2 + user_media row). Settlement remains. */
+  stored: 90,
+} as const;
+export type AiMediaJobPhase = keyof typeof AI_MEDIA_JOB_PHASE_PROGRESS;
+
+/**
+ * Record that a RUNNING job has reached `phase`. Best-effort and monotonic:
+ *  - only touches `status='running'` rows (never resurrects a terminal job),
+ *  - only ever moves progress FORWARD (`progress < ?`), so an out-of-order or
+ *    replayed write can never make a bar go backwards,
+ *  - never throws — a progress write must not be able to fail a real job.
+ * Returns true only if a row was actually updated.
+ */
+export async function updateAiMediaJobProgress(env: Env, jobId: string, phase: AiMediaJobPhase): Promise<boolean> {
+  const value = AI_MEDIA_JOB_PHASE_PROGRESS[phase];
+  if (!jobId || typeof value !== "number") return false;
+  try {
+    const res = await env.DB_MEDIA.prepare(
+      "UPDATE ai_media_jobs SET progress=?2, updated_at=?3 WHERE job_id=?1 AND status='running' AND progress < ?2",
+    ).bind(jobId, value, now()).run();
+    return (res.meta?.changes ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // completeAiMediaJob — atomic running -> succeeded + artifact link + settle
 // (ai_billing.ts settleAiJob, exactly once by job_id). Idempotent: a replay
 // against an already-succeeded job returns the existing row untouched.
@@ -499,6 +685,14 @@ export interface CompleteAiMediaJobArtifact {
   mimeType?: string | null;
   fileName?: string | null;
   language?: string | null;
+  /** [AVA-IMG-TIERS-1 / WS-10] Which rendition this job produced. Defaults to
+   *  'primary', which is what every non-image kind produces and what every row
+   *  written before this change is (the migration's column default). */
+  rendition?: AiMediaRendition;
+  /** [AVA-IMG-TIERS-1 / WS-10] The provider resolution tier actually produced
+   *  ('1K' / '2K'). Recorded so the two renditions are distinguishable by fact,
+   *  not just by convention. */
+  resolution?: string | null;
 }
 export interface CompleteAiMediaJobSettlement {
   modelActual: string;
@@ -534,13 +728,21 @@ export async function completeAiMediaJob(env: Env, input: CompleteAiMediaJobInpu
   }
 
   try {
+    // [AVA-IMG-TIERS-1 / WS-10] `INSERT OR IGNORE`, not `ON CONFLICT(job_id,
+    // media_id)`. There are now TWO uniqueness constraints on this table —
+    // (job_id, media_id) and (job_id, rendition) — and SQLite's upsert clause
+    // targets exactly one of them, so a targeted DO NOTHING would still raise
+    // on a violation of the OTHER. OR IGNORE covers both, which is precisely
+    // the intent: this insert is an index entry for an artifact that is
+    // already durably stored, and a replay must be a silent no-op either way.
     await env.DB_MEDIA.prepare(
-      `INSERT INTO ai_media_artifacts (artifact_id, owner_uid, source_media_id, job_id, media_id, mime_type, file_name, language, created_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
-       ON CONFLICT(job_id, media_id) DO NOTHING`,
+      `INSERT OR IGNORE INTO ai_media_artifacts
+         (artifact_id, owner_uid, source_media_id, job_id, media_id, mime_type, file_name, language, created_at, rendition, resolution)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`,
     ).bind(
       artifactId, job.owner_uid, job.source_media_id, input.jobId, input.artifact.mediaId,
       input.artifact.mimeType ?? null, input.artifact.fileName ?? null, input.artifact.language ?? null, ts,
+      input.artifact.rendition ?? "primary", input.artifact.resolution ?? null,
     ).run();
   } catch (e) {
     // The job is already marked succeeded (the deliverable is real) — an
@@ -643,6 +845,123 @@ export async function getAiMediaJob(env: Env, jobId: string, ownerUid: string): 
   if (!job) return { ok: false, error: "not_found" };
   if (job.owner_uid !== ownerUid) return { ok: false, error: "forbidden" };
   return { ok: true, job };
+}
+
+// ---------------------------------------------------------------------------
+// [AVA-IMG-TIERS-1 / WS-10] Rendition index — read/write the second artifact.
+// ---------------------------------------------------------------------------
+
+/**
+ * Cross-link an artifact onto a job's id under a named rendition.
+ *
+ * The 2K rendition is produced by an `image_upgrade` job, but the thing a
+ * client holds (and the thing its download menu is attached to) is the
+ * ORIGINAL `image_generate` job. Writing a second `ai_media_artifacts` row
+ * under the ORIGINAL job's id turns "give me the 2K of job X" into a single
+ * indexed lookup on (job_id, rendition), instead of a walk through
+ * `upgrade_of_job_id` into a second job row.
+ *
+ * Idempotent by construction: `uq_ai_media_artifacts_job_rendition` means a
+ * redelivered or retried upgrade can never attach a second 'full' rendition,
+ * and `INSERT OR IGNORE` makes that collision a silent no-op rather than a
+ * thrown error on a path where the artifact is already safely stored.
+ *
+ * Never throws — a failure here costs a fast lookup, not the deliverable, and
+ * the artifact remains reachable through the upgrade job itself.
+ */
+export async function linkJobRendition(env: Env, input: {
+  jobId: string;
+  ownerUid: string;
+  mediaId: string;
+  rendition: AiMediaRendition;
+  resolution?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+  sourceMediaId?: string | null;
+}): Promise<boolean> {
+  try {
+    const res = await env.DB_MEDIA.prepare(
+      `INSERT OR IGNORE INTO ai_media_artifacts
+         (artifact_id, owner_uid, source_media_id, job_id, media_id, mime_type, file_name, language, created_at, rendition, resolution)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,NULL,?8,?9,?10)`,
+    ).bind(
+      crypto.randomUUID(), input.ownerUid, input.sourceMediaId ?? null, input.jobId, input.mediaId,
+      input.mimeType ?? null, input.fileName ?? null, now(),
+      input.rendition, input.resolution ?? null,
+    ).run();
+    return (res.meta?.changes ?? 0) > 0;
+  } catch (e) {
+    void trackException(env, e, {
+      uid: input.ownerUid, route: "ai_media_jobs.linkJobRendition", handled: true,
+      extra: { job_id: input.jobId, rendition: input.rendition },
+    });
+    return false;
+  }
+}
+
+export interface JobRenditionRecord {
+  media_id: string;
+  rendition: AiMediaRendition;
+  resolution: string | null;
+  mime_type: string | null;
+  file_name: string | null;
+  /** Resolved FRESH on every read, never persisted — same contract as
+   *  AiMediaJobRecord.artifact_url. A private artifact's presigned URL expires
+   *  in 900 s, so a stored one would hand the client a dead link. */
+  url: string | null;
+}
+
+/**
+ * Read one named rendition of a job, with a freshly-minted URL.
+ *
+ * Returns null when that rendition does not exist yet — which is the normal
+ * state for 'full' until someone actually asks for it, and is exactly how the
+ * upgrade endpoint distinguishes "already done" from "needs generating".
+ */
+export async function getJobRendition(
+  env: Env, jobId: string, rendition: AiMediaRendition,
+): Promise<JobRenditionRecord | null> {
+  try {
+    const row = await env.DB_MEDIA.prepare(
+      "SELECT media_id, rendition, resolution, mime_type, file_name FROM ai_media_artifacts WHERE job_id=?1 AND rendition=?2",
+    ).bind(jobId, rendition).first<any>();
+    if (!row) return null;
+    return {
+      media_id: row.media_id,
+      rendition: row.rendition as AiMediaRendition,
+      resolution: row.resolution ?? null,
+      mime_type: row.mime_type ?? null,
+      file_name: row.file_name ?? null,
+      url: await resolveArtifactUrl(env, row.media_id),
+    };
+  } catch (e) {
+    void trackException(env, e, { route: "ai_media_jobs.getJobRendition", handled: true, extra: { job_id: jobId, rendition } });
+    return null;
+  }
+}
+
+/**
+ * Find the `image_upgrade` job (if any) already created for a given preview
+ * job. This is what stops a user who taps download twice from being charged
+ * twice: the second tap finds the in-flight or completed upgrade and returns
+ * its state instead of reserving again.
+ *
+ * Ordered newest-first so that if an earlier upgrade attempt failed and a
+ * later one succeeded, the caller sees the live one.
+ */
+export async function findUpgradeJobFor(env: Env, previewJobId: string, ownerUid: string): Promise<AiMediaJobRecord | null> {
+  try {
+    const row = await env.DB_MEDIA.prepare(
+      "SELECT * FROM ai_media_jobs WHERE upgrade_of_job_id=?1 AND owner_uid=?2 ORDER BY created_at DESC LIMIT 1",
+    ).bind(previewJobId, ownerUid).first<any>();
+    if (!row) return null;
+    const record = rowToRecord(row);
+    record.artifact_url = await resolveArtifactUrl(env, record.artifact_media_id);
+    return record;
+  } catch (e) {
+    void trackException(env, e, { uid: ownerUid, route: "ai_media_jobs.findUpgradeJobFor", handled: true, extra: { job_id: previewJobId } });
+    return null;
+  }
 }
 
 export interface ListAiMediaJobsInput {

@@ -694,7 +694,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/chat/history" && req.method === "GET") return await avaChatHistoryGet(req, env);
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
       if (p === "/api/moderate" && req.method === "POST") return await moderateText(req, env);         // save-time content validation (Nemotron)
-      if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
+      // P9 — [AVA-IMG-KEEPALIVE-1] ctx is REQUIRED here: image generation runs
+      // detached after the response, and only ctx.waitUntil keeps it alive.
+      if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env, ctx);
       if (p === "/api/ava/delegate") return await delegateHandler(req, env); // P7 (GET reads prefs, POST writes)
       if (p === "/api/ava/doc/summarize" && req.method === "POST") return await avaDocSummarize(req, env);        // Copilot A+B
       if (p === "/api/ava/doc/translate" && req.method === "POST") return await avaDocTranslate(req, env);        // Copilot A+B

@@ -40,13 +40,20 @@
 import type { Env } from "../types";
 import {
   claimAiMediaJob, completeAiMediaJob, failAiMediaJob, requeueAiMediaJob,
-  resolveArtifactSensitivity,
+  resolveArtifactSensitivity, updateAiMediaJobProgress, linkJobRendition,
   type AiMediaJobKind, type AiMediaJobRecord,
 } from "../lib/ai_media_jobs";
 import { trackException } from "../hooks";
 import { mediaSession } from "../db/shard";
 import { registerArtifactMedia } from "../routes/media";
 import { transcribeAudioBuffer, sttFormatFor, bytesToBase64 } from "../routes/stt";
+// [AVA-IMG-TIERS-1 / WS-10] The image_upgrade handler reuses ava_image.ts's
+// ONE provider call rather than opening a second, drifting copy of the
+// OpenRouter Images request — telemetry, error classification, usage/cost
+// extraction and the resolution parameter all stay in one place.
+import { generateImage, imageResolutionForTier } from "../routes/ava_image";
+import { imageModel } from "../lib/ava_reason/policy";
+import { readConfig } from "../routes/config";
 import {
   extractDocumentText, summarizeDocumentForArtifact, translateDocumentForArtifact,
   buildDocumentArtifactBytes,
@@ -119,6 +126,102 @@ async function unreachableDirectRouteKind(_env: Env, job: AiMediaJobRecord): Pro
   throw new Error(`provider_unavailable: ${job.kind} is fulfilled directly by its owning route, not this queue — this stub should be unreachable`);
 }
 const handleImageGenerate: KindHandler = unreachableDirectRouteKind;
+
+// ---------------------------------------------------------------------------
+// [AVA-IMG-TIERS-1 / WS-10] image_upgrade — the on-demand 2K rendition.
+//
+// WHY THIS ONE *IS* QUEUE-DRIVEN, UNLIKE image_generate.
+// image_generate is route-owned for exactly one reason: its input is an
+// ephemeral user PROMPT that §41/§42 forbids persisting, so a job_id-only
+// redelivery could never redo the work. An upgrade has neither half of that
+// problem. Its input is the PREVIEW ARTIFACT, already durably stored in R2 and
+// referenced by `source_media_id` (authorized once, at createAiMediaJob time),
+// and its prompt is UPSCALE_INSTRUCTION below — a fixed, non-sensitive
+// constant that is not derived from anything the user typed. A redelivery can
+// safely re-fetch and redo it. That is precisely the shape doc_summarize and
+// audio_transcribe already have, so it takes the same lane.
+//
+// HOW THE PREVIEW REACHES THE PROVIDER — and why there is no presigned-URL
+// gamble here. OpenRouter's Image API documents `input_references` as
+// accepting "HTTP(S) URLs or base64 data URLs". We take the data-URL branch:
+// the worker reads the preview bytes back out of R2 itself and inlines them.
+// That removes the entire unverifiable question of whether xAI's fetcher can
+// retrieve a SigV4-presigned private R2 URL before it expires — nobody has to
+// fetch anything. It also means no presigned URL for a user's private image is
+// ever handed to a third party, which the URL branch would have required.
+// ---------------------------------------------------------------------------
+
+// A FIXED instruction, deliberately not the user's original prompt (which is
+// never persisted, §41/§42, and is not needed: the reference image already
+// carries the content). Its only job is to tell the model "reproduce this,
+// larger" rather than "reinterpret this" — the result has to match the preview
+// the user already saw, or the download is a different picture from the one
+// they asked to download.
+const UPSCALE_INSTRUCTION =
+  "Reproduce this exact image at the highest available fidelity. Preserve the composition, " +
+  "subject, colours, lighting and every detail precisely as they are. Do not add, remove, " +
+  "restyle or reinterpret anything — this is a resolution increase, not a new image.";
+
+/** Grok Imagine's `input_references` cap is 3 (verified against the live
+ *  per-endpoint descriptor). We send exactly one: the preview. */
+const UPGRADE_MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
+
+const handleImageUpgrade: KindHandler = async (env, job) => {
+  if (!job.source_media_id) throw new Error("unsupported_format: image_upgrade job has no source image");
+  const key = (env as unknown as { OPENROUTER_API_KEY?: string }).OPENROUTER_API_KEY;
+  if (!key) throw new Error("provider_unavailable: image generation key is not configured");
+
+  const src = await fetchSourceMediaBytes(env, job.source_media_id);
+  if (!String(src.mime || "").toLowerCase().startsWith("image/")) {
+    throw new Error("unsupported_format: source is not an image");
+  }
+  // A reference image has to travel inline in the request body. Guard the size
+  // rather than letting a pathological artifact build a request that the
+  // provider rejects opaquely 40 s later.
+  if (src.bytes.byteLength > UPGRADE_MAX_REFERENCE_BYTES) {
+    throw new Error("input_too_large: this image is too large to upgrade");
+  }
+
+  const cfg = await readConfig(env);
+  const resolution = imageResolutionForTier(cfg.imageFullResolutionTier);
+  const dataUrl = `data:${src.mime};base64,${bytesToBase64(src.bytes)}`;
+
+  const gen = await generateImage(env, key, UPSCALE_INSTRUCTION, job.owner_uid, dataUrl, { resolution });
+
+  const sensitivity = await resolveArtifactSensitivity(env, job.source_media_id);
+  const fileName = `${stripExt(src.fileName)}.${resolution.toLowerCase()}.png`;
+  const artifact = await registerArtifactMedia(env, {
+    uid: job.owner_uid, bytes: gen.bytes, mimeType: "image/png",
+    fileName, category: "image", sensitivity,
+  });
+
+  // Cross-link the new rendition onto the ORIGINAL image_generate job, so the
+  // client — which holds the PREVIEW's job id, not this upgrade job's — can
+  // find it with one indexed lookup. Best-effort by design: the artifact is
+  // already durably stored and reachable through this upgrade job either way,
+  // so a failed index write must not fail a delivered image.
+  if (job.upgrade_of_job_id) {
+    await linkJobRendition(env, {
+      jobId: job.upgrade_of_job_id,
+      ownerUid: job.owner_uid,
+      mediaId: artifact.id,
+      rendition: "full",
+      resolution,
+      mimeType: "image/png",
+      fileName,
+      sourceMediaId: job.source_media_id,
+    });
+  }
+
+  return {
+    artifact: { mediaId: artifact.id, mimeType: "image/png", fileName, rendition: "full", resolution },
+    settlement: {
+      modelActual: imageModel(env),
+      usage: { images: 1, imageOutputTokens: gen.imageOutputTokens },
+      providerCostUsdMicro: gen.costUsd != null ? Math.round(gen.costUsd * 1_000_000) : undefined,
+    },
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Shared source-media fetch — used by ALL FOUR handlers below. Authorization
@@ -314,6 +417,7 @@ const handleAudioTranslate: KindHandler = async (env, job) => {
 
 const KIND_HANDLERS: Record<AiMediaJobKind, KindHandler> = {
   image_generate: handleImageGenerate,
+  image_upgrade: handleImageUpgrade,
   doc_summarize: handleDocSummarize,
   doc_translate: handleDocTranslate,
   audio_transcribe: handleAudioTranscribe,
@@ -326,7 +430,11 @@ const KIND_HANDLERS: Record<AiMediaJobKind, KindHandler> = {
 // AVA-AUDIO-ARTIFACT-1] adds all four text/audio kinds here in this commit;
 // image_generate is a DIFFERENT agent's file ownership (ava_image.ts) and
 // stays out until that route wires its own direct-fulfilment path.
-const IMPLEMENTED_KINDS = new Set<AiMediaJobKind>(["doc_summarize", "doc_translate", "audio_transcribe", "audio_translate"]);
+// [AVA-IMG-TIERS-1 / WS-10] image_upgrade joins in the SAME commit that gives
+// it a real handler (handleImageUpgrade above), per the rule stated here.
+// image_generate still does not: it remains route-owned by ava_image.ts for
+// the ephemeral-prompt reason documented on unreachableDirectRouteKind.
+const IMPLEMENTED_KINDS = new Set<AiMediaJobKind>(["image_upgrade", "doc_summarize", "doc_translate", "audio_transcribe", "audio_translate"]);
 
 export function isAiMediaKindImplemented(kind: AiMediaJobKind): boolean {
   return IMPLEMENTED_KINDS.has(kind);
@@ -360,7 +468,17 @@ export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg, at
   const job = claimed.job;
 
   const handler = KIND_HANDLERS[job.kind];
+  // [AVA-IMG-PROGRESS-1 / WS-9] Phase markers, not a percentage — see
+  // updateAiMediaJobProgress()'s doc comment in lib/ai_media_jobs.ts for why a
+  // real fraction is unavailable from every provider on these lanes and why the
+  // honest client presentation is elapsed time. Best-effort: never awaited into
+  // the failure path, never able to fail the job. `provider_returned`/`stored`
+  // are not written here because these handlers do their provider call and
+  // their artifact registration inside one opaque function; `completeAiMediaJob`
+  // writes 100 immediately after.
+  await updateAiMediaJobProgress(env, jobId, "claimed");
   try {
+    await updateAiMediaJobProgress(env, jobId, "provider_called");
     const result = await Promise.race([
       handler(env, job),
       new Promise<never>((_, reject) => setTimeout(() => reject(new RetryableJobError("provider_timeout")), PROVIDER_TIMEOUT_MS)),
