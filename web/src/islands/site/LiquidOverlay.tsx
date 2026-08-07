@@ -1,47 +1,44 @@
 /**
- * LiquidOverlay — the avatok.ai ambient water layer.
+ * LiquidOverlay — a full-page, pointer-driven fluid trail for avatok.ai.
  *
- * Two stacked Canvas UI effects, both full-viewport, both decorative:
+ * Built on the Canvas UI "Liquid" component (`@canvas-ui/liquid-react`, vendored
+ * at src/components/canvasui/Liquid.tsx — DO NOT edit that file, it is the
+ * upstream registry source and is refreshed by `npx shadcn add @canvas-ui/...`).
  *
- *   1. Liquid  (bottom) — a pointer-driven fluid trail in brand turquoise.
- *   2. Droplets (top)   — rain running down the glass, lit with specular
- *                         highlights and rim light so the sheet reads as GLASS
- *                         rather than flat colour. The cursor wipes it clear.
- *
- * Upstream sources are vendored unmodified at src/components/canvasui/*.tsx and
- * are refreshed by `npx shadcn add @canvas-ui/<name>` — DO NOT edit them.
+ * HISTORY: a Droplets rain layer was stacked on top of this between 2026-08-07's
+ * second and fourth deploys and was REMOVED at the owner's call — over the cream
+ * --zine-paper the drops read as dirty grey specks rather than water, because the
+ * self-lit branch bases each drop on mid-grey (`mix(vec3(0.72), tint, tintStrength)`)
+ * and only a captured page behind it would have made them read as glass. Do not
+ * re-add it without a way to test that. If it is ever wanted back:
+ * `npx shadcn@latest add @canvas-ui/droplets-react` from web/, and note that
+ * Droplets discards every fragment past `content.clientWidth / output.clientWidth`,
+ * so its content element must be real and laid out at viewport size.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHY THIS FILE EXISTS, AND WHY IT LOOKS LIKE THIS
  *
  * The home page ships as ONE opaque static document (src/landing/avatok-landing.html,
  * injected via `set:html` in pages/index.astro). There is no React tree to wrap, so
- * the `<Liquid>` / `<Droplets>` children APIs are unusable. We drive the lower-level
- * `createLiquid()` / `createDroplets()` engines directly and render only their
- * output canvases.
+ * the `<Liquid>` children API is unusable — we drive the lower-level `createLiquid()`
+ * engine directly and render only its output canvas.
  *
- * Both engines auto-detect the EXPERIMENTAL html-in-canvas APIs
+ * `createLiquid` auto-detects the EXPERIMENTAL html-in-canvas APIs
  * (`ctx.drawElementImage` + `canvas.requestPaint`, currently Chrome-only behind
- * chrome://flags#enable-html-in-canvas). When found they switch to "capture the DOM
- * and refract it" mode and read their content from the source canvas. Ours is
- * deliberately empty, so on such a browser Liquid would resolve to a fully
- * transparent frame and Droplets would refract nothing — the effect would silently
- * vanish. We therefore shadow `requestPaint` to `undefined` on both source canvases,
- * so detection is deterministic and every browser gets the same self-lit path.
- *
- * That self-lit path is also the answer to "the liquid looks flat": Liquid's
- * non-capture branch can only tint (`tint * overlay`), because real refraction needs
- * the page pixels it cannot have. The glass — normals, specular, rim light — comes
- * from Droplets, whose fallback branch shades each drop as a lit surface.
+ * chrome://flags#enable-html-in-canvas). When it finds them it switches to "capture
+ * the DOM and warp it" mode and reads its content from the source canvas. Ours is
+ * deliberately empty, so on such a browser the shader would resolve to a fully
+ * transparent frame and the effect would silently vanish. We therefore shadow
+ * `requestPaint` to `undefined`, making detection deterministic: every browser gets
+ * the same colour-trail path.
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * Degrades safely: no WebGL2 → the engines return null → nothing renders.
- * `prefers-reduced-motion: reduce` is honoured inside both engines.
+ * Degrades safely: no WebGL2 → `createLiquid` returns null → nothing renders.
+ * `prefers-reduced-motion: reduce` is honoured inside the engine (`splat` no-ops).
  * Coarse pointers (phones/tablets) are skipped entirely — see SKIP_COARSE below.
  */
 import { useEffect, useRef } from 'react';
 import { createLiquid, type LiquidInstance } from '../../components/canvasui/Liquid';
-import { createDroplets, type DropletsInstance } from '../../components/canvasui/Droplets';
 
 /**
  * Brand turquoise, as 0..1 sRGB triplets. The zine palette carries two turquoise
@@ -52,48 +49,39 @@ import { createDroplets, type DropletsInstance } from '../../components/canvasui
 const TURQUOISE: [number, number, number] = [0x8f / 255, 0xf2 / 255, 0xec / 255];
 
 /**
- * Two full-viewport fragment shaders running at 60fps is a real battery cost on a
- * phone, and Droplets never idles (rain always animates). The liquid trail also
- * needs a hovering pointer to mean anything, which a touch screen does not have.
- * So on coarse pointers we render nothing and leave the landing page untouched.
+ * A full-viewport fragment shader at 60fps is a real battery cost on a phone, and
+ * the trail needs a hovering pointer to mean anything, which a touch screen does
+ * not have. On coarse pointers we render nothing and leave the landing page alone.
  */
 const SKIP_COARSE = '(pointer: coarse)';
 
 /**
- * THE opacity dials. Both shaders drive their own alpha toward saturation (see the
- * `intensity` note on the Liquid config below), so their numeric options cannot make
- * either layer subtle — compositing the whole canvas at reduced opacity can, and it
- * is exact. Raise these to make the water more present; lower to fade it back.
+ * THE opacity dial. The shader drives its own alpha toward saturation (see the
+ * `intensity` note below), so no engine option can make the trail subtle —
+ * compositing the whole canvas at reduced opacity can, and it is exact. Raise to
+ * make the water more present; lower to fade it back.
  */
 const LIQUID_OPACITY = 0.34;
-const RAIN_OPACITY = 0.6;
 
 export default function LiquidOverlay() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const liquidCanvasRef = useRef<HTMLCanvasElement>(null);
-  const rainWrapRef = useRef<HTMLDivElement>(null);
-  const rainContentRef = useRef<HTMLDivElement>(null);
-  const rainCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (window.matchMedia(SKIP_COARSE).matches) return;
 
-    const liquidOutput = liquidCanvasRef.current;
-    const rainWrap = rainWrapRef.current;
-    const rainContent = rainContentRef.current;
-    const rainOutput = rainCanvasRef.current;
-    if (!liquidOutput || !rainWrap || !rainContent || !rainOutput) return;
+    const output = canvasRef.current;
+    if (!output) return;
 
-    // Detached, never-painted source canvases. Shadowing `requestPaint` forces
-    // each engine's html-in-canvas probe to fail — see the file header.
-    const makeSource = () => {
-      const canvas = document.createElement('canvas');
-      Object.defineProperty(canvas, 'requestPaint', { value: undefined });
-      return canvas;
-    };
+    // Detached, never-painted source canvas. See the file header: shadowing
+    // `requestPaint` forces the engine's html-in-canvas probe to fail, which is
+    // what we want — we only ever use the colour-trail path.
+    const source = document.createElement('canvas');
+    Object.defineProperty(source, 'requestPaint', { value: undefined });
+    const content = document.createElement('div');
 
     const liquid: LiquidInstance | null = createLiquid(
-      { source: makeSource(), content: document.createElement('div'), output: liquidOutput },
+      { source, content, output },
       {
         color: TURQUOISE,
         rainbow: false,
@@ -103,8 +91,8 @@ export default function LiquidOverlay() {
         // hardcoded 10 in the blue channel makes |flow| ~10 at every splat centre, so
         // the exponential saturates and alpha pins near the 0.82 ceiling no matter
         // what intensity is set to. That is why lowering it from 2.4 to 0.9 barely
-        // changed anything on screen. Translucency is therefore done in CSS instead
-        // (LIQUID_OPACITY below), which is the only reliable dial.
+        // changed anything on screen. Translucency is done in CSS instead
+        // (LIQUID_OPACITY above), which is the only reliable dial.
         densityDissipation: 0.88,
         curl: 2.2,
         // Splat gaussian is exp(-d²/(radius/100)), so 0.08 → a ~30px core that the
@@ -114,95 +102,38 @@ export default function LiquidOverlay() {
         intensity: 0.9,
       },
     );
+    // No WebGL2 (or a lost context): leave the page exactly as it was.
+    if (!liquid) return;
 
-    // NOTE: Droplets sizes its render window from `content.clientWidth /
-    // output.clientWidth` and DISCARDS every fragment beyond it. A detached
-    // content div has clientWidth 0, which clamps to 0.05 and leaves rain in a
-    // 5%-wide strip down the left edge. `rainContent` is therefore a real,
-    // laid-out element sized to the viewport alongside the canvas.
-    const rain: DropletsInstance | null = createDroplets(
-      { source: makeSource(), content: rainContent, output: rainOutput },
-      {
-        // A drizzle, not a downpour — this sits over marketing copy that has to
-        // stay readable. 0.34 with no opacity reduction covered the whole viewport in
-        // grey teardrops; 0.16 was invisible. This sits between the two.
-        intensity: 0.3,
-        speed: 0.75,
-        // `scale` is inverted: HIGHER means SMALLER drops. Small beads of water
-        // read as glass; large ones read as grey blobs over the copy.
-        scale: 0.85,
-        dropWidth: 0.75,
-        dropLength: 0.9,
-        staticDrops: 0.2,
-        fallSpeed: 0.85,
-        wiggle: 1.1,
-        // `refraction` and `blur` only do anything on the html-in-canvas path
-        // (they warp captured page pixels), so they are left at defaults; the
-        // glassiness we actually see comes from the drop normals' specular and
-        // rim lighting in the self-lit branch.
-        //
-        // The self-lit branch bases each drop on `mix(vec3(0.72), tint, tintStrength)`,
-        // i.e. mid-grey unless the tint is pushed hard. At 0.4 the rain read as dirty
-        // grey teardrops on the cream paper; near 1 it becomes brand-tinted water.
-        tint: TURQUOISE,
-        tintStrength: 0.92,
-        interactive: true,
-        interactionRadius: 0.26,
-        interactionStrength: 0.75,
-      },
-    );
-
-    if (!liquid && !rain) return;
-
-    // Both engines bind their pointer listeners to `output.parentElement`, which
-    // here is pointer-events:none (the overlay must never eat a click on the nav
-    // or the waitlist form). Those listeners can therefore never fire on their
-    // own, so we listen on window and drive both layers ourselves.
+    // The engine binds its pointer listeners to `output.parentElement`, which here
+    // is pointer-events:none (the overlay must never eat a click on the nav or the
+    // waitlist form). Those listeners can therefore never fire on their own, so we
+    // listen on window and drive the splats ourselves.
     let previous: { x: number; y: number } | null = null;
 
     const onPointerMove = (event: PointerEvent) => {
-      const rect = liquidOutput.getBoundingClientRect();
+      const rect = output.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       const last = previous;
       previous = { x, y };
-
-      if (liquid && last) {
-        liquid.splat(x / rect.width, 1 - y / rect.height, x - last.x, -(y - last.y));
-      }
-
-      // Droplets exposes no splat-style API — its wipe is driven entirely by its
-      // internal pointer handler. Re-dispatching the event onto its listen target
-      // is the supported way in; `bubbles: false` is essential, or the synthetic
-      // event climbs back to window and re-enters this handler forever.
-      if (rain) {
-        rainWrap.dispatchEvent(
-          new PointerEvent('pointermove', {
-            clientX: event.clientX,
-            clientY: event.clientY,
-            bubbles: false,
-          }),
-        );
-      }
+      if (!last) return;
+      liquid.splat(x / rect.width, 1 - y / rect.height, x - last.x, -(y - last.y));
     };
 
     const onPointerOut = () => {
       previous = null;
-      if (rain) rainWrap.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false }));
     };
 
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('pointerleave', onPointerOut, { passive: true });
     window.addEventListener('pointercancel', onPointerOut, { passive: true });
 
-    // The overlay is position:fixed at 100vw/100vh, so a viewport resize changes
-    // the backing-store size. Both engines watch their own canvas with a
-    // ResizeObserver, but an explicit resize keeps orientation changes crisp.
-    const onResize = () => {
-      liquid?.resize();
-      rain?.resize();
-    };
+    // The overlay is position:fixed at 100vw/100vh, so a viewport resize changes the
+    // backing-store size. The engine watches its canvas with a ResizeObserver, but an
+    // explicit resize keeps orientation changes crisp.
+    const onResize = () => liquid.resize();
     window.addEventListener('resize', onResize, { passive: true });
 
     return () => {
@@ -210,12 +141,9 @@ export default function LiquidOverlay() {
       window.removeEventListener('pointerleave', onPointerOut);
       window.removeEventListener('pointercancel', onPointerOut);
       window.removeEventListener('resize', onResize);
-      liquid?.destroy();
-      rain?.destroy();
+      liquid.destroy();
     };
   }, []);
-
-  const fill: React.CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 
   return (
     <div
@@ -231,12 +159,16 @@ export default function LiquidOverlay() {
         pointerEvents: 'none',
       }}
     >
-      <canvas ref={liquidCanvasRef} style={{ ...fill, opacity: LIQUID_OPACITY }} />
-      <div ref={rainWrapRef} style={fill}>
-        {/* Sizing reference for the Droplets render window — see the note above. */}
-        <div ref={rainContentRef} style={fill} />
-        <canvas ref={rainCanvasRef} style={{ ...fill, opacity: RAIN_OPACITY }} />
-      </div>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          opacity: LIQUID_OPACITY,
+        }}
+      />
     </div>
   );
 }
