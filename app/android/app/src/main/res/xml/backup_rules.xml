@@ -23,7 +23,22 @@
   second leaves a former sub marked as a sub on the phone they just bought. A cache
   that describes a handset must not follow the user to a different handset.
 -->
+<!--
+  [AVA-BACKUP-EXCL-1 2026-08-07] Pre-Android-12 half of the brain exclusion.
+  The full rationale lives in data_extraction_rules.xml — read it there and keep
+  the two files in step. In one line: Ava's brain has no file of its own, it is a
+  set of tables on the per-account drift DB at
+  `getApplicationSupportDirectory()/avatok_<AccountScope.id>.sqlite`, which on
+  Android is `getFilesDir()` = the `file` backup domain; the account id in the
+  filename cannot be expressed as an `<exclude path>` (no wildcards), so the
+  domain root is excluded. Neighbouring dirs (`media/`, `callrec/`, `avatars/`…)
+  hold decrypted private content and belong out of Auto Backup too. AvaTOK's own
+  encrypted backup (`features/ava_backup/backup_service.dart`) is how this data
+  legitimately moves between phones.
+-->
 <full-backup-content>
     <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    <!-- [AVA-BACKUP-EXCL-1] app-support root: brain DB + decrypted media. -->
+    <exclude domain="file" path="."/>
     <exclude domain="file" path="cache/"/>
 </full-backup-content>

@@ -684,6 +684,40 @@ class AppDb extends _$AppDb {
 
 /// Per-account database file — a parent and each child on one phone keep
 /// separate DBs (scoped by the Clerk account id, like the rest of local state).
+///
+/// ── [AVA-BACKUP-EXCL-1 2026-08-07] THIS FILE MUST NEVER LEAVE THE DEVICE ─────
+/// This is not only the messenger store: Ava's on-device brain has no file of
+/// its own. `core/local_brain/local_index.dart` and `core/ava_memory/*` create
+/// their tables with raw SQL on THIS connection, so the local memory/RAG index
+/// lives in these same bytes — unencrypted, because it is protected by the
+/// sandbox, not by a cipher.
+///
+/// ANDROID (done): `getApplicationSupportDirectory()` is `context.getFilesDir()`,
+/// i.e. the `file` Auto Backup domain, so Google was uploading all of the above
+/// in the clear. Both
+/// `android/app/src/main/res/xml/backup_rules.xml` (pre-12,
+/// `android:fullBackupContent`) and `.../res/xml/data_extraction_rules.xml`
+/// (12+, `android:dataExtractionRules`) now `<exclude domain="file" path="."/>`.
+/// It has to be the whole root: `<exclude>` paths take no wildcards, and the
+/// account id is baked into the filename below.
+///
+/// APPLE (NOT done — nothing to attach it to yet): there is no `app/ios` or
+/// `app/macos` in this repo; `.github/workflows/android.yml` runs
+/// `flutter create --platforms=android`, so no Apple target is ever generated.
+/// `getApplicationSupportDirectory()` maps to `NSApplicationSupportDirectory`,
+/// which IS backed up to iCloud. THE MOMENT an Apple target is added, exclude
+/// the directory in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`
+/// — set it on the DIRECTORY (exclusion is inherited by its contents, including
+/// DBs created later on an account switch), never on one filename:
+///
+///     var url = try! FileManager.default.url(for: .applicationSupportDirectory,
+///                                            in: .userDomainMask,
+///                                            appropriateFor: nil, create: true)
+///     var rv = URLResourceValues(); rv.isExcludedFromBackup = true
+///     try? url.setResourceValues(rv)
+///
+/// Users move this data between phones with AvaTOK's own encrypted backup
+/// (`features/ava_backup/backup_service.dart`), not with the OS backup.
 LazyDatabase _open() => LazyDatabase(() async {
       final dir = await getApplicationSupportDirectory();
       final scope =

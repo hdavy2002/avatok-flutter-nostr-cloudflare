@@ -31,13 +31,49 @@
   Both are statements about a HANDSET. They must not survive a change of handset.
   Excluding the cache costs a re-fetch on first launch, which is what a cache is for.
 -->
+<!--
+  [AVA-BACKUP-EXCL-1 2026-08-07] `domain="file" path="."` — the WHOLE app-support
+  root — is excluded. Keep this in step with backup_rules.xml.
+
+  WHY. Ava's on-device brain is NOT a separate file: `core/local_brain/local_index.dart`
+  and `core/ava_memory/*` create their tables with raw SQL on the SAME per-account
+  drift connection as the messenger, i.e. inside
+  `getApplicationSupportDirectory()/avatok_<AccountScope.id>.sqlite`
+  (`core/db.dart` `_open()`, mirrored by `features/ava_backup/backup_service.dart:212`).
+  On Android `getApplicationSupportDirectory()` IS `context.getFilesDir()`, which is
+  exactly the `file` backup domain — so Auto Backup was uploading the brain, every
+  decrypted DM, and the local memory index to Google in the clear.
+
+  WHY THE WHOLE DOMAIN AND NOT ONE FILENAME. The `path` attribute of an
+  `<exclude>` is a literal file or directory prefix — Android supports NO wildcards
+  and no globs here. The DB name embeds the Clerk account id (`avatok_<scope>.sqlite`),
+  which is not knowable at build time, so `avatok_*.sqlite` cannot be written. There
+  is no targeted form of this rule; the domain root is the only expression of it.
+
+  AND IT IS THE RIGHT SCOPE ANYWAY. Everything else under that root is either a
+  cache or the same class of unencrypted private content: `media/<scope>/` holds
+  DECRYPTED DM media, `callrec/<scope>/` call recordings, `lib_thumbs/`,
+  `avavision_snapshots/`, `avatars/`, `ringtones/`, `media_outbox/`, plus
+  `ava_models/` (a re-downloadable embedder model). None of it should leave the
+  device un-encrypted, and none of it needs to: AvaTOK ships its OWN encrypted
+  backup/restore (`features/ava_backup/backup_service.dart`), which is the
+  supported way to carry this data to a new phone.
+
+  Nothing is lost that was usable before: `FlutterSecureStorage.xml` is already
+  excluded below, so a restored DB would have arrived on the new handset with no
+  Keystore key to read anything with.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <!-- [AVA-BACKUP-EXCL-1] app-support root: brain DB + decrypted media. -->
+        <exclude domain="file" path="."/>
         <exclude domain="file" path="cache/"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <!-- [AVA-BACKUP-EXCL-1] app-support root: brain DB + decrypted media. -->
+        <exclude domain="file" path="."/>
         <exclude domain="file" path="cache/"/>
     </device-transfer>
 </data-extraction-rules>
