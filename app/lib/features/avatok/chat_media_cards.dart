@@ -19,6 +19,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
+import '../../core/cached_image.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/bubble_theme.dart';
@@ -862,6 +863,22 @@ class ChatVideoCard extends StatefulWidget {
 }
 
 class _ChatVideoCardState extends State<ChatVideoCard> {
+  // [CHAT-MEDIA-THUMB-2] The in-memory LRU below is now the FALLBACK, not the
+  // primary. It only serves a video that has no media id yet (an optimistic
+  // local send that hasn't finished uploading) — everything with an id gets a
+  // real on-disk poster via [MediaService.storeThumb]/[MediaService.peekThumb].
+  //
+  // Why that mattered: this LRU is process-lifetime, so it was empty on every
+  // cold start. Reopening a thread with a video therefore paid, per video:
+  //   1. a full download + AES-GCM decrypt of the ENTIRE video into RAM,
+  //   2. a full-size SECOND copy written to the temp directory,
+  //   3. a native first-frame decode,
+  // all to paint one ~220dp poster. That is strictly worse than the photo case
+  // this tier was built for (a 3 MB JPEG parse), because a video is typically
+  // an order of magnitude larger again and pays a whole extra file write.
+  // With a cached poster, all three are skipped and the poster paints on the
+  // first frame from `peekThumb` — no download, no decrypt, no temp copy.
+  //
   // [CHAT-UI-MEDIA-1] In-memory LRU cache for generated first-frame thumbnails,
   // keyed by media id (falls back to a cheap content fingerprint for a
   // not-yet-uploaded local send). Before this, EVERY card mount — i.e. every
@@ -890,6 +907,15 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
   }
 
   Uint8List? _thumb;
+
+  /// [CHAT-MEDIA-THUMB-2] The on-disk poster (`<id>.thumb`), when we have one.
+  /// Rendered with `Image.file`, NOT `Image.memory`, for exactly the reason
+  /// recorded on [ChatImageCard.file]: `FileImage` keys the decoded frame on the
+  /// PATH, so it is reused straight out of `PaintingBinding.imageCache` and
+  /// paints synchronously on a warm cache, whereas `MemoryImage` keys on the
+  /// buffer's identity and re-decodes from scratch.
+  File? _poster;
+
   bool _thumbTried = false;
   VideoPlayerController? _ctrl;
   bool _starting = false;
@@ -897,14 +923,31 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
 
   bool _needsDownload = false; // STREAM J: auto-download off & nothing cached yet
 
+  String get _mediaId => widget.media?.id ?? '';
+
   @override
   void initState() {
     super.initState();
+    // [CHAT-MEDIA-THUMB-2] FIRST FRAME: a synchronous, no-I/O lookup of a poster
+    // generated in an earlier session. When it hits, this card never downloads,
+    // never decrypts and never touches the video at all — which is the entire
+    // point (see the class comment on [_thumbCache]).
+    final id = _mediaId;
+    if (id.isNotEmpty) {
+      final p = MediaService.peekThumb(id);
+      if (p != null) {
+        _poster = p;
+        _thumbTried = true;
+        MediaService.noteCacheEvent('hit', source: 'thumb');
+        return;
+      }
+    }
     final key = _thumbKey;
     final cached = key == null ? null : _thumbCache[key];
     if (cached != null) {
       _thumb = cached;
       _thumbTried = true;
+      MediaService.noteCacheEvent('hit', source: 'memory');
       return;
     }
     // STREAM J (D17): only eagerly fetch (to build the first-frame thumbnail)
@@ -932,10 +975,30 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
     return null;
   }
 
+  /// A file on disk holding this video, for the native thumbnailer and for
+  /// inline playback.
+  ///
+  /// [CHAT-MEDIA-THUMB-2] Prefers the per-account media cache's OWN plaintext
+  /// file over writing a second full-size copy into the temp directory. The
+  /// cached file is returned WITHOUT being assigned to [_tmp] — deliberately:
+  /// `dispose()` deletes [_tmp], and deleting the media-cache entry would evict
+  /// a real attachment and force a full re-download next time.
   Future<File?> _file() async {
     if (_tmp != null) return _tmp;
+    final id = _mediaId;
+    if (id.isNotEmpty) {
+      final cached = await MediaService.cachedFile(id);
+      if (cached != null) return cached;
+    }
     final data = await _bytes();
     if (data == null) return null;
+    // `_bytes()` -> `downloadAndDecrypt` writes the plaintext into the media
+    // cache as a side effect, so by now there is very likely a real file on
+    // disk — use it and skip the temp copy entirely.
+    if (id.isNotEmpty) {
+      final cached = await MediaService.cachedFile(id);
+      if (cached != null) return cached;
+    }
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}/cv_${DateTime.now().microsecondsSinceEpoch}.mp4');
     await f.writeAsBytes(data, flush: true);
@@ -944,37 +1007,57 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
   }
 
   Future<void> _makeThumb() async {
+    final id = _mediaId;
     try {
       final f = await _file();
       if (f == null) {
-        _thumbDone(null, 'no_bytes');
+        _thumbDone(null, null, 'no_bytes');
         return;
       }
       final bytes = await VideoThumbnail.thumbnailData(
         video: f.path,
         imageFormat: ImageFormat.JPEG,
-        maxWidth: (widget.width * 2).round(),
+        // [CHAT-MEDIA-THUMB-2] Ask the native decoder for the SAME long edge the
+        // photo tier uses, so one poster serves every video bubble regardless of
+        // the card width it happens to be mounted at (and so the file that lands
+        // beside the video is the same size class as a photo's `.thumb`).
+        maxWidth: MediaService.kThumbMaxEdge,
         quality: 70,
       );
-      _thumbDone(bytes, bytes == null || bytes.isEmpty ? 'empty' : null);
+      if (bytes == null || bytes.isEmpty) {
+        _thumbDone(null, null, 'empty');
+        return;
+      }
+      // Persist it so the NEXT open is the instant path (no download, no
+      // decrypt, no native decode). Null (unpersistable / not-yet-uploaded
+      // send) simply falls back to the in-memory LRU below.
+      final poster =
+          id.isEmpty ? null : await MediaService.storeThumb(id, bytes, kind: 'video');
+      _thumbDone(poster, bytes, null);
     } catch (e) {
       // [AVA-MEDIA-AUTHZ-1] `_file()` -> `_bytes()` can rethrow a fetch failure
       // from `MediaService.downloadAndDecrypt` whose toString() carries a
       // presigned URL (storage=='digital' media) — classified type only.
-      _thumbDone(null, e.runtimeType.toString());
+      _thumbDone(null, null, e.runtimeType.toString());
     }
   }
 
-  void _thumbDone(Uint8List? bytes, String? err) {
+  void _thumbDone(File? poster, Uint8List? bytes, String? err) {
     if (!mounted) return;
-    final ok = bytes != null && bytes.isNotEmpty;
+    // A NEW non-nullable local rather than a bool flag: Dart's flow analysis
+    // does not promote `bytes` from a separately-computed bool, so a
+    // `if (hasBytes) _thumbCachePut(key, bytes)` would not even compile.
+    final Uint8List? raster =
+        (bytes != null && bytes.isNotEmpty && poster == null) ? bytes : null;
     setState(() {
-      _thumb = ok ? bytes : null;
+      _poster = poster;
+      // Only hold the raster in RAM when there is no file to render from.
+      _thumb = raster;
       _thumbTried = true;
     });
-    if (ok) {
+    if (raster != null) {
       final key = _thumbKey;
-      if (key != null) _thumbCachePut(key, bytes);
+      if (key != null) _thumbCachePut(key, raster);
     }
     if (err != null) {
       Analytics.capture('chat_media_preview_failed', {
@@ -983,6 +1066,10 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
         'err': err,
       });
     } else {
+      // [CHAT-MEDIA-THUMB-2] This branch only runs on a genuine MISS — a warm
+      // poster returns early in `initState` and never reaches here — so it is
+      // the honest "we had to build it from the full video" signal.
+      MediaService.noteCacheEvent('miss', source: poster != null ? 'thumb' : 'network');
       Analytics.capture('chat_media_preview_rendered', {'kind': 'video'});
     }
   }
@@ -1070,30 +1157,37 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(Msg.rMd),
         child: Stack(alignment: Alignment.center, children: [
-          if (_thumb != null)
+          if (_poster != null)
+            // [CHAT-MEDIA-THUMB-2] The cached on-disk poster — the instant path.
+            Image.file(_poster!,
+                width: widget.width,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                cacheWidth: (widget.width * MediaQuery.of(context).devicePixelRatio * 2).round(),
+                // A corrupt poster must degrade to the neutral video tile (with
+                // its play glyph, still tappable to fetch and play the real
+                // video) — never to a broken/empty box. Drop the poisoned entry
+                // so the next mount regenerates it. `evictThumb` is async and
+                // fire-and-forget, so it is safe from inside `errorBuilder`
+                // (which runs DURING build and must not call setState).
+                errorBuilder: (_, __, ___) {
+                  final id = _mediaId;
+                  if (id.isNotEmpty) MediaService.evictThumb(id);
+                  return _videoTile();
+                })
+          else if (_thumb != null)
             Image.memory(_thumb!, width: widget.width, fit: BoxFit.cover,
                 // [CHAT-UI-MEDIA-1] cacheWidth bound, same reasoning as the
                 // chat_thread.dart image bubble sites.
                 cacheWidth: (widget.width * MediaQuery.of(context).devicePixelRatio * 2).round(),
-                errorBuilder: (_, __, ___) => const SizedBox.shrink())
+                errorBuilder: (_, __, ___) => _videoTile())
           else if (!_thumbTried)
             // [CHAT-UI-MEDIA-1] Fixed-size shimmer instead of a spinner-on-dark-
             // square while the thumbnail decodes — the box is already fixed
             // (widget.width x 9:16), so this never resizes the row.
             MediaShimmerPlaceholder(width: widget.width, height: widget.width * 9 / 16, borderRadius: 0)
           else
-            Container(
-              width: widget.width,
-              height: widget.width * 9 / 16,
-              // Themed → a neutral loading fill that reads on a pale bubble
-              // (the old AD.card near-black square read as a hole punched in
-              // the bubble once the canvas/bubbles went pale/white).
-              color: widget.theme != null ? AD.mediaPlaceholderBg : AD.card,
-              alignment: Alignment.center,
-              child: PhosphorIcon(PhosphorIcons.filmSlate(PhosphorIconsStyle.fill),
-                  color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white,
-                  size: 34),
-            ),
+            _videoTile(),
           if (_starting)
             const SizedBox(
                 width: 30,
@@ -1110,6 +1204,22 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
       ),
     );
   }
+
+  /// [CHAT-MEDIA-THUMB-2] The neutral "this is a video" tile, extracted so the
+  /// no-poster state and the corrupt-poster `errorBuilder` render the SAME box
+  /// at the SAME fixed geometry (the row must never resize, [CHAT-UI-STATIC-1]).
+  Widget _videoTile() => Container(
+        width: widget.width,
+        height: widget.width * 9 / 16,
+        // Themed → a neutral loading fill that reads on a pale bubble
+        // (the old AD.card near-black square read as a hole punched in
+        // the bubble once the canvas/bubbles went pale/white).
+        color: widget.theme != null ? AD.mediaPlaceholderBg : AD.card,
+        alignment: Alignment.center,
+        child: PhosphorIcon(PhosphorIcons.filmSlate(PhosphorIconsStyle.fill),
+            color: widget.theme != null ? AD.mediaPlaceholderLabel : Colors.white,
+            size: 34),
+      );
 
   Widget _playGlyph() => Container(
         width: 52,
@@ -1185,17 +1295,45 @@ class ChatFileCard extends StatefulWidget {
 }
 
 class _ChatFileCardState extends State<ChatFileCard> {
+  /// The freshly-rendered first page, held in RAM only for the session that
+  /// rendered it and only when it could NOT be persisted (a not-yet-uploaded
+  /// local send with no media id). Prefer [_pdfFile].
   Uint8List? _pdfThumb;
+
+  /// [CHAT-MEDIA-THUMB-2] The cached on-disk first-page raster (`<id>.thumb`).
+  ///
+  /// Before this, a PDF bubble had NO cache of any kind — not even in memory.
+  /// Every single mount re-downloaded and re-decrypted the whole PDF, opened it
+  /// with `pdfx`, rasterised page 1 to a **PNG** (lossless, so a page-sized
+  /// raster is commonly several hundred KB) and rendered it with `Image.memory`,
+  /// which re-decodes on every rebuild because `MemoryImage` keys on buffer
+  /// identity. Persisting a ~480px JPEG collapses all of that to one
+  /// `Image.file` off a warm image cache.
+  File? _pdfFile;
 
   bool get _isPdf =>
       widget.mime == 'application/pdf' || widget.name.toLowerCase().endsWith('.pdf');
 
+  String get _mediaId => widget.media?.id ?? '';
+
   @override
   void initState() {
     super.initState();
+    if (!_isPdf) return;
+    // [CHAT-MEDIA-THUMB-2] Synchronous, no-I/O hit on a page raster built in an
+    // earlier session: the card paints on frame 1 and the PDF is never fetched.
+    final id = _mediaId;
+    if (id.isNotEmpty) {
+      final f = MediaService.peekThumb(id);
+      if (f != null) {
+        _pdfFile = f;
+        MediaService.noteCacheEvent('hit', source: 'thumb');
+        return;
+      }
+    }
     // STREAM J (D17): only pre-render the PDF thumbnail (which requires a
     // download) when auto-download is on or the bytes are already local.
-    if (_isPdf && (widget.autoFetch || widget.localBytes != null)) _makePdfThumb();
+    if (widget.autoFetch || widget.localBytes != null) _makePdfThumb();
   }
 
   Future<Uint8List?> _bytes() async {
@@ -1216,11 +1354,21 @@ class _ChatFileCardState extends State<ChatFileCard> {
       final h = page.width > 0 ? page.height / page.width * w : w;
       final img = await page.render(
           width: w, height: h, format: PdfPageImageFormat.png);
+      if (img == null) return;
+      // [CHAT-MEDIA-THUMB-2] Persist the raster (downscaled + re-encoded as
+      // JPEG by `storeThumb`) so the next mount takes the instant path. Null
+      // (no media id, or an unwritable cache) degrades to holding the PNG in
+      // RAM for this session — exactly the old behaviour, never worse.
+      final id = _mediaId;
+      final File? f =
+          id.isEmpty ? null : await MediaService.storeThumb(id, img.bytes, kind: 'pdf');
       if (!mounted) return;
-      if (img != null) {
-        setState(() => _pdfThumb = img.bytes);
-        Analytics.capture('chat_media_preview_rendered', {'kind': 'pdf'});
-      }
+      setState(() {
+        _pdfFile = f;
+        _pdfThumb = f == null ? img.bytes : null;
+      });
+      MediaService.noteCacheEvent('miss', source: f != null ? 'thumb' : 'network');
+      Analytics.capture('chat_media_preview_rendered', {'kind': 'pdf'});
     } catch (e) {
       Analytics.capture('chat_media_preview_failed', {
         'kind': 'pdf',
@@ -1265,16 +1413,48 @@ class _ChatFileCardState extends State<ChatFileCard> {
     final sizeLabel = prettySize(widget.size);
 
     // PDF with a rendered first page → image-forward card.
-    if (_isPdf && _pdfThumb != null) {
+    if (_isPdf && (_pdfFile != null || _pdfThumb != null)) {
+      // [CHAT-UI-MEDIA-1] cacheWidth bound, same as the other list thumbs.
+      final int cw =
+          (widget.width * MediaQuery.of(context).devicePixelRatio * 2).round();
+      final File? pf = _pdfFile;
+      final Uint8List? pb = _pdfThumb;
       return GestureDetector(
         onTap: widget.onOpen,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(Msg.rMd),
           child: Stack(children: [
-            Image.memory(_pdfThumb!, width: widget.width, fit: BoxFit.cover,
-                // [CHAT-UI-MEDIA-1] Same cacheWidth bound as the other list thumbs.
-                cacheWidth: (widget.width * MediaQuery.of(context).devicePixelRatio * 2).round(),
-                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+            if (pf != null)
+              // [CHAT-MEDIA-THUMB-2] `Image.file` (path-keyed, reused from the
+              // image cache) rather than `Image.memory` (identity-keyed,
+              // re-decoded every time) — see [ChatImageCard.file].
+              Image.file(pf,
+                  width: widget.width,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  cacheWidth: cw,
+                  // A corrupt page raster must degrade to the TYPED file card
+                  // (name + size + OPEN, which still fetches the real PDF),
+                  // never to a broken tile. Dropping the poisoned entry makes
+                  // the next mount re-rasterise it.
+                  errorBuilder: (_, __, ___) {
+                    final id = _mediaId;
+                    if (id.isNotEmpty) MediaService.evictThumb(id);
+                    // The filename/size scrim below is still stacked on top and
+                    // the whole card is still tappable to open the real PDF, so
+                    // this reads as "a PDF we can't preview", not as a failure.
+                    return Container(
+                      width: widget.width,
+                      height: widget.width,
+                      color: widget.theme != null ? AD.mediaPlaceholderBg : AD.card,
+                      alignment: Alignment.center,
+                      child: Icon(info.icon, size: 40, color: info.color),
+                    );
+                  })
+            else
+              Image.memory(pb!, width: widget.width, fit: BoxFit.cover,
+                  cacheWidth: cw,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink()),
             Positioned(
               left: 0,
               right: 0,
@@ -1472,10 +1652,17 @@ class _YouTubeCardState extends State<YouTubeCard> {
             child: AspectRatio(
               aspectRatio: 16 / 9,
               child: Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
-                Image.network(
-                  'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(color: AD.card),
+                // [PUBLIC-IMG-PEEK-1] A YouTube poster is a PUBLIC http image,
+                // not an encrypted DM attachment, so it belongs in the shared
+                // content-addressed public pool (`AvatarCache`) and NOT in
+                // `MediaService` — see the class doc on `CachedImage`. This was
+                // a bare `Image.network`, i.e. an in-memory-only cache that is
+                // lost on screen rebuild: the poster re-downloaded every time
+                // the thread was reopened.
+                CachedThumb(
+                  url: 'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg',
+                  px: 480, // hqdefault is 480x360 — this bounds the decode
+                  fallback: Container(color: AD.card),
                 ),
                 Container(color: Colors.black.withValues(alpha: 0.12)),
                 Container(

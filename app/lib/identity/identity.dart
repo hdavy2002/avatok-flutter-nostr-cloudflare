@@ -72,6 +72,24 @@ class IdentityStore {
   /// un-decryptable store + caches, then re-restore the account from the server).
   static bool storageCorrupt = false;
 
+  /// [CHAT-THREAD-SNAP-1] SYNCHRONOUS read of the in-memory cache above, for the
+  /// one case where a screen must decide BEFORE its first frame whether it can
+  /// render: `load()` is a Future even on a warm cache, so every caller pays a
+  /// microtask hop and paints one blank frame with no identity. Returns null
+  /// when the cache is cold (fresh process, or the account just switched) — the
+  /// caller must then fall back to `load()`.
+  ///
+  /// ⚠️ THE SCOPE CHECK IS NOT OPTIONAL. A shared parent/child phone means a
+  /// stale cached identity would render one account's conversation under the
+  /// other's — the worst failure mode in this codebase. This returns null unless
+  /// the cache was populated for EXACTLY the currently-signed-in scope, which is
+  /// the same `_cachedScope == scope` test `load()` itself uses; there is no
+  /// path here that can hand back an identity from a different account. Purely
+  /// additive: it neither reads storage, writes the cache, nor touches
+  /// `ApiAuth.identity`.
+  static Identity? get cached =>
+      (_cached != null && _cachedScope == (AccountScope.id ?? '')) ? _cached : null;
+
   final FlutterSecureStorage _storage;
 
   IdentityStore([FlutterSecureStorage? s])

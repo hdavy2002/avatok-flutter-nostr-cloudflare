@@ -58,10 +58,14 @@ class AvatarCache {
   /// Synchronous, best-effort lookup of an already-resolved avatar file for this
   /// URL+size. Returns null on a cold cache (caller falls back to the async [get]
   /// via a FutureBuilder). Never touches disk — safe to call in build().
-  static File? peek(String rawUrl, int px) {
+  ///
+  /// [PUBLIC-IMG-PEEK-1] [cacheKey] mirrors [getAny]'s parameter and MUST be
+  /// passed whenever the async lookup passed it, or the sync and async paths key
+  /// on different names and the peek can never hit for that image.
+  static File? peek(String rawUrl, int px, {String? cacheKey}) {
     if (rawUrl.isEmpty) return null;
     _ensureScope();
-    return _mem[_name(rawUrl, px)];
+    return _mem[_name(rawUrl, px, keyOverride: cacheKey)];
   }
 
   // [AVATAR-WARM-1] getApplicationSupportDirectory() is a native platform-channel

@@ -570,6 +570,16 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
     Widget sticker() {
       final bytes = m.localBytes;
       if (bytes != null) return StickerMediaView(bytes: bytes, mine: m.me);
+      // [CHAT-MEDIA-THUMB-2] Synchronous on-disk hit paints on the FIRST frame.
+      // Both lookups are in-memory index reads with no I/O, so they are safe in
+      // build(). `MemoryImage` keys the decoded frame on the byte buffer's
+      // identity, so re-read bytes always re-decode; `FileImage` keys on the
+      // path and reuses the decode. Falls through to the async path on a miss.
+      final f = m.media == null
+          ? null
+          : (MediaService.peekThumb(m.media!.id) ??
+              MediaService.peekFile(m.media!.id));
+      if (f != null) return StickerMediaView(file: f, mine: m.me);
       if (m.media != null) {
         return FutureBuilder<Uint8List>(
           // [CHAT-UI-STATIC-1] Cached per attachment — same defect as the other
@@ -898,6 +908,13 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
     if (isStickerName(stName)) {
       final bytes = m.localBytes;
       if (bytes != null) return StickerMediaView(bytes: bytes, mine: m.me);
+      // [CHAT-MEDIA-THUMB-2] Same synchronous first-frame path as
+      // _stickerBubbleLess above — see the comment there.
+      final sf = m.media == null
+          ? null
+          : (MediaService.peekThumb(m.media!.id) ??
+              MediaService.peekFile(m.media!.id));
+      if (sf != null) return StickerMediaView(file: sf, mine: m.me);
       if (m.media != null) {
         return FutureBuilder<Uint8List>(
           // [CHAT-UI-STATIC-1] Cached per attachment — an inline

@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/ava_log.dart';
+import '../../../core/avatar_cache.dart';
+import '../../../core/cached_image.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/bubble_theme.dart';
 import '../../../core/ui/messenger_theme.dart';
@@ -145,6 +149,42 @@ const double _kMinAspect = 9 / 16; // tallest we'll go (portrait video)
 const double _kMaxAspect = 1.91;   // widest (the standard OG hero)
 double _clampAspect(double a) => a.clamp(_kMinAspect, _kMaxAspect);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// [PUBLIC-IMG-PEEK-1] PUBLIC-IMAGE TIER FOR LINK PREVIEWS
+//
+// A website's og:image, a site favicon and a YouTube poster are PUBLIC http(s)
+// images. They are deliberately NOT routed through `MediaService`, which is the
+// per-account ENCRYPTED DM-attachment store: there is nothing to decrypt, no
+// per-user secret, and scoping them per account would duplicate identical bytes
+// for a parent and a child sharing one phone. They belong in the SHARED,
+// content-addressed public pool (`AvatarCache`, `avatars/`), same as avatars and
+// public post media — which is exactly what `core/cached_image.dart` documents.
+//
+// What was wrong: every one of these was a bare `Image.network`, whose cache is
+// in-memory only and is lost on screen rebuild. Reopening a thread with three
+// link previews re-downloaded the og:image, the favicon and the poster, every
+// time, at FULL resolution — an og:image hero is typically 1200x630 painted into
+// a ~300dp card.
+//
+// SIZE: Cloudflare's `/cdn-cgi/image` transform only works for paths on OUR
+// zone, so `AvatarCache.sizedUrl` (host-aware) shrinks an og:image that happens
+// to be hosted on avatok.ai and correctly no-ops on third-party hosts — we do
+// NOT have a remote-image proxy and this is not the place to invent one. For
+// those, the win is (a) fetch once, ever, and (b) bound the DECODE with
+// `cacheWidth`/`ResizeImage` so the full-resolution bitmap is never materialised.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Long-edge pixel target for a link-preview thumbnail. The card is at most the
+/// bubble's width (~320dp), so 640 is retina-crisp at 2x and oversampled below
+/// that; `ResizeImage` never upscales, so a smaller og:image is untouched.
+const int _kPreviewImagePx = 640;
+
+/// Compose-bar thumbnail is a fixed 60dp box.
+const int _kComposeThumbPx = 160;
+
+/// The favicon URL already asks Google for `sz=64`.
+const int _kFaviconPx = 64;
+
 /// An image that renders at its own aspect ratio. If the server supplied
 /// og:image:width/height we use that immediately (no layout jump); otherwise we
 /// start at [fallbackAspect] and snap to the true ratio once the image decodes.
@@ -173,12 +213,58 @@ class _AutoAspectImageState extends State<_AutoAspectImage> {
   ImageStreamListener? _listener;
   bool _errored = false;
 
+  /// [PUBLIC-IMG-PEEK-1] The og:image resolved to a file in the shared public
+  /// disk cache. Populated SYNCHRONOUSLY in [initState] on a warm cache, so a
+  /// previously-seen preview paints on the first frame instead of spinning and
+  /// re-downloading. Null → we have not cached it yet and render straight from
+  /// the network (which also warms the cache for next time).
+  File? _file;
+
+  /// The [_src] the current [_file] was resolved for — guards against the
+  /// fallback-URL swap serving the wrong picture.
+  String? _fileFor;
+
   double get _aspect =>
       _clampAspect(widget.knownAspect ?? _measured ?? widget.fallbackAspect);
 
   String get _src => (_errored && widget.fallbackUrl != null)
       ? widget.fallbackUrl!
       : widget.url;
+
+  /// ONE provider for both measuring and painting, so the image is fetched and
+  /// decoded exactly once. `ResizeImage` bounds the decoded bitmap without
+  /// distorting the ratio (it scales uniformly and never upscales), so the
+  /// measured aspect stays correct.
+  ImageProvider get _provider {
+    final f = (_fileFor == _src) ? _file : null;
+    final ImageProvider base = f != null
+        ? FileImage(f)
+        : NetworkImage(AvatarCache.sizedUrl(_src, _kPreviewImagePx));
+    return ResizeImage.resizeIfNeeded(_kPreviewImagePx, null, base);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveFile();
+  }
+
+  void _resolveFile() {
+    final src = _src;
+    resolvePublicImage(src, _kPreviewImagePx, (f, sync) {
+      if (f == null) return;
+      if (sync) {
+        _file = f;
+        _fileFor = src;
+        return;
+      }
+      if (!mounted || _src != src) return;
+      setState(() {
+        _file = f;
+        _fileFor = src;
+      });
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -188,7 +274,7 @@ class _AutoAspectImageState extends State<_AutoAspectImage> {
 
   void _resolve() {
     _detach();
-    final provider = NetworkImage(_src);
+    final provider = _provider;
     _stream = provider.resolve(createLocalImageConfiguration(context));
     _listener = ImageStreamListener((info, _) {
       final w = info.image.width.toDouble();
@@ -221,13 +307,18 @@ class _AutoAspectImageState extends State<_AutoAspectImage> {
     return AspectRatio(
       aspectRatio: _aspect,
       child: Stack(fit: StackFit.expand, children: [
-        Image.network(
-          _src,
+        Image(
+          image: _provider,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) {
             if (!_errored && widget.fallbackUrl != null) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) setState(() => _errored = true);
+                if (!mounted) return;
+                setState(() => _errored = true);
+                // The fallback is a DIFFERENT image — re-resolve it against the
+                // cache rather than leaving a stale file mapped to the old src.
+                _resolveFile();
               });
             }
             return Container(color: AD.card);
@@ -340,10 +431,17 @@ class _DomainFooter extends StatelessWidget {
         if (fav != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
-            child: Image.network(fav, width: 13, height: 13,
-                errorBuilder: (_, __, ___) => PhosphorIcon(
-                    PhosphorIcons.link(PhosphorIconsStyle.bold),
-                    size: 11, color: metaC)),
+            // [PUBLIC-IMG-PEEK-1] Cached + decode-bounded. This was a bare
+            // `Image.network` re-fetching a favicon per bubble per thread open,
+            // and decoding the 64px source at full size into a 13px box.
+            child: CachedThumb(
+              url: fav,
+              px: _kFaviconPx,
+              width: 13,
+              height: 13,
+              fallback: PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
+                  size: 11, color: metaC),
+            ),
           )
         else
           PhosphorIcon(PhosphorIcons.link(PhosphorIconsStyle.bold),
@@ -534,10 +632,16 @@ class ComposeLinkPreview extends StatelessWidget {
                           size: 18, color: t?.meta ?? AD.textTertiary),
                 )
               : Stack(fit: StackFit.expand, children: [
-                  Image.network(p!.displayImage!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          Container(color: t?.bg.withValues(alpha: 0.6) ?? AD.cardHover)),
+                  // [PUBLIC-IMG-PEEK-1] The composer re-renders on every
+                  // keystroke, so a bare `Image.network` here re-resolved the
+                  // og:image constantly while typing; and a 1200x630 hero was
+                  // decoded at full size into a 60dp box.
+                  CachedThumb(
+                    url: p!.displayImage!,
+                    px: _kComposeThumbPx,
+                    fallback: Container(
+                        color: t?.bg.withValues(alpha: 0.6) ?? AD.cardHover),
+                  ),
                   if (p.isVideo) const Center(child: _PlayBadge(size: 24)),
                 ]),
         ),

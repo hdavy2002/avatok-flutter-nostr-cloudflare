@@ -129,7 +129,12 @@ extension _ChatThreadSetup on _ChatThreadScreenState {
     final peerHex = seed;
     if (peerHex.isEmpty) return; // no addressable peer id → keep local echo
     _realMode = true;
-    _mutMsgs(() => _msgs.clear()); // drop demo seed; history loads from relay
+    // [CHAT-THREAD-SNAP-1] This clear only ever existed to drop the legacy demo
+    // seed. A snapshot restore puts REAL history in `_msgs` before the first
+    // frame, so clearing here would throw away the whole point of it (and
+    // re-blank the thread a microtask after it painted). The hub/cache/DB
+    // replay that follows dedups against the restored `_seenEv`.
+    if (!_snapRestored) _mutMsgs(() => _msgs.clear()); // drop demo seed; history loads from relay
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _dm = AvaDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
@@ -196,7 +201,7 @@ extension _ChatThreadSetup on _ChatThreadScreenState {
     _isTelThread = true;
     _telPhone = phone;
     _convKey = receptTelConvKey(id.uid, phone);
-    _mutMsgs(() => _msgs.clear());
+    if (!_snapRestored) _mutMsgs(() => _msgs.clear()); // [CHAT-THREAD-SNAP-1] see _setupDm
     // Seed from the in-memory hub store, then durable history from SQLite.
     for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
     Db.I.messagesFor(_convKey!).then((rows) {
@@ -540,7 +545,7 @@ extension _ChatThreadSetup on _ChatThreadScreenState {
     _isGroup = true;
     _group = g;
     Analytics.capture('group_thread_opened', {'gid': g.id, 'member_count': g.members.length});
-    _mutMsgs(() => _msgs.clear());
+    if (!_snapRestored) _mutMsgs(() => _msgs.clear()); // [CHAT-THREAD-SNAP-1] see _setupDm
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _gdm = AvaGroupDm(group: g);
     _gdm!.messages.listen(_onGroupMsg);

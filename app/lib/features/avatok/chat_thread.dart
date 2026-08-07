@@ -51,6 +51,7 @@ import '../../core/avatar.dart';
 import '../../core/cached_image.dart';
 import '../../core/ava_identity.dart';
 import '../../core/chat_state.dart';
+import '../../core/thread_snapshot.dart'; // [CHAT-THREAD-SNAP-1] warm per-conversation message list
 import '../../core/wallpaper.dart';
 import '../../core/config.dart';
 import '../../core/calls/call_escalation_guard.dart'; // [ADDCALL-2-UI]
@@ -463,6 +464,133 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   String _transLangCode = 'Spanish';
   ComposerLang get _transLang => ComposerAi.langByCode(_transLangCode);
 
+  // ── [CHAT-THREAD-SNAP-1] warm reopen ───────────────────────────────────────
+  //
+  // Every thread open is a plain `Navigator.push` of a fresh `MaterialPageRoute`,
+  // so this State (and with it `_msgs`) is rebuilt from nothing each time — even
+  // for a conversation the user closed two seconds ago. The content then comes
+  // back from two ASYNC disk reads (SQLite + the JSON cache), which is why the
+  // thread visibly reloads. [ThreadSnapshot] holds the last few conversations'
+  // lists in memory so the reopen repaints on frame 1; the disk replay still
+  // runs underneath and dedups against the restored `_seenEv`.
+  //
+  // `_snapRestored` also suppresses the `_msgs.clear()` in `_setupDm` /
+  // `_setupGroup` / `_setupTelThread` — that clear exists to drop the legacy
+  // demo seed, and a restored list is real history, not a seed.
+  bool _snapRestored = false;
+  // Epoch ms at initState, and whether the first-frame telemetry has fired.
+  int _snapOpenedMs = 0;
+  bool _snapPaintReported = false;
+
+  /// Snapshot key for THIS conversation, derived from `widget.chat` alone so it
+  /// is known SYNCHRONOUSLY in `initState` — `_convKey` is only assigned inside
+  /// the setup methods (and `_setupGroup` is async), which is far too late to
+  /// decide what to paint on the first frame. It matches `_convKey` for DMs and
+  /// groups; for an unknown-number receptionist thread it is `1:tel:<phone>`
+  /// rather than the `g:recept_…` server key, which is fine — it only has to be
+  /// stable and unique, and it is used for BOTH the put and the take.
+  String? get _snapKey {
+    final c = widget.chat;
+    final gid = c.gid;
+    if (gid != null && gid.isNotEmpty) return 'g:$gid';
+    if (c.group) return null; // legacy local group — setup returns early, nothing to hold
+    final seed = c.seed;
+    if (seed.isEmpty) return null;
+    return '1:$seed';
+  }
+
+  /// Populate `_msgs` / `_seenEv` from the in-memory snapshot BEFORE the first
+  /// frame. Returns the number of restored messages (0 = miss).
+  int _restoreSnapshot() {
+    final key = _snapKey;
+    if (key == null) return 0;
+    final snap = ThreadSnapshot.take(key);
+    if (snap == null || snap.messages.isEmpty) return 0;
+    // Tombstones as they were known at close. Restoring these SYNCHRONOUSLY is
+    // what stops a hard-deleted message flashing its original body for the few
+    // frames before `DeletedStore().load()` / `HiddenStore().load()` return.
+    // Those async loads still run in initState and now actually do something on
+    // reopen (they iterate `_msgs`, which used to be empty at that point), so a
+    // delete that arrived while the thread was CLOSED is applied one disk read
+    // later — the same window the JSON cache restore has always had.
+    _hiddenIds.addAll(snap.hidden);
+    _deletedIds.addAll(snap.deleted);
+    final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final restored = <_Msg>[];
+    for (final m in snap.messages.cast<_Msg>()) {
+      // DISAPPEARING MESSAGES: `_pruneTimer` only sweeps expired rows while the
+      // thread is OPEN, so a snapshot taken before a message's `expireAt` would
+      // RESURRECT it on reopen. Re-run the identical filter here.
+      if (m.expireAt != null && m.expireAt! < nowS) continue;
+      // Same precedence as the JSON-cache restore in `_loadCachedMessages`:
+      // apply the soft-delete flag first, then let a hard-delete tombstone
+      // overwrite it (`_tombstone` clears `hidden` on purpose — a message the
+      // PEER deleted is not "you deleted this", and must not offer Undo).
+      if (m.evId != null) {
+        if (_hiddenIds[m.evId] == true) m.hidden = true;
+        if (_deletedIds.contains(m.evId)) _tombstone(m);
+      }
+      restored.add(m);
+    }
+    if (restored.isEmpty) return 0;
+    _msgs.addAll(restored);
+    _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+    for (final m in restored) {
+      final ev = m.evId;
+      if (ev != null && ev.isNotEmpty) _seenEv.add(ev);
+    }
+    // `_Msg.id` must stay unique within this State: the restored ids were minted
+    // by the PREVIOUS state's counter, so start ours above the highest of them
+    // or a newly sent message could collide with a restored one (the id keys
+    // voice-note playback and scroll-to-message).
+    for (final m in restored) {
+      if (m.id >= _seq) _seq = m.id + 1;
+    }
+    _msgsRev++;
+    _snapRestored = true;
+    return restored.length;
+  }
+
+  /// Hand this conversation's list to [ThreadSnapshot] on the way out.
+  void _snapshotStore() {
+    final key = _snapKey;
+    if (key == null || _msgs.isEmpty) return;
+    final keep = <_Msg>[];
+    for (final m in _msgs) {
+      // An attachment still in flight has its bytes ONLY in `localBytes` (no
+      // durable `media` envelope yet), so it cannot be rebuilt from any cache.
+      // Leave it out entirely rather than restore an empty bubble — the JSON
+      // cache already restores it as a pending/failed placeholder, unchanged.
+      if (m.localBytes != null && m.media == null) continue;
+      // MEMORY: never retain decrypted image/voice bytes. `_Msg.localBytes` is
+      // megabytes per attachment, and pinning that for up to three threads on a
+      // cheap phone is exactly the kind of cache that gets an app killed. It
+      // costs nothing: the bytes are already on disk in MediaService's
+      // per-account cache (`peekThumb`/`peekFile`), which survives thread close.
+      m.localBytes = null;
+      keep.add(m);
+    }
+    if (keep.isEmpty) return;
+    // `seenEv` is rebuilt from the KEPT slice only — handing over ids for
+    // messages we are not retaining would make the next open's SQLite replay
+    // skip rows that are no longer on screen.
+    final tail = keep.length > ThreadSnapshot.maxMessages
+        ? keep.sublist(keep.length - ThreadSnapshot.maxMessages)
+        : keep;
+    final seen = <String>{};
+    for (final m in tail) {
+      final ev = m.evId;
+      if (ev != null && ev.isNotEmpty) seen.add(ev);
+    }
+    ThreadSnapshot.put(
+      convKey: key,
+      messages: tail,
+      seenEv: seen,
+      hidden: Map<String, bool>.of(_hiddenIds),
+      deleted: Set<String>.of(_deletedIds),
+    );
+  }
+
   Timer? _markReadTimer;
   // [ISSUE-BADGE-UNREAD-1] Separate debounce for the launcher-badge recompute —
   // _markRead fires on init, on every incoming message and on each Ava stream
@@ -479,6 +607,39 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // the single highest-traffic screen in the app was invisible to the jank
     // dashboard by name.
     Analytics.screenViewed('avatok', 'chat_thread');
+    // [CHAT-THREAD-SNAP-1] Repaint a recently-closed conversation on frame 1.
+    // MUST run before anything that touches `_msgs` (and before `_setupDm`,
+    // whose `_msgs.clear()` is suppressed by `_snapRestored`).
+    _snapOpenedMs = DateTime.now().millisecondsSinceEpoch;
+    final snapCount = _restoreSnapshot();
+    // Read ONCE, here: the async fallback below can populate the cache before
+    // the post-frame callback runs, which would report every cold open as warm.
+    final warmId = IdentityStore.cached;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_snapPaintReported) return;
+      _snapPaintReported = true;
+      // Fire-and-forget: never awaited on the paint path. Deliberately carries
+      // NO message content and NO contact identifier — only the conversation
+      // FLAVOUR — so "did the snapshot help" is one query without putting who
+      // the user talks to into telemetry. `conv_kind` is enough to split DM vs
+      // group, which is the only cut that matters here (groups pay for the
+      // sequenced cache→DB replay, DMs don't).
+      unawaited(Analytics.cacheEvent(
+        'chat_thread',
+        snapCount > 0 ? 'hit' : 'miss',
+        renderMs: DateTime.now().millisecondsSinceEpoch - _snapOpenedMs,
+        accountScoped: true,
+        extra: {
+          'messages': snapCount,
+          'conv_kind': widget.chat.gid != null
+              ? 'group'
+              : (telPhone(widget.chat.seed) != null ? 'tel' : 'dm'),
+          // Which of the two frame-1 blockers we actually cleared: a warm
+          // identity alone already removes the unconditional blank frame.
+          'identity': warmId != null ? 'warm' : 'cold',
+        },
+      ));
+    });
     WidgetsBinding.instance.addObserver(this); // [VOICE-REC-1] recorder auto-pause
     // [AVA-MEDIA-JOB-2] Bind the durable AI-media-job stream now — filtering
     // happens at EVENT time against `_serverConvId`/`_convKey` inside
@@ -577,11 +738,37 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
         }
       });
     });
-    _idStore.load().then((id) {
-      if (!mounted || id == null) return;
-      setState(() { _myNpub = id.uid; _myName = id.shortId; _meId = id; });
-      _setupDm(id);
-    });
+    // ── [CHAT-THREAD-SNAP-1] identity fast path ────────────────────────────
+    //
+    // `IdentityStore.load()` is a Future even when it answers straight out of
+    // its in-memory cache, so gating setup behind `.then(...)` guaranteed that
+    // `_msgs` was empty on frame 1 for EVERY open — including a thread the user
+    // closed two seconds ago. When the cache is already warm we call setup
+    // directly instead, so the seeded/restored history is on screen in the first
+    // frame. The async path below is unchanged and still covers a cold cache
+    // (fresh launch, or an account that just switched).
+    //
+    // THE SCOPE CHECK LIVES IN `IdentityStore.cached` and is the whole reason
+    // that getter exists: it returns null unless the cached identity was loaded
+    // for EXACTLY the currently-signed-in `AccountScope.id`, so a stale identity
+    // from the other account on a shared parent/child phone can never reach
+    // here. (A re-check on `Identity.uid` at this call site would be theatre —
+    // `uid` READS `AccountScope.id`, so comparing the two always passes.) A null
+    // means "cold or just-switched" and we take the async path, which re-reads
+    // secure storage under the new scope. (`warmId` was read once at the top of
+    // initState — see the note there.)
+    if (warmId != null) {
+      // No setState: we are pre-first-build, so a plain assignment is what the
+      // upcoming build will read anyway.
+      _myNpub = warmId.uid; _myName = warmId.shortId; _meId = warmId;
+      _setupDm(warmId);
+    } else {
+      _idStore.load().then((id) {
+        if (!mounted || id == null) return;
+        setState(() { _myNpub = id.uid; _myName = id.shortId; _meId = id; });
+        _setupDm(id);
+      });
+    }
     ProfileStore().load().then((p) {
       if (!mounted) return;
       setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; _myAvatarUrl = p.avatarUrl; _isMinorAccount = p.isMinor; });
@@ -805,6 +992,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _composeUnfurlDebounce?.cancel(); // compose-time link preview
     LinkViewer.close(); // tear down the in-app video/article viewer overlay
     _persistNow(); // flush any pending message-cache write on exit
+    // [CHAT-THREAD-SNAP-1] Hand the rendered list to the in-memory snapshot so a
+    // reopen of THIS conversation repaints on frame 1. Runs AFTER `_persistNow`
+    // so the durable JSON cache is still written from the untouched list — this
+    // strips `localBytes` from the entries, and the cache never stored bytes
+    // anyway (refs only), so the order matters only for clarity, not
+    // correctness. Note that everything above still runs: the presence
+    // "offline", the `ActiveThread.leave` and the listener teardown are exactly
+    // why this holds DATA instead of keeping the route alive.
+    _snapshotStore();
     // NOTE: do NOT dispose _nostr — it's the shared SyncHub client owned by the
     // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's
     // listeners; the socket stays alive so returning to a chat is instant.

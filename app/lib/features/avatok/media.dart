@@ -653,6 +653,35 @@ class MediaService {
     return _mem[_cacheName(id)];
   }
 
+  /// [CHAT-MEDIA-THUMB-2] ASYNC on-disk lookup of the cached FULL plaintext for
+  /// [id] — the file itself, not its bytes. [peekFile] answers from the
+  /// in-memory index only (safe in `build()`); this one also asks the disk, so
+  /// it works on a cold index and after an app restart.
+  ///
+  /// Exists for the callers that need a PATH rather than bytes: the native
+  /// video-poster extractor (`VideoThumbnail.thumbnailData(video: <path>)`) and
+  /// inline video playback both want a file on disk, and the per-account media
+  /// cache ALREADY holds exactly that. Before this, `ChatVideoCard` decrypted
+  /// the whole video into RAM and wrote a SECOND full-size copy to the temp
+  /// directory on every card mount just to hand a path to the plugin.
+  ///
+  /// The returned File belongs to the media cache — callers must NEVER delete
+  /// it (that would evict a real attachment), unlike the temp copies they own.
+  static Future<File?> cachedFile(String id) async {
+    if (id.isEmpty) return null;
+    final peeked = peekFile(id);
+    if (peeked != null) return peeked;
+    try {
+      final name = _cacheName(id);
+      final f = File('${(await _cacheDir()).path}/$name');
+      if (await f.exists() && await f.length() > 0) {
+        _remember(name, f);
+        return f;
+      }
+    } catch (_) {/* miss */}
+    return null;
+  }
+
   /// Drop ONE entry from the synchronous index (sync, no I/O — safe to call
   /// from an `errorBuilder`). The async path still works; it just re-reads.
   ///
@@ -807,30 +836,67 @@ class MediaService {
   static Future<void> _generateThumb(String id, Uint8List? src) async {
     final name = _thumbName(id);
     if (_mem.containsKey(name)) return;
-    final t0 = DateTime.now().millisecondsSinceEpoch;
     final d = await _cacheDir();
-    final tf = File('${d.path}/$name');
-    // Already on disk from a previous session — just index it (this is the
-    // cheap path after a cold start with a cold [_mem]).
-    try {
-      if (await tf.exists() && await tf.length() > 0) {
-        _remember(name, tf);
-        return;
-      }
-    } catch (_) {/* fall through and regenerate */}
-
     // Explicitly a NEW non-nullable local rather than reassigning [src] — no
     // reliance on null-promotion across a try/catch boundary.
     final Uint8List? source = src ?? await _readFullForThumb(d, id);
     if (source == null || source.isEmpty) return;
+    await storeThumb(id, source);
+  }
+
+  /// [CHAT-MEDIA-THUMB-2] AWAITABLE thumbnail write — the shared tail of the
+  /// whole tier. Downscales [source] to ~[kThumbMaxEdge], writes it beside the
+  /// full file as `<id>.thumb`, indexes it for [peekThumb], and returns the
+  /// File so the caller can render it in the SAME session it generated it.
+  ///
+  /// [ensureThumb] (fire-and-forget, queued, photos) is the trigger for chat
+  /// PHOTOS, whose source bytes are the plaintext we already hold. The other
+  /// two producers cannot use it, because their source is a DERIVED raster
+  /// nobody else can reproduce cheaply and which is only in hand for a moment:
+  ///   * VIDEO — a native first-frame JPEG from `VideoThumbnail`,
+  ///   * PDF   — a `pdfx` first-page raster.
+  /// Both hand their raster straight here instead, and get back a path they can
+  /// render immediately AND that survives the app restart. That is the whole
+  /// point: before this, both rebuilt their preview from the FULL asset on every
+  /// single card mount.
+  ///
+  /// [kind] rides the telemetry only ('image' | 'video' | 'pdf') so a
+  /// systematically failing producer is one query away.
+  ///
+  /// NEVER throws: on any failure it returns null and the caller keeps its
+  /// existing in-memory/full-asset rendering. A thumbnail is an optimisation,
+  /// never a precondition for showing the bubble.
+  static Future<File?> storeThumb(String id, Uint8List source,
+      {String kind = 'image'}) async {
+    if (id.isEmpty || source.isEmpty) return null;
+    _ensureScope();
+    final name = _thumbName(id);
+    final indexed = _mem[name];
+    if (indexed != null) return indexed;
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    // Nullable + an explicit null check rather than a `final` assigned inside a
+    // `try` — definite-assignment analysis across a try/catch is exactly the
+    // kind of thing there is no local compiler here to check.
+    File? handle;
+    try {
+      handle = File('${(await _cacheDir()).path}/$name');
+      // Already on disk from a previous session — just index it (this is the
+      // cheap path after a cold start with a cold [_mem]).
+      if (await handle.exists() && await handle.length() > 0) {
+        _remember(name, handle);
+        return handle;
+      }
+    } catch (_) {/* fall through and regenerate */}
+    final tf = handle;
+    if (tf == null) return null;
 
     final small = await _downscale(source);
-    if (small == null || small.isEmpty) return;
+    if (small == null || small.isEmpty) return null;
     try {
       await tf.writeAsBytes(small, flush: true);
       _remember(name, tf);
     } catch (_) {
-      return; // a write failure just means the next open retries
+      return null; // a write failure just means the next open retries
     }
     // FIRE-AND-FORGET. No message content, no contact identifier — sizes and a
     // duration only; the standard [Analytics] envelope carries the email that
@@ -840,7 +906,9 @@ class MediaService {
       'src_bytes': source.length,
       'gen_ms': DateTime.now().millisecondsSinceEpoch - t0,
       'max_edge': kThumbMaxEdge,
+      'kind': kind,
     }));
+    return tf;
   }
 
   /// Reads the cached FULL plaintext for [id]. Null when it isn't on disk (the
