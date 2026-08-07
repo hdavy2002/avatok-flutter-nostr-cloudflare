@@ -13,6 +13,7 @@ export const prerender = true;
 
 import landingRaw from '../landing/avatok-landing.html?raw';
 import SiteFooter from '../components/SiteFooter.astro';
+import SmokeTrail from '../islands/site/SmokeTrail';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 
@@ -36,11 +37,9 @@ if (landingTail === '') {
 <Fragment set:html={landingTail} />
 
 <!--
-  Scroll-driven 3D fold on the six spreads. A bundled <script> rather than a React
-  island on purpose: it is pure DOM work with no markup of its own, and Astro emits
-  it as a deferred module, so it runs after the landing document is parsed without
-  the hydration timing that `client:idle` depends on.
+  Blue smoke trailing the cursor. `client:load` rather than `client:idle`: this page
+  runs continuous scroll animations, so requestIdleCallback is unreliable here and the
+  island was observed failing to hydrate at all. It is decorative and
+  pointer-events:none, so a browser that never runs it loses nothing.
 -->
-<script>
-  import '../scripts/scroll-fold';
-</script>
+<SmokeTrail client:load />
