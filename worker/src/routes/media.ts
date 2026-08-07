@@ -88,9 +88,119 @@ async function promoteIfUncommitted(
 ): Promise<boolean> {
   if (!Number(row?.uncommitted ?? 0)) return false;
   await ensureUncommittedColumns(env);
-  await mdb.prepare("UPDATE user_media SET uncommitted=0, uncommitted_at=NULL WHERE id=?1 AND uid=?2")
-    .bind(row.id, uid).run();
-  return true;
+  return markCommitted(mdb, uid, row.id);
+}
+
+// [SPEC-SEND-3] The ONE write that flips a row uncommitted→committed, and the
+// ONE place that decides whether THIS caller performed the transition.
+//
+// The `AND COALESCE(uncommitted,0)=1` guard plus the rows-changed check is what
+// makes the deferred side effects below fire EXACTLY ONCE. The read-then-write
+// pattern that preceded it ("row said 1, so update and return true") is racy:
+// two concurrent real uploads of the same bytes, or a client retrying
+// /api/media/commit while the first call is still in flight, both read
+// uncommitted=1 and both would have claimed the transition — enqueueing the
+// moderation scan twice and, worse, ingesting the file into AvaBrain twice.
+// SQLite reports 0 changed rows for the loser of that race, so it stays silent.
+async function markCommitted(
+  mdb: ReturnType<typeof mediaSession>, uid: string, id: string,
+): Promise<boolean> {
+  const res = await mdb.prepare(
+    "UPDATE user_media SET uncommitted=0, uncommitted_at=NULL WHERE id=?1 AND uid=?2 AND COALESCE(uncommitted,0)=1",
+  ).bind(id, uid).run();
+  return Number((res as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// [SPEC-SEND-3 / WS-30a] DEFERRED UPLOAD SIDE EFFECTS
+//
+// A speculative upload is a file the user STAGED and may never send. Until
+// [SPEC-SEND-3] the only thing that treated it as provisional was the storage
+// quota: everything else fired at upload time, so a file the user picked and
+// then discarded was still enqueued for moderation and — the serious one —
+// permanently ingested into AvaBrain. The row is swept after 24h; the brain
+// vectors are not, so Ava kept remembering a file whose owner had explicitly
+// changed their mind. Discarding is meant to mean "forget this".
+//
+// So these three effects now run on the uncommitted→committed TRANSITION, from
+// whichever path performs it (POST /api/media/commit, or the dedup-collision
+// promotion when the same bytes are re-uploaded for real). A committed upload —
+// i.e. every shipped client, which sends no x-uncommitted header — still fires
+// them inline at insert time, byte-for-byte the old behaviour.
+//
+// Private/DM uploads never had any of this (no scan of ciphertext, no server
+// brain ingest), so uploadPrivate has nothing to defer — hence the visibility
+// and storage guards here rather than at the call sites.
+// ---------------------------------------------------------------------------
+interface CommittedUploadInfo {
+  media_id: string;
+  key: string;
+  mime: string;
+  size: number;
+  name: string;
+  category: string;
+  visibility: string;
+  /** 'digital' = the private bucket. Never public-brain / moderation eligible. */
+  storage?: string | null;
+}
+
+async function emitCommittedUploadEffects(
+  env: Env, uid: string, app: string, m: CommittedUploadInfo,
+): Promise<void> {
+  if (m.visibility !== "public" || m.storage === "digital") return;
+  // The content hash IS the last path segment of the content-addressed key
+  // (userKey() below: `u/<uid>/<kind>/<hash>`), so a commit arriving hours after
+  // the upload can still name the exact content the scanner has to fetch —
+  // without the queue message needing the bytes or a second D1 column.
+  const hash = /\/([0-9a-f]{64})$/i.exec(m.key)?.[1] || "";
+  const jobs: Promise<unknown>[] = [];
+  // async moderation — content hash for scan/blocklist, r2_key for fetch/delete.
+  if (hash) jobs.push(env.Q_MODERATION.send({ type: "image", hash, uid, media_id: m.media_id, r2_key: m.key }));
+  // AvaBrain learns from public uploads (metadata only — no DM media here).
+  jobs.push(brainIngest(env, {
+    uid, domain: "files", kind: "upload_completed", sourceId: m.media_id,
+    meta: { hash, mime: m.mime, size: m.size, app },
+  }));
+  // AvaBrain CONTENT ingestion of the public file itself (caption/OCR/text →
+  // embed), gated on the user's consent toggles.
+  jobs.push(maybeEmitLibraryBrain(env, uid, app, {
+    media_id: m.media_id, key: m.key, mime: m.mime, size: m.size,
+    name: m.name, category: m.category, visibility: "public",
+  }));
+  // allSettled, not all: one failing effect must not cancel the others.
+  await Promise.allSettled(jobs);
+}
+
+// [SPEC-SEND-3] moderation_status for a speculative PUBLIC upload.
+//
+// It cannot be 'pending'. 'pending' means "a scan is coming", and while the row
+// is uncommitted no scan has been enqueued — but consumers/src/index.ts's
+// 6-hourly cron flips every 'pending' row older than 24h to 'rejected'. A
+// staged file would therefore be auto-rejected before the user ever pressed
+// Send, and the rejection would be indistinguishable from a real moderation
+// failure. 'staged' is a fourth value alongside pending/live/rejected/skipped;
+// nothing else in the codebase branches on an unknown status (the brain's
+// library reader requires 'live', the auto-reject matches 'pending' exactly),
+// so it is inert until the commit flips it to 'pending' next to the enqueue.
+const MOD_STAGED = "staged";
+
+/** 'staged' → 'pending', at the same moment the scan is actually enqueued. */
+async function markModerationPending(
+  mdb: ReturnType<typeof mediaSession>, uid: string, id: string,
+): Promise<void> {
+  await mdb.prepare(
+    `UPDATE user_media SET moderation_status='pending' WHERE id=?1 AND uid=?2 AND moderation_status='${MOD_STAGED}'`,
+  ).bind(id, uid).run();
+}
+
+// [SPEC-SEND-3] Library views must not show a file the user staged and never
+// sent. Applied as a WHERE fragment so the deploy-window fallback (Worker live,
+// migrations/media_uncommitted.sql not yet applied to this environment's D1)
+// can retry the SAME query without it — and that fallback is exact, not an
+// approximation: no column ⇒ no row can be uncommitted.
+const COMMITTED_ONLY = "COALESCE(uncommitted,0)=0";
+async function withCommittedFilter<T>(run: (filter: string) => Promise<T>): Promise<T> {
+  try { return await run(COMMITTED_ONLY); } catch { return await run("1=1"); }
 }
 
 // Both upload routes SELECT their dedup row with this projection. COALESCE reads
@@ -153,21 +263,25 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
     id = crypto.randomUUID();
     await mdb.prepare(
       `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, folder_id, uncommitted, uncommitted_at)
-       VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'pending',?10,?11,'sent',?12,?13,?14)`,
+       VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,?15,?10,?11,'sent',?12,?13,?14)`,
     ).bind(id, ctx.uid, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName, folderId,
-      uncommitted ? 1 : 0, uncommitted ? Date.now() : null).run();
+      uncommitted ? 1 : 0, uncommitted ? Date.now() : null,
+      // [SPEC-SEND-3] 'staged', not 'pending' — no scan is enqueued below for a
+      // speculative upload, and a 'pending' row is auto-rejected after 24h.
+      uncommitted ? MOD_STAGED : "pending").run();
     if (uncommitted) {
       exec.waitUntil(track(env, ctx.uid, "media_upload_uncommitted", app, {
         media_id: id, key: r2Key, bytes: bytes.byteLength, kind: categoryOf(ct), mime: ct, visibility: "public",
       }));
+    } else {
+      // [SPEC-SEND-3] Moderation + both AvaBrain ingests. Deferred to commit time
+      // for a speculative upload (see emitCommittedUploadEffects) so a staged-then-
+      // discarded file is never scanned and never remembered by Ava.
+      exec.waitUntil(emitCommittedUploadEffects(env, ctx.uid, app, {
+        media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName,
+        category: categoryOf(ct), visibility: "public", storage: "blossom",
+      }));
     }
-    // async moderation — content hash for scan/blocklist, r2_key for fetch/delete.
-    exec.waitUntil(env.Q_MODERATION.send({ type: "image", hash, uid: ctx.uid, media_id: id, r2_key: r2Key }));
-    // AvaBrain learns from public uploads (metadata only — no DM media here).
-    exec.waitUntil(brainIngest(env, { uid: ctx.uid, domain: "files", kind: "upload_completed", sourceId: id, meta: { hash, mime: ct, size: bytes.byteLength, app } }));
-    // AvaBrain CONTENT ingestion of the public file itself (caption/OCR/text → embed),
-    // gated on the user's consent toggles. Private uploads never reach this path.
-    exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
     // Phase 4: refresh the storage summary + live-push it over the InboxDO socket.
     exec.waitUntil(afterRegisterFile(env, ctx.uid, { kind: categoryOf(ct), bytes: bytes.byteLength, source_app: app, dedup: false }));
   } else {
@@ -182,6 +296,16 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
       exec.waitUntil(afterRegisterFile(env, ctx.uid, { kind: categoryOf(ct), bytes: bytes.byteLength, source_app: app, dedup: false }));
       exec.waitUntil(track(env, ctx.uid, "media_commit", app, {
         media_id: existing.id, bytes: bytes.byteLength, kind: categoryOf(ct), via: "dedup_upload", visibility: "public",
+      }));
+      // [SPEC-SEND-3] This is a commit, so it owes the same deferred side effects
+      // /api/media/commit does. promoteIfUncommitted() reports the TRANSITION only
+      // (rows-changed guarded), so a second real upload of the same bytes lands
+      // here with `false` and nothing fires twice. Byte-identical content ⇒ the
+      // size/mime of this request describe the stored row exactly.
+      await markModerationPending(mdb, ctx.uid, existing.id);
+      exec.waitUntil(emitCommittedUploadEffects(env, ctx.uid, app, {
+        media_id: existing.id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName,
+        category: categoryOf(ct), visibility: "public", storage: "blossom",
       }));
     }
   }
@@ -323,7 +447,7 @@ export async function mediaCommit(req: Request, env: Env, exec?: ExecutionContex
   await ensureUncommittedColumns(env);
   const mdb = mediaSession(env);
   const row = await mdb.prepare(
-    `SELECT id, size_bytes, category, original_app, ${UNCOMMITTED_SEL} FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1`,
+    `SELECT id, size_bytes, category, original_app, key, mime_type, file_name, visibility, storage, ${UNCOMMITTED_SEL} FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1`,
   ).bind(mediaId, ctx.uid).first<any>();
   if (!row) return json({ error: "not_found" }, 404);
 
@@ -332,8 +456,30 @@ export async function mediaCommit(req: Request, env: Env, exec?: ExecutionContex
   const kind = (row.category || "other").toString();
   if (!Number(row.uncommitted ?? 0)) return json({ ok: true, id: mediaId, committed: true, already: true });
 
-  await mdb.prepare("UPDATE user_media SET uncommitted=0, uncommitted_at=NULL WHERE id=?1 AND uid=?2")
-    .bind(mediaId, ctx.uid).run();
+  // [SPEC-SEND-3] Guarded flip: `already` is now decided by who actually changed
+  // the row, not by a read that can be stale by the time the write lands. Two
+  // concurrent commits of the same media_id (the client retries a send, or sends
+  // the same staged attachment to two threads at once) both pass the check
+  // above; only one gets changes>0, so the moderation scan and the AvaBrain
+  // ingest below happen exactly once.
+  if (!(await markCommitted(mdb, ctx.uid, mediaId))) {
+    return json({ ok: true, id: mediaId, committed: true, already: true });
+  }
+  // [SPEC-SEND-3] The side effects deferred at upload time: the moderation scan
+  // and both AvaBrain ingests. No-ops for a private/DM row (uploadPrivate never
+  // fired them either) — emitCommittedUploadEffects guards on visibility.
+  await markModerationPending(mdb, ctx.uid, mediaId);
+  const fx = emitCommittedUploadEffects(env, ctx.uid, app, {
+    media_id: mediaId,
+    key: (row.key || "").toString(),
+    mime: (row.mime_type || "application/octet-stream").toString(),
+    size: bytes,
+    name: (row.file_name || "").toString(),
+    category: kind,
+    visibility: (row.visibility || "private").toString(),
+    storage: row.storage ?? null,
+  });
+  if (exec) exec.waitUntil(fx); else await fx.catch(() => { /* best-effort */ });
   // Quota recompute + live storage push — the bytes count from this moment.
   const reg = afterRegisterFile(env, ctx.uid, { kind, bytes, source_app: app, dedup: false });
   const t = track(env, ctx.uid, "media_commit", app, { media_id: mediaId, bytes, kind, via: "commit_route" });
@@ -648,8 +794,13 @@ export async function getLibrary(req: Request, env: Env): Promise<Response> {
       where.push(`(category=?${binds.length + 1} OR media_type=?${binds.length + 1})`); binds.push(category);
     }
   }
-  const sql = `SELECT ${LIB_COLS} FROM user_media WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 30`;
-  const rs = await mediaSession(env).prepare(sql).bind(...binds).all();
+  // [SPEC-SEND-3] Speculative uploads are NOT files the user has: they were
+  // staged before a Send that may never happen, they are already excluded from
+  // the storage quota, and the 24h sweep deletes them. Showing them in
+  // AvaLibrary would offer the user a file that vanishes on its own.
+  const rs = await withCommittedFilter((filter) => mediaSession(env)
+    .prepare(`SELECT ${LIB_COLS} FROM user_media WHERE ${where.join(" AND ")} AND ${filter} ORDER BY created_at DESC LIMIT 30`)
+    .bind(...binds).all());
   const items = (rs.results ?? []) as any[];
   const next = items.length === 30 ? items[items.length - 1].created_at : null;
   // [B3 / voice-note MVP] A stored display_url is only ever valid for a
@@ -675,7 +826,9 @@ export async function getLibraryTree(req: Request, env: Env): Promise<Response> 
   // clean file manager (Images/Videos/PDFs/Documents/Music/Other). Additive: the
   // client folds pdf/doc back into a single "Documents" folder if it ever sees a
   // legacy 'document'-only tree.
-  const agg = await mdb.prepare(
+  // [SPEC-SEND-3] Same exclusion as getLibrary: a staged-but-unsent file must not
+  // inflate a folder count or a byte total (it isn't in the quota either).
+  const agg = await withCommittedFilter((filter) => mdb.prepare(
     `SELECT COALESCE(original_app,'avatok') AS app,
             CASE
               WHEN mime_type='application/pdf' THEN 'pdf'
@@ -683,9 +836,9 @@ export async function getLibraryTree(req: Request, env: Env): Promise<Response> 
               ELSE COALESCE(category,'other')
             END AS category,
             COUNT(*) AS n, COALESCE(SUM(size_bytes),0) AS bytes
-     FROM user_media WHERE uid=?1 AND deleted_at IS NULL
+     FROM user_media WHERE uid=?1 AND deleted_at IS NULL AND ${filter}
      GROUP BY app, category`,
-  ).bind(ctx.uid).all();
+  ).bind(ctx.uid).all());
   const apps: Record<string, any> = {};
   for (const r of (agg.results ?? []) as any[]) {
     const a = (apps[r.app] ||= { app: r.app, total: 0, bytes: 0, by_category: {} });
@@ -866,9 +1019,12 @@ async function copyFolderRec(mdb: any, uid: string, srcId: string, destApp: stri
   const newId = crypto.randomUUID();
   await mdb.prepare("INSERT INTO library_folders (id, uid, app, name, parent_id, created_at) VALUES (?1,?2,?3,?4,?5,?6)")
     .bind(newId, uid, destApp, src.name, destParent, Date.now()).run();
-  const files = await mdb.prepare(
-    `SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE uid=?1 AND folder_id=?2 AND deleted_at IS NULL`,
-  ).bind(uid, srcId).all();
+  // [SPEC-SEND-3] Don't duplicate a staged-but-unsent file into the copy: it is
+  // invisible in the source folder and the sweep will delete it out from under
+  // the copy, leaving a shortcut to nothing.
+  const files = await withCommittedFilter<any>((filter) => mdb.prepare(
+    `SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE uid=?1 AND folder_id=?2 AND deleted_at IS NULL AND ${filter}`,
+  ).bind(uid, srcId).all());
   for (const f of (files.results ?? []) as any[]) {
     await copyMediaRow(mdb, uid, f, newId, destApp);
   }
