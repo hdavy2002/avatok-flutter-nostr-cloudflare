@@ -1,5 +1,5 @@
 /**
- * SmokeTrail — soft blue clouds that billow and dissipate behind the cursor on the
+ * SmokeTrail — soft white clouds that billow and dissipate behind the cursor on the
  * avatok.ai home page.
  *
  * Built on the Canvas UI "Liquid" component (`@canvas-ui/liquid-react`, vendored at
@@ -33,11 +33,21 @@ import { useEffect, useRef } from 'react';
 import { createLiquid, type LiquidInstance } from '../../components/canvasui/Liquid';
 
 /**
- * Liquid's own default trail colour, #253DDD, as the 0..1 sRGB triplet the component
- * ships with. Deliberately NOT a zine token: the palette's `--zine-blue` (#A0F7F1) is
- * the turquoise that was rejected, and `--zine-blueInk` (#007D7F) reads as teal.
+ * Pure white — real smoke, not tinted smoke.
+ *
+ * Every coloured trail tried before this one read as DIRT rather than smoke, and the
+ * reason is structural, not a tuning miss. The fallback shader paints
+ * `tint * overlay` as a flat wash with no lighting, so a saturated colour laid thinly
+ * over the cream `--zine-paper` (#F9F7ED) desaturates toward grey — Liquid's own blue
+ * #253DDD at 26% opacity looked like soot. White is the one tint that cannot do that,
+ * because lightening a light background stays clean at every opacity.
+ *
+ * The trade: over the cream spreads this is white-on-near-white and therefore SUBTLE
+ * by nature. It has the most presence over the photography and the saturated spreads
+ * (the yellow cover, the purple voicemail spread). That is physically right for smoke
+ * and is not a bug to "fix" by tinting it again.
  */
-const BLUE: [number, number, number] = [0.145, 0.239, 0.867];
+const WHITE: [number, number, number] = [1, 1, 1];
 
 /**
  * A full-viewport fragment shader at 60fps is a real battery cost on a phone, and the
@@ -55,10 +65,14 @@ const SKIP_COARSE = '(pointer: coarse)';
  * at every splat centre, so the exponential saturates and alpha sits near the 0.82
  * ceiling whatever intensity says. Changing it from 2.4 to 0.9 once produced no
  * visible difference at all. Compositing the whole canvas at reduced opacity is the
- * only exact control. This blue is much darker than the turquoise it replaced, so it
- * needs to sit lower than that version's 0.34.
+ * only exact control.
+ *
+ * White needs far more of it than the coloured trails did. A dark tint reads at 0.26
+ * because it contrasts against the paper; white barely separates from it, so it has to
+ * be laid on thickly to register at all. It still cannot muddy anything at this level —
+ * that is the whole point of using white.
  */
-const TRAIL_OPACITY = 0.26;
+const TRAIL_OPACITY = 0.62;
 
 export default function SmokeTrail() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -79,7 +93,7 @@ export default function SmokeTrail() {
     const liquid: LiquidInstance | null = createLiquid(
       { source, content, output },
       {
-        color: BLUE,
+        color: WHITE,
         rainbow: false,
         // Tuned for smoke rather than a paint stroke: a wide splat so each puff is
         // soft-edged, a long dissipation so it lingers and billows instead of
