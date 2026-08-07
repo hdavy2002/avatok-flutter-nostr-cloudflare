@@ -17,7 +17,7 @@ import { storageSnapshots, storageBilling } from "./storage";
 import { bookingReminderLadder, gcalSyncSweep } from "./calendar";
 import { moneySweep } from "./money_sweep";
 import { sweepListingExpiry } from "./listing_expiry"; // PLAN §5 — marketplace listing-expiry lifecycle (notify T−3d / expire T / archive T+30d)
-import { sweepUncommittedMedia } from "./media_sweep"; // [SPEC-SEND-2 / WS-33] collect speculatively-uploaded media the user never sent
+import { sweepUncommittedMedia, UNCOMMITTED_TTL_MS } from "./media_sweep"; // [SPEC-SEND-2 / WS-33] collect speculatively-uploaded media the user never sent
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -156,11 +156,52 @@ export default {
         env.ANALYTICS?.writeDataPoint({ blobs: ["media_sweep"], doubles: [m.scanned, m.rows, m.objects, m.sharedSkipped, m.failed], indexes: ["cron"] });
     } catch (e) { console.error("[media-sweep]", String(e)); }
 
+    // ── [SPEC-SEND-4] Public uploads stuck 'pending' (failed/lost moderation) → reject.
+    //
+    // The age is measured from created_at because, for a NORMAL upload, the
+    // moderation scan is enqueued INLINE at INSERT — so upload time IS scan time
+    // and the two are interchangeable. [SPEC-SEND-3] broke that identity: a
+    // speculative upload inserts as 'staged' and only becomes 'pending' — next to
+    // the enqueue — when the user actually presses Send, hours later. Measured
+    // from created_at, such a row can already be past the window the INSTANT it
+    // goes 'pending', and the very next tick rejects a legitimately-sent file
+    // before the scanner has ever looked at it, indistinguishably from a real
+    // moderation failure.
+    //
+    // markCommitted() nulls uncommitted_at on the transition, so the row carries
+    // no "when was the scan enqueued" timestamp, and adding one is a migration —
+    // a separate deliberate step. What IS knowable without a schema change is an
+    // UPPER BOUND on the gap: a row can only sit in 'staged' while it is still
+    // uncommitted, and sweepUncommittedMedia() hard-deletes uncommitted rows once
+    // they pass UNCOMMITTED_TTL_MS, on this same 6-hourly tick — so the staged
+    // phase cannot outlive TTL + one tick. Folding that bound into the window
+    // guarantees every row a full 24h of genuinely-PENDING time before it can be
+    // rejected, while every genuinely stuck row is still rejected — just up to
+    // 30h later than before. The protection itself is unchanged in kind.
+    //
+    // 'staged' is deliberately NOT swept here (the status match is exact): no
+    // scan was ever requested for such a row, so "rejected" would be meaningless,
+    // and media_sweep.ts is what collects it. The COALESCE(uncommitted,0)=0 guard
+    // is belt-and-braces for the deploy window in which a row could be both
+    // uncommitted and 'pending' (uploaded before SPEC-SEND-3, sent after): those
+    // are still un-sent drafts, and media_sweep.ts owns them.
     const dayAgo = Date.now() - 86_400_000;
-    // Public uploads stuck 'pending' >24h (failed/lost moderation) → reject.
-    const r1 = await env.DB_MEDIA.prepare(
-      "UPDATE user_media SET moderation_status='rejected' WHERE moderation_status='pending' AND created_at < ?1",
-    ).bind(dayAgo).run();
+    /** TTL + one 6-hourly tick — the longest a row can legitimately stay 'staged'. */
+    const STAGED_MAX_MS = UNCOMMITTED_TTL_MS + 6 * 3_600_000;
+    const modStuckBefore = dayAgo - STAGED_MAX_MS;
+    const rejectSql = (extra: string) =>
+      `UPDATE user_media SET moderation_status='rejected' WHERE moderation_status='pending' AND created_at < ?1${extra}`;
+    // The column is additive and self-migrated by the Worker, so an environment
+    // whose D1 has not seen it yet must not take the whole cron down: fall back
+    // to the un-guarded form, which is exact there anyway (no column ⇒ no row can
+    // be uncommitted).
+    let r1: D1Result;
+    try {
+      r1 = await env.DB_MEDIA.prepare(rejectSql(" AND COALESCE(uncommitted,0)=0")).bind(modStuckBefore).run();
+    } catch (e) {
+      if (!/no such column/i.test(String(e))) throw e;
+      r1 = await env.DB_MEDIA.prepare(rejectSql("")).bind(modStuckBefore).run();
+    }
     // Lift expired temp blocks.
     const r2 = await env.DB_META.prepare(
       "UPDATE account_status SET status='active', blocked_until=NULL WHERE status='temp_blocked' AND blocked_until IS NOT NULL AND blocked_until < ?1",
