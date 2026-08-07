@@ -21,15 +21,23 @@
  * WHY ONE ELEMENT AND NOT A CHAIN
  *
  * The first cut of this file was a nine-blob follow-the-leader chain, each blob its
- * own `backdrop-filter` layer. It FROZE THE RENDERER under a fast pointer during
- * testing — every layer re-filters the region of the page behind it, and the hero
- * has full-bleed photography under it. `backdrop-filter` is one of the most
- * expensive things you can composite; treat each one as a real cost.
+ * own `backdrop-filter` layer. `backdrop-filter` is one of the most expensive things
+ * you can composite — every layer re-filters the region of the page behind it, and
+ * here that region is full-bleed hero photography — so nine of them animating at
+ * 60fps is a cost no decorative flourish justifies.
  *
- * So the wake is a SINGLE layer that deforms: it is scaled along its direction of
- * travel by the pointer's speed and squashed across it (constant-ish area, the way
- * a liquid drop behaves), and eased toward the cursor so it always trails. One
- * compositor layer, transform-only animation, no per-frame filter changes.
+ * (Note for whoever reads the git history: the commit that collapsed this to one
+ * layer claimed the nine-blob version "froze the renderer". That was a bad reading
+ * of the evidence — the apparent freeze was a rAF-based probe timing out because
+ * Chrome suspends requestAnimationFrame in a BACKGROUNDED tab, which is where the
+ * automated check was running. The nine-blob version was never measured under load.
+ * The single layer is still the right design, but on cost and looks, not on that.)
+ *
+ * So the wake is a SINGLE layer that deforms: scaled along its direction of travel
+ * by the pointer's speed and squashed across it (roughly constant area, the way a
+ * liquid drop behaves), eased toward the cursor so it always trails. One compositor
+ * layer, transform-only animation, no per-frame filter changes. It also reads better
+ * than a string of nine circles ever did.
  */
 import { useEffect, useRef } from 'react';
 
@@ -222,8 +230,13 @@ export default function GlassWake() {
           WebkitBackdropFilter: glass,
           // Specular rim. A bright top-left edge against a soft bottom-right shadow
           // is what makes a blurred disc read as a THICK lens instead of a smudge.
+          //
+          // The rim is carrying more weight than it looks like it should: over the
+          // flat cream --zine-paper sections there is nothing for the blur to bend,
+          // so the edge highlight is the ONLY thing that says "glass" there. Over the
+          // photography the refraction does the work and the rim just seats it.
           boxShadow:
-            'inset 3px 4px 10px rgba(255,255,255,0.7), inset -4px -6px 14px rgba(0,0,0,0.12)',
+            'inset 4px 5px 12px rgba(255,255,255,0.85), inset -5px -7px 16px rgba(0,0,0,0.16), 0 2px 14px rgba(0,0,0,0.05)',
           // Feather the edge so the glass melts into the page rather than ending on
           // a hard circle.
           maskImage:
