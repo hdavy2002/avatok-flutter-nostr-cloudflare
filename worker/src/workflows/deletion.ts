@@ -53,6 +53,7 @@ import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import type { Env } from "../types";
+import { voicemailR2Prefixes } from "../lib/deletion_prefixes"; // [DEL-VOICEMAIL-R2-1]
 
 /** Params a `deletion:<uid>` instance is created with (routes/account.ts, admin_delete_user.ts). */
 export interface DeletionWorkflowParams {
@@ -83,6 +84,13 @@ async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<number>
   } while (cursor);
   return n;
 }
+
+// [DEL-VOICEMAIL-R2-1] Voicemail / receptionist recordings survived deletion:
+// the r2_blobs step below wipes `u/<uid>/` and nothing else, but no voicemail
+// has ever been stored under `u/`. The prefixes, the producers that write them,
+// and the blast-radius guard on `uid` all live in lib/deletion_prefixes.ts
+// (pure + unit-tested; deletion.ts itself cannot be imported by vitest because
+// of `cloudflare:workers`). The r2_voicemail step below is the consumer.
 
 /**
  * [AVA-IDGATE-1] Legal hold — ported verbatim from consumers/src/deletion.ts
@@ -390,6 +398,57 @@ export class DeletionWorkflow extends WorkflowEntrypoint<Env, DeletionWorkflowPa
         try { await deleteR2Prefix(env.AGENT_AUDIO, `u/${uid}/`); return ["r2_agent_audio"]; } catch { return []; }
       }));
     }
+
+    // ---- 7b. [DEL-VOICEMAIL-R2-1] R2 voicemail + receptionist recordings, in
+    // BOTH buckets (see the block comment at the top of this file for why two).
+    //
+    // Idempotent and resumable by construction: deleteR2Prefix re-lists on every
+    // run, so a replay after a partial sweep simply finds fewer (or zero) keys.
+    // Every prefix/bucket pair is attempted independently — one failure never
+    // abandons the others, and never abandons the rest of the cascade, matching
+    // r2_verification / r2_digital above and the [DEL-LOUD-FAIL-1] idiom of
+    // RECORDING a failure in `stores_done` instead of vanishing it. ----
+    done.push(...await step.do("r2_voicemail", STEP_RETRY, async () => {
+      const prefixes = voicemailR2Prefixes(uid);
+      if (!prefixes.length) {
+        // Cannot happen for a real account (the `!uid` throw above already fired,
+        // and every minted uid matches UID_R2_SAFE). If it ever does, refusing is
+        // the only safe answer — a wildcard prefix here deletes other users.
+        console.error("[DeletionWorkflow] REFUSING voicemail R2 sweep — uid is not key-safe", uid);
+        return ["r2_voicemail_skipped_unsafe_uid"];
+      }
+      const buckets: Array<[string, R2Bucket | undefined]> = [
+        ["digital", env.DIGITAL],   // [RECEPT-PRIVBUCKET-1] current write target
+        ["blossom", env.BLOBS],     // every recording taken before that change
+      ];
+      const out: string[] = [];
+      for (const [label, bucket] of buckets) {
+        if (!bucket) continue;
+        for (const prefix of prefixes) {
+          const tag = `${label}_${prefix.split("/")[0]}`;
+          let deleted = 0, err: unknown = null;
+          // Two attempts: a mid-listing R2 blip would otherwise leave the tail of
+          // a prefix behind. Re-running is free — already-deleted keys no longer list.
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try { deleted += await deleteR2Prefix(bucket, prefix); err = null; break; }
+            catch (e) { err = e; }
+          }
+          if (err) {
+            console.error("[DeletionWorkflow] voicemail R2 sweep FAILED", tag, prefix, String(err));
+            try {
+              env.ANALYTICS?.writeDataPoint({
+                blobs: ["voicemail_erase_failed", uid.slice(0, 16), tag],
+                doubles: [1], indexes: ["account_deletion"],
+              });
+            } catch { /* metrics best-effort */ }
+            out.push(`r2_voicemail_${tag}_failed`);
+          } else {
+            out.push(`r2_voicemail_${tag}:${deleted}`);
+          }
+        }
+      }
+      return out;
+    }));
 
     // ---- 8. DB_MODERATION — drop the user's own reports (keep reports filed AGAINST others). ----
     done.push(...await step.do("db_moderation", STEP_RETRY, async () => {

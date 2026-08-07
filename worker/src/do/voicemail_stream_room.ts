@@ -34,6 +34,7 @@ import { trackUserContact } from "../hooks";
 import { avaReasonRaw } from "../lib/ava_reason";
 import { aiRunOpts } from "../lib/ai_gate";
 import { chargeFeature } from "../feature_pricing";
+import { putVoicemailRecording } from "../lib/voicemail_library"; // [RECEPT-PRIVBUCKET-1] private-bucket write
 import { recordCallSummary } from "../lib/recept_stats";
 import { e164Country } from "../lib/e164_country";
 import { normalizePhone, sha256Hex } from "../util";
@@ -246,7 +247,11 @@ export class VoicemailStreamRoom {
     if (mp3) {
       try {
         recordingKey = `voicemail/${ownerUid}/${callerKey}/${callId}.mp3`;
-        await this.env.BLOBS.put(recordingKey, mp3, { httpMetadata: { contentType: "audio/mpeg" } });
+        // [RECEPT-PRIVBUCKET-1] PRIVATE bucket (env.DIGITAL), not the PUBLIC
+        // blossom bucket. voicemailRecording() reads DIGITAL-first with a BLOBS
+        // fallback, and honours the object's stored content-type, so both this
+        // MP3 and every legacy WAV keep playing.
+        await putVoicemailRecording(this.env, recordingKey, mp3, "audio/mpeg");
         // PAY-PER-USE (owner 2026-07-19): ₹1 per voicemail, idempotent per call.
         try {
           const r = await chargeFeature(this.env, ownerUid, "ava_voicemail", `pstnvm:${callUuid}`);

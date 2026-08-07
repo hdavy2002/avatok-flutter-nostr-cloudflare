@@ -27,7 +27,7 @@ import { walletOp } from "../routes/wallet"; // [RECEPT-BILLING-3] start-of-call
 import { metaDb } from "../db/shard"; // [RECEPT-BILLING-3] internal call_cost_ledger
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 import { thinkingCfg } from "../util"; // [RECEPT-COST-THINK-1] per-model thinking-off (gemini-3 → thinkingLevel low)
-import { registerVoicemailInLibrary } from "../lib/voicemail_library"; // [RECEPT-LIB-1] voicemail → AvaLibrary
+import { registerVoicemailInLibrary, putVoicemailRecording, type VoicemailBucket } from "../lib/voicemail_library"; // [RECEPT-LIB-1] voicemail → AvaLibrary; [RECEPT-PRIVBUCKET-1] private bucket
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -405,14 +405,14 @@ export class ReceptionRoom {
   /** [RECEPT-LIB-1] The voicemail's AvaLibrary row — see lib/voicemail_library.ts.
    *  Never throws (the helper swallows), only ever called through waitUntil, and
    *  the row is owned by the OWNER whose receptionist took the message. */
-  private async registerVoicemailMedia(key: string, bytes: number): Promise<void> {
+  private async registerVoicemailMedia(key: string, bytes: number, bucket: VoicemailBucket): Promise<void> {
     const i = this.init;
     if (!i?.owner_uid) return;
     const r = await registerVoicemailInLibrary(this.env, {
-      ownerUid: i.owner_uid, key, bytes,
+      ownerUid: i.owner_uid, key, bytes, bucket,
       callerName: i.caller_name ?? null, callerPhone: i.caller_phone ?? null,
     });
-    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes });
+    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes, bucket });
   }
 
   /** Send a grouped, scrubbed PostHog Error Tracking Issue for a receptionist
@@ -1206,17 +1206,22 @@ export class ReceptionRoom {
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;
-        await this.env.BLOBS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
+        // [RECEPT-PRIVBUCKET-1] PRIVATE bucket (env.DIGITAL). Was env.BLOBS —
+        // the PUBLIC blossom.avatok.ai bucket, where this key was fetchable by
+        // anyone with no auth at all. lib/voicemail_library.ts.
+        const put = await putVoicemailRecording(this.env, key, wav);
         recordingUrl = key;
         this.ev("ava_recept_recording_stored", {
-          bytes: wav.byteLength, ok: true, latency_ms: Date.now() - recT0,
+          bytes: wav.byteLength, ok: true, latency_ms: Date.now() - recT0, bucket: put.bucket,
           two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes,
           caller_gain: Math.round(callerGain * 100) / 100, caller_peak: this.callerPeak,
         });
+        // A fallback means the recording is PUBLIC-readable. Loud on purpose.
+        if (put.fellBack) this.ev("ava_recept_recording_bucket_fallback", { key_prefix: "receptionist", bytes: wav.byteLength });
         // [RECEPT-LIB-1] …and into AvaLibrary. waitUntil + self-swallowing, so a
         // slow/failed DB_MEDIA write can neither delay nor break delivery of the
         // caller's message. Idempotent on (owner_uid, key).
-        this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength));
+        this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength, put.bucket));
       }
     } catch (e) {
       this.exception(e, "recording_store_failed", { storage: "r2" });

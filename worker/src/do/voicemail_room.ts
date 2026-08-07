@@ -25,6 +25,7 @@ import { emitCallEvent, EVENT_SCHEMA_VERSION, newTraceId } from "../lib/call_eve
 import { contactFor } from "../lib/identity";
 import { avaReasonRaw } from "../lib/ava_reason"; // One Brain B1: gateway for TTS/STT
 import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opts
+import { putVoicemailRecording } from "../lib/voicemail_library"; // [RECEPT-PRIVBUCKET-1] private-bucket write
 
 const AURA_VOICE = "asteria"; // fixed warm female voice — mirrors reception_room_cf's Ava
 const TTS_MODEL = "@cf/deepgram/aura-2-en";
@@ -254,7 +255,11 @@ export class VoicemailRoom {
       const wav = pcm16ToWavMono(concatFrames(this.recPcm, this.recBytes), SAMPLE_RATE_IN);
       const callerKey = (init.caller_uid || init.caller_phone || "unknown").replace(/[^A-Za-z0-9_+.-]/g, "_");
       recordingKey = `voicemail/${init.owner_uid}/${callerKey}/${init.sid}.wav`;
-      await this.env.BLOBS.put(recordingKey, wav, { httpMetadata: { contentType: "audio/wav" } });
+      // [RECEPT-PRIVBUCKET-1] PRIVATE bucket (env.DIGITAL), not the PUBLIC
+      // blossom bucket. This DO is currently unreachable (voicemailStart()
+      // returns 410 unconditionally), but it is kept for a possible revert —
+      // so it must not be revived writing personal recordings to a public host.
+      await putVoicemailRecording(this.env, recordingKey, wav);
       this.ev("voicemail_recording_stored", { bytes: wav.byteLength, ok: true });
       try {
         const out: unknown = await avaReasonRaw(this.env, {

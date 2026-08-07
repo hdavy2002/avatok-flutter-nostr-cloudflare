@@ -222,6 +222,41 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   // 5. R2 blobs (per-user prefix).
   try { done.push(`r2_blobs:${await deleteR2Prefix(env.BLOBS, `u/${uid}/`)}`); } catch { /* best-effort */ }
 
+  // 5b. [VM-ERASE-1 2026-08-07] Voicemail recordings — THE LIVE FIX.
+  //
+  // `u/<uid>/` above does NOT cover these. Voicemails are written under their
+  // own top-level prefixes, so they SURVIVED ACCOUNT DELETION indefinitely —
+  // recordings of third parties leaving personal messages, kept after the
+  // account owner asked to be erased. Producers, each verified at its write site:
+  //   receptionist/<uid>/…  do/reception_room_cf.ts, do/reception_room.ts,
+  //                         do/vobiz_agent_room.ts, and the owner's KB uploads
+  //                         in routes/receptionist.ts
+  //   voicemail/<uid>/…     routes/pstn.ts, do/voicemail_stream_room.ts,
+  //                         do/voicemail_room.ts   (.wav AND .mp3 — hence a
+  //                         prefix sweep, never an extension match)
+  //
+  // BOTH BUCKETS, and that is not belt-and-braces. [RECEPT-PRIVATE-1] moved NEW
+  // voicemails from the public BLOBS bucket to the private DIGITAL one and left
+  // every historical object where it was, so a user's recordings are genuinely
+  // split across the two. Dropping either sweep re-opens the bug for one era.
+  //
+  // The uid guard is deliberate: a blank or wildcard uid here would build the
+  // prefix `receptionist//` and delete across accounts. Refuse rather than risk
+  // it — the same shape `worker/src/lib/deletion_prefixes.ts` uses.
+  if (/^[A-Za-z0-9_.:+-]{4,128}$/.test(uid)) {
+    for (const prefix of [`receptionist/${uid}/`, `voicemail/${uid}/`]) {
+      for (const [label, bucket] of [["blobs", env.BLOBS], ["digital", env.DIGITAL]] as const) {
+        if (!bucket) continue;
+        try {
+          const n = await deleteR2Prefix(bucket, prefix);
+          if (n > 0) done.push(`r2_voicemail_${label}:${n}`);
+        } catch { done.push(`r2_voicemail_${label}_failed`); }
+      }
+    }
+  } else {
+    done.push("r2_voicemail_skipped_unsafe_uid");
+  }
+
   // 6. R2 verification (prefix + explicit keys).
   // [LIVE-PURGE-1] this used to only wipe the transient u/<uid>/ upload prefix —
   // it MISSED the D15 "store everything on pass" retained audit prefix
@@ -310,6 +345,19 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     "DELETE FROM user_vault WHERE uid=?1",
     "DELETE FROM clerk_nostr_link WHERE uid=?1",
     "DELETE FROM account_status WHERE uid=?1",
+    // [VM-ERASE-1 2026-08-07] Receptionist sessions. Deleting the .wav above is
+    // only half the erasure — this row holds `transcript`, `summary_json`,
+    // `caller_phone` and `caller_name`, i.e. WHAT THE CALLER SAID and who they
+    // are, in plain text. Wiping the audio while keeping a searchable
+    // transcript of a third party's message is not a deletion.
+    //
+    // Two statements on purpose: `owner_uid` is the account whose Ava answered
+    // (its own data), and `caller_uid` is the AvaTOK user who left the message
+    // when they are known — a deleted user's words should not survive in
+    // someone else's inbox either. `caller_uid` is nullable, so the second
+    // statement is a no-op for PSTN/unknown callers.
+    "DELETE FROM receptionist_sessions WHERE owner_uid=?1",
+    "DELETE FROM receptionist_sessions WHERE caller_uid=?1",
   ];
   for (const q of metaStmts) { try { await env.DB_META.prepare(q).bind(uid).run(); } catch { /* table may not exist in this phase */ } }
   done.push("db_meta");

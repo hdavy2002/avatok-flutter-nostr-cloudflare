@@ -13,6 +13,7 @@ import { requireUser, isFail, type UserCtx } from "../authz";
 import { readConfig } from "./config";
 import { contactFor, nameFor } from "../lib/identity";
 import { trackUserContact } from "../hooks";
+import { getVoicemailRecording } from "../lib/voicemail_library"; // [RECEPT-PRIVBUCKET-1] DIGITAL-first, BLOBS-fallback read
 
 const INIT_TTL_SEC = 300; // caller must connect the WS within 5 min, same as receptionist
 
@@ -128,7 +129,11 @@ export async function voicemailRecording(req: Request, env: Env): Promise<Respon
   if (parts.length < 3 || parts[0] !== "voicemail" || parts[1] !== ctx.uid) {
     return json({ error: "not found" }, 404); // never confirm/deny another owner's key
   }
-  const obj = await env.BLOBS.get(key);
+  // [RECEPT-PRIVBUCKET-1] DIGITAL (private) first, then BLOBS — same
+  // bucket-agnostic read the receptionist lane now uses, so this endpoint keeps
+  // serving every legacy public-bucket recording AND anything written to the
+  // private bucket. lib/voicemail_library.ts.
+  const obj = await getVoicemailRecording(env, key);
   if (!obj) return json({ error: "gone" }, 404);
   // [AVA-VM-SELFREC-1] Serve the object's STORED content-type so both the legacy
   // Vobiz <Record> WAVs (audio/wav) and the new self-recorded MP3s (audio/mpeg,

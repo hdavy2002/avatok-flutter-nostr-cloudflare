@@ -36,7 +36,7 @@ import { deepInfraStt, deepInfraTtsPcm, kokoroVoiceForLang, splitTtsClauses, dee
 import { getOrRenderVmGreeting } from "../lib/vm_greeting"; // shared VM greeting cache (also used by PSTN)
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
-import { registerVoicemailInLibrary } from "../lib/voicemail_library"; // [RECEPT-LIB-1] voicemail → AvaLibrary
+import { registerVoicemailInLibrary, putVoicemailRecording, type VoicemailBucket } from "../lib/voicemail_library"; // [RECEPT-LIB-1] voicemail → AvaLibrary; [RECEPT-PRIVBUCKET-1] private bucket
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -307,14 +307,14 @@ export class ReceptionRoomCf {
   // registerVoicemailInLibrary() returns null rather than throwing, and this is
   // only ever called through waitUntil. The row belongs to the OWNER whose
   // receptionist took the message — never the caller.
-  private async registerVoicemailMedia(key: string, bytes: number): Promise<void> {
+  private async registerVoicemailMedia(key: string, bytes: number, bucket: VoicemailBucket): Promise<void> {
     const i = this.init;
     if (!i?.owner_uid) return;
     const r = await registerVoicemailInLibrary(this.env, {
-      ownerUid: i.owner_uid, key, bytes,
+      ownerUid: i.owner_uid, key, bytes, bucket,
       callerName: i.caller_name ?? null, callerPhone: i.caller_phone ?? null,
     });
-    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes });
+    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes, bucket });
   }
 
   // English (or unset) → the configured Aura female voice, EXACTLY as before. For a
@@ -1280,14 +1280,19 @@ export class ReceptionRoomCf {
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;
-        await this.env.BLOBS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
+        // [RECEPT-PRIVBUCKET-1] PRIVATE bucket (env.DIGITAL). Was env.BLOBS —
+        // the PUBLIC blossom.avatok.ai bucket, where this key was fetchable by
+        // anyone with no auth at all. lib/voicemail_library.ts.
+        const put = await putVoicemailRecording(this.env, key, wav);
         recordingUrl = key;
-        this.ev("ava_recept_recording_stored", { bytes: wav.byteLength, ok: true, two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes });
+        this.ev("ava_recept_recording_stored", { bytes: wav.byteLength, ok: true, bucket: put.bucket, two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes });
+        // A fallback means the recording is PUBLIC-readable. Loud on purpose.
+        if (put.fellBack) this.ev("ava_recept_recording_bucket_fallback", { key_prefix: "receptionist", bytes: wav.byteLength });
         // [RECEPT-LIB-1] …and into AvaLibrary. Deliberately OUTSIDE the delivery
         // path: waitUntil so a slow DB_MEDIA write can never delay the caller's
         // message reaching the owner, and self-swallowing so it can never fail
         // the recording. Idempotent on (owner_uid, key).
-        this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength));
+        this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength, put.bucket));
       }
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });

@@ -214,6 +214,15 @@ export interface PlatformConfig {
   // and still playable through the existing endpoint — the row is a convenience
   // layer, nothing depends on it). Existing rows are NOT removed by flipping it.
   receptionistLibraryEnabled: boolean;
+  // [RECEPT-PRIVBUCKET-1] Voicemail/receptionist recordings are stored in the
+  // PRIVATE `DIGITAL` bucket instead of the PUBLIC blossom one. Default TRUE:
+  // the public bucket has a custom domain and no auth, so the old behaviour
+  // made every caller's recorded message fetchable by path. Flipping it FALSE
+  // sends NEW recordings back to the public bucket (an escape hatch only —
+  // e.g. if a presign/credential problem is ever traced here). Playback is
+  // bucket-agnostic either way (lib/voicemail_library.ts reads DIGITAL first,
+  // then BLOBS), so this flag can never make an existing recording unplayable.
+  voicemailPrivateBucket: boolean;
   // [AVABRAIN-FLAGS-1] AvaBrain program flags (Specs/AVABRAIN-PRODUCT-BIBLE-2026-07-24.md).
   // Personal Live-voice billing (voice_billing.ts): master gate + a
   // receptBillingLive-style force-meter for real charges during any free beta.
@@ -1095,6 +1104,7 @@ const DEFAULTS: PlatformConfig = {
   avaCountdownEnabled: true,       // client 3-2-1 Ava countdown; prod KV flips false (VM greeting is instant)
   receptBillingLive: false,        // [RECEPT-BILLING-LIVE-1] real receptionist token deduction during beta (test switch)
   receptionistLibraryEnabled: true, // [RECEPT-LIB-1] voicemail → user_media row → AvaLibrary "Ava Receptionist" folder. Kill switch only; flipping false stops NEW rows, never deletes or breaks playback.
+  voicemailPrivateBucket: true,    // [RECEPT-PRIVBUCKET-1] store new voicemail/receptionist recordings in the PRIVATE DIGITAL bucket, not the public blossom one. Reads try both, so this never breaks playback.
   // [AVABRAIN-FLAGS-1] AvaBrain program — all dark/conservative by default; prod KV flips deliberately.
   avaBrainVoiceBillingEnabled: false, // personal Live-voice lease/settle path (ava_receptionist_minute tariff)
   avaBrainVoiceBillingLive: false,    // force-meter during betaFreePremium (mirrors receptBillingLive)

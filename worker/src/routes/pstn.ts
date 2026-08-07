@@ -37,6 +37,7 @@ import { aiRunOpts } from "../lib/ai_gate";       // AI Gateway cost-logging opt
 // so the hard no-engine-import rule above is respected.
 import { vmGreetingText, getOrRenderVmGreeting, pcmToWavBytes } from "../lib/vm_greeting";
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
+import { putVoicemailRecording } from "../lib/voicemail_library"; // [RECEPT-PRIVBUCKET-1] private-bucket write
 // [AVA-PSTN-AGENT-1] Wallet balance read for the agent-lane runway gate ONLY.
 // walletOp is billing plumbing, NOT engine code — the no-engine-import rule
 // (reception_room/prompt/Gemini modules) still holds: the agent lane here only
@@ -818,7 +819,12 @@ async function handleRecordCb(req: Request, env: Env, secret: string): Promise<R
     if (wavBytes) {
       try {
         recordingKey = `voicemail/${ownerUid}/${callerKey}/${callId}.wav`;
-        await env.BLOBS.put(recordingKey, wavBytes, { httpMetadata: { contentType: "audio/wav" } });
+        // [RECEPT-PRIVBUCKET-1] PRIVATE bucket (env.DIGITAL). Was env.BLOBS —
+        // the PUBLIC blossom.avatok.ai bucket, so a PSTN caller's recorded
+        // message was fetchable by path with no auth. voicemailRecording()
+        // (routes/voicemail_routes.ts) reads DIGITAL-first with a BLOBS
+        // fallback, so every existing recording still plays.
+        await putVoicemailRecording(env, recordingKey, wavBytes);
         // PAY-PER-USE (owner 2026-07-19): ₹1 per voicemail, charged to the OWNER,
         // idempotent per call. Best-effort — a wallet error never loses the voicemail.
         try {

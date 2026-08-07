@@ -43,6 +43,7 @@ import {
 } from "../lib/call_authority"; // control-plane authority — fail-open, flag-gated (see file header)
 import { vmGreetingText, prerenderVmGreetings } from "../lib/vm_greeting"; // shared zero-cost VM greetings (in-app + PSTN)
 import { walletOp } from "./wallet"; // PAY-PER-USE token-balance gates (owner 2026-07-19)
+import { getVoicemailRecording } from "../lib/voicemail_library"; // [RECEPT-PRIVBUCKET-1] DIGITAL-first, BLOBS-fallback read
 
 // Receptionist gating is SUBSCRIPTION-DRIVEN (not a hard premium wall): it reads
 // the OWNER's tier's daily `recept` allowance from plans.ts, which merges the KV
@@ -2069,7 +2070,14 @@ export async function receptionistRecording(req: Request, env: Env): Promise<Res
   }
   if (!allowed) return json({ error: "not found" }, 404);
   if (!s.recording_url) return json({ error: "no recording" }, 404);
-  const obj = await env.BLOBS.get(String(s.recording_url));
+  // [RECEPT-PRIVBUCKET-1] DIGITAL (private) first, then BLOBS. New recordings
+  // live in the private bucket; every recording taken before this change is in
+  // BLOBS under a BARE key with no bucket discriminator stored anywhere, so the
+  // fallback is what keeps them playable. Nothing was moved or deleted.
+  // Deliberately still STREAMED through the Worker rather than redirected to a
+  // presigned URL: the response shape is a contract with shipped clients, and
+  // streaming keeps the R2 key (and any bearer credential) off the wire.
+  const obj = await getVoicemailRecording(env, String(s.recording_url));
   if (!obj) return json({ error: "gone" }, 404);
   return new Response(obj.body, {
     headers: {
