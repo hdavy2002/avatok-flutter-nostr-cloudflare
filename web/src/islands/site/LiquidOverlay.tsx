@@ -66,7 +66,7 @@ const SKIP_COARSE = '(pointer: coarse)';
  * is exact. Raise these to make the water more present; lower to fade it back.
  */
 const LIQUID_OPACITY = 0.34;
-const RAIN_OPACITY = 0.4;
+const RAIN_OPACITY = 0.6;
 
 export default function LiquidOverlay() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -124,15 +124,16 @@ export default function LiquidOverlay() {
       { source: makeSource(), content: rainContent, output: rainOutput },
       {
         // A drizzle, not a downpour — this sits over marketing copy that has to
-        // stay readable. 0.34 already covered the viewport in drops.
-        intensity: 0.16,
+        // stay readable. 0.34 with no opacity reduction covered the whole viewport in
+        // grey teardrops; 0.16 was invisible. This sits between the two.
+        intensity: 0.3,
         speed: 0.75,
         // `scale` is inverted: HIGHER means SMALLER drops. Small beads of water
         // read as glass; large ones read as grey blobs over the copy.
-        scale: 1.1,
-        dropWidth: 0.62,
+        scale: 0.85,
+        dropWidth: 0.75,
         dropLength: 0.9,
-        staticDrops: 0.12,
+        staticDrops: 0.2,
         fallSpeed: 0.85,
         wiggle: 1.1,
         // `refraction` and `blur` only do anything on the html-in-canvas path
