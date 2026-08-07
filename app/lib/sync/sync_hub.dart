@@ -19,6 +19,7 @@ import '../core/disk_cache.dart';
 import '../core/group_store.dart' show GroupStore; // [GRP-W3-REACTIVE]
 import '../core/message_store.dart' show SafetyFlagStore;
 import '../core/net/connectivity_coordinator.dart';
+import '../core/presence_beat.dart'; // [CALL-PRESENCE-1] device heartbeat
 import '../core/remote_config.dart' show RemoteConfig; // [AVA-SYNC-SKIP] syncSkipEnabled kill switch
 import '../identity/identity.dart';
 import '../push/push_service.dart' show PushService; // [WS-RING-1]
@@ -269,6 +270,12 @@ class SyncHub {
     // P13-A: time-to-first-message is measured from every foreground.
     _foregroundAt = DateTime.now().millisecondsSinceEpoch;
     _ttfmEmitted = false;
+    // [CALL-PRESENCE-1] The phone just came back to the user. Whatever the socket
+    // turns out to be (kept, probed, or torn down and reconnected below), the
+    // person is demonstrably present RIGHT NOW, and a call placed in the next few
+    // seconds must not read a record that went stale during the doze. Forced and
+    // fire-and-forget — it cannot delay the resume path.
+    PresenceBeat.beat('resume', force: true);
     if (_ch == null) { _syncTrigger = 'resume'; ensureConnected(); return; }
     final idle = DateTime.now().millisecondsSinceEpoch - _lastRecvAt;
     // P13-B: a socket idle >10s on resume is very likely half-open — don't burn 4s
@@ -347,6 +354,11 @@ class SyncHub {
       // reports state so the coordinator can drive the ONE shared net state that
       // Outbox et al. react to.
       try { ConnectivityCoordinator.I.reportSocketUp(); } catch (_) {}
+      // [CALL-PRESENCE-1] A live socket is the strongest possible "I'm here", and
+      // it is the moment the server most needs to know: a call placed one second
+      // later must not read a stale record and route to Ava. Forced (bypasses the
+      // cadence throttle) and fire-and-forget — never blocks the sync below.
+      PresenceBeat.beat('ws_connect', force: true);
       Analytics.capture('hub_connected', {
         'cursor': _cursor, 'reconnects': _reconnects,
         // P13-A: how long the socket took to establish (ensureConnected → open),
@@ -412,6 +424,14 @@ class SyncHub {
         }
         _pingsUnanswered++;
         _send({'type': 'ping'});
+        // [CALL-PRESENCE-1] Ride the tick the app already runs. The ping itself
+        // is answered by the DO's hibernation auto-response and therefore proves
+        // nothing to the call path (that is the whole reason this beat exists) —
+        // so we send a real one alongside it. NOT forced: PresenceBeat
+        // self-throttles to `presenceHeartbeatSec`, so raising that value from KV
+        // thins the beats out without touching this timer. Fire-and-forget: it is
+        // deliberately AFTER `_send`, and cannot delay or fail the ping.
+        PresenceBeat.beat('ping');
       });
       AvaLog.I.log('hub', 'InboxDO connected; synced from cursor=$_cursor');
     } finally {

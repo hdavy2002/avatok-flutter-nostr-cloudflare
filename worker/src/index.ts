@@ -20,6 +20,7 @@ import { adminDeleteUser } from "./routes/admin_delete_user"; // [ADMIN-DELETE-U
 // [AVADIAL-CALL-INTEL-1] Call-intelligence ingest. The ONLY place raw E.164 and the
 // HMAC secret meet — the device never holds the key. See routes/telemetry_calls.ts.
 import { ingestCallTelemetry } from "./routes/telemetry_calls";
+import { presenceBeat } from "./routes/presence"; // [CALL-PRESENCE-1] device heartbeat
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
@@ -811,6 +812,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/register" && req.method === "POST") return await api.register(req, env);
       // [MULTIACCT-2] flip an account's device mapping on switch/logout (device token stays)
       if (p === "/api/account/device" && req.method === "POST") return await api.accountDevice(req, env);
+      // [CALL-PRESENCE-1 2026-08-07] The device heartbeat. Cheapest authed route
+      // in the Worker (one Upstash SET, no D1, no DO) because it runs every
+      // presenceHeartbeatSec on every connected device. /api/call reads what it
+      // writes, BEFORE the DO round-trips.
+      if (p === "/api/presence/beat" && req.method === "POST") return await presenceBeat(req, env, ctx);
       if (p === "/api/call" && req.method === "POST") return await api.call(req, env, ctx);
       if (p === "/api/notify" && req.method === "POST") return await api.notify(req, env);
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);

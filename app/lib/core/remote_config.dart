@@ -396,11 +396,37 @@ class RemoteConfig {
   /// at the end of `_bootMedia` and the flag-off `Helper.setSpeakerphoneOn`
   /// branch that raced the user's own Speaker press. Defaults ON — this is a
   /// bug fix (loud→quiet→loud outgoing tone), not an experiment; flip to
-  /// false only to roll back if a device regresses. Server key
-  /// `callAudioOwnerV1` must be declared in `worker/src/routes/config.ts`
-  /// DEFAULTS + the PlatformConfig interface (owner to add — worker/ is out
-  /// of scope for this client-only change).
+  /// false only to roll back if a device regresses. The server key
+  /// `callAudioOwnerV1` IS now declared in `worker/src/routes/config.ts`
+  /// (PlatformConfig + DEFAULTS, added under [CALL-RING-FASTPATH-1]), so this
+  /// is a real flag: until then it was a FAKE one — `putConfig` would have
+  /// 400'd `unknown key` and the `true` fallback below was its permanent value.
   static bool get callAudioOwnerV1 => _b('callAudioOwnerV1', true);
+
+  /// [CALL-PRESENCE-1 2026-08-07] Presence-first call routing + the device
+  /// heartbeat that feeds it.
+  ///
+  /// Before this there was NO heartbeat anywhere: "presence" was a side effect
+  /// of the call ring landing on an open InboxDO socket, discovered ~3.6 s into
+  /// placing a call and then thrown away. The 25 s SyncHub ping does not help —
+  /// the DO answers it from its hibernation auto-response, so it never wakes the
+  /// DO and refreshes nothing.
+  ///
+  /// When true the device POSTs `/api/presence/beat` on connect, resume, FCM
+  /// receipt and every ping tick, and `/api/call` reads that record BEFORE its
+  /// Durable Object round-trips. All three keys are declared in
+  /// `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS, and the two
+  /// numeric ones in `numericKeys`), so they are genuinely flippable.
+  static bool get callPresenceRouting => _b('callPresenceRouting', true);
+
+  /// How long a beat counts as fresh, seconds. Server mirror: `presenceFreshSec`.
+  static int get presenceFreshSec =>
+      (_asNum(_cfg['presenceFreshSec'])?.toInt()) ?? 90;
+
+  /// Beat cadence, seconds. The beat rides the existing 25 s SyncHub ping tick,
+  /// so values below 25 simply beat on every tick. Server: `presenceHeartbeatSec`.
+  static int get presenceHeartbeatSec =>
+      (_asNum(_cfg['presenceHeartbeatSec'])?.toInt()) ?? 25;
 
   /// [CALL-VIDEO-CODEC-1] Express a video codec preference (AV1 > VP9 > VP8 >
   /// H264) and request temporal SVC (L1T3) on the 1:1 video sender.

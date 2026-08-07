@@ -35,6 +35,7 @@ import '../core/config.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
+import '../core/presence_beat.dart'; // [CALL-PRESENCE-1] device heartbeat
 import '../core/remote_config.dart';
 import '../core/update_service.dart'; // [AVA-UPDATE-PUSH-1] instant app-update prompt on release
 import '../core/voice/native_voice_audio.dart';
@@ -2793,6 +2794,14 @@ class PushService {
         'type': (d['type'] ?? '').toString(),
         'callId': (d['callId'] ?? '').toString(),
       });
+      // [CALL-PRESENCE-1 2026-08-07] An FCM message reaching the Dart isolate is
+      // PROOF this device is awake and reachable right now — the single best
+      // evidence we ever get, and the one the previous design threw away. It is
+      // especially valuable for a phone that has been dozing: the 25s ping tick
+      // is exactly what Android suspends, so a doze'd-but-wakeable device would
+      // otherwise read as `stale` on every call. Forced (bypasses the cadence
+      // throttle) and fire-and-forget — it cannot delay handling this push.
+      PresenceBeat.beat('push', force: true);
       // [AVANOTIF-VM-1] Cheap opportunistic refresh — keeps contact-override
       // renames (no change stream of their own) from going stale for long.
       unawaited(_rebuildNameCache());

@@ -342,10 +342,32 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
 
       bool reachableFalse = false;
       String serverRoute = '';
+      // [CALL-PRESENCE-1 2026-08-07] KNOWN ASYMMETRY, FIXED HERE.
+      //
+      // This — the CHAT-THREAD dial lane — never read `ringDeadlineMs` or
+      // `callee_live` from the /api/call response and never called
+      // `noteServerRingDeadline` / `noteCalleeLive`, while the dialer lane
+      // (place_1to1_call.dart) did. So [CALL-ONE-DEADLINE-1] silently did not
+      // apply to calls started from a chat: those sessions kept guessing their
+      // own no-answer window locally, against a server clock that had already
+      // been running for seconds. Every field the server returns is read here
+      // now, so both lanes behave identically.
+      String routingReason = '';
+      int? ringDeadlineMs;
+      bool calleeLive = false;
+      String presence = '';
+      int? presenceAgeMs;
       try {
         final body = jsonDecode(res.body);
         reachableFalse = body['reachable'] == false;
         serverRoute = (body['routed'] ?? '').toString();
+        routingReason = (body['routing_reason'] ?? '').toString();
+        final d = body['ringDeadlineMs'];
+        ringDeadlineMs = d is int ? d : int.tryParse((d ?? '').toString());
+        calleeLive = body['callee_live'] == true;
+        presence = (body['presence'] ?? '').toString();
+        final a = body['presence_age_ms'];
+        presenceAgeMs = a is int ? a : int.tryParse((a ?? '').toString());
       } catch (_) {}
 
       // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLER's CallRoom join credential
@@ -359,11 +381,26 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         if (rt.isNotEmpty) rememberCallRoomToken(room, rt);
       } catch (_) {/* older server: no token, join stays un-credentialed */}
       final session = CallSessionManager.instance.liveSessionFor(room);
+      // [CALL-ONE-DEADLINE-1 / CALL-PRESENCE-1] The three server facts this lane
+      // used to discard. Deliberately outside every status branch, exactly like
+      // the roomToken deposit above — they are worth keeping on any response.
+      session?.noteServerRingDeadline(ringDeadlineMs);
+      session?.noteCalleeLive(calleeLive);
+      // Copy only, applied after noteCalleeLive so a live socket (the stronger
+      // signal) always wins. Never a ringback, never a phase change —
+      // FAKE-RING-HONEST-1.
+      if (presence.isNotEmpty) session?.notePresence(presence);
       if (res.statusCode == 200 && serverRoute == 'receptionist') {
         Analytics.capture('call_server_receptionist_routed', {
-          'call_id': room, 'reason': 'unknown_caller', 'mount': 'optimistic',
+          'call_id': room, 'mount': 'optimistic',
+          'reason': routingReason.isNotEmpty ? routingReason : 'unknown_caller',
+          'presence': presence,
+          // -1 = the server sent no age. Analytics.capture takes
+          // Map<String, Object>, so a real null is not an option here.
+          'presence_age_ms': presenceAgeMs ?? -1,
         });
-        session?.noteServerReceptionistRoute();
+        session?.noteServerReceptionistRoute(
+            routingReason.isNotEmpty ? routingReason : 'unknown_caller');
       } else if (res.statusCode == 200 && !reachableFalse) {
         bool hasRingback = false;
         try { hasRingback = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString().isNotEmpty; } catch (_) {}

@@ -301,18 +301,29 @@ Future<void> _dialerPlaceInBackground(
 
     bool reachableFalse = false;
     String routed = '';
+    String routingReason = '';
     int? ringDeadlineMs;
     bool calleeLive = false;
+    String presence = '';
+    int? presenceAgeMs;
     try {
       final body = jsonDecode(res.body);
       reachableFalse = body['reachable'] == false;
       routed = (body['routed'] ?? '').toString();
+      routingReason = (body['routing_reason'] ?? '').toString();
       // [CALL-ONE-DEADLINE-1 2026-08-03] The server's absolute ring deadline.
       final d = body['ringDeadlineMs'];
       ringDeadlineMs = d is int ? d : int.tryParse((d ?? '').toString());
       // [CALL-PRESENCE-1 2026-08-03] Does the callee hold a live WebSocket? The
       // server has always known; it just never said.
       calleeLive = body['callee_live'] == true;
+      // [CALL-PRESENCE-1 2026-08-07] The HEARTBEAT verdict — 'fresh' | 'stale' |
+      // 'unknown'. Stronger than callee_live (which is only ever true when the WS
+      // ring happened to land) because it is a standing record the callee's phone
+      // writes every ~25s, read BEFORE the server's DO round-trips.
+      presence = (body['presence'] ?? '').toString();
+      final a = body['presence_age_ms'];
+      presenceAgeMs = a is int ? a : int.tryParse((a ?? '').toString());
     } catch (_) {}
 
     // [CALL-WS-AUTH-1 2026-08-03] Deposit the CALLER's CallRoom join credential.
@@ -326,11 +337,25 @@ Future<void> _dialerPlaceInBackground(
     final session = CallSessionManager.instance.liveSessionFor(room);
     session?.noteServerRingDeadline(ringDeadlineMs);
     session?.noteCalleeLive(calleeLive);
+    // [CALL-PRESENCE-1 2026-08-07] Copy only — never a ringback, never a phase
+    // change (FAKE-RING-HONEST-1). Applied after noteCalleeLive so a live socket,
+    // the stronger signal, always wins.
+    if (presence.isNotEmpty) session?.notePresence(presence);
     if (res.statusCode == 200 && routed == 'receptionist') {
       Analytics.capture('call_server_receptionist_routed', {
-        'call_id': room, 'via': 'dialpad', 'reason': 'unknown_caller',
+        'call_id': room, 'via': 'dialpad',
+        // [CALL-PRESENCE-1] Was hardcoded 'unknown_caller'. The server now has a
+        // second reason ('offline' — lapsed heartbeat + no wakeable device) and
+        // reporting both as unknown_caller would make the new path invisible.
+        'reason': routingReason.isNotEmpty ? routingReason : 'unknown_caller',
+        'presence': presence,
+        // -1 = the server sent no age (older worker, or no presence record).
+        // Analytics.capture takes Map<String, Object>, so a real null is not an
+        // option here and a sentinel is clearer than dropping the key.
+        'presence_age_ms': presenceAgeMs ?? -1,
       });
-      session?.noteServerReceptionistRoute();
+      session?.noteServerReceptionistRoute(
+          routingReason.isNotEmpty ? routingReason : 'unknown_caller');
     } else if (res.statusCode == 200 && (routed == 'busy' || routed == 'unavailable')) {
       // [CALL-ROUTED-OPTIMISTIC-1 2026-08-03] The optimistic mount is the LIVE
       // dial path (`instantCallMountEnabled` is true in production) and it

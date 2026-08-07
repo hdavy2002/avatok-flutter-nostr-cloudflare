@@ -39,6 +39,14 @@ const String kAccountDeviceUrl = 'https://$kSignalingHost/api/account/device';
 /// Worker endpoint to ring a callee (sends a high-priority FCM wake push). (NIP-98)
 const String kCallUrl = 'https://$kSignalingHost/api/call';
 
+/// [CALL-PRESENCE-1 2026-08-07] Device heartbeat. The cheapest authed endpoint
+/// in the Worker (one Upstash SET; no D1, no Durable Object) because it runs
+/// every `RemoteConfig.presenceHeartbeatSec` on every connected device.
+/// `/api/call` reads what this writes, BEFORE its DO round-trips, which is what
+/// lets a provably-offline callee go straight to Ava instead of ringing a phone
+/// that cannot ring for twenty seconds. (Clerk JWT)
+const String kPresenceBeatUrl = 'https://$kSignalingHost/api/presence/beat';
+
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
 const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 

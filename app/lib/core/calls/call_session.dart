@@ -7188,6 +7188,42 @@ class CallSession {
 
   bool _calleeLive = false;
 
+  /// [CALL-PRESENCE-1 2026-08-07] The server's HEARTBEAT verdict for the callee:
+  /// `'fresh'`, `'stale'` or `'unknown'`.
+  ///
+  /// This is a DIFFERENT and stronger fact than [noteCalleeLive]. `callee_live`
+  /// can only ever be true if the WS ring happened to land on an open socket
+  /// during this call; `presence` is a standing record the callee's phone writes
+  /// every ~25 s (POST /api/presence/beat), read by the server BEFORE it does any
+  /// of its Durable Object round-trips.
+  ///
+  /// The SAME honesty rule as [noteCalleeLive] applies and is the reason this
+  /// method does so little: FAKE-RING-HONEST-1. On 2026-07-22 a caller heard a
+  /// full ringback while the callee's phone was unreachable, because a signal
+  /// that merely *suggested* reachability was allowed to manufacture a ring. So
+  /// this may only soften the waiting copy. It must NEVER start a ringback, set
+  /// phase `ringing`, or claim their phone is ringing — only a real
+  /// device-ringing receipt does that, via [_onDeviceRinging].
+  ///
+  /// `'unknown'` says nothing, deliberately. It is what an older client, a
+  /// missing presence store, or a genuine read failure all produce, and inventing
+  /// progress text for it is exactly the behaviour this change exists to delete.
+  void notePresence(String presence) {
+    if (_ended || _connected || _deviceRinging) return;
+    if (presence == 'fresh') {
+      _calleeLive = true;
+      _setDialStage('$_peerFirst is online — connecting…');
+      return;
+    }
+    if (presence == 'stale') {
+      // A live socket is stronger evidence than a lapsed heartbeat; never
+      // downgrade "online" to "waking" on the same call.
+      if (_calleeLive) return;
+      // Honest, and true: their phone is being woken by FCM, which takes seconds.
+      _setDialStage("Waking $_peerFirst's phone…");
+    }
+  }
+
   void notePlaceResult(bool reachable) {
     if (_ended || _connected) return;
     if (!reachable) {
@@ -7217,15 +7253,23 @@ class CallSession {
     });
   }
 
-  /// The edge classified this caller against the callee's synced contact
-  /// directory and intentionally skipped the human ring. Connect directly to
-  /// Ava; no local contact lookup or missed-call timer may reinterpret it.
-  void noteServerReceptionistRoute() {
+  /// The server intentionally skipped the human ring and routed straight to Ava.
+  /// Connect directly; no local contact lookup or missed-call timer may
+  /// reinterpret it.
+  ///
+  /// [reason] is the server's `routing_reason`:
+  ///   • `'unknown_caller'` — the edge classified this caller against the
+  ///     callee's synced contact directory (the original, and still the default
+  ///     for older servers that send no reason).
+  ///   • `'offline'` — [CALL-PRESENCE-1] the callee's heartbeat has lapsed AND
+  ///     they have no wakeable device. Ringing them would be twenty seconds of
+  ///     silence, so the server answered honestly and immediately instead.
+  void noteServerReceptionistRoute([String reason = 'unknown_caller']) {
     if (_ended || _connected || _receptionistActive) return;
     _deviceRingingTimer?.cancel();
     _ringAckFallback?.cancel();
     _ringTimeout?.cancel();
-    unawaited(_handoffToAva('unknown_caller'));
+    unawaited(_handoffToAva(reason));
   }
 
   /// [INSTANT-CALL-MOUNT-1] The place-call POST itself failed hard (network/DNS
