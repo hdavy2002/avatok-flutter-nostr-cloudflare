@@ -44,7 +44,12 @@ import { opportunityScore } from "./ava_opportunity";
 import { getCapability, CATEGORY_TO_CAPABILITY, type Capability } from "./ava_capabilities";
 import { checkAndSpend, spendMoment, getTrust, isMuted } from "./ava_budget";
 import { governorGate } from "./ava_governor";
-import { guessLang, hasTemplate, pickTemplate, fillTemplate } from "./ava_templates";
+import { hasTemplate, pickTemplate, fillTemplate } from "./ava_templates";
+// [AVA-VOICE-STYLE-1] WS-14b — the user's Ava voice preference now OVERRIDES the
+// old guessLang(text) sniff for template selection. One vocabulary
+// (ava_templates.ts's TemplateLang), two consumers: this zero-AI template bank
+// and the LLM lanes' styleClause().
+import { readVoiceStyle, templateLangFor } from "./ava_persona";
 import { postAvaPrivate } from "./ava_lane"; // postAvaGroup moved to routes/ava_group.ts's approve endpoint (see [AVABRAIN-COMPANION-2])
 // [AVA-GROUP-COMPANION-1] group Ava state + member prefs (I1/I2/I4/I5).
 import {
@@ -228,7 +233,15 @@ export async function odlProcess(env: Env, input: OdlInput): Promise<OdlResult> 
     const cats = matchedCategories(matches);
     const category = cats[0];
     const opportunity = opportunityScore(text, matches, { isGroup: input.isGroup });
-    const lang = guessLang(text);
+    // [AVA-VOICE-STYLE-1] WS-14b. Was `guessLang(text)` — sniffing the incoming
+    // message and never consulting the user. Now the user's stored style wins,
+    // and only the "auto" style falls back to the sniff (templateLangFor does
+    // that resolution). Because the prod default is `hinglish`, a user who has
+    // never opened the setting gets Hinglish templates — that IS the owner's
+    // intent (2026-08-07), not a regression. The telemetry prop below is still
+    // named `lang_guess` so existing PostHog insights keep working; it now
+    // carries the RESOLVED language rather than the guess.
+    const lang = templateLangFor(await readVoiceStyle(env, uid), text);
     const capId = CATEGORY_TO_CAPABILITY[category];
     const cap = await getCapability(env, capId);
     if (!cap || cap.lifecycle === "deprecated" || cap.lifecycle === "deleted") {

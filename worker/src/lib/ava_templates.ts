@@ -11,6 +11,11 @@
 //
 // v1 ships ≥2 templates per capability per language (one casual, one formal).
 
+// [AVA-VOICE-STYLE-1] WS-14b — TemplateLang is now the SHARED voice vocabulary
+// for the whole of Ava, not just this bank. lib/ava_persona.ts's `AvaVoiceStyle`
+// is exactly this union plus one member ("auto"), and it is what the per-user
+// setting, the HTTP API and every LLM lane's styleClause() speak. Adding a
+// language here means adding it there too — do NOT fork a second enum.
 export type TemplateLang = "en" | "hi" | "hinglish";
 export type TemplateRegister = "casual" | "formal";
 

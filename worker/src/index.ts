@@ -72,6 +72,7 @@ import { listNotifications, unreadCount, markRead, clearNotifications } from "./
 import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, msgReceiptBatch, msgSeenState, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear, convAvaGroupStateGet, convAvaGroupStatePut, convAvaMemberPrefsGet, convAvaMemberPrefsPut } from "./routes/messaging"; // [AVA-GROUP-COMPANION-1]: group-Ava state + member-prefs handlers
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
+import { getAvaVoiceStyle, putAvaVoiceStyle } from "./routes/ava_voice_style"; // [AVA-VOICE-STYLE-1] WS-14 — how Ava speaks
 import { getConfig, putConfig, readConfig } from "./routes/config";
 import { createConversation, listConversations, getParticipants } from "./routes/conversations2";
 import { getPlans } from "./routes/plans";
@@ -651,6 +652,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // STREAM F — auto-responder ("Ava replies while you're away") per-user settings.
       if (p === "/api/auto-responder" && req.method === "GET") return await getAutoResponder(req, env);
       if (p === "/api/auto-responder" && req.method === "PUT") return await putAutoResponder(req, env);
+
+      // [AVA-VOICE-STYLE-1] WS-14 — per-user "how Ava speaks" (Hinglish Gen-Z by
+      // default). Must be registered BEFORE the /api/ava/* handlers below only
+      // in the sense of readability; the checks are exact-path so order is not
+      // load-bearing here.
+      if (p === "/api/ava/voice-style" && req.method === "GET") return await getAvaVoiceStyle(req, env);
+      if (p === "/api/ava/voice-style" && req.method === "PUT") return await putAvaVoiceStyle(req, env);
 
       // --- Ava in-chat AI (Phase 0 registered routes; handlers filled by the
       // owner phases — master-plan §4). Order: most-specific first. ---

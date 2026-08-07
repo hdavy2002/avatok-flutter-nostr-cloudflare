@@ -29,6 +29,8 @@ import { emailFor } from "../lib/identity";
 import { runAgentLoop } from "../lib/composio";        // unified tool-calling loop (shared with Messenger @ava)
 import { generateAvaImageSync } from "./ava_image";    // synchronous image gen → URL (rendered inline)
 import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
+// [AVA-VOICE-STYLE-1] WS-14a — the ONE place that decides how Ava sounds.
+import { readVoiceStyle, styleClause } from "../lib/ava_persona";
 import { searchForUser } from "../lib/ava_search";     // sharded tenancy boundary (folder-filtered per user)
 import { avaReason } from "../lib/ava_reason";         // the ONE reasoning gateway (AVA-CORE-3)
 // [AI-BILLING-CORE-1] universal AIJob reserve/settle/release contract, flag-gated
@@ -313,11 +315,23 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   // deepseek cannot see images at all, so an image turn also routes to
   // imageCapableModel() instead. `capability`/`chatModel` below are resolved
   // ONCE and reused for the reserve/gate/settle calls so all three agree.
-  const memory = await brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => "");
+  // [AVA-VOICE-STYLE-1] WS-14a — the voice style rides along with the memory
+  // search rather than adding a serial hop: readVoiceStyle is one KV get in the
+  // steady state, and it now costs nothing on this path.
+  const [memory, voiceStyle] = await Promise.all([
+    brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => ""),
+    readVoiceStyle(env, ctx.uid),
+  ]);
+  // The style clause is appended LAST so it is the most recent instruction the
+  // model sees, and it reuses the EXISTING `Persona/style for this chat:` hook's
+  // position rather than introducing a second persona mechanism (WS-14a). A
+  // client-supplied `context` persona still wins on tone/character; this only
+  // pins the LANGUAGE REGISTER underneath it.
   const system = [
     SYSTEM_BASE,
     context ? `Persona/style for this chat: ${context}` : "",
     memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
+    styleClause(voiceStyle),
   ].filter(Boolean).join("\n\n");
   const generatedImages: string[] = [];
   const hasImages = premium && images.length > 0;
@@ -463,11 +477,16 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   ]);
   if (images.length && !premium) return premiumUpsell(env, ctx.uid, "file_understanding");
 
-  const memory = await brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => "");
+  // [AVA-VOICE-STYLE-1] WS-14a — same shape as the non-streaming handler above.
+  const [memory, voiceStyle] = await Promise.all([
+    brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => ""),
+    readVoiceStyle(env, ctx.uid),
+  ]);
   const system = [
     SYSTEM_BASE,
     context ? `Persona/style for this chat: ${context}` : "",
     memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
+    styleClause(voiceStyle),
   ].filter(Boolean).join("\n\n");
 
   const hasImages = premium && images.length > 0;
