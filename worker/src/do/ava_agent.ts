@@ -41,6 +41,7 @@ import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval 
 import {
   runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest,
   guardOutput, newAgentLoopStats, type AgentLoopStats, // AVA-KIMI-TOOLS-1: shared output guard + tool-lane model telemetry
+  orStreamStep, // [AVA-STREAM-PLAIN-1 / WS-5] the tested SSE parser, shared with the tool lane
 } from "../lib/composio"; // AvaApps + unified agentic loop
 import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
@@ -146,6 +147,24 @@ function stripReasoning(s: string): string {
 // at their own return points, instead of only wherever a caller remembers to call
 // it. Imported above; see composio.ts for the implementation + history.
 
+// [AVA-TURN-PARALLEL-1 / WS-11] A hand-rolled `Promise.allSettled` element.
+//
+// Why not allSettled directly: TypeScript widens a heterogeneous
+// `Promise.allSettled([...])` tuple awkwardly, and — more importantly — a
+// SPECULATIVE promise (one started for a lane that may turn out not to run,
+// e.g. brainSearch on a turn that ends up needing tools) must have a rejection
+// handler attached AT CREATION or the runtime records an unhandled rejection
+// and can tear the isolate down. settle() attaches that handler immediately
+// while keeping the error intact, so each call site can re-raise it with the
+// exact semantics the old sequential code had — swallow, default, or throw.
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+  return p.then(
+    (value) => ({ ok: true as const, value }),
+    (error) => ({ ok: false as const, error }),
+  );
+}
+
 export class AvaAgentDO {
   private env: Env;
   private state: DurableObjectState;
@@ -206,19 +225,78 @@ export class AvaAgentDO {
   // ---- read a bounded recent window from the caller's InboxDO -----------------
   // We read the caller's own log (they are a member of the conv) and filter to
   // this conversation. Returns oldest→newest, text-only (envelopes decoded).
-  private async recentWindow(callerUid: string, conv: string): Promise<{ window: { mine: boolean; ava?: boolean; text: string }[]; attachments: Attachment[]; maxId: number }> {
-    const window: { mine: boolean; ava?: boolean; text: string }[] = [];
+  //
+  // [AVA-CTX-CONV-1] This used to call `/sync?cursor=0`, which returns the OLDEST
+  // 500 messages ACROSS EVERY CONVERSATION the user has ever had (SYNC_LIMIT,
+  // `WHERE id > 0 ORDER BY id ASC`) plus receipts, conv_meta, read_state, 200
+  // call-log rows, safety flags and thread clears — then filtered that to one
+  // conv and kept 12. On any account past 500 total messages the current thread
+  // was not in the payload AT ALL, so Ava answered with an empty transcript and
+  // no way to know it. It now asks InboxDO for the LAST N of THIS conv
+  // (`?conv=&tail=`, descending + reversed server-side), and falls back to the
+  // old full sweep only if that route is missing — a worker/DO version skew must
+  // degrade to "slow but correct", never to "broken".
+  private async recentWindow(callerUid: string, conv: string): Promise<{
+    window: { mine: boolean; ava?: boolean; text: string; id?: number; clientId?: string; mid?: string; sender?: string; createdAt?: number }[];
+    attachments: Attachment[];
+    maxId: number;
+    // [AVA-PRESENCE-1 / WS-16] per-conv delivery + read state, straight from the
+    // tail payload. Empty on the fallback path (the legacy sweep returns receipts
+    // for ALL convs, so they are filtered to `conv` there too).
+    receipts: { conv?: string; peer?: string; delivered_id?: number; read_id?: number }[];
+    reads: { conv?: string; read_ts?: number }[];
+    // Measurement for the ava_thread_turn_window event / caller telemetry.
+    windowLen: number; payloadBytes: number; route: "tail" | "full_sync";
+  }> {
+    const window: { mine: boolean; ava?: boolean; text: string; id?: number; clientId?: string; mid?: string; sender?: string; createdAt?: number }[] = [];
     const attachments: Attachment[] = [];
     let maxId = 0;
+    let receipts: { conv?: string; peer?: string; delivered_id?: number; read_id?: number }[] = [];
+    let reads: { conv?: string; read_ts?: number }[] = [];
+    let payloadBytes = 0;
+    let route: "tail" | "full_sync" = "tail";
+    const w0 = Date.now();
     try {
-      const res = await this.inbox(callerUid).fetch("https://inbox/sync?cursor=0");
-      const payload: any = await res.json();
+      // WINDOW * 4 of headroom: decodeBody() drops ava_status, receipt, read, vote
+      // and edit envelopes entirely (see below), so a large share of rows decode to
+      // "" and contribute nothing. Asking for exactly WINDOW would routinely return
+      // fewer than WINDOW usable lines. InboxDO clamps this to TAIL_MAX.
+      const tail = WINDOW * 4;
+      const stub = this.inbox(callerUid);
+      let res = await stub.fetch(`https://inbox/sync?conv=${encodeURIComponent(conv)}&tail=${tail}`);
+      if (!res.ok) {
+        // 404/5xx → this DO predates the tail route. Take the old path verbatim.
+        route = "full_sync";
+        res = await stub.fetch("https://inbox/sync?cursor=0");
+      }
+      // Read as text first so payload_bytes is the real wire size, not an estimate.
+      const raw = await res.text();
+      payloadBytes = raw.length;
+      const payload: any = raw ? JSON.parse(raw) : {};
+      // A DO on the old code answers ?tail= with a 200 legacy {type:'sync'} body
+      // (the param is simply ignored), so the type — not the status — is what
+      // actually tells us which shape we got.
+      if (payload?.type !== "sync_conv_tail") route = "full_sync";
       const msgs: any[] = Array.isArray(payload?.messages) ? payload.messages : [];
+      // Both shapes are filtered by conv: it is a no-op on the tail payload and
+      // load-bearing on the legacy sweep.
+      const rcp: any[] = Array.isArray(payload?.receipts) ? payload.receipts : [];
+      receipts = rcp.filter((r) => !r?.conv || String(r.conv) === conv);
+      const rds: any[] = Array.isArray(payload?.reads) ? payload.reads : [];
+      reads = rds.filter((r) => !r?.conv || String(r.conv) === conv);
       for (const r of msgs) {
         if (String(r.conv) !== conv) continue;
         const id = Number(r.id) || 0;
         if (id > maxId) maxId = id;
         const mine = String(r.sender) === callerUid;
+        // [AVA-REACT-1 / WS-15] client_id is the `mid` the CLIENT keys a bubble by
+        // (evId), which is NOT InboxDO's numeric `id`. It was selected by the query
+        // and then thrown away here; a reaction targeting a bubble is undeliverable
+        // without it, so it now rides through on every window row.
+        const idFields = {
+          id, clientId: String(r.client_id ?? ""), mid: String(r.mid ?? ""),
+          sender: String(r.sender ?? ""), createdAt: Number(r.created_at) || 0,
+        };
         // Attachments (images/files/voice notes) are surfaced as descriptors so
         // Ava knows a file was shared — instead of silently dropping them.
         const media = this.decodeMedia(String(r.body ?? ""));
@@ -230,16 +308,40 @@ export class AvaAgentDO {
           // an email" stays right next to the file it refers to — this is what
           // lets Ava link the request to the attachment instead of asking the
           // user where the photo is.
-          if (media.caption) window.push({ mine, ava: false, text: media.caption });
+          if (media.caption) window.push({ mine, ava: false, text: media.caption, ...idFields });
           continue;
         }
         const text = this.decodeBody(String(r.body ?? ""));
         if (!text) continue;
-        window.push({ mine, ava: String(r.sender) === "ava", text });
+        window.push({ mine, ava: String(r.sender) === "ava", text, ...idFields });
       }
     } catch { /* best-effort; an empty window still produces a turn */ }
     // Keep the most recent WINDOW messages + last 8 attachments (bounded context).
-    return { window: window.slice(-WINDOW), attachments: attachments.slice(-8), maxId };
+    const kept = window.slice(-WINDOW);
+    // [AVA-CTX-CONV-1] Measurement for the fix. `ava_thread_turn` itself is emitted
+    // by turn() BEFORE this function runs, so it cannot carry these — hence a
+    // sibling event, named to match the existing ava_thread_turn_model. The pair
+    // (window_len, payload_bytes) is the whole before/after story: the old path
+    // moved a ~500-message multi-conversation blob to produce, on a busy account,
+    // window_len 0. The same fields also ride on this function's return value so
+    // turn() can fold them into ava_thread_turn/ava_thread_completed.
+    // Contact is KV-cached (turn() resolved it moments ago), and the emit goes
+    // through state.waitUntil so it survives without sitting on the reply path —
+    // the runtime drops unawaited telemetry on an early return.
+    const emit = (async (): Promise<void> => {
+      const { email, phone } = await contactFor(this.env, callerUid);
+      await trackUserContact(this.env, callerUid, email, phone, "ava_thread_turn_window", "avaai", {
+        conv_kind: conv.startsWith("g_") ? "group" : "dm", // never log the raw conv id
+        route, window_len: kept.length, payload_bytes: payloadBytes,
+        attachments: attachments.length, receipts: receipts.length, reads: reads.length,
+        max_id: maxId, ms: Date.now() - w0,
+      });
+    })().catch(() => { /* telemetry must never break a turn */ });
+    try { this.state.waitUntil(emit); } catch { /* older runtime: the DO stays alive for the rest of the turn */ }
+    return {
+      window: kept, attachments: attachments.slice(-8), maxId,
+      receipts, reads, windowLen: kept.length, payloadBytes, route,
+    };
   }
 
   // App envelopes are JSON ({t:'text',body} | {t:'ava',text} | media | …). Pull
@@ -406,6 +508,29 @@ export class AvaAgentDO {
   // emailed file, which is `apps`)? Heuristic fallback for the LLM router below.
   private looksLikeMedia(text: string): boolean {
     return /\b(pdf|attachment|the\s+(file|photo|picture|image|video|doc(ument)?)|that\s+(file|photo|picture|image|video)|(just|already)\s+(sent|shared)|i\s+(just\s+)?(sent|shared)|above|earlier)\b/i.test(text);
+  }
+
+  // [AVA-IMG-FASTPATH-1 / WS-7] Turn the raw composer line into an image prompt.
+  //
+  // The wake word is still IN the text when it reaches this DO: ava_invoke.dart's
+  // parse() deliberately forwards the whole line ("The full request (still
+  // containing the wake word) is forwarded to the worker, which treats it as
+  // untrusted data"), and ava_thread.ts passes `b.text` through verbatim. On the
+  // agent-loop path that never mattered, because the model rewrote the prompt
+  // before generate_image saw it. On the fast path the user's own words ARE the
+  // prompt, so "@ava draw a red panda" must not ask the provider for a picture of
+  // the literal string "@ava". Also strips the optional leading `private`
+  // modifier the same parser documents. Falls back to the original text if
+  // stripping would leave nothing.
+  private imagePromptFrom(s: string): string {
+    const cleaned = String(s || "")
+      .replace(/[@#]ava\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^\(?private\)?\s*[:,–-]?\s*/i, "")
+      .replace(/^[!:,\-–]\s*/, "")
+      .trim();
+    return cleaned || String(s || "").trim();
   }
 
   // Heuristic router — used ONLY when the LLM classifier errors/parses empty.
@@ -595,10 +720,19 @@ export class AvaAgentDO {
     return "parse";
   }
 
-  private async callThreadModel(sys: string, user: string): Promise<{
+  // [AVA-STREAM-PLAIN-1 / WS-5] `onDelta`, when supplied, streams the PRIMARY
+  // model's tokens as they arrive (reusing composio.ts's orStreamStep — the same
+  // parser the tool lane has used all along) instead of waiting for the complete
+  // answer. Everything below it is unchanged: a streamed attempt that fails for
+  // ANY reason falls straight through to the existing non-streamed ladder
+  // (primary → retry → ALT → direct Gemini), so streaming can only ever make the
+  // turn faster, never make it fail. `streamed` is reported back so the caller
+  // can emit truthful telemetry rather than the hardcoded `streamed:false` this
+  // lane shipped with.
+  private async callThreadModel(sys: string, user: string, onDelta?: (t: string) => Promise<void>): Promise<{
     text: string; model: string; provider: string;
     tokensIn: number | null; tokensOut: number | null;
-    fallbackReason: string | null; latencyMs: number;
+    fallbackReason: string | null; latencyMs: number; streamed: boolean;
   }> {
     const t0 = Date.now();
     const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
@@ -611,6 +745,36 @@ export class AvaAgentDO {
     };
     let fallbackReason: string | null = null;
 
+    if (key && onDelta) {
+      // Streamed attempt on the PRIMARY only. maxTokens/temperature are passed
+      // explicitly to keep parity with openrouterAdapter.run()'s defaults below —
+      // an unbounded stream would bill more output tokens than reserveAiJob
+      // reserved for this turn.
+      try {
+        const out = await orStreamStep(
+          this.env, primary,
+          [{ role: "system", content: sys }, { role: "user", content: user }],
+          [], onDelta,
+          { timeoutMs: THREAD_TIMEOUT_MS, maxTokens: MAX_TOKENS, temperature: 0.7 },
+        );
+        const text = stripReasoning(out.text);
+        if (text) {
+          return {
+            text, model: primary, provider: "openrouter",
+            // `|| null` not `?? null`: OpenRouter omits the usage chunk on some
+            // streamed responses and a 0 there must fall back to the caller's
+            // chars/4 estimate, not silently meter the turn as zero tokens.
+            tokensIn: out.usage?.prompt_tokens || null, tokensOut: out.usage?.completion_tokens || null,
+            fallbackReason, latencyMs: Date.now() - t0, streamed: true,
+          };
+        }
+        // Empty streamed body — treat exactly like a transport failure.
+        fallbackReason = "empty";
+      } catch (e) {
+        fallbackReason = this.classifyOrError(e);
+      }
+    }
+
     if (key) {
       // Primary model — retry ONCE on a transient failure (429/5xx/timeout).
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -619,7 +783,7 @@ export class AvaAgentDO {
           return {
             text: stripReasoning(out.text), model: primary, provider: "openrouter",
             tokensIn: out.tokensIn ?? null, tokensOut: out.tokensOut ?? null,
-            fallbackReason, latencyMs: Date.now() - t0,
+            fallbackReason, latencyMs: Date.now() - t0, streamed: false,
           };
         } catch (e) {
           const reason = this.classifyOrError(e);
@@ -637,7 +801,7 @@ export class AvaAgentDO {
         return {
           text: stripReasoning(out.text), model: alt, provider: "openrouter",
           tokensIn: out.tokensIn ?? null, tokensOut: out.tokensOut ?? null,
-          fallbackReason: fallbackReason || "5xx", latencyMs: Date.now() - t0,
+          fallbackReason: fallbackReason || "5xx", latencyMs: Date.now() - t0, streamed: false,
         };
       } catch (e) {
         fallbackReason = fallbackReason || this.classifyOrError(e);
@@ -652,7 +816,7 @@ export class AvaAgentDO {
     return {
       text, model: "gemini-direct", provider: "google_direct",
       tokensIn: null, tokensOut: null,
-      fallbackReason: fallbackReason || "parse", latencyMs: Date.now() - t0,
+      fallbackReason: fallbackReason || "parse", latencyMs: Date.now() - t0, streamed: false,
     };
   }
 
@@ -668,20 +832,105 @@ export class AvaAgentDO {
 
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
-    // Contact (telemetry only) — email + phone, KV-cached, resolved off the hot
-    // path; never blocks. Lets support pull errors/info by email OR phone.
-    const { email, phone } = await contactFor(this.env, uid);
     const convKind = conv.startsWith("g_") ? "group" : "dm"; // never log the raw conv id
+    const tier: AiTier = byoKey ? "byo" : "ourkeys";
+    const appsCap = !!this.env.COMPOSIO_API_KEY;
+
+    // -----------------------------------------------------------------------
+    // [AVA-TURN-PARALLEL-1 / WS-11] + [AVA-MEM-SKIP-1 / WS-12]
+    //
+    // This used to be nine strictly sequential awaits before the model was even
+    // asked anything: contact lookup → chip → inbox window → premium check →
+    // memory search (a MEASURED 2.4 s) → free-budget reserve → input moderation
+    // → wallet reserve → model. Six of the nine had no mutual dependency at all;
+    // they were sequential only because they were written on consecutive lines.
+    // They all start together now, and the turn pays for the SLOWEST rather than
+    // the SUM.
+    //
+    // ⚠️ AvaAgentDO is a Durable Object. Input gating stays OPEN across general
+    // `fetch` awaits but CLOSES around storage operations, so only fetch-shaped
+    // work is parallelised here. Everything touching this DO's own SQLite
+    // (bumpSummaryCounter / summaryRow / saveSummary) is still called on the
+    // single sequential path below, after this group has settled.
+    //
+    // ⚠️ Failure semantics are PRESERVED, not flattened. Each of these had its
+    // own behaviour on failure and still does — see each `settle()` unwrap
+    // below. Nothing is swallowed that was not already swallowed.
+    // -----------------------------------------------------------------------
+
+    // Contact (telemetry only) — email + phone, KV-cached. The comment that used
+    // to sit here claimed this was "resolved off the hot path; never blocks",
+    // while the very next token was `await`. It is now actually true.
+    const contactP = settle(contactFor(this.env, uid));
+    // The "working…" chip (transient broadcast where possible, persisted
+    // fallback so the FROZEN chat_thread.dart always renders it).
+    const chipP = settle(this.postStatus(conv, uid, priv, "Ava is working…", statusId, "start"));
+    // Bounded context: the last N messages of THIS conversation ([AVA-CTX-CONV-1]).
+    const windowP = settle(this.recentWindow(uid, conv));
+    const premiumP = settle(appsCap
+      ? isPremiumAI(new Request("https://internal/premium"), this.env, uid).then((r) => r.premium)
+      : Promise.resolve(false));
+
+    // [AVA-MEM-SKIP-1 / WS-12] brainSearch was the FIRST statement of the plain
+    // lane, fully blocking, with nothing gating it — no flag, no intent check, no
+    // length check — so "@ava what's the capital of Peru" paid 2.4 s for a
+    // retrieval that by design cannot see chat content. The tool lane never had
+    // this problem because it passes brainSearch as a CALLBACK, fired only when
+    // the model asks for it; that asymmetry was the whole bug.
+    //
+    // It now runs concurrently with the free-budget reserve and input moderation
+    // instead of in front of them. Behaviour is unchanged — the same snippets
+    // reach the same prompt — so there is no intent-gate risk here. A true intent
+    // gate needs a config flag and routes/config.ts is another agent's file this
+    // wave; the key is REPORTED rather than added (see the handover).
+    //
+    // `maybePlain` is a cheap, deliberately conservative predicate over data we
+    // already have at turn entry, so we do not fire a speculative retrieval on a
+    // turn that is obviously heading for the tool lane. It cannot see
+    // `attachments` (that needs windowP) or `premium`, so it is a SUPERSET of the
+    // plain lane: worst case one unused retrieval on an attachment turn, never a
+    // missing one. The tool lane's own callback reuses this in-flight promise
+    // when the model happens to search for the same string (see memorySearch).
+    const maybePlain = !byoKey && !looksLikeImageRequest(userText) && !this.looksLikeApps(userText);
+    const memP = maybePlain ? settle(this.brainSearch(uid, userText)) : null;
+    // Input-side moderation. Previously ran AFTER the free-budget reserve; it now
+    // runs from turn entry. The only consequence of the reorder is one extra
+    // llama-guard call on a turn that turns out to be over its daily free budget
+    // — cheap, rare, and worth the ~200 ms it takes off every normal turn. With
+    // `aiContentModerationEnabled` now true in prod this call is real, not a
+    // no-op, which is exactly why it must not sit on the critical path.
+    const safetyP = maybePlain ? settle(safetyVerdict(this.env, userText)) : null;
+
+    const contactR = await contactP;
+    // contactFor is telemetry-only; a failure must never cost the user a turn.
+    const email = contactR.ok ? contactR.value.email : null;
+    const phone = contactR.ok ? contactR.value.phone : null;
     trackUserContact(this.env, uid, email, phone, "ava_thread_turn", "avaai", {
       conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
     });
-    // 1. Show the "working…" chip immediately (transient broadcast where possible,
-    //    persisted fallback so the FROZEN chat_thread.dart always renders it).
-    await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "start");
 
     try {
-      // 2. Bounded context: recent window + rolling summary (+ optional RAG stub).
-      const { window, attachments, maxId } = await this.recentWindow(uid, conv);
+      const [chipR, winR, premiumR] = await Promise.all([chipP, windowP, premiumP]);
+      // postStatus used to be awaited OUTSIDE this try, so a members() D1 failure
+      // escaped turn() entirely and the caller got a bare 500 with the chip never
+      // closed. Re-raising it INSIDE the try routes it to the same graceful
+      // "Something went wrong on my side." path as every other failure.
+      if (!chipR.ok) throw chipR.error;
+      // recentWindow is internally best-effort and does not reject; rethrowing
+      // preserves the old `await` semantics if that ever changes.
+      if (!winR.ok) throw winR.error;
+      // isPremiumAI was awaited inline inside this try — a throw reached the
+      // outer catch. Same here.
+      if (!premiumR.ok) throw premiumR.error;
+      const { window, attachments, maxId, windowLen, payloadBytes, route: windowRoute } = winR.value;
+      const premium = premiumR.value;
+      // [AVA-CTX-CONV-1] Context-window measurement, folded onto every
+      // ava_thread_completed below so the before/after is visible per turn and
+      // not only on the sibling ava_thread_turn_window event.
+      const winMeta = { window_len: windowLen, payload_bytes: payloadBytes, window_route: windowRoute };
+
+      // DO-storage work (input gate closes here) — deliberately AFTER the
+      // parallel group, never inside it.
       this.bumpSummaryCounter(conv, maxId, 1);
 
       // ONE agentic call replaces the old summarize → search → classify → guard →
@@ -690,12 +939,7 @@ export class AvaAgentDO {
       // search_memory (the user's own notes/messages/files, server-side), or act
       // on connected apps. Gemini does intent + safety natively. The rolling
       // summary refreshes in the BACKGROUND, off the reply path.
-      const tier: AiTier = byoKey ? "byo" : "ourkeys";
-      const appsCap = !!this.env.COMPOSIO_API_KEY;
       this.maybeSummarize(conv, window).catch(() => {}); // non-blocking
-      const premium = appsCap
-        ? (await isPremiumAI(new Request("https://internal/premium"), this.env, uid)).premium
-        : false;
 
       // Fast upsell: an obvious app request from a NON-premium user gets the
       // "top up + connect Gmail" guide instead of a refusal — no model call.
@@ -747,7 +991,7 @@ export class AvaAgentDO {
               tools_called: 1,
               tool_names: mailProvider === "gmail" ? "GMAIL_FETCH_EMAILS" : "OUTLOOK_OUTLOOK_LIST_MESSAGES",
               tools_ms: Date.now() - il0, tool_error: false,
-              attachments: 0, attachments_captioned: 0,
+              attachments: 0, attachments_captioned: 0, ...winMeta,
             });
             return { ok: true, status_id: statusId };
           }
@@ -812,7 +1056,7 @@ export class AvaAgentDO {
               conv_kind: convKind, tier, agentic: false, surface: "calendar_genui",
               answer_len: head.length, latency_ms: Date.now() - t0,
               tools_called: 1, tool_names: "GOOGLECALENDAR_EVENTS_LIST", tools_ms: Date.now() - cl0, tool_error: false,
-              attachments: 0, attachments_captioned: 0,
+              attachments: 0, attachments_captioned: 0, ...winMeta,
             });
             return { ok: true, status_id: statusId };
           }
@@ -836,11 +1080,161 @@ export class AvaAgentDO {
       // `wantsTools` below already keeps every attachment turn off this lane.
       // BYO-key users are UNCHANGED — this lane never applies to them, preserving
       // that path exactly as it runs today.
-      const wantsTools = attachments.length > 0
-        || (appsCap && premium && this.looksLikeApps(userText))
-        || looksLikeImageRequest(userText);
+      const appsIntent = appsCap && premium && this.looksLikeApps(userText);
+      const imageIntent = looksLikeImageRequest(userText);
+      const wantsTools = attachments.length > 0 || appsIntent || imageIntent;
+
+      // ---------------------------------------------------------------------
+      // [AVA-STREAM-PLAIN-1 / WS-5] Streaming machinery, HOISTED above the lane
+      // split so BOTH lanes share it. It used to live inside the tool-lane
+      // branch, which is the entire reason the plain lane shipped with
+      // `streamed:false, ttfb_ms:null` hardcoded in its telemetry and a measured
+      // 5.8 s median to first visible output: it waited for the complete answer
+      // and then posted one bubble.
+      //
+      // ⚠️ OWNER DECISION, ALREADY MADE — DO NOT "FIX" THIS.
+      // guardOutput() and the OUTPUT-side safetyVerdict() both run on the
+      // COMPLETE text, after streaming has finished. A streamed preview
+      // therefore cannot be retracted: if the model produces something the
+      // output guard would have blocked, the user has already seen it, and only
+      // the PERSISTED message carries the refusal. That is a real, understood
+      // weakening of the output guarantee, and the owner chose it (2026-08-07)
+      // for consistency with the tool lane, which has always accepted it (see
+      // the note further down at the tool lane's guardOutput call). It matters
+      // more now that `aiContentModerationEnabled` is true in production and
+      // that check is real rather than a no-op. Two things keep it defensible:
+      //   1. INPUT-side moderation still runs BEFORE the model is called, so a
+      //      prompt that should be refused never reaches a token of output.
+      //   2. postAva below carries `meta.stream_id`, so the client's
+      //      _clearAvaStreamPreview() removes the preview bubble the moment the
+      //      durable (guarded) answer lands — the unsafe text does not persist.
+      // If you want a stronger guarantee, the change is to BUFFER the first N
+      // tokens and moderate before the first frame — not to silently delete the
+      // streaming. Take it to the owner first.
+      // ---------------------------------------------------------------------
+      const streaming = (this.env as any).AVA_STREAM_OFF !== "1";
+      let started = false;
+      let pending = "";
+      let ttfbMs = 0;
+      let frames = 0;
+      let streamedChars = 0;
+      const flush = async (): Promise<void> => {
+        if (!pending) return;
+        const delta = pending; pending = "";
+        if (!started) { started = true; ttfbMs = Date.now() - t0; await this.streamFrame(uid, conv, statusId, "start", ""); }
+        frames++;
+        await this.streamFrame(uid, conv, statusId, "delta", delta);
+      };
+      const onDelta = async (t: string): Promise<void> => {
+        pending += t; streamedChars += t.length;
+        if (pending.length >= 24) await flush();
+      };
+
+      // ---------------------------------------------------------------------
+      // [AVA-IMG-FASTPATH-1 / WS-7] Skip the pre-image model call entirely.
+      //
+      // looksLikeImageRequest() has ALREADY decided this text is an image
+      // request. Until now that decision only forced `wantsTools`, and the agent
+      // loop then ran a FULL LLM completion whose single job was to emit a
+      // `generate_image` tool call carrying essentially the same prompt —
+      // non-streamed, `tool_choice` pinned to that one function, 45 s timeout on
+      // the primary AND the alt (composio.ts's `once(true)` image fast-path).
+      // Measured 1–4 s typical and ~90 s worst case, on the slowest and least
+      // reliable model in the stack, to re-derive a conclusion a regex had
+      // already reached. runAvaImage() is called directly instead.
+      //
+      // Conditions are deliberately narrow: no attachments (an attached photo
+      // means an EDIT whose source the model has to identify) and no apps intent
+      // ("make me a logo and email it to Bob" genuinely needs the tool loop).
+      //
+      // ⚠️ BILLING — verified, and the stale comment further down is corrected.
+      // The `ava_thread_tools` reservation is for the LLM CALL's tokens. The
+      // image's own money is reserved and settled independently inside
+      // ava_image.ts via createAiMediaJob() → ai_billing.reserveAiJob() and
+      // completeAiMediaJob() → settleAiJob(), keyed on the job id. So:
+      //   * NO DOUBLE CHARGE — the image was never billed twice; the tool
+      //     reservation never contained an image unit in the first place.
+      //   * NO MISSED CHARGE — skipping the tool lane skips only the token
+      //     reservation for an LLM call that no longer happens. The image
+      //     charge is untouched, and still lands on THIS caller's wallet
+      //     (runAvaImage keys every gate and spend on `uid`, never `conv`).
+      // Net effect is strictly less money spent, for the same delivered image.
+      //
+      // ⚠️ FALLBACK PRESERVED. A THROW, or a failure carrying no user-facing
+      // message, falls through to the agent loop exactly as before — the regex
+      // is permissive and a miss must never dead-end (IMAGE_FALLBACK_MSG stays
+      // the last resort in there). A structured BLOCK (`message` set: kill
+      // switch, moderation refusal, daily cap, wallet) is a real answer, not a
+      // miss — it is relayed as-is, because routing it into the agent loop would
+      // just re-run the identical gate and pay for a model call to be told no.
+      if (imageIntent && attachments.length === 0 && !appsIntent) {
+        const f0 = Date.now();
+        let fastPathOutcome = "fell_through";
+        try {
+          const imgPrompt = this.imagePromptFrom(userText);
+          const r = await runAvaImage(this.env, {
+            uid, conv, prompt: imgPrompt, private: priv,
+            // [AVA-IMG-KEEPALIVE-1 / WS-3] The DO's own lifetime source. Without
+            // this, runAvaImage's detached fulfil() is a bare `void` promise the
+            // runtime is never told to keep alive — the likeliest cause of images
+            // that simply never arrive. The HTTP route passes an ExecutionContext;
+            // a DO must pass its state, and neither is inferable from inside
+            // runAvaImage, which is why it is an explicit parameter.
+            keepAlive: this.state,
+          });
+          if (r.ok) {
+            fastPathOutcome = "started";
+            const ack = priv
+              ? "Image generation started — it'll appear here privately in a few seconds."
+              : "Image generation started — it will appear in this chat in a few seconds.";
+            // runAvaImage has already posted its own image-shaped placeholder
+            // chip (WS-8), so close this turn's generic "Ava is working…" pill.
+            await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+            await this.postAva({
+              conv, uid, text: ack, private: priv, source: "image",
+              ...(r.job_id ? { meta: { job_id: r.job_id } } : {}),
+            });
+          } else if (r.message) {
+            fastPathOutcome = `blocked:${r.reason ?? "unknown"}`;
+            await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+            await this.postAva({ conv, uid, text: r.message, private: priv, source: "image" });
+          }
+          if (fastPathOutcome !== "fell_through") {
+            // AWAITED: this is an early return, and the runtime drops unawaited
+            // telemetry on early-return paths (memory:
+            // avatok-worker-error-path-telemetry-dropped).
+            await trackUserContact(this.env, uid, email, phone, "ava_image_fastpath", "avaai", {
+              conv_kind: convKind, outcome: fastPathOutcome, private: priv,
+              job_id: r.job_id ?? null, prompt_len: imgPrompt.length, ms: Date.now() - f0,
+            }).catch(() => {});
+            await trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
+              conv_kind: convKind, tier, agentic: false, surface: "image_fastpath",
+              streamed: false, genui: false, ttfb_ms: null, stream_frames: 0, stream_chars: 0,
+              answer_len: 0, latency_ms: Date.now() - t0,
+              tools_called: 0, tool_names: "", tools_ms: Date.now() - f0, tool_error: false,
+              attachments: 0, attachments_captioned: 0, ...winMeta,
+            }).catch(() => {});
+            return { ok: true, status_id: statusId };
+          }
+        } catch (e: any) {
+          // Fall through to the agent loop below — never dead-end an image ask.
+          await trackUserContact(this.env, uid, email, phone, "ava_image_fastpath", "avaai", {
+            conv_kind: convKind, outcome: "error", private: priv, ms: Date.now() - f0,
+            error: String(e?.message ?? e).slice(0, 200),
+          }).catch(() => {});
+        }
+      }
+
       if (!byoKey && !wantsTools) {
-        const snippets = await this.brainSearch(uid, userText); // F1 — also emits ava_memory_context
+        // [AVA-MEM-SKIP-1 / WS-12] Started at turn entry alongside the chip, the
+        // inbox window and the premium check — no longer 2.4 s of dead air in
+        // front of everything else. `maybePlain` is a superset of this branch, so
+        // memP is always present here; the inline call is an unreachable safety
+        // net, kept so a future edit to `maybePlain` cannot silently drop
+        // retrieval. Rethrowing preserves the old `await` semantics exactly.
+        const memSettled = memP ? await memP : await settle(this.brainSearch(uid, userText));
+        if (!memSettled.ok) throw memSettled.error;
+        const snippets = memSettled.value; // F1 — also emits ava_memory_context
         const summaryNow = this.summaryRow(conv).summary;
         const { sys, user } = this.buildPrompt(summaryNow, window, userText, snippets, false, attachments);
 
@@ -869,7 +1263,11 @@ export class AvaAgentDO {
           });
           return { ok: true, status_id: statusId };
         }
-        const inputSafety = await safetyVerdict(this.env, userText);
+        // [AVA-TURN-PARALLEL-1 / WS-11] Started at turn entry, not here. Same
+        // rethrow-on-failure semantics as the old inline `await`.
+        const safetySettled = safetyP ? await safetyP : await settle(safetyVerdict(this.env, userText));
+        if (!safetySettled.ok) throw safetySettled.error;
+        const inputSafety = safetySettled.value;
         const moderationInputTokens = inputSafety.providerCalled ? estimateTokens(userText) : 0;
         if (!inputSafety.safe) {
           await settleFreeTextBudget(this.env, uid, budget, {
@@ -914,7 +1312,12 @@ export class AvaAgentDO {
         }
         let g: any;
         try {
-          g = await this.callThreadModel(sys, user);
+          // [AVA-STREAM-PLAIN-1 / WS-5] The one-line change that removes the dead
+          // air: the same call, now handing callThreadModel the shared coalescer
+          // so the answer types out from ~1 s instead of appearing whole at ~5.8 s.
+          // Passing onDelta only when streaming is enabled keeps AVA_STREAM_OFF=1
+          // as a true kill switch for BOTH lanes.
+          g = await this.callThreadModel(sys, user, streaming ? onDelta : undefined);
         } catch (e) {
           await releaseAiJob(this.env, reservation, { uid, opId, capability: "chat_thread", reason: "provider_error" });
           if (moderationInputTokens) {
@@ -925,8 +1328,16 @@ export class AvaAgentDO {
           } else {
             await releaseFreeTextBudget(this.env, uid, budget);
           }
+          // Close any preview we already opened before rethrowing, so the client
+          // is not left with a half-written bubble and no terminator. The outer
+          // catch's error message carries no stream_id and therefore cannot
+          // clear it.
+          if (started) { await flush().catch(() => {}); await this.streamFrame(uid, conv, statusId, "end", ""); }
           throw e;
         }
+        // Drain the coalescer's tail (< 24 chars never triggers a flush on its
+        // own) and terminate the preview before the durable answer is posted.
+        if (streaming) { await flush(); if (started) await this.streamFrame(uid, conv, statusId, "end", ""); }
         let answer = guardOutput(g.text); // F8 minimal output guard
         if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
         const outputSafety = await safetyVerdict(this.env, answer);
@@ -959,8 +1370,19 @@ export class AvaAgentDO {
           provider_cost_micro_usd: meter.provider_cost_micro_usd, reserve_tokens: reservation.reserved_tokens,
           ok: meter.ok, error: meter.error ?? null,
         });
-        await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
-        await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
+        // When we streamed, the summoner already watched the chip vanish under
+        // the growing bubble; a persisted 'end' would briefly re-show
+        // "Ava is working…" ABOVE the streamed text. Same rule as the tool lane.
+        if (!started) await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+        await this.postAva({
+          conv, uid, text: answer, private: priv, source: "chat",
+          // [AVA-STREAM-PLAIN-1 / WS-5] MUST be set whenever a preview was shown.
+          // The client's _clearAvaStreamPreview() (send.dart) uses this id to
+          // remove exactly THIS turn's preview bubble; with no meta it falls back
+          // to blindly clearing every `stream_*` bubble in the thread. It is also
+          // what retracts a streamed answer the output guard has just replaced.
+          ...(started ? { meta: { stream_id: statusId } } : {}),
+        });
         trackUserContact(this.env, uid, email, phone, "ava_thread_turn_model", "avaai", {
           conv_kind: convKind, lane: tier,
           model_requested: this.threadModel(), model_actual: g.model, provider: g.provider,
@@ -968,11 +1390,18 @@ export class AvaAgentDO {
           latency_ms: g.latencyMs, fallback_reason: g.fallbackReason,
         });
         trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
-          conv_kind: convKind, tier, agentic: false, streamed: false, genui: false,
-          ttfb_ms: null, stream_frames: 0, stream_chars: 0,
+          // [AVA-STREAM-PLAIN-1 / WS-5] Real counters. These four were hardcoded
+          // `false / null / 0 / 0` — this lane's own telemetry was the clearest
+          // evidence that it never streamed, and it is now the proof that it does.
+          conv_kind: convKind, tier, agentic: false, streamed: started, genui: false,
+          ttfb_ms: started ? ttfbMs : null, stream_frames: frames, stream_chars: streamedChars,
+          // Whether the MODEL streamed, as distinct from whether the user saw
+          // frames: a streamed attempt that fell back to the non-streamed ladder
+          // reports streamed:true (frames were shown) but model_streamed:false.
+          model_streamed: !!g.streamed,
           answer_len: answer.length, latency_ms: Date.now() - t0,
           tools_called: 0, tool_names: "", tools_ms: 0, tool_error: false,
-          attachments: 0, attachments_captioned: 0,
+          attachments: 0, attachments_captioned: 0, ...winMeta,
         });
         return { ok: true, status_id: statusId };
       }
@@ -1001,12 +1430,26 @@ export class AvaAgentDO {
       // lane can take several model round-trips (tool calls + a final answer,
       // and possibly an image-gen call), so the worst-case output cap is set
       // to 3x the plain lane's MAX_TOKENS rather than a single-turn budget.
-      // Image generation (runAvaImage, invoked via onImage below) is NOT
-      // separately metered here — v1 folds any in-turn image unit into this
-      // single 'ava_thread_tools' reservation (routes/ava_image.ts is
-      // read-only for this change and carries no billing hook of its own
-      // today; see the report for the full rationale). opId reuses statusId,
-      // same as the plain lane, so a given turn only ever reserves once.
+      // opId reuses statusId, same as the plain lane, so a given turn only ever
+      // reserves once.
+      //
+      // ⚠️ [AVA-IMG-FASTPATH-1 / WS-7] CORRECTION. The comment that stood here
+      // claimed an in-turn image is "NOT separately metered here — v1 folds any
+      // in-turn image unit into this single 'ava_thread_tools' reservation
+      // (routes/ava_image.ts … carries no billing hook of its own today)".
+      // That has been FALSE since [AVA-IMAGE-UX-1 / §44]: routes/ava_image.ts
+      // now runs its own reserve/settle through lib/ai_media_jobs.ts —
+      // createAiMediaJob() → ai_billing.reserveAiJob(), completeAiMediaJob() →
+      // settleAiJob(), failAiMediaJob() → releaseAiJob(), all keyed on the job
+      // id and charged to the REQUESTER's wallet.
+      //
+      // So the two are, and always were, disjoint:
+      //   * THIS reservation covers the tool-loop LLM's tokens, nothing else.
+      //   * The image's provider cost is reserved and settled exactly once by
+      //     the media job.
+      // There is no double charge, and skipping this lane (as the WS-7 image
+      // fast path above does) misses no charge — it skips only the token
+      // reservation for an LLM call that no longer happens.
       const toolOpId = `ava-thread-tools:${statusId}`;
       const toolPromptChars = ctx.length + userText.length;
       const toolReqModel = String((this.env as any).OPENROUTER_AGENT_MODEL || "moonshotai/kimi-k3").trim();
@@ -1025,28 +1468,13 @@ export class AvaAgentDO {
         return { ok: false, status_id: statusId, error: toolReservation.error ?? "ai_wallet_blocked" };
       }
 
-      // Live token streaming (kill-switchable via AVA_STREAM_OFF). We push the
-      // answer to the summoner's socket AS Gemini produces it (first token in
-      // ~1s instead of waiting for the whole reply), throttled to coalesce tiny
-      // SSE chunks into ~24-char frames so we don't spam the InboxDO. The durable
-      // answer is still posted whole below — streaming is a preview, not storage.
-      const streaming = (this.env as any).AVA_STREAM_OFF !== "1";
-      let started = false;
-      let pending = "";
-      let ttfbMs = 0;
-      let frames = 0;
-      let streamedChars = 0;
-      const flush = async (): Promise<void> => {
-        if (!pending) return;
-        const delta = pending; pending = "";
-        if (!started) { started = true; ttfbMs = Date.now() - t0; await this.streamFrame(uid, conv, statusId, "start", ""); }
-        frames++;
-        await this.streamFrame(uid, conv, statusId, "delta", delta);
-      };
-      const onDelta = async (t: string): Promise<void> => {
-        pending += t; streamedChars += t.length;
-        if (pending.length >= 24) await flush();
-      };
+      // Live token streaming (kill-switchable via AVA_STREAM_OFF) — `streaming`,
+      // `started`, `flush` and `onDelta` are declared once, above the lane split
+      // ([AVA-STREAM-PLAIN-1 / WS-5]), because the plain lane now uses them too.
+      // We push the answer to the summoner's socket AS the model produces it,
+      // throttled to coalesce tiny SSE chunks into ~24-char frames so we don't
+      // spam the InboxDO. The durable answer is still posted whole below —
+      // streaming is a preview, not storage.
 
       // Per-tool telemetry: each Composio/app or search_memory call emits an
       // ava_tool_call event (tool, ok, ms, error, args, result size) so we can
@@ -1080,7 +1508,17 @@ export class AvaAgentDO {
       try {
         answer = await runAgentLoop(
           this.env, uid, userText, ctx,
-          (q) => this.brainSearch(uid, q),
+          // [AVA-MEM-SKIP-1 / WS-12] If the WS-11 group already speculatively
+          // started a retrieval for this exact query (see `maybePlain`), reuse
+          // that in-flight promise instead of issuing a second identical
+          // Vectorize query. Any other query the model asks for runs normally.
+          async (q) => {
+            if (memP && q === userText) {
+              const s = await memP;
+              if (s.ok) return s.value;
+            }
+            return this.brainSearch(uid, q);
+          },
           {
             apps: appsCap && premium, onTool, modelStats, ...(streaming ? { onDelta } : {}),
             // In-thread image gen. All gating (premium + per-user daily allowance)
@@ -1088,7 +1526,17 @@ export class AvaAgentDO {
             // so a @ava image goes ONLY to the requester (private), and a #ava image
             // fans out to the whole conversation (public) — same scoping as text.
             onImage: async (prompt, editRef) => {
-              const r = await runAvaImage(this.env, { uid, conv, prompt, editRef, private: priv });
+              const r = await runAvaImage(this.env, {
+                uid, conv, prompt, editRef, private: priv,
+                // [AVA-IMG-KEEPALIVE-1 / WS-3] THE agent-lane half of the fix.
+                // runAvaImage detaches fulfil(); without a lifetime source that
+                // is a bare `void` promise the runtime is never told to keep
+                // alive, and this lane generates most of the app's images. An
+                // ExecutionContext (what the HTTP route passes) does not exist
+                // inside a DO — the DO's own state is the equivalent, and the
+                // two are not interchangeable.
+                keepAlive: this.state,
+              });
               if (!r.ok) return r.message ?? "I couldn't start that image right now.";
               return priv
                 ? "Image generation started — it'll appear here privately in a few seconds."
@@ -1224,6 +1672,7 @@ export class AvaAgentDO {
         // WhatsApp-style caption (the single-bubble fix).
         attachments: attachments.length,
         attachments_captioned: attachments.filter((a) => !!a.caption).length,
+        ...winMeta,
       });
       return { ok: true, status_id: statusId };
     } catch (e: any) {

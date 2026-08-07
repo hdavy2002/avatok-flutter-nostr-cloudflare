@@ -656,6 +656,35 @@ function orAgentModel(env: Env): string {
 function orAgentModelAlt(env: Env): string {
   return (env as any).OPENROUTER_AGENT_MODEL_ALT || "google/gemini-3.5-flash";
 }
+// ---- [AVA-TOOL-BACKOFF-1 / WS-13b] same-model retry policy ------------------
+// The tool lane measured 11–20 s with ~2 of 5 calls failing to parse. Part of
+// that was the retry policy itself: BOTH orStep() and orStreamStep() used to
+// sleep a flat 300 ms and immediately re-hit the SAME model, including on a
+// 429. 300 ms is not a rate-limit backoff — it is a second request inside the
+// same rate-limit window, which reliably 429s again and costs a full round
+// trip before the ALT model is even tried.
+//
+// What changed:
+//   * exponential backoff with jitter, honouring `Retry-After` when the
+//     provider sends one (that value is authoritative; ours is a guess);
+//   * a 429 gets a real delay (~1 s base) rather than a 5xx's ~300 ms, because
+//     a 429 is a statement about a time window and a 5xx usually is not;
+//   * jitter, so N concurrent turns hitting the same limit do not all retry on
+//     the same millisecond and re-collide;
+//   * an absolute cap, so a hostile `Retry-After` can never park a user's turn.
+// The number of same-model attempts is UNCHANGED (one retry): the ALT model is
+// a better answer than a third attempt at a rate-limited primary, and
+// runAgentLoop's `once()` ladder is what provides it.
+const OR_RETRY_MAX_DELAY_MS = 4000;
+function orRetryDelayMs(attempt: number, status: number, retryAfter: string | null): number {
+  const ra = Number(retryAfter); // seconds; an HTTP-date form parses NaN → ignored
+  if (Number.isFinite(ra) && ra > 0) return Math.min(Math.round(ra * 1000), OR_RETRY_MAX_DELAY_MS);
+  const base = status === 429 ? 1000 : 300;
+  const exp = base * Math.pow(2, Math.max(0, attempt));
+  const jitter = Math.random() * exp * 0.5; // decorrelates concurrent retries
+  return Math.min(Math.round(exp + jitter), OR_RETRY_MAX_DELAY_MS);
+}
+
 // Classify an OpenRouter step failure for fallback_reason telemetry (mirrors
 // ava_agent.ts's classifyOrError so both lanes report consistent reasons).
 function classifyOrErr(e: unknown): "timeout" | "429" | "5xx" | "parse" | "empty" {
@@ -769,7 +798,8 @@ async function orStep(
     const out: any = await res.json().catch(() => ({}));
     if (!res.ok) {
       if ((res.status === 429 || res.status >= 500) && attempt === 0) {
-        await sleep(300);
+        // [AVA-TOOL-BACKOFF-1 / WS-13b] see orRetryDelayMs — was a flat 300 ms.
+        await sleep(orRetryDelayMs(attempt, res.status, res.headers.get("retry-after")));
         continue;
       }
       throw new Error(`openrouter ${res.status}: ${JSON.stringify(out?.error ?? out).slice(0, 200)}`);
@@ -796,10 +826,21 @@ async function orStep(
 // delta so the UI types live, and accumulates fragmented tool_calls (OpenAI streams
 // tool-call name/arguments in pieces, keyed by index). Throws on transport failure
 // so the caller can fall back to a reliable non-streamed step.
-async function orStreamStep(
+//
+// [AVA-STREAM-PLAIN-1 / WS-5] EXPORTED. This was module-private and used only by
+// runAgentLoop's tool lane, which is why the plain in-thread @ava lane shipped
+// non-streaming (`streamed:false, ttfb_ms:null` hardcoded in do/ava_agent.ts) for
+// a measured 5.8 s median to first visible output. do/ava_agent.ts's
+// callThreadModel() now reuses THIS parser rather than growing a second SSE
+// reader — one tested implementation, two lanes. `maxTokens`/`temperature` are
+// additive and optional: the tool lane passes neither and is unaffected, while
+// the plain lane needs them to keep MAX_TOKENS/0.7 parity with the non-streamed
+// openrouterAdapter.run() path it replaces (an unbounded stream would quietly
+// bill more output tokens than the reservation assumed).
+export async function orStreamStep(
   env: Env, model: string, messages: any[], tools: any[],
   onText: (t: string) => void | Promise<void>,
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; maxTokens?: number; temperature?: number },
 ): Promise<{ text: string; calls: OrCall[]; usage?: OrUsage }> {
   const key = (env as any).OPENROUTER_API_KEY ?? "";
   // stream_options.include_usage asks OpenRouter to emit a final usage-only chunk
@@ -807,6 +848,8 @@ async function orStreamStep(
   // otherwise only non-streamed orStep() calls would report token spend.
   const body: any = { model, messages, stream: true, stream_options: { include_usage: true } };
   if (tools.length) body.tools = tools;
+  if (opts?.maxTokens != null) body.max_tokens = opts.maxTokens;
+  if (opts?.temperature != null) body.temperature = opts.temperature;
   const timeoutMs = opts?.timeoutMs ?? OR_STEP_TIMEOUT_MS;
 
   // One same-model retry on a 429/5xx BEFORE any bytes have streamed (mirrors
@@ -825,7 +868,8 @@ async function orStreamStep(
     }
     if (!res.ok) {
       if ((res.status === 429 || res.status >= 500) && attempt === 0) {
-        await sleep(300);
+        // [AVA-TOOL-BACKOFF-1 / WS-13b] see orRetryDelayMs — was a flat 300 ms.
+        await sleep(orRetryDelayMs(attempt, res.status, res.headers.get("retry-after")));
         continue;
       }
       const j: any = await res.json().catch(() => ({}));
@@ -1125,11 +1169,40 @@ const IMAGE_FALLBACK_MSG =
   "I couldn't create that image just now. Tap the ✨ image button to try again — " +
   "and if you've used up today's free AI images, you can upgrade your plan for more.";
 
+const IMAGE_VERB_RE = /\b(generate|create|make|draw|design|paint|render|sketch|illustrate|edit|turn (?:this|it) into)\b/;
+const IMAGE_NOUN_SRC = "(?:image|images|picture|pic|pics|photo|photos|logo|poster|icon|sticker|wallpaper|drawing|illustration|portrait|art(?:work)?|avatar|meme|banner|background)";
+const IMAGE_NOUN_RE = new RegExp(`\\b${IMAGE_NOUN_SRC}\\b`);
+// The verb actually governing the noun, within a short window — "create a
+// beautiful sunset picture", "draw me a picture of a cat", "edit this photo".
+const IMAGE_ORDERED_RE = new RegExp(
+  `\\b(?:generate|create|make|draw|design|paint|render|sketch|illustrate|edit)\\b(?:\\s+\\S+){0,4}?\\s+\\b${IMAGE_NOUN_SRC}\\b`,
+);
+// "…send me the photo", "save the logo", "forward that picture" — the user is
+// HANDLING an image that already exists, not asking for one to be made.
+const IMAGE_HANDLING_RE = new RegExp(
+  `\\b(?:send|forward|share|attach|e?mail|upload|download|save|delete|print)\\s+(?:me\\s+|us\\s+|him\\s+|her\\s+|them\\s+)?(?:the|this|that|it|my|your|his|her|their|a|an)?\\s*\\b${IMAGE_NOUN_SRC}\\b`,
+);
+
 export function looksLikeImageRequest(s: string): boolean {
   const t = (s || "").toLowerCase();
-  const verb = /\b(generate|create|make|draw|design|paint|render|sketch|illustrate|edit|turn (?:this|it) into)\b/;
-  const noun = /\b(image|images|picture|pic|pics|photo|photos|logo|poster|icon|sticker|wallpaper|drawing|illustration|portrait|art(?:work)?|avatar|meme|banner|background)\b/;
-  return verb.test(t) && noun.test(t);
+  if (!IMAGE_VERB_RE.test(t) || !IMAGE_NOUN_RE.test(t)) return false;
+  // [AVA-IMG-FASTPATH-1 / WS-7] This used to be a bare, unordered
+  // `verb && noun` over the whole string, so "make sure to send me the photo"
+  // and "save the logo he emailed" both read as "generate an image". That was
+  // survivable while a match only routed the turn to the agent loop, which then
+  // declined to call generate_image and answered in text. It is NOT survivable
+  // now that a match can route STRAIGHT to a paid image generation
+  // (do/ava_agent.ts's WS-7 fast path), so the two observed false-positive
+  // families are excluded here.
+  //
+  // Deliberately still UNORDERED at the base: reversed phrasing ("a logo —
+  // can you make one for me?") must keep matching, because this predicate is
+  // also what sets `wantsTools` in do/ava_agent.ts. Narrowing it to an ordered
+  // match would send those turns to the plain text lane, which cannot generate
+  // an image at all — a far worse failure than an occasional extra tool hop.
+  if (/\bmake sure\b/.test(t)) return false;
+  if (IMAGE_HANDLING_RE.test(t) && !IMAGE_ORDERED_RE.test(t)) return false;
+  return true;
 }
 
 // AVA-KIMI-TOOLS-1: per-turn model telemetry out-param for the tool-calling lane
@@ -1318,9 +1391,18 @@ export async function runAgentLoop(
   // response (see orStep) — never breaks the turn. Also the fallback when SSE
   // streaming fails mid-loop. forceImage pins tool_choice to generate_image so the
   // model MUST call it (can't "answer" the image as text).
-  const once = async (forceImage = false): Promise<{ calls: OrCall[]; text: string }> => {
+  // [AVA-TOOL-BACKOFF-1 / WS-13b] `skipPrimary` exists because the streamed step
+  // below already spent a full attempt (plus a backed-off same-model retry) on
+  // the primary. If it died of a 429 or of unparseable tool-call JSON — the two
+  // failure modes measured on the tool-lane model — re-running the SAME model
+  // here is the worst possible next move: a 429 is a time window that has not
+  // reopened, and a parse failure is a property of that model's tool-call
+  // formatting, not a transient. Both cost ~45 s worst case before the ALT model
+  // is reached. A timeout/5xx still gets the primary once more (those genuinely
+  // are transient, and the primary is the better model).
+  const once = async (forceImage = false, skipPrimary = false): Promise<{ calls: OrCall[]; text: string }> => {
     let lastErr = "";
-    const candidates = [orAgentModel(env), orAgentModelAlt(env)];
+    const candidates = skipPrimary ? [orAgentModelAlt(env)] : [orAgentModel(env), orAgentModelAlt(env)];
     for (let i = 0; i < candidates.length; i++) {
       const m = candidates[i];
       try {
@@ -1334,7 +1416,10 @@ export async function runAgentLoop(
         return { calls: r.calls, text: r.text };
       } catch (e: any) {
         lastErr = String(e?.message ?? e);
-        if (opts?.modelStats && i === 0) opts.modelStats.fallback_reason = classifyOrErr(e);
+        // Only the PRIMARY's failure names the fallback reason. With
+        // skipPrimary the single candidate is already the ALT, and the reason
+        // was recorded by whoever decided to skip.
+        if (opts?.modelStats && i === 0 && !skipPrimary) opts.modelStats.fallback_reason = classifyOrErr(e);
       }
     }
     throw new Error(lastErr || "openrouter unreachable");
@@ -1400,8 +1485,13 @@ export async function runAgentLoop(
           opts.modelStats.output_tokens += r.usage?.completion_tokens ?? 0;
         }
       } catch (e: any) {
-        if (opts?.modelStats) opts.modelStats.fallback_reason = opts.modelStats.fallback_reason || classifyOrErr(e);
-        const r = await once(); calls = r.calls; text = r.text;
+        const reason = classifyOrErr(e);
+        if (opts?.modelStats) opts.modelStats.fallback_reason = opts.modelStats.fallback_reason || reason;
+        // [AVA-TOOL-BACKOFF-1 / WS-13b] a 429 or a malformed tool-call parse on
+        // the primary means "do not ask this model again right now" — go to the
+        // ALT directly instead of paying for the primary a third time. See once().
+        const r = await once(false, reason === "429" || reason === "parse");
+        calls = r.calls; text = r.text;
       }
     } else {
       const r = await once(); calls = r.calls; text = r.text;
