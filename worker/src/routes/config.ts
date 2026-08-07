@@ -206,6 +206,14 @@ export interface PlatformConfig {
   // betaFreePremium is on (forceMeter) — lets the owner live-test token deduction
   // without ending the free beta platform-wide. Default false (beta stays free).
   receptBillingLive: boolean;
+  // [RECEPT-LIB-1] Register each Ava-receptionist voicemail into `user_media` so
+  // it appears in AvaLibrary's "Ava Receptionist" audio folder. Default TRUE —
+  // the folder has shipped empty since [LIB-AUDIO-SPLIT-1] and this is the
+  // missing producer. Kill switch: flip false in KV and new voicemails stop
+  // getting a library row (they are still stored, still delivered to the Inbox
+  // and still playable through the existing endpoint — the row is a convenience
+  // layer, nothing depends on it). Existing rows are NOT removed by flipping it.
+  receptionistLibraryEnabled: boolean;
   // [AVABRAIN-FLAGS-1] AvaBrain program flags (Specs/AVABRAIN-PRODUCT-BIBLE-2026-07-24.md).
   // Personal Live-voice billing (voice_billing.ts): master gate + a
   // receptBillingLive-style force-meter for real charges during any free beta.
@@ -950,6 +958,74 @@ export interface PlatformConfig {
   // flipping it on only changes where NEW deletion requests are enqueued (see
   // routes/account.ts). Boolean → NOT in numericKeys.
   deletionWorkflowEnabled: boolean;
+
+  // ---------------------------------------------------------------------------
+  // [AVA-CFG-CACHE-1 2026-08-07] Ava V2 workstream flags. Every key below is
+  // declared HERE and in `DEFAULTS`, in the same change (fake-flag rule); the
+  // numeric ones also have a `numericKeys` entry in `putConfig`. Verified with
+  // `scripts/flags.sh set <key>=…` — a key missing from either place 400s
+  // (`unknown key` / `bad type`) and can never actually be flipped.
+  // ⚠️ config.ts accepts ONLY `number` and `boolean`. There is no string type,
+  // which is why the two enum-ish keys below are numbers with documented values.
+  // ---------------------------------------------------------------------------
+
+  // WS-5. Kill switch for streaming the plain Ava lane. Until now the only brake
+  // was the `AVA_STREAM_OFF` env var, which needs a redeploy to pull; this makes
+  // it a live flag. Default TRUE = streaming on. Boolean → NOT in numericKeys.
+  avaStreamPlainEnabled: boolean;
+  // WS-7. Kill switch for the direct-to-image fast path (skip the LLM round trip
+  // when the prompt is unambiguously an image request). Default TRUE; flip FALSE
+  // if the intent regex misfires and starts drawing pictures of plain questions.
+  avaImageFastPathEnabled: boolean;
+  // WS-12. Intent gate that skips the memory/recall fetch when the turn plainly
+  // does not need it. SHIPS DARK — a wrong skip silently loses context.
+  avaMemoryIntentGateEnabled: boolean;
+  // WS-10. Two-tier image generation (cheap preview, paid full-res upgrade).
+  // SHIPS DARK until the tiering is verified end to end on a device.
+  avaImageTwoTierEnabled: boolean;
+  // WS-17. Per-thread Ava toggle in 1:1 DMs. SHIPS DARK.
+  avaDmToggleEnabled: boolean;
+  // WS-17. The default state of that per-thread toggle for threads that have
+  // never been set. Owner wants this ON eventually, but it ships FALSE and gets
+  // flipped deliberately — turning Ava on inside every existing DM by default is
+  // not something a code default should do on its own.
+  avaDmDefaultOn: boolean;
+  // WS-18b. The AI ambient lane (Ava reacting to group activity unprompted).
+  // SHIPS DARK — needs WS-1, WS-15 and WS-17 first, plus an owner decision.
+  avaAmbientAiEnabled: boolean;
+  // WS-19d. Flat per-action pricing (imageCostTokens / searchCostTokens / …)
+  // instead of the live metered per-token billing. SHIPS DARK and MUST NOT be
+  // switched on by a default change: flipping it REPLACES the billing path that
+  // is currently charging real users.
+  avaFlatPricingEnabled: boolean;
+  // WS-19. On-device message-search tool exposed to Ava. SHIPS DARK.
+  avaMessageSearchEnabled: boolean;
+
+  // WS-14. Ava's default voice style. NUMERIC ENUM because config.ts cannot hold
+  // a string (`putConfig` accepts only number|boolean), so this mirrors
+  // `TemplateLang` in lib/ava_templates.ts as an integer:
+  //     0 = "en"        plain English
+  //     1 = "hi"        Hindi
+  //     2 = "hinglish"  Hinglish Gen-Z   ← default (owner decision 2026-08-07)
+  // ⚠️ Do not "tidy" this into a bare number: an undocumented magic value here is
+  // a trap. NUMERIC → it MUST also appear in `numericKeys` in putConfig.
+  avaVoiceStyleDefault: number;
+  // WS-10. Resolution tier for the cheap PREVIEW image. NUMERIC ENUM:
+  //     0 = 512px   1 = 1K   2 = 2K
+  // Numeric → also in numericKeys.
+  imagePreviewResolutionTier: number;
+  // WS-10. Resolution tier for the paid FULL image. Same enum as
+  // `imagePreviewResolutionTier` (0 = 512px, 1 = 1K, 2 = 2K). Numeric →
+  // also in numericKeys.
+  imageFullResolutionTier: number;
+  // WS-19d flat-pricing tariffs, in TOKENS (1 token = ₹1). Only consulted when
+  // `avaFlatPricingEnabled` is true. All numeric → all in numericKeys.
+  imageCostTokens: number;            // preview image (owner decision: 1 token)
+  image2kUpgradeCostTokens: number;   // 2K upgrade   (owner decision: 4 tokens)
+  searchCostTokens: number;           // one web/brain search action
+  // Forward declaration: music generation has NO code path yet. The key exists so
+  // the tariff is set before the feature lands, not after it starts billing.
+  musicCostPerMinuteTokens: number;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -1018,6 +1094,7 @@ const DEFAULTS: PlatformConfig = {
   receptionistVmMode: false,       // zero-cost voicemail: cached Bulbul greeting + beep + 30s record (overrides engines while ON)
   avaCountdownEnabled: true,       // client 3-2-1 Ava countdown; prod KV flips false (VM greeting is instant)
   receptBillingLive: false,        // [RECEPT-BILLING-LIVE-1] real receptionist token deduction during beta (test switch)
+  receptionistLibraryEnabled: true, // [RECEPT-LIB-1] voicemail → user_media row → AvaLibrary "Ava Receptionist" folder. Kill switch only; flipping false stops NEW rows, never deletes or breaks playback.
   // [AVABRAIN-FLAGS-1] AvaBrain program — all dark/conservative by default; prod KV flips deliberately.
   avaBrainVoiceBillingEnabled: false, // personal Live-voice lease/settle path (ava_receptionist_minute tariff)
   avaBrainVoiceBillingLive: false,    // force-meter during betaFreePremium (mirrors receptBillingLive)
@@ -1357,6 +1434,29 @@ const DEFAULTS: PlatformConfig = {
 
   // [DYNW-FLOWS-1] WS-3 deletion Workflow — DARK. Flip on staging KV first.
   deletionWorkflowEnabled: false,
+
+  // --- [AVA-CFG-CACHE-1 2026-08-07] Ava V2 workstream flags (see the interface
+  // above for what each one gates). Live kill switches default TRUE; everything
+  // that changes behaviour or money SHIPS DARK and is flipped deliberately. ---
+  avaStreamPlainEnabled: true,        // WS-5  kill switch, streaming ON
+  avaImageFastPathEnabled: true,      // WS-7  kill switch, fast path ON
+  avaMemoryIntentGateEnabled: false,  // WS-12 dark
+  avaImageTwoTierEnabled: false,      // WS-10 dark
+  avaDmToggleEnabled: false,          // WS-17 dark
+  avaDmDefaultOn: false,              // WS-17 dark (owner flips this one on)
+  avaAmbientAiEnabled: false,         // WS-18b dark
+  avaFlatPricingEnabled: false,       // WS-19d dark — replaces LIVE metered billing
+  avaMessageSearchEnabled: false,     // WS-19 dark
+  // WS-14 voice style enum: 0=en, 1=hi, 2=hinglish. Default 2 = Hinglish Gen-Z.
+  avaVoiceStyleDefault: 2,
+  // WS-10 resolution tier enum: 0=512, 1=1K, 2=2K.
+  imagePreviewResolutionTier: 1,      // preview at 1K
+  imageFullResolutionTier: 2,         // full at 2K
+  // WS-19d tariffs in TOKENS (1 token = ₹1); only read when avaFlatPricingEnabled.
+  imageCostTokens: 1,
+  image2kUpgradeCostTokens: 4,
+  searchCostTokens: 2,
+  musicCostPerMinuteTokens: 5,        // forward declaration — no code path yet
 };
 
 /**
@@ -1374,10 +1474,59 @@ export function enforcePermanentFreeCommunication(config: PlatformConfig): Platf
   return { ...config, ...PERMANENT_FREE_COMMUNICATION };
 }
 
+// ---------------------------------------------------------------------------
+// [AVA-CFG-CACHE-1] readConfig had NO caching of any kind — a fresh KV get on
+// every call, and it is called 4x per plain Ava turn (premium.ts, ai_gate.ts x3)
+// across 40+ call sites. This memo is module scope, i.e. PER ISOLATE, which is
+// exactly the right granularity: every call site benefits with no change, and a
+// cold isolate reads KV once.
+//
+// TTL = 10 s. Deliberately short: a flag flip must stay an OPERATIONAL tool, not
+// a wait. 10 s kills essentially every duplicate read (an Ava turn lasts seconds,
+// so all 4 reads collapse into 1) while keeping the worst case a server-side gate
+// can lag a `flags.sh set` at ten seconds. `/api/config` is NOT served from this
+// memo — getConfig keeps its own read — so the client-facing 60 s edge cache does
+// not stack on top of it. Worst cases: server-side gates ≤ 10 s; the client blob
+// ≤ 60 s edge (unchanged by this commit) + the client's own RemoteConfig poll.
+//
+// Keyed by ENVIRONMENT_NAME (wrangler [vars] "prod" / [env.staging.vars]
+// "staging"). Staging and prod are separate Worker scripts with separate TOKENS
+// KV namespaces, so they already never share an isolate — the key is belt and
+// braces so this can never serve staging config to production if that ever
+// changes. Only the raw OVERRIDES blob is memoized, never the merged object:
+// DEFAULTS stay the source of truth and are re-layered on every call, and no
+// caller can mutate a shared object.
+//
+// A failed KV read is NOT cached. Pinning an empty override blob for 10 s during
+// a transient KV error would revert every production flag to its DEFAULT for
+// that window; falling through to KV on the next call is the safe behaviour and
+// matches what happened before this change.
+const CONFIG_MEMO_TTL_MS = 10_000;
+const configMemo = new Map<string, { at: number; overrides: Partial<PlatformConfig> }>();
+
+function memoKey(env: Env): string {
+  return String(env.ENVIRONMENT_NAME ?? "prod");
+}
+
+/** Drop the memo for this isolate. Called by putConfig; TTL is the real
+ *  invalidation across the other isolates. */
+export function bustConfigMemo(env?: Env): void {
+  if (env) configMemo.delete(memoKey(env));
+  else configMemo.clear();
+}
+
 /** Merged config for server-side gates (same blob getConfig serves). */
 export async function readConfig(env: Env): Promise<PlatformConfig> {
+  const key = memoKey(env);
+  const hit = configMemo.get(key);
+  if (hit && Date.now() - hit.at < CONFIG_MEMO_TTL_MS) {
+    return enforcePermanentFreeCommunication({ ...DEFAULTS, ...hit.overrides });
+  }
   let stored: Partial<PlatformConfig> = {};
-  try { stored = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>; } catch { /* defaults */ }
+  try {
+    stored = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
+    configMemo.set(key, { at: Date.now(), overrides: stored });
+  } catch { /* defaults; deliberately NOT memoized — see the note above */ }
   return enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored });
 }
 
@@ -1463,6 +1612,12 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
     "affiliateDailyEarnCapCoins", "affiliateMonthlyEarnCapCoins", "affiliatePerReferredCapCoins",
+    // [AVA-CFG-CACHE-1 2026-08-07] Ava V2 numeric keys. The two *Tier keys and
+    // avaVoiceStyleDefault are ENUMS-AS-NUMBERS (config.ts has no string type) —
+    // see the interface for the value tables. Missing here = `flags.sh set
+    // avaVoiceStyleDefault=1` 400s `bad type`.
+    "avaVoiceStyleDefault", "imagePreviewResolutionTier", "imageFullResolutionTier",
+    "imageCostTokens", "image2kUpgradeCostTokens", "searchCostTokens", "musicCostPerMinuteTokens",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
@@ -1478,6 +1633,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     next[k] = v;
   }
   await env.TOKENS.put(KEY, JSON.stringify(next));
+  // [AVA-CFG-CACHE-1] Bust this isolate's memo so the admin who just flipped the
+  // switch is not told a stale value back. Other isolates fall out of date for at
+  // most CONFIG_MEMO_TTL_MS (10 s) — the TTL is the real cross-isolate
+  // invalidation; a Worker has no way to broadcast to its own isolates.
+  bustConfigMemo(env);
   // Echo the EFFECTIVE config (defaults + overrides) so the admin UI still sees
   // every flag, even though only `next` was persisted.
   return json({ ok: true, config: enforcePermanentFreeCommunication({ ...DEFAULTS, ...next }), overrides: next });
