@@ -13,7 +13,7 @@ export const prerender = true;
 
 import landingRaw from '../landing/avatok-landing.html?raw';
 import SiteFooter from '../components/SiteFooter.astro';
-import LiquidOverlay from '../islands/site/LiquidOverlay';
+import GlassWake from '../islands/site/GlassWake';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 
@@ -37,9 +37,9 @@ if (landingTail === '') {
 <Fragment set:html={landingTail} />
 
 <!--
-  Canvas UI "Liquid" fluid trail, full-page. `client:idle` so it never competes
-  with the hero paint or the webfonts; it is decorative and pointer-events:none,
-  so a browser that never hydrates it loses nothing. See the island's own header
-  for why it drives createLiquid() directly instead of using <Liquid>.
+  Clear-glass wake that trails the cursor. `client:idle` so it never competes with
+  the hero paint or the webfonts; it is decorative and pointer-events:none, so a
+  browser that never hydrates it loses nothing. See the island's own header for why
+  this is backdrop-filter and not the Canvas UI WebGL component it replaced.
 -->
-<LiquidOverlay client:idle />
+<GlassWake client:idle />
