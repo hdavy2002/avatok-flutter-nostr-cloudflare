@@ -12,6 +12,10 @@
 //                    open; already_processed=true when [SRV-MSG-IDEMP-1] deduped a
 //                    re-sent client_id — the caller/client treats it as a success)
 //   GET  /sync?cursor=N            → {messages, receipts, convs}
+//   GET  /sync?conv=C&tail=N       → {type:'sync_conv_tail', conv, tail, messages,
+//                  receipts, reads, seq, cleared_through_mid}   [AVA-CTX-CONV-1]
+//                  The LAST N messages of ONE conversation, oldest→newest. Internal
+//                  (AvaAgentDO context window); not gated by SYNC_CONV_CURSOR_V2.
 //   POST /receipt  {conv, peer, delivered_id?, read_id?} → {ok, live}
 //   POST /msg_receipt {conv, peer, status, msg_ids} → {ok, live}   [AVAGRP-SEENBY-1]
 //                  per-message group receipts, called on the ORIGINAL AUTHOR's own
@@ -26,6 +30,14 @@ import { type MessageScope, scopeAudience } from "../lib/ava_kinds";
 import { shouldFail } from "../lib/fault_inject";
 
 const SYNC_LIMIT = 500;
+// [AVA-CTX-CONV-1] Bounds for the descending per-conv tail read (?conv=&tail=).
+// TAIL_MAX is a hard server-side cap so a bad/hostile `tail` can never degrade
+// into the full-backlog scan this route exists to eliminate. It sits well under
+// SYNC_LIMIT because the consumer (AvaAgentDO) only keeps ~12 decoded lines —
+// the headroom is for envelopes that decode to nothing (ava_status, receipts,
+// reads, votes, edits), not for depth.
+const TAIL_MAX = 200;
+const TAIL_DEFAULT = 48;
 
 // [SRV-MSG-IDEMP-1] Cheap 32-bit FNV-1a → 8-hex. Used ONLY to hash a conv id for
 // duplicate-block telemetry so PostHog never carries a raw conversation id. Not a
@@ -412,11 +424,25 @@ export class InboxDO {
       if (url.pathname.endsWith("/call/clear")) return this.callClear();
       if (url.pathname.endsWith("/append")) return this.append(await req.json());
       if (url.pathname.endsWith("/sync")) {
+        // [AVA-CTX-CONV-1] Descending-bounded per-conversation TAIL. Server-internal
+        // (AvaAgentDO) read path, NOT a client sync path — it answers "the last N
+        // messages of THIS conversation" instead of "the oldest 500 across every
+        // conversation the user has ever had", which is what the legacy cursor=0
+        // path returns and why Ava saw nothing on a busy account.
+        // Deliberately NOT gated behind SYNC_CONV_CURSOR_V2: that flag guards the
+        // ASCENDING client catch-up below, whose risk profile (a real client's
+        // sync semantics) is unrelated to a bounded internal read.
+        const tailParam = url.searchParams.get("tail");
+        const convParam = url.searchParams.get("conv");
+        if (convParam && tailParam) {
+          return new Response(JSON.stringify(this.syncConvTailPayload(convParam, Number(tailParam) || 0)), {
+            headers: { "content-type": "application/json" },
+          });
+        }
         // [SYNC-CURSOR-1] Phase 1 (dark): per-conversation catch-up. Taken ONLY when
         // the client passes ?conv= AND SYNC_CONV_CURSOR_V2 is enabled; otherwise the
         // legacy global id-cursor path runs verbatim (default, fully reversible — no
         // current client sends ?conv=, so this is dark until we flip both).
-        const convParam = url.searchParams.get("conv");
         const convCursorOn = (this.env as unknown as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
         if (convParam && convCursorOn) {
           return new Response(JSON.stringify(this.syncConvPayload(convParam, Number(url.searchParams.get("after") || 0))), {
@@ -776,6 +802,51 @@ export class InboxDO {
     // [MSG-DELETE-1] Carry this conv's clear cursor so a single-thread catch-up
     // applies the same self-scoped hide as the global snapshot.
     return { type: "sync_conv", conv, after, messages, seq, cleared_through_mid: this.clearedThroughMid(conv) };
+  }
+
+  // [AVA-CTX-CONV-1] The LAST `tail` messages of one conversation, oldest→newest.
+  //
+  // Why this exists next to syncConvPayload rather than reusing it: that one is
+  // ASCENDING FROM A CURSOR (`conv_seq > after ... ASC LIMIT 500`), which answers
+  // "what have I missed since position N". Ava needs the opposite question —
+  // "what was just said" — and there is no cursor she can supply. Reading
+  // ascending from 0 and truncating means paying for the whole thread and, past
+  // SYNC_LIMIT, never reaching the recent end at all. DESC + LIMIT + reverse is
+  // the only shape that is bounded AND recent.
+  //
+  // The response deliberately carries `receipts` and `reads` for THIS conv, in the
+  // same column shape syncPayload returns them (`{conv, peer, delivered_id,
+  // read_id}` / `{conv, read_ts}`). syncConvPayload returns neither, and
+  // [AVA-PRESENCE-1] needs both to tell the model "delivered, not read yet" —
+  // widening here keeps that a zero-extra-round-trip read, exactly as it is on
+  // the legacy full-sync path being replaced.
+  private syncConvTailPayload(conv: string, tail: number): {
+    type: "sync_conv_tail"; conv: string; tail: number; messages: unknown[];
+    receipts: unknown[]; reads: unknown[]; seq: number; cleared_through_mid: string | null;
+  } {
+    // Clamp: a caller asking for 0/NaN gets the default, and nobody can turn an
+    // internal read into a full-backlog scan by passing tail=1e9.
+    const n = Math.min(Math.max(Math.floor(tail) || TAIL_DEFAULT, 1), TAIL_MAX);
+    const rows = this.sql.exec(
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq, mid
+       FROM messages WHERE conv = ? AND conv_seq IS NOT NULL ORDER BY conv_seq DESC LIMIT ?`,
+      conv, n,
+    ).toArray();
+    rows.reverse(); // DESC read, oldest→newest out — same order every other path uses
+    let receipts: unknown[] = [];
+    let reads: unknown[] = [];
+    try {
+      receipts = this.sql.exec(`SELECT conv, peer, delivered_id, read_id FROM receipts WHERE conv = ?`, conv).toArray();
+    } catch { /* best-effort — presence facts are additive, never break the window */ }
+    try {
+      reads = this.sql.exec(`SELECT conv, read_ts FROM read_state WHERE conv = ?`, conv).toArray();
+    } catch { /* best-effort */ }
+    const seqRow = this.sql.exec(`SELECT seq FROM conv_meta WHERE conv = ? LIMIT 1`, conv).toArray();
+    const seq = seqRow.length ? Number(seqRow[0].seq) : 0;
+    return {
+      type: "sync_conv_tail", conv, tail: n, messages: rows, receipts, reads, seq,
+      cleared_through_mid: this.clearedThroughMid(conv),
+    };
   }
 
   // [SYNC-CURSOR-3] Phase 1 switch-over: the HYBRID live-sync payload. It is the plain
