@@ -17,6 +17,7 @@ import { storageSnapshots, storageBilling } from "./storage";
 import { bookingReminderLadder, gcalSyncSweep } from "./calendar";
 import { moneySweep } from "./money_sweep";
 import { sweepListingExpiry } from "./listing_expiry"; // PLAN §5 — marketplace listing-expiry lifecycle (notify T−3d / expire T / archive T+30d)
+import { sweepUncommittedMedia } from "./media_sweep"; // [SPEC-SEND-2 / WS-33] collect speculatively-uploaded media the user never sent
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -138,6 +139,22 @@ export default {
       if (r.notified || r.archived || r.expiredNow)
         env.ANALYTICS?.writeDataPoint({ blobs: ["listing_expiry_sweep"], doubles: [r.notified, r.expiredNow, r.archived], indexes: ["cron"] });
     } catch (e) { console.error("[listing-expiry-sweep]", String(e)); }
+
+    // [SPEC-SEND-2 / WS-33] Collect speculatively-uploaded media (uncommitted=1)
+    // that was staged >24h ago and never sent. Nothing else collects these: they
+    // are excluded from the storage quota SUM, so the user is never billed for
+    // them and never sees them, which means no user action will ever clean them
+    // up. Bounded 200/run; a backlog catches up on the next 6h tick. Bytes are
+    // only freed when NO other user_media row references the same R2 key —
+    // content-addressed keys are shared across rows AND across users (a DM
+    // recipient's row carries the SENDER's key), so a naive delete here would
+    // blank someone else's media. Wrapped: it must never take the rest of the
+    // 6-hourly tick down with it.
+    try {
+      const m = await sweepUncommittedMedia(env);
+      if (m.scanned)
+        env.ANALYTICS?.writeDataPoint({ blobs: ["media_sweep"], doubles: [m.scanned, m.rows, m.objects, m.sharedSkipped, m.failed], indexes: ["cron"] });
+    } catch (e) { console.error("[media-sweep]", String(e)); }
 
     const dayAgo = Date.now() - 86_400_000;
     // Public uploads stuck 'pending' >24h (failed/lost moderation) → reject.
