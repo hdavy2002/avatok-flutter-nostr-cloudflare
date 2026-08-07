@@ -6,6 +6,7 @@ import { mediaSession, moderationSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { checkUploadAllowed, afterRegisterFile } from "../storage";
+import { track } from "../hooks";
 import { brainIngest } from "../lib/brain_ingest";
 import { shouldFail } from "../lib/fault_inject";
 // [AVA-MEDIA-JOB-2 / B3] Private-object presign — same SigV4 query-URL scheme
@@ -23,6 +24,80 @@ import { type ArtifactSensitivity, isConvMember } from "../lib/ai_media_jobs";
 import { readConfig } from "./config";
 // [AVA-IDGATE-1] identity_gate import removed — /upload/public is no longer gated
 // (avatars must upload during onboarding; the public ACTION is gated at its endpoint).
+
+// ---------------------------------------------------------------------------
+// [SPEC-SEND-1 / WS-30a] SPECULATIVE ("uncommitted") UPLOADS
+//
+// The client stages chat media BEFORE the user hits Send, so the send itself is
+// instant. Those bytes must not eat the user's AvaStorage quota until they are
+// actually sent — an attachment that was picked and then abandoned would
+// otherwise count forever and can push an account read-only for a file nobody
+// ever received.
+//
+// Wire contract (fixed — another agent's sweeper depends on it EXACTLY):
+//   • upload with header `x-uncommitted: 1`  → row inserted uncommitted=1,
+//     uncommitted_at=<now ms>. Header ABSENT → uncommitted=0, i.e. byte-for-byte
+//     today's behaviour for every shipped client.
+//   • POST /api/media/commit {media_id}      → uncommitted=0, uncommitted_at=NULL
+//     + afterRegisterFile() so the quota recomputes. Idempotent.
+//   • recomputeStorage() (worker/src/storage.ts) excludes uncommitted rows.
+// ---------------------------------------------------------------------------
+
+/** True when the caller asked for a speculative (not-yet-sent) upload. */
+function wantsUncommitted(req: Request): boolean {
+  const v = (req.headers.get("x-uncommitted") || "").trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
+// Runtime self-migration for the two columns, cached per isolate. D1/SQLite has
+// no "ADD COLUMN IF NOT EXISTS", so this is the same try/swallow guard
+// do/inbox.ts uses for its own additive columns: the first run adds them, every
+// later run errors harmlessly and is ignored. migrations/media_uncommitted.sql
+// is still the canonical schema change — this only removes the ordering hazard
+// of "worker deployed, D1 migration not applied yet" turning every speculative
+// upload into a 500.
+let uncommittedColumnsReady = false;
+async function ensureUncommittedColumns(env: Env): Promise<void> {
+  if (uncommittedColumnsReady) return;
+  const mdb = mediaSession(env);
+  try { await mdb.prepare("ALTER TABLE user_media ADD COLUMN uncommitted INTEGER DEFAULT 0").run(); } catch { /* already present */ }
+  try { await mdb.prepare("ALTER TABLE user_media ADD COLUMN uncommitted_at INTEGER").run(); } catch { /* already present */ }
+  try {
+    await mdb.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_media_uncommitted ON user_media(uncommitted, uncommitted_at) WHERE uncommitted = 1",
+    ).run();
+  } catch { /* already present */ }
+  uncommittedColumnsReady = true;
+}
+
+// Dedup collision handler. The upload routes short-circuit when a row already
+// exists for this content key — but if that row is SPECULATIVE and this upload
+// is a real (committed) one, the row must end up COMMITTED, or the user's bytes
+// stay uncounted forever and a stale-draft sweeper could delete media they
+// actually sent. Promotion is one-way: a committed row is NEVER demoted by a
+// later speculative upload of the same content.
+//
+// No checkUploadAllowed() gate on the promotion path, deliberately, and for the
+// same reason registerExistingObjectMedia() has none: the bytes are already in
+// R2 by the time we get here, so refusing the flip frees nothing — it would only
+// leave the account undercounted while still paying for the storage. The bytes
+// ARE counted from here on, so an over-quota account still goes read-only on its
+// next voluntary upload.
+async function promoteIfUncommitted(
+  env: Env, mdb: ReturnType<typeof mediaSession>, uid: string, row: { id: string; uncommitted?: number | null },
+): Promise<boolean> {
+  if (!Number(row?.uncommitted ?? 0)) return false;
+  await ensureUncommittedColumns(env);
+  await mdb.prepare("UPDATE user_media SET uncommitted=0, uncommitted_at=NULL WHERE id=?1 AND uid=?2")
+    .bind(row.id, uid).run();
+  return true;
+}
+
+// Both upload routes SELECT their dedup row with this projection. COALESCE reads
+// a NULL (a row written before the column existed) as 0 = committed. The column
+// itself is guaranteed present by the ensureUncommittedColumns() call each route
+// makes before its first query.
+const UNCOMMITTED_SEL = "COALESCE(uncommitted,0) AS uncommitted";
 
 // POST /upload/public — plaintext media (posts). sha256 → blocklist check →
 // R2 PUT (status 'pending') → enqueue Workers-AI scan (Phase 4 consumer flips
@@ -57,6 +132,10 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
   if (vidCap) return vidCap;
   // Optional: drop the upload straight into a user folder (AvaLibrary "+ Upload").
   const folderId = req.headers.get("x-folder") || null;
+  // [SPEC-SEND-1 / WS-30a] Speculative upload? Header absent ⇒ committed, i.e.
+  // exactly the pre-existing behaviour for every shipped client.
+  const uncommitted = wantsUncommitted(req);
+  await ensureUncommittedColumns(env);
 
   // Cheap synchronous blocklist gate (known-bad sha256 — content-level, cross-user).
   const blocked = await moderationSession(env)
@@ -64,7 +143,7 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
   if (blocked) return json({ error: "rejected", reason: "blocked content" }, 403);
 
   const mdb = mediaSession(env);
-  const existing = await mdb.prepare("SELECT id, moderation_status FROM user_media WHERE key=?1").bind(r2Key).first<any>();
+  const existing = await mdb.prepare(`SELECT id, moderation_status, ${UNCOMMITTED_SEL} FROM user_media WHERE key=?1`).bind(r2Key).first<any>();
   let id: string | undefined = existing?.id;
   if (!existing) {
     // Phase 4 quota gate: would-exceed 5 GB + empty wallet ⇒ 413, read_only.
@@ -73,9 +152,15 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
     await env.BLOBS.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
     id = crypto.randomUUID();
     await mdb.prepare(
-      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, folder_id)
-       VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'pending',?10,?11,'sent',?12)`,
-    ).bind(id, ctx.uid, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName, folderId).run();
+      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, folder_id, uncommitted, uncommitted_at)
+       VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'pending',?10,?11,'sent',?12,?13,?14)`,
+    ).bind(id, ctx.uid, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName, folderId,
+      uncommitted ? 1 : 0, uncommitted ? Date.now() : null).run();
+    if (uncommitted) {
+      exec.waitUntil(track(env, ctx.uid, "media_upload_uncommitted", app, {
+        media_id: id, key: r2Key, bytes: bytes.byteLength, kind: categoryOf(ct), mime: ct, visibility: "public",
+      }));
+    }
     // async moderation — content hash for scan/blocklist, r2_key for fetch/delete.
     exec.waitUntil(env.Q_MODERATION.send({ type: "image", hash, uid: ctx.uid, media_id: id, r2_key: r2Key }));
     // AvaBrain learns from public uploads (metadata only — no DM media here).
@@ -85,9 +170,20 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
     exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
     // Phase 4: refresh the storage summary + live-push it over the InboxDO socket.
     exec.waitUntil(afterRegisterFile(env, ctx.uid, { kind: categoryOf(ct), bytes: bytes.byteLength, source_app: app, dedup: false }));
-  } else if (folderId) {
-    // Re-upload of identical content while sitting in a folder → place it there.
-    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND uid=?2").bind(existing.id, ctx.uid, folderId).run();
+  } else {
+    if (folderId) {
+      // Re-upload of identical content while sitting in a folder → place it there.
+      await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND uid=?2").bind(existing.id, ctx.uid, folderId).run();
+    }
+    // [SPEC-SEND-1 / WS-30a] The dedup row may be a SPECULATIVE upload of the
+    // same bytes. A real (committed) upload of that content must win — see
+    // promoteIfUncommitted(). Never the other way round.
+    if (!uncommitted && await promoteIfUncommitted(env, mdb, ctx.uid, existing)) {
+      exec.waitUntil(afterRegisterFile(env, ctx.uid, { kind: categoryOf(ct), bytes: bytes.byteLength, source_app: app, dedup: false }));
+      exec.waitUntil(track(env, ctx.uid, "media_commit", app, {
+        media_id: existing.id, bytes: bytes.byteLength, kind: categoryOf(ct), via: "dedup_upload", visibility: "public",
+      }));
+    }
   }
   return json({ hash, key: r2Key, url, status: "pending", id });
 }
@@ -149,8 +245,13 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   const vidCap = videoCapReject(realMime, bytes.byteLength);
   if (vidCap) return vidCap;
 
+  // [SPEC-SEND-1 / WS-30a] Speculative upload? Header absent ⇒ committed, i.e.
+  // exactly the pre-existing behaviour for every shipped client. This is the
+  // route the chat composer stages attachments through.
+  const uncommitted = wantsUncommitted(req);
   const mdb = mediaSession(env);
-  const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1").bind(r2Key).first();
+  await ensureUncommittedColumns(env);
+  const existing = await mdb.prepare(`SELECT id, ${UNCOMMITTED_SEL} FROM user_media WHERE key=?1`).bind(r2Key).first<any>();
   if (!existing) {
     // Phase 4 quota gate (same pool as public — these bytes count too).
     const gate = await checkUploadAllowed(env, ctx.uid, bytes.byteLength, false);
@@ -164,19 +265,81 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
     ? ((await presignDigitalReadUrl(env, r2Key)) || "")
     : `${env.BLOSSOM_BASE_URL}/${r2Key}`;
 
+  let id: string = existing?.id;
   if (!existing) {
+    id = crypto.randomUUID();
     await mdb.prepare(
-      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
-       VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,'sent')`,
+      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, uncommitted, uncommitted_at)
+       VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,'sent',?14,?15)`,
     ).bind(
-      crypto.randomUUID(), ctx.uid, mediaType(realMime), isPlaintext ? "digital" : "blossom",
+      id, ctx.uid, mediaType(realMime), isPlaintext ? "digital" : "blossom",
       isPlaintext ? 0 : 1, r2Key, isPlaintext ? "" : url, ct, bytes.byteLength, app, Date.now(),
-      categoryOf(realMime), fileName,
+      categoryOf(realMime), fileName, uncommitted ? 1 : 0, uncommitted ? Date.now() : null,
     ).run();
     const reg = afterRegisterFile(env, ctx.uid, { kind: categoryOf(realMime), bytes: bytes.byteLength, source_app: app, dedup: false });
     if (exec) exec.waitUntil(reg); else await reg.catch(() => { /* best-effort */ });
+    if (uncommitted) {
+      const t = track(env, ctx.uid, "media_upload_uncommitted", app, {
+        media_id: id, key: r2Key, bytes: bytes.byteLength, kind: categoryOf(realMime), mime: realMime, visibility: "private",
+      });
+      if (exec) exec.waitUntil(t); else await t.catch(() => { /* best-effort */ });
+    }
+  } else if (!uncommitted && await promoteIfUncommitted(env, mdb, ctx.uid, existing)) {
+    // [SPEC-SEND-1 / WS-30a] Same content already staged speculatively, now
+    // uploaded for real → the row must end up committed (one-way promotion).
+    const reg = afterRegisterFile(env, ctx.uid, { kind: categoryOf(realMime), bytes: bytes.byteLength, source_app: app, dedup: false });
+    const t = track(env, ctx.uid, "media_commit", app, {
+      media_id: id, bytes: bytes.byteLength, kind: categoryOf(realMime), via: "dedup_upload", visibility: "private",
+    });
+    if (exec) { exec.waitUntil(reg); exec.waitUntil(t); }
+    else { await reg.catch(() => { /* best-effort */ }); await t.catch(() => { /* best-effort */ }); }
   }
-  return json({ hash, key: r2Key, url, status: "live", encrypted: isPlaintext ? 0 : 1 });
+  // `id` is additive in this response ([SPEC-SEND-1]): a speculative upload has
+  // to be able to name the row it later commits (POST /api/media/commit
+  // {media_id}), and this route previously returned only the key/hash.
+  return json({ hash, key: r2Key, url, status: "live", encrypted: isPlaintext ? 0 : 1, id });
+}
+
+// POST /api/media/commit {media_id} — [SPEC-SEND-1 / WS-30a] "the user actually
+// sent it": flip a speculative row to committed so its bytes start counting
+// against the AvaStorage pool, and take it out of reach of the stale-draft
+// sweeper.
+//
+// Auth + ownership are both mandatory: the UPDATE is scoped to (id, uid), so one
+// user can never commit (and thereby bill / rescue) another user's row, and an
+// unknown or foreign id is a flat 404 rather than a silent no-op.
+//
+// IDEMPOTENT by design — the client retries a send, or sends the same staged
+// attachment to a second thread. An already-committed row returns ok with
+// committed:true and does NOT re-run afterRegisterFile (the recompute is a full
+// dedup SUM, so a second run would be a pure waste, not a double-count).
+export async function mediaCommit(req: Request, env: Env, exec?: ExecutionContext): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const mediaId = (b.media_id ?? b.id ?? "").toString().trim();
+  if (!mediaId) return json({ error: "media_id required" }, 400);
+
+  await ensureUncommittedColumns(env);
+  const mdb = mediaSession(env);
+  const row = await mdb.prepare(
+    `SELECT id, size_bytes, category, original_app, ${UNCOMMITTED_SEL} FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1`,
+  ).bind(mediaId, ctx.uid).first<any>();
+  if (!row) return json({ error: "not_found" }, 404);
+
+  const app = (row.original_app || "avatok").toString();
+  const bytes = Number(row.size_bytes || 0);
+  const kind = (row.category || "other").toString();
+  if (!Number(row.uncommitted ?? 0)) return json({ ok: true, id: mediaId, committed: true, already: true });
+
+  await mdb.prepare("UPDATE user_media SET uncommitted=0, uncommitted_at=NULL WHERE id=?1 AND uid=?2")
+    .bind(mediaId, ctx.uid).run();
+  // Quota recompute + live storage push — the bytes count from this moment.
+  const reg = afterRegisterFile(env, ctx.uid, { kind, bytes, source_app: app, dedup: false });
+  const t = track(env, ctx.uid, "media_commit", app, { media_id: mediaId, bytes, kind, via: "commit_route" });
+  if (exec) { exec.waitUntil(reg); exec.waitUntil(t); }
+  else { await reg.catch(() => { /* best-effort */ }); await t.catch(() => { /* best-effort */ }); }
+  return json({ ok: true, id: mediaId, committed: true, already: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -854,14 +1017,32 @@ export async function getStorage(req: Request, env: Env): Promise<Response> {
   const mdb = mediaSession(env);
   // Distinct-key dedup: one physical copy per key, charged once. We pick a single
   // representative row per key (MIN(id)) then aggregate its category/app/bytes.
+  // [SPEC-SEND-1 / WS-30a] Speculative (uncommitted) rows are excluded here for
+  // the same reason and in the same place as storage.ts's recomputeStorage —
+  // inside the CTE, so the representative row per key is chosen from committed
+  // rows only. If these two disagreed, /api/storage and the storage_quota
+  // summary the bars actually repaint from would show different numbers.
+  const dedupTail =
+    `SELECT COALESCE(m.category,'other') AS category, COALESCE(m.original_app,'avatok') AS app, m.size_bytes AS size
+     FROM dedup d JOIN user_media m ON m.id = d.rep`;
   const rs = await mdb.prepare(
     `WITH dedup AS (
        SELECT key, MIN(id) AS rep FROM user_media
-       WHERE uid=?1 AND deleted_at IS NULL GROUP BY key
+       WHERE uid=?1 AND deleted_at IS NULL AND COALESCE(uncommitted,0)=0 GROUP BY key
      )
-     SELECT COALESCE(m.category,'other') AS category, COALESCE(m.original_app,'avatok') AS app, m.size_bytes AS size
-     FROM dedup d JOIN user_media m ON m.id = d.rep`,
-  ).bind(ctx.uid).all();
+     ${dedupTail}`,
+  ).bind(ctx.uid).all().catch(async () =>
+    // Deploy window: worker live, migrations/media_uncommitted.sql not applied to
+    // this environment's D1 yet. No column ⇒ no uncommitted row can exist, so the
+    // unfiltered SUM is exactly the same number, not an approximation.
+    await mdb.prepare(
+      `WITH dedup AS (
+         SELECT key, MIN(id) AS rep FROM user_media
+         WHERE uid=?1 AND deleted_at IS NULL GROUP BY key
+       )
+       ${dedupTail}`,
+    ).bind(ctx.uid).all(),
+  );
   const byCategory: Record<string, number> = { image: 0, video: 0, document: 0, audio: 0, other: 0 };
   const byApp: Record<string, number> = {};
   let total = 0;

@@ -40,21 +40,53 @@ async function walletTokens(env: Env, uid: string): Promise<number> {
   } catch { return 0; } // wallet unavailable → treat as 0 (read-only beats surprise bills)
 }
 
+// [SPEC-SEND-1 / WS-30a] The dedup-counted per-category usage query, with the
+// speculative-upload exclusion — and a fallback for the deploy window in which
+// this Worker is live but migrations/media_uncommitted.sql has not been applied
+// to that environment's D1 yet (a Worker deploy and a D1 migration are two
+// separate deliberate steps). The fallback is not an approximation: if the
+// column does not exist then no row can be uncommitted, so the un-filtered SUM
+// is EXACTLY the same number.
+async function dedupUsage(mdb: ReturnType<typeof mediaSession>, uid: string) {
+  const tail =
+    `SELECT COALESCE(m.category,'other') AS category, COUNT(*) AS n, COALESCE(SUM(m.size_bytes),0) AS bytes
+     FROM dedup d JOIN user_media m ON m.id = d.rep
+     GROUP BY category`;
+  try {
+    return await mdb.prepare(
+      `WITH dedup AS (
+         SELECT key, MIN(id) AS rep FROM user_media
+         WHERE uid=?1 AND deleted_at IS NULL AND COALESCE(uncommitted,0)=0 GROUP BY key
+       )
+       ${tail}`,
+    ).bind(uid).all();
+  } catch {
+    return await mdb.prepare(
+      `WITH dedup AS (
+         SELECT key, MIN(id) AS rep FROM user_media
+         WHERE uid=?1 AND deleted_at IS NULL GROUP BY key
+       )
+       ${tail}`,
+    ).bind(uid).all();
+  }
+}
+
 /** Full dedup recompute → upsert the storage_quota summary row. Returns the
  *  fresh summary. State: over quota + coins ⇒ over_quota_paying; over quota +
  *  empty wallet ⇒ read_only; else ok. */
 export async function recomputeStorage(env: Env, uid: string): Promise<StorageSummary> {
   const mdb = mediaSession(env);
   // One physical copy per content key (shortcuts/copies don't double-count).
-  const rs = await mdb.prepare(
-    `WITH dedup AS (
-       SELECT key, MIN(id) AS rep FROM user_media
-       WHERE uid=?1 AND deleted_at IS NULL GROUP BY key
-     )
-     SELECT COALESCE(m.category,'other') AS category, COUNT(*) AS n, COALESCE(SUM(m.size_bytes),0) AS bytes
-     FROM dedup d JOIN user_media m ON m.id = d.rep
-     GROUP BY category`,
-  ).bind(uid).all();
+  //
+  // [SPEC-SEND-1 / WS-30a] Speculatively-uploaded media (uncommitted=1 — bytes
+  // staged while the user was still composing, never sent) is EXCLUDED. The
+  // filter sits INSIDE the dedup CTE on purpose: the representative row per key
+  // must be chosen from the COMMITTED rows only, so a key that has both a
+  // committed row and a speculative one still counts exactly once, and a key
+  // with only speculative rows drops out of the SUM entirely. Putting the filter
+  // on the outer join instead would let MIN(id) pick a speculative row and
+  // silently drop a key the user really does own.
+  const rs = await dedupUsage(mdb, uid);
   const byCat: Record<string, { count: number; bytes: number }> = {};
   let used = 0;
   for (const r of (rs.results ?? []) as any[]) {
