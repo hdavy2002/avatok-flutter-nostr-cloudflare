@@ -170,8 +170,13 @@ BrainHitTarget? brainHitOpenTarget(BrainHit hit) {
 
 /// Device-side brain domains — a `domains` filter that names ONLY these keeps the
 /// device lane; one that names only account_private domains drops it as noise.
+/// [VOICE-BRAIN-1] `voicenote` is the device-lane domain for chat voice notes
+/// (AvaLibrary › "Voice notes" — see `core/voice_brain_ingest.dart`). It must be
+/// listed here or a caller passing `domains: ['voicenote']` would drop the
+/// device lane as "server-only noise" and find nothing — the records only ever
+/// exist on-device.
 const Set<String> _kDeviceDomains = <String>{
-  'msg_content', 'files', 'voicemail', 'notes', 'chat', 'avachat', 'device',
+  'msg_content', 'files', 'voicemail', 'voicenote', 'notes', 'chat', 'avachat', 'device',
 };
 
 /// The unified recall (SPEC §6). Searches the device lane always, the server lane

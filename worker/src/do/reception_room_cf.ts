@@ -36,6 +36,7 @@ import { deepInfraStt, deepInfraTtsPcm, kokoroVoiceForLang, splitTtsClauses, dee
 import { getOrRenderVmGreeting } from "../lib/vm_greeting"; // shared VM greeting cache (also used by PSTN)
 import { chargeFeature } from "../feature_pricing"; // ₹1/voicemail (pay-per-use, owner 2026-07-19)
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
+import { registerVoicemailInLibrary } from "../lib/voicemail_library"; // [RECEPT-LIB-1] voicemail → AvaLibrary
 
 /** Redact secrets from free-text error strings before telemetry. */
 function scrubSecrets(s: string): string {
@@ -300,6 +301,20 @@ export class ReceptionRoomCf {
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
       { ...props, call_id: i.call_id, activation_mode: i.activation_mode ?? null,
         engine: "cf", model: i.model, voice: this.cfVoice() }, i.sid);
+  }
+
+  // [RECEPT-LIB-1] The voicemail's AvaLibrary row. Best-effort by construction:
+  // registerVoicemailInLibrary() returns null rather than throwing, and this is
+  // only ever called through waitUntil. The row belongs to the OWNER whose
+  // receptionist took the message — never the caller.
+  private async registerVoicemailMedia(key: string, bytes: number): Promise<void> {
+    const i = this.init;
+    if (!i?.owner_uid) return;
+    const r = await registerVoicemailInLibrary(this.env, {
+      ownerUid: i.owner_uid, key, bytes,
+      callerName: i.caller_name ?? null, callerPhone: i.caller_phone ?? null,
+    });
+    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes });
   }
 
   // English (or unset) → the configured Aura female voice, EXACTLY as before. For a
@@ -1268,6 +1283,11 @@ export class ReceptionRoomCf {
         await this.env.BLOBS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
         recordingUrl = key;
         this.ev("ava_recept_recording_stored", { bytes: wav.byteLength, ok: true, two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes });
+        // [RECEPT-LIB-1] …and into AvaLibrary. Deliberately OUTSIDE the delivery
+        // path: waitUntil so a slow DB_MEDIA write can never delay the caller's
+        // message reaching the owner, and self-swallowing so it can never fail
+        // the recording. Idempotent on (owner_uid, key).
+        this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength));
       }
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });

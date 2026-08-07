@@ -16,6 +16,7 @@ import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'lib_thumbs.dart';
 import 'private_ingest.dart';
+import 'voicemail_tile.dart';
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title + optional tag.
@@ -88,21 +89,89 @@ class _Cat {
 /// The cross-app file-type folders shown at the AvaLibrary root. PDFs are split
 /// out from the rest of the document bucket ("Documents") so the root reads like
 /// a clean file manager: Images, Videos, PDFs, Documents, Music, Other.
+///
+/// [LIB-AUDIO-SPLIT-1] The server's single `audio` bucket is presented as THREE
+/// folders — Music, Ava Receptionist and Voice notes. `Music` keeps the server
+/// key `audio` because that is still what goes on the wire; the other two are
+/// UI-only keys narrowed client-side by [classifyAudio]. See voicemail_tile.dart
+/// for why this is a rendering decision and not a schema change.
 final _cats = <_Cat>[
   _Cat('image', 'Images', PhosphorIcons.image(PhosphorIconsStyle.bold), AD.iconSearch),
   _Cat('video', 'Videos', PhosphorIcons.filmStrip(PhosphorIconsStyle.bold), AD.danger),
   _Cat('pdf', 'PDFs', PhosphorIcons.filePdf(PhosphorIconsStyle.bold), AD.primaryBadge),
   _Cat('doc', 'Documents', PhosphorIcons.fileText(PhosphorIconsStyle.bold), AD.iconVideo),
-  _Cat('audio', 'Music', PhosphorIcons.musicNotes(PhosphorIconsStyle.bold), AD.online),
+  _Cat(kCatMusic, 'Music', PhosphorIcons.musicNotes(PhosphorIconsStyle.bold), AD.online),
+  _Cat(kCatReceptionist, 'Ava Receptionist',
+      PhosphorIcons.robot(PhosphorIconsStyle.bold), AD.primaryBadge),
+  _Cat(kCatVoiceNote, 'Voice notes',
+      PhosphorIcons.microphone(PhosphorIconsStyle.bold), AD.iconVideo),
+  // [RECEPT-LIB-1 2026-08-07] Call recordings. `routes/callrec.ts` registers
+  // these with the SERVER category `call_recording`, which no entry here
+  // matched — so they fell through `_catOf` into "Other" behind a generic file
+  // glyph, effectively invisible. Fixed on the CLIENT deliberately: changing the
+  // server to `audio` would rewrite the meaning of a live column value, break
+  // the separate recordings bar in the AvaStorage graph (`getStorageSummary`),
+  // and still leave every already-registered row saying `call_recording` unless
+  // a migration rewrote them. A rendering entry fixes historical rows for free.
+  _Cat('call_recording', 'Call recordings',
+      PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.tabCalls),
+  // KEEP LAST — `_catOf` uses it as the unknown-category fallback.
   _Cat('other', 'Other', PhosphorIcons.file(PhosphorIconsStyle.bold), AD.iconSearch),
 ];
 
 _Cat _catOf(String k) => _cats.firstWhere((c) => c.key == k, orElse: () => _cats.last);
 
+/// The folder visual for an ITEM (not a raw category string): an audio row is
+/// routed through [classifyAudio] so a voice note never wears the music glyph.
+_Cat _catOfItem(LibraryItem m) {
+  if (m.category == kCatMusic) {
+    switch (classifyAudio(m)) {
+      case AudioKind.music:
+        return _catOf(kCatMusic);
+      case AudioKind.receptionist:
+        return _catOf(kCatReceptionist);
+      case AudioKind.voiceNote:
+        return _catOf(kCatVoiceNote);
+    }
+  }
+  return _catOf(m.category);
+}
+
 /// A visible root folder: its visual [cat], the live file [count], and the
 /// [serverCat] passed to the list endpoint (lets us fold a legacy single
 /// `document` bucket into "Documents" if the worker hasn't split pdf/doc yet).
-typedef _RootFolder = ({_Cat cat, int count, String serverCat});
+///
+/// [audioKind] narrows an `audio` request to one of the three audio folders,
+/// and [approx] means the count came from a truncated scan and should read
+/// "N+" rather than "N".
+typedef _RootFolder = ({_Cat cat, int count, String serverCat, AudioKind? audioKind, bool approx});
+
+/// [LIB-AUDIO-SPLIT-1] The per-kind breakdown of the `audio` bucket.
+///
+/// The tree endpoint only reports ONE audio count, so the three folders can
+/// only be counted separately by looking at the items — which is exactly what
+/// [_AvaLibraryScreenState._loadAudioSplit] does, paging `/api/library?
+/// category=audio` in the background after the tree paints. [partial] is set
+/// when that scan hit its page guard or errored: the counts are then a floor,
+/// all three folders stay VISIBLE (an item must never become unreachable
+/// because a count said zero), and the subtitle reads "N+".
+class _AudioSplit {
+  final int music;
+  final int receptionist;
+  final int voiceNote;
+  final bool partial;
+  const _AudioSplit(this.music, this.receptionist, this.voiceNote, this.partial);
+  int countOf(AudioKind k) {
+    switch (k) {
+      case AudioKind.music:
+        return music;
+      case AudioKind.receptionist:
+        return receptionist;
+      case AudioKind.voiceNote:
+        return voiceNote;
+    }
+  }
+}
 
 /// Aggregate per-category counts across every app root (AvaTOK + any others).
 Map<String, int> _aggCounts(LibraryTree? t) {
@@ -114,26 +183,73 @@ Map<String, int> _aggCounts(LibraryTree? t) {
 }
 
 /// Build the root folder list from aggregated counts. Hides empty categories.
-List<_RootFolder> _rootFolders(Map<String, int> counts) {
+///
+/// [split] is the audio breakdown once it has been computed; while it is null
+/// the audio bucket renders exactly as it always did — ONE "Music" folder with
+/// the server's own count — so the root never flashes three half-counted rows.
+List<_RootFolder> _rootFolders(Map<String, int> counts, _AudioSplit? split) {
   // Legacy worker: a single 'document' bucket, not yet split into pdf/doc.
   final legacyDocs =
       !(counts.containsKey('pdf') || counts.containsKey('doc')) && (counts['document'] ?? 0) > 0;
+  final audioTotal = counts[kCatMusic] ?? 0;
   final out = <_RootFolder>[];
   for (final c in _cats) {
+    final kind = audioKindOfCat(c.key);
     if (c.key == 'pdf') {
       if (legacyDocs) continue; // folded into Documents below
       final n = counts['pdf'] ?? 0;
-      if (n > 0) out.add((cat: c, count: n, serverCat: 'pdf'));
+      if (n > 0) {
+        out.add((cat: c, count: n, serverCat: 'pdf', audioKind: null, approx: false));
+      }
     } else if (c.key == 'doc') {
       if (legacyDocs) {
-        out.add((cat: c, count: counts['document'] ?? 0, serverCat: 'document'));
+        out.add((
+          cat: c,
+          count: counts['document'] ?? 0,
+          serverCat: 'document',
+          audioKind: null,
+          approx: false
+        ));
       } else {
         final n = counts['doc'] ?? 0;
-        if (n > 0) out.add((cat: c, count: n, serverCat: 'doc'));
+        if (n > 0) {
+          out.add((cat: c, count: n, serverCat: 'doc', audioKind: null, approx: false));
+        }
+      }
+    } else if (kind != null) {
+      // The three audio folders. All of them list the SAME server category and
+      // are narrowed client-side, so `serverCat` is always `audio`.
+      if (audioTotal <= 0) continue;
+      if (split == null) {
+        // Pre-scan: behave exactly as before — Music only, full audio count.
+        if (kind == AudioKind.music) {
+          out.add((
+            cat: c,
+            count: audioTotal,
+            serverCat: kCatMusic,
+            audioKind: null,
+            approx: false
+          ));
+        }
+        continue;
+      }
+      final n = split.countOf(kind);
+      // A partial scan keeps every folder on screen even at 0 — a truncated
+      // count must never hide files.
+      if (n > 0 || split.partial) {
+        out.add((
+          cat: c,
+          count: n,
+          serverCat: kCatMusic,
+          audioKind: kind,
+          approx: split.partial
+        ));
       }
     } else {
       final n = counts[c.key] ?? 0;
-      if (n > 0) out.add((cat: c, count: n, serverCat: c.key));
+      if (n > 0) {
+        out.add((cat: c, count: n, serverCat: c.key, audioKind: null, approx: false));
+      }
     }
   }
   return out;
@@ -290,6 +406,12 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
   LibraryTree? _tree;
   bool _loading = true;
   String _query = '';
+  _AudioSplit? _audioSplit;
+
+  /// Page guard for the audio breakdown scan. 12 pages of the list endpoint is
+  /// far more audio than any real account has; past that the counts are shown
+  /// as a floor ("N+") rather than blocking the root screen.
+  static const int _kAudioScanPages = 12;
 
   @override
   void initState() {
@@ -303,9 +425,59 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
     try {
       final t = await LibraryApi.tree();
       if (mounted) setState(() { _tree = t; _loading = false; });
+      unawaited(_loadAudioSplit(_aggCounts(t)[kCatMusic] ?? 0));
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// [LIB-AUDIO-SPLIT-1] Count Music / Ava Receptionist / Voice notes
+  /// separately. Runs AFTER the tree has painted and never blocks it: until it
+  /// lands the root shows the single legacy "Music" folder.
+  Future<void> _loadAudioSplit(int audioTotal) async {
+    if (audioTotal <= 0) {
+      if (mounted) setState(() => _audioSplit = const _AudioSplit(0, 0, 0, false));
+      return;
+    }
+    var music = 0, recept = 0, voice = 0, scanned = 0;
+    var partial = false;
+    int? cursor;
+    try {
+      for (var page = 0; page < _kAudioScanPages; page++) {
+        final r = await LibraryApi.list(category: kCatMusic, cursor: cursor);
+        for (final m in r.items) {
+          final k = classifyAudio(m);
+          if (k == AudioKind.receptionist) {
+            recept++;
+          } else if (k == AudioKind.voiceNote) {
+            voice++;
+          } else {
+            music++;
+          }
+        }
+        scanned += r.items.length;
+        cursor = r.cursor;
+        if (cursor == null || r.items.isEmpty) break;
+        if (page == _kAudioScanPages - 1) partial = true;
+      }
+    } catch (e) {
+      // A failed scan must not hide files: mark it partial so all three folders
+      // stay visible with a floor count.
+      partial = true;
+      Analytics.error(
+          domain: 'media', code: 'library_audio_split_failed',
+          message: e.toString(), screen: 'avalibrary');
+    }
+    if (!mounted) return;
+    setState(() => _audioSplit = _AudioSplit(music, recept, voice, partial));
+    Analytics.capture('library_audio_split', {
+      'music': music,
+      'receptionist': recept,
+      'voice_notes': voice,
+      'scanned': scanned,
+      'tree_total': audioTotal,
+      'partial': partial,
+    });
   }
 
   /// Every user folder across every app, flattened (AvaTOK is the only app today,
@@ -329,10 +501,16 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
   }
 
   void _openCategory(_RootFolder f) {
-    Analytics.capture('library_category_opened', {'category': f.serverCat, 'count': f.count});
+    Analytics.capture('library_category_opened', {
+      'category': f.serverCat,
+      'count': f.count,
+      'ui_category': f.cat.key,
+      'audio_kind': f.audioKind?.name ?? '',
+    });
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => _FolderView(
         app: null, category: f.serverCat, folderId: null,
+        audioKind: f.audioKind,
         title: f.cat.label),
     )).then((_) => _load());
   }
@@ -350,7 +528,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
   Widget build(BuildContext context) {
     final counts = _aggCounts(_tree);
     final q = _query.toLowerCase();
-    final roots = _rootFolders(counts)
+    final roots = _rootFolders(counts, _audioSplit)
         .where((r) => q.isEmpty || r.cat.label.toLowerCase().contains(q))
         .toList();
     final folders = q.isEmpty
@@ -384,7 +562,7 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
                     const SizedBox(height: Msg.s2),
                     for (final r in roots) _row(
                       icon: r.cat.icon, color: r.cat.color, title: r.cat.label,
-                      sub: '${r.count} file${r.count == 1 ? '' : 's'}',
+                      sub: '${r.count}${r.approx ? '+' : ''} file${r.count == 1 && !r.approx ? '' : 's'}',
                       onTap: () => _openCategory(r),
                     ),
                     const SizedBox(height: Msg.s4),
@@ -492,10 +670,13 @@ class _FolderView extends StatefulWidget {
   final String? app;        // null = across every app (a file-type view)
   final String? category;   // server category (image|video|pdf|doc|audio|other|document)
   final String? folderId;   // a user folder
+  /// [LIB-AUDIO-SPLIT-1] When [category] is `audio`, narrows the SAME server
+  /// listing to one of the three UI folders. Null everywhere else.
+  final AudioKind? audioKind;
   final String title;
   const _FolderView({
     required this.app, required this.category, required this.folderId,
-    required this.title,
+    required this.title, this.audioKind,
   });
   @override
   State<_FolderView> createState() => _FolderViewState();
@@ -513,10 +694,28 @@ class _FolderViewState extends State<_FolderView> {
   Timer? _searchDebounce;
   String _serverQ = '';
 
+  /// [LIB-AUDIO-SPLIT-1] Correspondent names for voice-note tiles. Resolved
+  /// ONCE into state here — never awaited inside `build()`. Held as null until
+  /// [VoiceNoteIndex.load] finishes so a tile shows a placeholder rather than a
+  /// wrong name, and owned by this State so it cannot outlive an account
+  /// switch.
+  VoiceNoteIndex? _names;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadNames();
+  }
+
+  /// Only worth building where audio tiles can appear: a voice-note/receptionist
+  /// folder, or a user folder (which can hold anything).
+  Future<void> _loadNames() async {
+    if (widget.audioKind == AudioKind.music) return;
+    if (widget.audioKind == null && widget.folderId == null) return;
+    final idx = VoiceNoteIndex();
+    await idx.load();
+    if (mounted) setState(() => _names = idx);
   }
 
   @override
@@ -616,16 +815,25 @@ class _FolderViewState extends State<_FolderView> {
   }
 
   bool _matchesType(LibraryItem m, String key) {
-    switch (key) {
-      case 'pdf': return LibThumbs.isPdf(m);
-      case 'doc': return m.category == 'document' && !LibThumbs.isPdf(m);
-      default: return m.category == key;
-    }
+    if (key == 'pdf') return LibThumbs.isPdf(m);
+    if (key == 'doc') return m.category == 'document' && !LibThumbs.isPdf(m);
+    // [LIB-AUDIO-SPLIT-1] The three audio chips share ONE server category, so
+    // each is `audio` + a client-side kind. Exactly one of them matches any
+    // given audio item — no duplicates, nothing dropped.
+    final kind = audioKindOfCat(key);
+    if (kind != null) return m.category == kCatMusic && classifyAudio(m) == kind;
+    return m.category == key;
   }
 
   List<LibraryItem> get _visible {
     final q = _query.toLowerCase();
     return _items.where((m) {
+      // The folder's own audio narrowing (Music vs Receptionist vs Voice notes).
+      if (widget.audioKind != null &&
+          m.category == kCatMusic &&
+          classifyAudio(m) != widget.audioKind) {
+        return false;
+      }
       if (_typeFilter != null && !_matchesType(m, _typeFilter!)) return false;
       if (_dayFilter != null) {
         final d = DateTime.fromMillisecondsSinceEpoch(m.createdAt);
@@ -671,6 +879,16 @@ class _FolderViewState extends State<_FolderView> {
     final cells = _buildCells(visible);
     final showSentinel = !_filtering && _more;
 
+    // [LIB-AUDIO-SPLIT-1] The audio narrowing happens CLIENT-side, so a whole
+    // server page can be filtered away to nothing — which would render the
+    // empty state, hide the paging sentinel and stall the list forever. Keep
+    // pulling pages while the view is empty and the server has more. Bounded:
+    // it stops the moment `_more` goes false.
+    final stillPaging = widget.audioKind != null && visible.isEmpty && _more;
+    if (stillPaging && !_loading && !_fetching) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _load(); });
+    }
+
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: _darkHeader(
@@ -694,7 +912,7 @@ class _FolderViewState extends State<_FolderView> {
         if (_dayFilter != null) _dayChip(),
         if (isFolder) _typeChips(),
         Expanded(
-          child: _loading
+          child: _loading || stillPaging
               ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
               : visible.isEmpty
                   ? Center(
@@ -777,7 +995,8 @@ class _FolderViewState extends State<_FolderView> {
             Expanded(
               child: i < tiles.length
                   ? AspectRatio(aspectRatio: 1, child: _ThumbTile(
-                      item: tiles[i], onTap: () => _open(tiles[i]), onMenu: () => _itemMenu(tiles[i])))
+                      item: tiles[i], names: _names,
+                      onTap: () => _open(tiles[i]), onMenu: () => _itemMenu(tiles[i])))
                   : const SizedBox.shrink(),
             ),
           ],
@@ -825,7 +1044,7 @@ class _FolderViewState extends State<_FolderView> {
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, Msg.s2),
             child: Row(children: [
-              ZineIconBadge(icon: _catOf(m.category).icon, color: _catOf(m.category).color, size: 30),
+              ZineIconBadge(icon: _catOfItem(m).icon, color: _catOfItem(m).color, size: 30),
               const SizedBox(width: Msg.s3),
               Expanded(child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.threadName())),
@@ -891,7 +1110,10 @@ class _ThumbTile extends StatefulWidget {
   final LibraryItem item;
   final VoidCallback onTap;
   final VoidCallback onMenu;
-  const _ThumbTile({required this.item, required this.onTap, required this.onMenu});
+  /// [LIB-AUDIO-SPLIT-1] Resolved correspondent names, or null while they load.
+  final VoiceNoteIndex? names;
+  const _ThumbTile({
+    required this.item, required this.onTap, required this.onMenu, this.names});
   @override
   State<_ThumbTile> createState() => _ThumbTileState();
 }
@@ -913,14 +1135,51 @@ class _ThumbTileState extends State<_ThumbTile> {
   }
 
   Future<void> _loadThumb() async {
+    if (_voiceKind != null) { if (mounted) setState(() => _tried = true); return; }
     if (!LibThumbs.canRender(widget.item)) { if (mounted) setState(() => _tried = true); return; }
     final f = await LibThumbs.thumb(widget.item);
     if (mounted) setState(() { _file = f; _tried = true; });
   }
 
+  /// The audio kind that gets a GENERATED tile (voice note / receptionist), or
+  /// null for anything that should render the normal thumbnail. Music is
+  /// deliberately excluded — it keeps the music glyph.
+  AudioKind? get _voiceKind {
+    final m = widget.item;
+    if (m.category != kCatMusic) return null;
+    final k = classifyAudio(m);
+    return k == AudioKind.music ? null : k;
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = widget.item;
+
+    // [LIB-AUDIO-SPLIT-1] Audio has no frame to decode, so the preview is
+    // PAINTED instead of fetched. Same box, same border, same radius as every
+    // other tile — the grid does not reflow — and no filename gradient, since
+    // "voice.m4a" is exactly the label this tile exists to replace.
+    final vk = _voiceKind;
+    if (vk != null) {
+      return GestureDetector(
+        onTap: widget.onTap,
+        onLongPress: widget.onMenu,
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: AD.card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AD.borderControl, width: 1),
+          ),
+          child: VoiceNoteTile(
+            item: m,
+            meta: widget.names?.metaFor(m),
+            receptionist: vk == AudioKind.receptionist,
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: widget.onTap,
       onLongPress: widget.onMenu,

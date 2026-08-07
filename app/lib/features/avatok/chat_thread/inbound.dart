@@ -138,6 +138,22 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     if (!m.mine && _ragLive && special == null && media == null) {
       _ragAddLine(_shortPub(m.senderPub), text);
     }
+    // [VOICE-BRAIN-1] A voice note in a group → AvaLibrary "Voice notes" AND the
+    // device brain. Deliberately NOT gated on `_ragLive` (unlike the text lane
+    // above): that flag exists to stop the replayed history being re-indexed,
+    // but here re-offering is free (dedup by `sourceId`) and the replay is the
+    // only backfill path old notes have.
+    final gVoice = media; // local copy — see the DM site for why.
+    if (gVoice != null && gVoice.kind == MediaKind.audio && special == null) {
+      unawaited(_ingestVoiceNoteToBrain(
+        mediaId: gVoice.id,
+        fileName: gVoice.name,
+        mine: m.mine,
+        tsSec: m.createdAt,
+        senderLabel: m.mine ? '' : (_groupLabelFor(m.senderPub, mine: false) ?? ''),
+        senderUid: m.mine ? '' : m.senderPub,
+      ));
+    }
     // [AVAGRP-BUBBLE-2 / AVAGRP-SEENBY-1] "delivered" half of the WhatsApp-style
     // two-step group receipt: the instant a peer's message is rendered on THIS
     // device it has been delivered, regardless of whether the thread is the one
@@ -353,6 +369,21 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     // history, not media/special envelopes).
     if (!m.mine && !seed && special == null && media == null) {
       _ragAddLine(widget.chat.name, text);
+    }
+    // [VOICE-BRAIN-1] A voice note in a DM → AvaLibrary "Voice notes" AND the
+    // device brain. `seed` is NOT excluded on purpose: the replayed history is
+    // exactly how notes sent before this shipped get backfilled, one thread at a
+    // time, with no boot sweep. Re-offering an already-ingested note is a single
+    // dedup-store lookup (and `AvaLocalIndex` keys on `sourceId` regardless).
+    final dmVoice = media; // local copy: `media` is reassigned above, so relying
+                           // on flow promotion here would be fragile.
+    if (dmVoice != null && dmVoice.kind == MediaKind.audio && special == null) {
+      unawaited(_ingestVoiceNoteToBrain(
+        mediaId: dmVoice.id,
+        fileName: dmVoice.name,
+        mine: m.mine,
+        tsSec: m.createdAt,
+      ));
     }
     _jump();
     if (!m.mine && !seed) {

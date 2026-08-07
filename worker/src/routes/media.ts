@@ -282,6 +282,96 @@ export async function registerArtifactMedia(env: Env, input: RegisterArtifactInp
   return { id, url, key: r2Key, dedup: false, visibility: "public" };
 }
 
+// ---------------------------------------------------------------------------
+// [RECEPT-LIB-1] registerExistingObjectMedia — the `user_media` row for an
+// object that is ALREADY in R2, under a key its producer chose.
+//
+// WHY registerArtifactMedia() CANNOT BE USED FOR THIS. That function OWNS the
+// key: it hashes the bytes and writes to `u/<uid>/{public,private}/<hash>`.
+// The Ava-receptionist voicemail is stored by the reception DOs at
+// `receptionist/<uid>/<phone>/<sid>.wav` (do/reception_room_cf.ts,
+// do/reception_room.ts, do/vobiz_agent_room.ts), the bespoke owner-authed
+// playback endpoint (routes/voicemail_routes.ts, routes/receptionist.ts) reads
+// that exact key, and AvaLibrary's client-side "Ava Receptionist" folder
+// classifies on the `receptionist/` KEY PREFIX
+// (app/lib/features/library/voicemail_tile.dart:85). Re-registering through
+// registerArtifactMedia would write a SECOND copy of the same audio under a
+// different key — double storage, and a row the client would file under Music.
+// So: keep the key, register a row that POINTS at it.
+//
+// This is the same shape as callrec.ts's local registerPrivateObject(), with
+// two deliberate differences:
+//   • `bucket` is explicit. A receptionist wav lives in BLOBS (the public
+//     blossom bucket) — `blossom` rows carry a stored display_url; `digital`
+//     rows carry '' and getLibrary() re-mints a presign on every read.
+//   • An existing row is returned AS IS and is never revived. callrec's chunked
+//     lane must un-delete (a re-upload of the same content hash is a real new
+//     file); here the key embeds a one-shot session id, so the only way to hit
+//     an existing row is a DO retry — and resurrecting a row the OWNER deleted
+//     from their library would be a bug, not idempotency.
+// Idempotency is therefore exactly "(uid, key) exists → no second row".
+//
+// NO checkUploadAllowed() GATE, on purpose. The bytes are already in R2 before
+// this is called, so refusing the row frees nothing — it would only hide a
+// caller's message from its owner while still billing the storage. The bytes
+// are still COUNTED (afterRegisterFile → recomputeStorage), so an over-quota
+// account still goes read-only for its next voluntary upload; §6's "never
+// delete" rule is unchanged.
+// ---------------------------------------------------------------------------
+export interface RegisterExistingObjectInput {
+  uid: string;
+  /** The R2 key EXACTLY as stored. Never rewritten. */
+  key: string;
+  /** Which bucket `key` lives in. Decides storage/display_url handling. */
+  bucket: "blossom" | "digital";
+  mimeType: string;
+  sizeBytes: number;
+  fileName: string;
+  /** AvaLibrary category — defaults to categoryOf(mimeType). */
+  category?: string;
+  /** original_app column — defaults to "avatok". */
+  app?: string;
+  /** 'received' = the user did not create this (an incoming voicemail).
+   *  Drives the client's incoming/outgoing tile flag. Defaults to 'sent'. */
+  sourceKind?: "sent" | "received";
+  /** Defaults to 'private'. NOTE: for bucket:'blossom' this is a LABEL, not
+   *  enforcement — that bucket has a public read host. */
+  visibility?: "public" | "private";
+}
+
+export async function registerExistingObjectMedia(
+  env: Env, input: RegisterExistingObjectInput,
+): Promise<{ id: string; dedup: boolean; key: string }> {
+  const mdb = mediaSession(env);
+  const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1 AND uid=?2 LIMIT 1")
+    .bind(input.key, input.uid).first<{ id: string }>();
+  if (existing) return { id: existing.id, dedup: true, key: input.key };
+
+  const app = input.app || "avatok";
+  const category = input.category || categoryOf(input.mimeType);
+  const visibility = input.visibility || "private";
+  const sourceKind = input.sourceKind || "sent";
+  const storage = input.bucket === "digital" ? "digital" : "blossom";
+  // A 'digital' row's URL is presigned per read (getLibrary), so it is stored
+  // empty exactly as uploadPrivate()/registerArtifactMedia() store it.
+  const displayUrl = input.bucket === "digital" ? "" : `${env.BLOSSOM_BASE_URL}/${input.key}`;
+  const id = crypto.randomUUID();
+  await mdb.prepare(
+    `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
+     VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,?14)`,
+  ).bind(
+    id, input.uid, artifactMediaKind(input.mimeType), storage, visibility, input.key, displayUrl,
+    input.mimeType, Math.max(0, Math.round(input.sizeBytes)), app, Date.now(), category,
+    input.fileName, sourceKind,
+  ).run();
+  // Same storage recompute + live push every other register path runs. Never
+  // fatal — the object is already in R2 either way.
+  await afterRegisterFile(env, input.uid, {
+    kind: category, bytes: input.sizeBytes, source_app: app, dedup: false,
+  }).catch(() => {});
+  return { id, dedup: false, key: input.key };
+}
+
 // Local to registerArtifactMedia — deliberately distinct from mediaType()
 // above (which defaults anything non-image/audio/video to "image" and would
 // mis-tag a text/PDF artifact). AI-derived documents/transcripts are the

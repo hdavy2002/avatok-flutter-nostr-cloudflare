@@ -14,9 +14,11 @@ import '../../../core/active_thread.dart';
 import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
 import '../../../core/audio_playback_service.dart';
-import '../../../core/brain_consent.dart';
 import '../../../core/config.dart';
-import '../../../core/local_brain/local_brain.dart';
+// [VOICE-BRAIN-1] The shared voicemail/voice-note brain ingest. It owns the
+// consent gate (BrainConsent) and the AvaLocalBrain write that used to be
+// inlined here, which is why neither is imported directly any more.
+import '../../../core/voice_brain_ingest.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../sync/sync_hub.dart' show HubEvent, SyncHub;
@@ -277,48 +279,51 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   /// Search store (RagService, CUT under B-D2); the server-readable voicemail
   /// domain is ingested server-side (brain.ts), so nothing chat/voicemail
   /// content leaves the device from here.
+  ///
+  /// [VOICE-BRAIN-1] Now routed through the shared [VoiceBrainIngest] so this
+  /// folder and AvaLibrary's "Voice notes" folder produce records of the SAME
+  /// shape (`core/voice_brain_ingest.dart` owns the descriptor, the consent gate
+  /// and the `sourceId` scheme). Two behaviour changes, both deliberate:
+  ///
+  ///   1. A card with NO transcript yet is no longer skipped outright — it is
+  ///      indexed on its metadata (who, when, how long, any tag/title the owner
+  ///      added), under a DIFFERENT `sourceId`, so "the voicemail from Sonal on
+  ///      Tuesday" is findable even before/without a transcription. The
+  ///      transcript record still lands later under the original `vm:` id.
+  ///   2. The dedup marker is [VoiceBrainIngestStore], keyed by the exact
+  ///      `sourceId`. [InboxBrainIngestStore] is still CONSULTED (never written)
+  ///      for the transcript case so cards ingested by earlier builds are not
+  ///      re-ingested — the index would no-op on them anyway, this just skips
+  ///      the work.
   Future<void> _ingestToBrain(List<InboxCard> cards) async {
-    bool allowed;
-    try {
-      allowed = await BrainConsent.isOn('receptionist');
-    } catch (_) {
-      allowed = true; // default ON (opt-out model) if the consent read fails
-    }
-    if (!allowed) {
-      Analytics.capture('inbox_brain_ingest', {'ok': false, 'reason': 'guardrail_off', 'cards': cards.length});
-      return;
-    }
     var attempted = 0, ingested = 0;
     for (final c in cards) {
       final transcript = c.transcript?.trim();
-      if (transcript == null || transcript.isEmpty) continue;
-      try {
-        if (await InboxBrainIngestStore.I.isIngested(c.stableId)) continue;
-      } catch (_) {/* best-effort — worst case a card is ingested twice */}
+      final hasTranscript = transcript != null && transcript.isNotEmpty;
+      if (hasTranscript) {
+        try {
+          if (await InboxBrainIngestStore.I.isIngested(c.stableId)) continue;
+        } catch (_) {/* best-effort — worst case a card is ingested twice */}
+      }
       attempted++;
       try {
         final meta = await InboxCardMetaStore.I.forCard(c.stableId);
-        final dt = c.createdAtMs > 0 ? DateTime.fromMillisecondsSinceEpoch(c.createdAtMs) : DateTime.now();
-        final dateStr = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-        final descr = StringBuffer()
-          ..writeln('Voicemail from $_title')
-          ..writeln('Date: $dateStr')
-          ..writeln('Duration: ${c.durationSec}s');
-        if (meta != null && meta.tags.isNotEmpty) descr.writeln('Tags: ${meta.tags.join(', ')}');
-        if (meta?.title != null && meta!.title!.isNotEmpty) descr.writeln('Title: ${meta.title}');
-        descr.writeln('Transcript: $transcript');
-        await AvaLocalBrain.I.ingest(
-          domain: 'voicemail',
-          kind: 'voicemail_transcript',
-          text: descr.toString(),
-          meta: {'convKey': 'voicemail:$_title'},
-          ts: c.createdAtMs > 0
+        final ok = await VoiceBrainIngest.ingest(
+          record: VoiceRecordKind.receptionistVoicemail,
+          sourceKey: c.stableId,
+          correspondent: _title,
+          correspondentPhone: c.callerPhone ?? _phone ?? '',
+          outgoing: false,
+          tsSec: c.createdAtMs > 0
               ? c.createdAtMs ~/ 1000
               : DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          sourceId: 'vm:${c.stableId}',
+          durationSec: c.durationSec,
+          transcript: transcript,
+          summary: c.summaryText,
+          title: meta?.title,
+          tags: meta?.tags ?? const [],
         );
-        await InboxBrainIngestStore.I.markIngested(c.stableId);
-        ingested++;
+        if (ok) ingested++;
       } catch (_) {/* best-effort — never blocks the thread from rendering */}
     }
     if (attempted > 0) {

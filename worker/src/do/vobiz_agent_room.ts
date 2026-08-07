@@ -49,6 +49,7 @@ import { composeReceptionistPrompt, RECEPTIONIST_MODEL_DEFAULT, AVA_VOICE } from
 import { matchAvatokPhones } from "../routes/api";
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 import { e164Country } from "../lib/e164_country";                      // [RECEPT-STATS-1] caller_country from E.164
+import { registerVoicemailInLibrary } from "../lib/voicemail_library";  // [RECEPT-LIB-1] voicemail → AvaLibrary
 // [AVA-CAMP-C-ROOM] campaign-mode-only imports — never touched by the
 // inbound receptionist path (only referenced inside `if (campaignMode)` /
 // `if (this.campaign)` branches below).
@@ -522,6 +523,19 @@ export class VobizAgentRoom {
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
       { ...props, transport: "vobiz", call_id: i.call_id, activation_mode: i.activation_mode,
         model: i.model, voice: i.voice_name, voice_gender: voiceGender }, i.sid);
+  }
+
+  /** [RECEPT-LIB-1] The voicemail's AvaLibrary row — see lib/voicemail_library.ts.
+   *  Never throws (the helper swallows), only ever called through waitUntil, and
+   *  the row is owned by the OWNER whose receptionist took the message. */
+  private async registerVoicemailMedia(key: string, bytes: number): Promise<void> {
+    const i = this.init;
+    if (!i?.owner_uid) return;
+    const r = await registerVoicemailInLibrary(this.env, {
+      ownerUid: i.owner_uid, key, bytes,
+      callerName: i.caller_name ?? null, callerPhone: i.caller_phone ?? null,
+    });
+    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes });
   }
 
   // -------------------------------------------------------------------------
@@ -1223,6 +1237,11 @@ export class VobizAgentRoom {
           two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes,
           caller_gain: Math.round(callerGain * 100) / 100, caller_peak: this.callerPeak,
         });
+        // [RECEPT-LIB-1] …and into AvaLibrary. INBOUND ONLY: a campaign call is
+        // an OUTBOUND sales call the owner placed, not a message someone left
+        // them, so filing it under "Ava Receptionist" would be a lie. waitUntil
+        // + self-swallowing; idempotent on (owner_uid, key).
+        if (!this.campaign) this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength));
       }
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });

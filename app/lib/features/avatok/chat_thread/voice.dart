@@ -220,6 +220,22 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     // goes through the ordinary encrypted `_upload` path unaffected.
     await _upload(msg, bytes, MediaKind.audio, 'audio/mp4', 'voice.m4a',
         plaintextVoice: !RemoteConfig.voiceNoteEncryptionEnabled);
+    // [VOICE-BRAIN-1] The upload has finished, so `msg.media` now carries the
+    // real content-addressed id (== the AvaLibrary key). Ingest AFTER the await
+    // for exactly that reason: before it there is no stable key to file the
+    // record under, and the local `local_<conv>_<n>` fallback would not match
+    // the library item. A failed upload leaves `media` null and ingests nothing.
+    final sent = msg.media;
+    if (sent != null) {
+      // ignore: unawaited_futures
+      _ingestVoiceNoteToBrain(
+        mediaId: sent.id,
+        fileName: sent.name,
+        mine: true,
+        tsSec: now,
+        durationSec: seconds,
+      );
+    }
   }
 
   /// The single teardown path for a recording session — every exit routes here
@@ -408,6 +424,107 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
   bool _isVoiceNote(_Msg m) =>
       m.media?.kind == MediaKind.audio && m.special == null;
 
+  // ── [VOICE-BRAIN-1] AvaLibrary "Voice notes" → AvaBrain ────────────────────
+  //
+  // Owner ask: "we can feed this to Ava Brain too, so Ava can easily search it
+  // in her chat thread" — i.e. "what did Priya say in that voice note last
+  // week" should resolve. The record is written to the DEVICE-PRIVATE brain
+  // only (`core/voice_brain_ingest.dart` → `AvaLocalBrain` → the per-account
+  // SQLite file); no recording, transcript or descriptor is sent anywhere.
+  //
+  // HONEST LIMITATION: **a voice note has no transcript unless someone asked
+  // for one.** Nothing transcribes voice notes automatically — `_ensureTranscript`
+  // / `_transcribeVoice` only run from the long-press menu, and the result is
+  // cached per message. So the FIRST record for a note is metadata (who, which
+  // direction, when, and the AvaLibrary key), and [_ingestVoiceNoteTranscript]
+  // adds a second, richer record if a transcript ever appears. Auto-transcribing
+  // every voice note would be a cost/consent/battery decision for the owner, not
+  // something to switch on from here.
+  //
+  // Ingestion is LAZY and INCREMENTAL by design — there is no boot sweep. A note
+  // is offered to the brain when its bubble arrives, which includes the history
+  // replayed on thread open (`_onDm(seed: true)`), so old notes are backfilled
+  // simply by opening the chats they live in. Re-offering is free: the dedup
+  // store short-circuits, and `AvaLocalIndex` keys on `sourceId` anyway.
+
+  /// True for the audio bubbles that are RECORDED voice notes rather than a
+  /// music/audio FILE shared into the chat.
+  ///
+  /// The rule is deliberately identical to AvaLibrary's own audio split
+  /// (`features/library/lib_thumbs.dart` `classifyAudio`, which is the source of
+  /// truth for what lands in the "Voice notes" folder): every recorded note is
+  /// literally named `voice.m4a` — `_sendVoice` below and `call_outcome_menu.dart`
+  /// are the only producers and both hardcode it. It is re-stated rather than
+  /// imported because `classifyAudio` takes a `LibraryItem`, which a chat bubble
+  /// does not have. If that classifier changes, change this with it.
+  bool _looksLikeRecordedVoiceNote(String fileName) {
+    final n = fileName.toLowerCase();
+    return n == 'voice.m4a' ||
+        n.startsWith('voice.') ||
+        n.startsWith('voice_') ||
+        n.startsWith('voice-');
+  }
+
+  /// Offer one voice note to the device brain. Primitives, not a `_Msg`, so the
+  /// inbound handlers can call it straight from the envelope they just parsed
+  /// without re-finding the bubble they only just appended.
+  ///
+  /// [mediaId] is `ChatMedia.id`, which IS the AvaLibrary `LibraryItem.key` —
+  /// that is what makes a brain hit openable back to the real item.
+  /// Never throws, never awaited by a caller on the render path.
+  Future<void> _ingestVoiceNoteToBrain({
+    required String mediaId,
+    required String fileName,
+    required bool mine,
+    required int tsSec,
+    String senderLabel = '',
+    String senderUid = '',
+    int durationSec = 0,
+    String? transcript,
+  }) async {
+    if (mediaId.isEmpty) return;
+    if (!_looksLikeRecordedVoiceNote(fileName)) return;
+    // Who the note is WITH. For a DM that is the peer in both directions; for a
+    // group, an incoming note is attributed to the member who sent it (falling
+    // back to the group name) so "the voice note Rahul sent in the family group"
+    // has both words to match on.
+    final who = (!mine && senderLabel.trim().isNotEmpty)
+        ? senderLabel.trim()
+        : widget.chat.name;
+    try {
+      await VoiceBrainIngest.ingest(
+        record: VoiceRecordKind.chatVoiceNote,
+        sourceKey: mediaId,
+        correspondent: who,
+        correspondentUid: mine ? '' : senderUid,
+        outgoing: mine,
+        tsSec: tsSec,
+        durationSec: durationSec,
+        transcript: transcript,
+        groupName: _isGroup ? widget.chat.name : '',
+      );
+    } catch (_) {/* best-effort — a brain write must never affect the thread */}
+  }
+
+  /// Upgrade a voice note's brain record once a transcript actually exists.
+  /// Lands under its own `sourceId`, because `AvaLocalIndex` never rewrites a
+  /// row it has already indexed (see [VoiceBrainIngest] for why that is the
+  /// right trade).
+  void _ingestVoiceNoteTranscript(_Msg m, String transcript) {
+    final media = m.media;
+    if (media == null || transcript.trim().isEmpty) return;
+    // ignore: unawaited_futures
+    _ingestVoiceNoteToBrain(
+      mediaId: media.id,
+      fileName: media.name,
+      mine: m.mine,
+      tsSec: m.ts,
+      senderLabel: m.senderLabel ?? '',
+      senderUid: m.senderPub ?? '',
+      transcript: transcript,
+    );
+  }
+
   /// Stable per-message cache key: the durable rumor id when present, else the
   /// local monotonic id. Matches the scheme used by inline text translation.
   String _msgCacheKey(_Msg m) => m.evId ?? '${m.id}';
@@ -434,6 +551,10 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     final cached = await _msgStore.readTranscript(key);
     if (cached != null && cached.trim().isNotEmpty) {
       if (mounted) _mutMsgs(() => (m.extra ??= <String, dynamic>{})['transcript'] = cached);
+      // [VOICE-BRAIN-1] A transcript exists for this note — index what was
+      // actually SAID, not just who sent it. Idempotent, so a cache hit on every
+      // reopen costs one dedup-store lookup.
+      _ingestVoiceNoteTranscript(m, cached);
       return cached;
     }
     // 3) Transcribe: decrypted bytes → /api/stt/transcribe (same route the
@@ -465,6 +586,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       if (text.isEmpty) return '';
       try { await _msgStore.writeTranscript(key, text); } catch (_) {}
       if (mounted) _mutMsgs(() => (m.extra ??= <String, dynamic>{})['transcript'] = text);
+      _ingestVoiceNoteTranscript(m, text); // [VOICE-BRAIN-1]
       return text;
     } catch (e) {
       final ms = DateTime.now().millisecondsSinceEpoch - t0;

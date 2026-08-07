@@ -27,6 +27,7 @@ import { walletOp } from "../routes/wallet"; // [RECEPT-BILLING-3] start-of-call
 import { metaDb } from "../db/shard"; // [RECEPT-BILLING-3] internal call_cost_ledger
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 import { thinkingCfg } from "../util"; // [RECEPT-COST-THINK-1] per-model thinking-off (gemini-3 → thinkingLevel low)
+import { registerVoicemailInLibrary } from "../lib/voicemail_library"; // [RECEPT-LIB-1] voicemail → AvaLibrary
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -399,6 +400,19 @@ export class ReceptionRoom {
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
       { ...props, call_id: i.call_id, activation_mode: i.activation_mode ?? null,
         model: i.model, voice: i.voice_name, voice_gender: voiceGender(i.voice_name) }, i.sid);
+  }
+
+  /** [RECEPT-LIB-1] The voicemail's AvaLibrary row — see lib/voicemail_library.ts.
+   *  Never throws (the helper swallows), only ever called through waitUntil, and
+   *  the row is owned by the OWNER whose receptionist took the message. */
+  private async registerVoicemailMedia(key: string, bytes: number): Promise<void> {
+    const i = this.init;
+    if (!i?.owner_uid) return;
+    const r = await registerVoicemailInLibrary(this.env, {
+      ownerUid: i.owner_uid, key, bytes,
+      callerName: i.caller_name ?? null, callerPhone: i.caller_phone ?? null,
+    });
+    this.ev("ava_recept_library_registered", { ok: !!r, dedup: r?.dedup ?? null, bytes });
   }
 
   /** Send a grouped, scrubbed PostHog Error Tracking Issue for a receptionist
@@ -1199,6 +1213,10 @@ export class ReceptionRoom {
           two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes,
           caller_gain: Math.round(callerGain * 100) / 100, caller_peak: this.callerPeak,
         });
+        // [RECEPT-LIB-1] …and into AvaLibrary. waitUntil + self-swallowing, so a
+        // slow/failed DB_MEDIA write can neither delay nor break delivery of the
+        // caller's message. Idempotent on (owner_uid, key).
+        this.state.waitUntil(this.registerVoicemailMedia(key, wav.byteLength));
       }
     } catch (e) {
       this.exception(e, "recording_store_failed", { storage: "r2" });

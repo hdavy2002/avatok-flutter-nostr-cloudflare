@@ -62,6 +62,10 @@ import '../../core/profile_store.dart';
 import '../../core/drive_service.dart';
 import '../../core/library_api.dart';
 import '../../core/local_brain/local_brain.dart';
+// [VOICE-BRAIN-1] AvaLibrary "Voice notes" → the device-private brain (consent
+// gate + descriptor + idempotent sourceId live there, NOT in local_brain/, which
+// is the audited networkless module).
+import '../../core/voice_brain_ingest.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
