@@ -517,7 +517,9 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     _ingestVoiceNoteToBrain(
       mediaId: media.id,
       fileName: media.name,
-      mine: m.mine,
+      // `_Msg` exposes `me`, not `mine` — the direction flag the tile and the
+      // brain record both read. (The named param here is `mine:`.)
+      mine: m.me,
       tsSec: m.ts,
       senderLabel: m.senderLabel ?? '',
       senderUid: m.senderPub ?? '',
