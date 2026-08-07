@@ -931,8 +931,14 @@ export async function libraryCopy(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   const mdb = mediaSession(env);
-  const src = await mdb.prepare(`SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE id=?1 AND uid=?2`)
-    .bind(b.id, ctx.uid).first<any>();
+  // [SPEC-SEND-3] `id` comes from the caller, not from a Library listing, so this
+  // is the one copy path that can still name a staged-but-unsent row. Refuse it:
+  // copyMediaRow duplicates moderation_status verbatim, so a 'staged' source
+  // would mint a committed, quota-counted, library-visible PUBLIC row that no
+  // scan is ever enqueued for. Commit first (/api/media/commit), then copy.
+  const src = await withCommittedFilter((filter) => mdb
+    .prepare(`SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE id=?1 AND uid=?2 AND ${filter}`)
+    .bind(b.id, ctx.uid).first<any>());
   if (!src) return json({ error: "not found" }, 404);
   const id = await copyMediaRow(mdb, ctx.uid, src, b.folder_id ?? null, b.app ? String(b.app).toLowerCase() : src.original_app);
   return json({ id });
