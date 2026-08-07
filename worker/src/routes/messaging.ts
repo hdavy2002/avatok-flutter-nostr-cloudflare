@@ -31,6 +31,8 @@ import { readAutoResponderConfig, isActiveNow } from "./auto_responder";
 // [AVA-GROUP-COMPANION-1] group Ava state + member prefs (I1/I2). New routes
 // only — none of the existing routes above are touched by this import.
 import { getGroupState, setGroupState, getMemberPrefs, setMemberPrefs, type GroupAvaMode } from "../lib/ava_group_policy";
+// [AVA-TOGGLE-DM-1] WS-17 — the 1:1 equivalent of the group state above.
+import { getDmState, setDmState, effectiveDmMode, type DmAvaMode } from "../lib/ava_group_policy";
 import { postAvaMessage } from "./ava_thread"; // I1 disclosure notice — same fan-out AvaAgentDO already uses for a group Ava turn
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
@@ -1005,21 +1007,229 @@ export async function forwardMsg(req: Request, env: Env, execCtx?: ExecutionCont
   return json({ ok: true, n_targets: nTargets, total_recipients: totalRecipients });
 }
 
+// ---- [AVA-REACT-1] WS-15 — reactions -----------------------------------------
+//
+// WHAT THE OLD COMMENT SAID, AND WHAT IS ACTUALLY TRUE. Since Phase 4
+// (ABLY-R2-4) this block claimed the route "durably stores it
+// (message_reactions) so it survives reopen and feeds 'reacted by' + restore".
+// Two separate things were wrong with that, and the spec that flagged it got
+// the diagnosis wrong in a third way — so, precisely:
+//
+//   1. The table DOES exist as a migration: worker/migrations/chat_reactions.sql
+//      (DB_META, PK (conv, target, uid, emoji)). The claim "no CREATE TABLE
+//      anywhere, the only grep hit is the comment itself" is FALSE — that grep
+//      must have been scoped to worker/src. Do not re-create this table.
+//   2. This ROUTE never wrote it. The write lived in the archive consumer
+//      (consumers/src/archive.ts archiveReaction), reached via Q_ARCHIVE —
+//      asynchronous, and wrapped in a catch that swallows a missing migration.
+//   3. THE REAL REASON NOBODY NOTICED: the client has never called this route
+//      at all. `kMsgReactUrl` is declared in app/lib/core/config.dart:210 and
+//      referenced from nowhere else in app/lib. Reactions have therefore been
+//      100% device-local plus the ephemeral client→client PartyDO relay
+//      (message_actions.dart → setup.dart) for their entire life. Nothing has
+//      ever reached the server, so `message_reactions` is empty regardless of
+//      whether the migration was ever applied.
+//   4. There was also NO READ PATH. Even a populated table fed nothing: no
+//      SELECT existed anywhere, so "survives reopen" could not have worked.
+//
+// WS-15 needs Ava to be able to put a heart on a bubble, and a heart that
+// vanishes on reopen is worse than no heart. So rather than delete the claim,
+// this change MAKES IT TRUE, using the EXISTING schema:
+//   * this route now writes D1 directly (synchronous, telemetered) instead of
+//     relying only on a consumer that may not be deployed,
+//   * GET /api/msg/reactions is the missing read half (mirrors pollState),
+//   * postAvaReaction below gives the Ava lane a way in.
+// The client still has to start calling both — reported to the client agent.
+//
+// TARGET IDENTITY. `target` is the message's CLIENT ID (evId on the client,
+// messages.client_id in each InboxDO), NEVER the InboxDO numeric `id`. The
+// numeric id is per-owner and differs between the two ends of the same
+// conversation, so it cannot key a shared reaction; the client already matches
+// on evId (_applyPartyReaction, chat_thread/inbound.dart). chat_reactions.sql's
+// column comment calls `target` "the message serial" — that was aspirational
+// and never exercised (see 3 above); evId is the only id both ends share.
+//
+// DELIVERY. Deliberately NOT a durable message-row control envelope. Following
+// pollVote's appendTo() fan-out literally would insert a row into every
+// member's InboxDO, which bumps `unread` in conv_meta and moves the thread's
+// last-message preview — so on every build already in production a reaction
+// would look like a new message, and reactions have never been message rows on
+// any shipped build. (Separately, pollVote's own fan-out is broken:
+// it passes {t:'vote', …} as the TOP-LEVEL append body, but the client parses
+// control envelopes out of the message BODY, so the payload lands with
+// body=NULL and no client ever sees it. Not fixed here — it is a live feature
+// outside this issue and fixing it changes what users see. Reported.)
+//
+// Instead:
+//   * D1 `message_reactions` is the durable source of truth (survives
+//     reinstall, feeds "reacted by" + restore — the thing the old comment
+//     promised),
+//   * live delivery uses the InboxDO's existing transient `POST /event`
+//     broadcast, which persists nothing and cannot bump an unread badge, and
+//     which older builds simply ignore because they do not know the frame type,
+//   * plus the existing PartyDO relay for the Ava path (see postAvaReaction).
+//
+// The write below is INSERT OR IGNORE on the same PK the archive consumer
+// uses, so the consumer's own write is a harmless no-op and the two paths can
+// coexist without a consumers deploy.
+const AVA_REACTOR_UID = "ava";
+
+type ReactionOp = "add" | "remove";
+
+/** Idempotent write of one (conv, target, uid, emoji) reaction. Column names
+ *  are chat_reactions.sql's — `uid`, not `reactor_uid`. */
+async function persistReaction(
+  env: Env, conv: string, target: string, reactor: string, emoji: string, op: ReactionOp,
+): Promise<void> {
+  if (op === "add") {
+    await env.DB_META.prepare(
+      `INSERT OR IGNORE INTO message_reactions (conv, target, uid, emoji, created_at)
+       VALUES (?1,?2,?3,?4,?5)`,
+    ).bind(conv, target, reactor, emoji, Date.now()).run();
+  } else {
+    await env.DB_META.prepare(
+      `DELETE FROM message_reactions WHERE conv=?1 AND target=?2 AND uid=?3 AND emoji=?4`,
+    ).bind(conv, target, reactor, emoji).run();
+  }
+}
+
+/**
+ * Live reaction frame → every listed uid's InboxDO as a TRANSIENT broadcast
+ * (`POST /event`, the same lane members_changed / ava_status use). Never
+ * persisted, never unread-bumping. `rid` is a per-emission unique id so a
+ * client that receives the same reaction over BOTH this lane and the PartyDO
+ * relay applies it once — the client already keeps exactly this kind of
+ * seen-set (`_seenEv`).
+ * Returns how many recipients had a live socket.
+ */
+async function fanReactionEvent(
+  env: Env, uids: string[], frame: Record<string, unknown>,
+): Promise<number> {
+  const body = JSON.stringify(frame);
+  let live = 0;
+  await Promise.all(uids.map(async (uid) => {
+    try {
+      const r = await env.INBOX.get(env.INBOX.idFromName(uid)).fetch("https://inbox/event", {
+        method: "POST", headers: { "content-type": "application/json" }, body,
+      });
+      try { if (((await r.json()) as { live?: boolean })?.live) live++; } catch { /* no body */ }
+    } catch { /* one unreachable inbox never fails a reaction */ }
+  }));
+  return live;
+}
+
+/**
+ * [AVA-REACT-1] Post a reaction AS AVA onto an existing message.
+ *
+ * This is the entry point the Ava agent lane (worker/src/do/ava_agent.ts —
+ * NOT owned by this issue) should call. It is the lightest-touch way for Ava
+ * to be present in a thread: no text, no interruption, nothing that can be
+ * embarrassing.
+ *
+ *   postAvaReaction(env, { conv, target, emoji })
+ *
+ * `target` MUST be the message's client id / evId (the value `recentWindow`
+ * now carries through as `clientId`), never the InboxDO numeric id.
+ *
+ * Durable in D1 immediately; delivered live over BOTH the InboxDO transient
+ * event lane (new builds) and the PartyDO thread room (works on builds already
+ * in production, since `_applyPartyReaction` in chat_thread/setup.dart already
+ * handles `{t:'reaction'}` — Ava gets a live heart on shipped clients with no
+ * client change at all). PartyDO is gated by PARTY_ENABLED and is ephemeral,
+ * so it is an enhancement, never the mechanism.
+ *
+ * Never throws: an Ava reaction that fails must not fail the turn that
+ * produced it.
+ */
+export async function postAvaReaction(
+  env: Env,
+  args: { conv: string; target: string; emoji: string; op?: ReactionOp; reactorUid?: string; whoName?: string },
+  execCtx?: ExecutionContext,
+): Promise<{ ok: boolean; live: number; error?: string }> {
+  const conv = String(args.conv || "");
+  const target = String(args.target || "");
+  const emoji = String(args.emoji || "").slice(0, 16);
+  const op: ReactionOp = args.op === "remove" ? "remove" : "add";
+  const reactor = String(args.reactorUid || AVA_REACTOR_UID);
+  const whoName = String(args.whoName || "Ava");
+  if (!conv || !target || !emoji) return { ok: false, live: 0, error: "conv, target, emoji required" };
+
+  try {
+    await persistReaction(env, conv, target, reactor, emoji, op);
+  } catch (e) {
+    // No silent catch: a lost Ava reaction is a real (if small) product failure.
+    bg(execCtx, env, "ava_reaction_persist", Promise.reject(e));
+    return { ok: false, live: 0, error: "db" };
+  }
+
+  const mem = await members(env, conv).catch(() => [] as string[]);
+  const rid = crypto.randomUUID();
+  const ts = Date.now();
+  const live = await fanReactionEvent(env, mem, {
+    type: "reaction", rid, conv, mid: target, emoji, add: op === "add",
+    from: reactor, whoName, ts,
+  });
+  // Live-feel enhancement on builds already in the field. Same frame shape the
+  // client→client relay uses (chat_thread/message_actions.dart), with `from`
+  // stamped explicitly so PartyDO does not label it "server".
+  if (env.PARTY_ENABLED === "1") {
+    // bg(), not a bare `void` — workerd terminates unawaited promises on a
+    // returning path, which is how "the emit isn't in the taxonomy" bugs start.
+    bg(execCtx, env, "ava_reaction_party", partyEmit(env, `thread:${conv}`, {
+      t: "reaction", rid, mid: target, emoji, add: op === "add", from: reactor, whoName,
+    }));
+  }
+
+  // Ava reacting in a thread is inherently multi-party, so EVERY participant's
+  // email rides the event — any of them retrieves the interaction in PostHog
+  // (CLAUDE.md: new telemetry must carry the user's email; two-sided features
+  // tag both parties). Capped so a large group can't fan out unbounded lookups.
+  const emails = (await Promise.all(
+    mem.slice(0, 8).map((u) => emailOf(env, u).catch(() => null)),
+  )).filter(Boolean);
+  bg(execCtx, env, "ava_reaction", env.Q_ANALYTICS.send({
+    event: "ava_reaction", uid: reactor, ts,
+    props: {
+      conv, emoji, op, recipients: mem.length, delivered_live: live,
+      party: env.PARTY_ENABLED === "1", group: mem.length > 2,
+      email: emails[0] ?? null, emails,
+      account_id: reactor, app_name: "avatok", service_name: "avatok-api", worker: true,
+    },
+  }));
+  return { ok: true, live };
+}
+
 // ---- POST /api/msg/react ----------------------------------------------------
-// Phase 4 (ABLY-R2-4): persist a per-message reaction toggle. The LIVE reaction
-// rides Ably (client→react:<conv>) for instant feedback; this call durably stores
-// it (message_reactions) so it survives reopen and feeds "reacted by" + restore.
-export async function reactMsg(req: Request, env: Env): Promise<Response> {
+// Human reaction toggle. Body: { conv, target, emoji, op?: 'add'|'remove' }.
+//
+// Behaviour change vs before: the reaction is now DURABLY STORED (see the
+// block comment above). Live delivery is unchanged — the sender's own device
+// already relays `{t:'reaction'}` over the PartyDO thread room to connected
+// peers (message_actions.dart), so the server deliberately does NOT also emit
+// on this path; doing so would apply the same reaction twice on any peer that
+// received both and double the count until the next hydrate.
+export async function reactMsg(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const conv = String(b.conv || "");
   const target = String(b.target || "");
-  const emoji = String(b.emoji || "");
-  const op = b.op === "remove" ? "remove" : "add";
+  const emoji = String(b.emoji || "").slice(0, 16);
+  const op: ReactionOp = b.op === "remove" ? "remove" : "add";
   if (!conv || !target || !emoji) return json({ error: "conv, target, emoji required" }, 400);
   const mem = await members(env, conv);
   if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+
+  let stored = true;
+  try {
+    await persistReaction(env, conv, target, ctx.uid, emoji, op);
+  } catch {
+    // Fail OPEN for the caller: the live reaction already rendered on both
+    // devices via the party relay, so a D1 hiccup must not surface as an error
+    // on a tap. It IS telemetered below (`stored:false`) so a persistent
+    // failure is visible rather than silent.
+    stored = false;
+  }
 
   if (env.Q_ARCHIVE) {
     try {
@@ -1027,14 +1237,56 @@ export async function reactMsg(req: Request, env: Env): Promise<Response> {
         type: "reaction", conv, target, sender: ctx.uid, emoji, op,
         serial: "", kind: "reaction", created_at: Date.now(),
       });
-    } catch { /* best-effort; the live Ably reaction already showed */ }
+    } catch { /* best-effort; the live party reaction already showed */ }
   }
+  // Email so a future PostHog pull can identify whose device this came from
+  // (CLAUDE.md telemetry rule). Emitted through bg() rather than a bare `void`
+  // because this is an early-return-shaped route and workerd drops unawaited
+  // telemetry on those paths.
+  const email = await emailOf(env, ctx.uid).catch(() => null);
+  bg(execCtx, env, "chat_reaction", env.Q_ANALYTICS.send({
+    event: "chat_reaction", uid: ctx.uid, ts: Date.now(),
+    props: { conv, emoji, op, stored, group: mem.length > 2, email, account_id: ctx.uid,
+      app_name: "avatok", service_name: "avatok-api", worker: true },
+  }));
+  return json({ ok: true, stored });
+}
+
+// ---- GET /api/msg/reactions?conv=<id> ----------------------------------------
+// [AVA-REACT-1] Thread-open hydrate, mirroring pollState: batch-load every
+// stored reaction for one conversation so a reinstalled / new / previously
+// offline device shows the correct counts and "reacted by" sets. This is the
+// read half that makes reactions genuinely durable — without it the table
+// would be write-only, which is barely better than the comment that used to
+// claim it existed.
+//   → { reactions: { <target>: { <emoji>: [uid, …] } } }
+// `uid` is 'ava' for Ava's own reactions.
+export async function reactionsState(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const conv = new URL(req.url).searchParams.get("conv") || "";
+  if (!conv) return json({ error: "conv required" }, 400);
+  const mem = await members(env, conv);
+  if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+  // Served by chat_reactions.sql's idx_msgreact_target(conv, target) — its
+  // leading column is `conv`, so this needs no new index.
+  let rows: { results?: { target: string; uid: string; emoji: string }[] };
   try {
-    void env.Q_ANALYTICS.send({ event: "chat_reaction", uid: ctx.uid, ts: Date.now(),
-      props: { conv, emoji, op, group: mem.length > 2, account_id: ctx.uid,
-        app_name: "avatok", service_name: "avatok-api", worker: true } });
-  } catch { /* best-effort */ }
-  return json({ ok: true });
+    rows = await env.DB_META
+      .prepare(`SELECT target, uid, emoji FROM message_reactions WHERE conv=?1`)
+      .bind(conv).all<{ target: string; uid: string; emoji: string }>();
+  } catch {
+    // chat_reactions.sql may not be applied on every environment (the archive
+    // consumer guards its write for the same reason). An unhydratable thread
+    // must open normally with no reactions, not 500.
+    return json({ reactions: {}, available: false });
+  }
+  const reactions: Record<string, Record<string, string[]>> = {};
+  for (const r of (rows.results || [])) {
+    const byEmoji = reactions[r.target] || (reactions[r.target] = {});
+    (byEmoji[r.emoji] || (byEmoji[r.emoji] = [])).push(r.uid);
+  }
+  return json({ reactions, available: true });
 }
 
 // ---- POST /api/poll/vote ----------------------------------------------------
@@ -1656,10 +1908,11 @@ async function convIsGroup(env: Env, conv: string): Promise<boolean> {
 // 4g gate). Writing 'companion' here with the platform flags still off is a
 // complete no-op for user-visible behavior.
 //
-// NOT YET WIRED into worker/src/index.ts's route dispatcher — see this
-// issue's final report for the exact lines to add
-// (/api/conversations/ava/state, /api/conversations/ava/member-prefs);
-// index.ts is outside this issue's declared file set.
+// WIRED AND LIVE. (This comment previously said "NOT YET WIRED into
+// worker/src/index.ts" and had been stale for some time — corrected by
+// [AVA-TOGGLE-DM-1]. Both pairs are mounted in index.ts:
+// GET/PUT /api/conversations/ava/state and
+// GET/PUT /api/conversations/ava/member-prefs.)
 
 // ---- GET /api/conversations/ava/state?conv=ID --------------------------------
 export async function convAvaGroupStateGet(req: Request, env: Env): Promise<Response> {
@@ -1748,6 +2001,147 @@ export async function convAvaMemberPrefsPut(req: Request, env: Env): Promise<Res
   const next = await setMemberPrefs(env, conv, ctx.uid, patch);
   trackGroup(env, ctx.uid, "group_ava_member_muted", { conv, muted: next.muted, muted_capabilities_count: next.mutedCapabilities.length });
   return json({ conv, uid: ctx.uid, muted: next.muted, muted_capabilities: next.mutedCapabilities, updated_at: next.updatedAt });
+}
+
+// ---- [AVA-TOGGLE-DM-1] WS-17 — per-thread Ava toggle for 1:1 ----------------
+//
+// The group implementation above is done and good, so this COPIES it rather
+// than redesigning: same 'off' | 'assistant' | 'companion' vocabulary, same
+// disclosure notice on an actual change, same "the routes move rows; a
+// platform flag decides whether anything reads them" split. Policy lives in
+// lib/ava_group_policy.ts (getDmState / setDmState / effectiveDmMode); the
+// table is worker/migrations/2026-08-07-ava-dm-state.sql.
+//
+// THE ONE REAL DIFFERENCE: a DM has no owner and no admin, so EITHER
+// participant may set it, each stores their OWN row, and the pair's effective
+// mode is the MOST RESTRICTIVE of the two. Turning Ava OFF is unilateral;
+// turning her ON is a request that only holds while the peer has not turned
+// her off. Ava reads BOTH sides of a 1:1, so one person switching her on would
+// enroll the other person's messages into observation without their consent —
+// consent has to be unanimous, refusal cannot be. Full reasoning in the
+// ava_group_policy.ts section header and the migration header.
+//
+// SHIPS DARK, AND THE DARKNESS IS ENFORCED HERE, NOT JUST DOWNSTREAM. Unlike
+// the group routes (which are deliberately reachable while dark so a client
+// can render the toggle early), these routes are gated on remote-config
+// `avaDmToggleEnabled`, which is `false` in production today:
+//   * GET  returns { enabled:false, mode:'off', effective_mode:'off' } — the
+//     client can detect the feature is off and hide the control, with no D1
+//     read and no row implied;
+//   * PUT  returns 403 feature_disabled and writes NOTHING, so not one row can
+//     be created and not one disclosure notice can be posted while dark.
+// `effectiveDmMode()` independently short-circuits to 'off' on the same flag
+// before touching D1, so even a caller that bypassed these routes gets 'off'.
+//
+// The DEFAULT for a participant with no row is read from `avaDmDefaultOn`
+// (also false today) — never hardcoded. The owner wants Ava on by default in
+// DMs; that is his flag flip to make, with his own eyes on it.
+
+/** Both participants of a 1:1 conv. Empty when `conv` is not a 2-person DM. */
+async function dmParticipants(env: Env, conv: string): Promise<string[]> {
+  if (await convIsGroup(env, conv)) return [];
+  const mem = await members(env, conv);
+  return mem.length === 2 ? mem : [];
+}
+
+// ---- GET /api/conversations/ava/dm-state?conv=ID -----------------------------
+// Returns MY stored preference (`mode`) and the mode that actually governs the
+// thread (`effective_mode`). It deliberately does NOT return the peer's row:
+// "your peer switched Ava off" is itself a disclosure about the peer's
+// settings. The client renders `effective_mode` honestly ("Ava is off in this
+// chat") without attributing it to anyone.
+export async function convAvaDmStateGet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const conv = new URL(req.url).searchParams.get("conv") || "";
+  if (!conv) return json({ error: "conv required" }, 400);
+
+  const cfg = await readConfig(env);
+  if (cfg.avaDmToggleEnabled !== true) {
+    // Inert: no membership query, no D1 read, no row implied.
+    return json({ conv, enabled: false, mode: "off", effective_mode: "off", default_on: false });
+  }
+  const participants = await dmParticipants(env, conv);
+  if (!participants.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+
+  const [mine, effective] = await Promise.all([
+    getDmState(env, conv, ctx.uid, cfg),
+    effectiveDmMode(env, conv, participants, cfg),
+  ]);
+  return json({
+    conv, enabled: true, mode: mine.mode, effective_mode: effective,
+    is_default: mine.isDefault, default_on: cfg.avaDmDefaultOn === true,
+    policy_version: mine.policyVersion, updated_at: mine.updatedAt,
+  });
+}
+
+// ---- PUT /api/conversations/ava/dm-state  { conv, mode } ---------------------
+// EITHER participant, SELF ONLY — `uid` is always ctx.uid, so one participant
+// can never write the other's row regardless of the request body (the same
+// self-only rule as convAvaMemberPrefsPut).
+//
+// On an ACTUAL change to the EFFECTIVE mode, posts the peer-visible disclosure
+// notice through postAvaMessage(..., private:false) — the same Ava-identified
+// fan-out the group path uses, so the notice reads as Ava, never as the person
+// who flipped the switch. It fires on the EFFECTIVE mode rather than the
+// caller's own row because that is what actually changed for the other person:
+// switching your own row to 'companion' while your peer has Ava off changes
+// nothing observable, and announcing it would leak the peer's setting.
+export async function convAvaDmStatePut(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const mode = String(b.mode || "");
+  if (!conv || (mode !== "off" && mode !== "assistant" && mode !== "companion")) {
+    return json({ error: "conv and mode(off|assistant|companion) required" }, 400);
+  }
+
+  const cfg = await readConfig(env);
+  // Hard stop while dark — nothing is written, so no row and no notice can
+  // exist before the owner flips avaDmToggleEnabled with his eyes on it.
+  if (cfg.avaDmToggleEnabled !== true) return json({ error: "feature_disabled" }, 403);
+
+  const participants = await dmParticipants(env, conv);
+  if (participants.length !== 2) return json({ error: "not a dm" }, 400);
+  if (!participants.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+
+  const beforeEffective = await effectiveDmMode(env, conv, participants, cfg);
+  const next = await setDmState(env, conv, ctx.uid, mode as DmAvaMode);
+  const afterEffective = await effectiveDmMode(env, conv, participants, cfg);
+
+  const email = await emailOf(env, ctx.uid).catch(() => null);
+  const peer = participants.find((u) => u !== ctx.uid) ?? null;
+  // Two-sided by nature (it governs what Ava may read of BOTH people), so the
+  // peer's email rides along too — either party's telemetry retrieves it.
+  const peerEmail = peer ? await emailOf(env, peer).catch(() => null) : null;
+  bg(execCtx, env, "dm_ava_mode_set", env.Q_ANALYTICS.send({
+    event: afterEffective === "off" ? "dm_ava_disabled" : "dm_ava_enabled",
+    uid: ctx.uid, ts: Date.now(),
+    props: {
+      conv, mode: next.mode, prev_effective: beforeEffective, effective_mode: afterEffective,
+      effective_changed: beforeEffective !== afterEffective,
+      overridden_by_peer: next.mode !== afterEffective,
+      email, peer_email: peerEmail, account_id: ctx.uid,
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    },
+  }));
+
+  if (beforeEffective !== afterEffective) {
+    const notice = afterEffective === "companion"
+      ? "Ava is now ON for this chat. Ava may observe the messages here to help either of you — suggestions, reminders, or the occasional reaction — always clearly marked as Ava. Either of you can switch Ava off for this chat at any time, and switching off applies to both sides."
+      : afterEffective === "assistant"
+        ? "Ava is now limited to direct requests in this chat. Ava will only respond when one of you asks her directly, and will not observe or comment otherwise."
+        : "Ava is now OFF for this chat — no observation, suggestions, or memory. Either participant can switch Ava off, and it applies to both sides.";
+    try {
+      await postAvaMessage(env, { ownerUid: ctx.uid, conv, text: notice, private: false, source: "dm_toggle_disclosure" });
+    } catch { /* best-effort — the state change itself already succeeded */ }
+  }
+
+  return json({
+    conv, enabled: true, mode: next.mode, effective_mode: afterEffective,
+    default_on: cfg.avaDmDefaultOn === true, updated_at: next.updatedAt,
+  });
 }
 
 // Notify newly-added group members: a dedicated FCM "group_invite" wake (taps

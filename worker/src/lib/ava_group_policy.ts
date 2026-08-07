@@ -5,6 +5,11 @@
 //   ava_group_state        — one row per group conv: mode, budget, cooldown.
 //   ava_group_member_prefs — one row per (conv, uid): mute + muted capabilities.
 //
+// [AVA-TOGGLE-DM-1] WS-17 also added the 1:1 equivalent to the bottom of this
+// file (ava_dm_state, worker/migrations/2026-08-07-ava-dm-state.sql) — same
+// mode vocabulary, same fail-closed posture, but one row PER PARTICIPANT
+// because a DM has no admin. See the section header there.
+//
 // STAYS DARK end-to-end. Reaching ANY user-visible output out of this module
 // requires ALL of: odlEnabled && avaMomentsEnabled && avaGroupCompanionEnabled
 // (worker/src/routes/config.ts, all default false) AND the specific group's
@@ -234,6 +239,165 @@ export async function memberRole(env: Env, conv: string, uid: string): Promise<s
 export async function isGroupAdmin(env: Env, conv: string, uid: string): Promise<boolean> {
   const role = await memberRole(env, conv, uid);
   return role === "owner" || role === "admin";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [AVA-TOGGLE-DM-1] WS-17 — per-thread Ava toggle for 1:1 conversations.
+//
+// A deliberate COPY of the group model above, not a redesign. Same `mode`
+// vocabulary (off | assistant | companion), same fail-closed posture, same
+// "the routes only move rows; the platform flag decides whether anything
+// reads them" split. Table: worker/migrations/2026-08-07-ava-dm-state.sql.
+//
+// THE ONE REAL DIFFERENCE: a DM has no owner and no admin, so there is nobody
+// with the standing to decide for the other person. ava_dm_state therefore
+// holds ONE ROW PER PARTICIPANT and the pair's effective mode is the MOST
+// RESTRICTIVE of the two (off < assistant < companion).
+//
+//   * Turning Ava OFF is unilateral — either participant can, and it is off
+//     for the thread. This is the safe reading, and it is the correct one:
+//     Ava reads BOTH sides of a 1:1, so one person switching her on would
+//     enroll the other person's messages into model observation without their
+//     consent. Consent has to be unanimous; refusal cannot be.
+//   * Turning Ava ON is a request. It takes effect only while the peer has
+//     not turned her off. Nothing tells the enabling participant that the peer
+//     has overridden them — deliberately: "your peer has Ava switched off" is
+//     itself a disclosure about the peer's settings. The GET route returns
+//     `effective_mode` so the client can render honestly ("Ava is off in this
+//     chat") without attributing it.
+//   * A participant with NO ROW is treated as the platform default, read from
+//     remote config `avaDmDefaultOn` — never a hardcoded constant here. The
+//     owner wants Ava on by default in DMs; that is a flag flip he makes with
+//     his own eyes on it, not a default baked into this file.
+//
+// INERT WHILE DARK: effectiveDmMode() returns 'off' on the flag check, BEFORE
+// any D1 read. With `avaDmToggleEnabled` false (its production value today)
+// this module makes no query and can return nothing but 'off'.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Same vocabulary as GroupAvaMode — one policy language across both surfaces. */
+export type DmAvaMode = GroupAvaMode;
+
+export interface DmAvaState {
+  conv: string;
+  uid: string;
+  mode: DmAvaMode;
+  policyVersion: number;
+  updatedAt: number;
+  /** True when no row exists and `mode` came from `avaDmDefaultOn`. */
+  isDefault: boolean;
+}
+
+/** Restrictiveness order. Lower = less Ava. Used by effectiveDmMode's min(). */
+const DM_MODE_RANK: Record<DmAvaMode, number> = { off: 0, assistant: 1, companion: 2 };
+
+function normDmMode(v: unknown): DmAvaMode | null {
+  const s = String(v ?? "");
+  return s === "off" || s === "assistant" || s === "companion" ? s : null;
+}
+
+/**
+ * The mode a participant with no stored row is treated as having.
+ * `avaDmDefaultOn` true → 'companion' (Ava fully on), false → 'off'.
+ * Read from remote config every time; never cached, never hardcoded.
+ */
+export function dmDefaultMode(cfg: { avaDmDefaultOn?: boolean }): DmAvaMode {
+  return cfg.avaDmDefaultOn === true ? "companion" : "off";
+}
+
+/** One participant's OWN stored preference (or the platform default if unset). */
+export async function getDmState(
+  env: Env, conv: string, uid: string, cfg: { avaDmDefaultOn?: boolean },
+): Promise<DmAvaState> {
+  const fallback: DmAvaState = {
+    conv, uid, mode: dmDefaultMode(cfg), policyVersion: POLICY_VERSION, updatedAt: 0, isDefault: true,
+  };
+  try {
+    const r = await env.DB_META.prepare(
+      `SELECT mode, policy_version, updated_at FROM ava_dm_state WHERE conv=?1 AND uid=?2`,
+    ).bind(conv, uid).first<{ mode: string; policy_version: number; updated_at: number }>();
+    if (!r) return fallback;
+    return {
+      conv, uid,
+      mode: normDmMode(r.mode) ?? "off",
+      policyVersion: Number(r.policy_version ?? POLICY_VERSION),
+      updatedAt: Number(r.updated_at ?? 0),
+      isDefault: false,
+    };
+  } catch {
+    // Fail CLOSED, exactly like getGroupState: a D1 hiccup must never cause an
+    // unsolicited Ava post. It may only ever cause a missed one. Note this
+    // deliberately does NOT fall back to the platform default — an unreadable
+    // row is not the same as an absent one.
+    return { ...fallback, mode: "off", isDefault: false };
+  }
+}
+
+export async function setDmState(
+  env: Env, conv: string, uid: string, mode: DmAvaMode,
+): Promise<DmAvaState> {
+  const now = Date.now();
+  await env.DB_META.prepare(
+    `INSERT INTO ava_dm_state (conv, uid, mode, policy_version, updated_at)
+     VALUES (?1,?2,?3,?4,?5)
+     ON CONFLICT(conv, uid) DO UPDATE SET
+       mode = excluded.mode,
+       updated_at = excluded.updated_at`,
+  ).bind(conv, uid, mode, POLICY_VERSION, now).run();
+  return { conv, uid, mode, policyVersion: POLICY_VERSION, updatedAt: now, isDefault: false };
+}
+
+/**
+ * The mode that actually governs this DM: the MOST RESTRICTIVE preference held
+ * by any current participant (see the header — either party turning Ava off
+ * wins, because Ava reads both sides).
+ *
+ * `participants` must be the conversation's CURRENT member uids. Any
+ * participant without a row counts as `avaDmDefaultOn`'s default.
+ *
+ * GATE ORDER MATTERS. The `avaDmToggleEnabled` check is FIRST and returns
+ * before any D1 query, so while the flag is false (production today) this
+ * function is a pure constant and the whole feature is inert.
+ *
+ * Fails CLOSED to 'off' on any error.
+ */
+export async function effectiveDmMode(
+  env: Env,
+  conv: string,
+  participants: string[],
+  cfg: { avaDmToggleEnabled?: boolean; avaDmDefaultOn?: boolean },
+): Promise<DmAvaMode> {
+  if (cfg.avaDmToggleEnabled !== true) return "off"; // ships dark — no read, no effect
+  const uids = [...new Set(participants.filter(Boolean))];
+  if (uids.length === 0) return "off";
+  const fallback = dmDefaultMode(cfg);
+  try {
+    const rows = await env.DB_META.prepare(
+      `SELECT uid, mode FROM ava_dm_state WHERE conv=?1`,
+    ).bind(conv).all<{ uid: string; mode: string }>();
+    const stored = new Map<string, DmAvaMode>();
+    for (const r of rows.results ?? []) {
+      const m = normDmMode(r.mode);
+      if (m) stored.set(r.uid, m);
+    }
+    let rank = DM_MODE_RANK.companion;
+    for (const u of uids) {
+      const m = stored.get(u) ?? fallback;
+      rank = Math.min(rank, DM_MODE_RANK[m]);
+      if (rank === 0) return "off"; // someone said no — nothing else can raise it
+    }
+    return (Object.keys(DM_MODE_RANK) as DmAvaMode[]).find((k) => DM_MODE_RANK[k] === rank) ?? "off";
+  } catch {
+    return "off"; // fail CLOSED
+  }
+}
+
+/** Convenience for call sites that only care "may Ava observe/contribute here?". */
+export async function isDmAvaOn(
+  env: Env, conv: string, participants: string[],
+  cfg: { avaDmToggleEnabled?: boolean; avaDmDefaultOn?: boolean },
+): Promise<boolean> {
+  return (await effectiveDmMode(env, conv, participants, cfg)) !== "off";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

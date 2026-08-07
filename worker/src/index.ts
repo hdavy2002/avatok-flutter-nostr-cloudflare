@@ -69,7 +69,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead, clearNotifications } from "./routes/notifications";
-import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, msgReceiptBatch, msgSeenState, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear, convAvaGroupStateGet, convAvaGroupStatePut, convAvaMemberPrefsGet, convAvaMemberPrefsPut } from "./routes/messaging"; // [AVA-GROUP-COMPANION-1]: group-Ava state + member-prefs handlers
+import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, msgReceiptBatch, msgSeenState, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convSetAvatar, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear, convAvaGroupStateGet, convAvaGroupStatePut, convAvaMemberPrefsGet, convAvaMemberPrefsPut, reactionsState, convAvaDmStateGet, convAvaDmStatePut } from "./routes/messaging"; // [AVA-GROUP-COMPANION-1]: group-Ava state + member-prefs handlers; [AVA-REACT-1]: reactionsState; [AVA-TOGGLE-DM-1]: 1:1 Ava toggle
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getAvaVoiceStyle, putAvaVoiceStyle } from "./routes/ava_voice_style"; // [AVA-VOICE-STYLE-1] WS-14 — how Ava speaks
@@ -571,7 +571,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
       if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);
       // Phase 4 (ABLY-R2-4): persist a per-message reaction (live ride is Ably).
-      if (p === "/api/msg/react" && req.method === "POST") return await reactMsg(req, env);
+      if (p === "/api/msg/react" && req.method === "POST") return await reactMsg(req, env, ctx);
+      // [AVA-REACT-1] Thread-open hydrate for durably-stored reactions (mirrors
+      // /api/poll/state). The read half of the message_reactions table.
+      if (p === "/api/msg/reactions" && req.method === "GET") return await reactionsState(req, env);
       // Phase 5 (ABLY-R2-5): owner-private state from D1 (read/hidden/call-log).
       if (p === "/api/msg/state" && req.method === "GET") return await stateMsg(req, env);
       // 2026-07-04: server-persisted poll votes (survive reinstall/backup).
@@ -615,6 +618,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/conversations/ava/state" && req.method === "PUT") return await convAvaGroupStatePut(req, env);
       if (p === "/api/conversations/ava/member-prefs" && req.method === "GET") return await convAvaMemberPrefsGet(req, env);
       if (p === "/api/conversations/ava/member-prefs" && req.method === "PUT") return await convAvaMemberPrefsPut(req, env);
+      // [AVA-TOGGLE-DM-1] Per-thread Ava toggle for 1:1. Unlike the group pair
+      // above, these are gated on remote-config avaDmToggleEnabled (false in
+      // production today): GET reports enabled:false, PUT refuses 403 and
+      // writes nothing, so the feature is fully inert until the flag is flipped.
+      if (p === "/api/conversations/ava/dm-state" && req.method === "GET") return await convAvaDmStateGet(req, env);
+      if (p === "/api/conversations/ava/dm-state" && req.method === "PUT") return await convAvaDmStatePut(req, env, ctx);
       // --- AI Messenger Batch 2026-07-03 route mounts ---
       // STREAM I: unlimited forwarding (no-copy fan-out; requires liveness when gate ON)
       if (p === "/api/msg/forward" && req.method === "POST") return await forwardMsg(req, env, ctx);
