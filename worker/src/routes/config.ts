@@ -78,6 +78,66 @@ export interface PlatformConfig {
    */
   callSfuAudioOnly: boolean;
   /**
+   * [CALL-AUDIO-OWNER-1 2026-08-07] ONE owner for the call audio session.
+   *
+   * The client side of this shipped already; the key was never declared here, so
+   * it was a FAKE flag (CLAUDE.md): `putConfig` would 400 `unknown key` and the
+   * client's `_b('callAudioOwnerV1', true)` fallback was its permanent value.
+   * Declared now so the brake can actually be pulled from KV. Default TRUE =
+   * the shipped behaviour, so adding it changes nothing today.
+   * Boolean → NOT in numericKeys. Client mirror: RemoteConfig.callAudioOwnerV1.
+   */
+  callAudioOwnerV1: boolean;
+  /**
+   * [CALL-RING-FASTPATH-1 2026-08-07] Trim the pre-ring critical path of
+   * POST /api/call.
+   *
+   * MEASURED IN PROD 2026-08-07, one real call: dial → `call_ws_ring_sent` was
+   * 3.6 s (observed as high as 4.8 s). Everything in that window was a SERIAL
+   * await in front of the ring — blocklist D1, contact-policy D1, KV config,
+   * primary-D1 token count, the caller identity profile read, the glare pair-DO
+   * hop, the participants DO hop — and most of it cannot change WHETHER a ring
+   * is sent, only what is written on it or what happens twenty seconds later.
+   *
+   * When TRUE, everything that cannot gate the ring runs CONCURRENTLY (one
+   * Promise.all batch) or after the response (`waitUntil`), leaving only the
+   * three hops that are load-bearing: admission → glare → participants → ring.
+   * When FALSE the old serial order is restored exactly, so this is a real,
+   * instant rollback with no rebuild. Boolean → NOT in numericKeys.
+   */
+  callRingFastPath: boolean;
+  /**
+   * [CALL-PRESENCE-1 2026-08-07] Presence-FIRST call routing.
+   *
+   * Until now there was no heartbeat anywhere: "presence" was only the
+   * side-effect of the WS ring landing on an open socket in the callee's
+   * InboxDO. On 2026-08-07 that ring came back `live:false` at +3.6 s — the
+   * server KNEW the callee was offline — and the caller still waited until +28 s
+   * before Ava took over. When TRUE, `/api/call` reads a real presence record
+   * (written by POST /api/presence/beat) BEFORE the DO round-trips and routes a
+   * provably-offline, no-token callee straight to the receptionist.
+   *
+   * Fails OPEN in every ambiguous case: no record, no presence store configured,
+   * or a read error all mean `presence:'unknown'` and a completely normal ring.
+   * Boolean → NOT in numericKeys.
+   */
+  callPresenceRouting: boolean;
+  /**
+   * [CALL-PRESENCE-1] How long a presence beat is treated as FRESH, in seconds.
+   * Must comfortably exceed `presenceHeartbeatSec` (a device that misses two
+   * beats to a radio nap is not offline). NUMERIC → it MUST also appear in
+   * `numericKeys` below or `flags.sh set presenceFreshSec=120` 400s `bad type`.
+   * Client mirror: RemoteConfig.presenceFreshSec.
+   */
+  presenceFreshSec: number;
+  /**
+   * [CALL-PRESENCE-1] How often a connected device sends POST /api/presence/beat,
+   * in seconds. Drives the client's beat cadence (it rides the existing 25 s
+   * SyncHub ping tick, so smaller values than 25 have no effect). NUMERIC → also
+   * in numericKeys. Client mirror: RemoteConfig.presenceHeartbeatSec.
+   */
+  presenceHeartbeatSec: number;
+  /**
    * [CALLREC-SERVER-1] MASTER kill switch for on-demand call recording
    * (Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md). Gates the Record tile on
    * the client AND every /api/callrec/* route on the server, so flipping it off
@@ -1066,6 +1126,21 @@ const DEFAULTS: PlatformConfig = {
   // flipping this back to false is a full, instant rollback with no rebuild.
   callSfuV1: false,
   callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
+  // [CALL-AUDIO-OWNER-1] Already-shipped client behaviour, declared here so the
+  // key exists and can be flipped. TRUE = today's behaviour; false restores the
+  // pre-[CALL-AUDIO-OWNER-1] multi-owner audio session without a rebuild.
+  callAudioOwnerV1: true,
+  // [CALL-RING-FASTPATH-1] ON: only admission → glare → participants → ring stay
+  // on the pre-ring await chain. Flip false in KV to restore the old fully-serial
+  // order (3.6-4.8s to call_ws_ring_sent) with no rebuild.
+  callRingFastPath: true,
+  // [CALL-PRESENCE-1] ON: read the callee's heartbeat before the DO round-trips
+  // and send a provably-offline, zero-token callee straight to Ava instead of
+  // making the caller wait out a 20s ring nobody can hear. Fails open to a normal
+  // ring whenever presence is unknown.
+  callPresenceRouting: true,
+  presenceFreshSec: 90,            // numeric → numericKeys. ~3.6 missed 25s beats.
+  presenceHeartbeatSec: 25,        // numeric → numericKeys. Rides the existing SyncHub ping tick.
   // [CALLREC-SERVER-1] On-demand call recording. Ships OFF — the Android capture
   // layer is unproven and /api/callrec/* 403s while this is false. The indicator
   // (the peer's only warning that recording started) defaults ON.
@@ -1618,6 +1693,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [CALLREC-SERVER-1] device free-space floor for the call recorder — numeric,
     // must be here or `flags.sh set callRecordingMinFreeMb=750` 400s `bad type`.
     "callRecordingMinFreeMb",
+    // [CALL-PRESENCE-1 2026-08-07] heartbeat freshness + cadence — numeric, must
+    // be here or `flags.sh set presenceFreshSec=120` 400s `bad type`.
+    "presenceFreshSec", "presenceHeartbeatSec",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",

@@ -11,9 +11,11 @@ import { json, sha256Hex, normalizePhone } from "../util";
 import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
-import { emailFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor } from "../lib/identity";
+import { emailFor, phoneFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor } from "../lib/identity";
 import { admitCall, unavailableBody, CALLER_VISIBLE_OUTCOME } from "../lib/call_admission";
-import { track, trackUser, trackException } from "../hooks";
+import { track, trackUser, trackUserContact, trackException } from "../hooks";
+// [CALL-PRESENCE-1] The real device heartbeat (Upstash-backed, no DO wake).
+import { readPresenceRecord, type PresenceRecord, type PresenceState } from "../lib/presence";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
@@ -21,7 +23,7 @@ import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
 import { CALL_ROOM_TOKEN_LIFETIME_MS } from "../lib/call_room_auth";
 import { receptionistNoAnswerEligibility } from "./receptionist";
-import { callerContactPolicy, shouldRouteUnknownAvatokCaller } from "../lib/call_contact_directory";
+import { callerContactPolicy, shouldRouteUnknownAvatokCaller, type ContactPolicy } from "../lib/call_contact_directory";
 // [WP1] Event-sourced call stream (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §13/§14)
 import { emitCallEvent, emitRoutingDecision, newTraceId, EVENT_SCHEMA_VERSION } from "../lib/call_events";
 import { buildCallSnapshot } from "../lib/call_snapshot";
@@ -187,7 +189,65 @@ export async function accountDevice(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, active: !!active });
 }
 
+// ── [CALL-RING-FASTPATH-1 2026-08-07] CALLER IDENTITY, MEMOISED PER ISOLATE ──
+//
+// `publicIdentityFor` is a D1 profile read and its answer changes only when the
+// caller edits their own profile — yet it was awaited in front of every single
+// ring. Same reasoning (and same shape) as the admission verdict cache in
+// lib/call_admission.ts: per-isolate, in-memory, bounded, short TTL. A cold
+// isolate still pays for it once; the second call from the same caller does not.
+//
+// ONLY successful lookups are cached. Caching a `null` would pin "we could not
+// read your profile" and re-introduce the uid-as-caller-name bug that
+// [CALL-IDENTITY-SNAPSHOT-1] fixed.
+//
+// The TTL is 60 s, not "as long as we can get away with", because
+// [CALL-IDENTITY-SNAPSHOT-1] promises that a caller who renames their profile
+// mid-ring keeps the old name for THAT call and "the next call picks up the new
+// one". A long cache would quietly break that promise. 60 s still removes the
+// read from redials and from the retry-after-no-answer pattern, which is where
+// it actually costs anything.
+type CallerIdentity = Awaited<ReturnType<typeof publicIdentityFor>>;
+const identityCache = new Map<string, { v: CallerIdentity; at: number }>();
+const IDENTITY_TTL_MS = 60_000;
+/**
+ * How long the RING will wait for a cold identity lookup before going out with
+ * the client-supplied name. Generous on purpose: this is a tail-latency cap, not
+ * a budget we expect to spend. If it does fire the WS ring carries the caller's
+ * own `fromName` (their local ProfileStore display name — in practice the same
+ * string) while the FCM copy still carries the authoritative profile, so the
+ * worst case is the pre-existing WS-then-FCM refresh, not a wrong name.
+ */
+const IDENTITY_RING_BUDGET_MS = 600;
+
+function cachedIdentity(uid: string): CallerIdentity | undefined {
+  const e = identityCache.get(uid);
+  if (!e) return undefined;
+  if (Date.now() - e.at > IDENTITY_TTL_MS) { identityCache.delete(uid); return undefined; }
+  return e.v;
+}
+
+function rememberIdentity(uid: string, v: CallerIdentity): void {
+  if (!v) return;
+  identityCache.set(uid, { v, at: Date.now() });
+  if (identityCache.size > 512) {
+    const cutoff = Date.now() - IDENTITY_TTL_MS;
+    for (const [k, e] of identityCache) if (e.at < cutoff) identityCache.delete(k);
+    if (identityCache.size > 512) {
+      const oldest = identityCache.keys().next().value;
+      if (oldest !== undefined) identityCache.delete(oldest);
+    }
+  }
+}
+
+/** Test seam — reset between cases so one test cannot leak into the next. */
+export function __resetCallIdentityCache(): void { identityCache.clear(); }
+
 export async function call(req: Request, env: Env, execCtx?: ExecutionContext): Promise<Response> {
+  // [CALL-RING-FASTPATH-1] t0 for `call_ring_path_ms`. Started before ANY await
+  // so the numbers include auth — the caller's stopwatch starts when they press
+  // dial, not when we finish verifying their JWT.
+  const ringPathT0 = Date.now();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string };
@@ -195,6 +255,87 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // channel (email/chat) calls never send this and are byte-for-byte unaffected.
   const isDialpad = b.via === "dialpad";
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
+  // [TRACE-ID-1] Correlation id minted client-side at the dial boundary; propagate
+  // it into the push payload (→ callee) and PostHog captures on this path so the
+  // caller, Worker, and callee all stitch under one trace_id. Additive/optional.
+  // [CALL-RING-FASTPATH-1] Hoisted above the admission gate: it is a header read
+  // with no await, and the ring-path timing events below want to stitch to it.
+  const traceId = req.headers.get("x-trace-id") ?? "";
+  // Captured as plain consts: both are validated truthy by the guard directly
+  // above and never reassigned, but that narrowing does not survive into an async
+  // closure — the same idiom as reachabilityTo / deferredTo further down.
+  const callTo = b.to as string;
+  const callIdStr = b.callId as string;
+
+  // ── [CALL-RING-FASTPATH-1] RING-PATH STOPWATCH ─────────────────────────────
+  //
+  // One `call_ring_path_ms` event per RETAINED await, so the improvement is
+  // provable in PostHog rather than asserted here. `ms` is cumulative from t0
+  // (the caller's own stopwatch), not per-stage, because the number we care
+  // about is "how long until their phone could ring".
+  const ringPathStages: Array<{ stage: string; ms: number }> = [];
+  const markRingStage = (stage: string): void => {
+    ringPathStages.push({ stage, ms: Date.now() - ringPathT0 });
+  };
+  let fastPath = true; // real value lands with the config read below
+  const flushRingPath = async (): Promise<void> => {
+    const stages = ringPathStages.splice(0, ringPathStages.length);
+    if (!stages.length) return;
+    try {
+      // Identity resolution is a D1 read; it belongs here, in the deferred
+      // flush, and never on the ring path this event exists to measure.
+      const [callerEmail, callerPhone] = await Promise.all([
+        emailFor(env, ctx.uid).catch(() => null),
+        phoneFor(env, ctx.uid).catch(() => null),
+      ]);
+      for (const s of stages) {
+        await trackUserContact(env, ctx.uid, callerEmail, callerPhone, "call_ring_path_ms", "avatok", {
+          call_id: b.callId, to: b.to, stage: s.stage, ms: s.ms, fastpath: fastPath,
+          trace_id: traceId, via: b.via ?? "chat",
+          app_name: "avatok", service_name: "avatok-api", worker: true,
+        }, traceId || undefined);
+      }
+    } catch { /* timing telemetry must never change a call outcome */ }
+  };
+  // workerd DROPS unawaited work on an EARLY-RETURN path, so every `return` that
+  // can happen after a stage was marked calls this — awaited when there is no
+  // ExecutionContext, `waitUntil`-ed when there is. Skipping it is how a timing
+  // event silently never arrives.
+  const settleRingPath = async (): Promise<void> => {
+    const p = flushRingPath();
+    if (execCtx) execCtx.waitUntil(p); else await p;
+  };
+
+  // ── [CALL-RING-FASTPATH-1] THE CONCURRENT PRE-RING BATCH ───────────────────
+  //
+  // Every one of these is a PURE READ with no side effect, and none of them
+  // depends on another's result. They were five serial awaits (blocklist D1,
+  // KV config, caller profile D1, primary-D1 token count) stacked in front of
+  // the ring; started together they cost max(), not sum().
+  //
+  // Starting them BEFORE the admission verdict lands is safe precisely because
+  // they are reads: a suppressed call still costs the callee nothing — no push,
+  // no device wake, no write. The first WRITE on this path (the stale-device
+  // prune) still happens strictly after admission, as it always did.
+  const admissionPromise = admitCall(env, ctx.uid, b.to);
+  const configPromise = readConfig(env).catch(() => null);
+  const identityPromise = (async (): Promise<CallerIdentity> => {
+    const hit = cachedIdentity(ctx.uid);
+    if (hit !== undefined) return hit;
+    const v = await publicIdentityFor(env, ctx.uid).catch(() => null);
+    rememberIdentity(ctx.uid, v);
+    return v;
+  })();
+  // Read the callee's device count from the PRIMARY (plain prepare), not an
+  // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
+  const tokenCountPromise = tokenCount(env.DB_META, b.to).catch(() => 0);
+  // [CALL-PRESENCE-1] Fired unconditionally: it is one Upstash GET with no side
+  // effect, and gating it behind the config read would put the config KV latency
+  // in front of it for no benefit. The RESULT is only acted on when
+  // `callPresenceRouting` is true (see the decision block below).
+  const presenceRecordPromise: Promise<PresenceRecord | null> =
+    readPresenceRecord(env, b.to).catch(() => null);
+
   // ── PRE-RING ADMISSION GATE ────────────────────────────────────────────────
   // [CALL-ADMISSION-1 2026-08-01] Spec: Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md
   // (owner ruling B, freeze decisions 8 + 9).
@@ -211,7 +352,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   //
   // Every denial returns the identical uniform body, so "fast rejection" no
   // longer uniquely means "blocked" (see call_admission.ts for the reasoning).
-  const admission = await admitCall(env, ctx.uid, b.to);
+  const admission = await admissionPromise;
+  markRingStage("admit");
   // [CALL-ADMISSION-2 2026-08-01] ALERT ON A DEGRADED VERDICT.
   //
   // `degraded` means the authoritative blocklist could NOT be read and this
@@ -261,12 +403,9 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         app_name: "avatok", service_name: "avatok-api", worker: true,
       });
     } catch { /* telemetry must never change an admission decision */ }
+    await settleRingPath();
     return json(unavailableBody());
   }
-  // [TRACE-ID-1] Correlation id minted client-side at the dial boundary; propagate
-  // it into the push payload (→ callee) and PostHog captures on this path so the
-  // caller, Worker, and callee all stitch under one trace_id. Additive/optional.
-  const traceId = req.headers.get("x-trace-id") ?? "";
   // [CALL-UNKNOWN-ROUTE-1/CALL-UNKNOWN-GATE-1] The server, not a warm handset,
   // owns unknown-caller classification. Classification alone never diverts an
   // authenticated AvaTOK call: the separate policy switch must be explicitly
@@ -275,24 +414,54 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // [CALL-RING-FIRST-2] These two reads are independent (D1 contact lookup vs
   // KV config) and were previously serial awaits for no reason — nothing here
   // depends on the other's result until routeUnknownCaller() below.
-  const [contactPolicy, callPolicyConfig] = await Promise.all([
-    callerContactPolicy(env, b.to, ctx.uid),
-    readConfig(env).catch(() => null),
-  ]);
-  const routeUnknownCaller = shouldRouteUnknownAvatokCaller(
-    contactPolicy,
-    callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true,
+  //
+  // [CALL-RING-FASTPATH-1 2026-08-07] Both now START in the concurrent batch at
+  // the top, and on the fast path the D1 contact lookup is removed from the
+  // critical path ENTIRELY unless the policy that consumes it is switched on —
+  // which in production it is not (`unknownAvatokCallerReceptionistEnabled`
+  // defaults false, and prod KV has never enabled it). A D1 read whose only
+  // consumer is a disabled policy is a pure tax on every ring. The
+  // classification telemetry still fires; it just stopped being worth waiting
+  // for, and carries `deferred:true` so the two populations stay distinguishable.
+  const callPolicyConfig = await configPromise;
+  markRingStage("config");
+  // Kill switches, read once. `!== false` is deliberate: a KV blob written before
+  // these keys existed has neither, and the correct reading of "absent" is the
+  // DEFAULTS value (true), not false. Setting either to false in KV restores the
+  // previous behaviour exactly, with no rebuild.
+  fastPath = (callPolicyConfig as { callRingFastPath?: boolean } | null)?.callRingFastPath !== false;
+  const presenceRouting =
+    (callPolicyConfig as { callPresenceRouting?: boolean } | null)?.callPresenceRouting !== false;
+  const presenceFreshSec = Number(
+    (callPolicyConfig as { presenceFreshSec?: number } | null)?.presenceFreshSec ?? 90,
   );
-  const contactPolicyTelemetry = track(env, b.to, "call_contact_policy_decision", "avatok", {
+  const unknownPolicyOn = callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true;
+
+  let contactPolicy: ContactPolicy | null = null;
+  if (!fastPath || unknownPolicyOn) {
+    contactPolicy = await callerContactPolicy(env, b.to, ctx.uid);
+    markRingStage("contact_policy");
+  }
+  const routeUnknownCaller = contactPolicy
+    ? shouldRouteUnknownAvatokCaller(contactPolicy, unknownPolicyOn)
+    : false;
+  const contactPolicyTelemetry = (async () => {
+    const cp = contactPolicy ?? await callerContactPolicy(env, callTo, ctx.uid).catch(() => null);
+    if (!cp) return;
+    await track(env, callTo, "call_contact_policy_decision", "avatok", {
       call_id: b.callId,
       caller_uid: ctx.uid,
-      known: contactPolicy.known,
-      saved: contactPolicy.saved,
-      reason: contactPolicy.known ? contactPolicy.matched_by : contactPolicy.reason,
-      policy_enabled: callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true,
+      known: cp.known,
+      saved: cp.saved,
+      reason: cp.known ? cp.matched_by : cp.reason,
+      policy_enabled: unknownPolicyOn,
       routed: routeUnknownCaller ? "receptionist" : "ring",
+      // true = the lookup ran AFTER the response, so it could not have influenced
+      // routing on this call (and by construction did not need to).
+      deferred: contactPolicy === null,
       app_name: "avatok", service_name: "avatok-api", worker: true,
-    }).catch(() => { /* policy telemetry never changes routing */ });
+    });
+  })().catch(() => { /* policy telemetry never changes routing */ });
   if (execCtx) execCtx.waitUntil(contactPolicyTelemetry);
   else await contactPolicyTelemetry;
   if (routeUnknownCaller) {
@@ -302,10 +471,12 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
       });
-      if (!participantResponse.ok) return json({ error: "call_authority_unavailable" }, 503);
+      if (!participantResponse.ok) { await settleRingPath(); return json({ error: "call_authority_unavailable" }, 503); }
     } catch {
+      await settleRingPath();
       return json({ error: "call_authority_unavailable" }, 503);
     }
+    await settleRingPath();
     return json({
       sent: 0,
       reachable: true,
@@ -314,12 +485,135 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       start: { to: b.to, call_id: b.callId, trace_id: traceId, activation_mode: "unknown_caller" },
     });
   }
-  // Start the caller identity lookup alongside device reachability. Both are
-  // required before the push is constructed, but neither depends on the other.
-  const identityPromise = publicIdentityFor(env, ctx.uid).catch(() => null);
-  // Read the callee's device count from the PRIMARY (plain prepare), not an
-  // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
-  const n = await tokenCount(env.DB_META, b.to);
+  // [CALL-RING-FASTPATH-1] The callee's device count is a PRIMARY-D1 read (never
+  // a replica — a stale 0 would be a false "no device"). It used to be awaited in
+  // front of every ring to produce `sent:` in a response the caller only reads
+  // AFTER the ring, plus a `devices` property on a telemetry event. It is now a
+  // promise resolved on demand:
+  //   • presence routing resolves it PRE-ring (a stale heartbeat AND zero tokens
+  //     is the offline verdict) — but concurrently with the presence read, not
+  //     serially after it;
+  //   • the dialpad routing engine resolves it pre-ring, as before;
+  //   • everything else resolves it after the phone is already ringing.
+  let n = 0;
+  let tokenCountLanded = false;
+  const resolveTokenCount = async (): Promise<number> => {
+    if (!tokenCountLanded) { n = await tokenCountPromise; tokenCountLanded = true; }
+    return n;
+  };
+  if (!fastPath) {
+    await resolveTokenCount();
+    markRingStage("token_count");
+  }
+
+  // ── [CALL-PRESENCE-1 2026-08-07] PRESENCE-FIRST ROUTING ────────────────────
+  //
+  // Read BEFORE the DO round-trips, from the batch started at the top, so it
+  // costs nothing serial. What it replaces: on 2026-08-07 the InboxDO told us
+  // `live:false` at +3.6 s — the server KNEW the callee was offline — and the
+  // caller was still made to wait until +28 s for Ava. Presence turns that into
+  // an immediate, honest answer.
+  //
+  // THREE-VALUED, and the third value is the important one. `unknown` (no
+  // record, no Upstash credentials, a read error, or a client too old to beat)
+  // is NOT `stale`; it rings exactly as it always did. Only positive evidence —
+  // a record that exists and has gone quiet — can shorten a call.
+  let presenceState: PresenceState = "unknown";
+  let presenceAgeMs: number | null = null;
+  let presenceDecision = "ring";
+  const emitPresenceDecision = async (decision: string, routingReason: string | null): Promise<void> => {
+    try {
+      const [callerEmail, calleeEmail] = await Promise.all([
+        emailFor(env, ctx.uid).catch(() => null),
+        emailFor(env, callTo).catch(() => null),
+      ]);
+      const props = {
+        call_id: callIdStr,
+        presence: presenceState,
+        presence_age_ms: presenceAgeMs,
+        token_count: n,
+        decision,
+        routing_reason: routingReason,
+        from_uid: ctx.uid, to_uid: callTo,
+        from_email: callerEmail, to_email: calleeEmail,
+        fresh_sec: presenceFreshSec,
+        via: b.via ?? "chat", trace_id: traceId,
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      };
+      // BOTH parties. A call is a conversation between two people (CLAUDE.md), so
+      // either email must be able to retrieve this decision.
+      await trackUser(env, ctx.uid, callerEmail, "call_presence_decision", "avatok", props);
+      await trackUser(env, callTo, calleeEmail, "call_presence_decision", "avatok", props);
+    } catch { /* presence telemetry must never change routing */ }
+  };
+  if (presenceRouting) {
+    const [rec] = await Promise.all([presenceRecordPromise, resolveTokenCount()]);
+    markRingStage("presence");
+    if (rec) {
+      presenceAgeMs = Math.max(0, Date.now() - rec.lastSeenMs);
+      presenceState = presenceAgeMs <= presenceFreshSec * 1000 ? "fresh" : "stale";
+    }
+    if (presenceState === "stale" && n === 0) {
+      // PROVABLY OFFLINE: the phone stopped checking in AND there is no FCM token
+      // left to wake it with. Ringing this is twenty seconds of the caller
+      // listening to a phone that cannot ring.
+      //
+      // But it goes through the SAME gate the no-answer handoff uses — wallet
+      // spendable + the owner's scenario toggle + the receptionist master switch
+      // (routes/receptionist.ts). Bypassing it would start a metered AI session
+      // the owner never authorised, on a call they never heard. If the owner is
+      // not eligible we fall through to the ordinary ring, which produces the
+      // ordinary unreachable outcome — the pre-existing behaviour, not a new one.
+      const eligibility = b.kind === "video"
+        ? { eligible: false, reason: "video" }
+        : await receptionistNoAnswerEligibility(env, b.to)
+            .catch(() => ({ eligible: false, reason: "wallet_unavailable" }));
+      if (eligibility.eligible) {
+        presenceDecision = "receptionist_offline";
+        try {
+          const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+          const participantResponse = await callStub.fetch("https://call-room/participants", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+          });
+          if (!participantResponse.ok) {
+            await emitPresenceDecision("authority_unavailable", "offline");
+            await settleRingPath();
+            return json({ error: "call_authority_unavailable" }, 503);
+          }
+        } catch {
+          await emitPresenceDecision("authority_unavailable", "offline");
+          await settleRingPath();
+          return json({ error: "call_authority_unavailable" }, 503);
+        }
+        markRingStage("participants_offline");
+        // AWAITED, not fired-and-forgotten: this is an early return, and workerd
+        // drops unawaited work on early-return paths.
+        await emitPresenceDecision(presenceDecision, "offline");
+        await settleRingPath();
+        return json({
+          sent: 0,
+          reachable: true,
+          routed: "receptionist",
+          routing_reason: "offline",
+          presence: presenceState,
+          presence_age_ms: presenceAgeMs,
+          callee_live: false,
+          start: { to: b.to, call_id: b.callId, trace_id: traceId, activation_mode: "offline" },
+        });
+      }
+      presenceDecision = "ring_offline_ineligible";
+    } else if (presenceState === "stale") {
+      // A dozing phone with a live FCM token is still wakeable — ring it. The
+      // caller is told `presence:'stale'` so their app can say something true
+      // ("Waking their phone…") instead of inventing progress.
+      presenceDecision = "ring_stale";
+    } else if (presenceState === "fresh") {
+      presenceDecision = "ring_fresh";
+    } else {
+      presenceDecision = "ring_unknown";
+    }
+  }
   // [DEVMAP-PRUNE-1 2026-07-22] Stale "active" account_devices mappings whose FCM
   // token has rotated away (device_tokens row gone, e.g. reinstall / OS token
   // rotation) were never cleaned, so they inflated the reachability snapshot and
@@ -335,6 +629,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // into an async closure (same reason ringDeliveredCallId/deferredTo exist below).
   const reachabilityTo = b.to as string;
   const reachabilityTelemetry = (async () => {
+    // [CALL-RING-FASTPATH-1] The device count is resolved HERE, inside the
+    // deferred closure, instead of being awaited in front of the ring. On the
+    // presence and dialpad paths it has already landed and this is free.
+    const tokens = await resolveTokenCount();
     try {
       const cutoff = Date.now() - 7 * 86400000; // 7 days unseen
       const pr = await env.DB_META.prepare(
@@ -365,52 +663,61 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         event: "call_callee_reachability", uid: ctx.uid, ts: Date.now(),
         props: {
           to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
-          token_count: n, ...snap,
+          token_count: tokens, ...snap,
           app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
         },
       });
     } catch { /* telemetry must never block the call */ }
+    if (tokens === 0) {
+      // Visibility: the caller reached someone with 0 registered devices — the
+      // exact "no device registered" failure. Emit telemetry keyed on the callee
+      // uid so reachability gaps are queryable per-user. This path was once a
+      // silent 404 with no analytics.
+      //
+      // [CALL-RING-FASTPATH-1] Moved INSIDE this deferred closure and AWAITED.
+      // It used to be two `void env.Q_ANALYTICS.send(...)` calls on the response
+      // path, which is exactly the pattern workerd drops (see the worker
+      // error-path telemetry note in CLAUDE.md) — awaiting them inside a closure
+      // the runtime is already keeping alive is strictly more reliable, and it is
+      // no longer in front of the ring.
+      try {
+        await env.Q_ANALYTICS.send({
+          event: "call_no_device", uid: ctx.uid, ts: Date.now(),
+          props: {
+            to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
+            app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+          },
+        });
+        // [MULTIACCT-1] Also emit push_no_device from the PRODUCER side so the
+        // zero-token case is symmetrical with the consumer's all-tokens-pruned case
+        // (both now surface push_no_device). Reachability queries catch either.
+        await env.Q_ANALYTICS.send({
+          event: "push_no_device", uid: ctx.uid, ts: Date.now(),
+          props: {
+            kind: "call", to: b.to, call_id: b.callId, reason: "zero_tokens",
+            app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+          },
+        });
+      } catch { /* best-effort: telemetry must never block the response */ }
+    }
   })();
   // These writes describe reachability; they must never delay reachability.
   if (execCtx) execCtx.waitUntil(reachabilityTelemetry);
   else await reachabilityTelemetry;
-  if (n === 0) {
-    // Visibility: the caller reached someone with 0 registered devices — the
-    // exact "no device registered" failure. Emit telemetry (best-effort) keyed
-    // on the callee uid so reachability gaps are queryable per-user, then return
-    // 404 as before. This path was previously a silent 404 with no analytics.
-    try {
-      void env.Q_ANALYTICS.send({
-        event: "call_no_device", uid: ctx.uid, ts: Date.now(),
-        props: {
-          to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
-          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
-        },
-      });
-      // [MULTIACCT-1] Also emit push_no_device from the PRODUCER side so the
-      // zero-token case is symmetrical with the consumer's all-tokens-pruned case
-      // (both now surface push_no_device). Reachability queries catch either.
-      void env.Q_ANALYTICS.send({
-        event: "push_no_device", uid: ctx.uid, ts: Date.now(),
-        props: {
-          kind: "call", to: b.to, call_id: b.callId, reason: "zero_tokens",
-          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
-        },
-      });
-    } catch { /* best-effort: telemetry must never block the response */ }
-    // CALL-NODEVICE-AVA-1 (2026-07-08): DON'T dead-end a 0-device callee anymore.
-    // A callee with zero registered devices is the STRONGEST form of "unreachable"
-    // (phone off / logged out / tokens pruned) — exactly the case the Ava
-    // receptionist exists for. Returning 404/reachable:false made the caller's
-    // client abort BEFORE mounting the call screen (chat_thread.dart ~L2187), so
-    // Ava never got a turn and the user just saw "X is unreachable — ask them to
-    // open AvaTOK" (PostHog call_no_device / http_404, e.g. callee "Sat"). Instead
-    // we fall through to the normal ring path below: the push fan-out finds 0
-    // tokens and the consumer emits ring-ack ok=false (and the client's 6s
-    // device-ringing timer is the backstop), which drives the caller into the
-    // unreachable → Ava receptionist handoff. We still returned the telemetry
-    // above, and the final response is the optimistic reachable:true (sent:0).
-  }
+  // CALL-NODEVICE-AVA-1 (2026-07-08): a 0-device callee is NOT dead-ended here.
+  // Zero registered devices is the STRONGEST form of "unreachable" (phone off /
+  // logged out / tokens pruned) — exactly the case the Ava receptionist exists
+  // for. Returning 404/reachable:false made the caller's client abort BEFORE
+  // mounting the call screen (chat_thread.dart ~L2187), so Ava never got a turn
+  // and the user just saw "X is unreachable — ask them to open AvaTOK" (PostHog
+  // call_no_device / http_404, e.g. callee "Sat"). So we fall through to the
+  // normal ring path below: the push fan-out finds 0 tokens and the consumer
+  // emits ring-ack ok=false (and the client's device-ringing timer is the
+  // backstop), which drives the caller into the unreachable → Ava handoff.
+  // [CALL-PRESENCE-1] The one case that now SHORT-CIRCUITS this twenty-second
+  // wait is handled above: zero tokens AND a stale heartbeat — positive evidence
+  // of offline, not merely an absence of tokens. Zero tokens with fresh or
+  // unknown presence still takes this slow, honest path.
   // ── CALLER IDENTITY SNAPSHOT ───────────────────────────────────────────────
   // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Resolve the caller's PUBLIC AvaTOK
   // PROFILE identity — the card they actually edit (first + last name, avatar) —
@@ -430,7 +737,28 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // The client-sent `fromName` is a LAST-resort fallback only — it is
   // unauthenticated and was the source of raw "user_xxx" uids appearing as
   // caller names. It must never outrank the server-resolved profile.
-  const ident = await identityPromise;
+  //
+  // [CALL-RING-FASTPATH-1 2026-08-07] The lookup now STARTS in the concurrent
+  // batch at the top of this handler and is memoised per isolate for 60 s, so
+  // for any caller who has dialled recently it costs nothing at all. On the
+  // fast path a COLD lookup is additionally bounded by IDENTITY_RING_BUDGET_MS:
+  // a profile read is not permitted to hold a phone silent indefinitely.
+  //
+  // If that budget ever fires, the WS ring carries the caller's own `fromName`
+  // (the string their local ProfileStore holds — in practice the same name) and
+  // `nameSource` records `client`, which is the existing alarm for "the profile
+  // lookup is failing". The FCM copy below still waits for the authoritative
+  // profile, so a COLD phone always paints the real name and photo.
+  let ident: CallerIdentity = cachedIdentity(ctx.uid) ?? null;
+  if (!ident) {
+    ident = fastPath
+      ? await Promise.race<CallerIdentity>([
+          identityPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), IDENTITY_RING_BUDGET_MS)),
+        ])
+      : await identityPromise;
+  }
+  markRingStage("identity");
   const clientName = (b.fromName ?? "").trim();
   const resolvedName = ident?.display_name || clientName || "AvaTOK";
   const nameSource = ident?.display_name ? "profile" : (clientName ? "client" : "fallback");
@@ -485,6 +813,18 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // dials into the already-registered reciprocal call and tell this caller to auto-accept
   // it. The client's CALL-GLARE-1 heuristic stays as the fallback for old servers.
   // Best-effort: any DO hiccup falls through to the normal ring below.
+  //
+  // [CALL-RING-FASTPATH-1 2026-08-07] THIS STAYS SERIAL, DELIBERATELY, and it is
+  // the one hop the fast path does not remove. It was considered:
+  //   • merging it into the /participants round-trip — impossible, they are two
+  //     DIFFERENT DO instances (`glare:<lo>__<hi>` vs `<callId>`), which is the
+  //     entire mechanism: both dial directions must land on one pair-keyed
+  //     instance for arbitration to be deterministic;
+  //   • issuing it CONCURRENTLY with /participants — rejected. If glare wins we
+  //     return without ringing, so a speculative participants registration would
+  //     leave a CallRoom with a live ring-deadline alarm for a call that never
+  //     happened, and that alarm drives the no-answer/receptionist verdict.
+  //     Trading a phantom Ava session for ~80 ms is a bad trade.
   try {
     const lo = ctx.uid < b.to ? ctx.uid : b.to;
     const hi = ctx.uid < b.to ? b.to : ctx.uid;
@@ -499,10 +839,12 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     const gj = (await gr.json().catch(() => ({}))) as {
       glare?: boolean; join_call_id?: string; roomToken?: string;
     };
+    markRingStage("glare");
     if (gj.glare === true && gj.join_call_id) {
       // Mutual dial: this caller auto-accepts the winning call instead of placing a
       // new one. No push is enqueued for this leg — the peer's leg already rang (or
       // will resolve identically), and both devices join the one winning room.
+      await settleRingPath();
       return json({
         glare: true, join_call_id: gj.join_call_id,
         roomToken: gj.roomToken ?? "", reachable: true, sent: 0,
@@ -523,9 +865,15 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   let routingResult: Awaited<ReturnType<typeof decideRouting>> | null = null;
   if (isDialpad) {
     try {
-      const cfg = await readConfig(env);
+      // [CALL-RING-FASTPATH-1] Reuse the config already read at the top of this
+      // handler rather than paying a second (memoised, but not free) read.
+      const cfg = callPolicyConfig ?? await readConfig(env);
       if (cfg.businessCallUx) {
         const callTraceId = traceId || newTraceId();
+        // [CALL-RING-FASTPATH-1] The dialpad engine CAN decide not to ring, so
+        // the device count is genuinely load-bearing here and is resolved before
+        // it runs. Everywhere else it stays deferred.
+        await resolveTokenCount();
         // decideRouting() ALSO emits routing_decision internally when
         // businessCallUx is on (lib/call_routing.ts finalize()) — so we do NOT
         // call emitRoutingDecision a second time here for the dialpad path.
@@ -606,6 +954,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       // ring-then-no-answer — never learn why (§15.2 silent semantics) — so we
       // deliberately do NOT enqueue Q_PUSH or the WS ring. The client's own
       // ring-timeout already drives it into the NoAnswerCard from here.
+      await settleRingPath();
       return json({ sent: 0, reachable: true, routed: "no_answer", voicemail_available: false });
     }
     if (routingResult.action === "busy") {
@@ -628,12 +977,14 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       const message = busyKind === "agents_full"
         ? "All agents are busy right now — please try again in a while."
         : "This line is busy. Please try again later.";
+      await settleRingPath();
       return json({ sent: 0, reachable: true, routed: "busy", busy_kind: busyKind, message });
     }
     // 'voicemail' or 'agent' with the ring skipped (offline/busy/business-hours,
     // §15.1): hand the client just enough to call the matching /start route
     // itself (POST /api/voicemail/start or /api/agent/call/start) — no ring is
     // sent for either branch.
+    await settleRingPath();
     return json({
       sent: 0, reachable: true, routed: routingResult.action,
       start: { to: b.to, call_id: b.callId, trace_id: traceId },
@@ -697,7 +1048,12 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     });
     const participantResult = await participantResponse.json().catch(() => null) as
       { ok?: boolean; seq?: number; ringDeadlineMs?: number } | null;
-    if (!participantResponse.ok || participantResult?.ok !== true) return json({ error: "call_authority_unavailable" }, 503);
+    if (!participantResponse.ok || participantResult?.ok !== true) {
+      markRingStage("participants_failed");
+      await settleRingPath();
+      return json({ error: "call_authority_unavailable" }, 503);
+    }
+    markRingStage("participants");
     // [CALL-CALLEE-SEQ-1] The ring's authoritative sequence, carried on both
     // ring transports below so the callee can order what it receives.
     ringSeq = typeof participantResult.seq === "number" ? participantResult.seq : null;
@@ -707,6 +1063,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       ? participantResult.ringDeadlineMs : null;
   } catch (e) {
     console.error("Failed to register ring receipt token / participants in CallRoom:", String(e));
+    markRingStage("participants_threw");
+    await settleRingPath();
     return json({ error: "call_authority_unavailable" }, 503);
   }
 
@@ -760,6 +1118,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       }),
     });
     const wj = (await wr.json().catch(() => ({}))) as { live?: number | boolean };
+    // THE RING HAS LEFT. This is the number `call_ring_path_ms` exists to shrink.
+    markRingStage("ws_ring");
     // [CALL-PRESENCE-1 2026-08-03] The InboxDO just told us whether the callee
     // holds a live WebSocket RIGHT NOW. That fact was computed on every call and
     // used only for this telemetry row; the caller was never told, so their app
@@ -812,8 +1172,23 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // so the FCM enqueue no longer needs to sit in front of the response. When
   // the callee is NOT live, FCM is the only ring in flight and must stay
   // awaited exactly as before.
+  // [CALL-RING-FASTPATH-1] IDENTITY REPAIR FOR THE SLOW LANE.
+  //
+  // The WS ring may have gone out carrying the client-supplied name, if a COLD
+  // isolate's profile read blew IDENTITY_RING_BUDGET_MS (see the identity
+  // snapshot section above). The FCM copy is no longer on the critical path, so
+  // it always waits for the authoritative profile — which means a COLD phone,
+  // the one that has nothing else to paint from, never shows a degraded card.
+  // When `ident` already resolved (the overwhelmingly common case, and always
+  // the case on a warm isolate) this awaits nothing.
+  const fcmIdent: CallerIdentity = ident ?? await identityPromise;
+  const fcmName = fcmIdent?.display_name || clientName || "AvaTOK";
+  const fcmAvatarUrl = fcmIdent?.avatar_url ?? null;
+  const fcmAvatarVersion = fcmIdent?.avatar_version ?? null;
+  const fcmSnapshotVersion = fcmIdent?.profile_version ?? 0;
+  const fcmNameSource = fcmIdent?.display_name ? "profile" : (clientName ? "client" : "fallback");
   const pushSend = env.Q_PUSH.send({
-    kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
+    kind: "call", to: b.to, from: ctx.uid, fromName: fcmName,
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
     // [CALL-CALLEE-SEQ-1] The ring push carried NO sequence, on an at-least-once
@@ -831,9 +1206,9 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // COLD phone can paint the caller's photo + real name on the first frame.
     // This is a copy, NOT an authority — if it ever disagrees with the call
     // state, the DO wins and the mismatch is a pipeline bug worth logging.
-    ...(callerAvatarUrl ? { callerAvatarUrl } : {}),
-    ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
-    identitySnapshotVersion,
+    ...(fcmAvatarUrl ? { callerAvatarUrl: fcmAvatarUrl } : {}),
+    ...(fcmAvatarVersion ? { callerAvatarVersion: fcmAvatarVersion } : {}),
+    identitySnapshotVersion: fcmSnapshotVersion,
     // [WP3] 'dialpad' marks this as a business-channel call so the callee's
     // incoming-call screen shows the named business UI (client already checks d['via']).
     ...(isDialpad ? { via: "dialpad" } : {}),
@@ -848,6 +1223,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // the legacy client value vs the generic fallback), plus the call attempt — so
   // the "incoming call shows uid/uid" fix is measurable and call volume/route is
   // visible. Best-effort; telemetry must never block placing a call.
+  // [CALL-RING-FASTPATH-1] The device count is finally needed here (and for
+  // `sent:` in the response). The phone is already ringing, so this D1 read costs
+  // the callee nothing — which is the whole point of having moved it.
+  await resolveTokenCount();
   try {
     void env.Q_ANALYTICS.send({
       event: "call_push_sent", uid: ctx.uid, ts: Date.now(),
@@ -857,12 +1236,17 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         // stage:'fcm_send' (P1). Same event name, disambiguated by `stage`.
         stage: "enqueue",
         to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
-        name_source: nameSource, devices: n,
+        name_source: fcmNameSource, devices: n,
         // [CALL-IDENTITY-SNAPSHOT-1] name_source=='profile' is the healthy state.
         // 'client' or 'fallback' at any volume means the profile lookup is
         // failing and callees are about to see uids or the wrong name again.
-        has_avatar: !!callerAvatarUrl,
-        identity_snapshot_version: identitySnapshotVersion,
+        // [CALL-RING-FASTPATH-1] `ring_name_source` is the same question asked of
+        // the WS ring specifically: it differs from name_source ONLY when a cold
+        // isolate's profile read blew the ring budget, which is the signal that
+        // IDENTITY_RING_BUDGET_MS is set too low.
+        ring_name_source: nameSource,
+        has_avatar: !!fcmAvatarUrl,
+        identity_snapshot_version: fcmSnapshotVersion,
         app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
       },
     });
@@ -924,6 +1308,18 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     } catch { /* the alarm falls back to eligible:false — a no-answer, not a wrong charge */ }
   })();
   if (execCtx) execCtx.waitUntil(afterRing); else await afterRing;
+  // [CALL-PRESENCE-1] The routing decision, tagged to BOTH parties. Deferred —
+  // the ring has already gone out and nothing below depends on it.
+  if (presenceRouting) {
+    const presenceTelemetry = emitPresenceDecision(
+      presenceDecision,
+      presenceDecision === "ring_offline_ineligible" ? "offline_ineligible" : null,
+    );
+    if (execCtx) execCtx.waitUntil(presenceTelemetry); else await presenceTelemetry;
+  }
+  // [CALL-RING-FASTPATH-1] Flush the ring-path stopwatch. Last thing before the
+  // response, so `ws_ring` is included and the whole series lands together.
+  await settleRingPath();
 
   return json({
     sent: n, reachable: true, ringbackUrl, roomToken: callerRoomToken,
@@ -932,6 +1328,15 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // caller's app uses this to stop inventing progress text about someone who
     // is demonstrably online. Presence only — never a claim that the phone rang.
     callee_live: calleeLive,
+    // [CALL-PRESENCE-1 2026-08-07] The HEARTBEAT verdict, which is a different
+    // and stronger fact than `callee_live` (that one is only ever true when the
+    // WS ring happened to land). 'fresh' | 'stale' | 'unknown', plus the age so
+    // the client can say something honest instead of inventing progress:
+    //   fresh   → they're on AvaTOK right now
+    //   stale   → their phone is being woken (FCM), which takes seconds
+    //   unknown → say nothing; we genuinely do not know
+    presence: presenceState,
+    presence_age_ms: presenceAgeMs,
   });
 }
 
