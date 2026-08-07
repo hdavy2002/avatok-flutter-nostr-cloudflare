@@ -97,6 +97,10 @@ import {
 import { enqueueAiMediaJob } from "../queues/ai_media";
 import { registerArtifactMedia } from "./media";
 import { emailFor } from "../lib/identity";
+// [AVA-VOICE-STYLE-1 / WS-14e] The ONE table of user-visible canned strings.
+// The image chip is the string the owner asked for by name ("hold karo, mein 2K
+// la raha hoon" — it surfaces verbatim in ai_media_job_card.dart's job.label).
+import { readVoiceStyle, avaString, type AvaVoiceStyle } from "../lib/ava_persona";
 
 // ---------------------------------------------------------------------------
 // [AVA-IMG-KEEPALIVE-1 / WS-3] Detached-work lifetime.
@@ -293,7 +297,10 @@ async function statusBroadcast(env: Env, owner: string, conv: string, label: str
   } catch { /* best-effort */ }
 }
 
-// Post the "Ava is generating an image…" chip into the conversation. Same
+// Post the working chip into the conversation. `label` is the caller's ONE
+// resolved chip string for this request ([AVA-VOICE-STYLE-1 / WS-14e]) — it is
+// no longer the English literal "Ava is generating an image…", because the
+// user's Ava voice style decides it (Hinglish by default). Same
 // mechanism the spine uses (P3.postStatus, which is private to the DO): a
 // transient broadcast PLUS a persisted {t:'ava_status'} envelope so the FROZEN
 // chat_thread.dart renders the chip today.
@@ -324,12 +331,21 @@ async function postChip(env: Env, uid: string, conv: string, label: string, priv
 }
 
 // Close the working chip (phase:'end') once the image has been posted.
-async function endChip(env: Env, uid: string, conv: string, statusId: string | undefined, priv: boolean): Promise<void> {
+//
+// ⚠️ [AVA-VOICE-STYLE-1 / WS-14e] `label` is a REQUIRED parameter, not a
+// convenience. It used to be the hardcoded literal "Ava is generating an
+// image…" here while the 'start' phase used runAvaImage's `chipLabel` — which
+// were only ever equal by coincidence, and were ALREADY different for an edit
+// ("Ava is editing your image…"). The client keys a chip by (status_id, label)
+// when reconciling, so the two phases MUST carry the identical string or the
+// chip cannot be closed. Passing it in makes that structural instead of
+// accidental; there is now exactly one chip string per image request.
+async function endChip(env: Env, uid: string, conv: string, statusId: string | undefined, priv: boolean, label: string): Promise<void> {
   if (!statusId) return;
   try {
     const targets = priv ? [uid] : await membersOf(env, conv, uid);
     const scope: MessageScope = priv ? `to:${uid}` : "thread";
-    const envelope = JSON.stringify({ t: "ava_status", label: "Ava is generating an image…", status_id: statusId, phase: "end", source: "image" });
+    const envelope = JSON.stringify({ t: "ava_status", label, status_id: statusId, phase: "end", source: "image" });
     const payload = { conv, sender: "ava", kind: "ava_status", body: envelope, created_at: Date.now(), scope };
     await Promise.all(targets.map((m) => statusBroadcast(env, m, conv, "", statusId, "end")));
     await Promise.all(targets.map((m) => appendTo(env, m, payload)));
@@ -596,6 +612,10 @@ interface FulfilArgs {
   priv: boolean;
   /** WS-10 groundwork: which rendition this call is producing. */
   genOptions: GenerateImageOptions;
+  /** [AVA-VOICE-STYLE-1 / WS-14e] THE chip string for this request — the SAME
+   *  one postChip() already sent as 'start'. Threaded through rather than
+   *  re-derived so the 'end' envelope can never disagree with its own 'start'. */
+  chipLabel: string;
   /** The (unawaited) chip fan-out. Awaited before endChip so an 'end' can
    *  never overtake its own 'start' — the one ordering hazard WS-8's
    *  fire-and-forget chip introduces. */
@@ -613,11 +633,11 @@ interface FulfilArgs {
 async function fulfil(a: FulfilArgs): Promise<void> {
   const {
     env, uid, conv, prompt, key, tier, jobId, statusId, editRef, priv,
-    genOptions, chipPosted, emailP, t0, timeToPlaceholderMs, gateChainMs,
+    genOptions, chipPosted, emailP, t0, timeToPlaceholderMs, gateChainMs, chipLabel,
   } = a;
   const endChipOnce = async () => {
     await chipPosted.catch(() => {});
-    await endChip(env, uid, conv, statusId, priv).catch(() => {});
+    await endChip(env, uid, conv, statusId, priv, chipLabel).catch(() => {});
   };
 
   // Idempotent claim by job_id — a second concurrent trigger (there shouldn't
@@ -794,6 +814,16 @@ export async function runAvaImage(
     notifyBlockInThread?: boolean;
     /** WS-10 groundwork: rendition options for the provider call. */
     genOptions?: GenerateImageOptions;
+    /** [AVA-VOICE-STYLE-1 / WS-14] The caller's ALREADY-RESOLVED Ava voice
+     *  style. Optional, and the reason it exists is WS-8: the placeholder chip
+     *  is deliberately the first thing this function does, so anything needed
+     *  to LABEL it sits in front of the chip. The agent lane (do/ava_agent.ts)
+     *  has already read the style for its own turn, so passing it here costs
+     *  nothing and keeps the chip exactly as early as WS-8 made it. When it is
+     *  absent (the HTTP route, which has no turn context) we pay one KV get —
+     *  measured against the ~15 sequential round trips WS-8 moved the chip in
+     *  front of, that is noise, and a chip in the wrong language is worse. */
+    style?: AvaVoiceStyle;
   },
 ): Promise<AvaImageResult> {
   const t0 = Date.now();
@@ -829,7 +859,14 @@ export async function runAvaImage(
   // put a chip, so that single check happens before it.
   // -------------------------------------------------------------------------
   const statusId = conv ? crypto.randomUUID() : undefined;
-  const chipLabel = a.editRef ? "Ava is editing your image…" : "Ava is generating an image…";
+  // [AVA-VOICE-STYLE-1 / WS-14e] ONE chip string per request, resolved once and
+  // reused for the 'start' (postChip), the durable job's `label`, and every
+  // 'end' (endChip, via FulfilArgs.chipLabel and blockedResult below). Two
+  // separate avaString() calls would be two separate strings the moment the
+  // table or the user's style changes mid-flight — and a mismatched 'end' is a
+  // chip the client can never close.
+  const style: AvaVoiceStyle = a.style ?? await readVoiceStyle(env, uid);
+  const chipLabel = avaString(a.editRef ? "chip_image_editing" : "chip_image_generating", style, prompt);
   const chipPosted: Promise<void> = statusId
     ? postChip(env, uid, conv, chipLabel, priv, statusId)
     : Promise.resolve();
@@ -853,7 +890,7 @@ export async function runAvaImage(
     const gateChainMs = Date.now() - t0;
     if (statusId) {
       await chipPosted.catch(() => {});
-      await endChip(env, uid, conv, statusId, priv).catch(() => {});
+      await endChip(env, uid, conv, statusId, priv, chipLabel).catch(() => {});
       if (a.notifyBlockInThread && r.message) {
         await postAvaMessage(env, {
           ownerUid: uid, conv, text: r.message, source: "image", private: priv,
@@ -991,10 +1028,12 @@ export async function runAvaImage(
       environment: environmentTag(env),
     }).catch(() => {});
     if (created.error === "AI_INSUFFICIENT_TOKENS") {
+      // [AVA-VOICE-STYLE-1 / WS-14e] The canonical out-of-tokens line. Unit is a
+      // TOKEN and the symbol is ₹ — the string table says so; never "coin", never $.
       return blockedResult({ ok: false, blocked: true, reason: "insufficient_balance", tier: PLANS[tier].key,
-        message: "You don't have enough Tokens for an image right now.", httpStatus: 200 });
+        message: avaString("err_out_of_tokens", style, prompt), httpStatus: 200 });
     }
-    return blockedResult({ ok: false, reason: created.error, message: "I couldn't start that image right now — please try again.", httpStatus: created.status });
+    return blockedResult({ ok: false, reason: created.error, message: avaString("err_image_start", style, prompt), httpStatus: created.status });
   }
   const jobId = created.job.job_id;
 
@@ -1022,7 +1061,7 @@ export async function runAvaImage(
   // call paths need different lifetime sources.
   detach(env, a.keepAlive, fulfil({
     env, uid, conv, prompt, key, tier, jobId, statusId, editRef: a.editRef, priv,
-    genOptions, chipPosted, emailP, t0, timeToPlaceholderMs, gateChainMs,
+    genOptions, chipPosted, emailP, t0, timeToPlaceholderMs, gateChainMs, chipLabel,
   }), "fulfil", uid);
 
   return { ok: true, conv, job_id: jobId, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
