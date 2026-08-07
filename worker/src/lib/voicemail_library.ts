@@ -106,6 +106,21 @@ export async function putVoicemailRecording(
  * keys are unique across both buckets — they embed a uuid session/call id — so
  * "try both" cannot serve the wrong object. Returns null when neither has it;
  * never throws.
+ *
+ * ⚠️ THE BLOBS LEG IS PERMANENT. DO NOT REMOVE IT.
+ *
+ * OWNER DECISION 2026-08-07: pre-existing voicemails are NOT being migrated —
+ * "leave old voicemails, we will work with the new voicemails". So the public
+ * bucket keeps serving every historical recording FOREVER, and deleting this
+ * fallback silently 404s all of them. This is no longer temporary scaffolding
+ * awaiting a sweep; it is the permanent read path for pre-2026-08-07 audio.
+ *
+ * The accepted consequence, recorded so nobody rediscovers it as a surprise:
+ * those historical objects remain fetchable at
+ * https://blossom.avatok.ai/<key> by anyone who knows the path, with no auth.
+ * The owner weighed that against an irreversible copy-then-delete over live
+ * audio (where a half-migrated key is a caller's message lost for good) and
+ * chose to leave them. Only NEW recordings are private.
  */
 export async function getVoicemailRecording(
   env: Env, key: string,
