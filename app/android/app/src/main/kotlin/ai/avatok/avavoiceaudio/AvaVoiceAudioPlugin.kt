@@ -459,8 +459,32 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             val am = audioManager() ?: return mapOf("ok" to false, "reason" to "no_audio_manager")
             prevAudioMode = am.mode
             am.mode = AudioManager.MODE_IN_COMMUNICATION
-            @Suppress("DEPRECATION")
-            am.isSpeakerphoneOn = speaker
+            // [CALL-AUDIO-OWNER-1 2026-08-07] On API 31+, do NOT write the legacy
+            // `isSpeakerphoneOn` here — it clobbers whatever route
+            // `setAudioRoute()`/`trySetCommunicationDevice` already selected via
+            // `setCommunicationDevice`, which is the "loud again when Ava
+            // prewarms" half of the outgoing-tone bug (the Dart-side
+            // CallAudioController re-asserts its intent around this call, but a
+            // legacy write landing AFTER that re-assert would silently win
+            // again). Route through the same confirmed-device path `setAudioRoute`
+            // uses instead; fall back to the legacy write only if that fails.
+            // Legacy `isSpeakerphoneOn` is kept unconditionally on API < 31 —
+            // `setCommunicationDevice` does not exist there.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val wantedRoute = if (speaker) "speaker" else "earpiece"
+                val device = trySetCommunicationDevice(am, wantedRoute)
+                if (device != null) {
+                    currentRoute = routeForDeviceType(device.type)
+                } else {
+                    @Suppress("DEPRECATION")
+                    am.isSpeakerphoneOn = speaker
+                    currentRoute = wantedRoute
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = speaker
+                currentRoute = if (speaker) "speaker" else "earpiece"
+            }
 
             // ---- playback: AudioTrack on the VOICE_COMMUNICATION path ----
             val outMin = AudioTrack.getMinBufferSize(

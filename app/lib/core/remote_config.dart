@@ -391,6 +391,16 @@ class RemoteConfig {
   static bool get callQualityIndicatorV1 => _b('callQualityIndicatorV1', false);
   static bool get callAudioRedExperimentV1 => _b('callAudioRedExperimentV1', false);
   static bool get callVideoDegradeV1 => _b('callVideoDegradeV1', false);
+  /// [CALL-AUDIO-OWNER-1 2026-08-07] `CallAudioController` becomes THE single
+  /// owner of call route/mode/speaker, replacing the hardcoded `selectRoute`
+  /// at the end of `_bootMedia` and the flag-off `Helper.setSpeakerphoneOn`
+  /// branch that raced the user's own Speaker press. Defaults ON — this is a
+  /// bug fix (loud→quiet→loud outgoing tone), not an experiment; flip to
+  /// false only to roll back if a device regresses. Server key
+  /// `callAudioOwnerV1` must be declared in `worker/src/routes/config.ts`
+  /// DEFAULTS + the PlatformConfig interface (owner to add — worker/ is out
+  /// of scope for this client-only change).
+  static bool get callAudioOwnerV1 => _b('callAudioOwnerV1', true);
 
   /// [CALL-VIDEO-CODEC-1] Express a video codec preference (AV1 > VP9 > VP8 >
   /// H264) and request temporal SVC (L1T3) on the 1:1 video sender.

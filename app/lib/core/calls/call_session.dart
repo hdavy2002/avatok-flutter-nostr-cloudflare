@@ -27,6 +27,7 @@ import '../profile_store.dart';
 import '../receptionist_api.dart';
 import '../receptionist_call.dart';
 import '../remote_config.dart';
+import 'call_audio_controller.dart';
 import '../ringback_player.dart';
 import '../voice/native_voice_audio.dart';
 import '../../push/push_service.dart';
@@ -645,7 +646,20 @@ class CallSession {
   /// route. Re-assert rather than assume: this is the same two calls
   /// `_startMedia` makes, with the route the user currently has.
   Future<void> reassertAudioSession() async {
-    if (_ended || !RemoteConfig.callAudioControllerV2) return;
+    if (_ended) return;
+    // [CALL-AUDIO-OWNER-1] Route through the controller when it owns this
+    // call's audio, so the escalation-rollback re-assert uses the same
+    // serialized intent-driven apply as every other route change instead of
+    // racing it with a second direct `selectRoute` call.
+    if (RemoteConfig.callAudioOwnerV1) {
+      try {
+        await NativeVoiceAudio.instance
+            .beginP2pSession(callId: config.room, video: config.video);
+        await CallAudioController.instance.reassert('escalation-rollback');
+      } catch (_) {/* best effort — never let this end a live call */}
+      return;
+    }
+    if (!RemoteConfig.callAudioControllerV2) return;
     try {
       await NativeVoiceAudio.instance
           .beginP2pSession(callId: config.room, video: config.video);
@@ -2890,12 +2904,46 @@ class CallSession {
     // so the route is applied once inside an established session instead of
     // triggering a cold re-route + volume ramp at the very start of the call.
     //
+    // [CALL-AUDIO-OWNER-1 2026-08-07] `CallAudioController` is now THE single
+    // owner of route/mode/speaker for the whole call, superseding
+    // `callAudioControllerV2` below. It replaces this hardcoded
+    // `selectRoute(config.video ? speaker : earpiece, source: 'initial')` —
+    // which ran AFTER `_fetchIce()` + `getUserMedia` (4-8s into the call) and
+    // landed behind the user's own Speaker press in the same serialized
+    // native queue, silently overriding it (prod: `call_audio_route_requested
+    // source=user_toggle` at +5.2s with no matching `_result`). `apply` below
+    // asks native for whatever `intent` is AT THAT MOMENT, so a user press
+    // that races this boot-media call always wins — `setIntent` (in
+    // `toggleSpeaker`) updates `intent` before its own `apply` is queued.
+    if (RemoteConfig.callAudioOwnerV1) {
+      await NativeVoiceAudio.instance
+          .beginP2pSession(callId: config.room, video: config.video);
+      CallAudioController.instance.seed(
+        callId: config.room,
+        route: config.video ? CallAudioRoute.speaker : CallAudioRoute.earpiece,
+      );
+      CallAudioController.instance.onRouteConfirmed = (confirmedSpeaker) {
+        _speaker = confirmedSpeaker;
+        speakerOn.value = confirmedSpeaker;
+        // ignore: unawaited_futures
+        _ringback.setSpeaker(confirmedSpeaker);
+        // ignore: unawaited_futures
+        _receptionist?.setSpeaker(confirmedSpeaker);
+      };
+      final result =
+          await CallAudioController.instance.apply(source: 'boot_media');
+      if (result != null) {
+        Analytics.capture('call_audio_route', {
+          'route': result.active.name,
+          'auto': true,
+        });
+      }
     // CALL-REL-1: when callAudioControllerV2 is on, NativeVoiceAudio.instance
     // is the ONLY thing that starts the P2P audio session / picks the route —
     // CallSession no longer calls Helper.setSpeakerphoneOn, startBluetoothSco,
     // or the proximity sensor directly. Flag off preserves the exact prior
     // behavior below.
-    if (RemoteConfig.callAudioControllerV2) {
+    } else if (RemoteConfig.callAudioControllerV2) {
       await NativeVoiceAudio.instance
           .beginP2pSession(callId: config.room, video: config.video);
       final result = await NativeVoiceAudio.instance.selectRoute(
@@ -6110,6 +6158,20 @@ class CallSession {
   }
 
   void toggleSpeaker() {
+    if (RemoteConfig.callAudioOwnerV1) {
+      // [CALL-AUDIO-OWNER-1] Update the controller's intent BEFORE queuing the
+      // apply — a fast repeat toggle always carries the latest press, never a
+      // stale one captured by an in-flight apply from `boot_media` or a
+      // `reassert`. `onRouteConfirmed` (installed in `_bootMedia`) is what
+      // actually updates `_speaker`/`speakerOn`/the tone player/the
+      // receptionist once native confirms the route — never optimistically
+      // here, so the UI always reflects the CONFIRMED route.
+      final target = _speaker ? CallAudioRoute.earpiece : CallAudioRoute.speaker;
+      CallAudioController.instance.setIntent(target);
+      // ignore: unawaited_futures
+      CallAudioController.instance.apply(source: 'user_toggle');
+      return;
+    }
     if (RemoteConfig.callAudioControllerV2) {
       // CALL-REL-1: the controller is the only route owner. toggleSpeaker is
       // now an awaited/serialized request; `speakerOn` is only updated once
@@ -7821,7 +7883,11 @@ class CallSession {
     // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
     // when the controller owns the session. It is safe even if setup only
     // partially completed. Flag off keeps the exact prior teardown sequence.
-    if (RemoteConfig.callAudioControllerV2) {
+    // [CALL-AUDIO-OWNER-1] Release the controller's ownership of this call's
+    // route before/with the session teardown, so a straggling apply from a
+    // just-ended call can never reach into whatever call comes next.
+    CallAudioController.instance.release(config.room);
+    if (RemoteConfig.callAudioOwnerV1 || RemoteConfig.callAudioControllerV2) {
       await _safeAwait(() => NativeVoiceAudio.instance.endP2pSession(callId: config.room));
     } else {
       await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());

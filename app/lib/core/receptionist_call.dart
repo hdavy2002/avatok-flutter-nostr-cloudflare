@@ -12,6 +12,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'analytics.dart';
 import 'ava_log.dart';
+import 'calls/call_audio_controller.dart';
 import 'receptionist_api.dart';
 import 'remote_config.dart';
 import 'voice/native_voice_audio.dart';
@@ -308,10 +309,23 @@ class ReceptionistCall {
             'error_scrubbed': (e['error'] ?? '').toString(),
             if (callId case final id?) 'call_id': id,
           });
+      // [CALL-AUDIO-OWNER-1 2026-08-07] Re-assert the caller's actual route
+      // intent BEFORE `startEngine` runs — it writes `AudioManager` itself
+      // (legacy `isSpeakerphoneOn` pre-API 31, or previously an unconditional
+      // clobber on API 31+ too; see the Kotlin-side fix in
+      // AvaVoiceAudioPlugin.startEngine), which can leave the device on a
+      // route that disagrees with what `CallAudioController.intent` says the
+      // user actually wants going into the handoff.
+      await CallAudioController.instance.reassert('recept_prewarm_before');
       final res = await _native.start(
           micSampleRate: 16000, playSampleRate: 24000, speaker: speaker);
       _useNative = res['ok'] == true;
       _aecOk = res['aec_enabled'] == true; // hardware echo cancellation confirmed
+      // Re-assert AGAIN now that `startEngine` has returned — this is the
+      // "loud again when Ava prewarms" half of the diagnosis: `startEngine`
+      // just wrote its own route/mode, so pull the device back to the
+      // caller's intent rather than whatever it left behind.
+      await CallAudioController.instance.reassert('recept_prewarm_after');
 
       Analytics.capture('ava_recept_native', {
         'ok': res['ok'] == true,
@@ -332,6 +346,26 @@ class ReceptionistCall {
 
     // 2) Fallback: record (with AEC where the OS offers it) + chunked-WAV player.
     if (!await _rec.hasPermission()) return false;
+    // [CALL-AUDIO-OWNER-1 2026-08-07] Give the fallback TTS player the SAME
+    // communication-audio context as the ringback tone players
+    // (core/ringback_player.dart) instead of audioplayers' default
+    // USAGE_MEDIA + AUDIOFOCUS_GAIN. Without this, this player could evict
+    // the call's own AUDIOFOCUS_GAIN_TRANSIENT holder — the exact
+    // [CALL-FOCUS-DEADLOCK-1] mechanism (2026-08-05 prod incident), just on
+    // the receptionist's fallback path instead of a ringback tone.
+    // `audioFocus: none` is load-bearing — never make this conditional.
+    try {
+      await _player.setAudioContext(AudioContext(
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: speaker,
+          audioMode: AndroidAudioMode.inCommunication,
+          stayAwake: false,
+          contentType: AndroidContentType.speech,
+          usageType: AndroidUsageType.voiceCommunication,
+          audioFocus: AndroidAudioFocus.none,
+        ),
+      ));
+    } catch (_) {/* best-effort — a missing context write must never break the fallback path */}
     final mic = await _rec.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1,
       echoCancel: true, noiseSuppress: true, autoGain: true));

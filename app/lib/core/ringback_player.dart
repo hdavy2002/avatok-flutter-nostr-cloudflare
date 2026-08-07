@@ -133,8 +133,9 @@ class RingbackPlayer {
   Future<void> _ensureCallAudioContext({
     required bool speakerOn,
     required AndroidAudioMode mode,
+    bool force = false,
   }) async {
-    if (_ctxSet && _ctxSpeakerOn == speakerOn && _ctxMode == mode) return;
+    if (!force && _ctxSet && _ctxSpeakerOn == speakerOn && _ctxMode == mode) return;
     _ctxSet = true;
     _ctxSpeakerOn = speakerOn;
     _ctxMode = mode;
@@ -224,6 +225,30 @@ class RingbackPlayer {
     });
   }
 
+  /// [CALL-AUDIO-OWNER-1 2026-08-07] Force the tone's device-wide audio
+  /// context to re-assert `isSpeakerphoneOn` for the CURRENT tone (if any).
+  ///
+  /// [_ensureCallAudioContext] early-returns when `speakerOn`/`mode` are
+  /// unchanged, which is exactly wrong for a mid-tone Speaker toggle: the
+  /// value genuinely hasn't changed from this player's point of view, but
+  /// `AudioManager.isSpeakerphoneOn` may have been clobbered by something
+  /// else since (another player, `startEngine`'s legacy write, a focus
+  /// regain) — with no player-local re-assert, the loud→quiet→loud bug
+  /// persists even after `CallAudioController` picks the right route,
+  /// because the TONE never re-applies its half of the device state.
+  /// [force] bypasses the early-return; volume is re-pinned to 1.0 the same
+  /// way [playSearchingTone] already does, since a stale per-player volume
+  /// from an earlier tone can otherwise survive the swap.
+  Future<void> setSpeaker(bool on) async {
+    if (_disposed) return;
+    await _ensureCallAudioContext(
+      speakerOn: on,
+      mode: _ctxMode ?? AndroidAudioMode.inCommunication,
+      force: true,
+    );
+    try { await _p.setVolume(1.0); } catch (_) {}
+  }
+
   /// Play the callee's ringback (looped). [value] is a bundled catalog id
   /// (preferred), or empty → bundled default, or a legacy http(s) URL.
   ///
@@ -241,6 +266,14 @@ class RingbackPlayer {
           speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
       if (_disposed || gen != _generation) return; // superseded — drop it
       await _p.setReleaseMode(ReleaseMode.loop);
+      // [CALL-AUDIO-OWNER-1 2026-08-07] Pin full volume, same as
+      // [playSearchingTone] — a searching->ringback swap on this shared
+      // player otherwise inherits whatever per-player volume the previous
+      // tone left behind, which is part of the "loud, then near-inaudible"
+      // symptom this fixes.
+      if (gen != _generation) return;
+      try { await _p.setVolume(1.0); } catch (_) {}
+      if (_disposed || gen != _generation) return;
       Source src;
       if (value.isEmpty) {
         src = AssetSource(_assetRel(kDefaultRingbackAsset));
@@ -298,6 +331,8 @@ class RingbackPlayer {
     try {
       await _ensureCallAudioContext(
           speakerOn: speakerOn, mode: AndroidAudioMode.inCommunication);
+      if (_disposed || generation != _generation) return;
+      try { await _p.setVolume(1.0); } catch (_) {}
       if (_disposed || generation != _generation) return;
       await _p.setReleaseMode(ReleaseMode.loop);
       if (_disposed || generation != _generation) return;
