@@ -13,7 +13,6 @@ export const prerender = true;
 
 import landingRaw from '../landing/avatok-landing.html?raw';
 import SiteFooter from '../components/SiteFooter.astro';
-import GlassWake from '../islands/site/GlassWake';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 
@@ -35,11 +34,3 @@ if (landingTail === '') {
 <Fragment set:html={landingHead} />
 <SiteFooter />
 <Fragment set:html={landingTail} />
-
-<!--
-  Clear-glass wake that trails the cursor. `client:idle` so it never competes with
-  the hero paint or the webfonts; it is decorative and pointer-events:none, so a
-  browser that never hydrates it loses nothing. See the island's own header for why
-  this is backdrop-filter and not the Canvas UI WebGL component it replaced.
--->
-<GlassWake client:idle />
