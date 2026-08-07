@@ -4,11 +4,27 @@
 //        render as "you've used today's allowance".
 //   B5 — content moderation ships DARK behind aiContentModerationEnabled
 //        (default false), preserving the 2026-06-24 owner no-op decision.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   estimateTokens, reserveFreeTextBudget, runGated, safetyVerdict,
 } from "../src/lib/ai_gate";
 import { isFreeCapability, reserveAiJob, settleAiJob } from "../src/lib/ai_billing";
+import { bustConfigMemo } from "../src/routes/config";
+
+// [AVA-CFG-CACHE-1 fix 2026-08-07] Reset the config memo between cases.
+//
+// `readConfig` gained a 10s module-scope memo, and `memoKey(env)` is
+// `env.ENVIRONMENT_NAME ?? "prod"` — every `makeEnv()` in this file resolves to
+// the SAME key "prod". So the first test's overrides were pinned and every
+// later test silently read them: the concurrency case saw no daily ceiling and
+// admitted all 50 requests instead of 5, which reads exactly like a budget
+// enforcement failure. It is not — production has one env per isolate and the
+// TTL is deliberate. The tests simply predate the memo and assumed every
+// `readConfig` hit KV.
+//
+// Do NOT "fix" this by weakening the memo; it is a real latency win across 40+
+// call sites. Any suite that builds more than one env per file needs this.
+beforeEach(() => bustConfigMemo());
 
 class FakeKv {
   private data = new Map<string, string>();

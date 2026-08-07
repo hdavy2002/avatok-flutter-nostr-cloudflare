@@ -17,6 +17,15 @@ import {
   callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop,
 } from "../src/routes/call_translation";
 import type { Env } from "../src/types";
+import { bustConfigMemo } from "../src/routes/config";
+
+// [AVA-CFG-CACHE-1 fix 2026-08-07] Reset the config memo between cases — see the
+// longer note in test/ai_free_budget.test.ts. `memoKey(env)` is
+// `env.ENVIRONMENT_NAME ?? "prod"`, so every env built in this file shares one
+// key and the first test's flags were pinned for 10s. Here it surfaced as the
+// paid-only case getting a 502 instead of a 402: flipping the flag off had no
+// effect because the memo still held it on.
+beforeEach(() => bustConfigMemo());
 
 describe("[CALL-TRANSLATE-1] contract", () => {
   it("uses the documented Gemini model and paid one-minute tariff", () => {
