@@ -20,7 +20,7 @@ import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
-import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import { CALL_RING_LIFETIME_MS, ringLifetimeMs } from "../lib/call_delivery_contract";
 import { CALL_ROOM_TOKEN_LIFETIME_MS } from "../lib/call_room_auth";
 import { receptionistNoAnswerEligibility } from "./receptionist";
 import { callerContactPolicy, shouldRouteUnknownAvatokCaller, type ContactPolicy } from "../lib/call_contact_directory";
@@ -436,6 +436,21 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     (callPolicyConfig as { presenceFreshSec?: number } | null)?.presenceFreshSec ?? 90,
   );
   const unknownPolicyOn = callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true;
+  // [CALL-4RINGS-1 2026-08-08] The ring policy is resolved HERE, from the config
+  // read that is already in flight, and handed to the CallRoom in the
+  // /participants body. It is deliberately NOT read inside the DO: setParticipants
+  // sits on the dial critical path that [CALL-RING-FASTPATH-1] just cleared, and a
+  // cold DO doing its own KV round-trip there would put config latency straight
+  // back in front of the ring. `!== false` for the same reason as the flags above.
+  const ringPolicy = {
+    enabled: (callPolicyConfig as { callRealRingCount?: boolean } | null)?.callRealRingCount !== false,
+    rings: Number((callPolicyConfig as { receptionistRings?: number } | null)?.receptionistRings ?? 4),
+    cycleMs: Number((callPolicyConfig as { ringCycleMs?: number } | null)?.ringCycleMs ?? 6000),
+  };
+  // The ring lifetime this call will actually be given. Used for the ring-receipt
+  // token TTL as well as the DO deadline — a token that expired at 20 s while the
+  // ring ran to 28 s would 403 exactly the late cycles this feature counts.
+  const ringLifetime = ringLifetimeMs(ringPolicy);
 
   let contactPolicy: ContactPolicy | null = null;
   if (!fastPath || unknownPolicyOn) {
@@ -1012,7 +1027,13 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   //
   // They are call-scoped JOIN credentials. Unlike ring receipts they must cover
   // fresh reconnect admissions; terminal CallRoom state revokes them immediately.
-  const expiresAt = Date.now() + CALL_RING_LIFETIME_MS;
+  // [CALL-4RINGS-1] `ringLifetime`, not CALL_RING_LIFETIME_MS. This is the TTL of
+  // the ring-receipt token, and the callee now presents it once per ring cycle —
+  // cycle 4 lands around +18 s plus wake latency. Pinned at 20 s it would 403
+  // `expired` on precisely the receipts that decide the handoff. With the flag
+  // off `ringLifetimeMs()` returns CALL_RING_LIFETIME_MS, so this line is
+  // unchanged in that configuration.
+  const expiresAt = Date.now() + ringLifetime;
   // Reconnects are new WebSocket admissions, so this must outlive ringing.
   // Terminal CallRoom state remains the authoritative revocation boundary.
   const roomTokenExpiresAt = Date.now() + CALL_ROOM_TOKEN_LIFETIME_MS;
@@ -1044,6 +1065,16 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         token: ringReceiptToken, nativeActionToken, expiresAt,
         // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.
         callerRoomToken, calleeRoomToken, roomTokenExpiresAt,
+        // [CALL-4RINGS-1] Ring policy resolved from the config read already in
+        // flight above, so the DO never pays a KV round-trip on the dial path.
+        ringPolicy,
+        // [CALL-4RINGS-1] What [CALL-PRESENCE-1] concluded about this callee at
+        // dial time. The DO uses it for ONE thing: if the ring backstop is ever
+        // reached with zero audible receipts on a callee presence called stale,
+        // the presence lane should have short-circuited to Ava long before and
+        // did not — that is a defect, and the DO asserts it rather than letting
+        // it look like an ordinary quiet call.
+        presenceAtDial: presenceState,
       }),
     });
     const participantResult = await participantResponse.json().catch(() => null) as
@@ -2829,6 +2860,16 @@ interface RingAudibilityFields {
   ringVolume?: number;
   ringVolumeMax?: number;
   route?: string;
+  // [CALL-4RINGS-1 2026-08-08] Which ring CYCLE this receipt is for, 1-based and
+  // monotonic within one call. Absent on every shipped client and on the very
+  // first (audibility-free) receipt, which is why the DO treats "no ringIndex"
+  // as "not a countable cycle" rather than inventing index 1 for it.
+  ringIndex?: number;
+  // True when the cycle boundary was ASSUMED from a `ringCycleMs` timer rather
+  // than observed. Android exposes no per-cycle callback for the OS ringtone, so
+  // this is true for most receipts; keeping it on the wire is what stops us
+  // quietly presenting a guess as a measurement.
+  derived?: boolean;
 }
 
 export async function callRinging(req: Request, env: Env): Promise<Response> {
@@ -2852,6 +2893,14 @@ export async function callRinging(req: Request, env: Env): Promise<Response> {
   if (typeof b.ringVolume === "number") audibility.ringVolume = b.ringVolume;
   if (typeof b.ringVolumeMax === "number") audibility.ringVolumeMax = b.ringVolumeMax;
   if (typeof b.route === "string") audibility.route = b.route.slice(0, 24);
+  // [CALL-4RINGS-1] Clamped, not merely type-checked: `ringIndex` is the only
+  // client-supplied number the handoff decision reads, so a device that sent
+  // `ringIndex: 9999` would otherwise hand its own caller to Ava on cycle one.
+  // The DO also requires strict monotonicity, so this is the second of two gates.
+  if (typeof b.ringIndex === "number" && Number.isFinite(b.ringIndex)) {
+    audibility.ringIndex = Math.min(64, Math.max(1, Math.round(b.ringIndex)));
+  }
+  if (typeof b.derived === "boolean") audibility.derived = b.derived;
 
   try {
     const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));

@@ -85,6 +85,17 @@ const CALLBACK_RESERVATION_TTL_MS = 8_000; // §2.5 reserveCallback: expires = +
  *  Ava conversation — its only job is to reclaim a phase whose client died
  *  before `/finish`, which previously pinned the owner as busy forever. */
 const RECEPTIONIST_LEASE_MS = 300_000;
+/** [CALL-4RINGS-1 2026-08-08] Lease for the RINGING phases.
+ *
+ *  A ringing client has no heartbeat, so the 30 s connected lease is the wrong
+ *  bound for it — and after [CALL-4RINGS-1] the ring backstop itself can run to
+ *  `receptionistRings * ringCycleMs + 4 s` (28 s at the shipped defaults, up to
+ *  the numericKeys ceiling if the owner raises either). A lease that can expire
+ *  DURING a legitimate ring would reclaim a live invitation and report the
+ *  callee free while their phone is still ringing. This only ever needs to be
+ *  comfortably above the longest legitimate ring, so the only thing it reclaims
+ *  is a client that vanished. */
+const RING_LEASE_MS = 120_000;
 const TRANSITIONS_RETENTION_MS = 24 * 60 * 60 * 1000; // §2.2: 24h retention, debugging only
 
 // -----------------------------------------------------------------------------
@@ -300,7 +311,28 @@ export class CallStateAuthorityDO {
     // on: enforcing a state machine that can get permanently stuck converts a
     // dropped client into an indefinite outage for that user. A lease that is
     // only honoured in one phase is not a lease.
-    const leasedPhase = row.phase === "connected" || row.phase === "receptionist_active";
+    // [CALL-4RINGS-1 2026-08-08] `incoming_ringing` / `outgoing_ringing` /
+    // `connecting` MUST expire too — the same trap, a third time.
+    //
+    // handleAcquire() stamps `lease_expiry_ms = now + LEASE_MS` and moves the row
+    // straight into a RINGING phase, but nothing has ever expired those phases:
+    // `leasedPhase` listed only connected + receptionist_active. So a device that
+    // died, lost its radio or was force-stopped mid-ring left the row non-idle
+    // forever, with a lease sitting right there unread. isBusy() reports any
+    // non-idle phase as busy, which is exactly the indefinite per-user outage
+    // [AUTHORITY-LEASE-1] and [AUTHORITY-CBRES-EXPIRE-1] each had to fix for
+    // their own phase. "A lease that is only honoured in one phase is not a
+    // lease" — and this is the phase the ring itself runs in.
+    //
+    // This matters more now than it did yesterday: [CALL-4RINGS-1] widens the
+    // ring backstop from 20 s to up to `rings * ringCycleMs + 4 s`, so the
+    // window in which a client can vanish mid-ring got longer, and RING_LEASE_MS
+    // below has to stay comfortably clear of it.
+    const leasedPhase = row.phase === "connected"
+      || row.phase === "receptionist_active"
+      || row.phase === "incoming_ringing"
+      || row.phase === "outgoing_ringing"
+      || row.phase === "connecting";
     if (leasedPhase && row.lease_expiry_ms != null && Date.now() > row.lease_expiry_ms) {
       row = this.applyTransition(row, "idle", "lease_expired_on_wake");
       row.peer_uid = null;
@@ -824,7 +856,10 @@ export class CallStateAuthorityDO {
     row.rtc_provider = rtcProvider;
     row.owner_session_id = ownerSessionId;
     row.owner_device_id = ownerDeviceId;
-    row.lease_expiry_ms = Date.now() + LEASE_MS;
+    // [CALL-4RINGS-1] RING_LEASE_MS, not LEASE_MS: this row is entering a RINGING
+    // phase, which has no heartbeat to refresh it and may now legitimately last
+    // longer than the 30 s connected lease. See RING_LEASE_MS.
+    row.lease_expiry_ms = Date.now() + RING_LEASE_MS;
     const toPhase: CallPhase = direction === "out" ? "outgoing_ringing" : "incoming_ringing";
     this.applyTransition(row, toPhase, "acquire_call", mutationUuid);
     this.persistRow(row);
@@ -888,6 +923,13 @@ export class CallStateAuthorityDO {
       row.lease_expiry_ms = Date.now() + LEASE_MS;
     } else if (toPhase === "receptionist_active") {
       row.lease_expiry_ms = Date.now() + RECEPTIONIST_LEASE_MS;
+    } else if (
+      toPhase === "incoming_ringing" || toPhase === "outgoing_ringing" || toPhase === "connecting"
+    ) {
+      // [CALL-4RINGS-1] loadRow() now expires these phases, so they must actually
+      // carry a lease when entered by transition (not only by acquire) — an
+      // expiring phase with a null lease can never expire.
+      row.lease_expiry_ms = Date.now() + RING_LEASE_MS;
     }
     this.applyTransition(row, toPhase, typeof body.reason === "string" ? body.reason : "transition", mutationUuid);
     this.persistRow(row);

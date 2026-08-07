@@ -48,8 +48,10 @@ import {
   humanRoomAcceptsNewPeer, legacyWireStatus,
   type CallSession, type Command, type CommandName,
 } from "../lib/call_state";
-import { CALL_RING_LIFETIME_MS } from "../lib/call_delivery_contract";
+import { CALL_RING_LIFETIME_MS, ringLifetimeMs } from "../lib/call_delivery_contract";
 import { readConfig } from "../routes/config";
+import { trackUserContact } from "../hooks";
+import { emailFor, phoneFor } from "../lib/identity";
 import {
   GLARE_WINDOW_MS, glareJoinRoomToken, resolveGlarePlacement, type PendingGlareInvite,
 } from "../lib/call_glare";
@@ -62,6 +64,32 @@ import {
 function fmtCallDuration(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
+
+/** [CALL-4RINGS-1] The ring rule this call runs under, frozen at admission so a
+ *  KV flip mid-ring cannot change the deadline of a call already in flight. */
+interface RingPolicy {
+  /** `callRealRingCount`. False → identical to pre-2026-08-08 behaviour. */
+  enabled: boolean;
+  /** `receptionistRings` (default 4) — how many REAL cycles hand over to Ava. */
+  rings: number;
+  /** `ringCycleMs` (default 6000) — assumed length of one cycle. */
+  cycleMs: number;
+}
+
+/** Validate a ring policy off the wire. Anything malformed → `null`, which
+ *  setParticipants reads as "no policy", i.e. today's 20 s rule. Never throws. */
+function parseRingPolicy(raw: unknown): RingPolicy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as { enabled?: unknown; rings?: unknown; cycleMs?: unknown };
+  if (typeof o.enabled !== "boolean") return null;
+  const rings = Number(o.rings);
+  const cycleMs = Number(o.cycleMs);
+  return {
+    enabled: o.enabled,
+    rings: Number.isFinite(rings) && rings >= 1 ? Math.min(12, Math.round(rings)) : 4,
+    cycleMs: Number.isFinite(cycleMs) && cycleMs >= 1_000 ? Math.min(20_000, Math.round(cycleMs)) : 6_000,
+  };
 }
 
 interface AwayPeer {
@@ -196,6 +224,29 @@ export class CallRoom {
   private ringDeadline: number | null | undefined; // undefined = not loaded
   private autoReceptionistEligible: boolean | undefined;
   private noAnswerReason: string | null | undefined;
+  // ── [CALL-4RINGS-1 2026-08-08] REAL RING COUNTING ───────────────────────────
+  //
+  // The owner's rule is "Ava takes over after FOUR REAL RINGS" — four times the
+  // callee's device genuinely produced a ring cycle. Until now nothing counted
+  // anything: `receptionistRings: 4` was surfaced to the client as `cfg['rings']`
+  // and NOTHING timed off it, while the only thing that actually fired was the
+  // 20 s wall clock below. Those are not the same rule, and the difference shows:
+  // prod call avatok-ca712826 (2026-08-07) never received a single device-ringing
+  // receipt — the phone demonstrably never rang — and Ava still fired, at +28 s.
+  // A wall clock cannot tell "rang four times, no answer" from "never rang".
+  //
+  // `ringCount` counts only receipts that were AUDIBLE and not DND-blocked, and
+  // `ringLastIndex` enforces strict monotonicity so a retried or duplicated POST
+  // (the receipt token is re-validated but deliberately NOT consumed) can never
+  // count twice. `undefined` = not yet loaded from storage; see loadRingCounters().
+  private ringCount: number | undefined;
+  private ringLastIndex: number | undefined;
+  private ringFirstAtMs: number | null | undefined;
+  private ringLastAtMs: number | null | undefined;
+  /** The resolved ring policy for THIS call, handed in by routes/api.ts at
+   *  /participants time (it already has the config in hand — see the note there
+   *  about not putting a KV read back on the dial critical path). */
+  private ringPolicy: RingPolicy | null | undefined;
   // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
   // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
   // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
@@ -796,6 +847,7 @@ export class CallRoom {
     calleeUid: string,
     autoReceptionistEligible = false,
     noAnswerReason: string | null = null,
+    ringPolicy: RingPolicy | null = null,
   ): Promise<{ ok: true; seq: number; epoch: number; ringDeadlineMs: number | null } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
     if (s.caller_uid || s.callee_uid) {
@@ -817,7 +869,15 @@ export class CallRoom {
       autoReceptionistEligible,
       noAnswerReason: noAnswerReason ?? "",
     });
-    const deadline = Date.now() + CALL_RING_LIFETIME_MS;
+    // [CALL-4RINGS-1] The wall clock is now a BACKSTOP, not the rule — so it has
+    // to be generous enough that four genuine ring cycles fit inside it, or it
+    // fires first and the ring count never gets to decide anything. Absent a
+    // policy (an older caller Worker, or the flag off) this is byte-for-byte the
+    // previous line: `ringLifetimeMs({enabled:false,…}) === CALL_RING_LIFETIME_MS`.
+    const policy: RingPolicy = ringPolicy ?? { enabled: false, rings: 4, cycleMs: 6000 };
+    this.ringPolicy = policy;
+    await this.state.storage.put("ring_policy", policy);
+    const deadline = Date.now() + ringLifetimeMs(policy);
     this.ringDeadline = deadline;
     await this.state.storage.put("ringDeadline", deadline);
     // Seed the server-owned lifecycle before any ring push is sent. The client
@@ -873,7 +933,14 @@ export class CallRoom {
       // the FSM's internal names are not part of it. New clients read `fsm`.
       type: legacyWireStatus(s),
       ...(callId ? { callId } : {}),
-      ...(s.handoff_reason === "no_answer" ? { activation_mode: "rings" } : {}),
+      // [CALL-4RINGS-1] `rings_completed` is the SAME automatic outcome as
+      // `no_answer` from the client's point of view — the callee's phone rang and
+      // nobody picked up — so it must carry the identical `activation_mode`.
+      // Emitting a new string here would fall through every shipped client's
+      // `activation_mode == 'rings'` check and silently un-do [CALL-WIRE-COMPAT-1].
+      ...(s.handoff_reason === "no_answer" || s.handoff_reason === "rings_completed"
+        ? { activation_mode: "rings" }
+        : {}),
       fsm: {
         session_state: s.session_state,
         caller_leg_state: s.caller_leg_state,
@@ -1148,6 +1215,178 @@ export class CallRoom {
         },
       });
     } catch { /* best-effort — telemetry never blocks or breaks signaling */ }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // [CALL-4RINGS-1 2026-08-08] Ring counting, and the ONE path that ends a ring.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Hydrate the ring counters + frozen policy after a hibernation/eviction. */
+  private async loadRingCounters(): Promise<void> {
+    if (this.ringCount !== undefined) return;
+    this.ringCount = (await this.state.storage.get<number>("ring_count")) ?? 0;
+    this.ringLastIndex = (await this.state.storage.get<number>("ring_last_index")) ?? 0;
+    this.ringFirstAtMs = (await this.state.storage.get<number>("ring_first_at")) ?? null;
+    this.ringLastAtMs = (await this.state.storage.get<number>("ring_last_at")) ?? null;
+    if (this.ringPolicy === undefined) {
+      this.ringPolicy = (await this.state.storage.get<RingPolicy>("ring_policy")) ?? null;
+    }
+  }
+
+  /** How many DISTINCT participants hold a socket right now.
+   *
+   *  Distinct SEAT tags, never `getWebSockets().length` — the adopt-and-close
+   *  path for a duplicate socket on the same peer can transiently show two
+   *  entries for ONE participant, and counting those as a connected call would
+   *  suppress no-answer for a callee who never picked up. Extracted verbatim
+   *  from the [CALL-ALARM-ANSWERED-1] guard so the ring-count trigger enforces
+   *  the SAME invariant rather than a lookalike of it. */
+  private liveSeatCount(): number {
+    return new Set(
+      this.state.getWebSockets()
+        .map((w) => socketSeatKey(this.state.getTags(w)))
+        .filter((t): t is string => typeof t === "string" && t.length > 0),
+    ).size;
+  }
+
+  /** Identity-stamped telemetry for BOTH parties (CLAUDE.md: a call is a
+   *  conversation between two people, so either email must retrieve it).
+   *  `emailFor`/`phoneFor` are KV-cached, and every failure is swallowed —
+   *  telemetry may never decide whether a call rings.
+   *
+   *  AWAITED by every caller. workerd drops an unawaited promise the moment the
+   *  response is returned, and a DO `alarm()` has no ExecutionContext to
+   *  `waitUntil` into — the exact way `call_receptionist_trigger` would have
+   *  silently never arrived from the one path that matters most. */
+  private async trackRingEvent(
+    s: CallSession,
+    event: string,
+    props: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const callerUid = s.caller_uid ?? "";
+      const calleeUid = s.callee_uid ?? "";
+      const [callerEmail, callerPhone, calleeEmail, calleePhone] = await Promise.all([
+        emailFor(this.env, callerUid).catch(() => null),
+        phoneFor(this.env, callerUid).catch(() => null),
+        emailFor(this.env, calleeUid).catch(() => null),
+        phoneFor(this.env, calleeUid).catch(() => null),
+      ]);
+      // Recorded from the CALLEE's perspective (whose phone did or did not ring),
+      // with the caller's contact details carried as plain props so a PostHog
+      // query on either person's email or phone returns this call.
+      await trackUserContact(this.env, calleeUid, calleeEmail, calleePhone, event, "avatok", {
+        ...props,
+        call_id: s.call_id || (this.state.id.name ? String(this.state.id.name).slice(0, 64) : null),
+        caller_uid: callerUid || null,
+        callee_uid: calleeUid || null,
+        caller_email: callerEmail,
+        caller_phone: callerPhone,
+        callee_email: calleeEmail,
+        callee_phone: calleePhone,
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      });
+    } catch { /* best-effort — a call must never fail because telemetry did */ }
+  }
+
+  /**
+   * END THE RING. The single path out of a ring that nobody answered, used by
+   * BOTH triggers so they cannot drift apart:
+   *   · `rings_completed`          — `receptionistRings` real audible cycles.
+   *   · `backstop_timeout`         — the wall clock, with at least one receipt.
+   *   · `ring_timeout_no_receipts` — the wall clock with ZERO evidence the
+   *                                  callee's phone ever made a sound. This is
+   *                                  what prod call avatok-ca712826 was, and it
+   *                                  is now nameable instead of being reported
+   *                                  as a normal no-answer.
+   *
+   * Returns false if it did nothing (the call is live, or already terminal).
+   */
+  private async runRingOutcome(
+    trigger: "rings_completed" | "backstop_timeout" | "ring_timeout_no_receipts",
+  ): Promise<boolean> {
+    const session = await this.loadSession("");
+    // [CALL-ALARM-ANSWERED-1] DO NOT TIME OUT A LIVE CALL. Applied here too, and
+    // for the same reason: the ring-count trigger fires from a client-driven POST
+    // that can arrive while two people are already talking (a late receipt, an
+    // accept whose `accept_call` POST was lost). Dropping Ava into a live
+    // conversation because a straggling ring receipt made the count is precisely
+    // the bug that guard exists to prevent.
+    if (session.session_state === "connected" || this.liveSeatCount() >= 2) return false;
+    if (session.session_state === "handoff" || session.session_state === "completed") return false;
+
+    if (this.autoReceptionistEligible === undefined) {
+      this.autoReceptionistEligible =
+        (await this.state.storage.get<boolean>("autoReceptionistEligible")) ?? false;
+    }
+    if (this.noAnswerReason === undefined) {
+      this.noAnswerReason = (await this.state.storage.get<string>("noAnswerReason")) || null;
+    }
+    await this.loadRingCounters();
+    const ringCount = this.ringCount ?? 0;
+    const autoAva = this.autoReceptionistEligible === true;
+    // The deadline itself decides the outcome. A client timer may only act as
+    // a delivery backstop; it cannot independently race no-answer against Ava.
+    const result = await this.runCommand(
+      session.call_id,
+      autoAva ? "handoff_to_receptionist" : "ring_timeout",
+      "server",
+      autoAva
+        ? { data: { reason: trigger === "rings_completed" ? "rings_completed" : "no_answer" } }
+        : {},
+    );
+    this.ringDeadline = null;
+    try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
+    try { await this.state.storage.put("ring_verdict", trigger); } catch { /* best-effort */ }
+    if (result.ok === true && result.changed === true && typeof result.peer_uid === "string") {
+      try {
+        await this.env.Q_PUSH.send({
+          kind: "call-status",
+          to: result.peer_uid,
+          callId: session.call_id,
+          status: result.wire_status,
+          ...(autoAva ? { activation_mode: "rings" } : {}),
+          ...(!autoAva && this.noAnswerReason
+            ? { no_answer_reason: this.noAnswerReason }
+            : {}),
+          ts: Date.now(),
+          seq: result.seq,
+        });
+      } catch { /* socket path remains authoritative for connected clients */ }
+      // The callee may have received the invite through FCM without ever
+      // attaching a socket. Explicitly cancel that native ring as well; this
+      // is what prevents a delayed invite from ringing past the server lease.
+      if (session.callee_uid && session.callee_uid !== result.peer_uid) {
+        try {
+          await this.env.Q_PUSH.send({
+            kind: "call-status",
+            to: session.callee_uid,
+            callId: session.call_id,
+            status: "cancel",
+            ts: Date.now(),
+            seq: result.seq,
+          });
+        } catch { /* native duration remains the final ring backstop */ }
+      }
+    }
+    const policy = this.ringPolicy ?? null;
+    await this.trackRingEvent(session, "call_receptionist_trigger", {
+      trigger,
+      ring_count: ringCount,
+      rings_required: policy?.rings ?? null,
+      ring_cycle_ms: policy?.cycleMs ?? null,
+      real_ring_count_enabled: policy?.enabled === true,
+      auto_ava: autoAva,
+      first_ring_at_ms: this.ringFirstAtMs ?? null,
+      last_ring_at_ms: this.ringLastAtMs ?? null,
+      ms_first_to_last_ring:
+        this.ringFirstAtMs != null && this.ringLastAtMs != null
+          ? this.ringLastAtMs - this.ringFirstAtMs
+          : null,
+      no_answer_reason: this.noAnswerReason ?? null,
+      committed: result.ok === true && result.changed === true,
+    });
+    return true;
   }
 
   /** Retire pre-free-policy billing without settling any additional minute. */
@@ -1495,7 +1734,18 @@ export class CallRoom {
           calleeUid,
           body.autoReceptionistEligible === true,
           typeof body.noAnswerReason === "string" ? body.noAnswerReason.slice(0, 48) : null,
+          // [CALL-4RINGS-1] Optional, so a Worker deploy that predates this (or a
+          // replayed request) still registers participants exactly as before.
+          parseRingPolicy(body.ringPolicy),
         );
+        // [CALL-4RINGS-1] Dial-time presence verdict, recorded for the
+        // backstop-with-zero-receipts assertion in alarm(). Written after
+        // setParticipants so a rejected/mismatched registration leaves nothing.
+        if (result.ok && typeof body.presenceAtDial === "string") {
+          try {
+            await this.state.storage.put("presence_at_dial", body.presenceAtDial.slice(0, 16));
+          } catch { /* best-effort — this is telemetry, never a gate */ }
+        }
         return Response.json(result, { status: result.ok ? 200 : 409 });
       }
       // [CALL-RING-FIRST-1 2026-08-03] Set the no-answer receptionist verdict
@@ -1840,15 +2090,104 @@ export class CallRoom {
             }, { status: 403 });
           }
 
+          // ── [CALL-4RINGS-1 2026-08-08] COUNT THE REAL RINGS ─────────────────
+          //
+          // Before this, the receipt was a one-shot: the callee reported the
+          // FIRST ring and nothing else, so "rang four times, nobody answered"
+          // and "never rang at all" produced identical server state and the only
+          // thing that could ever end the ring was a clock.
+          //
+          // WHAT COUNTS. Only a receipt that carries a `ringIndex`, is strictly
+          // greater than the highest index already seen, AND was genuinely
+          // AUDIBLE. `audible:'false'` or `dndBlocking:true` means the device
+          // raised a ring surface that made no sound — a silent phone in a
+          // pocket has not rung, and treating it as a ring would hand the caller
+          // to Ava on a phone that never had a chance to be answered. Such a
+          // receipt is still RELAYED (the caller's honest ringback depends on it)
+          // and still recorded in telemetry; it is only excluded from the COUNT.
+          //
+          // Strict monotonicity is what makes the deliberately non-consuming
+          // token safe here: the audibility echo re-POSTs with the SAME token
+          // (see routes/api.ts callRinging), and a retry must never be able to
+          // buy a ring the phone did not produce.
+          const audibility = (body.ringAudibility ?? {}) as {
+            audible?: unknown; dndBlocking?: unknown; ringerMode?: unknown;
+            ringIndex?: unknown; derived?: unknown;
+          };
+          const rawIndex = Number(audibility.ringIndex);
+          const ringIndex = Number.isFinite(rawIndex) && rawIndex >= 1
+            ? Math.min(64, Math.round(rawIndex))
+            : 0;
+          const audible = audibility.audible === "true";
+          const dndBlocking = audibility.dndBlocking === true;
+          const derived = audibility.derived === true;
+          const countsAsRing = ringIndex > 0 && audible && !dndBlocking;
+
+          await this.loadRingCounters();
+          const policy = this.ringPolicy;
+          let counted = false;
+          if (policy?.enabled === true && countsAsRing && ringIndex > (this.ringLastIndex ?? 0)) {
+            counted = true;
+            this.ringLastIndex = ringIndex;
+            this.ringCount = (this.ringCount ?? 0) + 1;
+            this.ringLastAtMs = now;
+            if (this.ringFirstAtMs == null) this.ringFirstAtMs = now;
+            await this.state.storage.put({
+              ring_count: this.ringCount,
+              ring_last_index: this.ringLastIndex,
+              ring_first_at: this.ringFirstAtMs,
+              ring_last_at: this.ringLastAtMs,
+            });
+          }
+
           const frame = JSON.stringify({
             type: "device-ringing",
             ...(typeof body.callId === "string" ? { callId: body.callId } : {}),
+            // [CALL-4RINGS-1] The caller's UI counts too, so it can say something
+            // TRUE about progress instead of narrating a stopwatch. Additive
+            // fields: a shipped client ignores them and behaves exactly as today.
+            ...(ringIndex > 0 ? { ringIndex } : {}),
+            ...(policy?.enabled === true
+              ? { ringCount: this.ringCount ?? 0, ringsRequired: policy.rings }
+              : {}),
+            audible: audibility.audible === undefined ? "unknown" : String(audibility.audible),
+            derived,
           });
           let sent = 0;
           for (const w of this.state.getWebSockets()) {
             try { w.send(frame); sent++; } catch { /* peer gone */ }
           }
-          return Response.json({ ok: true, sent });
+
+          const session = await this.loadSession(
+            typeof body.callId === "string" ? body.callId : "",
+          );
+          // AWAITED, not fire-and-forget: this handler returns immediately below
+          // and workerd drops unawaited work on the response — the documented way
+          // a "not in taxonomy" event happens (CLAUDE.md worker-error-path note).
+          await this.trackRingEvent(session, "call_ring_cycle", {
+            ring_index: ringIndex || null,
+            counted,
+            ring_count: this.ringCount ?? 0,
+            rings_required: policy?.rings ?? null,
+            audible: audibility.audible === undefined ? "unknown" : String(audibility.audible),
+            derived,
+            ringer_mode: typeof audibility.ringerMode === "string" ? audibility.ringerMode : "unknown",
+            dnd_blocking: dndBlocking,
+            ms_since_first_ring: this.ringFirstAtMs != null ? now - this.ringFirstAtMs : null,
+            sockets_sent: sent,
+          });
+
+          // THE OWNER'S RULE. Four real rings, then Ava — immediately, not at the
+          // next tick of a clock. runRingOutcome() re-applies the
+          // [CALL-ALARM-ANSWERED-1] live-call guard, so a straggling receipt that
+          // arrives after the callee actually picked up can never drop Ava into a
+          // live conversation.
+          let handedOff = false;
+          if (counted && policy?.enabled === true && (this.ringCount ?? 0) >= policy.rings) {
+            handedOff = await this.runRingOutcome("rings_completed");
+            if (handedOff) await this.scheduleNextAlarm();
+          }
+          return Response.json({ ok: true, sent, counted, ring_count: this.ringCount ?? 0, handed_off: handedOff });
         }
 
         // [CALL-RING-DELIVERED-1] Internal-only, server-originated (routes/api.ts
@@ -2540,12 +2879,8 @@ export class CallRoom {
       // scheduleNextAlarm() all live below. An early `return` here would silently
       // kill the away-peer grace expiry and the billing refund retry on any
       // connected call, which is a worse bug than the one being fixed.
-      const liveTags = new Set(
-        this.state.getWebSockets()
-          .map((w) => socketSeatKey(this.state.getTags(w)))
-          .filter((t): t is string => typeof t === "string" && t.length > 0),
-      );
-      const callIsLive = session.session_state === "connected" || liveTags.size >= 2;
+      const liveSeats = this.liveSeatCount();
+      const callIsLive = session.session_state === "connected" || liveSeats >= 2;
       if (callIsLive) {
         // Hydrate before the telemetry below reads `answeredAt`. It is NOT part
         // of the guard (see above — it is sticky and would re-import the
@@ -2566,7 +2901,7 @@ export class CallRoom {
               kind: "ring_timeout_suppressed_call_live", side: "server",
               call_id: session.call_id || (this.state.id.name ? String(this.state.id.name).slice(0, 64) : null),
               session_state: session.session_state,
-              live_peers: liveTags.size,
+              live_peers: liveSeats,
               answered_at: this.answeredAt ?? null,
               caller_uid: session.caller_uid, callee_uid: session.callee_uid,
               app_name: "avatok", service_name: "avatok-api", worker: true,
@@ -2574,56 +2909,40 @@ export class CallRoom {
           });
         } catch { /* best-effort — the guard itself is authoritative */ }
       } else {
-      if (this.autoReceptionistEligible === undefined) {
-        this.autoReceptionistEligible =
-          (await this.state.storage.get<boolean>("autoReceptionistEligible")) ?? false;
-      }
-      if (this.noAnswerReason === undefined) {
-        this.noAnswerReason =
-          (await this.state.storage.get<string>("noAnswerReason")) || null;
-      }
-      const autoAva = this.autoReceptionistEligible === true;
-      // The deadline itself decides the outcome. A client timer may only act as
-      // a delivery backstop; it cannot independently race no-answer against Ava.
-      const result = await this.runCommand(
-        session.call_id,
-        autoAva ? "handoff_to_receptionist" : "ring_timeout",
-        "server",
-        autoAva ? { data: { reason: "no_answer" } } : {},
-      );
-      this.ringDeadline = null;
-      try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
-      if (result.ok === true && result.changed === true && typeof result.peer_uid === "string") {
-        try {
-          await this.env.Q_PUSH.send({
-            kind: "call-status",
-            to: result.peer_uid,
-            callId: session.call_id,
-            status: result.wire_status,
-            ...(autoAva ? { activation_mode: "rings" } : {}),
-            ...(!autoAva && this.noAnswerReason
-              ? { no_answer_reason: this.noAnswerReason }
-              : {}),
-            ts: Date.now(),
-            seq: result.seq,
-          });
-        } catch { /* socket path remains authoritative for connected clients */ }
-        // The callee may have received the invite through FCM without ever
-        // attaching a socket. Explicitly cancel that native ring as well; this
-        // is what prevents a delayed invite from ringing past the server lease.
-        if (session.callee_uid && session.callee_uid !== result.peer_uid) {
-          try {
-            await this.env.Q_PUSH.send({
-              kind: "call-status",
-              to: session.callee_uid,
-              callId: session.call_id,
-              status: "cancel",
-              ts: Date.now(),
-              seq: result.seq,
+        // ── [CALL-4RINGS-1 2026-08-08] THE WALL CLOCK IS NOW THE BACKSTOP ──────
+        //
+        // Everything this branch used to do inline now lives in runRingOutcome(),
+        // because the ring-count trigger (the device-ringing control handler)
+        // must end a ring through the EXACT same code — same live-call guard,
+        // same command, same Q_PUSH cancel to an FCM-only callee. Two lookalike
+        // implementations of "hand this caller to Ava" is how the caller-side and
+        // server-side timeouts drifted apart in the first place.
+        //
+        // The verdict distinguishes the two failure shapes that a single
+        // `no_answer` used to blur together: the phone rang and nobody picked up,
+        // versus the phone never made a sound at all and we waited anyway (prod
+        // avatok-ca712826, zero receipts, Ava at +28 s).
+        await this.loadRingCounters();
+        const receipts = this.ringCount ?? 0;
+        await this.runRingOutcome(receipts > 0 ? "backstop_timeout" : "ring_timeout_no_receipts");
+        // [CALL-PRESENCE-1 cross-check] Zero audible receipts AND a callee the
+        // presence path judged offline means the caller should never have been
+        // held here at all — /api/call is supposed to have short-circuited
+        // straight to the receptionist before any of this. Reaching the backstop
+        // in that state is a real defect in the presence lane, so assert it
+        // rather than letting it look like an ordinary quiet call.
+        if (receipts === 0) {
+          const presenceAtDial = (await this.state.storage.get<string>("presence_at_dial")) ?? "unknown";
+          if (presenceAtDial === "stale") {
+            await this.trackRingEvent(session, "invariant_violated", {
+              kind: "offline_callee_reached_ring_backstop",
+              side: "server",
+              ring_count: 0,
+              presence_at_dial: presenceAtDial,
+              no_answer_reason: this.noAnswerReason ?? null,
             });
-          } catch { /* native duration remains the final ring backstop */ }
+          }
         }
-      }
       } // ← end of the connected-guard `else` (ring branch). Fall through.
     }
     // [CALL-SFU-LEASE-1] If every signalling socket is gone and every SFU seat

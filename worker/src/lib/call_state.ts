@@ -90,7 +90,18 @@ export type CallSession = {
   disposition: Disposition;
 
   /** Distinguishes the callee's button from the server's four-ring fallback. */
-  handoff_reason?: "manual" | "no_answer";
+  /** WHY the callee's ring ended in a receptionist handoff.
+   *  · `manual` — the callee (or caller) chose Ava.
+   *  · `no_answer` — the ring lifetime expired without an answer.
+   *  · `rings_completed` — [CALL-4RINGS-1 2026-08-08] the callee's device
+   *    genuinely produced `receptionistRings` audible ring cycles and nobody
+   *    picked up. This is the OWNER'S ACTUAL RULE; `no_answer` is now only the
+   *    wall-clock BACKSTOP verdict (a silent, DND'd or lying device). Both are
+   *    automatic and both must keep emitting `activation_mode:"rings"` on the
+   *    wire — shipped clients switch on that exact string (call_room.ts
+   *    broadcastTransition / call_session.dart `decline_ava`), so this value
+   *    distinguishes the two OUTCOMES without changing the CONTRACT. */
+  handoff_reason?: "manual" | "no_answer" | "rings_completed";
 
   created_at: number;
   updated_at: number;
@@ -392,7 +403,11 @@ export function applyCommand(prev: CallSession, cmd: Command, now: number): Appl
       s.caller_leg_state = "connected_to_receptionist";
       s.service_leg_state = "starting_receptionist";
       s.session_state = "handoff";
-      s.handoff_reason = cmd.data?.reason === "no_answer" ? "no_answer" : "manual";
+      s.handoff_reason = cmd.data?.reason === "no_answer"
+        ? "no_answer"
+        : cmd.data?.reason === "rings_completed"
+          ? "rings_completed"
+          : "manual";
       events.push("callee_dismissed_for_receptionist", "receptionist_start_requested",
         "receptionist_started");
       break;

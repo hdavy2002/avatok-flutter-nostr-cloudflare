@@ -428,6 +428,24 @@ class RemoteConfig {
   static int get presenceHeartbeatSec =>
       (_asNum(_cfg['presenceHeartbeatSec'])?.toInt()) ?? 25;
 
+  /// [CALL-4RINGS-1 2026-08-08] Report EVERY ring cycle, so Ava takes over after
+  /// four REAL rings instead of at a wall-clock alarm.
+  ///
+  /// The callee side of this: `PushService.reportRinging` stops being a one-shot
+  /// and repeats with a monotonic `ringIndex` while the incoming-call UI is
+  /// genuinely ringing. The CallRoom counts the audible ones and hands over at
+  /// `receptionistRings`. With this false the receipt is a one-shot exactly as
+  /// before and the server falls back to the 20 s deadline.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS), and
+  /// [ringCycleMs] additionally in `numericKeys`, so neither is a fake flag.
+  static bool get callRealRingCount => _b('callRealRingCount', true);
+
+  /// Assumed length of one ring cycle, ms. Android exposes no per-cycle callback
+  /// for the OS ringtone, so this is what the cycle timer is seeded with and why
+  /// those receipts are stamped `derived: true`. Server mirror: `ringCycleMs`.
+  static int get ringCycleMs => (_asNum(_cfg['ringCycleMs'])?.toInt()) ?? 6000;
+
   /// [CALL-VIDEO-CODEC-1] Express a video codec preference (AV1 > VP9 > VP8 >
   /// H264) and request temporal SVC (L1T3) on the 1:1 video sender.
   ///

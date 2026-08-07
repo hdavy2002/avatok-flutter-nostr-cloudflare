@@ -5933,7 +5933,10 @@ class CallSession {
         }
         break;
       case 'device-ringing':
-        _onDeviceRinging();
+        // [CALL-4RINGS-1 2026-08-08] The receipt is no longer a one-shot — the
+        // callee now sends one per ring CYCLE — so the frame is forwarded and
+        // repeats are handled honestly instead of being dropped on the floor.
+        _onDeviceRinging(d);
         break;
       case 'ring-delivered':
         _onRingDelivered();
@@ -7299,7 +7302,15 @@ class CallSession {
     });
   }
 
-  void _onDeviceRinging() {
+  /// [CALL-4RINGS-1 2026-08-08] How many real ring CYCLES the callee's device has
+  /// reported so far, and how many the server needs before Ava takes over. Both
+  /// come from the server's `device-ringing` frame (the CallRoom is the only
+  /// party that counts), so this is a mirror for honest UI — never a second,
+  /// competing count that could disagree with the one that decides the handoff.
+  int _ringCyclesHeard = 0;
+  int _ringCyclesRequired = 0;
+
+  void _onDeviceRinging([Map<String, dynamic>? frame]) {
     // [CALL-ECHO-FIX-2] Belt-and-braces. The `_onSignal` caller is now guarded
     // on `config.outgoing`, but this method has several call sites (the ring-ack
     // handler, the 5s fallback timer) and "the callee's phone is ringing" is
@@ -7314,7 +7325,15 @@ class CallSession {
       return;
     }
     if (_connected || _ended) return;
-    if (_deviceRinging) return;
+    if (_deviceRinging) {
+      // [CALL-4RINGS-1 2026-08-08] REPEAT RECEIPT — the callee's phone is on its
+      // Nth ring cycle. This used to be an unconditional `return`, which was
+      // correct when the receipt was a one-shot and every repeat was a duplicate.
+      // Now a repeat is NEW INFORMATION and the caller's UI can finally reflect
+      // real progress instead of narrating a stopwatch.
+      _onRepeatRing(frame);
+      return;
+    }
     // [AVA-RING-BLEED-1] (2026-07-08): the device-ringing receipt can straggle in
     // over FCM 10-30s late — AFTER the Ava handoff. Without this guard it
     // restarted ringback OVER Ava's voice ("I could hear the ring in the
@@ -7329,6 +7348,11 @@ class CallSession {
     _deviceRinging = true;
     _deviceRingingTimer?.cancel();
     _ringAckFallback?.cancel();
+    // [CALL-4RINGS-1] Seed the mirror from the server's own count. Absent (an
+    // older Worker, or `callRealRingCount` off) it stays 0 and every repeat-ring
+    // branch below is inert — which is exactly today's behaviour.
+    _ringCyclesHeard = (frame?['ringCount'] as num?)?.toInt() ?? 0;
+    _ringCyclesRequired = (frame?['ringsRequired'] as num?)?.toInt() ?? 0;
 
     AvaLog.I.log('call', 'Device ringing receipted.');
 
@@ -7358,6 +7382,68 @@ class CallSession {
     }
 
     _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 22));
+  }
+
+  /// [CALL-4RINGS-1 2026-08-08] A `device-ringing` frame for a ring cycle AFTER
+  /// the first.
+  ///
+  /// THREE RULES, all of them things a previous version of this file got wrong:
+  ///
+  /// 1. DO NOT TOUCH THE RINGBACK. `playRingback` restarts the loop from zero;
+  ///    calling it every ~6 s would chop the tone mid-cycle and produce an
+  ///    audible stutter on the caller's ear. The ringback started on cycle 1 and
+  ///    keeps running until something ends the call. The most this may do is
+  ///    RE-ASSERT the audio ROUTE ([CALL-AUDIO-OWNER-1]) — no direct
+  ///    `selectRoute` / `setSpeakerphoneOn`, and no tone restart.
+  /// 2. DO NOT RE-ARM THE RING WINDOW. The server owns the deadline
+  ///    ([CALL-ONE-DEADLINE-1]); a client that pushed its own timer out on every
+  ///    receipt could outlive the server's handoff and fight it.
+  /// 3. TRUST THE SERVER'S COUNT, never a local increment. The CallRoom is the
+  ///    only party that decides what counts as a real ring (audible, not
+  ///    DND-blocked, strictly increasing index). A caller-side `++` would drift
+  ///    from it the first time a silent ring arrived, and then the caption would
+  ///    be confidently wrong.
+  void _onRepeatRing(Map<String, dynamic>? frame) {
+    if (frame == null || _receptionistActive || _receptionist != null || _avaCountingDown) return;
+    final count = (frame['ringCount'] as num?)?.toInt() ?? 0;
+    final required = (frame['ringsRequired'] as num?)?.toInt() ?? _ringCyclesRequired;
+    // Stale or duplicate frame (the DO broadcasts to every socket, and a
+    // reconnect can replay). Monotonic or nothing.
+    if (count <= _ringCyclesHeard) return;
+    _ringCyclesHeard = count;
+    if (required > 0) _ringCyclesRequired = required;
+
+    // Honest progress copy. Deliberately no "3 of 4" counter: the number of
+    // rings is OUR mechanism, not something the caller asked to watch, and
+    // showing it would make a delayed receipt look like a stall.
+    // NOT on cycle 1. The first cycle's receipt lands within milliseconds of the
+    // fast audibility-free receipt that set "Ah — it's ringing!", and stomping
+    // that line instantly would delete the one moment of delight in the dial
+    // sequence and replace it with something duller that says the same thing.
+    // [DIAL-NARRATION-1]'s own 4 s timer clears it; from cycle 2 we take over.
+    if (count >= 2) {
+      if (_ringCyclesRequired > 0 && count >= _ringCyclesRequired) {
+        _setDialStage('No answer — handing over to Ava…');
+      } else {
+        _setDialStage("Still ringing $_peerFirst…");
+      }
+    }
+
+    // [CALL-AUDIO-OWNER-1] A long ring is exactly when something else
+    // (boot_media finishing, an audio-focus change, another player) can quietly
+    // move the route back to the earpiece under a tone that is still playing.
+    // Re-assert the CURRENT intent — this starts and swaps nothing.
+    unawaited(CallAudioController.instance.reassert('ring-cycle'));
+
+    Analytics.capture('call_ring_cycle_caller', {
+      'call_id': config.room,
+      'ring_count': count,
+      'rings_required': _ringCyclesRequired,
+      'ring_index': (frame['ringIndex'] as num?)?.toInt() ?? -1,
+      'audible': (frame['audible'] ?? 'unknown').toString(),
+      'derived': frame['derived'] == true,
+      'ringback_enabled': RemoteConfig.ringbackEnabled,
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────

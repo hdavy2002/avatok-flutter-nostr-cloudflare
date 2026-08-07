@@ -138,6 +138,50 @@ export interface PlatformConfig {
    */
   presenceHeartbeatSec: number;
   /**
+   * [CALL-4RINGS-1 2026-08-08] Hand over to Ava after FOUR REAL RINGS, not after
+   * a wall-clock alarm.
+   *
+   * `receptionistRings: 4` has existed since 2026-07-09 and NOTHING has ever
+   * timed off it — it is surfaced to the client as `cfg['rings']` and is purely
+   * informational. The only thing that actually fires is
+   * `CALL_RING_LIFETIME_MS` (20 s) in lib/call_delivery_contract.ts. So the
+   * system cannot tell "their phone rang four times and nobody picked up" from
+   * "their phone never made a sound", and it drifts: prod call avatok-ca712826
+   * (2026-08-07) produced ZERO `device-ringing` receipts and Ava still fired —
+   * at +28 s, eight seconds late against even the 20 s rule.
+   *
+   * When TRUE the callee reports EVERY ring cycle (not just the first), the
+   * CallRoom counts the ones that were genuinely audible, and the receptionist
+   * handoff runs the moment the count reaches `receptionistRings`. The
+   * wall-clock alarm is KEPT as a hard backstop so a silent or lying device can
+   * never hold the caller forever — it is merely widened to
+   * `max(CALL_RING_LIFETIME_MS, receptionistRings * ringCycleMs + slack)` so
+   * four genuine cycles have room to happen.
+   *
+   * When FALSE everything behaves exactly as it does today: the 20 s deadline,
+   * no counting, and the callee's repeat receipts stop being sent at all.
+   * Boolean → NOT in numericKeys. Client mirror: RemoteConfig.callRealRingCount.
+   */
+  callRealRingCount: boolean;
+  /**
+   * [CALL-4RINGS-1] Assumed duration of ONE ring cycle, in ms.
+   *
+   * Android exposes no per-ring-cycle callback — neither CallKit/ConnectionService
+   * nor `Ringtone`/`RingtoneManager` will tell you "cycle 3 just started", and
+   * `flutter_callkit_incoming` surfaces nothing of the sort. So on every path
+   * except the app's own bundled tone the cycle is DERIVED from a timer seeded
+   * at this value, and the receipt is stamped `derived:true` so measured and
+   * assumed can be told apart in telemetry rather than silently blended.
+   *
+   * 6000 ms is the Android default ringtone loop for the stock tones and is
+   * deliberately conservative: too SHORT invents rings that never happened and
+   * hands the caller to Ava early, which is the exact failure this change
+   * exists to remove. NUMERIC → it MUST also appear in `numericKeys` below or
+   * `flags.sh set ringCycleMs=5000` 400s `bad type`.
+   * Client mirror: RemoteConfig.ringCycleMs.
+   */
+  ringCycleMs: number;
+  /**
    * [CALLREC-SERVER-1] MASTER kill switch for on-demand call recording
    * (Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md). Gates the Record tile on
    * the client AND every /api/callrec/* route on the server, so flipping it off
@@ -1141,6 +1185,8 @@ const DEFAULTS: PlatformConfig = {
   callPresenceRouting: true,
   presenceFreshSec: 90,            // numeric → numericKeys. ~3.6 missed 25s beats.
   presenceHeartbeatSec: 25,        // numeric → numericKeys. Rides the existing SyncHub ping tick.
+  callRealRingCount: true,         // [CALL-4RINGS-1] count real rings; false = today's 20s wall clock
+  ringCycleMs: 6000,               // numeric → numericKeys. Assumed length of one ring cycle.
   // [CALLREC-SERVER-1] On-demand call recording. Ships OFF — the Android capture
   // layer is unproven and /api/callrec/* 403s while this is false. The indicator
   // (the peer's only warning that recording started) defaults ON.
@@ -1696,6 +1742,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [CALL-PRESENCE-1 2026-08-07] heartbeat freshness + cadence — numeric, must
     // be here or `flags.sh set presenceFreshSec=120` 400s `bad type`.
     "presenceFreshSec", "presenceHeartbeatSec",
+    // [CALL-4RINGS-1 2026-08-08] assumed length of one ring cycle — numeric, must
+    // be here or `flags.sh set ringCycleMs=5000` 400s `bad type`. (`callRealRingCount`
+    // is a BOOLEAN and must NOT be listed here.)
+    "ringCycleMs",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",

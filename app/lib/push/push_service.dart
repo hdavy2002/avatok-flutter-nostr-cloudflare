@@ -1729,6 +1729,18 @@ Future<void> _startRingtoneFallback(String callId) async {
 /// given it only stops if it matches the call the fallback is currently
 /// serving — see the glare note above.
 Future<void> _stopRingtoneFallback([String? callId]) async {
+  // [CALL-4RINGS-1 2026-08-08] STOP COUNTING RINGS HERE, and deliberately at the
+  // TOP — before the `player == null` early return below.
+  //
+  // This function is already the universal ring-teardown hook: every terminal
+  // path calls it (accept, decline, native timeout, call-ended, glare cleanup,
+  // programmatic end, local hang-up — sixteen sites). Hooking the reporter here
+  // rather than at each of those sites is what guarantees "stop immediately on
+  // answer/decline/cancel/timeout" cannot be missed by a path someone adds
+  // later. It must run even when no fallback tone was playing, which is the
+  // common case: the fallback only runs when the app owns the ring in the
+  // foreground, while the reporter runs for EVERY ring.
+  _RingCycleReporter.I.stop(callId);
   final player = _fallbackRingtonePlayer;
   if (player == null) return;
   if (callId != null && _fallbackRingtoneCallId != null && callId != _fallbackRingtoneCallId) {
@@ -1740,6 +1752,204 @@ Future<void> _stopRingtoneFallback([String? callId]) async {
     await player.stop();
     await player.dispose();
   } catch (_) {/* best-effort */}
+}
+
+// ── [CALL-4RINGS-1 2026-08-08] PER-CYCLE RING RECEIPTS ──────────────────────
+//
+// THE RULE (owner): Ava takes over after FOUR REAL RINGS — four times the
+// callee's device genuinely produced a ring cycle. Not after twenty seconds.
+//
+// Until now `reportRinging` was a ONE-SHOT: the callee reported the first ring
+// and never spoke again, so the server could not tell "rang four times, nobody
+// picked up" from "never rang at all" and had nothing to count. This reporter is
+// the missing half — it keeps saying "still ringing, cycle N" for as long as the
+// incoming-call UI is genuinely up, and shuts up the instant the ring ends.
+//
+// MEASURED vs DERIVED — read this before "improving" it.
+// Android exposes NO per-ring-cycle callback. Neither ConnectionService/CallKit
+// nor `Ringtone`/`RingtoneManager` will tell you a cycle boundary, and
+// `flutter_callkit_incoming` surfaces nothing of the sort; the OS ringtone is
+// played by the system in another process. So when the OS owns the ring the
+// cycle is DERIVED from a timer seeded at `ringCycleMs` and every receipt is
+// stamped `derived:true`. When the APP owns the ring — foreground, OS ring
+// suppressed, `_startRingtoneFallback` looping our own bundled tone — we can ask
+// that player for the tone's real duration, so those cycles are MEASURED and
+// stamped `derived:false`. Keeping the two distinguishable on the wire is the
+// whole point: a guess presented as a measurement is how "four rings" quietly
+// becomes "twenty-four seconds" again.
+//
+// A receipt with `audible:'false'` or `dndBlocking:true` is still SENT (the
+// caller's honest ring copy and the telemetry both want it) but the server does
+// not count it — a silent phone in a pocket has not rung.
+class _RingCycleReporter {
+  _RingCycleReporter._();
+  static final _RingCycleReporter I = _RingCycleReporter._();
+
+  /// Hard bound on receipts per call. The SERVER decides when the ring is over;
+  /// this only stops a wedged ring surface POSTing forever if every teardown
+  /// path somehow failed to fire. Comfortably above any sane `receptionistRings`.
+  static const int _maxCycles = 10;
+
+  /// Hard bound on wall-clock reporting, independent of [_maxCycles], for the
+  /// case where `ringCycleMs` has been flipped to something small.
+  static const Duration _maxDuration = Duration(seconds: 90);
+
+  Timer? _timer;
+  String? _callId;
+  String? _token;
+  String _route = 'unknown';
+  int _index = 0;
+  int _startedAtMs = 0;
+  bool _busy = false;
+
+  /// Begin (or restart for a new call) per-cycle reporting.
+  void start(String callId, String token, {required String route}) {
+    if (!RemoteConfig.callRealRingCount) return;
+    if (callId.isEmpty || token.isEmpty) return;
+    if (_callId == callId && _timer != null) return; // already reporting this call
+    stop(); // a new ring supersedes any previous one (glare)
+    _callId = callId;
+    _token = token;
+    _route = route;
+    _index = 0;
+    _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    // Cycle 1 is reported IMMEDIATELY, not one interval later: the OS ring is
+    // already audible by the time we get here, so waiting `ringCycleMs` would
+    // lose a real ring and push the handoff a full cycle late.
+    // [_report] owns re-arming (it knows the MEASURED cycle length when the app
+    // owns the tone). Arming here too would leave a stray timer behind whenever
+    // the first report short-circuits.
+    unawaited(_report());
+  }
+
+  /// Stop reporting. With [callId] it only stops if that is the call currently
+  /// being reported — same glare rule as [_stopRingtoneFallback], so call A's
+  /// teardown cannot silence call B's ring.
+  void stop([String? callId]) {
+    if (callId != null && _callId != null && callId != _callId) return;
+    _timer?.cancel();
+    _timer = null;
+    _callId = null;
+    _token = null;
+    _index = 0;
+  }
+
+  void _arm(int ms) {
+    _timer?.cancel();
+    final interval = ms < 1000 ? 1000 : (ms > 20000 ? 20000 : ms);
+    _timer = Timer(Duration(milliseconds: interval), () {
+      unawaited(_report());
+    });
+  }
+
+  Future<void> _report() async {
+    final callId = _callId;
+    final token = _token;
+    if (callId == null || token == null) return;
+    if (_busy) return; // a slow POST must not stack up behind the next tick
+    // The ring is over the moment the call is terminal, even if a teardown path
+    // has not reached [stop] yet.
+    if (PushService.wasCallTerminated(callId)) {
+      stop(callId);
+      return;
+    }
+    if (_index >= _maxCycles ||
+        DateTime.now().millisecondsSinceEpoch - _startedAtMs > _maxDuration.inMilliseconds) {
+      stop(callId);
+      return;
+    }
+    _busy = true;
+    try {
+      _index += 1;
+      final cycle = _index;
+      // Re-probed EVERY cycle, not cached from the first: the user can silence
+      // the phone or flip DND mid-ring, and a cached "audible:true" would keep
+      // counting rings that stopped making a sound.
+      final info = await _probeRingAudibility();
+      final ok = info['ok'] == true;
+      final ringerMode = (info['ringer_mode'] ?? 'unknown').toString();
+      final dndBlocking = info['dnd_blocking'] == true;
+      final ringVolume = info['ring_volume'] is int ? info['ring_volume'] as int : -1;
+      final ringVolumeMax =
+          info['ring_volume_max'] is int ? info['ring_volume_max'] as int : -1;
+      final silentOrVibrate = ringerMode == 'silent' || ringerMode == 'vibrate';
+      // Is the APP the thing making the noise right now? When the OS ring is
+      // suppressed in the foreground, `_startRingtoneFallback` is playing our own
+      // bundled tone through our own player — we do not need to ask Android
+      // whether a sound is happening, because we are the ones causing it. This
+      // matters because `_probeRingAudibility` goes over the
+      // `avatok/voice_audio` MethodChannel, which is registered by MainActivity
+      // and is therefore NOT available in the FCM background isolate.
+      final appOwnsTone =
+          _fallbackRingtonePlayer != null && _fallbackRingtoneCallId == callId;
+      final String audible;
+      if (silentOrVibrate || dndBlocking || (ok && ringVolume == 0)) {
+        // Positive evidence of silence always wins, including over appOwnsTone —
+        // our player obeys the same ringer stream.
+        audible = 'false';
+      } else if (ok) {
+        audible = 'true';
+      } else if (appOwnsTone) {
+        audible = 'true';
+      } else {
+        // No probe and no app-owned tone: we genuinely do not know, and the
+        // server must NOT count this as a ring. The wall-clock backstop is what
+        // covers this population — that is precisely its job.
+        audible = 'unknown';
+      }
+
+      // MEASURED where we can be: when the app owns the ring, the looping
+      // bundled tone's real duration IS the cycle length.
+      var derived = true;
+      var nextIntervalMs = RemoteConfig.ringCycleMs;
+      final owned = _fallbackRingtonePlayer;
+      if (owned != null && _fallbackRingtoneCallId == callId) {
+        try {
+          final d = await owned.getDuration();
+          final ms = d?.inMilliseconds ?? 0;
+          if (ms >= 1000 && ms <= 20000) {
+            derived = false;
+            nextIntervalMs = ms;
+          }
+        } catch (_) {/* fall back to the assumed cycle */}
+      }
+
+      if (_callId != callId) return; // superseded while we were probing
+      await PushService.reportRinging(
+        callId,
+        token,
+        route: _route,
+        ringIndex: cycle,
+        derived: derived,
+        audible: audible,
+        ringerMode: ok ? ringerMode : null,
+        dndBlocking: ok ? dndBlocking : null,
+        ringVolume: ok && ringVolume >= 0 ? ringVolume : null,
+        ringVolumeMax: ok && ringVolumeMax >= 0 ? ringVolumeMax : null,
+      );
+      await _track('call_ring_cycle_reported', {
+        'call_id': callId,
+        'ring_index': cycle,
+        'audible': audible,
+        'derived': derived,
+        'ringer_mode': ringerMode,
+        'dnd_blocking': dndBlocking,
+        'route': _route,
+        'ms_since_first_ring': DateTime.now().millisecondsSinceEpoch - _startedAtMs,
+        'cycle_ms': nextIntervalMs,
+      });
+      if (_callId == callId) _arm(nextIntervalMs);
+    } catch (e) {
+      // A failed receipt must not stop the ring or the reporter — the server's
+      // wall-clock backstop is exactly what covers a device that goes quiet.
+      unawaited(Analytics.captureException(e, StackTrace.current,
+          handled: true,
+          extra: {'where': 'ring_cycle_report', 'call_id': callId}));
+      if (_callId == callId) _arm(RemoteConfig.ringCycleMs);
+    } finally {
+      _busy = false;
+    }
+  }
 }
 
 /// Emit `call_ring_audibility` and its optional receipt echo. Fired unawaited
@@ -1817,6 +2027,19 @@ Future<void> _emitRingAudibilityAndMaybeFallback(
   // to before this feature existed. `call_ring_audibility` above is emitted
   // either way — only this audibility-echo POST is gated.
   final ringToken = (d['ringReceiptToken'] ?? '').toString();
+  // [CALL-4RINGS-1 2026-08-08] Start per-cycle reporting. Gated on
+  // `callRealRingCount` ONLY — deliberately not on `callRingAudibilityV1`, which
+  // ships dark (false in DEFAULTS): chaining the two would leave the four-ring
+  // rule inert behind an unrelated flag while the server waited for receipts
+  // that were never going to be sent.
+  //
+  // This runs even when [callkitShown] is false. A suppressed OS ring is still a
+  // ring — the app is playing the tone itself in that case — and the AUDIBILITY
+  // probe, not the CallKit return value, is what decides whether the server
+  // counts it.
+  if (ringToken.isNotEmpty && callId.isNotEmpty) {
+    _RingCycleReporter.I.start(callId, ringToken, route: route);
+  }
   if (RemoteConfig.callRingAudibilityV1 && ringToken.isNotEmpty) {
     unawaited(PushService.reportRinging(
       callId,
@@ -1945,8 +2168,12 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   final deliveryAgeMs = sentAtMs == null || sentAtMs <= 0
       ? null
       : (receivedAtMs >= sentAtMs ? receivedAtMs - sentAtMs : 0);
+  // [CALL-4RINGS-1 2026-08-08] `callRingLifetimeMaxMs`, not `callRingLifetimeMs`.
+  // The ring lease is per-call now (see ringInviteRemainingMs); a hard 20 000
+  // ceiling here would end the native ring partway through the fourth cycle —
+  // silencing the very ring that decides whether Ava takes over.
   final ringDurationMs = ringInviteRemainingMs(d, nowMs: receivedAtMs)
-      .clamp(1, callRingLifetimeMs)
+      .clamp(1, callRingLifetimeMaxMs)
       .toInt();
   Analytics.capture('call_incoming_received', {
     'call_id': ringCallId,
@@ -2629,6 +2856,14 @@ class PushService {
     int? ringVolume,
     int? ringVolumeMax,
     String? route,
+    // [CALL-4RINGS-1 2026-08-08] Which ring CYCLE this receipt is for (1-based,
+    // strictly increasing within one call), and whether that cycle boundary was
+    // MEASURED or assumed from a `ringCycleMs` timer. Both optional: the very
+    // first receipt — the latency-critical one that starts the caller's ringback
+    // — still carries neither and is unchanged. Only a receipt with a ringIndex
+    // is a countable ring on the server.
+    int? ringIndex,
+    bool? derived,
   }) async {
     if (callId.isEmpty || ringReceiptToken.isEmpty) return;
     try {
@@ -2645,6 +2880,8 @@ class PushService {
         if (ringVolume != null) 'ringVolume': ringVolume,
         if (ringVolumeMax != null) 'ringVolumeMax': ringVolumeMax,
         if (route != null) 'route': route,
+        if (ringIndex != null) 'ringIndex': ringIndex,
+        if (derived != null) 'derived': derived,
       }));
       final response = await request.close();
       await response.drain();
