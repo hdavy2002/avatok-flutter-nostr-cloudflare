@@ -39,24 +39,29 @@
  *   compositing layer and no risk of softened text.
  */
 
-/** How deep into the viewport, in px, the fold zone reaches from each edge. */
-const ZONE_MAX = 300;
+/** How deep into the viewport, in px, the fold zone reaches from each edge.
+ *
+ *  This has to be generous. Every `.spread` on this page is exactly one viewport
+ *  tall, so at a section boundary the outgoing spread only occupies the band
+ *  between the viewport top and that boundary — a 300px zone meant just a ~300px
+ *  sliver ever folded, which was too small to read as anything at all. */
+const ZONE_MAX = 440;
 
 /** Fraction of viewport height the fold zone may occupy on short screens. */
-const ZONE_VH = 0.32;
+const ZONE_VH = 0.42;
 
 /** Maximum fold angle in degrees. Bend uses 80 for a true cube edge; this page has
  *  to stay readable, so it folds far enough to feel like paper and no further. */
-const ANGLE = 24;
+const ANGLE = 26;
 
 /** How far the folded edge is pushed back at full fold, in px. */
-const DEPTH = 70;
+const DEPTH = 90;
 
 /** Perspective focal length in px. Smaller pinches the fold harder. */
 const PERSPECTIVE = 1500;
 
 /** Opacity removed at full fold, so folded spreads recede rather than just tilt. */
-const FADE = 0.4;
+const FADE = 0.34;
 
 /** Extra margin, in px, beyond which a spread is fully off-screen and reset. */
 const OFFSCREEN_MARGIN = 48;
