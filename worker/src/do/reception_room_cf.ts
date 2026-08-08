@@ -397,6 +397,77 @@ export class ReceptionRoomCf {
     this.bumpIdle();
   }
 
+  // ── [AVA-VM-FALLBACK-1 2026-08-08] degrade a dead agent to a plain recorder ─
+  //
+  // Set once the caller asked us to abandon the conversational engine. Read by
+  // finalize(): a fallback session is held to a stricter delivery bar than a
+  // normal voicemail (see VM_FALLBACK_MIN_REC_BYTES), because the whole point is
+  // that something already went wrong on this call and posting an empty card
+  // would repeat the `turns:0` confusion of 2026-07 — a receptionist card with
+  // no Play button, which reads to the owner as a lost message.
+  private vmFallback = false;
+
+  /** 0.5s of caller audio at the 24kHz PCM16 the recording is mixed at. Below
+   *  this (or below an audible peak) a fallback voicemail is NOT delivered. */
+  private static VM_FALLBACK_MIN_REC_BYTES = 24_000;
+  private static VM_FALLBACK_MIN_PEAK = 300;
+
+  /**
+   * Abandon the AI engine mid-session and run the deterministic voicemail flow
+   * instead: cached greeting -> beep -> record -> finalize.
+   *
+   * Deliberately IN-SESSION. Starting a second `/api/receptionist/start` for the
+   * same call is refused by the KV reattach lock, the DO ownership claim and the
+   * control-plane authority — all correctly, since two Avas on one call is the
+   * avatok-14739b84 double-billing incident. Flipping `init.vm` here makes every
+   * downstream branch that already reads it (the no-VAD full recording capture in
+   * onClientMessage, the flat per-voicemail charge and `mode:"vm"` in finalize,
+   * the skipped LLM summary) behave exactly as a first-class VM session, so the
+   * recording is stored, delivered and registered by ONE code path.
+   *
+   * Refuses when Ava has already spoken: that session is working, and degrading
+   * it would throw away a live conversation.
+   */
+  private async startVmFallback(trigger: string): Promise<void> {
+    const i = this.init;
+    if (!i || this.finalized || this.vmFallback || this.takenOver) return;
+    if (i.vm === true) return;        // already the deterministic flow
+    if (this.firstAudioSent) return;  // she DID speak — not the failure this handles
+    this.vmFallback = true;
+    this.init = { ...i, vm: true };
+    this.ev("ava_vm_fallback_started", { trigger, ms: Date.now() - this.startedAt });
+
+    // Silence the conversational machinery BEFORE the greeting starts, or a
+    // slow TTS/LLM turn that finally resolves would talk over the beep.
+    //
+    // `vmFallback` ITSELF is the latch — deliberately NOT `cfBarged`/`cfTimeUp`,
+    // both of which look right and are wrong here. `cfBarged` is reset to false
+    // twice inside processCfTurn, so an in-flight turn would clear it and resume
+    // speaking. `cfTimeUp` is worse: the tail of processCfTurn reads it and calls
+    // `finalize("time_up")`, which would END THE SESSION the moment a stuck turn
+    // unwound — killing the very recording this fallback exists to take. The
+    // guards added to processCfTurn / cfAssistantTurn / cfSpeak / feedTts read
+    // this flag, which nothing else ever clears.
+    if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
+    if (this.cfMsgTimer) { clearTimeout(this.cfMsgTimer); this.cfMsgTimer = null; }
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    if (this.cfSpeakTimer) { clearTimeout(this.cfSpeakTimer); this.cfSpeakTimer = null; }
+    if (this.cfSpeakResolve) { const r = this.cfSpeakResolve; this.cfSpeakResolve = null; r(); }
+    try { this.stt?.close(); } catch { /* already gone */ }
+    this.stt = null;
+    this.cfTurnBuf = []; this.cfTurnBytes = 0; this.cfHadSpeech = false;
+
+    try {
+      await this.startVmFlow();
+    } catch (e) {
+      this.ev("ava_vm_fallback_greeting_failed", { trigger, error_scrubbed: scrubSecrets(String(e)).slice(0, 160) });
+      // The beep is generated locally with no dependency, so a greeting failure
+      // must still leave the caller with a recorder rather than dead air.
+      try { await this.playPcm(beepPcm(1000, 350)); } catch { /* nothing left to try */ }
+      this.vmEndTimer = setTimeout(() => { void this.finalize("vm_complete"); }, 30_000);
+    }
+  }
+
   private async startCfEngine(): Promise<void> {
     if (this.init?.vm === true) { await this.startVmFlow(); return; } // zero-cost VM flow
     const init = this.init!;
@@ -478,6 +549,11 @@ export class ReceptionRoomCf {
       try {
         const m = JSON.parse(d);
         if (m && m.t === "prewarm_abort") { void this.finalize("prewarm_abort"); }
+        // [AVA-VM-FALLBACK-1 2026-08-08] The caller's app waited out its
+        // ava-live window and heard nothing. Rather than END THE CALL (which is
+        // what shipped, and what lost the owner's voicemail on avatok-946b6090),
+        // it asks this session to degrade to the deterministic voicemail flow.
+        else if (m && m.t === "vm_fallback") { void this.startVmFallback(String(m.reason || "live_timeout")); }
       } catch { /* ignore malformed control frames */ }
       return;
     }
@@ -508,7 +584,7 @@ export class ReceptionRoomCf {
 
   /** Full-duplex endpointing + barge-in detection. */
   private feedCfAudio(bytes: Uint8Array): void {
-    if (this.finalized || this.cfTimeUp || this.takenOver) return; // close/takeover in progress → ignore input
+    if (this.finalized || this.cfTimeUp || this.takenOver || this.vmFallback) return; // close/takeover/[AVA-VM-FALLBACK-1] degrade in progress → ignore input
     const speech = callerHasSpeech(bytes, this.vadRms());
     // (1) Ava is speaking → watch for the caller talking over her (barge-in).
     if (this.cfSpeaking) {
@@ -602,7 +678,9 @@ export class ReceptionRoomCf {
    *  is INTERRUPTIBLE until the 50s mark — if the caller starts talking again during
    *  it, we keep listening instead of ending. Only time-up (or no interruption) ends. */
   private async processCfTurn(): Promise<void> {
-    if (this.finalized || this.cfBusy) return;
+    // [AVA-VM-FALLBACK-1] The session has degraded to a plain recorder — the
+    // conversational engine is gone for good on this call.
+    if (this.finalized || this.cfBusy || this.vmFallback) return;
     // DOUBLE SIGN-OFF: once a FINAL close has run (or is running), never start another
     // closing/LLM turn. A time-up that lands after a completed close just finalizes.
     if (this.saidGoodbye || this.cfClosing) {
@@ -652,6 +730,11 @@ export class ReceptionRoomCf {
     }
     if (isFinalClose) { this.saidGoodbye = true; this.ev("ava_closing_completed", { duration: Date.now() - this.startedAt }); }
     if (this.finalized) return;
+    // [AVA-VM-FALLBACK-1] A turn that was already in flight when the caller asked
+    // us to degrade must unwind SILENTLY. Falling through here would either
+    // `finalize("time_up")` — ending the session the caller is mid-way through
+    // recording into — or `bumpIdle()` and re-arm the conversational loop.
+    if (this.vmFallback) return;
     if (this.cfTimeUp) { void this.finalize("time_up"); }              // 50s up → final close → end
     else {
       // VOICEMAIL FIX (2026-06-30): do NOT hang up after the caller's first
@@ -671,7 +754,7 @@ export class ReceptionRoomCf {
   }
 
   private async cfAssistantTurn(userContent: string): Promise<void> {
-    if (this.finalized) return;
+    if (this.finalized || this.vmFallback) return; // [AVA-VM-FALLBACK-1]
     if (this.cfTimeUp) this.cfHistory.push({ role: "user", content: "[SYSTEM: time is up]" });
     this.cfHistory.push({ role: "user", content: userContent });
     // [DYNW-RECEPT-RULES-1] deterministic pre-LLM verdict from the owner's rules
@@ -940,7 +1023,7 @@ export class ReceptionRoomCf {
    *  first-audio ack once, then chunk it out — stopping immediately on barge-in or
    *  finalize. Returns bytes sent. Shared by the DeepInfra chunked-streaming path. */
   private cfEmitPcm(pcm: Uint8Array | null): number {
-    if (!pcm || !pcm.byteLength || this.cfBarged || this.finalized) return 0;
+    if (!pcm || !pcm.byteLength || this.cfBarged || this.finalized || this.vmFallback) return 0; // [AVA-VM-FALLBACK-1]
     if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength; }
     this.avaBytes += pcm.byteLength;
     if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
@@ -955,7 +1038,10 @@ export class ReceptionRoomCf {
    *  client AS IT GENERATES — first audio in ~0.5s instead of waiting for the whole
    *  synthesis (~3s). Barge-in still works throughout playback. */
   private async cfSpeak(text: string): Promise<void> {
-    if (this.finalized || !text) return;
+    // [AVA-VM-FALLBACK-1] THE backstop: this is the only path that puts Ava's
+    // voice on the wire, so gating it here is what guarantees a late LLM turn
+    // can never talk over the voicemail greeting or the record beep.
+    if (this.finalized || !text || this.vmFallback) return;
     this.cfTtsChars += text.length;
     this.cfBarged = false; this.cfBargeBytes = 0; this.cfSpeaking = true;
     let bytesSent = 0;
@@ -1228,7 +1314,31 @@ export class ReceptionRoomCf {
     // exactly the existing `takenOver` contract (owner picked up live), reused
     // here rather than duplicated. Every gate below that already reads
     // `this.takenOver` is widened to `skipDelivery`.
-    const skipDelivery = this.takenOver || reason === "prewarm_abort";
+    // [AVA-VM-FALLBACK-1 2026-08-08] A fallback voicemail with no caller audio
+    // in it is NOT a voicemail. Delivering one produces exactly the artefact
+    // that confused the owner in July: a receptionist card with nothing to play.
+    // Held to a stricter bar than a normal VM session on purpose — a fallback
+    // only exists because something already failed on this call, so "nothing was
+    // said" is a likely outcome and must resolve to no card rather than an empty
+    // one. `callerPeak` is checked as well as byte count because VM mode records
+    // with NO VAD gate, so 30s of silence is 1.4MB of near-zero samples.
+    const vmFallbackEmpty = this.vmFallback
+      && (this.callerRecBytes < ReceptionRoomCf.VM_FALLBACK_MIN_REC_BYTES
+          || this.callerPeak < ReceptionRoomCf.VM_FALLBACK_MIN_PEAK);
+    const skipDelivery = this.takenOver || reason === "prewarm_abort" || vmFallbackEmpty;
+    if (this.vmFallback) {
+      // Caller audio is mixed at 24kHz mono PCM16 = 48000 bytes/sec.
+      const recordedMs = Math.round((this.callerRecBytes / 48000) * 1000);
+      this.ev("ava_vm_fallback_result", {
+        stored: !vmFallbackEmpty, recorded_ms: recordedMs,
+        caller_rec_bytes: this.callerRecBytes, caller_peak: this.callerPeak,
+        cutoff_reason: reason, ms: Date.now() - this.startedAt,
+      });
+      // Receipt to the caller's device, so `ava_vm_fallback` on THEIR timeline
+      // carries the server's verdict rather than the app's guess. Sent before
+      // the `ended` frame below, which is what tears the client session down.
+      try { this.client?.send(JSON.stringify({ t: "vm_result", stored: !vmFallbackEmpty, recorded_ms: recordedMs })); } catch { /* caller gone */ }
+    }
     // [RECEPT-FSM-COMPLETE-1 2026-08-03] See reception_room.ts — same reason,
     // same single hook. Reported here so the CF engine cannot strand a call in
     // `handoff` either.

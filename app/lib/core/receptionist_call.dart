@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:io' show ProcessInfo;
 import 'dart:math' show min;
 import 'dart:typed_data';
@@ -131,6 +132,68 @@ class ReceptionistCall {
   final Completer<String> _done = Completer<String>();
 
   Future<String> get done => _done.future;
+
+  // ── [AVA-VM-FALLBACK-1 2026-08-08] dumb-voicemail fallback ─────────────────
+  //
+  // MEASURED: prod call avatok-946b6090 (2026-08-07 20:52 IST, build 10523).
+  // The session opened at 20:53:04.9 (`live_session_open`), produced NO audio,
+  // timed out at 20:53:09.4, retried, and the CALL WAS ENDED at 20:53:19.9 with
+  // reason `ava-live-timeout`. The owner was trying to leave a voicemail: he
+  // never spoke, nothing was recorded, and from his side the app hung up on him.
+  //
+  // The fix is deliberately NOT "start a second receptionist session". A second
+  // `/api/receptionist/start` for the same `call_id` is refused four different
+  // ways — the KV reattach lock, the CallRoom DO ownership claim, the control-
+  // plane authority row and the aggregate's `handoff` state — all of which
+  // correctly exist to stop two Avas on one call. Instead this DEGRADES the
+  // session already open: one control frame tells the DO to abandon the
+  // conversational engine and run its existing deterministic voicemail flow
+  // (cached greeting -> beep -> record -> finalize). The recording is then
+  // stored, delivered and registered by the SAME `finalize()` as every other
+  // receptionist voicemail — no second storage format, no new route.
+
+  /// True once the fallback frame has been sent (idempotent guard).
+  bool vmFallbackRequested = false;
+
+  /// Server verdict, null until the DO reports it. See [onVmFallbackResult].
+  bool? vmFallbackStored;
+  int vmFallbackRecordedMs = 0;
+
+  /// The DO's `vm_result` frame: did the recording qualify for delivery, and how
+  /// much caller audio did it actually contain. Fires at most once, just before
+  /// the session closes.
+  void Function(bool stored, int recordedMs)? onVmFallbackResult;
+
+  /// Has Ava ever actually produced audio on this session? The fallback is only
+  /// meaningful while this is false — if she spoke, the session is working and
+  /// degrading it would throw away a live conversation.
+  bool get hasFirstAudio => _firstAudio;
+
+  /// Ask the DO to abandon the AI engine and take a plain recorded message.
+  ///
+  /// Returns false when there is no live socket to ask on (nothing was sent, so
+  /// the caller must fall back to its own honest end state). Returning TRUE only
+  /// means the request left this device; [onVmFallbackResult] is the receipt.
+  bool requestVoicemailFallback(String trigger) {
+    if (_ended || vmFallbackRequested) return false;
+    final ws = _ws;
+    if (ws == null || !_wsConnected) return false;
+    try {
+      ws.sink.add(jsonEncode({'t': 'vm_fallback', 'reason': trigger}));
+    } catch (_) {
+      return false;
+    }
+    vmFallbackRequested = true;
+    Analytics.capture('ava_vm_fallback_requested', {
+      'trigger': trigger,
+      'activation_mode': activationMode,
+      'engine': _useNative ? 'native' : 'fallback',
+      'elapsed_ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
+      if (callId case final id?) 'call_id': id,
+    });
+    AvaLog.I.log('receptionist', 'voicemail fallback requested ($trigger)');
+    return true;
+  }
 
   /// [AVA-PREWARM-1] Has this session already finished (naturally, or aborted)?
   /// Lets a caller holding a pre-warmed instance tell a stale/dead one apart
@@ -439,6 +502,24 @@ class ReceptionistCall {
       // queued audio so she goes silent immediately and the caller is heard.
       if (data.contains('"flush"')) _flushPlayback();
       if (data.contains('softcap')) onStatus?.call('wrapup');
+      // [AVA-VM-FALLBACK-1] The DO's receipt for a degraded (dumb-voicemail)
+      // session: whether the recording qualified for delivery and how much
+      // CALLER audio it carried. Parsed properly rather than by substring —
+      // it is the only frame here that carries values we act on. Handled
+      // BEFORE the '"ended"' check below because both can arrive back to back
+      // and the receipt must not be lost to the teardown.
+      if (data.contains('vm_result')) {
+        try {
+          final m = jsonDecode(data);
+          if (m is Map) {
+            final stored = m['stored'] == true;
+            final ms = (m['recorded_ms'] as num?)?.toInt() ?? 0;
+            vmFallbackStored = stored;
+            vmFallbackRecordedMs = ms;
+            onVmFallbackResult?.call(stored, ms);
+          }
+        } catch (_) {/* malformed frame — the caller's own timeout is the backstop */}
+      }
       if (data.contains('"ended"')) _finish('ended_remote');
       if (data.contains('"error"')) _finish('error');
     }
