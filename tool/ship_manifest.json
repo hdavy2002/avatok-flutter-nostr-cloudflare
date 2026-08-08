@@ -1,192 +1,265 @@
 {
-  "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
-  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
-
-  "CALL-AUDIO-OWNER-1": {
-    "description": "CallAudioController is the single owner of call route/mode/speaker. The fix IS the equality: the route we asked for is the route the device confirmed. Before it, _bootMedia's hardcoded selectRoute(earpiece) raced the user's own Speaker press and won, which is the loud-quiet-loud outgoing tone.",
-    "shipped": "2026-08-07",
-    "two_sided": false,
-    "min_devices_on_build": 1,
-    "flags": ["callAudioOwnerV1"],
-    "success": [
-      {
-        "event": "call_audio_owner_apply",
-        "property": "confirmed_route",
-        "equals_property": "intent",
-        "min_events": 1,
-        "note": "Both props are the same enum rendered with .name (CallAudioRoute), so string equality is exact. The error path stamps confirmed_route='error', which fails this on purpose. A genuine device override (a Bluetooth headset taking the route) is the ONLY legitimate mismatch; if it shows up, express it with a `where` filter on `backend`, do not lower min_pass_rate."
-      }
+ "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
+ "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+ "CALL-AUDIO-OWNER-1": {
+  "description": "CallAudioController is the single owner of call route/mode/speaker. The fix IS the equality: the route we asked for is the route the device confirmed. Before it, _bootMedia's hardcoded selectRoute(earpiece) raced the user's own Speaker press and won, which is the loud-quiet-loud outgoing tone.",
+  "shipped": "2026-08-07",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callAudioOwnerV1"
+  ],
+  "success": [
+   {
+    "event": "call_audio_owner_apply",
+    "property": "confirmed_route",
+    "equals_property": "intent",
+    "min_events": 1,
+    "note": "Both props are the same enum rendered with .name (CallAudioRoute), so string equality is exact. The error path stamps confirmed_route='error', which fails this on purpose. A genuine device override (a Bluetooth headset taking the route) is the ONLY legitimate mismatch; if it shows up, express it with a `where` filter on `backend`, do not lower min_pass_rate."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_audio_controller.dart:102,117 - Analytics.capture('call_audio_owner_apply', {'intent': requestedIntent.name, 'confirmed_route': result.active.name, ...})"
+ },
+ "CALL-RING-FASTPATH-1": {
+  "description": "Parallelise the pre-ring reads so the WS ring leaves the Worker in under a second. `ms` is cumulative from the caller pressing dial (t0 is taken before auth), so the ws_ring stage IS the answer to 'how long until their phone could ring'.",
+  "shipped": "2026-08-08",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callRingFastPath"
+  ],
+  "success": [
+   {
+    "event": "call_ring_path_ms",
+    "where": {
+     "stage": "ws_ring"
+    },
+    "property": "ms",
+    "lt": 1500,
+    "min_events": 1,
+    "min_pass_rate": 0.9,
+    "note": "0.9, not 1.0: a cold isolate, a D1 read that misses, or a caller on a bad mobile link genuinely blows a 1.5s budget occasionally. The regression this must catch is the MEDIAN moving back over the budget, not one slow call. If this drops below 0.9, read the other stages (admit/config/participants) in the same event to see which await came back onto the critical path."
+   }
+  ],
+  "_verified_at": "worker/src/routes/api.ts:292 (trackUserContact ... 'call_ring_path_ms', {stage, ms, fastpath}) and api.ts:1153 markRingStage(\"ws_ring\")"
+ },
+ "CALL-PRESENCE-1": {
+  "description": "Real device heartbeat plus presence-first call routing: /api/call reads a presence record BEFORE its Durable Object round-trips, so an offline callee goes straight to Ava instead of making the caller wait ~28s. THE HEARTBEAT LIVES IN THE APP, so the callee's phone must be on the new build too - this is why two_sided is true.",
+  "shipped": "2026-08-08",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callPresenceRouting",
+   "presenceFreshSec",
+   "presenceHeartbeatSec"
+  ],
+  "success": [
+   {
+    "event": "call_presence_decision",
+    "property": "presence",
+    "not_in": [
+     "unknown"
     ],
-    "_verified_at": "app/lib/core/calls/call_audio_controller.dart:102,117 - Analytics.capture('call_audio_owner_apply', {'intent': requestedIntent.name, 'confirmed_route': result.active.name, ...})"
-  },
-
-  "CALL-RING-FASTPATH-1": {
-    "description": "Parallelise the pre-ring reads so the WS ring leaves the Worker in under a second. `ms` is cumulative from the caller pressing dial (t0 is taken before auth), so the ws_ring stage IS the answer to 'how long until their phone could ring'.",
-    "shipped": "2026-08-08",
-    "two_sided": false,
-    "min_devices_on_build": 1,
-    "flags": ["callRingFastPath"],
-    "success": [
-      {
-        "event": "call_ring_path_ms",
-        "where": {"stage": "ws_ring"},
-        "property": "ms",
-        "lt": 1500,
-        "min_events": 1,
-        "min_pass_rate": 0.9,
-        "note": "0.9, not 1.0: a cold isolate, a D1 read that misses, or a caller on a bad mobile link genuinely blows a 1.5s budget occasionally. The regression this must catch is the MEDIAN moving back over the budget, not one slow call. If this drops below 0.9, read the other stages (admit/config/participants) in the same event to see which await came back onto the critical path."
-      }
+    "min_events": 1,
+    "note": "PresenceState is fresh|stale|unknown (worker/src/lib/presence.ts:55). `unknown` means no record, no Upstash credentials, a read error, or a client too old to beat - i.e. the heartbeat is not arriving and the whole feature is inert. On 2026-08-08 this was `unknown` on EVERY call and was reported as shipped."
+   },
+   {
+    "event": "call_presence_decision",
+    "property": "decision",
+    "not_in": [
+     "ring_unknown"
     ],
-    "_verified_at": "worker/src/routes/api.ts:292 (trackUserContact ... 'call_ring_path_ms', {stage, ms, fastpath}) and api.ts:1153 markRingStage(\"ws_ring\")"
-  },
-
-  "CALL-PRESENCE-1": {
-    "description": "Real device heartbeat plus presence-first call routing: /api/call reads a presence record BEFORE its Durable Object round-trips, so an offline callee goes straight to Ava instead of making the caller wait ~28s. THE HEARTBEAT LIVES IN THE APP, so the callee's phone must be on the new build too - this is why two_sided is true.",
-    "shipped": "2026-08-08",
-    "two_sided": true,
-    "min_devices_on_build": 2,
-    "flags": ["callPresenceRouting", "presenceFreshSec", "presenceHeartbeatSec"],
-    "success": [
-      {
-        "event": "call_presence_decision",
-        "property": "presence",
-        "not_in": ["unknown"],
-        "min_events": 1,
-        "note": "PresenceState is fresh|stale|unknown (worker/src/lib/presence.ts:55). `unknown` means no record, no Upstash credentials, a read error, or a client too old to beat - i.e. the heartbeat is not arriving and the whole feature is inert. On 2026-08-08 this was `unknown` on EVERY call and was reported as shipped."
-      },
-      {
-        "event": "call_presence_decision",
-        "property": "decision",
-        "not_in": ["ring_unknown"],
-        "min_events": 1,
-        "note": "`ring_unknown` is the fall-through that rings exactly as before presence existed. Any of ring_fresh / ring_stale / ring_offline_ineligible / receptionist_offline means presence actually decided something."
-      }
+    "min_events": 1,
+    "note": "`ring_unknown` is the fall-through that rings exactly as before presence existed. Any of ring_fresh / ring_stale / ring_offline_ineligible / receptionist_offline means presence actually decided something."
+   }
+  ],
+  "_verified_at": "worker/src/routes/api.ts:538-561 (props {presence, presence_age_ms, decision, routing_reason, ...}, emitted for BOTH parties via trackUser) and api.ts:620-629 (decision values)"
+ },
+ "CALL-4RINGS-1": {
+  "description": "Ava takes over after four REAL ring cycles instead of at a wall-clock alarm. The callee's PushService.reportRinging repeats with a monotonic ringIndex while the phone is genuinely ringing, and the CallRoom counts the AUDIBLE ones. Two-sided: the repeating receipts come from the callee's app, so a callee on an old build produces zero of them and the server silently falls back to the 20s deadline.",
+  "shipped": "2026-08-08",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callRealRingCount",
+   "ringCycleMs",
+   "receptionistRings"
+  ],
+  "success": [
+   {
+    "event": "call_ring_cycle",
+    "where": {
+     "counted": true
+    },
+    "property": "ring_count",
+    "gte": 1,
+    "min_events": 1,
+    "note": "Filtered to counted=true on purpose. counted=false is LEGITIMATE and common - the audibility echo re-POSTs the same ringIndex, and a silent/DND phone is relayed and recorded but deliberately excluded from the count (call_room.ts:2100-2131). The failure mode this catches is that NO cycle is ever counted, i.e. ring_count stays 0."
+   },
+   {
+    "event": "call_receptionist_trigger",
+    "property": "trigger",
+    "not_in": [
+     "ring_timeout_no_receipts"
     ],
-    "_verified_at": "worker/src/routes/api.ts:538-561 (props {presence, presence_age_ms, decision, routing_reason, ...}, emitted for BOTH parties via trackUser) and api.ts:620-629 (decision values)"
-  },
-
-  "CALL-4RINGS-1": {
-    "description": "Ava takes over after four REAL ring cycles instead of at a wall-clock alarm. The callee's PushService.reportRinging repeats with a monotonic ringIndex while the phone is genuinely ringing, and the CallRoom counts the AUDIBLE ones. Two-sided: the repeating receipts come from the callee's app, so a callee on an old build produces zero of them and the server silently falls back to the 20s deadline.",
-    "shipped": "2026-08-08",
-    "two_sided": true,
-    "min_devices_on_build": 2,
-    "flags": ["callRealRingCount", "ringCycleMs", "receptionistRings"],
-    "success": [
-      {
-        "event": "call_ring_cycle",
-        "where": {"counted": true},
-        "property": "ring_count",
-        "gte": 1,
-        "min_events": 1,
-        "note": "Filtered to counted=true on purpose. counted=false is LEGITIMATE and common - the audibility echo re-POSTs the same ringIndex, and a silent/DND phone is relayed and recorded but deliberately excluded from the count (call_room.ts:2100-2131). The failure mode this catches is that NO cycle is ever counted, i.e. ring_count stays 0."
-      },
-      {
-        "event": "call_receptionist_trigger",
-        "property": "trigger",
-        "not_in": ["ring_timeout_no_receipts"],
-        "min_events": 1,
-        "note": "The three trigger values are rings_completed | backstop_timeout | ring_timeout_no_receipts (call_room.ts:1306). `ring_timeout_no_receipts` means the deadline fired with ZERO ring receipts - the exact string sitting in prod on 2026-08-08 alongside ring_count=0 while the fix was being reported as shipped."
-      }
+    "min_events": 1,
+    "note": "The three trigger values are rings_completed | backstop_timeout | ring_timeout_no_receipts (call_room.ts:1306). `ring_timeout_no_receipts` means the deadline fired with ZERO ring receipts - the exact string sitting in prod on 2026-08-08 alongside ring_count=0 while the fix was being reported as shipped."
+   }
+  ],
+  "_verified_at": "worker/src/do/call_room.ts:2167 (trackRingEvent 'call_ring_cycle', {ring_index, counted, ring_count, audible, derived, ...}) and call_room.ts:1373 (trackRingEvent 'call_receptionist_trigger', {trigger, ring_count, ...})"
+ },
+ "CALL-LOG-TIME-1": {
+  "description": "Call history shows date, time AND duration on both surfaces (AvaTalk Calls tab, AvaDialer Call logs) from one shared formatter. The call-log row is written at call START, so duration/outcome did not exist at all; CallSession now closes the row out at teardown. Client-only.",
+  "shipped": "2026-08-08",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_log_event",
+    "where": {
+     "op": "finish"
+    },
+    "property": "outcome",
+    "not_in": [
+     ""
     ],
-    "_verified_at": "worker/src/do/call_room.ts:2167 (trackRingEvent 'call_ring_cycle', {ring_index, counted, ring_count, audible, derived, ...}) and call_room.ts:1373 (trackRingEvent 'call_receptionist_trigger', {trigger, ring_count, ...})"
-  },
-
-  "CALL-LOG-TIME-1": {
-    "description": "Call history shows date, time AND duration on both surfaces (AvaTalk Calls tab, AvaDialer Call logs) from one shared formatter. The call-log row is written at call START, so duration/outcome did not exist at all; CallSession now closes the row out at teardown. Client-only.",
-    "shipped": "2026-08-08",
-    "two_sided": false,
-    "min_devices_on_build": 1,
-    "flags": [],
-    "success": [
-      {
-        "event": "call_log_event",
-        "where": {"op": "finish"},
-        "property": "outcome",
-        "not_in": [""],
-        "min_events": 1,
-        "note": "op=finish is the NEW second write, emitted only by CallLogStore.finish (call_log_store.dart). Its absence means the row is still being written once, at call start, with no duration - i.e. the whole fix is inert. An empty outcome would mean _finishCallLog ran without a phase to map."
-      },
-      {
-        "event": "call_log_event",
-        "where": {"op": "finish", "outcome": "connected"},
-        "property": "duration_sec",
-        "gte": 1,
-        "min_events": 1,
-        "note": "The point of the issue. A connected call reporting duration_sec=0 means _connectedAtMs was never stamped (onTrack did not fire, or the SFU lane bypassed it) and the UI will silently fall back to date+time with no duration."
-      }
+    "min_events": 1,
+    "note": "op=finish is the NEW second write, emitted only by CallLogStore.finish (call_log_store.dart). Its absence means the row is still being written once, at call start, with no duration - i.e. the whole fix is inert. An empty outcome would mean _finishCallLog ran without a phase to map."
+   },
+   {
+    "event": "call_log_event",
+    "where": {
+     "op": "finish",
+     "outcome": "connected"
+    },
+    "property": "duration_sec",
+    "gte": 1,
+    "min_events": 1,
+    "note": "The point of the issue. A connected call reporting duration_sec=0 means _connectedAtMs was never stamped (onTrack did not fire, or the SFU lane bypassed it) and the UI will silently fall back to date+time with no duration."
+   }
+  ],
+  "_verified_at": "app/lib/core/call_log_store.dart CallLogStore.finish -> _track('finish','local',{dir,video,duration_sec,outcome}) -> Analytics.capture('call_log_event', {op, origin, ...}); emit sites app/lib/core/calls/call_session.dart _finishCallLog (called from _endWith and _teardownImpl)"
+ },
+ "CALL-DEADAIR-1": {
+  "description": "Kill the silence between 'the call says connected' and the first audible byte. Prod avatok-17f145b5 (2026-08-07, build 10523) measured ~14s from call_started to the first call_media_health sample carrying real audio, on a link with 5-6ms jitter and ~0% loss on BOTH sides - our setup latency, not the network. Two changes: the setup prologue (renderer init, ICE fetch, network-class probe) now runs concurrently with getUserMedia instead of ahead of it, and the SFU transport polls for the peer's seat concurrently with its own publish instead of strictly after it. The new call_first_audio_ms event is the instrument: it measures at 200ms resolution, where the only pre-existing inbound-byte sampler is a 5s periodic armed at connect and therefore quantises every answer to +/-5s.",
+  "shipped": "2026-08-08",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callSetupParallelBootV1",
+   "callFirstAudioProbeV1",
+   "callSfuV1"
+  ],
+  "success": [
+   {
+    "event": "call_first_audio_ms",
+    "where": {
+     "outcome": "audio"
+    },
+    "property": "ms_from_connected",
+    "lt": 1000,
+    "min_events": 1,
+    "min_pass_rate": 0.8,
+    "note": "THE number this issue is judged on. ms_from_connected is measured from _connectedAtMs (first remote track, i.e. the moment the UI says 'connected') to the first inbound-rtp audio byte. 0.8 rather than 1.0 because a genuinely bad mobile link can blow a 1s DTLS/RTP budget on its own; the regression to catch is the MEDIAN going back over 1s, not one slow call. Do NOT read this event's average across all outcomes - filter to outcome=audio, since a timeout row carries a 25s ms_from_connected by construction.",
+    "two_sided_note": "The peer-seat poll overlap only helps when BOTH phones run the new ladder, so count distinct persons on the newest $app_build before believing an improvement."
+   },
+   {
+    "event": "call_first_audio_ms",
+    "property": "outcome",
+    "not_in": [
+     "timeout",
+     "ended"
     ],
-    "_verified_at": "app/lib/core/call_log_store.dart CallLogStore.finish -> _track('finish','local',{dir,video,duration_sec,outcome}) -> Analytics.capture('call_log_event', {op, origin, ...}); emit sites app/lib/core/calls/call_session.dart _finishCallLog (called from _endWith and _teardownImpl)"
-  },
-
-  "CALL-DEADAIR-1": {
-    "description": "Kill the silence between 'the call says connected' and the first audible byte. Prod avatok-17f145b5 (2026-08-07, build 10523) measured ~14s from call_started to the first call_media_health sample carrying real audio, on a link with 5-6ms jitter and ~0% loss on BOTH sides - our setup latency, not the network. Two changes: the setup prologue (renderer init, ICE fetch, network-class probe) now runs concurrently with getUserMedia instead of ahead of it, and the SFU transport polls for the peer's seat concurrently with its own publish instead of strictly after it. The new call_first_audio_ms event is the instrument: it measures at 200ms resolution, where the only pre-existing inbound-byte sampler is a 5s periodic armed at connect and therefore quantises every answer to +/-5s.",
-    "shipped": "2026-08-08",
-    "two_sided": true,
-    "min_devices_on_build": 2,
-    "flags": ["callSetupParallelBootV1", "callFirstAudioProbeV1", "callSfuV1"],
-    "success": [
-      {
-        "event": "call_first_audio_ms",
-        "where": {"outcome": "audio"},
-        "property": "ms_from_connected",
-        "lt": 1000,
-        "min_events": 1,
-        "min_pass_rate": 0.8,
-        "note": "THE number this issue is judged on. ms_from_connected is measured from _connectedAtMs (first remote track, i.e. the moment the UI says 'connected') to the first inbound-rtp audio byte. 0.8 rather than 1.0 because a genuinely bad mobile link can blow a 1s DTLS/RTP budget on its own; the regression to catch is the MEDIAN going back over 1s, not one slow call. Do NOT read this event's average across all outcomes - filter to outcome=audio, since a timeout row carries a 25s ms_from_connected by construction.",
-        "two_sided_note": "The peer-seat poll overlap only helps when BOTH phones run the new ladder, so count distinct persons on the newest $app_build before believing an improvement."
-      },
-      {
-        "event": "call_first_audio_ms",
-        "property": "outcome",
-        "not_in": ["timeout", "ended"],
-        "min_events": 1,
-        "min_pass_rate": 0.8,
-        "note": "outcome is audio|timeout|ended (call_session.dart _reportFirstAudio). 'timeout' means 25s passed on a connected call with zero inbound audio bytes - the dead-air failure itself. 'ended' means the call was hung up before any audio arrived, which is what the tester did on avatok-17f145b5. Either value dominating means the fix did nothing.",
-        "two_sided_note": "Same build requirement as above."
-      },
-      {
-        "event": "call_first_audio_ms",
-        "property": "stages_seen",
-        "not_in": [""],
-        "min_events": 1,
-        "note": "Guards the INSTRUMENT, not the fix. An empty stages_seen means _setupT0 was never anchored or _stage() never ran, so every stage_* property is missing and the per-rung breakdown - the only thing that says WHICH await ate the time - is silently absent. Read stage_sfu_join / stage_sfu_publish / stage_sfu_peer_seat / stage_sfu_pull_audio / stage_first_remote_track / stage_first_audio_bytes to attribute a regression."
-      }
+    "min_events": 1,
+    "min_pass_rate": 0.8,
+    "note": "outcome is audio|timeout|ended (call_session.dart _reportFirstAudio). 'timeout' means 25s passed on a connected call with zero inbound audio bytes - the dead-air failure itself. 'ended' means the call was hung up before any audio arrived, which is what the tester did on avatok-17f145b5. Either value dominating means the fix did nothing.",
+    "two_sided_note": "Same build requirement as above."
+   },
+   {
+    "event": "call_first_audio_ms",
+    "property": "stages_seen",
+    "not_in": [
+     ""
     ],
-    "_verified_at": "app/lib/core/calls/call_session.dart _reportFirstAudio -> Analytics.capture('call_first_audio_ms', {call_id, outcome, got_audio, bytes_received, ms_from_start, ms_from_connected, media_path, outgoing, video, peer_uid, stage_<name>..., stages_seen}); stage marks from _stage() in _bootMedia/_onSignal/_startSfuMedia and from CallSfuTransport.onStage (call_sfu_transport.dart: sfu_join, sfu_pc, sfu_publish, sfu_peer_seat, sfu_pull_audio, sfu_ready)"
-  },
-
-  "AVA-VM-FALLBACK-1": {
-    "description": "An Ava timeout must never end the call. Prod avatok-946b6090 (2026-08-07 20:52 IST, build 10523): the receptionist session opened, produced no audio, hit ava_live_timeout after 4.5s, retried, and the call was ENDED at 20:53:19.9 with reason=ava-live-timeout while the owner was trying to leave a voicemail. He never spoke and nothing was recorded. The session is now DEGRADED in place instead: one vm_fallback control frame on the already-open socket makes ReceptionRoomCf abandon the conversational engine and run its existing deterministic voicemail flow (cached greeting -> beep -> record), so the message is stored and delivered by the same finalize() as every other receptionist voicemail. A second /api/receptionist/start was deliberately NOT used - it is refused by the KV reattach lock, the CallRoom DO ownership claim and the control-plane authority, all of which correctly exist to stop two Avas on one call.",
-    "shipped": "2026-08-08",
-    "two_sided": false,
-    "min_devices_on_build": 1,
-    "flags": ["avaVoicemailFallbackV1", "receptionistUseCf"],
-    "success": [
-      {
-        "event": "ava_vm_fallback",
-        "property": "stored",
-        "equals": true,
-        "min_events": 1,
-        "min_pass_rate": 0.5,
-        "note": "stored comes from the SERVER's vm_result frame, not the app's guess: the DO reports false when the fallback recording carried under 0.5s of caller audio or never crossed an audible peak, which is the deliberate empty-recording guard (a card with turns:0 and no Play button is what confused the owner in July). 0.5 rather than 1.0 because a caller who says nothing at all is a legitimate, correctly-rejected outcome - the failure to catch is stored=false EVERY time, which would mean the recorder is not capturing.",
-        "server_note": "Server mirror with the same numbers: ava_vm_fallback_result {stored, recorded_ms, caller_rec_bytes, caller_peak} on the OWNER's timeline."
-      },
-      {
-        "event": "ava_vm_fallback",
-        "where": {"stored": true},
-        "property": "recorded_ms",
-        "gte": 500,
-        "min_events": 1,
-        "note": "A stored voicemail must contain audio. recorded_ms is computed on the server from callerRecBytes at 48000 bytes/sec (24kHz mono PCM16), so it is measured caller audio, not wall clock. stored=true with recorded_ms under the 500ms floor would mean the empty-recording guard is not being applied."
-      },
-      {
-        "event": "call_ended",
-        "property": "reason",
-        "not_in": ["ava-live-timeout"],
-        "min_events": 1,
-        "note": "THE REGRESSION TEST, and the most important assertion here. `ava-live-timeout` is the exact terminal reason from the incident. After this change no call may end with it: the only remaining terminal reason on this path is `ava-vm-fallback-timeout`, which means the deterministic greeting AND the locally-generated beep both failed to arrive - a dead socket, not a slow model. Seeing ava-live-timeout again means the flag is off, the client is on an old build, or requestVoicemailFallback returned false."
-      }
+    "min_events": 1,
+    "note": "Guards the INSTRUMENT, not the fix. An empty stages_seen means _setupT0 was never anchored or _stage() never ran, so every stage_* property is missing and the per-rung breakdown - the only thing that says WHICH await ate the time - is silently absent. Read stage_sfu_join / stage_sfu_publish / stage_sfu_peer_seat / stage_sfu_pull_audio / stage_first_remote_track / stage_first_audio_bytes to attribute a regression."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart _reportFirstAudio -> Analytics.capture('call_first_audio_ms', {call_id, outcome, got_audio, bytes_received, ms_from_start, ms_from_connected, media_path, outgoing, video, peer_uid, stage_<name>..., stages_seen}); stage marks from _stage() in _bootMedia/_onSignal/_startSfuMedia and from CallSfuTransport.onStage (call_sfu_transport.dart: sfu_join, sfu_pc, sfu_publish, sfu_peer_seat, sfu_pull_audio, sfu_ready)"
+ },
+ "AVA-VM-FALLBACK-1": {
+  "description": "An Ava timeout must never end the call. Prod avatok-946b6090 (2026-08-07 20:52 IST, build 10523): the receptionist session opened, produced no audio, hit ava_live_timeout after 4.5s, retried, and the call was ENDED at 20:53:19.9 with reason=ava-live-timeout while the owner was trying to leave a voicemail. He never spoke and nothing was recorded. The session is now DEGRADED in place instead: one vm_fallback control frame on the already-open socket makes ReceptionRoomCf abandon the conversational engine and run its existing deterministic voicemail flow (cached greeting -> beep -> record), so the message is stored and delivered by the same finalize() as every other receptionist voicemail. A second /api/receptionist/start was deliberately NOT used - it is refused by the KV reattach lock, the CallRoom DO ownership claim and the control-plane authority, all of which correctly exist to stop two Avas on one call.",
+  "shipped": "2026-08-08",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "avaVoicemailFallbackV1",
+   "receptionistUseCf"
+  ],
+  "success": [
+   {
+    "event": "ava_vm_fallback",
+    "property": "stored",
+    "equals": true,
+    "min_events": 1,
+    "min_pass_rate": 0.5,
+    "note": "stored comes from the SERVER's vm_result frame, not the app's guess: the DO reports false when the fallback recording carried under 0.5s of caller audio or never crossed an audible peak, which is the deliberate empty-recording guard (a card with turns:0 and no Play button is what confused the owner in July). 0.5 rather than 1.0 because a caller who says nothing at all is a legitimate, correctly-rejected outcome - the failure to catch is stored=false EVERY time, which would mean the recorder is not capturing.",
+    "server_note": "Server mirror with the same numbers: ava_vm_fallback_result {stored, recorded_ms, caller_rec_bytes, caller_peak} on the OWNER's timeline."
+   },
+   {
+    "event": "ava_vm_fallback",
+    "where": {
+     "stored": true
+    },
+    "property": "recorded_ms",
+    "gte": 500,
+    "min_events": 1,
+    "note": "A stored voicemail must contain audio. recorded_ms is computed on the server from callerRecBytes at 48000 bytes/sec (24kHz mono PCM16), so it is measured caller audio, not wall clock. stored=true with recorded_ms under the 500ms floor would mean the empty-recording guard is not being applied."
+   },
+   {
+    "event": "call_ended",
+    "property": "reason",
+    "not_in": [
+     "ava-live-timeout"
     ],
-    "_verified_at": "app/lib/core/calls/call_session.dart _emitAvaVmFallback -> Analytics.capture('ava_vm_fallback', {call_id, trigger, recorded_ms, stored, fallback_wait_ms, activation_mode, peer_uid, caller_uid}); requested from _onAvaLiveTimeout via ReceptionistCall.requestVoicemailFallback (receptionist_call.dart) and resolved by the DO's vm_result frame; server side worker/src/do/reception_room_cf.ts startVmFallback + finalize (ava_vm_fallback_started / ava_vm_fallback_result)"
-  }
+    "min_events": 1,
+    "note": "THE REGRESSION TEST, and the most important assertion here. `ava-live-timeout` is the exact terminal reason from the incident. After this change no call may end with it: the only remaining terminal reason on this path is `ava-vm-fallback-timeout`, which means the deterministic greeting AND the locally-generated beep both failed to arrive - a dead socket, not a slow model. Seeing ava-live-timeout again means the flag is off, the client is on an old build, or requestVoicemailFallback returned false."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart _emitAvaVmFallback -> Analytics.capture('ava_vm_fallback', {call_id, trigger, recorded_ms, stored, fallback_wait_ms, activation_mode, peer_uid, caller_uid}); requested from _onAvaLiveTimeout via ReceptionistCall.requestVoicemailFallback (receptionist_call.dart) and resolved by the DO's vm_result frame; server side worker/src/do/reception_room_cf.ts startVmFallback + finalize (ava_vm_fallback_started / ava_vm_fallback_result)"
+ },
+ "CALL-HONEST-FAIL-1": {
+  "description": "Tell the caller WHY the call stopped. The terminal reason was always known (21 distinct call_ended.reason values in 7 days of prod) and never rendered; ten attempts on 2026-08-07 all looked identical to the user. ONE table (app/lib/core/ui/call_failure_copy.dart) maps reason/scenario/outcome -> a sentence, shown on the call screen and on both call-log lists. Success is NOT 'the event fired' — it is that the event carries a REAL message_key, because an unmapped ending deliberately emits nothing at all.",
+  "shipped": "2026-08-08",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_failure_shown",
+    "property": "message_key",
+    "not_in": [
+     "",
+     "unknown"
+    ],
+    "where": {
+     "surface": "call_screen"
+    },
+    "min_events": 1,
+    "note": "A failed call that told the user nothing emits NO event, so absence here is the failure mode this issue exists to fix: it means the terminal reason fell outside the table and the caller was left guessing again. Cross-check against call_ended in the same window — every call_ended whose reason is in the explained set should have a paired call_failure_shown on the same call_id."
+   },
+   {
+    "event": "call_failure_shown",
+    "property": "surface",
+    "in": [
+     "call_screen",
+     "log_row"
+    ],
+    "min_events": 1,
+    "note": "Guards the taxonomy: a third surface added later must be added here deliberately, not discovered in a dashboard."
+   }
+  ],
+  "_verified_at": "app/lib/core/ui/call_failure_copy.dart:CallFailureTelemetry.shown -> Analytics.capture('call_failure_shown', {'call_id','entry_id','reason','message_key','surface','peer_uid'}); call sites: features/avatok/call_screen.dart (_resolveFailure, surface call_screen), features/avatok/calls_screen.dart and shell/v2/avadial_root.dart (row build, surface log_row)"
+ }
 }

@@ -31,6 +31,7 @@ import '../conference/conference_migration_coordinator.dart'; // [ADDCALL-2-UI]
 import 'add_to_call_sheet.dart'; // [ADDCALL-1-UI]
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
+import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1]
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -264,6 +265,37 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   late final CallSession _session;
   bool _popped = false;
+
+  // ── [CALL-HONEST-FAIL-1] "why did that call just stop?" ────────────────────
+  //
+  // On 2026-08-07 a user made ten attempts and had one conversation. Every
+  // failure looked the same to him — beeps, then nothing — because the terminal
+  // reason the app knew perfectly well (`decline-explicit-ws`, `timeout-ringing`,
+  // `connect-timeout-fast`, `place-call-failed`, …) was never rendered anywhere.
+  //
+  // The sentence itself comes from the ONE shared table in
+  // `core/ui/call_failure_copy.dart` — never write outcome copy into this file.
+  // A NORMAL ending (hang-up, remote bye, accept, any `menu-*`) resolves to null
+  // and NOTHING is shown; "the call failed" after a good conversation is worse
+  // than silence.
+
+  /// The resolved explanation for THIS call's ending, or null while the call is
+  /// live / when the ending was normal / when the reason isn't in the table.
+  CallFailureMessage? _failure;
+
+  /// True once the screen has already granted itself the reading window below,
+  /// so the second (real) pop attempt goes straight through and the red button
+  /// on the terminal screen is never dead.
+  bool _failureHeld = false;
+  Timer? _failureHoldTimer;
+
+  /// How long a failure sentence stays on screen before the call screen closes
+  /// itself. `CallSession._endWith` schedules its pop 1.4 s after the terminal
+  /// phase — long enough to see that SOMETHING happened, nowhere near long
+  /// enough to read a sentence and understand it. The user in the incident sat
+  /// through 38, 90 and 49 seconds of nothing; five seconds of an answer is not
+  /// the part of this flow worth optimising.
+  static const Duration _kFailureHold = Duration(seconds: 5);
 
   /// [ADDCALL-1-UI] True from the moment the user confirms the picker until the
   /// escalation either fails (call untouched) or hands off to the conference.
@@ -561,7 +593,10 @@ class _CallScreenState extends State<CallScreen> {
     ));
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.
-    _session.onRequestPop = _popIfMounted;
+    // [CALL-HONEST-FAIL-1] Routed through `_autoPop`, which holds the screen for
+    // [_kFailureHold] when there is an explanation to read. User-initiated exits
+    // still go straight to `_popIfMounted` and are never delayed.
+    _session.onRequestPop = _autoPop;
     // User-facing snackbars stay in the view; the session invokes these hooks.
     _session.setNoticeHooks(
       mediaDenied: () {
@@ -626,7 +661,76 @@ class _CallScreenState extends State<CallScreen> {
   void _onSessionChanged() {
     _maybeFetchNoAnswerRouting();
     _maybeStartAgentFromPhase(); // [DIALPAD-BIZ-CALLS Phase C]
+    _resolveFailure(); // [CALL-HONEST-FAIL-1]
     if (mounted) setState(() {});
+  }
+
+  /// [CALL-HONEST-FAIL-1] Work out — from whatever the session is willing to
+  /// tell us — the honest sentence for how this call ended, and emit the proof
+  /// that the user was told.
+  ///
+  /// Latches: once resolved it never changes, so a later phase shuffle during
+  /// teardown ('outcome-menu' → 'ended') cannot blank the explanation out from
+  /// under someone who is mid-sentence.
+  ///
+  /// KNOWN LIMITATION, and the one thing that would make this materially better:
+  /// `CallSession` does not expose the terminal `reason` it passes to
+  /// `_endWith(..., reason:)`, nor the server's `presence` / `routing_reason`.
+  /// So this resolves from the two public signals it does have — `menuScenario`
+  /// and the terminal `uiPhase` — which is coarser: a `connect-timeout` and a
+  /// `place-call-failed` both surface as the phase `network-error` and share one
+  /// sentence. Everything is already keyed on `reason` in the table, so the day
+  /// `CallSession.endReason` exists this becomes one extra argument and the
+  /// distinctions light up with no other change. See the report for the exact
+  /// getters requested.
+  void _resolveFailure() {
+    if (_failure != null) return;
+    if (!_session.isEnded &&
+        _session.phase.value != CallPhase.ended &&
+        !_session.showOutcomeMenu) {
+      return;
+    }
+    final msg = callFailureMessage(
+      menuScenario: _session.menuScenario ?? '',
+      phase: _session.uiPhase.value,
+      // Pre-ring server routing: the caller never heard a ring at all, so this
+      // is the only truthful thing that can be said about the attempt.
+      routingReason: widget.initialRouted == 'receptionist' ? 'unknown_caller' : '',
+      peerName: widget.title,
+    );
+    if (msg == null) return;
+    _failure = msg;
+    CallFailureTelemetry.shown(
+      surface: 'call_screen',
+      message: msg,
+      callId: widget.room,
+      // Best available today — see the limitation above. Prefixed so an analyst
+      // can never mistake a ui phase for a `call_ended.reason`.
+      reason: 'phase:${_session.uiPhase.value}',
+      peerUid: widget.seed,
+    );
+  }
+
+  /// [CALL-HONEST-FAIL-1] The session's OWN request to close the screen (it
+  /// fires ~1.4 s after a terminal phase). Distinct from [_popIfMounted], which
+  /// is what the user's own taps go through — a red-button press must always
+  /// exit immediately, and only the automatic close waits.
+  void _autoPop() {
+    if (_popped || !mounted) {
+      _popIfMounted();
+      return;
+    }
+    _resolveFailure();
+    if (_failure != null && !_failureHeld) {
+      _failureHeld = true;
+      _failureHoldTimer?.cancel();
+      _failureHoldTimer = Timer(_kFailureHold, () {
+        if (mounted) _popIfMounted();
+      });
+      if (mounted) setState(() {});
+      return;
+    }
+    _popIfMounted();
   }
 
   void _popIfMounted() {
@@ -686,8 +790,10 @@ class _CallScreenState extends State<CallScreen> {
     // Release our view-scoped hooks so a stale closure can't fire into a dead
     // context. If this exact session re-attaches to a new screen, it re-installs
     // them in initState.
-    if (identical(_session.onRequestPop, _popIfMounted))
+    if (identical(_session.onRequestPop, _autoPop) ||
+        identical(_session.onRequestPop, _popIfMounted))
       _session.onRequestPop = null;
+    _failureHoldTimer?.cancel(); // [CALL-HONEST-FAIL-1]
     _session.setNoticeHooks();
     // [DIALPAD-BIZ-CALLS Phase C] Tear down an orphaned agent bridge — the
     // AgentVoiceRoom DO finalizes (settle/refund/summary card) on WS close.
@@ -1708,6 +1814,15 @@ class _CallScreenState extends State<CallScreen> {
                           connected ? s.clock : s.statusText,
                           kind: failed ? AdStickerKind.no : AdStickerKind.plain,
                         ),
+                        // [CALL-HONEST-FAIL-1] The sentence. The sticker above
+                        // is a state label ("No answer"); this is the thing a
+                        // person can actually read and act on. Rendered only
+                        // when the shared table produced one — a normal ending
+                        // shows nothing here, which is the whole point.
+                        if (_failure != null) ...[
+                          const SizedBox(height: Msg.s3),
+                          _CallFailureNote(text: _failure!.text),
+                        ],
                       ],
                       // [CALL-DIAL-FAIL-1] Retry affordance — only on the
                       // network-error terminal state, only when the launch site
@@ -2156,6 +2271,21 @@ class _CallScreenState extends State<CallScreen> {
               ),
             ),
           ),
+
+        // [CALL-HONEST-FAIL-1] VIDEO path — the audio layout renders the
+        // sentence under its status sticker, but the video layout has no such
+        // block: a failed video call showed the remote-video placeholder and a
+        // truncated header subtitle. Same widget, floated over the video surface
+        // and clear of the control row. Suppressed while the outcome menu is up
+        // (it carries the same sentence as its own headline) and while the call
+        // is live.
+        if (showVideo && _failure != null && !s.showOutcomeMenu)
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 128.0 + (bottomInset > 0 ? bottomInset : 16.0),
+            child: Center(child: _CallFailureNote(text: _failure!.text)),
+          ),
       ],
     );
     // PopScope: intercept the system back gesture so it MINIMIZES the call
@@ -2231,6 +2361,14 @@ class _CallScreenState extends State<CallScreen> {
       session: _session,
       name: widget.title,
       peerUid: widget.seed,
+      // [CALL-HONEST-FAIL-1] The menu's header used to come from
+      // `CallSession.statusText`, which is a THIRD place call-outcome copy was
+      // written ("User is not answering. Please try after sometime."). Hand it
+      // the sentence from the shared table so the menu, the status sticker and
+      // the call-log row can never say three different things about one event.
+      // Null (a scenario the table has no copy for) falls back to statusText,
+      // so nothing regresses.
+      headline: _failure?.text,
       onClosed: () {
         // Notes call menuDismiss internally; this is idempotent and also
         // covers an ordinary close/contact action.
@@ -3469,5 +3607,50 @@ class _AgentCallPanel extends StatelessWidget {
         ),
       ],
     ]);
+  }
+}
+
+/// [CALL-HONEST-FAIL-1] The one-line answer to "why did that just stop?".
+///
+/// Deliberately a quiet card, not an alert: most of these sentences describe a
+/// perfectly ordinary human event ("Arti didn't answer.") and dressing them in
+/// red would make the app feel broken every time somebody was in a meeting.
+/// Only genuinely technical failures get any warmth of colour, and even then
+/// only on the icon.
+///
+/// It is the same widget on the paper/dialer audio layout and floated over a
+/// video call, so it paints its own surface and border rather than depending on
+/// whatever is behind it.
+class _CallFailureNote extends StatelessWidget {
+  final String text;
+  const _CallFailureNote({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: Msg.s4, vertical: Msg.s3),
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.regular),
+                size: 16, color: AD.textTertiary),
+            const SizedBox(width: Msg.s2),
+            Flexible(
+              child: Text(text,
+                  style: ADText.preview(c: AD.textSecondary)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

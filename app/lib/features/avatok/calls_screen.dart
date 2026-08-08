@@ -7,6 +7,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
+import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1] shared copy
 import '../../core/ui/call_log_format.dart'; // [CALL-LOG-TIME-1] shared subtitle
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -207,6 +208,20 @@ class _CallsScreenState extends State<CallsScreen> {
   // coral for missed, mint for incoming, call-back circle button.
   Widget _row(CallEntry c) {
     final missed = c.dir == CallDir.missed;
+    // [CALL-HONEST-FAIL-1] The honest sentence for a call that never became a
+    // conversation. Null for a real call, a call the user cancelled, or a legacy
+    // row — in every one of those cases the row says nothing extra rather than
+    // guessing. Resolved from the ONE shared table in call_failure_copy.dart.
+    final failure = callLogFailure(c);
+    if (failure != null) {
+      CallFailureTelemetry.shown(
+        surface: 'log_row',
+        message: failure,
+        entryId: c.id,
+        reason: c.outcome,
+        peerUid: c.seed,
+      );
+    }
     final dirColor = switch (c.dir) {
       CallDir.missed => AD.missedCall,
       CallDir.incoming => AD.incomingCall,
@@ -242,10 +257,21 @@ class _CallsScreenState extends State<CallsScreen> {
               PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
               const SizedBox(width: Msg.s1),
               // [CALL-LOG-TIME-1] date + time + duration, shared with AvaDialer.
-              Flexible(child: Text(callLogSubtitle(c, context: context),
+              // [CALL-HONEST-FAIL-1] `withOutcome: false` when the sentence
+              // below is showing, so the row doesn't say "Declined" and
+              // "Arti declined the call." on two consecutive lines.
+              Flexible(child: Text(
+                  callLogSubtitle(c, context: context, withOutcome: failure == null),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.sectionLabel(c: AD.textTertiary))),
             ]),
+            // [CALL-HONEST-FAIL-1] Why it never became a conversation, in words.
+            if (failure != null) ...[
+              const SizedBox(height: Msg.s1),
+              Text(failure.text,
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: ADText.preview(c: AD.textTertiary)),
+            ],
           ]),
         ),
         const SizedBox(width: 8),

@@ -23,6 +23,7 @@
 import 'package:flutter/material.dart';
 
 import '../call_log_store.dart';
+import 'call_failure_copy.dart';
 
 const List<String> _kMonths = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -124,10 +125,16 @@ String callLogDirectionLabel(CallDir d) => switch (d) {
 ///
 /// The trailing outcome is suppressed when it would merely repeat the direction
 /// ("Missed · … · Missed").
+///
+/// [CALL-HONEST-FAIL-1] Set [withOutcome] to false when the row ALSO renders
+/// [callLogFailureSentence] underneath. The one-word "· Declined" and the
+/// sentence "Arti declined the call." are the same fact twice; the sentence
+/// wins, because it is the one a person can read without decoding a convention.
 String callLogSubtitle(
   CallEntry e, {
   BuildContext? context,
   bool withDirection = true,
+  bool withOutcome = true,
   DateTime? now,
 }) {
   final parts = <String>[];
@@ -138,9 +145,25 @@ String callLogSubtitle(
   final dur = e.connected ? callLogDuration(e.durationSec) : '';
   if (dur.isNotEmpty) {
     parts.add(dur);
-  } else {
+  } else if (withOutcome) {
     final outcome = callLogOutcomeLabel(e);
     if (outcome.isNotEmpty && !(withDirection && outcome == dir)) parts.add(outcome);
   }
   return parts.join(' · ');
 }
+
+/// [CALL-HONEST-FAIL-1] The honest sentence for a history row — "Arti declined
+/// the call.", "Arti didn't answer." — or null when there is nothing truthful to
+/// add (a real conversation, a call the user cancelled themselves, a missed
+/// incoming call, or a legacy row with no outcome recorded).
+///
+/// This is a thin re-export of [callLogFailureMessage] so that a call-list screen
+/// only ever needs to import ONE formatter file. The copy itself lives in
+/// `call_failure_copy.dart` — the single table shared with the live call screen —
+/// so the log and the call UI can never drift into saying different things about
+/// the same event. Do NOT write outcome copy into a list widget.
+CallFailureMessage? callLogFailure(CallEntry e, {String nameOverride = ''}) =>
+    callLogFailureMessage(e, nameOverride: nameOverride);
+
+/// Convenience for widgets that only want the text.
+String callLogFailureSentence(CallEntry e) => callLogFailure(e)?.text ?? '';

@@ -57,6 +57,15 @@ class CallOutcomeMenu extends StatefulWidget {
   /// to ContactsStore and shows a confirmation. null hides the option.
   final VoidCallback? onSaveContact;
 
+  /// [CALL-HONEST-FAIL-1] The honest one-line explanation, resolved by the
+  /// caller from the ONE shared table (`core/ui/call_failure_copy.dart`).
+  ///
+  /// When null the menu falls back to [CallSession.statusText] exactly as it
+  /// always did, so an unmapped scenario is never worse than before. When
+  /// present it REPLACES that header rather than being added underneath it —
+  /// two sentences saying the same thing is how a menu stops being read.
+  final String? headline;
+
   const CallOutcomeMenu({
     super.key,
     required this.session,
@@ -66,6 +75,7 @@ class CallOutcomeMenu extends StatefulWidget {
     this.onCallAgain,
     this.onMessage,
     this.onSaveContact,
+    this.headline,
   });
 
   @override
@@ -278,7 +288,11 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
         ),
       );
     }
-    final header = s.statusText;
+    // [CALL-HONEST-FAIL-1] Shared-table sentence when the caller resolved one;
+    // the session's own status line otherwise.
+    final header = widget.headline?.trim().isNotEmpty == true
+        ? widget.headline!.trim()
+        : s.statusText;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
       child: AdCard(

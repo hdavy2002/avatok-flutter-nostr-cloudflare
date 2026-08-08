@@ -12,6 +12,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/device_contacts.dart' as coredc;
 import '../../core/remote_config.dart';
+import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1] shared copy
 import '../../core/ui/call_log_format.dart'; // [CALL-LOG-TIME-1] shared subtitle
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -1606,6 +1607,20 @@ class _LogsTabState extends State<_LogsTab> {
           }
           final e = visible[idx - 1];
           final displayName = _byUid[e.seed]?.name ?? e.name;
+          // [CALL-HONEST-FAIL-1] Why this call never became a conversation, from
+          // the ONE shared table (core/ui/call_failure_copy.dart) the live call
+          // screen also reads. Null — and therefore silent — for a real call, a
+          // call the user cancelled, a missed incoming call, or a legacy row.
+          final failure = callLogFailure(e, nameOverride: displayName);
+          if (failure != null) {
+            CallFailureTelemetry.shown(
+              surface: 'log_row',
+              message: failure,
+              entryId: e.id,
+              reason: e.outcome,
+              peerUid: e.seed,
+            );
+          }
           void openMenu() => _openMenu(e);
           return Dismissible(
             key: ValueKey(e.id.isNotEmpty ? e.id : '${e.seed}_${e.ts}'),
@@ -1642,8 +1657,19 @@ class _LogsTabState extends State<_LogsTab> {
                             style: ADText.threadName(c: AvaDialTheme.text)),
                         // [CALL-LOG-TIME-1] date + time + duration, identical to
                         // the AvaTalk Calls tab (one shared formatter).
-                        Text(callLogSubtitle(e, context: context),
+                        // [CALL-HONEST-FAIL-1] `withOutcome: false` while the
+                        // sentence below is showing — otherwise the row reads
+                        // "Declined" and "Arti declined the call." back to back.
+                        Text(
+                            callLogSubtitle(e,
+                                context: context, withOutcome: failure == null),
                             style: ADText.preview(c: AvaDialTheme.textSoft)),
+                        // [CALL-HONEST-FAIL-1] Why it never became a call.
+                        if (failure != null)
+                          Text(failure.text,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: ADText.preview(c: AvaDialTheme.textSoft)),
                       ]),
                     ),
                     IconButton(
