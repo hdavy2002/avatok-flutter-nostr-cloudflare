@@ -11,6 +11,29 @@ import 'config.dart';
 
 enum CallDir { incoming, outgoing, missed }
 
+/// [CALL-LOG-TIME-1] Why a call ended, so the history can say "Declined" instead
+/// of an insulting "0s". Stored as a short lowercase token on [CallEntry.outcome]
+/// and rendered by `core/ui/call_log_format.dart`. An EMPTY outcome means
+/// "recorded by a build that predates this field" — the formatter then falls back
+/// to the direction + duration it does have, so old rows still read sensibly.
+class CallOutcome {
+  CallOutcome._();
+  /// Media actually flowed — a real conversation. Duration is meaningful.
+  static const connected = 'connected';
+  /// Rang out with no decision from the callee.
+  static const missed = 'missed';
+  /// The callee pressed Decline.
+  static const declined = 'declined';
+  /// Ring timed out on the caller's side.
+  static const noAnswer = 'no_answer';
+  /// The caller hung up before the callee answered.
+  static const cancelled = 'cancelled';
+  /// The callee was already on a call.
+  static const busy = 'busy';
+  /// Setup died (network/ICE) — never reached a person.
+  static const failed = 'failed';
+}
+
 class CallEntry {
   /// Stable cross-device identity (client UUID). The SAME entry on every device on
   /// the account shares this id, so a per-row delete/clear can be synced and a
@@ -20,7 +43,16 @@ class CallEntry {
   final String seed;
   final bool video;
   final CallDir dir;
-  final int ts; // epoch seconds
+  final int ts; // epoch seconds — when the call STARTED (device local clock)
+
+  /// [CALL-LOG-TIME-1] Connected talk time in whole seconds. 0 = the call never
+  /// connected (see [outcome]) or the row was written by a build that predates
+  /// this field. NEVER render `0s`.
+  final int durationSec;
+
+  /// [CALL-LOG-TIME-1] One of the [CallOutcome] tokens; '' when unknown (legacy row).
+  final String outcome;
+
   const CallEntry({
     required this.name,
     required this.seed,
@@ -28,13 +60,31 @@ class CallEntry {
     required this.dir,
     required this.ts,
     this.id = '',
+    this.durationSec = 0,
+    this.outcome = '',
   });
 
-  CallEntry withId(String newId) =>
-      CallEntry(name: name, seed: seed, video: video, dir: dir, ts: ts, id: newId);
+  CallEntry withId(String newId) => copyWith(id: newId);
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'name': name, 'seed': seed, 'video': video, 'dir': dir.name, 'ts': ts};
+  CallEntry copyWith({String? id, int? durationSec, String? outcome}) => CallEntry(
+        name: name,
+        seed: seed,
+        video: video,
+        dir: dir,
+        ts: ts,
+        id: id ?? this.id,
+        durationSec: durationSec ?? this.durationSec,
+        outcome: outcome ?? this.outcome,
+      );
+
+  /// True when the call actually connected — the only case where a duration is
+  /// worth showing.
+  bool get connected => durationSec > 0 || outcome == CallOutcome.connected;
+
+  Map<String, dynamic> toJson() => {
+        'id': id, 'name': name, 'seed': seed, 'video': video, 'dir': dir.name, 'ts': ts,
+        'dur': durationSec, 'outcome': outcome,
+      };
   factory CallEntry.fromJson(Map<String, dynamic> j) => CallEntry(
         id: (j['id'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
@@ -42,6 +92,8 @@ class CallEntry {
         video: j['video'] == true,
         dir: _dirOf((j['dir'] ?? 'outgoing').toString()),
         ts: (j['ts'] as num?)?.toInt() ?? 0,
+        durationSec: (j['dur'] as num?)?.toInt() ?? 0,
+        outcome: (j['outcome'] ?? '').toString(),
       );
 
   static CallDir _dirOf(String s) {
@@ -64,6 +116,18 @@ class CallEntry {
         video: r['video'] == true || (r['video'] is num && (r['video'] as num).toInt() == 1),
         dir: _dirOf((r['dir'] ?? 'outgoing').toString()),
         ts: (r['ts'] as num?)?.toInt() ?? 0,
+        // [CALL-LOG-TIME-1] The InboxDO `call_log` table has no dur/outcome
+        // columns yet, so these are absent on every server row TODAY and the
+        // defaults (0 / '') apply. Parsed anyway so the client is already
+        // correct the moment the server columns are added — no second client
+        // release needed. Tolerates the value arriving as a num or a string.
+        // Guarded with `is num` for the same reason `video` is: a bare
+        // `as num?` cast CRASHES the whole sync frame if the server ever sends
+        // this as a string.
+        durationSec: r['dur'] is num
+            ? (r['dur'] as num).toInt()
+            : (int.tryParse('${r['dur'] ?? ''}') ?? 0),
+        outcome: (r['outcome'] ?? '').toString(),
       );
 
   String get timeLabel {
@@ -136,13 +200,64 @@ class CallLogStore {
     if (!list.any((x) => x.id == entry.id)) list.insert(0, entry);
     await _save(_capped(list));
     _notify();
-    _track('add', 'local', {'dir': entry.dir.name, 'video': entry.video, 'size': list.length});
-    unawaited(_post(kCallLogAppendUrl, {
-      'entry_id': entry.id, 'name': entry.name, 'seed': entry.seed,
-      'video': entry.video, 'dir': entry.dir.name, 'ts': entry.ts,
-    }, 'append'));
+    _track('add', 'local', {
+      'dir': entry.dir.name, 'video': entry.video, 'size': list.length,
+      // [CALL-LOG-TIME-1] Usually 0/'' here — `add` runs when the call STARTS.
+      // The real numbers arrive on the paired call_log_event op=finish below.
+      'duration_sec': entry.durationSec, 'outcome': entry.outcome,
+    });
+    unawaited(_post(kCallLogAppendUrl, _wire(entry), 'append'));
     return entry;
   }
+
+  /// [CALL-LOG-TIME-1] Close out an entry written at call START with what we only
+  /// learn at call END: how long it actually connected for, and why it stopped.
+  ///
+  /// The call log is written the moment a call is placed/received (so an entry
+  /// exists even if the app is killed mid-call), which means the row is born with
+  /// `durationSec: 0` and no outcome. Without this second write the history can
+  /// only ever say "outgoing", which is exactly the uselessness this issue is
+  /// about.
+  ///
+  /// Local write is authoritative and instant. The server re-append is
+  /// best-effort and FORWARD-LOOKING: the InboxDO `call_log` table has no
+  /// dur/outcome columns yet, so today the other devices on the account keep the
+  /// row without a duration. That is a server-side follow-up, not a reason to
+  /// withhold the duration from the phone the call actually happened on.
+  Future<void> finish(String id, {int durationSec = 0, String outcome = ''}) async {
+    if (id.isEmpty) return;
+    final list = await load();
+    final i = list.indexWhere((x) => x.id == id);
+    if (i < 0) return;
+    final dur = durationSec < 0 ? 0 : durationSec;
+    final updated = list[i].copyWith(
+      durationSec: dur,
+      outcome: outcome.isEmpty ? list[i].outcome : outcome,
+    );
+    if (updated.durationSec == list[i].durationSec && updated.outcome == list[i].outcome) {
+      return; // nothing new to say — don't churn storage or the UI
+    }
+    list[i] = updated;
+    await _save(list);
+    _notify();
+    _track('finish', 'local', {
+      'dir': updated.dir.name,
+      'video': updated.video,
+      'duration_sec': updated.durationSec,
+      'outcome': updated.outcome,
+    });
+    unawaited(_post(kCallLogAppendUrl, _wire(updated), 'finish'));
+  }
+
+  /// The append wire body. `dur`/`outcome` are additive fields the current worker
+  /// ignores (its `callAppend` reads named keys only, so an unknown key is a
+  /// no-op, not a 400) — sending them now means no client release is needed when
+  /// the columns land server-side.
+  static Map<String, dynamic> _wire(CallEntry e) => {
+        'entry_id': e.id, 'name': e.name, 'seed': e.seed,
+        'video': e.video, 'dir': e.dir.name, 'ts': e.ts,
+        'dur': e.durationSec, 'outcome': e.outcome,
+      };
 
   /// Delete a single entry by its position in the most-recent-first list.
   Future<void> removeAt(int index) async {

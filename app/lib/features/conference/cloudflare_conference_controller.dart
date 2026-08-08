@@ -1812,6 +1812,11 @@ class CloudflareConferenceController extends ChangeNotifier {
         video: _effectiveVideo,
         dir: starter ? CallDir.outgoing : CallDir.incoming,
         ts: _joinedAtMs ~/ 1000,
+        // [CALL-LOG-TIME-1] A group call is written ONCE, at the end, so unlike
+        // the 1:1 path it already knows its own duration — no `finish` needed.
+        // Guarded by `_joinedAtMs > 0` above, so this is always a real join.
+        durationSec: durationMs > 0 ? (durationMs + 500) ~/ 1000 : 0,
+        outcome: CallOutcome.connected,
       )).catchError((_) {/* the log is best-effort, never blocks a hang-up */}));
     }
     if (activeGid == gid) activeGid = null;

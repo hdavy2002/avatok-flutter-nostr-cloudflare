@@ -2673,11 +2673,21 @@ class CallSession {
       return;
     }
     // Log to call history.
-    CallLogStore().add(CallEntry(
+    //
+    // [CALL-LOG-TIME-1] The entry is written HERE, at call start, so history
+    // survives the app being killed mid-call — which means it is born with no
+    // duration and no outcome. Keep the future: `_finishCallLog` awaits it and
+    // patches in the real numbers when the call ends, and a call that ends
+    // within milliseconds would otherwise race the secure-storage write and
+    // find no id to patch.
+    _callLogAdd = CallLogStore().add(CallEntry(
       name: config.title, seed: config.seed, video: config.video,
       dir: config.outgoing ? CallDir.outgoing : CallDir.incoming,
       ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     ));
+    // Nothing awaits this future on the happy path; swallow a storage failure so
+    // it can't surface as an unhandled async error.
+    unawaited(_callLogAdd!.then((_) {}).catchError((Object _) {}));
     await _bootMedia();
   }
 
@@ -2724,9 +2734,74 @@ class CallSession {
     }
   }
 
+  // ── [CALL-LOG-TIME-1] call-history duration + outcome ──────────────────────
+  //
+  // The call log used to record only "who / when it started", so both history
+  // screens could say no more than "Outgoing · Yesterday". These three fields
+  // are everything needed to close the row out at the end of the call.
+
+  /// The in-flight `CallLogStore.add` for THIS call (null until the log line is
+  /// written, e.g. on the pre-accept-cancel paths that return before it).
+  Future<CallEntry>? _callLogAdd;
+
+  /// Wall-clock ms at first remote media — the start of real talk time. 0 means
+  /// the call never connected, and therefore has NO duration to show.
+  int _connectedAtMs = 0;
+
+  bool _callLogFinished = false;
+
+  /// True once this call was ever handed to the receptionist. Sticky — see the
+  /// assignment site for why `_receptionistActive` cannot be read here.
+  bool _receptionistEverActive = false;
+
+  /// Map the terminal phase onto a [CallOutcome] for a call that never connected.
+  String _outcomeForPhase(String phase) {
+    // The human never picked up — Ava did. "Cancelled" would be a lie and
+    // "Missed" hides that the caller was actually served.
+    if (_receptionistEverActive) return CallOutcome.noAnswer;
+    switch (phase) {
+      case 'declined':
+        return CallOutcome.declined;
+      case 'no-answer':
+        return CallOutcome.noAnswer;
+      case 'busy':
+        return CallOutcome.busy;
+      case 'network-error':
+        return CallOutcome.failed;
+      default:
+        // We hung up first on an outgoing call; nobody picked up an incoming one.
+        return config.outgoing ? CallOutcome.cancelled : CallOutcome.missed;
+    }
+  }
+
+  /// Patch the history row with talk time + why it ended. Idempotent (`_endWith`
+  /// can be reached more than once on tangled teardown paths) and best-effort —
+  /// the call log must never be able to throw into a hang-up.
+  void _finishCallLog(String phase) {
+    if (_callLogFinished) return;
+    _callLogFinished = true;
+    final pending = _callLogAdd;
+    if (pending == null) return;
+    final talkedMs =
+        _connectedAtMs == 0 ? 0 : DateTime.now().millisecondsSinceEpoch - _connectedAtMs;
+    // Round, don't truncate: a 1.6s call is "2s", not "1s". Sub-second connects
+    // floor to 1s so a genuinely-connected call never renders as an outcome.
+    var durationSec = 0;
+    if (talkedMs > 0) {
+      durationSec = (talkedMs + 500) ~/ 1000;
+      if (durationSec < 1) durationSec = 1;
+    }
+    final outcome = durationSec > 0 ? CallOutcome.connected : _outcomeForPhase(phase);
+    unawaited(pending
+        .then((e) => CallLogStore().finish(e.id, durationSec: durationSec, outcome: outcome))
+        .catchError((Object _) {/* history is best-effort */}));
+  }
+
   /// [phase] drives the UI label; [reason] is the exhaustive telemetry taxonomy.
   void _endWith(String phase, {String? reason}) {
     _telemetry.ended(reason ?? phase);
+    // [CALL-LOG-TIME-1] Record duration/outcome before any teardown runs.
+    _finishCallLog(phase);
     _ringback.stop();
     final busy = phase == 'busy' && config.outgoing && RemoteConfig.ringbackEnabled;
     if (busy) {
@@ -4108,6 +4183,10 @@ class CallSession {
           gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
         }
         _connected = true;
+        // [CALL-LOG-TIME-1] Talk time starts at FIRST REMOTE MEDIA, not at dial:
+        // the ringing seconds are not part of the call's duration. Set once —
+        // this branch is already guarded so it only runs on the first track.
+        if (_connectedAtMs == 0) _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
         peerAway.value = false;
         _setPhase('connected');
         // [CALL-MEDIA-WATCH-1] arm the media-flow watchdog now that we're live.
@@ -7605,6 +7684,11 @@ class CallSession {
       return true;
     }
     _receptionistActive = true;
+    // [CALL-LOG-TIME-1] Sticky twin of the flag above. `_receptionistActive` is
+    // reset to false on every teardown path, so by the time the call log is
+    // closed out it is always false and a call the caller spent two minutes on
+    // with Ava would have been logged "Cancelled". This one is never cleared.
+    _receptionistEverActive = true;
     // [AVA-PREWARM-1] Adopt an already-warming session instead of a cold
     // start when one exists and hasn't already died. `_prewarmCall` is only
     // ever non-null here because [_beginPrewarm] created it; a dead one
@@ -7953,6 +8037,15 @@ class CallSession {
   Future<void> _teardownImpl({String? reason}) async {
     if (_ended || _teardownStarted) return;
     _teardownStarted = true;
+    // [CALL-LOG-TIME-1] Close the call-history row HERE as well as in `_endWith`.
+    // `_endWith` is NOT the common end path: the red button goes
+    // `endByUser()` → `hangup()` → here and never touches `_endWith` at all, so
+    // hooking only `_endWith` would have left every normal conversation — the
+    // one case with a duration worth showing — without one. `_finishCallLog` is
+    // idempotent, so the `_endWith` call (which knows the terminal PHASE and can
+    // therefore say Declined/No answer/Busy) still wins when it ran first; this
+    // is the backstop that maps from the phase we're currently in.
+    _finishCallLog(_phase);
     final sw = Stopwatch()..start();
     // [AVA-CLIENT-1] cancel the ava-live watchdog + detach the avaLevel listener
     // so nothing keeps firing after teardown (no leaked timers/listeners).

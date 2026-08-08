@@ -3977,6 +3977,9 @@ class PushService {
       video: extra['kind'] == 'video',
       dir: CallDir.missed,
       ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      // [CALL-LOG-TIME-1] Terminal on arrival — there is no later "finish" for a
+      // call that was never answered, so stamp the outcome now.
+      outcome: CallOutcome.missed,
     ));
   }
 
@@ -4708,6 +4711,7 @@ class PushService {
       video: false,
       dir: CallDir.missed,
       ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      outcome: CallOutcome.missed, // [CALL-LOG-TIME-1]
     )).catchError((_) {/* log is best-effort */}));
     Analytics.capture('group_call_ring_cancelled',
         {'call_id': callId, 'gid_hash': gid.hashCode.toString()});

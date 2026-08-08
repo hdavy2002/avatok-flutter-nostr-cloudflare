@@ -12,6 +12,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/device_contacts.dart' as coredc;
 import '../../core/remote_config.dart';
+import '../../core/ui/call_log_format.dart'; // [CALL-LOG-TIME-1] shared subtitle
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -1639,7 +1640,10 @@ class _LogsTabState extends State<_LogsTab> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(displayName.isNotEmpty ? displayName : e.seed,
                             style: ADText.threadName(c: AvaDialTheme.text)),
-                        Text(_subtitle(e), style: ADText.preview(c: AvaDialTheme.textSoft)),
+                        // [CALL-LOG-TIME-1] date + time + duration, identical to
+                        // the AvaTalk Calls tab (one shared formatter).
+                        Text(callLogSubtitle(e, context: context),
+                            style: ADText.preview(c: AvaDialTheme.textSoft)),
                       ]),
                     ),
                     IconButton(
@@ -1663,7 +1667,9 @@ class _LogsTabState extends State<_LogsTab> {
     );
   }
 
-  String _subtitle(CallEntry e) => '${e.dir.name} · ${e.timeLabel}';
+  // [CALL-LOG-TIME-1] `_subtitle` (which read "outgoing · 01:52" / "outgoing ·
+  // Yesterday" — no date on today's calls, no time on older ones, no duration
+  // ever) is replaced by the shared `callLogSubtitle`.
 }
 
 // ── Block tab ────────────────────────────────────────────────────────────────

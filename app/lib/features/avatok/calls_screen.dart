@@ -7,6 +7,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/ice_cache.dart';
+import '../../core/ui/call_log_format.dart'; // [CALL-LOG-TIME-1] shared subtitle
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -240,7 +241,8 @@ class _CallsScreenState extends State<CallsScreen> {
             Row(children: [
               PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
               const SizedBox(width: Msg.s1),
-              Flexible(child: Text('${_dirLabel(c.dir)} · ${c.timeLabel}',
+              // [CALL-LOG-TIME-1] date + time + duration, shared with AvaDialer.
+              Flexible(child: Text(callLogSubtitle(c, context: context),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ADText.sectionLabel(c: AD.textTertiary))),
             ]),
@@ -337,9 +339,6 @@ class _CallsScreenState extends State<CallsScreen> {
         CallDir.outgoing => PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.bold),
         CallDir.missed => PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
       };
-  String _dirLabel(CallDir d) => switch (d) {
-        CallDir.incoming => 'Incoming',
-        CallDir.outgoing => 'Outgoing',
-        CallDir.missed => 'Missed',
-      };
+  // [CALL-LOG-TIME-1] `_dirLabel` moved to core/ui/call_log_format.dart
+  // (`callLogDirectionLabel`) so AvaTalk and AvaDialer cannot drift again.
 }
