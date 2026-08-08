@@ -618,8 +618,30 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     // Firebase reject the whole message (400 INVALID_ARGUMENT "Invalid data
     // payload key: from"), so calls never ring. Use "fromPub" instead.
     const remainingMs = Math.max(1_000, (msg.tokenExpiresAt ?? (now + 20_000)) - now);
+    // [CALL-RING-COLLAPSE-1 2026-08-08] `collapseKey` REMOVED from the call payload.
+    //
+    // Background rings died completely at build 10465 (2026-07-25) and stayed dead
+    // for 14 days: `call_incoming_shown` with `route=fcm_bg` went 22 -> ZERO across
+    // 29 builds, against ~500 `push_fanout_result ok=true`. The background isolate
+    // itself is healthy — `fcm_bg_received` fires for `app_update`, `message`,
+    // `group_invite` and `call-status` on the very same devices — but NEVER ONCE
+    // with `type=call`. So FCM accepts the call message and does not deliver it.
+    //
+    // The only structural difference between the call payload and the ones that DO
+    // arrive is this line: `app_update` (fcm.ts ~509) sets `highPriority` and
+    // nothing else — no ttl, no collapse key. `collapse_key` marks a message
+    // collapsible, which Google documents as unsuitable for time-critical content:
+    // a collapsible message may be dropped outright rather than delivered late.
+    //
+    // `ttlSeconds` is DELIBERATELY KEPT. A ring is genuinely perishable — delivering
+    // it after the caller has hung up is worse than not delivering it. If rings are
+    // still absent after this, the TTL is the next variable to move, not this one.
+    //
+    // Success value to assert BEFORE reading the data (ship-gate rule 3): a call to a
+    // LOCKED phone with the app swiped away must produce `fcm_bg_received type=call`
+    // AND `call_incoming_shown route=fcm_bg`. Absence of both = this was not the cause.
     return { highPriority: true, ttlSeconds: Math.max(1, Math.ceil(remainingMs / 1000)),
-      collapseKey: msg.callId || undefined, data: {
+      data: {
       type: "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
       fromName: msg.fromName ?? "AvaTOK", kind: msg.callType ?? "audio",
       // [TRACE-ID-1] Correlation id -> the callee's push handler reads it and
