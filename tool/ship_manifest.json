@@ -1,6 +1,74 @@
 {
  "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+ "CALL-RTK-5": {
+  "description": "Kotlin plugin 2.1.10 -> 2.2.20 so the app can read realtimekit_core_android's Kotlin 2.3.0 metadata.",
+  "shipped": "2026-08-08",
+  "no_telemetry": "Build-toolchain only: changes no runtime behaviour. Success = the android.yml build compiles (run 31253492017 green)."
+ },
+ "CALL-RTK-6": {
+  "description": "Exclude com.twilio:audioswitch, duplicate of flutter_webrtc's davidliu fork with identical class names.",
+  "shipped": "2026-08-08",
+  "no_telemetry": "Dependency dedup only: changes no runtime behaviour on shipped paths (RTK is dark). Success = the release merge stops failing on Duplicate class (run 31253492017 green). If the RTK audio path later throws NoSuchMethodError into com.twilio.audioswitch, this exclusion is the suspect."
+ },
+ "CALL-PRESENCE-2": {
+  "description": "Owner's rule made real: a callee whose phone has not heartbeated for presenceOfflineSec (default 300s) routes the caller STRAIGHT to Ava instead of a blind ring. Before this, ring_stale was a telemetry label nothing branched on, and receptionist_offline additionally required token_count=0 - which a switched-off phone never satisfies (FCM tokens survive power-off). Also: Upstash presence reads got a 1.2s timeout + retry and an outcome (hit|miss|error|timeout) - the 11:22 unknown-while-beats-flowed was a swallowed read error. Server-side only: works on every build already in the field.",
+  "shipped": "2026-08-08",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callPresenceRouting",
+   "presenceOfflineSec",
+   "presenceFreshSec",
+   "presenceHeartbeatSec"
+  ],
+  "success": [
+   {
+    "event": "call_presence_decision",
+    "property": "decision",
+    "in": [
+     "receptionist_offline_immediate"
+    ],
+    "min_events": 1,
+    "note": "Emitted ONLY when the age arm fired with token_count > 0, so it cannot be confused with the legacy zero-token receptionist_offline. Requires a real test: call someone whose phone has been off/backgrounded-dead for >5 min. offline_by=age and offline_sec=300 on the same event corroborate."
+   },
+   {
+    "event": "call_presence_decision",
+    "property": "presence_read",
+    "not_in": [
+     "error",
+     "timeout"
+    ],
+    "min_events": 3,
+    "min_pass_rate": 0.9,
+    "note": "The 2c fix: reads that fail are now VISIBLE (decision=ring_unknown_read_failed). A run of error/timeout means Upstash is unhealthy or the 1.2s deadline is too tight - the call still rings (fail-open by design), but presence routing is inert while it lasts."
+   }
+  ],
+  "_verified_at": "worker/src/routes/api.ts offline test stale && (n===0 || ageMs >= presenceOfflineSec*1000), decision receptionist_offline_immediate; worker/src/lib/redis.ts redisGetJsonResult outcome; commit 20ca06ca"
+ },
+ "CALL-RING-AUDIBLE-2": {
+  "description": "Ringback silence mid-beeps was our own code: three leftover _ringback.stop() calls on the unreachable lane (12s device-wake timer in start(), ok:false ring-ack, re-armed timer in notePlaceResult) killed the tone ~12s in, and the 'sound waking up' was Ava's first audio 6-8s later. AVA-PREWARM-1 had fixed _onNoAnswer but left these three callers. New _goUnreachable keeps the tone playing until the ava-live gate (Ava's first real audio) or handoff failure. NOT the audio-owner race and NOT prewarm focus - route was speaker throughout; verified against AvaVoiceAudioPlugin.kt focus types.",
+  "shipped": "2026-08-08",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callRingAudibilityV1"
+  ],
+  "success": [
+   {
+    "event": "ringback_audible",
+    "where": {
+     "phase": "prewarm",
+     "sample_at_ms": 2000
+    },
+    "property": "playing",
+    "equals": true,
+    "min_events": 1,
+    "note": "Sampled at prewarm start and +2s; playing=true at the 2s sample with position_ms CHANGED vs the 0ms sample is the pass. playing=false or identical position_ms is the pre-fix silence. Flag callRingAudibilityV1 must be ON and the caller's phone on the new build; flag off = byte-equivalent old behavior."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart _goUnreachable + _sampleRingAudible (ringback_audible props call_id/phase/sample_at_ms/playing/position_ms); commit 78c0798a"
+ },
  "CALL-RTK-2": {
   "description": "Worker half of the RealtimeKit migration (Specs/CALL-REALTIMEKIT-MIGRATION.md): POST /api/callrtk/:room/join mints a RealtimeKit participant token after verifying CallRoom admission; meeting id is first-writer-wins on the DO with a 6h lazy expiry. Ships dark: callRealtimeKitV1 and groupRealtimeKitV1 default false, and the route 503s rtk_unavailable until CF_RTK_ORG_ID/CF_RTK_API_KEY secrets are set and the three avatok_* presets exist in the RealtimeKit dashboard.",
   "shipped": "2026-08-08",
