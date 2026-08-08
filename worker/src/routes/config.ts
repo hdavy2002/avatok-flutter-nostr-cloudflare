@@ -226,6 +226,37 @@ export interface PlatformConfig {
    */
   presenceHeartbeatSec: number;
   /**
+   * [CALL-PRESENCE-2 2026-08-08] How long a phone may go WITHOUT checking in
+   * before the server treats it as OFF, in seconds.
+   *
+   * The owner's rule, in his words: "every phone heartbeats; if a callee's phone
+   * has not checked in for X, it is off, and a caller dialing them is routed
+   * IMMEDIATELY to the Ava receptionist, not left listening to ringing beeps."
+   *
+   * WHY IT HAD TO EXIST. [CALL-PRESENCE-1]'s offline trigger required a stale
+   * heartbeat AND zero FCM tokens, and in production a token survives the phone
+   * being switched off, flight mode, a dead battery and a week in a drawer — so
+   * the trigger essentially never fired. Measured 2026-08-08 on call
+   * avatok-d679c96a: `presence_age_ms: 657033` (the callee had been silent for
+   * ELEVEN MINUTES), the server knew that BEFORE it rang, and the caller was
+   * still given ~18 s of ringing before Ava. Time is the signal; a live token
+   * only means we could try to wake it, which is the gamble the caller was paying
+   * for.
+   *
+   * Relationship to the other two: `presenceHeartbeatSec` (25) <
+   * `presenceFreshSec` (90) < `presenceOfflineSec` (300). Between fresh and
+   * offline the callee is `stale` and still rings normally — a radio nap is not
+   * an off phone. 300 s = twelve consecutive missed beats.
+   *
+   * Set to 0 to disable age-based offline routing entirely and fall back to
+   * [CALL-PRESENCE-1] behaviour, with no rebuild. NUMERIC → it MUST also appear
+   * in `numericKeys` below or `flags.sh set presenceOfflineSec=600` 400s
+   * `bad type`. Server-only: no client mirror, because the decision is made
+   * server-side in /api/call and the client is only told `routing_reason:
+   * 'offline'`, a value it already handles.
+   */
+  presenceOfflineSec: number;
+  /**
    * [CALL-4RINGS-1 2026-08-08] Hand over to Ava after FOUR REAL RINGS, not after
    * a wall-clock alarm.
    *
@@ -1282,6 +1313,10 @@ const DEFAULTS: PlatformConfig = {
   callPresenceRouting: true,
   presenceFreshSec: 90,            // numeric → numericKeys. ~3.6 missed 25s beats.
   presenceHeartbeatSec: 25,        // numeric → numericKeys. Rides the existing SyncHub ping tick.
+  // [CALL-PRESENCE-2] The owner's rule: silent for this long = the phone is OFF,
+  // and the caller goes STRAIGHT to Ava instead of hearing ring cycles. 300s = 12
+  // consecutive missed 25s beats. numeric → numericKeys. 0 disables the age arm.
+  presenceOfflineSec: 300,
   callRealRingCount: true,         // [CALL-4RINGS-1] count real rings; false = today's 20s wall clock
   ringCycleMs: 6000,               // numeric → numericKeys. Assumed length of one ring cycle.
   // [CALLREC-SERVER-1] On-demand call recording. Ships OFF — the Android capture
@@ -1839,6 +1874,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [CALL-PRESENCE-1 2026-08-07] heartbeat freshness + cadence — numeric, must
     // be here or `flags.sh set presenceFreshSec=120` 400s `bad type`.
     "presenceFreshSec", "presenceHeartbeatSec",
+    // [CALL-PRESENCE-2 2026-08-08] the OFFLINE threshold — numeric, must be here or
+    // `flags.sh set presenceOfflineSec=600` 400s `bad type`. This is the knob the
+    // owner will actually turn ("X amount of time"), so a fake flag here would mean
+    // the rule's one tunable could never be tuned.
+    "presenceOfflineSec",
     // [CALL-4RINGS-1 2026-08-08] assumed length of one ring cycle — numeric, must
     // be here or `flags.sh set ringCycleMs=5000` 400s `bad type`. (`callRealRingCount`
     // is a BOOLEAN and must NOT be listed here.)

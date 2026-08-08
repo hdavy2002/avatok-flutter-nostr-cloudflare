@@ -42,6 +42,12 @@ export async function presenceBeat(req: Request, env: Env, execCtx?: ExecutionCo
   const cfg = await readConfig(env).catch(() => null);
   const freshSec = Number((cfg as { presenceFreshSec?: number } | null)?.presenceFreshSec ?? 90);
   const heartbeatSec = Number((cfg as { presenceHeartbeatSec?: number } | null)?.presenceHeartbeatSec ?? 25);
+  // [CALL-PRESENCE-2 2026-08-08] Passed through ONLY to size the key's TTL. If the
+  // key expired before `presenceOfflineSec` elapsed, the offline verdict would be
+  // unreachable by construction: the record would be gone, /api/call would read
+  // `unknown`, and the phone that has been off longest would be the one most
+  // certain to get a full ring. See presenceTtlSec in lib/presence.ts.
+  const offlineSec = Number((cfg as { presenceOfflineSec?: number } | null)?.presenceOfflineSec ?? 300);
 
   const rec: PresenceRecord = {
     // SERVER-stamped. A device clock that is wrong by hours would otherwise be
@@ -52,7 +58,7 @@ export async function presenceBeat(req: Request, env: Env, execCtx?: ExecutionCo
     deviceId: String(b.device_id ?? "").trim().slice(0, 128),
   };
   // The ONE await on the response path.
-  await writePresence(env, ctx.uid, rec, freshSec);
+  await writePresence(env, ctx.uid, rec, freshSec, offlineSec);
 
   // Identity-stamped telemetry, entirely off the response path. `ms_since_last`
   // comes from the device (it is the only party that knows when IT last beat) —
@@ -72,6 +78,9 @@ export async function presenceBeat(req: Request, env: Env, execCtx?: ExecutionCo
         device_id: rec.deviceId || null,
         fresh_sec: freshSec,
         heartbeat_sec: heartbeatSec,
+        // [CALL-PRESENCE-2] So the threshold in force at BEAT time is on the record
+        // too, not only on the call that later reads it.
+        offline_sec: offlineSec,
         app_name: "avatok", service_name: "avatok-api", worker: true,
       });
     } catch { /* a beat must never fail because telemetry did */ }

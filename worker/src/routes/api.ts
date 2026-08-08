@@ -15,7 +15,7 @@ import { emailFor, phoneFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor
 import { admitCall, unavailableBody, CALLER_VISIBLE_OUTCOME } from "../lib/call_admission";
 import { track, trackUser, trackUserContact, trackException } from "../hooks";
 // [CALL-PRESENCE-1] The real device heartbeat (Upstash-backed, no DO wake).
-import { readPresenceRecord, type PresenceRecord, type PresenceState } from "../lib/presence";
+import { readPresenceRead, type PresenceReadResult, type PresenceState } from "../lib/presence";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
@@ -333,8 +333,14 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // effect, and gating it behind the config read would put the config KV latency
   // in front of it for no benefit. The RESULT is only acted on when
   // `callPresenceRouting` is true (see the decision block below).
-  const presenceRecordPromise: Promise<PresenceRecord | null> =
-    readPresenceRecord(env, b.to).catch(() => null);
+  // [CALL-PRESENCE-2 2026-08-08] The DETAILED read. The old `.catch(() => null)`
+  // was the third and outermost layer of error swallowing on this lookup, and the
+  // reason a failed Upstash read and a callee who has never beaten produced the
+  // identical `presence:'unknown'` with nothing anywhere to tell them apart.
+  const presenceReadPromise: Promise<PresenceReadResult> =
+    readPresenceRead(env, b.to).catch(() => ({
+      record: null, outcome: "error" as const, ms: -1, status: null,
+    }));
 
   // ── PRE-RING ADMISSION GATE ────────────────────────────────────────────────
   // [CALL-ADMISSION-1 2026-08-01] Spec: Specs/CALL-OUTCOMES-FROZEN-2026-08-01.md
@@ -435,6 +441,14 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const presenceFreshSec = Number(
     (callPolicyConfig as { presenceFreshSec?: number } | null)?.presenceFreshSec ?? 90,
   );
+  // [CALL-PRESENCE-2 2026-08-08] The OFFLINE threshold — the owner's rule stated
+  // plainly: "if a callee's phone has not checked in for X, it is off, and the
+  // caller goes straight to Ava." Set to 0 (or any non-positive value) in KV to
+  // disable age-based offline routing entirely and fall back to [CALL-PRESENCE-1]
+  // behaviour (stale + zero tokens only), with no rebuild.
+  const presenceOfflineSec = Number(
+    (callPolicyConfig as { presenceOfflineSec?: number } | null)?.presenceOfflineSec ?? 300,
+  );
   const unknownPolicyOn = callPolicyConfig?.unknownAvatokCallerReceptionistEnabled === true;
   // [CALL-4RINGS-1 2026-08-08] The ring policy is resolved HERE, from the config
   // read that is already in flight, and handed to the CallRoom in the
@@ -533,9 +547,33 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // record, no Upstash credentials, a read error, or a client too old to beat)
   // is NOT `stale`; it rings exactly as it always did. Only positive evidence —
   // a record that exists and has gone quiet — can shorten a call.
+  //
+  // ── [CALL-PRESENCE-2 2026-08-08] AND THE OWNER'S ACTUAL RULE ────────────────
+  //
+  // [CALL-PRESENCE-1] shipped one offline trigger: stale heartbeat AND zero FCM
+  // tokens. In production almost nobody has zero tokens — a token survives the
+  // phone being switched off, flight mode, a dead battery and a week in a drawer —
+  // so the trigger essentially never fired. Measured on 2026-08-08: call
+  // avatok-d679c96a read `presence:'stale' presence_age_ms:657033` (the callee's
+  // phone had not checked in for ELEVEN MINUTES), the server had that fact before
+  // it rang, and the caller was still given ~18 s of ringing.
+  //
+  // The owner's rule is about TIME, not tokens: past `presenceOfflineSec` the
+  // phone is off and the caller goes straight to Ava. A live FCM token is not
+  // evidence to the contrary — it is evidence that we could TRY to wake it, which
+  // is exactly the 20-second gamble the caller is being made to sit through.
   let presenceState: PresenceState = "unknown";
   let presenceAgeMs: number | null = null;
   let presenceDecision = "ring";
+  // [CALL-PRESENCE-2] Why the read went the way it did — reported on every single
+  // call so a rise in `error`/`timeout` is visible as itself instead of hiding
+  // inside `presence:'unknown'`.
+  let presenceRead = "not_read";
+  let presenceReadMs: number | null = null;
+  let presenceReadStatus: number | null = null;
+  // Which arm of the offline test fired: 'age' (the new, owner-stated rule),
+  // 'no_tokens' ([CALL-PRESENCE-1]'s original), or null.
+  let offlineBy: string | null = null;
   const emitPresenceDecision = async (decision: string, routingReason: string | null): Promise<void> => {
     try {
       const [callerEmail, calleeEmail] = await Promise.all([
@@ -552,6 +590,14 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         from_uid: ctx.uid, to_uid: callTo,
         from_email: callerEmail, to_email: calleeEmail,
         fresh_sec: presenceFreshSec,
+        // [CALL-PRESENCE-2] The offline contract, on every event: the threshold in
+        // force, which arm of the test fired, and — the fix for the 2026-08-08
+        // unexplained `unknown` — how the Upstash read itself actually went.
+        offline_sec: presenceOfflineSec,
+        offline_by: offlineBy,
+        presence_read: presenceRead,
+        presence_read_ms: presenceReadMs,
+        presence_read_status: presenceReadStatus,
         via: b.via ?? "chat", trace_id: traceId,
         app_name: "avatok", service_name: "avatok-api", worker: true,
       };
@@ -562,16 +608,34 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     } catch { /* presence telemetry must never change routing */ }
   };
   if (presenceRouting) {
-    const [rec] = await Promise.all([presenceRecordPromise, resolveTokenCount()]);
+    const [read] = await Promise.all([presenceReadPromise, resolveTokenCount()]);
     markRingStage("presence");
+    const rec = read.record;
+    presenceRead = read.outcome;
+    presenceReadMs = read.ms;
+    presenceReadStatus = read.status;
     if (rec) {
       presenceAgeMs = Math.max(0, Date.now() - rec.lastSeenMs);
       presenceState = presenceAgeMs <= presenceFreshSec * 1000 ? "fresh" : "stale";
     }
-    if (presenceState === "stale" && n === 0) {
-      // PROVABLY OFFLINE: the phone stopped checking in AND there is no FCM token
-      // left to wake it with. Ringing this is twenty seconds of the caller
-      // listening to a phone that cannot ring.
+    // [CALL-PRESENCE-2] THE OWNER'S RULE. `stale` is a spectrum: 91 seconds is a
+    // radio nap, eleven minutes is a phone that is off. `presenceOfflineSec` is
+    // where one becomes the other. A non-positive value disables the age arm and
+    // leaves [CALL-PRESENCE-1]'s zero-token arm alone.
+    const offlineMs = presenceOfflineSec > 0 ? presenceOfflineSec * 1000 : 0;
+    const heartbeatLapsed = presenceState === "stale"
+      && offlineMs > 0
+      && presenceAgeMs !== null
+      && presenceAgeMs >= offlineMs;
+    if (presenceState === "stale" && (n === 0 || heartbeatLapsed)) {
+      // PROVABLY OFFLINE, by either of two independent proofs:
+      //   • `no_tokens` — the phone stopped checking in AND there is no FCM token
+      //     left to wake it with ([CALL-PRESENCE-1]);
+      //   • `age` — the phone has not checked in for `presenceOfflineSec`
+      //     ([CALL-PRESENCE-2], the owner's rule). A token may still exist; it just
+      //     is not worth twenty seconds of the caller's time to gamble on.
+      // Either way, ringing this is the caller listening to a phone that will not
+      // ring.
       //
       // But it goes through the SAME gate the no-answer handoff uses — wallet
       // spendable + the owner's scenario toggle + the receptionist master switch
@@ -583,8 +647,19 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         ? { eligible: false, reason: "video" }
         : await receptionistNoAnswerEligibility(env, b.to)
             .catch(() => ({ eligible: false, reason: "wallet_unavailable" }));
+      // Attribution BEFORE the emits below, so every event on this path (including
+      // the two authority_unavailable early returns) carries it.
+      offlineBy = heartbeatLapsed && n > 0 ? "age" : (n === 0 ? "no_tokens" : "age");
       if (eligibility.eligible) {
-        presenceDecision = "receptionist_offline";
+        // A DISTINCT decision value when the AGE arm is what made this call skip
+        // the ring and nothing else would have. `receptionist_offline` already
+        // exists in PostHog for the zero-token population, so reusing it would make
+        // the new behaviour unprovable — a nonzero count of
+        // `receptionist_offline_immediate` is the assertion that the owner's rule
+        // is live (ship gate rule 3).
+        presenceDecision = heartbeatLapsed && n > 0
+          ? "receptionist_offline_immediate"
+          : "receptionist_offline";
         try {
           const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
           const participantResponse = await callStub.fetch("https://call-room/participants", {
@@ -606,6 +681,16 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         // drops unawaited work on early-return paths.
         await emitPresenceDecision(presenceDecision, "offline");
         await settleRingPath();
+        // [CALL-PRESENCE-2] THE WIRE VALUES ARE DELIBERATELY UNCHANGED.
+        // `routed:'receptionist'` + `routing_reason:'offline'` is what SHIPPED
+        // clients already understand — `_kRoutingReasons['offline']` in
+        // app/lib/core/ui/call_failure_copy.dart carries the honest "their phone is
+        // off" copy, and CallSession.noteServerReceptionistRoute('offline') cancels
+        // the ring timers and hands to Ava. A new reason string here would fall
+        // through to the generic default on every phone in the field, so the new
+        // trigger is reported in TELEMETRY (`decision` / `offline_by`) and nowhere
+        // else. `presence` stays the three shipped values for the same reason: no
+        // fourth value the client has never seen.
         return json({
           sent: 0,
           reachable: true,
@@ -619,14 +704,32 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       }
       presenceDecision = "ring_offline_ineligible";
     } else if (presenceState === "stale") {
-      // A dozing phone with a live FCM token is still wakeable — ring it. The
-      // caller is told `presence:'stale'` so their app can say something true
-      // ("Waking their phone…") instead of inventing progress.
+      // STALE BUT NOT OFFLINE — age is between `presenceFreshSec` and
+      // `presenceOfflineSec`. A phone that missed a few beats to a radio nap is not
+      // an off phone, and it still holds a live FCM token, so this keeps the
+      // pre-[CALL-PRESENCE-2] behaviour EXACTLY: ring it. The caller is told
+      // `presence:'stale'` so their app can say something true ("Waking their
+      // phone…") instead of inventing progress.
       presenceDecision = "ring_stale";
     } else if (presenceState === "fresh") {
       presenceDecision = "ring_fresh";
     } else {
-      presenceDecision = "ring_unknown";
+      // [CALL-PRESENCE-2] FAIL-OPEN, STILL — but no longer SILENT.
+      //
+      // A call must never be diverted because Upstash hiccuped, so every
+      // non-answer rings exactly as it always did. What changes is that the two
+      // populations are now separable: `ring_unknown` means the callee has
+      // genuinely never beaten (an old client, or a brand-new account), while
+      // `ring_unknown_read_failed` means WE could not read and the caller's
+      // routing was decided on missing information. The second one used to be
+      // indistinguishable from the first, which is why the 2026-08-08
+      // `presence=unknown` on call avatok-33e7f239 — 43 s before the very next
+      // call read that same callee's record successfully — had no explanation.
+      // A nonzero rate of `ring_unknown_read_failed` is a REDIS alarm, not a
+      // property of the callee.
+      presenceDecision = presenceRead === "miss" || presenceRead === "not_read"
+        ? "ring_unknown"
+        : "ring_unknown_read_failed";
     }
   }
   // [DEVMAP-PRUNE-1 2026-07-22] Stale "active" account_devices mappings whose FCM
@@ -1344,7 +1447,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   if (presenceRouting) {
     const presenceTelemetry = emitPresenceDecision(
       presenceDecision,
-      presenceDecision === "ring_offline_ineligible" ? "offline_ineligible" : null,
+      presenceDecision === "ring_offline_ineligible" ? "offline_ineligible"
+        // [CALL-PRESENCE-2] The ring happened on missing information. Named so the
+        // reason field alone identifies it without a second breakdown.
+        : presenceDecision === "ring_unknown_read_failed" ? `presence_read_${presenceRead}`
+        : null,
     );
     if (execCtx) execCtx.waitUntil(presenceTelemetry); else await presenceTelemetry;
   }

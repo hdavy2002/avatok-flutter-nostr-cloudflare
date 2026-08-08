@@ -37,7 +37,7 @@
 // receptionist the moment Redis hiccuped.
 
 import type { Env } from "../types";
-import { redisGetJson, redisSetJson } from "./redis";
+import { redisGetJsonResult, redisSetJson, type RedisReadOutcome } from "./redis";
 
 /** What a device says about itself when it checks in. */
 export interface PresenceRecord {
@@ -77,35 +77,92 @@ function presenceKey(env: Env, uid: string): string {
  * indistinguishable, and `presence_age_ms` — the number that tells us whether
  * the heartbeat is actually working — would always be null exactly when it
  * matters. Capped so an abandoned account cannot hold a key forever.
+ *
+ * [CALL-PRESENCE-2 2026-08-08] The TTL MUST also outlive the OFFLINE threshold,
+ * and by a wide margin. The offline verdict is made from a record that EXISTS and
+ * has gone quiet — so if the key expires at, say, 720 s while `presenceOfflineSec`
+ * is 600, then a phone that has been off for 13 minutes reads as `unknown`
+ * (no record) and rings normally, which is the exact opposite of the intended
+ * behaviour and gets MORE wrong the longer the phone stays off. Anything past the
+ * offline threshold must keep reading as offline, so the floor is a generous
+ * multiple of it.
  */
-function presenceTtlSec(freshSec: number): number {
+function presenceTtlSec(freshSec: number, offlineSec?: number): number {
   const fresh = Number.isFinite(freshSec) && freshSec > 0 ? freshSec : 90;
-  return Math.min(86_400, Math.max(300, Math.round(fresh * 8)));
+  const offline = Number.isFinite(Number(offlineSec)) && Number(offlineSec) > 0 ? Number(offlineSec) : 300;
+  return Math.min(86_400, Math.max(300, Math.round(fresh * 8), Math.round(offline * 6)));
 }
 
-/** Write (or refresh) this user's presence. Best-effort; never throws. */
+/**
+ * Write (or refresh) this user's presence. Best-effort; never throws.
+ *
+ * `offlineSec` is optional so older callers keep compiling, but every real caller
+ * should pass it — see presenceTtlSec for why a TTL shorter than the offline
+ * threshold silently disables offline routing.
+ */
 export async function writePresence(
   env: Env,
   uid: string,
   rec: PresenceRecord,
   freshSec: number,
+  offlineSec?: number,
 ): Promise<void> {
   if (!uid) return;
-  await redisSetJson(env, presenceKey(env, uid), rec, presenceTtlSec(freshSec));
+  await redisSetJson(env, presenceKey(env, uid), rec, presenceTtlSec(freshSec, offlineSec));
+}
+
+/**
+ * How the read went. `hit`/`miss` are answers; everything else is an ABSENCE of
+ * an answer and must fail open to a normal ring.
+ */
+export type PresenceReadOutcome = RedisReadOutcome;
+
+export interface PresenceReadResult {
+  record: PresenceRecord | null;
+  outcome: PresenceReadOutcome;
+  /** How long the lookup took, ms — this read sits on the pre-ring path. */
+  ms: number;
+  status: number | null;
+}
+
+/**
+ * [CALL-PRESENCE-2] The read that says WHY it came back empty.
+ *
+ * Prefer this over `readPresenceRecord` anywhere the answer changes a routing
+ * decision. `outcome:'miss'` means the callee has genuinely never beaten (or beat
+ * so long ago the key expired); `outcome:'error'|'timeout'` means we asked and
+ * did not get an answer — indistinguishable from a miss at the old call site, and
+ * that indistinguishability is why the 2026-08-08 `presence=unknown` on a call to
+ * a user whose key existed went unexplained.
+ */
+export async function readPresenceRead(env: Env, uid: string): Promise<PresenceReadResult> {
+  if (!uid) return { record: null, outcome: "miss", ms: 0, status: null };
+  const r = await redisGetJsonResult<Partial<PresenceRecord>>(env, presenceKey(env, uid));
+  const raw = r.value;
+  const lastSeenMs = Number(raw?.lastSeenMs ?? 0);
+  if (!raw || !Number.isFinite(lastSeenMs) || lastSeenMs <= 0) {
+    // A 200 that returned bytes we cannot make a timestamp out of is `malformed`,
+    // not `miss` — a record we cannot read is a bug on our side, not a phone that
+    // never checked in, and the two must not be counted together.
+    const outcome: PresenceReadOutcome = r.outcome === "hit" ? "malformed" : r.outcome;
+    return { record: null, outcome, ms: r.ms, status: r.status };
+  }
+  return {
+    record: {
+      lastSeenMs,
+      source: String(raw.source ?? "unknown"),
+      appState: String(raw.appState ?? "unknown"),
+      deviceId: String(raw.deviceId ?? ""),
+    },
+    outcome: "hit",
+    ms: r.ms,
+    status: r.status,
+  };
 }
 
 /** Raw read — `null` on miss, error, or no configured store. */
 export async function readPresenceRecord(env: Env, uid: string): Promise<PresenceRecord | null> {
-  if (!uid) return null;
-  const raw = await redisGetJson<Partial<PresenceRecord>>(env, presenceKey(env, uid));
-  const lastSeenMs = Number(raw?.lastSeenMs ?? 0);
-  if (!raw || !Number.isFinite(lastSeenMs) || lastSeenMs <= 0) return null;
-  return {
-    lastSeenMs,
-    source: String(raw.source ?? "unknown"),
-    appState: String(raw.appState ?? "unknown"),
-    deviceId: String(raw.deviceId ?? ""),
-  };
+  return (await readPresenceRead(env, uid)).record;
 }
 
 /**
