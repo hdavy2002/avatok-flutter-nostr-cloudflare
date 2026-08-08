@@ -78,6 +78,55 @@ export interface PlatformConfig {
    */
   callSfuAudioOnly: boolean;
   /**
+   * [CALL-DEADAIR-1 2026-08-08] Parallelise the call-setup prologue.
+   *
+   * Prod call avatok-17f145b5 (2026-08-07) spent ~14s between `call_started` and
+   * the first audio bytes on a link measuring 5-6ms jitter and ~0% loss on BOTH
+   * sides. The setup ladder was serial where it did not need to be: two renderer
+   * inits, an ICE credential round trip and a network-class probe all ran one
+   * after another AHEAD of `getUserMedia`, which itself sits ahead of the
+   * signalling socket that is the only thing that can start the SFU ladder — and
+   * inside that ladder the peer-seat poll ran strictly after our own publish
+   * even though it reads a server seat and depends on nothing we do locally.
+   *
+   * TRUE (default) = concurrent. FALSE = the exact pre-2026-08-08 serial order,
+   * so a regression is one KV flip from being undone with no app build.
+   */
+  callSetupParallelBootV1: boolean;
+  /**
+   * [CALL-DEADAIR-1] The client's 200ms first-inbound-audio probe and the
+   * `call_first_audio_ms` event it emits.
+   *
+   * Pure observability. It exists because the only inbound-byte sampler on the
+   * call path is a 5s PERIODIC armed at connect, which quantises every "how long
+   * was it silent" answer to ±5s — you cannot assert a sub-1000ms success value
+   * against a 5s ruler. Flippable because it is the one thing in the call path
+   * that reads `getStats()` faster than every 5s.
+   */
+  callFirstAudioProbeV1: boolean;
+  /**
+   * [AVA-VM-FALLBACK-1 2026-08-08] An Ava timeout must never end the call.
+   *
+   * Prod call avatok-946b6090 (2026-08-07 20:52 IST): the receptionist session
+   * opened (`live_session_open` 20:53:04.9), produced no audio, hit
+   * `ava_live_timeout` 4.5s later, retried — and the call was ENDED at
+   * 20:53:19.9 with `reason=ava-live-timeout` while the owner was trying to
+   * leave a voicemail. He never spoke, nothing was recorded, and from his side
+   * the app simply hung up on him.
+   *
+   * TRUE (default): the caller's app sends a `vm_fallback` control frame on the
+   * ALREADY-OPEN receptionist socket; `ReceptionRoomCf` abandons the
+   * conversational engine and runs its deterministic voicemail flow (cached
+   * greeting -> beep -> record), so the message is stored and delivered by the
+   * ordinary receptionist `finalize()` — one storage path, not two. FALSE:
+   * pre-2026-08-08 behaviour, i.e. the call ends and the message is lost.
+   *
+   * Read by the CLIENT (nothing requests the fallback when it is false), so a
+   * flip stops the behaviour on every device at its next config refresh, and
+   * clients that predate the feature simply never send the frame.
+   */
+  avaVoicemailFallbackV1: boolean;
+  /**
    * [CALL-AUDIO-OWNER-1 2026-08-07] ONE owner for the call audio session.
    *
    * The client side of this shipped already; the key was never declared here, so
@@ -1170,6 +1219,9 @@ const DEFAULTS: PlatformConfig = {
   // flipping this back to false is a full, instant rollback with no rebuild.
   callSfuV1: false,
   callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
+  callSetupParallelBootV1: true,   // [CALL-DEADAIR-1] concurrent setup prologue + peer poll
+  callFirstAudioProbeV1: true,     // [CALL-DEADAIR-1] 200ms first-audio probe -> call_first_audio_ms
+  avaVoicemailFallbackV1: true,    // [AVA-VM-FALLBACK-1] Ava timeout degrades to a plain recorder, never ends the call
   // [CALL-AUDIO-OWNER-1] Already-shipped client behaviour, declared here so the
   // key exists and can be flipped. TRUE = today's behaviour; false restores the
   // pre-[CALL-AUDIO-OWNER-1] multi-owner audio session without a rebuild.

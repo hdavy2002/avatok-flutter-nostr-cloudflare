@@ -98,6 +98,8 @@ class CallSfuTransport {
     this.configurePeerConnection,
     this.enableRed = false,
     this.onRedNegotiated,
+    this.onStage,
+    this.overlapPeerWait = true,
   });
 
   /// The same room id the P2P signalling uses. Both transports are keyed on it,
@@ -140,6 +142,28 @@ class CallSfuTransport {
   /// RemoteConfig imports it has deliberately avoided.
   final void Function(bool applied, String sdpType)? onRedNegotiated;
 
+  /// [CALL-DEADAIR-1 2026-08-08] Stage marker for the connect ladder.
+  ///
+  /// Called once per completed step with a stable name. `CallSession` turns the
+  /// sequence into the per-stage breakdown on `call_first_audio_ms`, which is
+  /// the only way to tell WHICH rung of this ladder ate the 14 seconds of
+  /// silence measured on avatok-17f145b5 (2026-08-07). A callback rather than a
+  /// direct `Analytics.capture` for the same reason as [onRedNegotiated]: this
+  /// transport stays free of the analytics and RemoteConfig imports.
+  final void Function(String stage)? onStage;
+
+  /// [CALL-DEADAIR-1] Run the peer-seat poll CONCURRENTLY with our own publish
+  /// instead of strictly after it.
+  ///
+  /// Both phones run this identical ladder at the same moment, so by the time
+  /// our publish round trip finishes the peer has very often already published.
+  /// Serialising the two meant we always paid `publish` and THEN started looking
+  /// — the poll is a pure read loop against `/peer`, it depends on nothing we do
+  /// locally, and nothing in the pull below can start before the publish
+  /// completes anyway. Flag-gated from `CallSession` (`callSetupParallelBootV1`)
+  /// so it can be switched off in KV without a build.
+  final bool overlapPeerWait;
+
   String? _sessionId;
   RTCPeerConnection? _pc;
   bool _disposed = false;
@@ -164,7 +188,17 @@ class CallSfuTransport {
   /// not coming to the SFU and fall back rather than leave someone on a
   /// connected-looking call with silence.
   static const Duration _peerWait = Duration(seconds: 6);
-  static const Duration _peerPoll = Duration(milliseconds: 400);
+
+  /// [CALL-DEADAIR-1] The window used when the poll is started BEFORE the
+  /// publish (see [overlapPeerWait]). Deliberately 2s longer than [_peerWait] so
+  /// the patience REMAINING after our publish completes is still at least the
+  /// historical 6s — overlapping must buy latency, never spend tolerance.
+  static const Duration _peerWaitOverlapped = Duration(seconds: 8);
+
+  /// [CALL-DEADAIR-1] 400ms → 250ms. This is dead air, not a background poll:
+  /// when the peer publishes just after a probe we hold silence for the whole
+  /// interval for no reason. `/peer` is a cheap DO seat read.
+  static const Duration _peerPoll = Duration(milliseconds: 250);
 
   /// Build the peer connection, publish our tracks, pull the peer's.
   ///
@@ -177,12 +211,14 @@ class CallSfuTransport {
     required List<Map<String, dynamic>> fallbackIceServers,
     required bool video,
   }) async {
+    _peerPollAbort = false; // [CALL-DEADAIR-1] fresh attempt (reconnect reuses this object)
     try {
       final join = await CallSfuApi.join(room);
       if (join.sessionId.isEmpty) {
         return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
       }
       _sessionId = join.sessionId;
+      onStage?.call('sfu_join');
       if (join.relayDegraded) {
         // Loud on purpose. On the P2P path the identical condition was dropped
         // silently by ice_cache.dart and a TURN outage was indistinguishable
@@ -199,6 +235,14 @@ class CallSfuTransport {
         await _pc?.close();
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_during_setup');
       }
+      onStage?.call('sfu_pc');
+
+      // [CALL-DEADAIR-1] Start looking for the peer's seat NOW, not after our
+      // own publish round trip. See [overlapPeerWait] for why this is safe:
+      // `_awaitPeerAudio` only reads `/peer`, and the pull below still cannot
+      // begin until the publish has completed.
+      final Future<CallSfuPeer?>? earlyPeer =
+          overlapPeerWait ? _awaitPeerAudio(_peerWaitOverlapped) : null;
 
       // Hand it over before any track exists, so the caller's onTrack is armed
       // before the pull below can deliver remote media.
@@ -210,6 +254,7 @@ class CallSfuTransport {
       final tracks = <Map<String, dynamic>>[];
       final audio = localStream.getAudioTracks();
       if (audio.isEmpty) {
+        _peerPollAbort = true; // [CALL-DEADAIR-1] stop the overlapped poll
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_local_audio_track');
       }
       await _pc!.addTrack(audio.first, localStream);
@@ -240,6 +285,7 @@ class CallSfuTransport {
       }
       final answer = await CallSfuApi.publish(room, join.sessionId, tunedOffer.sdp ?? '', tracks);
       if (answer == null || answer['sdp'] == null) {
+        _peerPollAbort = true; // [CALL-DEADAIR-1]
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_answer_sdp');
       }
       await _pc!.setRemoteDescription(
@@ -248,19 +294,27 @@ class CallSfuTransport {
       for (final t in tracks) {
         _openMids.add(t['mid'].toString());
       }
-      if (_disposed) return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_after_publish');
+      onStage?.call('sfu_publish');
+      if (_disposed) {
+        _peerPollAbort = true; // [CALL-DEADAIR-1]
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_after_publish');
+      }
 
       // Wait for the peer's seat. Not an error until the window expires.
-      final peer = await _awaitPeerAudio();
+      // [CALL-DEADAIR-1] When overlapped, this has been running since just after
+      // the peer connection was built and is frequently already resolved.
+      final peer = await (earlyPeer ?? _awaitPeerAudio(_peerWait));
       if (peer == null) {
         return CallSfuResult.failed(SfuFailure.peerNeverPublished);
       }
+      onStage?.call('sfu_peer_seat');
 
       // PULL audio — the SFU offers, we answer.
       final pulledAudio = await _pull('audio');
       if (!pulledAudio) {
         return CallSfuResult.failed(SfuFailure.pullFailed, detail: 'audio');
       }
+      onStage?.call('sfu_pull_audio');
 
       // Video is best-effort even when we want it: the peer may simply not have
       // their camera on yet. A failure here must never fail the CALL — an
@@ -271,6 +325,7 @@ class CallSfuTransport {
       }
 
       _startHeartbeat();
+      onStage?.call('sfu_ready');
       return CallSfuResult.ok(_pc!, sessionId: join.sessionId, relayDegraded: join.relayDegraded);
     } on CallSfuException catch (e) {
       await _closePc();
@@ -306,10 +361,15 @@ class CallSfuTransport {
     );
   }
 
+  /// [CALL-DEADAIR-1] Set when a connect attempt gives up while an overlapped
+  /// peer poll is still running, so the loop stops instead of hammering `/peer`
+  /// for the rest of its window on a call that has already fallen back to P2P.
+  bool _peerPollAbort = false;
+
   /// Poll until the peer has registered an audio track, or the window expires.
-  Future<CallSfuPeer?> _awaitPeerAudio() async {
-    final deadline = DateTime.now().add(_peerWait);
-    while (!_disposed && DateTime.now().isBefore(deadline)) {
+  Future<CallSfuPeer?> _awaitPeerAudio(Duration wait) async {
+    final deadline = DateTime.now().add(wait);
+    while (!_disposed && !_peerPollAbort && DateTime.now().isBefore(deadline)) {
       try {
         final p = await CallSfuApi.peer(room);
         if (p.hasAudio) return p;
@@ -447,6 +507,7 @@ class CallSfuTransport {
   /// no error on either side.
   Future<void> dispose() async {
     _disposed = true;
+    _peerPollAbort = true; // [CALL-DEADAIR-1]
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
     final sid = _sessionId;

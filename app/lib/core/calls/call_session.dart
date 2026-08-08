@@ -760,6 +760,34 @@ class CallSession {
   // [CALL-SFU-1] SFU is selected per call, while the P2P implementation remains
   // intact as a rollback. `_sfuAborted` is sticky so one side can never return
   // to SFU after the other side has fallen back to P2P.
+  // ── [CALL-DEADAIR-1 2026-08-08] setup-stage stopwatch ─────────────────────
+  //
+  // Prod call avatok-17f145b5 (2026-08-07, build 10523) spent ~14s between
+  // `call_started` and the first `call_media_health` sample carrying real audio
+  // bytes, on a link measuring 5-6ms jitter and ~0% loss on BOTH sides. The
+  // network was excellent; the latency is ours. Nothing in the existing
+  // telemetry says WHICH rung of the setup ladder ate it — `call_connected`,
+  // `call_transport_connected` and `call_sfu_active` all fire, and the health
+  // sampler's first sample can be up to 5s late (it is a 5s periodic started AT
+  // connect), so even the 14s figure is an upper bound on the real dead air.
+  //
+  // These are wall-clock ms from `start()` (i.e. from `call_started`) at the
+  // moment each named step COMPLETED. Emitted once, flattened, on
+  // `call_first_audio_ms`. Insertion-ordered by construction, so the map also
+  // records the order the ladder actually ran in.
+  final Map<String, int> _setupStages = <String, int>{};
+  int _setupT0 = 0;
+
+  /// Record that setup stage [name] just completed. First writer wins: a stage
+  /// that legitimately repeats (an SFU reconnect re-runs the whole ladder) must
+  /// not overwrite the number that describes the ORIGINAL connect, which is the
+  /// one this issue is about.
+  void _stage(String name) {
+    if (_setupT0 == 0) return;
+    _setupStages.putIfAbsent(
+        name, () => DateTime.now().millisecondsSinceEpoch - _setupT0);
+  }
+
   CallSfuTransport? _sfu;
   bool _sfuActive = false;
   bool _sfuStarting = false;
@@ -1563,6 +1591,125 @@ class CallSession {
     _playoutHealthTimer = null;
   }
 
+  // ── [CALL-DEADAIR-1 2026-08-08] first-audio probe ──────────────────────────
+  //
+  // WHY A SECOND SAMPLER EXISTS AT ALL. The playout health sampler above is a 5s
+  // PERIODIC armed at connect, so the earliest it can report inbound bytes is
+  // connect+5s and the latest is connect+10s. Every existing statement about how
+  // long a call is silent — including the 14s on avatok-17f145b5 — is therefore
+  // quantised to 5s and biased upward by up to a full period. You cannot fix a
+  // latency you can only measure to ±5s, and you certainly cannot assert a
+  // sub-1000ms success value against it.
+  //
+  // This probe runs at 200ms until it sees the FIRST inbound audio byte, then
+  // stops. Its whole life is a few seconds at the very start of a call, so it
+  // costs nothing for the other 99% of the call — unlike widening the 5s
+  // sampler, which would pay that cost forever.
+  Timer? _firstAudioProbe;
+  bool _firstAudioReported = false;
+  int _firstAudioProbeStartMs = 0;
+  static const Duration _kFirstAudioProbeInterval = Duration(milliseconds: 200);
+
+  /// Give up and report `got_audio:false` after this long. A call that never
+  /// produces audio MUST still emit the event — "no event" and "no audio" would
+  /// otherwise be indistinguishable, which is precisely the failure the ship
+  /// gate's rule 3 exists to stop.
+  static const Duration _kFirstAudioProbeMax = Duration(seconds: 25);
+
+  /// [CALL-DEADAIR-1 (c)] Honest media state for the UI: `_connected` (and the
+  /// 'connected' phase) means "a remote track object arrived", which on the SFU
+  /// path can be true while not one byte of audio has been decoded. This is the
+  /// state a screen should render "Connecting audio…" from rather than showing a
+  /// live call with silence. NOT wired to any widget here on purpose — the call
+  /// screen is owned elsewhere; this exposes the signal for it.
+  final ValueNotifier<bool> audioFlowing = ValueNotifier<bool>(false);
+
+  void _startFirstAudioProbe() {
+    if (!RemoteConfig.callFirstAudioProbeV1) return;
+    if (_firstAudioReported || _firstAudioProbe != null) return;
+    _firstAudioProbeStartMs = DateTime.now().millisecondsSinceEpoch;
+    _firstAudioProbe =
+        Timer.periodic(_kFirstAudioProbeInterval, (_) => _pollFirstAudio());
+    // Probe immediately too — on a healthy SFU pull the bytes can already be
+    // there by the time `onTrack` fires, and waiting 200ms to find that out
+    // would bake an error into the very number we are trying to minimise.
+    unawaited(_pollFirstAudio());
+  }
+
+  void _stopFirstAudioProbe() {
+    _firstAudioProbe?.cancel();
+    _firstAudioProbe = null;
+  }
+
+  Future<void> _pollFirstAudio() async {
+    if (_firstAudioReported) {
+      _stopFirstAudioProbe();
+      return;
+    }
+    final pc = _pc;
+    if (pc == null) return;
+    var bytes = 0;
+    var found = false;
+    try {
+      final stats = await pc.getStats();
+      for (final s in stats) {
+        if (s.type != 'inbound-rtp') continue;
+        final v = s.values;
+        final kind = (v['kind'] ?? v['mediaType'])?.toString();
+        if (kind != 'audio') continue;
+        found = true;
+        final b = v['bytesReceived'];
+        if (b is num && b.toInt() > bytes) bytes = b.toInt();
+      }
+    } catch (_) {
+      return; // a stats read can fail mid-renegotiation; the next tick retries
+    }
+    if (found && bytes > 0) {
+      _reportFirstAudio(bytes: bytes, outcome: 'audio');
+      return;
+    }
+    if (DateTime.now().millisecondsSinceEpoch - _firstAudioProbeStartMs >=
+        _kFirstAudioProbeMax.inMilliseconds) {
+      _reportFirstAudio(bytes: bytes, outcome: 'timeout');
+    }
+  }
+
+  /// Emit `call_first_audio_ms` exactly once per call.
+  ///
+  /// `ms_from_connected` is THE number this issue is judged on (target < 1000).
+  /// `ms_from_start` is the user-perceived figure — it includes ring time on an
+  /// outgoing call, so the two are not interchangeable and both are carried.
+  void _reportFirstAudio({required int bytes, required String outcome}) {
+    if (_firstAudioReported) return;
+    _firstAudioReported = true;
+    _stopFirstAudioProbe();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (outcome == 'audio') {
+      _stage('first_audio_bytes');
+      audioFlowing.value = true;
+    }
+    final props = <String, Object>{
+      'call_id': config.room,
+      'outcome': outcome, // 'audio' | 'timeout' | 'ended'
+      'got_audio': outcome == 'audio',
+      'bytes_received': bytes,
+      'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
+      'ms_from_connected': _connectedAtMs == 0 ? -1 : now - _connectedAtMs,
+      'media_path': _sfuActive
+          ? 'sfu'
+          : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none')),
+      'outgoing': config.outgoing,
+      'video': config.video,
+      if (config.seed.isNotEmpty) 'peer_uid': config.seed,
+    };
+    // Flatten the ladder. One property per rung keeps every stage independently
+    // filterable/averagable in PostHog — a single JSON blob property would need
+    // to be unpacked by hand in every query.
+    _setupStages.forEach((k, v) => props['stage_$k'] = v);
+    props['stages_seen'] = _setupStages.keys.join(',');
+    Analytics.capture('call_first_audio_ms', props);
+  }
+
   Future<void> _pollPlayoutHealth() async {
     if (!_playoutSamplerWanted) return;
     try {
@@ -2259,6 +2406,10 @@ class CallSession {
     _takeoverGuard = RemoteConfig.receptTakeoverGuard || config.deferRing;
     _telemetry = CallTelemetry(callId: config.room, video: config.video, outgoing: config.outgoing);
     _telemetry.started();
+    // [CALL-DEADAIR-1] Anchor the stage stopwatch to the SAME instant as
+    // `call_started`, so every number on `call_first_audio_ms` can be compared
+    // directly against that event's timestamp in PostHog.
+    _setupT0 = DateTime.now().millisecondsSinceEpoch;
     // My own profile (best-effort) for the receptionist duo's "You" icon.
     ProfileStore().load().then((p) {
       if (_ended) return;
@@ -2894,14 +3045,50 @@ class CallSession {
   }
 
   Future<void> _bootMedia() async {
-    await localRenderer.initialize();
-    await remoteRenderer.initialize();
-    await _fetchIce();
+    _stage('boot_start');
+    // ── [CALL-DEADAIR-1 2026-08-08] PARALLEL PROLOGUE ────────────────────────
+    //
+    // These four things are mutually INDEPENDENT — two renderer initialisations,
+    // the ICE credential fetch, and the network-class probe. They used to be
+    // four sequential `await`s, so their latencies ADDED, and every one of them
+    // sat AHEAD of `getUserMedia`, which in turn sits ahead of the signalling
+    // socket that is the only thing that can start the SFU ladder. On an
+    // outgoing call that is silence before the ring; on an INCOMING call it is
+    // silence after the user pressed Accept, which is exactly the dead air
+    // measured on avatok-17f145b5.
+    //
+    // `_fetchIce()` in particular is a network round trip whose result the SFU
+    // path barely uses (`/callsfu/join` returns its own `ice_servers`; `_ice` is
+    // only the fallback list) — it had no business blocking the microphone.
+    //
+    // `.catchError` is load-bearing, not defensive noise: the `getUserMedia`
+    // catch below can `return` out of this method, and an un-awaited future that
+    // throws after that would surface as an unhandled async error with no call
+    // context. IceCache already falls back to `kIceServers` internally, so
+    // swallowing here changes no behaviour.
+    final bool parallelBoot = RemoteConfig.callSetupParallelBootV1;
+    Future<void>? iceFuture;
+    Future<bool>? cellFuture;
+    if (parallelBoot) {
+      iceFuture = _fetchIce().catchError((Object _) {});
+      cellFuture = config.video
+          ? _isLikelyCellular().catchError((Object _) => false)
+          : null;
+      await Future.wait(
+          <Future<void>>[localRenderer.initialize(), remoteRenderer.initialize()]);
+    } else {
+      await localRenderer.initialize();
+      await remoteRenderer.initialize();
+      await _fetchIce();
+    }
+    _stage('renderers_ready');
     // [CF-CALL-P2P-1] Decide the initial capture resolution before opening the
     // camera — cheaper than capturing high-res then downscaling, and the
     // sender-side bitrate cap in [_preferResolutionOnVideo] uses the same
     // network-class check so capture and encoding bounds agree.
-    final cellularCapture = config.video ? await _isLikelyCellular() : false;
+    final cellularCapture = config.video
+        ? await (cellFuture ?? _isLikelyCellular())
+        : false;
     try {
       var mediaTimedOut = false;
       final mediaFuture = navigator.mediaDevices.getUserMedia({
@@ -2973,6 +3160,13 @@ class CallSession {
       _endWith('ended', reason: 'media-denied');
       return;
     }
+    _stage('mic_ready');
+    // [CALL-DEADAIR-1] Join the ICE fetch back in. By here it has almost always
+    // already resolved (it ran alongside the mic acquisition), so this is a
+    // no-cost join rather than a serial wait — but `_ice` MUST be settled before
+    // any peer connection is built, including the P2P fallback path.
+    if (iceFuture != null) await iceFuture;
+    _stage('ice_ready');
     localRenderer.srcObject = _stream;
     // [CALL-SPEAKER-RAMP 2026-07-12] Establish the communication audio session
     // (MODE_IN_COMMUNICATION + audio focus) BEFORE selecting the speaker route,
@@ -3045,6 +3239,7 @@ class CallSession {
         }
       }
     }
+    _stage('audio_session_ready');
     // WS-B: start the foreground service at call SETUP (not on connect) so a call
     // backgrounded while ringing/connecting keeps its FGS and survives.
     if (NativeVoiceAudio.isSupported) {
@@ -3189,6 +3384,10 @@ class CallSession {
     }
     final url = _signalingUrl();
     _ws = WebSocketChannel.connect(Uri.parse(url));
+    // [CALL-DEADAIR-1] The socket is the gate on EVERYTHING downstream: the SFU
+    // ladder cannot begin until `welcome`/`sfu-start` arrives on it. Timing it
+    // separates "we were slow to get to the wire" from "the wire was slow".
+    _stage('ws_open');
     _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
     _startPingTimer();
     if (config.outgoing) {
@@ -4193,6 +4392,11 @@ class CallSession {
         _startMediaWatchdog();
         // [CALL-REL-4] independent, flag-gated, observe-only playout sampler.
         _startPlayoutHealthSampler();
+        // [CALL-DEADAIR-1] A remote TRACK is not remote AUDIO. Start measuring
+        // the gap between the two right here, because this is the instant the
+        // user is told the call is live.
+        _stage('first_remote_track');
+        _startFirstAudioProbe();
       }
     };
     pc.onConnectionState = (s) {
@@ -5330,6 +5534,7 @@ class CallSession {
     final stream = _stream;
     if (stream == null) return;
     _sfuStarting = true;
+    _stage('sfu_begin'); // [CALL-DEADAIR-1]
     final transport = CallSfuTransport(
       room: room,
       createPeerConnection: (iceServers) => _newPC(sfuIce: iceServers),
@@ -5353,6 +5558,10 @@ class CallSession {
           'path': 'sfu',
         });
       },
+      // [CALL-DEADAIR-1] Per-rung timings for `call_first_audio_ms`, and the
+      // overlapped peer-seat poll. Both are inert when the flag is off.
+      onStage: _stage,
+      overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
     );
     _sfu = transport;
     final result = await transport.connect(
@@ -5785,6 +5994,7 @@ class CallSession {
     switch (d['type']) {
       case 'welcome':
         _gotWelcome = true;
+        _stage('ws_welcome'); // [CALL-DEADAIR-1]
         // CALL-GEN-1: adopt the generation the DO assigned us. On a reconnect the
         // DO bumps our gen, so this raises _gen and our subsequent frames outrank
         // any lingering old-socket frames. Absent on old servers → stays null.
@@ -7957,6 +8167,40 @@ class CallSession {
       'reason': 'ava_live_timeout',
       'activation_mode': call.activationMode,
     });
+    // [AVA-VM-FALLBACK-1 2026-08-08] AN AVA TIMEOUT MUST NEVER END THE CALL.
+    //
+    // What used to happen here (prod avatok-946b6090, 2026-08-07 20:52 IST) was
+    // `_endWith('receptionist-unavailable', reason: 'ava-live-timeout')` — the
+    // owner was mid-way through leaving a voicemail, had not spoken a word, and
+    // the app hung up on him. A recording that works beats an assistant that
+    // doesn't, so before any terminal state we ask the ALREADY-OPEN session to
+    // degrade to a plain recorder. The audible confirmation is the flow's own
+    // greeting + beep, and the recording lands through the identical
+    // `finalize()` every other receptionist voicemail uses.
+    if (RemoteConfig.avaVoicemailFallbackV1 &&
+        !_ended &&
+        !_connected &&
+        !call.hasFirstAudio &&
+        !_avaVmFallbackActive &&
+        call.requestVoicemailFallback('live_timeout')) {
+      _avaVmFallbackActive = true;
+      _avaVmFallbackAtMs = DateTime.now().millisecondsSinceEpoch;
+      call.onVmFallbackResult = (stored, recordedMs) =>
+          _emitAvaVmFallback('live_timeout', stored: stored, recordedMs: recordedMs);
+      // Re-arm on a LONGER window pointed at a DIFFERENT handler. The
+      // deterministic greeting is a cached R2 render and the beep is generated
+      // locally with no dependency at all, so if nothing arrives inside this
+      // window there is genuinely nothing left to try — and `_avaLiveAttempt`
+      // is pushed past 2 so a stray re-arm cannot re-enter the retry branch
+      // above and start the whole ladder again.
+      _avaLiveAttempt = 3;
+      _avaLiveConnecting = true;
+      _avaLiveWatchdog?.cancel();
+      _avaLiveWatchdog = Timer(
+          const Duration(milliseconds: _avaVmFallbackTimeoutMs),
+          () => _onAvaVmFallbackTimeout(call));
+      return;
+    }
     _clearAvaLiveGate();
     // [AVA-PREWARM-1] The gate never opened, so the tone never stopped —
     // stop it now on this final-failure path so a dead handoff can never loop
@@ -7971,6 +8215,58 @@ class CallSession {
     // dead air.
     if (!_ended && !_connected) {
       _endWith('receptionist-unavailable', reason: 'ava-live-timeout');
+    }
+  }
+
+  // ── [AVA-VM-FALLBACK-1 2026-08-08] state ───────────────────────────────────
+
+  /// True once the degrade-to-recorder frame has gone out for this call.
+  bool _avaVmFallbackActive = false;
+  int _avaVmFallbackAtMs = 0;
+  bool _avaVmFallbackReported = false;
+
+  /// How long to wait for the deterministic greeting/beep after asking for the
+  /// fallback. Generous compared with [_avaLiveTimeoutMs] because this is the
+  /// LAST thing we try: the greeting is an R2 cache read and the beep needs
+  /// nothing at all, so a miss here means the socket itself is dead, not that
+  /// a model is slow.
+  static const int _avaVmFallbackTimeoutMs = 10000;
+
+  /// Emit `ava_vm_fallback` exactly once. Carries BOTH parties (`peer_uid` is
+  /// the callee whose receptionist took the message; the Analytics envelope
+  /// carries this device's own identity) so either email retrieves the
+  /// interaction, per CLAUDE.md's two-sided telemetry rule.
+  void _emitAvaVmFallback(String trigger,
+      {required bool stored, required int recordedMs}) {
+    if (_avaVmFallbackReported) return;
+    _avaVmFallbackReported = true;
+    Analytics.capture('ava_vm_fallback', {
+      'call_id': config.room,
+      'trigger': trigger, // 'live_timeout' | 'connect_failed' | 'no_audio'
+      'recorded_ms': recordedMs,
+      'stored': stored,
+      'fallback_wait_ms': _avaVmFallbackAtMs == 0
+          ? -1
+          : DateTime.now().millisecondsSinceEpoch - _avaVmFallbackAtMs,
+      'activation_mode': _receptionist?.activationMode ?? '',
+      if (config.seed.isNotEmpty) 'peer_uid': config.seed,
+      if (_mySeed.isNotEmpty) 'caller_uid': _mySeed,
+    });
+  }
+
+  /// The fallback recorder never produced its greeting or beep either. NOW the
+  /// call is genuinely out of options — end it honestly, with a reason that says
+  /// the fallback was tried rather than blaming the live agent alone.
+  Future<void> _onAvaVmFallbackTimeout(ReceptionistCall call) async {
+    if (_ended || _avaLiveGateOpen) return;
+    _emitAvaVmFallback('live_timeout', stored: false, recordedMs: 0);
+    _clearAvaLiveGate();
+    await _stopToneOnHandoffFailure('receptionist_failed');
+    try { call.hangup(); } catch (_) {}
+    _receptionist = null;
+    _receptionistActive = false;
+    if (!_ended && !_connected) {
+      _endWith('receptionist-unavailable', reason: 'ava-vm-fallback-timeout');
     }
   }
 
@@ -8200,6 +8496,20 @@ class CallSession {
     // [CALL-MEDIA-WATCH-1]
     _stopMediaWatchdog();
     _stopPlayoutHealthSampler(); // [CALL-REL-4]
+    // [CALL-DEADAIR-1] A call that ends before audio ever flowed is the WORST
+    // case, and it must not be the silent one. Emit the outstanding measurement
+    // now (only when the probe actually ran, so an unanswered ring is unaffected)
+    // rather than dropping it with the timer.
+    _stopFirstAudioProbe();
+    if (_firstAudioProbeStartMs > 0 && !_firstAudioReported) {
+      _reportFirstAudio(bytes: 0, outcome: 'ended');
+    }
+    // [AVA-VM-FALLBACK-1] The fallback ran but the DO's receipt never arrived
+    // (socket died, app killed). Report what we know rather than nothing — an
+    // absent event and a failed fallback must not look the same.
+    if (_avaVmFallbackActive && !_avaVmFallbackReported) {
+      _emitAvaVmFallback('live_timeout', stored: false, recordedMs: 0);
+    }
     _recoveryDeadlineTimer?.cancel(); // [CALL-REL-5]
     _activeRecovery = null;
     _survivalRetryTimer?.cancel(); // [CALL-SURVIVE-1]

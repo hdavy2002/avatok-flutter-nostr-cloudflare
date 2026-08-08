@@ -149,6 +149,46 @@ class RemoteConfig {
   static bool get callSfuV1 => _b('callSfuV1', false);
   static bool get callSfuAudioOnly => _b('callSfuAudioOnly', false);
 
+  /// [CALL-DEADAIR-1 2026-08-08] Parallelise the call-setup prologue.
+  ///
+  /// ON (default): the two renderer initialisations, the ICE credential fetch
+  /// and the network-class probe run CONCURRENTLY with each other and with
+  /// `getUserMedia`, and the SFU transport starts polling for the peer's seat
+  /// concurrently with its own publish instead of strictly after it. OFF: the
+  /// exact pre-2026-08-08 serial ordering, so a regression is one KV flip away
+  /// from being undone with no build.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS).
+  static bool get callSetupParallelBootV1 => _b('callSetupParallelBootV1', true);
+
+  /// [CALL-DEADAIR-1] The 200ms first-inbound-audio probe and the
+  /// `call_first_audio_ms` event it emits.
+  ///
+  /// Pure observability — switching it off changes no call behaviour, it only
+  /// blinds the measurement. Kept flippable because it is the one thing in the
+  /// call path that polls `getStats()` faster than every 5s, so if it ever shows
+  /// up as a battery or jank cost it can be pulled without a release.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS).
+  static bool get callFirstAudioProbeV1 => _b('callFirstAudioProbeV1', true);
+
+  /// [AVA-VM-FALLBACK-1 2026-08-08] An Ava timeout must never end the call.
+  ///
+  /// ON (default): when the receptionist session opens but produces no audio
+  /// inside the ava-live window, the caller's app asks the DO to degrade that
+  /// SAME session to the deterministic voicemail flow (cached greeting -> beep
+  /// -> record -> the ordinary receptionist `finalize()`), instead of ending the
+  /// call with `reason=ava-live-timeout`. OFF: the pre-2026-08-08 behaviour —
+  /// the call ends and the message is lost.
+  ///
+  /// Measured on prod call avatok-946b6090 (2026-08-07 20:52 IST): Ava connected,
+  /// said nothing, retried, and the call was hung up on the owner while he was
+  /// trying to leave a voicemail. A recording that works beats an assistant that
+  /// doesn't.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS).
+  static bool get avaVoicemailFallbackV1 => _b('avaVoicemailFallbackV1', true);
+
   /// [CALLREC-CORE-1] On-demand call recording (spec
   /// `Specs/FEASIBILITY-CALL-RECORDING-2026-08-04.md`, rev 11).
   ///
