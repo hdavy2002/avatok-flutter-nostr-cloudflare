@@ -199,8 +199,17 @@ class RingbackPlayer {
     });
   }
 
+  /// [CALL-RING-AUDIBLE-2 2026-08-08] Our own view of "is a tone supposed to be
+  /// sounding right now". Deliberately NOT read back from `AudioPlayer.state`
+  /// — this is the value the fix is asserted against, and it must mean exactly
+  /// "the last thing this player did was start a tone that nothing has stopped
+  /// since". [audibleSnapshot] pairs it with a real platform position read so a
+  /// stuck/zero position can still be distinguished from genuine playback.
+  bool _playing = false;
+
   void _toneStarted(String kind, int generation, {required bool speakerOn}) {
     _lastStartedKind = kind;
+    _playing = true;
     Analytics.capture('call_tone_started', {
       'kind': kind,
       'generation': generation,
@@ -218,6 +227,7 @@ class RingbackPlayer {
   }
 
   void _toneFailed(String kind, int generation, {required String errorCode}) {
+    _playing = false;
     Analytics.capture('call_tone_failed', {
       'kind': kind,
       'generation': generation,
@@ -443,6 +453,7 @@ class RingbackPlayer {
   Future<void> stop({String reason = 'call_state_change'}) async {
     final gen = ++_generation;
     final kind = _lastStartedKind;
+    _playing = false;
     try {
       await _p.stop();
     } catch (_) {}
@@ -450,8 +461,42 @@ class RingbackPlayer {
     _lastStartedKind = 'none';
   }
 
+  /// [CALL-RING-AUDIBLE-2 2026-08-08] A point-in-time answer to the ONE question
+  /// this issue is asserted on: "is the caller still hearing a tone right now?"
+  ///
+  /// `playing` is this player's own bookkeeping ([_playing]); `position_ms` is
+  /// the platform's playback position, which MOVES between two samples taken
+  /// seconds apart while a tone genuinely sounds and is IDENTICAL when the
+  /// pipeline has stalled. Two samples are what makes the success value
+  /// assertable — a single `playing: true` only proves nobody called [stop],
+  /// whereas a changed `position_ms` proves the audio pipeline is actually
+  /// running.
+  ///
+  /// Assert CHANGED, not GREATER: every tone here is `ReleaseMode.loop`, so the
+  /// position wraps back toward 0 at each loop boundary and a strictly-rising
+  /// check would report a false failure whenever two samples straddle one.
+  /// `-1` means the position could not be read (no source loaded / platform
+  /// refused), never "zero".
+  ///
+  /// Never throws — telemetry must not be able to break a live call.
+  Future<Map<String, Object>> audibleSnapshot() async {
+    int posMs = -1;
+    try {
+      final pos = await _p.getCurrentPosition();
+      if (pos != null) posMs = pos.inMilliseconds;
+    } catch (_) {/* leave -1 — an unreadable position is not a failure */}
+    return <String, Object>{
+      'kind': _lastStartedKind,
+      'playing': _playing && !_disposed,
+      'position_ms': posMs,
+      'generation': _generation,
+      'disposed': _disposed,
+    };
+  }
+
   Future<void> dispose() async {
     _disposed = true;
+    _playing = false;
     _generation++;
     try { await _p.stop(); } catch (_) {}
     try { await _p.dispose(); } catch (_) {}

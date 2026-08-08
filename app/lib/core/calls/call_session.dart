@@ -2711,10 +2711,7 @@ class CallSession {
           _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
             if (!_ended && !_connected && !_deviceRinging) {
               AvaLog.I.log('call', 'Device ringing timeout: callee unreachable.');
-              _ringback.stop();
-              _callUnreachable = true;
-              _unreachableNotice?.call();
-              _onNoAnswer();
+              _goUnreachable('device_wake_timeout');
             }
           });
         }
@@ -7109,6 +7106,89 @@ class CallSession {
     await hangup(reason);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [CALL-RING-AUDIBLE-2 2026-08-08] Keep the caller's tone audible all the
+  //  way to Ava's first word on the UNREACHABLE lane too.
+  // ─────────────────────────────────────────────────────────────────────────
+  //
+  // OWNER REPORT (2026-08-08, caller hdavy2002@gmail.com, call avatok-d679c96a):
+  // "after a few beeps the voice disappears… then when Ava is about to come
+  // online the sound wakes up again in the speaker."
+  //
+  // It is NOT a route bug and NOT the receptionist's audio session ducking the
+  // tone. `call_audio_owner_apply` shows boot_media→earpiece at +0.3s,
+  // user_toggle→speaker at +2s and then NOTHING until the receptionist's own
+  // re-asserts at +18s: the route was SPEAKER for the whole window, and the
+  // native engine's focus request is `AUDIOFOCUS_GAIN_TRANSIENT` while the tone
+  // player pins `AndroidAudioFocus.none` (ringback_player.dart
+  // `_ensureCallAudioContext`), so no focus interaction can silence it either.
+  //
+  // The tone was simply STOPPED. Three sites on the unreachable lane called
+  // `_ringback.stop()` themselves before handing to `_onNoAnswer`: the 12s
+  // device-wake timer in `start()`, the same timer re-armed in
+  // [notePlaceResult], and `ok:false` in [_applyRingAck]. That is precisely the
+  // "stop the tone before we even know whether a handoff will be attempted"
+  // pattern [AVA-PREWARM-1] deleted from `_onNoAnswer` — it was left behind on
+  // these three, so the callee-never-receipted lane (searching beeps, ~3 of
+  // them, then the 12s deadline) still produced 6-8s of dead air until Ava's
+  // first audio at the ava-live gate.
+  //
+  // The gate design already owns the stop: [_openAvaLiveGate] on success,
+  // [_stopToneOnHandoffFailure] on failure/no-attempt, `_showOutcomeMenu` /
+  // `businessAgentHandoff` / `_endWith` on every terminal. So the fix is to
+  // stop stopping it here and let `_onNoAnswer` decide, exactly as the
+  // no-answer lane already does.
+  //
+  // Gated on `RemoteConfig.callRingAudibilityV1` (declared in
+  // worker/src/routes/config.ts, DEFAULTS false — it ships dark and arming it
+  // is a deliberate flag flip). Flag OFF = byte-equivalent to before.
+  void _goUnreachable(String source) {
+    if (RemoteConfig.callRingAudibilityV1) {
+      // Tone keeps running into the handoff; sample it so "still audible" is a
+      // value we can read in PostHog rather than an assumption.
+      _sampleRingAudible('unreachable_$source');
+    } else {
+      _ringback.stop();
+    }
+    _callUnreachable = true;
+    _unreachableNotice?.call();
+    unawaited(_onNoAnswer());
+  }
+
+  /// [CALL-RING-AUDIBLE-2] Emit `ringback_audible` twice for [phase] — now and
+  /// again 2s later. ONE sample only proves nobody called `stop()`; the SECOND
+  /// sample's `position_ms` is what proves the tone is still actually running
+  /// through the receptionist spin-up (ship-gate rule 3: assert the success
+  /// value, not the arrival of an event).
+  void _sampleRingAudible(String phase) {
+    unawaited(_emitRingAudible(phase, 0));
+    Timer(const Duration(seconds: 2), () {
+      if (_ended) return;
+      unawaited(_emitRingAudible(phase, 2000));
+    });
+  }
+
+  Future<void> _emitRingAudible(String phase, int sampleAtMs) async {
+    try {
+      final snap = await _ringback.audibleSnapshot();
+      Analytics.capture('ringback_audible', {
+        'call_id': config.room,
+        'phase': phase,
+        'sample_at_ms': sampleAtMs,
+        'flag_on': RemoteConfig.callRingAudibilityV1,
+        'ava_live_gate_open': _avaLiveGateOpen,
+        'recept_active': _receptionistActive,
+        'unreachable': _callUnreachable,
+        ...snap,
+      });
+    } catch (e, st) {
+      Analytics.captureException(e, st,
+          screen: 'call',
+          handled: true,
+          extra: {'stage': 'ringback_audible_sample', 'phase': phase});
+    }
+  }
+
   Future<void> _onNoAnswer() async {
     // [AVA-RING-BLEED-1] A stale no-answer timer firing while Ava is live must
     // not end the call under her ("no-answer"/timeout-ringing).
@@ -7755,10 +7835,7 @@ class CallSession {
     _deviceRingingTimer?.cancel();
     Analytics.capture('call_ring_ack', {'call_id': config.room, 'ok': ok, 'source': 'server'});
     if (!_connected) {
-      _ringback.stop();
-      _callUnreachable = true;
-      _unreachableNotice?.call();
-      _onNoAnswer();
+      _goUnreachable('ring_ack_false');
     }
   }
 
@@ -7850,10 +7927,7 @@ class CallSession {
     _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
       if (_ended || _connected || _deviceRinging || _ringAckHandled) return;
       AvaLog.I.log('call', 'Post-placement device ringing timeout: callee unreachable.');
-      _ringback.stop();
-      _callUnreachable = true;
-      _unreachableNotice?.call();
-      _onNoAnswer();
+      _goUnreachable('post_placement_wake_timeout');
     });
     Analytics.capture('call_device_wake_guard_armed', {
       'call_id': config.room,
@@ -8303,6 +8377,15 @@ class CallSession {
             break;
         }
       };
+      // [CALL-RING-AUDIBLE-2] The receptionist's audio session is about to come
+      // up (ReceptionistCall._startAudio → `recept_prewarm_before` /
+      // `startEngine` / `recept_prewarm_after`). This is the exact window the
+      // owner reported as silent, so sample the tone here: `playing: true` with
+      // an ADVANCING `position_ms` across the two samples is the success value
+      // for this fix.
+      if (RemoteConfig.callRingAudibilityV1) {
+        _sampleRingAudible(isWarm ? 'prewarm' : 'recept_cold_start');
+      }
       bool ok;
       if (isWarm) {
         // Already started (or still starting) in the background — just wait
