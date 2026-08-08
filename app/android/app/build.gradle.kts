@@ -90,6 +90,17 @@ flutter {
 }
 
 
+// [CALL-RTK-6] flutter_webrtc ships com.github.davidliu:audioswitch (a fork) and
+// realtimekit_core_android ships the Twilio original com.twilio:audioswitch —
+// IDENTICAL package/class names, so the release merge fails with Duplicate class
+// com.twilio.audioswitch.*. Keep the davidliu fork (superset of upstream, what
+// flutter_webrtc links against) and exclude the Twilio original everywhere.
+// If the RTK audio path ever throws NoSuchMethodError into com.twilio.audioswitch,
+// this exclusion is where to look.
+configurations.all {
+    exclude(group = "com.twilio", module = "audioswitch")
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     // [CALL-NATIVE-DECLINE-1] The notification Decline action must survive a
