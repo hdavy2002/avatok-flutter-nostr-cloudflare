@@ -461,6 +461,70 @@ one and fail ONLY on violations that are new.
 
 ---
 
+## Ship gate — FOUR RULES AND ONE SCRIPT (added 2026-08-08)
+
+On 2026-08-07/08 four call fixes shipped to production and **three of them did
+nothing**, undetected until the owner tested by hand and complained. The
+telemetry had been saying so for a day: `call_presence_decision presence=unknown
+decision=ring_unknown` and `call_receptionist_trigger
+trigger=ring_timeout_no_receipts ring_count=0` on every single call, while the
+report said "telemetry is flowing". `tool/check_ship_readiness.py` is that
+"nobody stopped it" made into a check.
+
+1. **Verify against the CODE, never against your memory notes.** A saved
+   Graphiti/memory note is a HINT ABOUT WHERE TO LOOK. It is never a citation.
+   The 2026-08-08 report told the owner about two "known issues" straight out of
+   saved notes without opening a file; both had been fixed two days earlier
+   ([CALL-QOS-RED-1] and [CALL-SFU-SURVIVE-1], 2026-08-06) and an external audit
+   caught it. If you are about to write a sentence about how the system behaves,
+   open the file first.
+2. **Two phones before the word "shipped".** For anything two-sided — a call, a
+   chat, presence, receipts — count DISTINCT persons on the newest `$app_build`
+   in PostHog. [CALL-PRESENCE-1] was declared shipped with exactly one person on
+   build 10524 and everyone else on 10523 or older; the heartbeat lives in the
+   app, so the callee's phone could not send one. It was untestable by
+   construction, not merely untested.
+3. **Assert the SUCCESS VALUE, not the arrival of an event.** "Events are
+   flowing" is not evidence. Write down, BEFORE the build goes out, the exact
+   event and the exact property value that means it worked, and then go and read
+   that value.
+4. **A small group before everyone.** Get the new build onto both sides of a
+   real interaction and confirm rule 3 there before the fix is described as
+   live.
+
+```bash
+python3 tool/check_ship_readiness.py --check all        # flags + manifest
+python3 tool/check_ship_readiness.py --check flags      # fake-flag contract
+python3 tool/check_ship_readiness.py --check manifest   # who shipped with no
+                                                        # success definition
+POSTHOG_PERSONAL_API_KEY=phx_... \
+  python3 tool/check_ship_readiness.py --check telemetry --window-days 3
+```
+
+Plain `python3`, no pip/pub deps, no Flutter toolchain, ~1s. Wired into
+**`typecheck.yml`** (every `pull_request`, offline checks only) and
+**`verify.yml`** (on demand, including telemetry) as a `ship-gate` job. No
+`push:` trigger was added — that would break `scripts/git_safe_push.py`.
+
+Rule 3 is enforced by **`tool/ship_manifest.json`**: one entry per issue id,
+declaring `two_sided`, `min_devices_on_build`, the `flags` it depends on, and a
+`success` list of assertions. `--check manifest` fails when an issue that
+touched `app/` or `worker/` has no entry; `--check telemetry` queries PostHog
+and fails when the events are ABSENT **or PRESENT-BUT-CARRYING-A-FAILURE-VALUE**.
+With no `POSTHOG_PERSONAL_API_KEY` the telemetry check SKIPS loudly and exits 0
+— a missing secret must never fail CI and must never look like a pass.
+
+Both offline checks are **baselined** against `tool/ship_readiness_baseline.json`
+(0 fake flags today; 183 issue ids grandfathered from the week before the gate
+landed), so they were green on day one and fail only on NEW debt.
+
+> **When it fails, DECLARE THE FLAG or WRITE THE MANIFEST ENTRY. Do NOT run
+> `--update-baseline`.** The baseline is a record of debt, not an allowlist;
+> grandfathering today's ship is exactly how three fixes reached prod and did
+> nothing.
+
+---
+
 ## Per-session workflow (READ AND FOLLOW EVERY SESSION)
 
 ### Search & context (do this first)

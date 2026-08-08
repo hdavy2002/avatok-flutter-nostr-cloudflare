@@ -93,6 +93,34 @@ jobs:
         if: always()
         run: python3 tool/check_design_guard.py --check icons
 
+  # [SHIP-GATE-1] Ship-readiness gate — the on-demand copy, and the ONLY place
+  # the telemetry check runs. Also on every PR via typecheck.yml, but WITHOUT
+  # telemetry there (a PR must not fail on the production behaviour of someone
+  # else's feature).
+  #
+  # THREE CHECKS, and the third is the one that would have caught 2026-08-08:
+  #   flags     — a client key the Worker never declares is a FAKE flag.
+  #   manifest  — every shipped issue declares, in advance, the exact telemetry
+  #               value that means it worked (tool/ship_manifest.json).
+  #   telemetry — queries PostHog and fails when the events are ABSENT *or*
+  #               PRESENT-BUT-CARRYING-A-FAILURE-VALUE, plus the two-phone gate
+  #               (a two-sided feature with one phone on the new build is
+  #               untestable by construction).
+  #
+  # Without POSTHOG_PERSONAL_API_KEY in repo secrets the telemetry half prints a
+  # loud SKIP and exits 0 — a missing secret must never fail CI, and must never
+  # be mistaken for a pass. Set the secret to make it real.
+  ship-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # --check manifest reads `git log --since`
+      - name: Flags + success manifest + production telemetry -- run locally with `python3 tool/check_ship_readiness.py --check all`
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+        run: python3 tool/check_ship_readiness.py --check all
+
   flutter-analyze:
     runs-on: ubuntu-latest
     steps:

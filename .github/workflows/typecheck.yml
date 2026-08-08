@@ -77,3 +77,34 @@ jobs:
       - name: No bare Material Icons.* in feature code -- run locally with `python3 tool/check_design_guard.py --check icons`
         if: always()
         run: python3 tool/check_design_guard.py --check icons
+
+  # [SHIP-GATE-1] Ship-readiness gate. Same shape and same reasoning as
+  # design-guard above: plain python3, no deps, ~1s, builds and deploys nothing,
+  # and it lives on pull_request because that is the trigger that actually
+  # catches the mistake while the change is still a diff.
+  #
+  # `--check all` here runs the two OFFLINE checks:
+  #   flags     — a client key the Worker never declares is a FAKE flag; the
+  #               kill switch documented above the getter does not exist.
+  #   manifest  — every issue id shipped in the window that touched app/ or
+  #               worker/ must declare, IN ADVANCE, the exact telemetry value
+  #               that means it worked (tool/ship_manifest.json).
+  # The telemetry check needs a PostHog key and is deliberately NOT wired here:
+  # no POSTHOG_PERSONAL_API_KEY is passed to this job, so it prints a loud SKIP
+  # and exits 0. A PR must not fail on the production behaviour of somebody
+  # else's feature. verify.yml is where telemetry runs.
+  #
+  # WHY: over 2026-08-07/08 four call fixes shipped and three did nothing. The
+  # telemetry said `presence=unknown decision=ring_unknown` on every call and
+  # was reported as "telemetry is flowing". See CLAUDE.md "Ship gate".
+  ship-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # --check manifest reads `git log --since`; the default shallow
+          # checkout (fetch-depth 1) has exactly one commit and would report
+          # that nothing shipped, forever.
+          fetch-depth: 0
+      - name: Flags declared server-side + every shipped issue declares success -- run locally with `python3 tool/check_ship_readiness.py --check all`
+        run: python3 tool/check_ship_readiness.py --check all
