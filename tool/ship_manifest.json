@@ -26,7 +26,7 @@
   "_verified_at": "worker/src/routes/call_rtk.ts:329 (trackUser ... 'call_rtk_joined'), :210/:216/:226/:293 (call_rtk_blocked), :301/:322 (call_rtk_error)"
  },
  "CALL-RTK-3": {
-  "description": "Client half of the RealtimeKit migration: realtimekit_provider.dart (realtimekit_core 0.1.6) behind the rtc_provider seam, rtk-start/rtk-abort fork in call_session.dart with abort-to-legacy fallback, group early-branch behind groupRealtimeKitV1. Two-sided: both phones must be on a build that understands rtk-start, or the peer treats it as an unknown frame and the decider self-aborts to P2P at callRtkJoinDeadlineSec - which looks like 'RTK never activates' rather than an error.",
+  "description": "Client half of the RealtimeKit migration: realtimekit_provider.dart (realtimekit_core 0.1.6) behind the rtc_provider seam, rtk-start/rtk-abort fork in call_session.dart with abort-to-legacy fallback, group early-branch behind groupRealtimeKitV1. Two-sided: both phones must be on a build that understands rtk-start, or the peer treats it as an unknown frame and the decider self-aborts to P2P at callRtkJoinDeadlineSec - which looks like 'RTK never activates' rather than an error. The connected-signal wiring landed in [CALL-RTK-4]: the joined session's events now drive the call lifecycle (ring timeout, connect watchdogs, ringback, phase) instead of leaving the call stuck in 'connecting', so RTK calls log real durations via _connectedAtMs.",
   "shipped": "2026-08-08",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -71,6 +71,40 @@
    }
   ],
   "_verified_at": "app/lib/core/calls/rtc/realtimekit_provider.dart:419,475 (rtk_join outcome), :485 (call_connected provider), :275,:292 (call_network_handover outcome failed/survived); call_session.dart:5602 (call_rtk_active), :5613 (call_rtk_fallback)"
+ },
+ "CALL-RTK-4": {
+  "description": "Wire the joined RealtimeKit session's normalized events into the call lifecycle. Before this, _startRtkMedia joined a meeting and then told the call system nothing: _connected stayed false, so the 45s connect watchdog ended a live RTK call with 'network-error', the 22s ring timeout handed a conversation in progress to the receptionist, the ringback never stopped, and every RTK call logged duration 0 (CALL-LOG-TIME-1 keys on _connectedAtMs). The pc-stats media watchdog and first-audio probe are deliberately NOT started on this path - there is no _pc - so provider socket-state monitoring (call_network_handover) plus the error-before-connect fallback are the only health signals.",
+  "shipped": "2026-08-08",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callRealtimeKitV1",
+   "callRtkJoinDeadlineSec",
+   "callFirstAudioProbeV1"
+  ],
+  "success": [
+   {
+    "event": "call_rtk_connected",
+    "property": "via",
+    "in": [
+     "remote_track",
+     "remote_join"
+    ],
+    "min_events": 1,
+    "note": "The whole point of the issue: an RTK call that reaches the 'connected' phase. Its ABSENCE while call_rtk_active is present is the exact pre-fix bug (joined, never connected). via=remote_track is the preferred signal (remote media, mirrors pc.onTrack); via=remote_join is the roster backstop for a peer that was already publishing before we joined."
+   },
+   {
+    "event": "call_first_audio_ms",
+    "where": {
+     "media_path": "rtk"
+    },
+    "property": "got_audio",
+    "equals": true,
+    "min_events": 1,
+    "note": "media_path='rtk' only exists on this event because CALL-RTK-4 reports first audio from the SDK's remote-audio callback (the pc-stats probe cannot run - there is no _pc, so bytes_received stays at its -1 unknown sentinel and must NOT be read as a byte count). Its ABSENCE while call_rtk_active is present is the pre-fix bug: joined a meeting, never connected."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart _onRtkEvent/_onRtkConnected (call_rtk_connected with via), _onRtkErrorBeforeConnect (call_rtk_fallback failure=provider_error_before_connect), _reportFirstAudio (media_path 'rtk'); realtimekit_provider.dart:322,332 (remoteJoin/trackAdded emit sites)"
  },
  "CALL-AUDIO-OWNER-1": {
   "description": "CallAudioController is the single owner of call route/mode/speaker. The fix IS the equality: the route we asked for is the route the device confirmed. Before it, _bootMedia's hardcoded selectRoute(earpiece) raced the user's own Speaker press and won, which is the loud-quiet-loud outgoing tone.",

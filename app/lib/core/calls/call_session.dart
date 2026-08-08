@@ -814,6 +814,20 @@ class CallSession {
   bool _rtkStarting = false;
   bool _rtkAborted = false;
   bool _rtkDecider = false;
+  // [CALL-RTK-4] Live subscription to [_rtk]'s normalized event stream.
+  //
+  // Without this the RTK leg joined a meeting and then told the call system
+  // NOTHING: `_connected` stayed false, so the 45s connect watchdog ended a
+  // live call with 'network-error', the 22s ring timeout handed a conversation
+  // in progress to the receptionist, the ringback never stopped and every RTK
+  // call logged a zero duration (`_connectedAtMs` is what CALL-LOG-TIME-1
+  // keys on). See [_onRtkEvent].
+  //
+  // One subscription, on `events`, is enough: `RealtimeKitRtcSession._emitTrack`
+  // forwards every remote-track event onto `events` as well as onto
+  // `remoteTrackEvents`, so subscribing to both would deliver `trackAdded`
+  // twice.
+  StreamSubscription<RtcSessionEvent>? _rtkEvents;
   // [CALL-SURVIVE-3] Best-effort local/remote network-class flags used to
   // gate the conservative cellular resolution/bitrate preset. Refreshed by
   // [_refreshAndAnnounceNetClass] / [_isLikelyCellular]; remote value arrives
@@ -1715,9 +1729,14 @@ class CallSession {
       'bytes_received': bytes,
       'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
       'ms_from_connected': _connectedAtMs == 0 ? -1 : now - _connectedAtMs,
-      'media_path': _sfuActive
-          ? 'sfu'
-          : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none')),
+      // [CALL-RTK-4] 'rtk' is checked FIRST: an RTK call has no `_pc` at all, so
+      // without this arm it would report as 'none'/'direct' — a media path that
+      // is not the one carrying the audio.
+      'media_path': _rtkActive
+          ? 'rtk'
+          : (_sfuActive
+              ? 'sfu'
+              : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none'))),
       'outgoing': config.outgoing,
       'video': config.video,
       if (config.seed.isNotEmpty) 'peer_uid': config.seed,
@@ -5597,6 +5616,19 @@ class CallSession {
       _rtk = session;
       _rtkStarting = false;
       _rtkActive = true;
+      // [CALL-RTK-4] Wire the session's events into the call lifecycle BEFORE
+      // anything else can await: joining a meeting is not the same thing as the
+      // call being connected, and everything that disarms the ring timeout and
+      // the connect watchdogs lives behind this listener.
+      //
+      // NOTE the ordering constraint: `RealtimeKitRtcProvider.join` emits
+      // `RtcSessionEvent.connected` on the way OUT of `join()` (provider
+      // ~L492), and `events` is a plain broadcast stream with no replay — so
+      // that first `connected` is ALREADY GONE by the time we get here and must
+      // never be what this path waits for. The signals we key on
+      // (`trackAdded` / `remoteJoin`) are all emitted later, by the SDK's
+      // participant callbacks.
+      _rtkEvents = session.events.listen(_onRtkEvent);
       _stage('rtk_joined');
       _telemetry.setMediaPath('rtk');
       Analytics.capture('call_rtk_active', {
@@ -5615,10 +5647,20 @@ class CallSession {
         'failure': e.runtimeType.toString(),
       });
     }
-    // Fallback is unconditional past this point: tell the peer so it stops
-    // waiting on a meeting we are never joining, then take the legacy path.
-    // Only the decider re-offers, exactly as `sfu-abort` does, so the two
-    // phones cannot both offer.
+    await _fallbackFromRtk();
+  }
+
+  /// [CALL-RTK-4] Tell the peer we are off RealtimeKit, then take the legacy
+  /// path. Lifted verbatim out of the tail of [_startRtkMedia] so that a
+  /// provider error arriving AFTER a successful join (but before the call ever
+  /// connected) lands in exactly the same place a failed join does, instead of
+  /// being left to the 45s connect watchdog — which would end a recoverable
+  /// call with 'network-error'.
+  ///
+  /// Fallback is unconditional past the guard: tell the peer so it stops
+  /// waiting on a meeting we are never joining. Only the decider re-offers,
+  /// exactly as `sfu-abort` does, so the two phones cannot both offer.
+  Future<void> _fallbackFromRtk() async {
     if (_ended || _connected) return;
     if (_remoteId != null) _send({'type': 'rtk-abort', 'to': _remoteId});
     if (_rtkDecider) {
@@ -5630,6 +5672,132 @@ class CallSession {
         await _startP2pOffer();
       }
     }
+  }
+
+  /// [CALL-RTK-4] Cancel the RTK event subscription. Called from every site
+  /// that drops `_rtk`, so a dead session's stream can never call back into a
+  /// call that has moved on.
+  Future<void> _cancelRtkEvents() async {
+    final sub = _rtkEvents;
+    _rtkEvents = null;
+    if (sub != null) await _safeAwait(() => sub.cancel());
+  }
+
+  /// [CALL-RTK-4] The RTK leg's equivalent of `pc.onTrack` / `pc.onConnectionState`.
+  void _onRtkEvent(RtcSessionEvent e) {
+    if (_ended || !_rtkActive) return;
+    switch (e) {
+      case RtcSessionEvent.trackAdded:
+        // Remote media is flowing. This is the closest analogue RealtimeKit
+        // has to `pc.onTrack`, and it is the signal we PREFER, because it
+        // carries the same meaning: the other side is actually publishing.
+        _onRtkConnected('remote_track');
+        // [CALL-RTK-4] First audio, the cheapest honest way. The pc-stats probe
+        // (`_startFirstAudioProbe`) cannot run here — it reads
+        // `pc.getStats()` and there is no `_pc` on this path — and
+        // realtimekit_core 0.1.6 exposes no byte counters, so `bytes_received`
+        // stays at its -1 "unknown" sentinel rather than being invented. The
+        // timestamp is real: it is the instant the SDK told us the remote's
+        // audio/video went live. Gated by the same flag as the pc probe so the
+        // event's population stays consistent across paths.
+        if (RemoteConfig.callFirstAudioProbeV1 && !_firstAudioReported) {
+          _reportFirstAudio(bytes: -1, outcome: 'audio');
+        }
+        break;
+      case RtcSessionEvent.remoteJoin:
+        // Backstop for the case `trackAdded` cannot cover: RealtimeKit's
+        // `onAudioUpdate` fires on a CHANGE, so a peer that was already
+        // publishing before we joined may never produce one. Roster presence
+        // is weaker evidence than media, hence second — but it is far better
+        // than letting the ring timeout hand a live conversation to Ava.
+        _onRtkConnected('remote_join');
+        break;
+      case RtcSessionEvent.error:
+        // BEFORE connect: this is a failed join in slow motion; route it into
+        // the same abort/fallback the join failure takes.
+        // AFTER connect: leave it alone. Reconnection is the SDK's job on this
+        // path (that is the whole point of the migration) and it reports the
+        // outcome itself via `call_network_handover`.
+        if (!_connected && !_rtkAborted) {
+          // ignore: unawaited_futures
+          _onRtkErrorBeforeConnect();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// [CALL-RTK-4] Everything `pc.onTrack`'s connected block does, for the RTK
+  /// leg. Idempotent (`_connected` is the latch) and inert once the call has
+  /// ended or fallen back.
+  void _onRtkConnected(String via) {
+    if (_ended || _connected || _rtkAborted || !_rtkActive) return;
+    _ringTimeout?.cancel();
+    _connectWatchdog?.cancel(); // [CALL-CONNECT-WATCHDOG-1]
+    _connectWatchdogFast?.cancel(); // [AVACALL-WATCHDOG-2]
+    _failTimer?.cancel();
+    _ringback.stop();
+    // [AVA-PREWARM-1] The callee answered for real — a pre-warmed receptionist
+    // session (if any) was never heard and must never surface.
+    if (_prewarmCall != null) {
+      // ignore: unawaited_futures
+      _abortPrewarm('callee_answered');
+    }
+    // [CALL-RTK-4] `connected` takes a NULLABLE pc (`_probeIceType` returns
+    // immediately on null), so this is safe with no peer connection — and it is
+    // what sets `_tConnected`, i.e. what makes `call_ended` carry
+    // `connected=true`, a real `duration_s` and a real `minutes_used` instead of
+    // reporting every RTK call as a zero-length setup failure. It does emit a
+    // second `call_connected` (the provider already emits one at join, carrying
+    // `provider=realtimekit`); the two are separable by that property and the
+    // CALL-RTK-3 assertion filters on it.
+    _telemetry.connected(null);
+    _telemetry.setMediaPath('rtk');
+    HapticFeedback.mediumImpact();
+    if (gOutgoingCallId == config.room) {
+      gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+    }
+    _connected = true;
+    // [CALL-LOG-TIME-1] Talk time starts at first remote media, not at dial.
+    if (_connectedAtMs == 0) _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
+    peerAway.value = false;
+    _setPhase('connected');
+    _stage('rtk_connected');
+    // [CALL-RTK-4] DELIBERATELY NOT STARTED HERE: `_startMediaWatchdog` and
+    // `_startPlayoutHealthSampler` both poll `_pc.getStats()`, and the RTK path
+    // has no `_pc` — every tick would return at the `pc == null` guard, i.e. a
+    // timer that can only ever produce silence. Rather than a fake watchdog,
+    // RTK relies on the provider's own socket-state monitoring, which reports
+    // its verdict as `call_network_handover` (outcome survived|failed) from
+    // `realtimekit_provider.dart`, plus the `error` arm above. Do not "fix"
+    // this by starting the watchdog; fix it by giving the provider a real
+    // stats surface first.
+    Analytics.capture('call_rtk_connected', {
+      'call_id': config.room,
+      'via': via, // 'remote_track' | 'remote_join'
+      'outgoing': config.outgoing,
+      'video': config.video,
+      'ms_from_start': _setupT0 == 0
+          ? -1
+          : DateTime.now().millisecondsSinceEpoch - _setupT0,
+    });
+  }
+
+  /// [CALL-RTK-4] A provider error before the call ever connected: leave the
+  /// meeting and fall back, exactly as a failed join would.
+  Future<void> _onRtkErrorBeforeConnect() async {
+    if (_ended || _connected || _rtkAborted) return;
+    _rtkAborted = true;
+    _rtkActive = false;
+    await _cancelRtkEvents();
+    await _safeAwait(() => _rtk?.leave());
+    _rtk = null;
+    Analytics.capture('call_rtk_fallback', {
+      'call_id': config.room,
+      'failure': 'provider_error_before_connect',
+    });
+    await _fallbackFromRtk();
   }
 
   Future<void> _startSfuMedia() async {
@@ -6236,6 +6404,7 @@ class CallSession {
       case 'rtk-abort':
         _rtkAborted = true;
         if (_rtkStarting || _rtkActive) {
+          await _cancelRtkEvents(); // [CALL-RTK-4]
           await _safeAwait(() => _rtk?.leave());
           _rtk = null;
           _rtkStarting = false;
@@ -8678,6 +8847,7 @@ class CallSession {
     // beside the SFU's. `RtcSession.leave()` is documented idempotent, and it
     // is wrapped in _safeAwait for the same reason everything else in this
     // teardown is: a call that will not end is worse than a leaked session.
+    await _cancelRtkEvents(); // [CALL-RTK-4] before leave(): leave() emits.
     await _safeAwait(() => _rtk?.leave());
     _rtk = null;
     _rtkActive = false;
