@@ -42,6 +42,11 @@ import '../../features/avatok/call_screen.dart';
 // cycle as call_screen.dart above.
 import 'call_session_manager.dart';
 import 'call_sfu_transport.dart';
+// [CALL-RTK-3] The provider-agnostic RTC seam + its RealtimeKit implementation.
+// Only `RtcSession`/`RtcMode` and the provider's own entry points cross this
+// import — no realtimekit_core type reaches call_session.dart.
+import 'rtc/realtimekit_provider.dart';
+import 'rtc/rtc_provider.dart';
 
 /// Coarse call lifecycle exposed via [CallSession.phase]. Wave 2 (PiP/pill,
 /// reconnect, Gemini parity) keys off THIS enum; the full call view also reads
@@ -794,6 +799,21 @@ class CallSession {
   bool _sfuAborted = false;
   bool _sfuDecider = false;
   bool _sfuReconnectInFlight = false;
+  // [CALL-RTK-3] Cloudflare RealtimeKit media leg. Deliberately a SEPARATE set
+  // of flags from the `_sfu*` ones above rather than a reinterpretation of
+  // them: the two transports must be able to abort independently, and reusing
+  // `_sfuAborted` would mean an RTK failure silently disqualified the raw-SFU
+  // path too. `_rtkAborted` is sticky for the same reason `_sfuAborted` is —
+  // once either phone has fallen back, neither may climb back to RTK.
+  //
+  // Nothing in the recovery / relay-migration / RED ladder reads these: on the
+  // RTK path reconnection is the SDK's job, which is the entire point of the
+  // migration (Specs/CALL-REALTIMEKIT-MIGRATION.md §2).
+  RtcSession? _rtk;
+  bool _rtkActive = false;
+  bool _rtkStarting = false;
+  bool _rtkAborted = false;
+  bool _rtkDecider = false;
   // [CALL-SURVIVE-3] Best-effort local/remote network-class flags used to
   // gate the conservative cellular resolution/bitrate preset. Refreshed by
   // [_refreshAndAnnounceNetClass] / [_isLikelyCellular]; remote value arrives
@@ -5529,6 +5549,89 @@ class CallSession {
     _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
   }
 
+  /// [CALL-RTK-3] Is RealtimeKit eligible for THIS call?
+  ///
+  /// Two gates, and the second one is a feature-interaction rule, not a flag:
+  /// in-call translation taps flutter_webrtc's decoded-playback callback
+  /// (`CallTranslationAudioPlugin.java`), and RealtimeKit bundles its own
+  /// WebRTC — so on the RTK path that tap does not exist and translation would
+  /// silently produce nothing. Spec §4: "if translation is armed for a call,
+  /// that call uses the legacy path (client-side check, same fork point)."
+  ///
+  /// The check is deliberately AVAILABILITY, not "the user has already pressed
+  /// Translate": arming happens later in the call, from the overlay, while the
+  /// media transport is chosen once at connect. A call that could be translated
+  /// must therefore never start on RTK. Both keys default false, so this costs
+  /// nothing today.
+  bool get _rtkEligible =>
+      RemoteConfig.callRealtimeKitV1 &&
+      !(RemoteConfig.translationEnabled && RemoteConfig.callTranslationEnabled);
+
+  /// [CALL-RTK-3] Join the RealtimeKit meeting for this room.
+  ///
+  /// Shaped EXACTLY like [_startSfuMedia] on purpose — same guard, same sticky
+  /// abort, same "tell the peer, then fall back to P2P" ending — so the two
+  /// transports fail the same way and a reader only has to learn the pattern
+  /// once. The join deadline is [RemoteConfig.callRtkJoinDeadlineSec] so a slow
+  /// or wedged join self-aborts to P2P instead of stranding the call.
+  Future<void> _startRtkMedia() async {
+    if (_ended || _connected || _rtkStarting || _rtkActive || _rtkAborted) return;
+    _rtkStarting = true;
+    _stage('rtk_begin');
+    final deadline = Duration(seconds: RemoteConfig.callRtkJoinDeadlineSec);
+    try {
+      final ticket = await RealtimeKitRtcProvider.fetchTicket(
+        room,
+        mode: config.video ? RtcMode.video : RtcMode.audio,
+      );
+      final session = await RealtimeKitRtcProvider().join(
+        ticket,
+        mode: config.video ? RtcMode.video : RtcMode.audio,
+        timeout: deadline,
+      );
+      if (_ended) {
+        await session.leave();
+        _rtkStarting = false;
+        return;
+      }
+      _rtk = session;
+      _rtkStarting = false;
+      _rtkActive = true;
+      _stage('rtk_joined');
+      _telemetry.setMediaPath('rtk');
+      Analytics.capture('call_rtk_active', {
+        'call_id': config.room,
+        'video': config.video,
+      });
+      return;
+    } catch (e, s) {
+      _rtkStarting = false;
+      _rtkAborted = true;
+      await Analytics.captureException(e, s,
+          screen: 'call_session', handled: true,
+          extra: {'op': 'rtk_start', 'call_id': config.room});
+      Analytics.capture('call_rtk_fallback', {
+        'call_id': config.room,
+        'failure': e.runtimeType.toString(),
+      });
+    }
+    // Fallback is unconditional past this point: tell the peer so it stops
+    // waiting on a meeting we are never joining, then take the legacy path.
+    // Only the decider re-offers, exactly as `sfu-abort` does, so the two
+    // phones cannot both offer.
+    if (_ended || _connected) return;
+    if (_remoteId != null) _send({'type': 'rtk-abort', 'to': _remoteId});
+    if (_rtkDecider) {
+      if (RemoteConfig.callSfuV1 && !_sfuAborted) {
+        _sfuDecider = true;
+        _send({'type': 'sfu-start', 'to': _remoteId});
+        await _startSfuMedia();
+      } else {
+        await _startP2pOffer();
+      }
+    }
+  }
+
   Future<void> _startSfuMedia() async {
     if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted) return;
     final stream = _stream;
@@ -6017,7 +6120,15 @@ class CallSession {
             _completeReconnect();
             await _tryIceRestart('ws-reconnect');
           } else {
-            if (RemoteConfig.callSfuV1 && !_sfuAborted) {
+            if (_rtkEligible && !_rtkAborted) {
+              // [CALL-RTK-3] Precedence (spec §3.2): RealtimeKit → raw SFU →
+              // P2P. Same announce-then-start discipline as `sfu-start`, for
+              // the same reason: both phones must select ONE media transport
+              // and can never silently split.
+              _rtkDecider = true;
+              _send({'type': 'rtk-start', 'to': _remoteId});
+              await _startRtkMedia();
+            } else if (RemoteConfig.callSfuV1 && !_sfuAborted) {
               // The newcomer/second socket is the existing CallRoom offerer.
               // Announce SFU before starting so both phones select one media
               // transport and can never silently split into SFU + P2P.
@@ -6102,6 +6213,43 @@ class CallSession {
       // works, and the peer's mic state stops being invisible.
       case 'mute':
         peerMuted.value = d['muted'] == true;
+        break;
+      // [CALL-RTK-3] The peer elected RealtimeKit. Mirrors `sfu-start` exactly,
+      // with one addition: `_rtkEligible` is re-checked on THIS phone, because
+      // the flag and the translation gate are per-device. A peer that is
+      // eligible while we are not gets an `rtk-abort` from `_startRtkMedia`'s
+      // failure path rather than a call that half-joins a meeting we will never
+      // be in.
+      case 'rtk-start':
+        if (!_ended && !_connected && !_rtkAborted) {
+          if (_rtkEligible) {
+            await _startRtkMedia();
+          } else {
+            _rtkAborted = true;
+            if (_remoteId != null) _send({'type': 'rtk-abort', 'to': _remoteId});
+          }
+        }
+        break;
+      // [CALL-RTK-3] The peer fell back. Sticky, and identical in shape to
+      // `sfu-abort`: leave the meeting if we joined one, then let the DECIDER
+      // (never both phones) re-offer down the precedence ladder.
+      case 'rtk-abort':
+        _rtkAborted = true;
+        if (_rtkStarting || _rtkActive) {
+          await _safeAwait(() => _rtk?.leave());
+          _rtk = null;
+          _rtkStarting = false;
+          _rtkActive = false;
+        }
+        if (_rtkDecider && !_ended && !_connected) {
+          if (RemoteConfig.callSfuV1 && !_sfuAborted) {
+            _sfuDecider = true;
+            _send({'type': 'sfu-start', 'to': _remoteId});
+            await _startSfuMedia();
+          } else {
+            await _startP2pOffer();
+          }
+        }
         break;
       case 'sfu-start':
         if (!_ended && !_connected && !_sfuAborted) {
@@ -8526,6 +8674,14 @@ class CallSession {
     _sfu = null;
     _sfuActive = false;
     _sfuStarting = false;
+    // [CALL-RTK-3] The RealtimeKit leg has exactly one teardown path, here,
+    // beside the SFU's. `RtcSession.leave()` is documented idempotent, and it
+    // is wrapped in _safeAwait for the same reason everything else in this
+    // teardown is: a call that will not end is worse than a leaked session.
+    await _safeAwait(() => _rtk?.leave());
+    _rtk = null;
+    _rtkActive = false;
+    _rtkStarting = false;
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     // [ADDCALL-2-UI] The ONE place the capture stream survives this teardown.
     //

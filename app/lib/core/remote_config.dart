@@ -149,6 +149,33 @@ class RemoteConfig {
   static bool get callSfuV1 => _b('callSfuV1', false);
   static bool get callSfuAudioOnly => _b('callSfuAudioOnly', false);
 
+  /// [CALL-RTK-3] Cloudflare RealtimeKit media transport
+  /// (`Specs/CALL-REALTIMEKIT-MIGRATION.md` §3.3).
+  ///
+  /// Precedence at the one fork point in `call_session.dart`:
+  /// [callRealtimeKitV1] → RTK meeting join; else [callSfuV1] → legacy raw-SFU;
+  /// else P2P. The `rtk-start`/`rtk-abort` frames carry the SAME fallback
+  /// semantics as `sfu-start`/`sfu-abort`, so a bad flag flip can never strand
+  /// a call — it lands on P2P.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS) in
+  /// the same change, per the fake-flag rule; [callRtkJoinDeadlineSec] also
+  /// needs a `numericKeys` entry there or it is un-tunable from KV.
+  static bool get callRealtimeKitV1 => _b('callRealtimeKitV1', false);
+
+  /// [CALL-RTK-3] Group conference via RealtimeKit instead of
+  /// `CloudflareConferenceController`. Independent of [callRealtimeKitV1] on
+  /// purpose: the spec rolls the group path out FIRST (Phase 1, lowest risk).
+  static bool get groupRealtimeKitV1 => _b('groupRealtimeKitV1', false);
+
+  /// [CALL-RTK-3] Seconds to wait for the RTK meeting join before self-aborting
+  /// to the legacy path. Deliberately a KV number, not a constant: the one
+  /// thing we cannot predict without device data is how long a cold RTK join
+  /// takes on a bad network, and getting it wrong either strands calls (too
+  /// long) or abandons good ones (too short).
+  static int get callRtkJoinDeadlineSec =>
+      (_asNum(_cfg['callRtkJoinDeadlineSec'])?.toInt()) ?? 10;
+
   /// [CALL-DEADAIR-1 2026-08-08] Parallelise the call-setup prologue.
   ///
   /// ON (default): the two renderer initialisations, the ICE credential fetch

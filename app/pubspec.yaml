@@ -185,6 +185,23 @@ dependencies:
   flutter_web_auth_2: ^5.0.3
   # Google-only auth: NATIVE Google sign-in (no browser) → Clerk google_one_tap.
   google_sign_in: ^6.2.1
+  # [CALL-RTK-3] Cloudflare RealtimeKit, HEADLESS core only — the media half of
+  # Specs/CALL-REALTIMEKIT-MIGRATION.md. NOT `realtimekit_ui`: the prebuilt UI
+  # would fight CallAudioController/CallKit for the audio route and doesn't look
+  # like AvaTOK (spec §2). Runs on the same Cloudflare Realtime SFU we already
+  # use, same account, same bill.
+  #
+  # PINNED EXACTLY (no caret). Spec §6: "SDK is young — pin exact versions; no
+  # local toolchain means a bad transitive dep is a 40-80 min CI discovery."
+  # 0.1.6 is the latest, published 2026-04-24 by the verified publisher
+  # realtime.cloudflare.com, and is currently marked DISCONTINUED on pub.dev —
+  # it still resolves and installs, but that is a real risk the rollout has to
+  # carry (see the report for CALL-RTK-3). Federated: pulls
+  # realtimekit_core_android / _ios / _platform_interface.
+  #
+  # NATIVE plugin — cannot be compiled headless here; must be validated by a CI
+  # build. Requires Android minSdk >= 24 (this app is 24) and iOS 12+.
+  realtimekit_core: 0.1.6
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService
   # Pinned to 2.x — 3.x rewrote the CallEvent/params API.
   flutter_callkit_incoming: ^2.5.8

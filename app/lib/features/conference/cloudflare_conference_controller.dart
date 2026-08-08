@@ -30,6 +30,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../core/analytics.dart';
 import '../../core/audio_tuning.dart';
+// [CALL-RTK-3] Group conference on Cloudflare RealtimeKit, behind
+// `groupRealtimeKitV1`. Only the provider-agnostic seam types cross this
+// import — no realtimekit_core type reaches this controller.
+import '../../core/calls/rtc/realtimekit_provider.dart';
+import '../../core/calls/rtc/rtc_provider.dart';
 import '../../core/ava_log.dart';
 import '../../core/call_log_store.dart'; // [GCALL-W4-LOG]
 import '../../core/call_recording/call_recording_model.dart'; // [ADDCALL-4-UI]
@@ -418,7 +423,75 @@ class CloudflareConferenceController extends ChangeNotifier {
   /// attempt, since the feature shipped. Opening the socket is not enough
   /// either: the attachment only exists once the DO has accepted the upgrade,
   /// which the `welcome` frame is the proof of. Hence the awaited handshake.
+  /// [CALL-RTK-3] The RealtimeKit meeting backing this conference, when
+  /// `groupRealtimeKitV1` is on and the join succeeded. Null on every legacy
+  /// call, which is every call today (the flag ships false).
+  RtcSession? _rtkSession;
+
+  /// [CALL-RTK-3] Phase 1 of `Specs/CALL-REALTIMEKIT-MIGRATION.md`: the group
+  /// path is the lowest-risk place to prove the SDK, so it goes first.
+  ///
+  /// Deliberately an EARLY BRANCH rather than a rewrite. The full controller
+  /// replacement is a later phase; this only has to answer "does a RealtimeKit
+  /// meeting carry a real group call on real phones". Returns true when the
+  /// meeting is joined and [connect] should stop; false means fall through to
+  /// the existing controller, which then runs completely unchanged — including
+  /// its own permission preflight, so a failure here costs a retry, never a
+  /// dead call.
+  Future<bool> _connectViaRealtimeKit() async {
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final perm = await _preflightPermissions();
+      if (!perm.mic) return false; // legacy path renders the denial message
+      final wantsVideo = wantVideo && perm.camera;
+      final ticket = await RealtimeKitRtcProvider.fetchTicket(
+        gid,
+        mode: wantsVideo ? RtcMode.video : RtcMode.audio,
+      );
+      final session = await RealtimeKitRtcProvider().join(
+        ticket,
+        mode: wantsVideo ? RtcMode.video : RtcMode.audio,
+        displayName: title,
+      );
+      _rtkSession = session;
+      _effectiveVideo = wantsVideo;
+      _joinedAtMs = DateTime.now().millisecondsSinceEpoch;
+      state = CfConnState.connected;
+      statusText = 'Connected';
+      _safeNotify();
+      // Spec §5 Phase 1 success assertion: `group_call_joined` carrying
+      // `provider=realtimekit` and `join_ms < 3000`. Asserting the VALUE, not
+      // the arrival of the event (ship-gate rule 3).
+      Analytics.capture('group_call_joined', {
+        'group_id': gid,
+        'provider': kRtkProviderName,
+        'join_ms': _joinedAtMs - t0,
+        'video': wantsVideo,
+      });
+      AvaLog.I.log('cfconf', 'rtk group join ok in ${_joinedAtMs - t0}ms');
+      return true;
+    } catch (e, s) {
+      await Analytics.captureException(e, s,
+          screen: 'cloudflare_conference_controller',
+          handled: true,
+          extra: {'op': 'rtk_group_join', 'group_id': gid});
+      Analytics.capture('group_call_rtk_fallback', {
+        'group_id': gid,
+        'failure': e.runtimeType.toString(),
+        'join_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+      await _rtkSession?.leave();
+      _rtkSession = null;
+      return false;
+    }
+  }
+
   Future<void> connect() async {
+    // [CALL-RTK-3] Flag-gated early branch. Off → not one line below changes.
+    if (RemoteConfig.groupRealtimeKitV1) {
+      activeGid = gid;
+      if (await _connectViaRealtimeKit()) return;
+    }
     final t0 = DateTime.now().millisecondsSinceEpoch;
     activeGid = gid;
     // [ADDCALL-4-UI] Bound BEFORE the socket exists: a recording armed on the
@@ -1734,6 +1807,20 @@ class CloudflareConferenceController extends ChangeNotifier {
     // and a handshake still being awaited must not hang the leave path.
     _reconnectRetryTimer?.cancel();
     _reconnectRetryTimer = null;
+    // [CALL-RTK-3] Leave the RealtimeKit meeting on the SAME teardown path as
+    // everything else. `leave()` is idempotent and null on every legacy call,
+    // so this is inert unless `groupRealtimeKitV1` actually carried this call.
+    if (_rtkSession != null) {
+      try {
+        await _rtkSession!.leave();
+      } catch (e, s) {
+        await Analytics.captureException(e, s,
+            screen: 'cloudflare_conference_controller',
+            handled: true,
+            extra: {'op': 'rtk_group_leave', 'group_id': gid});
+      }
+      _rtkSession = null;
+    }
     _failWelcome(_welcomeEpoch, StateError('call ended'));
     // [ADDCALL-4-UI] The recording store is a process-wide singleton, so a
     // controller that forgot to detach would keep announcing after its call had
