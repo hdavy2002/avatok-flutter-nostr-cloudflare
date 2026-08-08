@@ -203,6 +203,14 @@ export class CallRoom {
    * loaded and empty. Two entries maximum, mirroring the 2-peer cap.
    */
   private sfuSeats: Record<string, SfuSeat> | undefined;
+  /**
+   * [CALL-RTK-2 2026-08-08] The RealtimeKit meeting this room's media is on.
+   * `undefined` = not loaded yet (same convention as the fields around it).
+   * Held here rather than in KV because both phones resolve it concurrently and
+   * KV's eventual consistency would let each create its own meeting — two
+   * meetings is a connected call with silence. See routes/call_rtk.ts.
+   */
+  private rtkMeeting: { id: string; at: number } | null | undefined;
   private terminalStatus: string | null | undefined; // undefined = not loaded yet
   private terminalAt: number | null | undefined;
   /** [CALL-REDUCER-1 2026-08-01] Monotonic transition counter stamped on every
@@ -397,6 +405,29 @@ export class CallRoom {
       this.sfuSeats = (await this.state.storage.get<Record<string, SfuSeat>>("sfuSeats")) ?? {};
     }
     return this.sfuSeats;
+  }
+
+  /**
+   * [CALL-RTK-2] Lazy read of the RealtimeKit meeting id, with a lazy expiry.
+   *
+   * The expiry is not decoration. Glare rooms are keyed by a stable pair key and
+   * are REUSED by the next call between the same two people, so without a TTL a
+   * meeting minted today would be handed to a call next week — by which point
+   * RealtimeKit has long since reaped it and "Add Participant" 404s on every
+   * join with no way back. Six hours is far past any real call and matches the
+   * ICE credential lifetime the SFU path uses.
+   */
+  private async loadRtkMeeting(): Promise<{ id: string; at: number } | null> {
+    if (this.rtkMeeting === undefined) {
+      this.rtkMeeting = (await this.state.storage.get<{ id: string; at: number }>("rtkMeeting")) ?? null;
+    }
+    const m = this.rtkMeeting;
+    if (m && Date.now() - m.at > 6 * 3600 * 1000) {
+      this.rtkMeeting = null;
+      try { await this.state.storage.delete("rtkMeeting"); } catch { /* best-effort */ }
+      return null;
+    }
+    return m;
   }
 
   /** Close every published track recorded for this room and retire the seats.
@@ -1897,6 +1928,42 @@ export class CallRoom {
         try { await this.state.storage.put("sfuSeats", seats); } catch { /* best-effort */ }
         await this.scheduleNextAlarm();
         return Response.json({ ok: true });
+      }
+      /**
+       * [CALL-RTK-2 2026-08-08] The RealtimeKit meeting id for this room.
+       *
+       * Internal-only, same trust model as /sfu-seat above: the caller
+       * (routes/call_rtk.ts) has already proven the requester is a participant.
+       * This endpoint only answers "which meeting is this room's media on".
+       *
+       * POST is FIRST-WRITER-WINS and returns the winning id, which is the whole
+       * reason this lives in a strongly-consistent DO. Both phones join at once,
+       * both may create a meeting, and the loser must adopt the winner's id
+       * rather than sit alone in its own — a KV cache (the calls/ prototype's
+       * approach) cannot make that guarantee.
+       */
+      if (stateUrl.pathname.endsWith("/rtk-meeting")) {
+        if (req.method === "GET") {
+          const m = await this.loadRtkMeeting();
+          return Response.json({ ok: true, meeting_id: m?.id ?? null });
+        }
+        if (req.method === "POST") {
+          let body: Record<string, unknown> = {};
+          try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+          const meetingId = typeof body.meetingId === "string" ? body.meetingId.slice(0, 128) : "";
+          if (!meetingId) return Response.json({ ok: false, error: "meeting_id_required" }, { status: 400 });
+          const existing = await this.loadRtkMeeting();
+          if (existing) return Response.json({ ok: true, meeting_id: existing.id, created: false });
+          const next = { id: meetingId, at: Date.now() };
+          this.rtkMeeting = next;
+          try { await this.state.storage.put("rtkMeeting", next); } catch { /* best-effort */ }
+          return Response.json({ ok: true, meeting_id: meetingId, created: true });
+        }
+        if (req.method === "DELETE") {
+          this.rtkMeeting = null;
+          try { await this.state.storage.delete("rtkMeeting"); } catch { /* best-effort */ }
+          return Response.json({ ok: true });
+        }
       }
       // [CALL-FSM-1] Read the authoritative aggregate (late-joining client,
       // reconnect reconciliation, support debugging).

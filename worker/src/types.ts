@@ -208,6 +208,15 @@ export interface Env {
   // so the new path is a safe no-op until these are set.
   CF_RT_SFU_APP_ID?: string;
   CF_RT_SFU_APP_TOKEN?: string;
+  // [CALL-RTK-2 2026-08-08] Cloudflare RealtimeKit (Specs/CALL-REALTIMEKIT-MIGRATION.md).
+  // CF_RTK_ORG_ID holds the RealtimeKit **App ID** and CF_RTK_API_KEY the API
+  // token; the account id is reused from CF_ACCOUNT_ID below. The names follow
+  // the spec (Dyte-era "org id"/"api key" vocabulary) even though the current
+  // REST surface is the Cloudflare account API with a Bearer token. Unset →
+  // /api/callrtk/* 503s `rtk_unavailable`, so the route is a safe no-op until
+  // the secrets are set per environment via scripts/cf.sh.
+  CF_RTK_ORG_ID?: string;
+  CF_RTK_API_KEY?: string;
   FCM_SERVICE_ACCOUNT?: string;
   // Cloudflare Stream webhook HMAC secret (AvaLive). Gated.
   STREAM_WEBHOOK_SECRET?: string;

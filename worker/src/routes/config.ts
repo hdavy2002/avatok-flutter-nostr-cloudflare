@@ -78,6 +78,45 @@ export interface PlatformConfig {
    */
   callSfuAudioOnly: boolean;
   /**
+   * [CALL-RTK-2 2026-08-08] 1:1 media via a Cloudflare RealtimeKit meeting join.
+   *
+   * See Specs/CALL-REALTIMEKIT-MIGRATION.md. RealtimeKit runs on the SAME
+   * Cloudflare Realtime SFU we already use, but owns the reliability layer we
+   * keep hand-building and keep getting wrong (reconnection, WiFi<->cell
+   * handover, congestion adaptation). Server-side this gates /api/callrtk/*,
+   * which 503s `rtk_unavailable` while it is false; client-side it takes
+   * precedence over `callSfuV1`, which takes precedence over P2P.
+   *
+   * Ships FALSE. Both legacy paths stay in the build, and the client aborts to
+   * P2P if the RTK join misses `callRtkJoinDeadlineSec` — so a bad flag flip can
+   * never strand a call, and flipping back is a full rollback with no rebuild.
+   * Boolean → NOT in numericKeys.
+   */
+  callRealtimeKitV1: boolean;
+  /**
+   * [CALL-RTK-2 2026-08-08] Group conference via RealtimeKit.
+   *
+   * Separate from `callRealtimeKitV1` on purpose: the rollout (spec §5) starts
+   * with groups, which are the lower-risk half — an existing prototype backs
+   * them (`avaconsult/` + `calls/src/index.ts`) and there is no ring/CallKit
+   * interplay to prove. One flag would have made the group pilot expose 1:1 too.
+   * The ≤25 cap is unchanged and enforced independently of this flag.
+   * Boolean → NOT in numericKeys.
+   */
+  groupRealtimeKitV1: boolean;
+  /**
+   * [CALL-RTK-2 2026-08-08] Seconds the client waits for a RealtimeKit join
+   * before aborting back to the legacy path.
+   *
+   * Returned in the /api/callrtk/:room/join response so the deadline is a KV
+   * flip rather than a 40-80 minute CI round trip — the recovery-stopwatch bug
+   * (deadlines that made success unreachable by construction) is exactly the
+   * class of mistake that must be tunable live. NUMERIC → it MUST also appear
+   * in `numericKeys` below or `flags.sh set callRtkJoinDeadlineSec=15` 400s
+   * `bad type`.
+   */
+  callRtkJoinDeadlineSec: number;
+  /**
    * [CALL-DEADAIR-1 2026-08-08] Parallelise the call-setup prologue.
    *
    * Prod call avatok-17f145b5 (2026-08-07) spent ~14s between `call_started` and
@@ -1219,6 +1258,12 @@ const DEFAULTS: PlatformConfig = {
   // flipping this back to false is a full, instant rollback with no rebuild.
   callSfuV1: false,
   callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
+  // [CALL-RTK-2 2026-08-08] RealtimeKit migration, Phase 0. Both ship FALSE:
+  // the worker route exists and the secrets may be set, but no user reaches it
+  // until a client build implements the seam and a two-phone test passes.
+  callRealtimeKitV1: false,
+  groupRealtimeKitV1: false,
+  callRtkJoinDeadlineSec: 10,      // numeric → numericKeys. Abort-to-legacy deadline.
   callSetupParallelBootV1: true,   // [CALL-DEADAIR-1] concurrent setup prologue + peer poll
   callFirstAudioProbeV1: true,     // [CALL-DEADAIR-1] 200ms first-audio probe -> call_first_audio_ms
   avaVoicemailFallbackV1: true,    // [AVA-VM-FALLBACK-1] Ava timeout degrades to a plain recorder, never ends the call
@@ -1798,6 +1843,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // be here or `flags.sh set ringCycleMs=5000` 400s `bad type`. (`callRealRingCount`
     // is a BOOLEAN and must NOT be listed here.)
     "ringCycleMs",
+    // [CALL-RTK-2 2026-08-08] RealtimeKit join deadline — numeric, must be here
+    // or `flags.sh set callRtkJoinDeadlineSec=15` 400s `bad type`.
+    // (`callRealtimeKitV1` / `groupRealtimeKitV1` are BOOLEANS — not listed.)
+    "callRtkJoinDeadlineSec",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",

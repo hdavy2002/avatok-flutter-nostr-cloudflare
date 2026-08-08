@@ -131,6 +131,7 @@ import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
 import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus, groupCallInvite } from "./routes/groupcall";
 import { callSfuJoin, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuHeartbeat, callSfuClose } from "./routes/call_sfu";
+import { callRtkJoin } from "./routes/call_rtk";
 import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop, callTranslationToken, callTranslationLanguage } from "./routes/call_translation";
@@ -490,6 +491,18 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (cs[2] === "renegotiate" && req.method === "PUT") return await callSfuRenegotiate(req, env, room);
       if (cs[2] === "heartbeat" && req.method === "POST") return await callSfuHeartbeat(req, env, room);
       if (cs[2] === "close" && req.method === "POST") return await callSfuClose(req, env, room);
+    }
+
+    // [CALL-RTK-2 2026-08-08] Cloudflare RealtimeKit media admission
+    // (Specs/CALL-REALTIMEKIT-MIGRATION.md). Same room id as the callsfu block
+    // above and the P2P signalling, so `CallRoom` stays the single authority on
+    // who is on a call across all three media paths. One verb only: RealtimeKit
+    // owns the transport after the token is minted, so there is no publish/pull/
+    // renegotiate surface to proxy — that absence IS the migration. 503s
+    // `rtk_unavailable` while callRealtimeKitV1 / groupRealtimeKitV1 are false.
+    const crtk = p.match(/^\/api\/callrtk\/([A-Za-z0-9_:.-]{1,64})\/(join)$/);
+    if (crtk) {
+      if (crtk[2] === "join" && req.method === "POST") return await callRtkJoin(req, env, crtk[1]);
     }
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).
