@@ -1,6 +1,33 @@
 {
  "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory \u2014 see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+ "CALL-ACCEPT-STATUS-KILL-1": {
+  "description": "Caller-side accept-kills-call race (the 2026-08-08 18:10 IST davy↔Tiger ghost-calling cascade, prod call avatok-b3e2da5c). callCommand's FCM durable backstop pushed EVERY changed command's wire status to the peer, including `accept`; on the caller, CallSession._statusSub's catch-all ended any not-yet-connected session with whatever status arrived, so when the accept push beat WebRTC connect the caller killed the call at the moment of accept, auto-cancelled, and the callee's freshly-accepted call died — followed by instant redial → busy → retry storm. Fix is two-layered: worker only fans out terminal/handoff statuses (protects shipped clients on deploy); client catch-all ignores non-terminal statuses and emits call_status_ignored_nonterminal (next build).",
+  "shipped": "2026-08-09",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_ended",
+    "where": {
+     "reason": "accept"
+    },
+    "property": "connected",
+    "equals": true,
+    "min_events": 0,
+    "note": "PRESENCE IS THE BUG SIGNAL: the target is ZERO call_ended reason=accept events after the worker deploy. Any occurrence means a caller session was still torn down by an accept status — either the worker filter regressed or an old worker is live."
+   },
+   {
+    "event": "call_status_ignored_nonterminal",
+    "property": "status",
+    "equals": "accept",
+    "min_events": 0,
+    "note": "Client guard (next build). Zero expected once the worker filter is live; any occurrence is the guard correctly swallowing a stray non-terminal status (replay/old worker) instead of killing the call — benign, but worth a look if it spikes."
+   }
+  ],
+  "_verified_at": "worker/src/routes/api.ts callCommand — BACKSTOP_STATUSES set gating the Q_PUSH send; app/lib/core/calls/call_session.dart _statusSub — terminal set guard before the _endWith catch-all, emit site of call_status_ignored_nonterminal"
+ },
  "PA-RETUNE-1": {
   "description": "PA re-tune (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 1/3/6/7), worker-only, INBOUND vobiz lane only — campaign mode untouched. Ava now opens a forwarded PSTN call with a bare \"Hello?\", learns who is calling and what they want in a few sentences, refuses to engage with the subject matter (no product talk, no domain answers, no offers to connect), and ends the call herself. The one-line \"<who> called about <what>\" summary + an intent category ride on the end_call tool's NEW `summary`/`category` arguments — same Gemini session, no second model (owner decision 2026-06-30) — and become the inbox card headline (summary.reason, which the frozen client renderer already displays) and the push body. A 6-min DO ALARM watchdog force-finalizes a stuck session, and the settle is capped at hard_cap_ms so a stuck session can never bill past the cap.",
   "shipped": "2026-08-09",

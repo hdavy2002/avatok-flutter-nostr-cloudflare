@@ -1911,11 +1911,33 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
   // Durable backstop. The DO broadcast only reaches sockets that are attached
   // right now; a backgrounded or killed peer is not. Only fan out on a real
   // state change, and only for outcomes the peer needs to see.
-  if (out.ok === true && out.changed === true && typeof out.peer_uid === "string" && out.peer_uid) {
+  //
+  // [CALL-ACCEPT-STATUS-KILL-1 2026-08-09] "Outcomes the peer needs to see"
+  // was not being enforced: this pushed EVERY changed command's wire status,
+  // including `accept` after `accept_call`. On the caller's client the
+  // call-status FCM lane funnels into CallSession's `_statusSub`, whose
+  // catch-all ends a not-yet-connected session with whatever status arrived —
+  // so when the FCM backstop beat WebRTC connect, the push that said "your
+  // call was answered" KILLED the call at the moment of accept, the caller
+  // auto-cancelled, and the callee's freshly-accepted call died (prod calls
+  // avatok-b3e2da5c / the 2026-08-08 18:10 IST davy↔Tiger "ghost calling"
+  // cascade: kill → instant redial → busy → retry storm). Shipped clients
+  // cannot be patched, so the fix is HERE: only fan out statuses that are a
+  // terminal outcome or a handoff — the two families the caller's reducer and
+  // status listener are built to consume. `accept` needs no FCM: the accept
+  // handshake proceeds over the CallRoom DO socket (SDP answer), which is the
+  // only lane that can connect the call anyway.
+  const backstopStatus = String(out.wire_status ?? out.callee_leg_state ?? out.disposition ?? "");
+  const BACKSTOP_STATUSES = new Set([
+    "cancel", "bye", "hangup", "ended", "decline", "declined", "missed",
+    "no-answer", "busy", "decline_ava", "decline_agent", "decline_vm",
+  ]);
+  if (out.ok === true && out.changed === true && typeof out.peer_uid === "string" && out.peer_uid &&
+      BACKSTOP_STATUSES.has(backstopStatus)) {
     try {
       await env.Q_PUSH.send({
         kind: "call-status", to: out.peer_uid, callId: b.callId,
-        status: String(out.wire_status ?? out.callee_leg_state ?? out.disposition ?? ""),
+        status: backstopStatus,
         ts: Date.now(),
         ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
       });

@@ -2892,6 +2892,31 @@ class CallSession {
           _endWith('declined', reason: 'decline-explicit');
           return;
         }
+        // [CALL-ACCEPT-STATUS-KILL-1 2026-08-09] The catch-all below used to end
+        // the session with WHATEVER status arrived. The worker's FCM backstop
+        // (api.ts callCommand) pushed every changed command's wire status —
+        // including `accept` after the callee accepted — so when that push beat
+        // WebRTC connect, the status that meant "your call was answered" ended
+        // the caller's session, which auto-cancelled and killed the call the
+        // callee had just accepted (prod avatok-b3e2da5c, 2026-08-08: the
+        // davy↔Tiger "ghost calling" cascade — kill → redial → busy → retries).
+        // The worker no longer sends non-terminal statuses, but a client guard
+        // is still required: old workers, replays, and any future status this
+        // listener doesn't know must NEVER tear down a call that is in the
+        // middle of connecting. Only statuses that terminate the caller's leg
+        // may fall through to _endWith.
+        const terminal = {
+          'cancel', 'bye', 'hangup', 'ended', 'missed', 'no-answer',
+          'decline', 'declined',
+        };
+        if (!terminal.contains(e.status)) {
+          Analytics.capture('call_status_ignored_nonterminal', {
+            'call_id': config.room,
+            'status': e.status,
+            'connected': _connected,
+          });
+          return;
+        }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
       }
     });
