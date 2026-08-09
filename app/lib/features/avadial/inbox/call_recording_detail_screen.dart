@@ -333,45 +333,61 @@ class _CallRecordingDetailScreenState extends State<CallRecordingDetailScreen> {
                 final label = (live != null && live.inSeconds > 0)
                     ? callRecDurationLabel(live.inSeconds)
                     : callRecDurationLabel(_durationS);
-                return GestureDetector(
-                  onTap: _loading ? null : _togglePlay,
-                  child: Container(
-                    padding: const EdgeInsets.all(Msg.s4),
-                    decoration: BoxDecoration(
-                      color: AvaDialTheme.surface,
-                      borderRadius: BorderRadius.circular(AD.rListCard),
-                      border:
-                          Border.all(color: AvaDialTheme.border, width: 1),
-                    ),
-                    child: Row(children: [
-                      _loading
-                          ? const SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: AD.bubbleOutPlay))
-                          : PhosphorIcon(
-                              playing
-                                  ? PhosphorIcons.pauseCircle(
-                                      PhosphorIconsStyle.fill)
-                                  : PhosphorIcons.playCircle(
-                                      PhosphorIconsStyle.fill),
-                              size: 34,
-                              color: AD.bubbleOutPlay,
-                            ),
-                      const SizedBox(width: Msg.s3),
-                      Expanded(
-                        child: Text(
-                          playing
-                              ? 'Playing${label.isEmpty ? '' : ' · $label'}'
-                              : (label.isEmpty
-                                  ? 'Play recording'
-                                  : 'Play recording · $label'),
-                          style: ADText.rowName(c: AvaDialTheme.text),
-                        ),
-                      ),
-                    ]),
+                return Container(
+                  padding: const EdgeInsets.all(Msg.s4),
+                  decoration: BoxDecoration(
+                    color: AvaDialTheme.surface,
+                    borderRadius: BorderRadius.circular(AD.rListCard),
+                    border: Border.all(color: AvaDialTheme.border, width: 1),
                   ),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    // The play row is the tap target; the seek bar below owns
+                    // its own drags, so it deliberately sits OUTSIDE this
+                    // GestureDetector — a drag on the timeline must never
+                    // double as a play/pause tap.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _loading ? null : _togglePlay,
+                      child: Row(children: [
+                        _loading
+                            ? const SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 3, color: AD.bubbleOutPlay))
+                            // [CALLREC-PLAYER-UI-1] 34 → 56: owner report, the
+                            // play control was too small.
+                            : PhosphorIcon(
+                                playing
+                                    ? PhosphorIcons.pauseCircle(
+                                        PhosphorIconsStyle.fill)
+                                    : PhosphorIcons.playCircle(
+                                        PhosphorIconsStyle.fill),
+                                size: 56,
+                                color: AD.bubbleOutPlay,
+                              ),
+                        const SizedBox(width: Msg.s3),
+                        Expanded(
+                          child: Text(
+                            playing
+                                ? 'Playing${label.isEmpty ? '' : ' · $label'}'
+                                : (label.isEmpty
+                                    ? 'Play recording'
+                                    : 'Play recording · $label'),
+                            style: ADText.rowName(c: AvaDialTheme.text),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    // [CALLREC-PLAYER-UI-1] Draggable timeline (shared widget
+                    // with the Inbox card). Interactive once this recording is
+                    // the loaded track; muted before that.
+                    CallRecSeekBar(
+                      trackId: _trackId,
+                      fallbackDurationS: _durationS,
+                      surface: 'callrec_detail',
+                    ),
+                  ]),
                 );
               },
             ),

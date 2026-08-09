@@ -408,7 +408,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                       final label = (live != null && live.inSeconds > 0)
                           ? callRecDurationLabel(live.inSeconds)
                           : callRecDurationLabel(_c.durationSec);
-                      return Row(children: [
+                      final playRow = Row(children: [
                         // Nested INSIDE the card's GestureDetector: the
                         // innermost recognizer wins the tap, so the play icon
                         // plays and does NOT also push the detail screen.
@@ -420,19 +420,21 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                                 right: Msg.s2, top: 2, bottom: 2),
                             child: _loading
                                 ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
+                                    width: 36,
+                                    height: 36,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                                        strokeWidth: 2.5,
                                         color: AD.bubbleOutPlay),
                                   )
+                                // [CALLREC-PLAYER-UI-1] 26 → 40: the owner
+                                // reported the play icon was too small to hit.
                                 : PhosphorIcon(
                                     playing
                                         ? PhosphorIcons.pauseCircle(
                                             PhosphorIconsStyle.fill)
                                         : PhosphorIcons.playCircle(
                                             PhosphorIconsStyle.fill),
-                                    size: 26,
+                                    size: 40,
                                     color: AD.bubbleOutPlay,
                                   ),
                           ),
@@ -450,6 +452,21 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                           ),
                         ),
                       ]);
+                      // [CALLREC-PLAYER-UI-1] The draggable timeline appears
+                      // once THIS recording is the loaded track (playing or
+                      // paused) — before that there is nothing to seek within.
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          playRow,
+                          if (isThis)
+                            CallRecSeekBar(
+                              trackId: _trackId,
+                              fallbackDurationS: _c.durationSec,
+                              surface: 'inbox_card',
+                            ),
+                        ],
+                      );
                     },
                   ),
                   if (_error != null) ...[
@@ -467,6 +484,125 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// [CALLREC-PLAYER-UI-1] Draggable timeline for a recording, shared by the
+/// Inbox card and the detail screen so the two can never disagree about where
+/// playback is. Owner request 2026-08-09: "I also need a timeline bar, so I can
+/// drag the timeline and hear from the exact point in time."
+///
+/// Driven entirely by the shared [AudioPlaybackService]: position/duration come
+/// off its state stream, and a drag ends in [AudioPlaybackService.seek]. While
+/// the finger is down the local drag value wins over the stream so the thumb
+/// doesn't fight the 1Hz position updates. The bar is interactive only while
+/// THIS track is the loaded one — before first play there are no bytes loaded
+/// to seek within, so it renders muted and inert rather than pretending.
+class CallRecSeekBar extends StatefulWidget {
+  const CallRecSeekBar({
+    super.key,
+    required this.trackId,
+    required this.fallbackDurationS,
+    required this.surface,
+    this.activeColor = AD.bubbleOutPlay,
+    this.inactiveColor = AD.bubbleOutMeta,
+  });
+
+  final String trackId;
+
+  /// The envelope's `duration_s` — what the bar shows before the decoder has
+  /// reported the clip's real length.
+  final int fallbackDurationS;
+
+  /// `inbox_card` | `callrec_detail` — the telemetry dimension.
+  final String surface;
+
+  final Color activeColor;
+  final Color inactiveColor;
+
+  @override
+  State<CallRecSeekBar> createState() => _CallRecSeekBarState();
+}
+
+class _CallRecSeekBarState extends State<CallRecSeekBar> {
+  /// Non-null while the user is dragging — wins over the stream position.
+  double? _dragMs;
+
+  static String _fmt(int ms) {
+    final s = (ms / 1000).round();
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final ss = (s % 60).toString().padLeft(2, '0');
+    if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:$ss';
+    return '$m:$ss';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<PlaybackState?>(
+      valueListenable: AudioPlaybackService.I.state,
+      builder: (context, st, _) {
+        final isThis = st != null && st.track.trackId == widget.trackId;
+        final durMs = ((isThis ? st.duration : null) ??
+                    AudioPlaybackService.I.knownDuration(widget.trackId))
+                ?.inMilliseconds ??
+            widget.fallbackDurationS * 1000;
+        if (durMs <= 0) return const SizedBox.shrink();
+        final streamMs = isThis
+            ? st.position.inMilliseconds
+            : (AudioPlaybackService.I
+                    .savedPosition(widget.trackId)
+                    ?.inMilliseconds ??
+                0);
+        final posMs =
+            (_dragMs ?? streamMs.toDouble()).clamp(0.0, durMs.toDouble());
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              activeTrackColor: widget.activeColor,
+              inactiveTrackColor: widget.inactiveColor,
+              thumbColor: widget.activeColor,
+              disabledActiveTrackColor: widget.inactiveColor,
+              disabledInactiveTrackColor: widget.inactiveColor,
+              disabledThumbColor: widget.inactiveColor,
+              overlayColor: Colors.transparent,
+            ),
+            child: Slider(
+              min: 0,
+              max: durMs.toDouble(),
+              value: posMs,
+              onChanged: isThis ? (v) => setState(() => _dragMs = v) : null,
+              onChangeEnd: isThis
+                  ? (v) {
+                      setState(() => _dragMs = null);
+                      unawaited(AudioPlaybackService.I
+                          .seek(Duration(milliseconds: v.round())));
+                      unawaited(Analytics.capture('callrec_seek', {
+                        'track_id': widget.trackId,
+                        'surface': widget.surface,
+                        'to_ms': v.round(),
+                        'duration_ms': durMs,
+                      }));
+                    }
+                  : null,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
+            child: Row(children: [
+              Text(_fmt(posMs.round()),
+                  style: ADText.statCaption(c: widget.activeColor)),
+              const Spacer(),
+              Text(_fmt(durMs),
+                  style: ADText.statCaption(c: widget.inactiveColor)),
+            ]),
+          ),
+        ]);
+      },
     );
   }
 }
