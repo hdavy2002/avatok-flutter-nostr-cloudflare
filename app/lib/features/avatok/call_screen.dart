@@ -304,6 +304,17 @@ class _CallScreenState extends State<CallScreen> {
   /// deletes (spec §11 item 1).
   bool _escalating = false;
 
+  // [CALL-PIP-SWAP-1 2026-08-09] Self-view thumbnail state.
+  //
+  // `_pipOffset` is the thumbnail's dragged position (top-left corner in
+  // screen coordinates); null means "never dragged" and keeps the historical
+  // top-right default. `_pipSwapped` is the WhatsApp-style exchange: true
+  // renders the LOCAL feed full-screen and the REMOTE feed in the thumbnail.
+  // Both are plain UI state — deliberately NOT persisted across calls, so
+  // every call starts in the familiar default layout.
+  Offset? _pipOffset;
+  bool _pipSwapped = false;
+
   // [CALL-UI-COLLAPSE-1] Collapsible control panel — VIDEO CALLS ONLY.
   //
   // The 2x3 labelled grid ([CALL-UI-GRID-2]) reserves 350px, roughly a third of
@@ -1397,9 +1408,15 @@ class _CallScreenState extends State<CallScreen> {
         // canvas for BOTH the audio and video layouts.
         const SizedBox.expand(),
         if (showVideo) ...[
+          // [CALL-PIP-SWAP-1 2026-08-09] WhatsApp-style swap: tapping the
+          // self-view thumbnail exchanges it with the full-screen video and
+          // tapping again swaps back. `_pipSwapped` picks which renderer is
+          // full-screen; the local feed keeps its mirror wherever it renders.
           Positioned.fill(
             child: connected
-                ? RTCVideoView(s.remoteRenderer,
+                ? RTCVideoView(
+                    _pipSwapped ? s.localRenderer : s.remoteRenderer,
+                    mirror: _pipSwapped,
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                 : Container(color: AD.bg),
           ),
@@ -1434,72 +1451,131 @@ class _CallScreenState extends State<CallScreen> {
               child: IgnorePointer(
                   child:
                       Container(color: Colors.black.withValues(alpha: 0.45)))),
-          // [CALL-UI-GRID-2] Tap the self-view to flip the camera.
-          //
-          // Camera flip used to live ONLY in the More sheet, which is gone; and
-          // the self-view preview — the one place every other calling app puts
-          // this gesture — was not tappable at all. It is now the single flip
-          // affordance, with a small camera-rotate glyph in the corner so it is
-          // discoverable rather than a hidden hotspot.
+          // [CALL-PIP-SWAP-1 2026-08-09] The self-view thumbnail, upgraded
+          // (owner request 2026-08-09):
+          //   · BIGGER — 78×112 → 110×160.
+          //   · DRAGGABLE — pan it anywhere; it clamps to the screen with a
+          //     12px margin. `_pipOffset == null` means "never dragged", which
+          //     keeps the historical top-right default.
+          //   · TAP TO SWAP — WhatsApp-style: tap exchanges the thumbnail and
+          //     full-screen videos; tap again swaps back. Camera flip, which
+          //     used to be the whole-thumbnail tap ([CALL-UI-GRID-2]), now
+          //     lives on the corner glyph ONLY — same spot every other calling
+          //     app puts it, and it stays reachable in both swap states
+          //     (flipCamera acts on the local camera regardless of where the
+          //     local feed is rendered).
           //
           // No `canFlipCamera` gate is needed: this Positioned only builds when
           // `showVideo` (video && camOn), i.e. exactly when a live camera is
           // being sent, which is the condition the old sheet tested for.
-          Positioned(
-            top: 56,
-            right: 16,
-            width: 78,
-            height: 112,
-            child: Semantics(
-              button: true,
-              label: 'Switch camera',
-              child: GestureDetector(
-                // `opaque`, not the default `deferToChild`: the child is a
-                // platform view (RTCVideoView) and a Stack of Positioned-only
-                // children, neither of which is a reliable hit-test target.
-                behavior: HitTestBehavior.opaque,
-                // flipCamera is a Future<void>; nothing here needs its
-                // completion, and an un-awaited call trips the analyzer.
-                onTap: () => unawaited(s.flipCamera()),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(AD.rListCard),
-                          border:
-                              Border.all(color: AD.borderControl, width: 1),
-                          boxShadow: const [],
+          Builder(builder: (context) {
+            const pipW = 110.0, pipH = 160.0, pipMargin = 12.0;
+            final screen = MediaQuery.of(context).size;
+            final maxLeft = screen.width - pipW - pipMargin;
+            final maxTop = screen.height - pipH - pipMargin;
+            // .toDouble(): num.clamp returns num, and Positioned/Offset want
+            // double — without it this is a compile error CI only finds 40+
+            // minutes later (no local toolchain).
+            final left =
+                (_pipOffset?.dx ?? maxLeft - 4).clamp(pipMargin, maxLeft).toDouble();
+            final top = (_pipOffset?.dy ?? 56.0).clamp(pipMargin, maxTop).toDouble();
+            return Positioned(
+              left: left,
+              top: top,
+              width: pipW,
+              height: pipH,
+              child: Semantics(
+                button: true,
+                label: _pipSwapped
+                    ? 'Show their video full screen'
+                    : 'Show your video full screen',
+                child: GestureDetector(
+                  // `opaque`, not the default `deferToChild`: the child is a
+                  // platform view (RTCVideoView) and a Stack of Positioned-only
+                  // children, neither of which is a reliable hit-test target.
+                  behavior: HitTestBehavior.opaque,
+                  // Swap only makes sense once the remote video exists; before
+                  // connect the thumbnail tap is inert (the glyph still flips).
+                  onTap: connected
+                      ? () {
+                          setState(() => _pipSwapped = !_pipSwapped);
+                          Analytics.capture('call_pip_swapped', {
+                            'call_id': widget.room,
+                            'swapped': _pipSwapped,
+                          });
+                        }
+                      : null,
+                  onPanUpdate: (d) => setState(() {
+                    final cur = _pipOffset ?? Offset(left, top);
+                    _pipOffset = Offset(
+                      (cur.dx + d.delta.dx).clamp(pipMargin, maxLeft).toDouble(),
+                      (cur.dy + d.delta.dy).clamp(pipMargin, maxTop).toDouble(),
+                    );
+                  }),
+                  onPanEnd: (_) => Analytics.capture('call_pip_dragged', {
+                    'call_id': widget.room,
+                  }),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(AD.rListCard),
+                            border:
+                                Border.all(color: AD.borderControl, width: 1),
+                            boxShadow: const [],
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          // When swapped the thumbnail carries the REMOTE feed
+                          // (never mirrored); otherwise the local self-view
+                          // (mirrored, as before).
+                          child: (_pipSwapped && connected)
+                              ? RTCVideoView(s.remoteRenderer,
+                                  objectFit: RTCVideoViewObjectFit
+                                      .RTCVideoViewObjectFitCover)
+                              : RTCVideoView(s.localRenderer,
+                                  mirror: true,
+                                  objectFit: RTCVideoViewObjectFit
+                                      .RTCVideoViewObjectFitCover),
                         ),
-                        clipBehavior: Clip.antiAlias,
-                        child: RTCVideoView(s.localRenderer,
-                            mirror: true,
-                            objectFit: RTCVideoViewObjectFit
-                                .RTCVideoViewObjectFitCover),
                       ),
-                    ),
-                    // Understated corner glyph — the affordance, not a button.
-                    Positioned(
-                      right: 4,
-                      bottom: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.45),
-                          shape: BoxShape.circle,
-                        ),
-                        child: PhosphorIcon(
-                          PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
-                          size: 12,
-                          color: Colors.white,
+                      // Camera-flip glyph — now the flip BUTTON, not just an
+                      // affordance hint. Slightly larger hit target than the
+                      // old decorative glyph so it is honestly tappable.
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Semantics(
+                          button: true,
+                          label: 'Switch camera',
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            // flipCamera is a Future<void>; nothing here needs
+                            // its completion, and an un-awaited call trips the
+                            // analyzer.
+                            onTap: () => unawaited(s.flipCamera()),
+                            child: Container(
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.45),
+                                shape: BoxShape.circle,
+                              ),
+                              child: PhosphorIcon(
+                                PhosphorIcons.cameraRotate(
+                                    PhosphorIconsStyle.bold),
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
 
         // header: zine back circle + CENTRED peer name + encryption/state line
