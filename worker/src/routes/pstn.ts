@@ -198,9 +198,15 @@ async function resolveOwner(env: Env, forwardedFrom: string, callerFrom: string)
 const AGENT_KV_TTL_SEC = 300;       // Vobiz must connect the WS within 5 min
 const AGENT_MIN_TOKENS = 3;         // 1 minute of runway at 3 tokens/min
 
+// [PA-GATE-1] The lane this function picked, so handleAnswer can tell the live
+// agent apart from the zero-balance backstop (which is NOT an agent call and
+// must not be labelled one in the session blob / cost row). null → voicemail,
+// exactly as before.
+type AgentLaneResult = { response: Response; lane: "agent" | "hangup" };
+
 async function agentStreamXmlOrNull(
   env: Env, cfg: unknown, ownerUid: string, callUuid: string, callerFrom: string, secret: string,
-): Promise<Response | null> {
+): Promise<AgentLaneResult | null> {
   // The OWNER must have explicitly chosen mode="agent" ([RECEPT-MODE-1]).
   // Anything else (vm / null / no row) → voicemail, the unchanged default.
   // [RECEPT-ONBOARD-1] agent_scope in the SAME query: the CELL lane also requires
@@ -261,7 +267,42 @@ async function agentStreamXmlOrNull(
       // backward-compat fallback — mirrors routes/receptionist.ts's
       // already-correct spendable gate (receptionistConfigFor, :~1140).
       const spendable = Number(b.body?.spendable ?? b.body?.balance ?? 0);
-      if (b.status === 200 && spendable < AGENT_MIN_TOKENS) return null;
+      if (b.status === 200 && spendable < AGENT_MIN_TOKENS) {
+        // [PA-GATE-1] (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md §4) ZERO-BALANCE
+        // BACKSTOP. Low-but-nonzero runway is UNCHANGED — it still falls through to
+        // voicemail below. But at EXACTLY zero spendable (or a wallet read showing
+        // nothing spendable at all) AvaTOK steps out entirely: the answer webhook
+        // returns an immediate <Hangup/>, so a stray forwarded call from an
+        // empty-wallet owner costs nothing and behaves like a normal decline. The app
+        // dials the carrier MMI deactivation codes at zero balance, but only the phone
+        // can truly disable forwarding, so this server backstop is the second half.
+        // Uses the SAME wallet read already in hand — no second fetch.
+        if ((cfg as { paZeroBalanceHangup?: boolean } | null)?.paZeroBalanceHangup === true
+            && Number.isFinite(spendable) && spendable <= 0) {
+          // Telemetry MUST be awaited: this is an early-return path, and workerd
+          // silently drops an unawaited emit there
+          // ([avatok-worker-error-path-telemetry-dropped]). Owner-stamped via
+          // contactFor so a PostHog pull by email finds it; the caller is hashed,
+          // never stored in the clear.
+          try {
+            const contact = await contactFor(env, ownerUid).catch(() => ({ email: null, phone: null }));
+            let callerHash: string | null = null;
+            try { callerHash = callerFrom ? await sha256Hex(normalizePhone(callerFrom)) : null; } catch { /* best-effort */ }
+            await trackUserContact(env, ownerUid, contact.email, contact.phone, "pa_zero_balance_hangup", "pstn", {
+              spendable,
+              min_tokens: AGENT_MIN_TOKENS,
+              caller_hash: callerHash,
+              call_uuid: callUuid || null,
+              country: callerFrom ? e164Country(callerFrom) : null,
+            });
+          } catch { /* never let a telemetry failure change the call outcome */ }
+          return {
+            lane: "hangup",
+            response: xml(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`),
+          };
+        }
+        return null;
+      }
     } catch { /* fail-open */ }
   }
 
@@ -278,12 +319,15 @@ async function agentStreamXmlOrNull(
   const wsBase = PUBLIC_BASE.replace(/^https:/, "wss:");
   const streamUrl = `${wsBase}/api/pstn-agent/stream/${encodeURIComponent(secret)}/${encodeURIComponent(sid)}`;
   const cbUrl = `${PUBLIC_BASE}/api/pstn/stream-cb/${encodeURIComponent(secret)}`;
-  return xml(
-    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
-    `<Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-l16;rate=16000" ` +
-    `statusCallbackUrl="${esc(cbUrl)}">${esc(streamUrl)}</Stream>` +
-    `</Response>`,
-  );
+  return {
+    lane: "agent",
+    response: xml(
+      `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+      `<Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-l16;rate=16000" ` +
+      `statusCallbackUrl="${esc(cbUrl)}">${esc(streamUrl)}</Stream>` +
+      `</Response>`,
+    ),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -459,13 +503,17 @@ async function handleAnswer(req: Request, env: Env, secret: string): Promise<Res
     // is byte-identical.
     if (!isOrphan && resolved.owner_uid && (cfg as any).pstnAgentEnabled === true) {
       try {
-        const agentXml = await agentStreamXmlOrNull(env, cfg, resolved.owner_uid, callUuid, callerFrom, secret);
-        if (agentXml) {
-          session.agent = true;
+        const agentRes = await agentStreamXmlOrNull(env, cfg, resolved.owner_uid, callUuid, callerFrom, secret);
+        if (agentRes) {
+          // [PA-GATE-1] "hangup" is the zero-balance backstop, NOT an agent call:
+          // return the <Hangup/> without labelling the session agent (which would
+          // mislabel the cost row AI_AGENT in handleHangup). The session blob is
+          // still stored so the hangup webhook can release the concurrency gauge.
+          if (agentRes.lane === "agent") session.agent = true;
           if (callUuid) {
             try { await env.TOKENS.put(`pstn_session:${callUuid}`, JSON.stringify(session), { expirationTtl: SESSION_TTL_SEC }); } catch { /* best-effort */ }
           }
-          return agentXml;
+          return agentRes.response;
         }
       } catch { /* any agent-lane failure → voicemail below, never a dropped call */ }
     }
