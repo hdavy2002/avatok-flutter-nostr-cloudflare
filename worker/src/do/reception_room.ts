@@ -211,6 +211,17 @@ export class ReceptionRoom {
   // mic — soft or loud — lands at a consistent level without clipping.
   private pcmOut: Array<{ caller: boolean; pcm: Uint8Array }> = [];
   private pcmBytes = 0;  // total recording bytes (Ava + caller)
+  // [RECEPT-REC-TIMELINE-1 2026-08-09] Caller frames that arrive WHILE Ava's
+  // turn is still streaming. Gemini delivers a whole turn faster than realtime,
+  // so appending caller frames in raw arrival order spliced them INTO Ava's
+  // burst — played back as the two voices overlapping/garbled (owner report
+  // 2026-08-08: "his voice was rushed, it felt it was overlapping"). Held here
+  // and flushed as one contiguous run when her turn completes.
+  private pendingCallerPcm: Uint8Array[] = [];
+  private pendingCallerBytes = 0;
+  /** Wall-clock ms of the last caller frame appended to the recording — drives
+   *  gap-silence insertion so the caller's natural pauses survive. */
+  private lastCallerRecAt = 0;
   private avaBytes = 0;  // Ava-only audio bytes (telemetry; distinct from the 2-way total)
   private callerRecBytes = 0; // caller speech actually captured into the 2-way recording
   private callerPeak = 0; // peak |sample| of caller audio → drives adaptive normalization
@@ -600,6 +611,42 @@ export class ReceptionRoom {
     this.bumpIdle(); // arm the silence backstop
   }
 
+  /** [RECEPT-REC-TIMELINE-1] Append one caller segment to the recording,
+   *  restoring the caller's natural pauses. The speech-energy gate DROPS silent
+   *  frames entirely, which time-compressed the caller into a rushed, breathless
+   *  run-on (owner report 2026-08-08). If the previous appended segment was also
+   *  the caller and the wall-clock gap is short, insert that much real silence
+   *  (capped at 1.5s — a longer gap is a turn boundary, not a pause). */
+  private appendCallerPcm(up: Uint8Array): void {
+    const now = Date.now();
+    const last = this.pcmOut[this.pcmOut.length - 1];
+    if (last?.caller && this.lastCallerRecAt > 0) {
+      const gapMs = now - this.lastCallerRecAt;
+      if (gapMs > 240 && gapMs <= 3000) {
+        const fillMs = Math.min(gapMs, 1500);
+        const silence = new Uint8Array(Math.floor((fillMs * 24000) / 1000) * 2); // PCM16 mono 24k
+        this.pcmOut.push({ caller: true, pcm: silence }); this.pcmBytes += silence.byteLength;
+      }
+    }
+    this.pcmOut.push({ caller: true, pcm: up });
+    this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
+    this.lastCallerRecAt = now;
+  }
+
+  /** [RECEPT-REC-TIMELINE-1] Flush caller frames held during Ava's turn, as one
+   *  contiguous run AFTER her audio. Called on turnComplete and at finalize. */
+  private flushPendingCaller(): void {
+    if (this.pendingCallerPcm.length === 0) return;
+    const held = this.pendingCallerPcm; this.pendingCallerPcm = [];
+    this.pendingCallerBytes = 0;
+    this.lastCallerRecAt = 0; // held frames are contiguous; no gap-fill inside the run
+    for (const up of held) {
+      this.pcmOut.push({ caller: true, pcm: up });
+      this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
+    }
+    this.lastCallerRecAt = Date.now();
+  }
+
   // caller → Gemini : binary = PCM16 16k; (control JSON tolerated but ignored)
   private onClientMessage(ev: MessageEvent): void {
     if (this.finalized) return;
@@ -634,13 +681,20 @@ export class ReceptionRoom {
     // turns aren't fragmented), upsampled 16k→24k to match Ava's stream. Arrival
     // order ≈ turn order (Ava bursts, then caller replies), giving a clean
     // turn-by-turn recording.
-    if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES && callerHasSpeech(bytes)) {
+    if (this.pcmBytes + this.pendingCallerBytes < ReceptionRoom.MAX_REC_BYTES && callerHasSpeech(bytes)) {
       // Record at native level (no fixed boost) + track the caller's peak; the
       // actual gain is computed per-call at finalize and applied then.
       const up = upsample16to24(bytes);
       const pk = peakOf(up);
       if (pk > this.callerPeak) this.callerPeak = pk;
-      this.pcmOut.push({ caller: true, pcm: up }); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
+      // [RECEPT-REC-TIMELINE-1] While Ava's turn is still streaming, HOLD the
+      // caller's frames — appending them now splices them into her burst and
+      // the playback overlaps. They flush contiguously on her turnComplete.
+      if (this.avaSpeaking) {
+        this.pendingCallerPcm.push(up); this.pendingCallerBytes += up.byteLength;
+      } else {
+        this.appendCallerPcm(up);
+      }
       this.idleNudges = 0; // caller is engaged again → reset the silence escalation
       this.bumpIdle();
     }
@@ -867,6 +921,9 @@ export class ReceptionRoom {
       if (sc.turnComplete === true) {
         this.turnCount++;
         this.avaSpeaking = false; // P2: Ava's turn is done
+        // [RECEPT-REC-TIMELINE-1] Her turn's audio is fully appended — now place
+        // the caller frames that arrived while she streamed, contiguously after.
+        this.flushPendingCaller();
         // [AVA-CLOSING-STATE-1] Her turn ended with a farewell → enter CLOSING:
         // no more idle nudges (silence is now success), and a short grace timer
         // closes the line ourselves if end_call doesn't arrive and the caller
@@ -1196,13 +1253,17 @@ export class ReceptionRoom {
     // Recording → R2 (WAV, 24 kHz mono PCM16). Best-effort.
     let recordingUrl: string | null = null;
     try {
+      this.flushPendingCaller(); // [RECEPT-REC-TIMELINE-1] don't drop frames held mid-turn
       if (this.pcmBytes > 0) {
         const recT0 = Date.now();
         // Adaptive per-call normalization: scale the caller's audio toward a
         // target peak so it's audible for EVERY user regardless of their mic,
         // capped so we never over-amplify noise. Loud callers ≈ 1x, soft ≈ up to 8x.
+        // [RECEPT-REC-TIMELINE-1] Cap 8x → 4x. 8x on a soft mic amplified the
+        // noise floor as much as the voice — heard as "noise in his voice"
+        // (owner report 2026-08-08). 4x still lifts a quiet caller ~12 dB.
         const callerGain = this.callerPeak > 0
-          ? Math.min(8, Math.max(1, 22000 / this.callerPeak)) : 1;
+          ? Math.min(4, Math.max(1, 22000 / this.callerPeak)) : 1;
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;

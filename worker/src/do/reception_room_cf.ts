@@ -1386,7 +1386,9 @@ export class ReceptionRoomCf {
     let recordingUrl: string | null = null;
     try {
       if (!skipDelivery && this.pcmBytes > 0) {
-        const callerGain = this.callerPeak > 0 ? Math.min(8, Math.max(1, 22000 / this.callerPeak)) : 1;
+        // [RECEPT-REC-TIMELINE-1] Cap 8x → 4x, same reasoning as reception_room.ts:
+        // 8x on a soft mic amplifies the noise floor as much as the voice.
+        const callerGain = this.callerPeak > 0 ? Math.min(4, Math.max(1, 22000 / this.callerPeak)) : 1;
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;
