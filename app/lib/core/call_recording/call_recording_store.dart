@@ -37,6 +37,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -49,6 +50,7 @@ import '../../identity/identity.dart';
 import '../analytics.dart';
 import '../ava_log.dart';
 import '../db.dart';
+import '../disk_cache.dart';
 import '../remote_config.dart';
 import 'call_recording_api.dart';
 import 'call_recording_model.dart';
@@ -244,6 +246,10 @@ class CallRecordingStore {
         direction: direction == 'incoming' ? 'incoming' : 'outgoing',
         startedAt: DateTime.now().millisecondsSinceEpoch,
       );
+      // [CALLREC-RECOVER-META-1] Persist the session's identity so a crash /
+      // force-kill / raced stop doesn't turn this into "Call with Unknown" —
+      // recoverOrphans reads it back. Never throws.
+      await _writeSessionMetaEntry(_pending!);
       activeCallId.value = callId;
       progress.value = const CallRecordingProgress(durationMs: 0, bytes: 0);
       paused.value = false; // [CALLHOLD-1] never inherit a previous hold
@@ -468,10 +474,16 @@ class CallRecordingStore {
   /// Abandon the current recording and delete its working file. Nothing is
   /// saved and nothing is uploaded.
   Future<void> cancel() async {
+    // [CALLREC-RECOVER-META-1] A cancelled recording must not be resurrected
+    // by orphan recovery with full attribution — drop its meta entry too.
+    final cancelledId = _pending?.callId ?? activeCallId.value ?? '';
     try {
       await CallRecorderNative.cancel();
     } finally {
       _resetSession();
+      if (cancelledId.isNotEmpty) {
+        unawaited(_clearSessionMetaEntry(cancelledId));
+      }
     }
   }
 
@@ -699,14 +711,92 @@ class CallRecordingStore {
     }
   }
 
+  // ── [CALLREC-RECOVER-META-1] session-meta sidecar (Dart side) ─────────────
+  //
+  // WHY: on 2026-08-08 the owner's 22:46 recording of a call with a known peer
+  // finalized through orphan recovery (the call dropped and the stop raced the
+  // teardown), and the Inbox card read "Call with Unknown" — because this
+  // recovery path used to create the row with EMPTY peer fields. The native
+  // sidecar only carries the callId; the peer was only ever in the in-memory
+  // [_PendingSession], which died with the process.
+  //
+  // The fix: at [start] the session's identity is ALSO written to a small
+  // per-account DiskCache blob keyed by callId, and [recoverOrphans] restores
+  // it. Entries are cleared on a successful persist and pruned after 7 days, so
+  // the blob stays a handful of entries at most. Every helper swallows its own
+  // errors — metadata bookkeeping must never break a recording.
+
+  static const _kSessionMetaKey = 'callrec_session_meta_v1';
+
+  Future<Map<String, dynamic>> _readSessionMeta() async {
+    try {
+      final raw = await DiskCache.read(_kSessionMetaKey);
+      if (raw != null && raw.isNotEmpty) {
+        final j = jsonDecode(raw);
+        if (j is Map) return j.cast<String, dynamic>();
+      }
+    } catch (_) {/* treated as empty */}
+    return {};
+  }
+
+  Future<void> _writeSessionMetaEntry(_PendingSession s) async {
+    try {
+      final m = await _readSessionMeta();
+      // Prune anything older than 7 days — an orphan that old has either been
+      // recovered already or its file is gone.
+      final cutoff =
+          DateTime.now().millisecondsSinceEpoch - 7 * 24 * 3600 * 1000;
+      m.removeWhere((_, v) =>
+          v is! Map || ((v['started_at'] as num?)?.toInt() ?? 0) < cutoff);
+      m[s.callId] = {
+        'peer_uid': s.peerUid,
+        'peer_name': s.peerName,
+        'peer_avatar': s.peerAvatar,
+        'direction': s.direction,
+        'started_at': s.startedAt,
+      };
+      await DiskCache.write(_kSessionMetaKey, jsonEncode(m));
+    } catch (_) {/* best-effort */}
+  }
+
+  Future<void> _clearSessionMetaEntry(String callId) async {
+    try {
+      final m = await _readSessionMeta();
+      if (m.remove(callId) != null) {
+        await DiskCache.write(_kSessionMetaKey, jsonEncode(m));
+      }
+    } catch (_) {/* best-effort */}
+  }
+
+  /// The persisted identity for [callId], or null when none was written (a
+  /// pre-fix orphan, or a different account's scope).
+  Future<_PendingSession?> _sessionMetaFor(String callId) async {
+    try {
+      final v = (await _readSessionMeta())[callId];
+      if (v is! Map) return null;
+      return _PendingSession(
+        callId: callId,
+        peerUid: (v['peer_uid'] ?? '').toString(),
+        peerName: (v['peer_name'] ?? '').toString(),
+        peerAvatar: (v['peer_avatar'] ?? '').toString(),
+        direction: (v['direction'] ?? 'outgoing').toString(),
+        startedAt: (v['started_at'] as num?)?.toInt() ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Sweep the working directory for a file left behind by a crash or a
   /// force-kill and turn it into a real recording. Call ONCE on app start.
   ///
   /// With no segmentation this is the only crash protection there is (spec
   /// §3.3): native remuxes the truncated ADTS stream into a playable `.m4a` and
-  /// reports the raw callId from its sidecar file. The peer is unknown at this
-  /// point — the session that knew it died with the process — so the row is
-  /// created with empty peer fields and the card falls back to "Call recording".
+  /// reports the raw callId from its sidecar file. [CALLREC-RECOVER-META-1]:
+  /// the peer's identity is restored from the Dart session-meta blob written at
+  /// [start], so a recovered recording keeps its "Call with <name>" attribution
+  /// and its real start time; only a pre-fix orphan falls back to empty peer
+  /// fields and the file's mtime.
   ///
   /// Also drains any pending uploads, because a crash and a failed upload leave
   /// the same symptom: a local file the server has never seen.
@@ -724,17 +814,22 @@ class CallRecordingStore {
           await _deleteFile(o.path);
           continue;
         }
+        // [CALLREC-RECOVER-META-1] Restore who this call was with, if the
+        // session meta written at start survived. It usually does — the blob
+        // is on disk, only the in-memory session died with the process.
+        final restored = await _sessionMetaFor(callId);
         final saved = await _persist(
-          session: _PendingSession(
-            callId: callId,
-            peerUid: '',
-            peerName: '',
-            peerAvatar: '',
-            direction: 'outgoing',
-            // A recovered file has no session start time; the file's own mtime
-            // is the closest honest answer, and it keeps the list sorted sanely.
-            startedAt: await _mtimeMs(o.path),
-          ),
+          session: restored ??
+              _PendingSession(
+                callId: callId,
+                peerUid: '',
+                peerName: '',
+                peerAvatar: '',
+                direction: 'outgoing',
+                // A pre-fix orphan has no session start time; the file's own
+                // mtime is the closest honest answer.
+                startedAt: await _mtimeMs(o.path),
+              ),
           path: o.path,
           durationMs: o.durationMs,
           reason: 'recovered',
@@ -753,6 +848,11 @@ class CallRecordingStore {
             // id may be a synthesised `recovered_<ms>`. Say which, rather than
             // leaving a reader to infer it from the id's shape.
             'had_meta': !callId.startsWith('recovered_'),
+            // [CALLREC-RECOVER-META-1] Whether the Dart session-meta blob gave
+            // this orphan back its peer. false = a "Call with Unknown" card.
+            'peer_restored': restored != null,
+            if (restored != null && restored.peerUid.isNotEmpty)
+              'peer_uid': restored.peerUid,
           });
         }
       }
@@ -823,6 +923,9 @@ class CallRecordingStore {
       blobKey: blobKey,
     );
     await Db.I.upsertCallRecording(_toCompanion(rec));
+    // [CALLREC-RECOVER-META-1] The row exists — the crash-recovery meta entry
+    // has done its job (or was never needed). Unawaited: bookkeeping only.
+    unawaited(_clearSessionMetaEntry(callId));
 
     // [CALLREC-TELEM-1] The artifact event: what file actually came out, and
     // from which path. `reason` is the one property that answers "did this come

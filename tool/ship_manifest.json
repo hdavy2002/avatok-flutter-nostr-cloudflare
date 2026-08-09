@@ -523,5 +523,41 @@
    }
   ],
   "_verified_at": "app/lib/features/avadial/inbox/call_recording_card.dart:CallRecSeekBar.onChangeEnd -> Analytics.capture('callrec_seek', {'track_id','surface','to_ms','duration_ms'}); mounted in call_recording_card.dart (inbox_card) and call_recording_detail_screen.dart (callrec_detail)"
+ },
+ "CALLREC-RECOVER-META-1": {
+  "description": "The owner's 22:46 recording of 2026-08-08 (call avatok-85dc200b) finalized via orphan recovery (reason=recovered), and that path created the row with EMPTY peer fields - the actual cause of that card's 'Call with Unknown'. start() now persists the session's peer_uid/name/avatar/direction/started_at to a per-account DiskCache blob keyed by callId; recoverOrphans() restores it. Cleared on successful persist and on cancel; pruned after 7 days.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "callrec_recovered",
+    "property": "peer_restored",
+    "in": [
+     true
+    ],
+    "min_events": 1,
+    "note": "Only fires after a crash/raced stop, so absence in a quiet window means no orphan occurred - read it over a long window. peer_restored=false on a post-fix build means the meta blob was missing at recovery, i.e. another 'Call with Unknown' card just shipped."
+   }
+  ],
+  "_verified_at": "app/lib/core/call_recording/call_recording_store.dart: _writeSessionMetaEntry called at end of start(); recoverOrphans() -> _sessionMetaFor(callId) and callrec_recovered emit gains peer_restored + peer_uid"
+ },
+ "CALLREC-VOICE-QUALITY-1": {
+  "description": "Owner report 2026-08-09: the far side of a recording sounded muffled even on WiFi. The far leg is already one lossy pass (network Opus); re-encoding at 32 kbps AAC-LC mono stacked a second and audibly dulled it. MONO_BITRATE 32k->64k, STEREO_BITRATE 48k->96k in CallRecorderPlugin.kt (~28 MB/hour mono).",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "callrec_finalized",
+    "property": "bytes_per_s",
+    "gte": 6500,
+    "min_events": 1,
+    "note": "Old encoder measured ~4100 bytes/s (32 kbps + container); 64 kbps lands ~8200. A finalize on the new build still reporting ~4100 means the constant did not take (wrong build or resource shrinker surprise)."
+   }
+  ],
+  "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/callrecord/CallRecorderPlugin.kt MONO_BITRATE/STEREO_BITRATE; bytes_per_s emitted on client callrec_finalized (observed 4127 on build 10527, 2026-08-08)"
  }
 }
