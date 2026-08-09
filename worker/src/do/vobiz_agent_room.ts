@@ -42,10 +42,24 @@ import { readConfig } from "../routes/config";
 import { walletOp } from "../routes/wallet"; // [RECEPT-BILLING-3] start-of-call balance read (accrual + zero-stop)
 import { metaDb } from "../db/shard";
 // Engine imports are FINE here (this is engine code; the no-engine-import rule
-// binds routes/pstn.ts only). The prompt is the SAME [AVA-INDIA-TUNE-1] 8-rule
-// composition the in-app agent uses, so the PSTN agent inherits every behavior
-// rule (Hinglish mirroring, aap-first etiquette, one-goodbye, end_call, …).
-import { composeReceptionistPrompt, RECEPTIONIST_MODEL_DEFAULT, AVA_VOICE } from "../routes/receptionist";
+// binds routes/pstn.ts only). [PA-RETUNE-1 2026-08-09] the INBOUND prompt is no
+// longer the shared [AVA-INDIA-TUNE-1] receptionist brief: this lane is the PA,
+// a message-first answering machine (bare "Hello?", who+what, no engagement,
+// structured one-line summary on end_call) — lib/pa_prompt.ts. The behavioural
+// rules it keeps from that brief (Hinglish mirroring, aap-first etiquette, one
+// goodbye, end_call self-close) are restated there. The in-app receptionist
+// lanes still use composeReceptionistPrompt, unchanged.
+import { RECEPTIONIST_MODEL_DEFAULT, AVA_VOICE } from "../routes/receptionist";
+// [PA-RETUNE-1] INBOUND-ONLY message-first prompt (Specs/SPEC-AVA-SPAM-
+// SECRETARY-2026-08-09.md §3). The inbound lane no longer composes the SHARED
+// receptionist prompt (composeReceptionistPrompt, still used unchanged by the
+// in-app lanes) — the PA is an answering machine, not a receptionist desk.
+// Campaign mode is untouched: it uses kv.compiled_prompt and never called
+// either function.
+import {
+  composePaPrompt, normalizePaCategory, normalizePaSummary, parsePaSummaryLine,
+  type PaCategory,
+} from "../lib/pa_prompt";
 import { matchAvatokPhones } from "../routes/api";
 import { recordCallSummary, receptOutcome } from "../lib/recept_stats"; // [RECEPT-STATS-1] canonical call summary
 import { e164Country } from "../lib/e164_country";                      // [RECEPT-STATS-1] caller_country from E.164
@@ -246,6 +260,22 @@ export class VobizAgentRoom {
   private firstAudioSent = false;
   private wrapping = false;
 
+  // [PA-RETUNE-1] INBOUND-ONLY PA state. All three stay at their defaults on the
+  // campaign path (nothing below is ever written when this.campaign is set).
+  /** True on the inbound (non-campaign) lane — the "PA" of the spec. */
+  private paMode = false;
+  /** Caller resolved to a known AvaTOK contact (matchAvatokPhones hit). */
+  private callerMatched = false;
+  /** One-line "<who> called about <what>" from end_call's `summary` arg (or the
+   *  spoken-tag fallback). Null when the call ended before Ava closed. */
+  private paSummaryLine: string | null = null;
+  /** delivery | sales | bank | personal | unknown (defaults to unknown). */
+  private paCategory: PaCategory = "unknown";
+  /** 6-min stuck-session failsafe (spec §3.4) — a DO ALARM, not a setTimeout,
+   *  so it still fires if the isolate that armed hardTimer was evicted. */
+  private watchdogMs = 360_000;
+  private watchdogFired = false;
+
   // [AVA-CAMP-C-ROOM] campaign-mode context — null for every inbound call.
   // Presence of this.campaign is the ONLY gate every campaign branch below
   // checks; inbound sessions never set it, so those branches always no-op.
@@ -326,7 +356,10 @@ export class VobizAgentRoom {
     if (!campaignMode && kv.caller_e164) {
       try {
         const m = await matchAvatokPhones(this.env, { numbers: [kv.caller_e164] });
-        if (m.length > 0) { callerUid = m[0].uid; callerName = m[0].name ?? null; }
+        if (m.length > 0) {
+          callerUid = m[0].uid; callerName = m[0].name ?? null;
+          this.callerMatched = true; // [PA-RETUNE-1] §6a caller_matched
+        }
       } catch { /* generic greeting */ }
     } else if (campaignMode) {
       // No AvaTOK-uid resolution for campaign contacts — the compiled_prompt
@@ -347,6 +380,13 @@ export class VobizAgentRoom {
 
     const n = (v: unknown, fb: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
     const now = Date.now();
+    // [PA-RETUNE-1] the PA lane is exactly "inbound, non-campaign".
+    this.paMode = !campaignMode;
+    // Read defensively — `paWatchdogMs` is declared in routes/config.ts's
+    // PlatformConfig/DEFAULTS/numericKeys; until that lands (or if KV is
+    // silent) the 6-min spec default applies. Same n() fallback pattern as the
+    // cap/cue keys below.
+    this.watchdogMs = n(cfg.paWatchdogMs, 360_000);
     this.init = campaignMode ? {
       // ── [AVA-CAMP-C-ROOM] campaign-mode init: compiled_prompt IS the system
       // instruction (composeReceptionistPrompt is never called here), and
@@ -384,13 +424,12 @@ export class VobizAgentRoom {
       call_id: kv.call_uuid || null,
       voice_name: AVA_VOICE, // P12: Ava's one canonical female voice
       file_search_store: s.file_search_store || null,
-      // SAME prompt composition as the in-app agent ([AVA-INDIA-TUNE-1] 8-rule
-      // brief + [RECEPT-MODE-1]); activation "rings" — the cell call was
-      // forwarded because the owner didn't pick up.
-      system_prompt: composeReceptionistPrompt(s, {
-        callerName, activationMode: "rings", ownerName, gender: ownerGender,
-        engine: "gemini", timeOfDay: timeOfDayWordIST(),
-      }),
+      // [PA-RETUNE-1] MESSAGE-FIRST PA prompt (lib/pa_prompt.ts) — bare
+      // "Hello?" opening, take who+what, no engagement with the caller's
+      // subject matter, structured summary on end_call. Replaces the shared
+      // [AVA-INDIA-TUNE-1] receptionist brief on THIS lane only; the in-app
+      // lanes still call composeReceptionistPrompt unchanged.
+      system_prompt: composePaPrompt(s, { callerName, ownerName, gender: ownerGender }),
       model: (this.env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT,
       soft_cap_ms: n(cfg.receptCloseMs, DEFAULT_CLOSE_MS),
       hard_cap_ms: n(cfg.receptHardCapMs, DEFAULT_HARD_CAP_MS),
@@ -507,8 +546,32 @@ export class VobizAgentRoom {
     this.closeTimer = setTimeout(() => this.onSessionClose(), this.init.soft_cap_ms);
     this.hardTimer = setTimeout(() => this.finalize("hard_cap"), this.init.hard_cap_ms);
     this.accrualTimer = setInterval(() => this.onAccrualTick(), 1000);
+    // [PA-RETUNE-1] INBOUND-ONLY 6-min watchdog (spec §3.4). Deliberately a DO
+    // ALARM and not another setTimeout: hardTimer lives in this isolate's event
+    // loop, so the exact failure this failsafe exists for (a hung Gemini leg /
+    // an isolate that never runs the callback) is one setTimeout cannot cover.
+    // Storage alarms are durable and re-deliver on a fresh instance. Campaign
+    // calls never arm it — their timeline is owned by CampaignDO.
+    if (!campaignMode) {
+      try { await this.state.storage.setAlarm(now + this.watchdogMs); } catch { /* failsafe is best-effort */ }
+    }
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** [PA-RETUNE-1] The 6-min stuck-session failsafe. This DO had no alarm()
+   *  handler before, so this method is only ever reached via the watchdog the
+   *  inbound path arms above.
+   *
+   *  Two shapes:
+   *   • the session is still live in THIS isolate → force-finalize("watchdog"),
+   *     which caps the settle at hard_cap_ms and emits `pa_watchdog_fired`;
+   *   • the isolate was evicted / already finalized → nothing is billing and
+   *     this.init is gone, so just clear and return. */
+  async alarm(): Promise<void> {
+    if (this.finalized || !this.init) return;
+    this.watchdogFired = true;
+    await this.finalize("watchdog");
   }
 
   /** Telemetry stamped with owner email/phone + one-call trace. Every event on
@@ -523,6 +586,22 @@ export class VobizAgentRoom {
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
       { ...props, transport: "vobiz", call_id: i.call_id, activation_mode: i.activation_mode,
         model: i.model, voice: i.voice_name, voice_gender: voiceGender }, i.sid);
+  }
+
+  /** [PA-RETUNE-1] `ev()` that can be AWAITED. Every emit on a finalize/error
+   *  path must be awaited or waitUntil'd — workerd drops unawaited promises
+   *  once the request/alarm handler returns, which is exactly how an event on
+   *  an early-return path silently disappears
+   *  ([avatok-worker-error-path-telemetry-dropped]). Never throws. */
+  private async evAwait(event: string, props: Record<string, unknown> = {}): Promise<void> {
+    const i = this.init;
+    if (!i) return;
+    const voiceGender = this.campaign ? (CAMPAIGN_VOICE_GENDER[i.voice_name] ?? "woman") : "woman";
+    try {
+      await trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
+        { ...props, transport: "vobiz", call_id: i.call_id, activation_mode: i.activation_mode,
+          model: i.model, voice: i.voice_name, voice_gender: voiceGender }, i.sid);
+    } catch { /* telemetry never breaks a call */ }
   }
 
   /** [RECEPT-LIB-1] The voicemail's AvaLibrary row — see lib/voicemail_library.ts.
@@ -608,6 +687,26 @@ export class VobizAgentRoom {
         },
       }],
     }];
+    // [PA-RETUNE-1] SUMMARY PROTOCOL — inbound (PA) lane only. The session is
+    // AUDIO-only, so a "tagged final text line" would be SPOKEN to the caller;
+    // the tool arguments are the one silent structured channel, and they cost
+    // nothing extra (same session, same turn — the 2026-06-30 "no second-model
+    // summary" decision is untouched). Campaign mode keeps end_call's original
+    // single-argument shape byte-for-byte.
+    if (!this.campaign) {
+      const endDecl = tools[0].functionDeclarations[0];
+      endDecl.description = "End the phone call. Invoke this the moment you have finished saying your ONE short goodbye line, once you know who called and what they want. Do NOT wait for a timer — end the call yourself. ALWAYS pass `summary` and `category`.";
+      endDecl.parameters.properties.summary = {
+        type: "STRING",
+        description: "One line for the person whose phone this is, in exactly this form: '<who> called about <what>'. English. Never spoken aloud.",
+      };
+      endDecl.parameters.properties.category = {
+        type: "STRING",
+        description: "The kind of call, one word.",
+        enum: ["delivery", "sales", "bank", "personal", "unknown"],
+      };
+      endDecl.parameters.required = ["summary", "category"];
+    }
     const kbDisabled = String((this.env as any).RECEPT_KB_DISABLED || "") === "1";
     if (init.file_search_store && !kbDisabled) {
       tools.push({ fileSearch: { fileSearchStoreNames: [init.file_search_store] } });
@@ -661,9 +760,15 @@ export class VobizAgentRoom {
     });
     // GREET FIRST — without this nudge Gemini's VAD waits for the caller and the
     // cell caller hears dead air.
+    // [PA-RETUNE-1] On the inbound PA lane the opening is a BARE "Hello?" — the
+    // old nudge pointed at a "STEP 1 opening greeting" (name + why the owner
+    // can't talk + an invitation), which is exactly the intro this issue
+    // removes. Campaign mode keeps the original nudge verbatim.
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[Caller connected — say your STEP 1 opening greeting now, exactly as instructed, then stop and listen.]" }] }],
+        turns: [{ role: "user", parts: [{ text: this.campaign
+          ? "[Caller connected — say your STEP 1 opening greeting now, exactly as instructed, then stop and listen.]"
+          : "[Caller connected — say exactly \"Hello?\" and nothing else, then stop and listen.]" }] }],
         turnComplete: true,
       },
     });
@@ -887,11 +992,21 @@ export class VobizAgentRoom {
         const rawReason = String(endCall?.args?.reason || "").trim();
         const reason = (rawReason === "caller_bye" || rawReason === "message_complete")
           ? rawReason : "message_complete";
+        // [PA-RETUNE-1] the one-line summary + intent bucket ride on end_call's
+        // arguments (inbound lane only — campaign's end_call declares neither,
+        // so these are always absent there and this is a no-op).
+        if (!this.campaign) {
+          const sum = normalizePaSummary(endCall?.args?.summary);
+          if (sum) this.paSummaryLine = sum;
+          this.paCategory = normalizePaCategory(endCall?.args?.category);
+        }
         this.selfClosed = true;
         this.ev("ava_recept_self_closed", {
           reason,
           turns: this.turnCount,
           session_s: Math.round((Date.now() - this.startedAt) / 1000),
+          summary_line_present: !!this.paSummaryLine,
+          intent_category: this.paCategory,
         });
         this.ev("ava_recept_ended_by_agent", { ms: Date.now() - this.startedAt, reason });
         setTimeout(() => { void this.finalize("ava_ended"); }, 1600);
@@ -1207,6 +1322,14 @@ export class VobizAgentRoom {
     if (this.hardTimer) clearTimeout(this.hardTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.accrualTimer) { clearInterval(this.accrualTimer); this.accrualTimer = null; }
+    // [PA-RETUNE-1] disarm the watchdog like every other timer, so a normally
+    // ended call can never re-enter alarm() six minutes later.
+    // Not awaited on purpose: nothing below depends on it and the caller's
+    // hangup (the client.close() a few lines down) must not wait on storage.
+    // The DO's output gate still runs it to completion.
+    if (reason !== "watchdog") {
+      try { void this.state.storage.deleteAlarm().catch(() => {}); } catch { /* best-effort */ }
+    }
     try { this.gem?.close(); } catch { /* ignore */ }
     try {
       if (this.streamId) this.sendVobiz({ event: "stop", streamId: this.streamId });
@@ -1252,9 +1375,27 @@ export class VobizAgentRoom {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
 
-    // No second-model summary (owner decision 2026-06-30) — recording + live
-    // transcript only, exactly like the in-app lane.
-    const summary: any = null;
+    // [PA-RETUNE-1] STILL no second-model summary (owner decision 2026-06-30):
+    // the one-liner below came out of the SAME Gemini session, as arguments on
+    // the end_call tool it already invoked (see onGeminiMessage). The fallback
+    // parse covers a model that speaks the tag instead of passing the argument.
+    // Absent (caller hung up, hard cap, watchdog) → summary stays null and
+    // postMessage falls back to the exact legacy body text.
+    if (this.paMode && !this.paSummaryLine) {
+      const parsed = parsePaSummaryLine(this.outText.join(" "));
+      if (parsed.summary) {
+        this.paSummaryLine = parsed.summary;
+        if (parsed.category) this.paCategory = parsed.category;
+      }
+    }
+    // The field name `reason` is NOT free choice: the FROZEN client renderer
+    // reads exactly `summary['reason']` as the card headline
+    // (app/lib/features/avatok/chat_thread/cards.dart:350,
+    //  app/lib/features/avadial/inbox/inbox_api.dart:286), so the one-liner
+    // lands in the existing UI with no client build.
+    const summary: any = this.paSummaryLine
+      ? { reason: this.paSummaryLine, category: this.paCategory, source: "pa_end_call" }
+      : null;
 
     // Persist session.
     try {
@@ -1265,7 +1406,27 @@ export class VobizAgentRoom {
     } catch { /* ignore */ }
 
     const hadConversation = this.firstAudioSent || this.inText.length > 0 || this.pcmBytes > 0;
-    try { await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation); } catch { /* best-effort */ }
+    let delivery = { inboxOk: false, pushSent: false };
+    try {
+      delivery = await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation);
+    } catch { /* best-effort — `delivery` stays all-false and the event says so */ }
+    // [PA-RETUNE-1] §6a `pa_message_delivery` — the DELIVERY half, decoupled
+    // from the call half, so a failed inbox post is visible even when the call
+    // summary says "completed". Emitted on success AND failure, and AWAITED:
+    // an unawaited emit on an error path is silently dropped by workerd
+    // ([avatok-worker-error-path-telemetry-dropped]).
+    if (this.paMode) {
+      await this.evAwait("pa_message_delivery", {
+        sid: init.sid,
+        recording_bytes: this.pcmBytes,
+        transcript_len: transcript.length,
+        summary_line_present: !!this.paSummaryLine,
+        inbox_post_ok: delivery.inboxOk,
+        push_sent: delivery.pushSent,
+        intent_category: this.paCategory,
+        has_recording: !!recordingUrl,
+      });
+    }
 
     // [AVA-CAMP-C-ROOM] persist the mid-call tool audit trail. Only in
     // campaign mode (this.campaign set) — never runs on the inbound path.
@@ -1305,7 +1466,19 @@ export class VobizAgentRoom {
     // rates to reception_room. sid is `pstn-<CallUUID>` so `<sid>:settle` can
     // never collide with an in-app session's op_id.
     const cfg: any = await readConfig(this.env).catch(() => ({} as any));
-    const secondsExact = Math.max(0, (now - this.startedAt) / 1000);
+    const wallSeconds = Math.max(0, (now - this.startedAt) / 1000);
+    // [PA-RETUNE-1] A STUCK SESSION MUST NEVER BILL PAST THE CAP. The settle is
+    // per-second on wall-clock, so a session that survived its hard-cap timer
+    // (the exact case the watchdog exists for) would otherwise be charged for
+    // the extra minute Ava sat there doing nothing. Cap the BILLED duration at
+    // init.hard_cap_ms on the inbound lane; campaign billing (owned by
+    // CampaignDO) and its cost-ledger row are untouched.
+    // 2s of slack: a normal hard-cap finalize lands a few hundred ms past the
+    // cap by construction (timer → close → settle), and flagging THAT as a
+    // trued-up settle would bury the real signal in noise.
+    const capSeconds = Math.max(0, init.hard_cap_ms / 1000);
+    const settleTruedUp = this.paMode && capSeconds > 0 && wallSeconds > capSeconds + 2;
+    const secondsExact = settleTruedUp ? capSeconds : wallSeconds;
     let hundredths = Math.ceil(secondsExact * 5);
     if (this.zeroStopFired && this.startBalance != null) {
       hundredths = Math.min(hundredths, Math.ceil(this.startBalance * 100));
@@ -1325,8 +1498,26 @@ export class VobizAgentRoom {
           seconds: Math.round(secondsExact * 10) / 10, hundredths, tokens_charged: chargedTokens,
           charge_ok: r.ok, feature: "ava_receptionist_call", rate: 3,
           zero_stopped: this.zeroStopFired,
+          settle_trued_up: settleTruedUp,
+          wall_seconds: Math.round(wallSeconds * 10) / 10,
         });
       } catch { /* best-effort */ }
+    }
+
+    // [PA-RETUNE-1] `pa_watchdog_fired` — PRESENCE IS A BUG SIGNAL (spec §6a),
+    // so it is emitted only when the failsafe actually ran, and awaited: this
+    // is a finalize path reached from alarm(), the exact shape where an
+    // unawaited emit gets dropped.
+    if (this.watchdogFired || reason === "watchdog") {
+      await this.evAwait("pa_watchdog_fired", {
+        sid: init.sid,
+        ms_past_cap: Math.max(0, Math.round((now - this.startedAt) - init.hard_cap_ms)),
+        settle_trued_up: settleTruedUp,
+        watchdog_ms: this.watchdogMs,
+        hard_cap_ms: init.hard_cap_ms,
+        turns: this.turnCount,
+        tokens_charged: chargedTokens,
+      });
     }
 
     // ── [RECEPT-STATS-1] ONE canonical call summary (event + D1 mirror + 90d
@@ -1349,6 +1540,22 @@ export class VobizAgentRoom {
       reason,
       owner_email: this.ownerEmail,
       owner_phone: this.ownerPhone,
+      // [PA-RETUNE-1] §6a event-only enrichment. INBOUND ONLY — every field is
+      // undefined in campaign mode, and recept_stats.ts only spreads the ones
+      // that are defined, so the campaign lane's event props are byte-for-byte
+      // what they were.
+      ...(this.paMode ? {
+        pa_mode: "message_first" as const,
+        caller_matched: this.callerMatched,
+        summary_line_present: !!this.paSummaryLine,
+        intent_category: this.paCategory,
+        wind_down_fired: this.wrapCueInjected,
+        hard_cap_fired: reason === "hard_cap",
+        watchdog_fired: this.watchdogFired || reason === "watchdog",
+        // billed vs wall clock — any gap is a billing bug (or a trued-up settle).
+        billed_ms: Math.round(secondsExact * 1000),
+        call_ms: Math.round(wallSeconds * 1000),
+      } : {}),
     });
 
     // ── COST telemetry (Gemini Live audio) — same maths as reception_room.
@@ -1442,7 +1649,7 @@ export class VobizAgentRoom {
   private async postMessage(
     init: AgentInit, summary: any, transcript: string, recordingUrl: string | null,
     durationS: number, hadConversation: boolean,
-  ): Promise<void> {
+  ): Promise<{ inboxOk: boolean; pushSent: boolean }> {
     const callerLabel = init.caller_name || init.caller_phone || "Unknown caller";
     const conv = init.caller_uid
       ? dmConvId(init.owner_uid, init.caller_uid)
@@ -1453,7 +1660,11 @@ export class VobizAgentRoom {
     // [CALL-IDENTITY-SNAPSHOT-1 2026-08-01] Do not repeat the caller's name —
     // the notification title already carries it, resolved on-device from the
     // recipient's own contacts. See reception_room.ts for the full reasoning.
-    const bodyText = summary
+    // [PA-RETUNE-1] The one-line "<who> called about <what>" is now the HEADLINE
+    // (and, below, the push body). Fallbacks are the exact legacy strings, used
+    // whenever the model never got to end_call (caller hangup / hard cap /
+    // watchdog).
+    const bodyText = summary?.reason
       ? `📞 Ava took a message: ${summary.reason}`
       : hadConversation
         ? `📞 Ava answered.`
@@ -1476,11 +1687,17 @@ export class VobizAgentRoom {
       scope: `to:${init.owner_uid}`,
       created_at: Date.now(),
     };
+    // [PA-RETUNE-1] the inbox post's outcome is now REPORTED (pa_message_delivery
+    // in finalize) rather than only thrown. A throw still propagates — the call
+    // site treats it as inbox_post_ok:false.
+    let inboxOk = false;
+    let pushSent = false;
     const stub = this.env.INBOX.get(this.env.INBOX.idFromName(init.owner_uid));
-    await stub.fetch("https://inbox/append", {
+    const inboxRes = await stub.fetch("https://inbox/append", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...payload, owner: init.owner_uid }),
     });
+    inboxOk = inboxRes.ok;
     try {
       // [RECEPT-CALLER-IDENTITY-1 2026-08-01] Same defect as reception_room.ts —
       // the notify push carried no caller identity, so the recipient's
@@ -1488,7 +1705,11 @@ export class VobizAgentRoom {
       // the body had the real name. See reception_room.ts for the full write-up.
       await this.env.Q_PUSH.send({
         kind: "notify", to: init.owner_uid, fromName: "Ava",
-        title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""),
+        // [PA-RETUNE-1] push body = the one-liner itself when we have it (the
+        // title already says "Ava took a message", so the legacy body would
+        // just repeat it); otherwise the legacy body, unchanged.
+        title: "Ava took a message",
+        body: summary?.reason ? String(summary.reason) : bodyText.replace(/^📞\s*/, ""),
         data: {
           type: "receptionist", conv,
           caller_uid: init.caller_uid || undefined,
@@ -1496,8 +1717,10 @@ export class VobizAgentRoom {
           caller_phone: init.caller_phone,
         },
       });
+      pushSent = true;
       this.ev("ava_recept_push_sent", {
         ok: true,
+        has_summary_line: !!summary?.reason,
         has_caller_uid: !!init.caller_uid,
         has_caller_name: !!init.caller_name,
         has_caller_phone: !!init.caller_phone,
@@ -1535,6 +1758,7 @@ export class VobizAgentRoom {
         this.ev("ava_recept_caller_ack_sent", { ok: false, error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
       }
     }
+    return { inboxOk, pushSent };
   }
 }
 

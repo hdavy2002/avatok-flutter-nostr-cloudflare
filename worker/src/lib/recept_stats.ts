@@ -56,6 +56,27 @@ export interface ReceptCallSummary {
    *  one (app lane: req.cf.timezone at /start). PSTN webhooks have none — the
    *  dashboard computes owner-local hours from the device's own offset instead. */
   tz?: string | null;
+  // ── [PA-RETUNE-1] PA (inbound Vobiz DID) enrichment, spec §6a. EVENT-ONLY and
+  // ALL OPTIONAL: only the PA lane sets them, each is spread into the PostHog
+  // props ONLY when defined, and none touches the D1 mirror — so every other
+  // lane's event and row are unchanged.
+  /** "message_first" on the PA lane; absent everywhere else. */
+  pa_mode?: string | null;
+  /** Caller resolved to a known AvaTOK contact (matchAvatokPhones hit). */
+  caller_matched?: boolean;
+  /** Ava produced the "<who> called about <what>" one-liner before hanging up. */
+  summary_line_present?: boolean;
+  /** delivery | sales | bank | personal | unknown. */
+  intent_category?: string | null;
+  /** The wind-down cue fired (wrapCueInjected). */
+  wind_down_fired?: boolean;
+  /** The hard cap, not the model, ended the call. */
+  hard_cap_fired?: boolean;
+  /** The 6-min failsafe ended the call — presence is a bug signal. */
+  watchdog_fired?: boolean;
+  /** Billed vs wall-clock milliseconds — a gap means a trued-up settle or a bug. */
+  billed_ms?: number;
+  call_ms?: number;
 }
 
 const RETENTION_DAYS = 90; // owner decision 2026-07-19 (plan "Open questions")
@@ -147,6 +168,17 @@ export async function recordCallSummary(env: Env, s: ReceptCallSummary): Promise
         outcome,
         cutoff_reason: s.reason ?? null,
         call_id: s.id,
+        // [PA-RETUNE-1] PA enrichment — each prop appears ONLY when the lane
+        // set it, so no other lane's event shape changes.
+        ...(s.pa_mode != null ? { pa_mode: s.pa_mode } : {}),
+        ...(s.caller_matched != null ? { caller_matched: s.caller_matched } : {}),
+        ...(s.summary_line_present != null ? { summary_line_present: s.summary_line_present } : {}),
+        ...(s.intent_category != null ? { intent_category: s.intent_category } : {}),
+        ...(s.wind_down_fired != null ? { wind_down_fired: s.wind_down_fired } : {}),
+        ...(s.hard_cap_fired != null ? { hard_cap_fired: s.hard_cap_fired } : {}),
+        ...(s.watchdog_fired != null ? { watchdog_fired: s.watchdog_fired } : {}),
+        ...(s.billed_ms != null ? { billed_ms: s.billed_ms } : {}),
+        ...(s.call_ms != null ? { call_ms: s.call_ms } : {}),
       }, s.id);
   } catch { /* best-effort */ }
 

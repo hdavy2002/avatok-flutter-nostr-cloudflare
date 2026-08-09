@@ -1,6 +1,100 @@
 {
  "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory \u2014 see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+ "PA-RETUNE-1": {
+  "description": "PA re-tune (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 1/3/6/7), worker-only, INBOUND vobiz lane only — campaign mode untouched. Ava now opens a forwarded PSTN call with a bare \"Hello?\", learns who is calling and what they want in a few sentences, refuses to engage with the subject matter (no product talk, no domain answers, no offers to connect), and ends the call herself. The one-line \"<who> called about <what>\" summary + an intent category ride on the end_call tool's NEW `summary`/`category` arguments — same Gemini session, no second model (owner decision 2026-06-30) — and become the inbox card headline (summary.reason, which the frozen client renderer already displays) and the push body. A 6-min DO ALARM watchdog force-finalizes a stuck session, and the settle is capped at hard_cap_ms so a stuck session can never bill past the cap.",
+  "shipped": "2026-08-09",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "paWatchdogMs",
+   "receptBillingLive"
+  ],
+  "success": [
+   {
+    "event": "ava_recept_call_summary",
+    "where": {
+     "transport": "vobiz",
+     "pa_mode": "message_first"
+    },
+    "property": "summary_line_present",
+    "equals": true,
+    "min_events": 2,
+    "min_pass_rate": 0.7,
+    "note": "message_taken equivalent: this lane's canonical outcome event carrying the one-liner. The slack covers the REAL cases where Ava never reaches end_call and so cannot emit a summary — the caller hangs up first, the hard cap fires, or the watchdog fires. Those calls still deliver a recording; they just have no headline. A pass rate near 0 means the end_call summary/category arguments are not being produced at all."
+   },
+   {
+    "event": "ava_recept_call_summary",
+    "where": {
+     "transport": "vobiz",
+     "pa_mode": "message_first"
+    },
+    "property": "outcome",
+    "not_in": [
+     "balance_exhausted"
+    ],
+    "min_events": 2,
+    "note": "Two DISTINCT persons on the new build (two-sided: caller + callee). balance_exhausted here would mean the zero-stop, not the PA, ended the screening."
+   },
+   {
+    "event": "ava_recept_call_summary",
+    "where": {
+     "transport": "vobiz",
+     "pa_mode": "message_first"
+    },
+    "property": "billed_ms",
+    "lte": 300000,
+    "min_events": 2,
+    "note": "billed/call ms coherence. billed_ms is the settle's own duration and is capped at receptHardCapMs (5 min once the timer flip lands). billed_ms > call_ms, or billed_ms above the cap, is the billing bug this pair of props exists to make queryable."
+   },
+   {
+    "event": "pa_watchdog_fired",
+    "property": "settle_trued_up",
+    "equals": false,
+    "min_events": 0,
+    "note": "PRESENCE IS THE BUG SIGNAL (spec 6a): the target is ZERO of these in the soak window. min_events 0 so an empty result is the pass; if any DO fire, settle_trued_up=true means the session ran past the cap and the settle was capped — investigate the hung leg."
+   },
+   {
+    "event": "pa_message_delivery",
+    "property": "inbox_post_ok",
+    "equals": true,
+    "min_events": 2,
+    "note": "The delivery half, decoupled from the call half. false here = the recording and message never reached the callee's inbox even though the call summary said the call completed."
+   }
+  ],
+  "_verified_at": "worker/src/do/vobiz_agent_room.ts — composePaPrompt() at init, end_call summary/category args in connectGemini + onGeminiMessage, alarm()/setAlarm watchdog, settleTruedUp cap in the [RECEPT-BILLING-3] block, evAwait(pa_watchdog_fired) + evAwait(pa_message_delivery) in finalize(); props spread in worker/src/lib/recept_stats.ts recordCallSummary()"
+ },
+ "PA-GATE-1": {
+  "description": "PA zero-balance backstop + config-key declarations (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 5). The answer webhook returns an immediate <Hangup/> for owners with no spendable balance, so a stray forwarded call costs nothing when the wallet is empty (the app-side MMI deactivation is Phase B). Declares paWatchdogMs and paZeroBalanceHangup in PlatformConfig + DEFAULTS + numericKeys in the same change, per the fake-flag rule.",
+  "shipped": "2026-08-09",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "paZeroBalanceHangup",
+   "paWatchdogMs",
+   "receptBillingLive"
+  ],
+  "success": [
+   {
+    "event": "pa_zero_balance_hangup",
+    "property": "hung_up",
+    "equals": true,
+    "min_events": 0,
+    "note": "Fires only when a forwarded call arrives for an owner with zero spendable balance. Zero of these in a soak window is a legitimate pass (nobody hit an empty wallet); what must NEVER appear is hung_up=false, which would mean the backstop ran and still let the call through to a billed AI answer."
+   },
+   {
+    "event": "ava_recept_call_summary",
+    "where": {
+     "transport": "vobiz"
+    },
+    "property": "tokens_charged",
+    "gt": 0,
+    "min_events": 1,
+    "note": "The billing half of the gate: with receptBillingLive true in prod KV, a real screened call must settle a non-zero charge under op_id pstn-<CallUUID>:settle. tokens_charged=0 on every call means receptBillingLive is off (or forceMeter never reached chargeAmount) and the zero-balance backstop is guarding a free feature."
+   }
+  ],
+  "_verified_at": "worker/src/routes/pstn.ts zero-balance <Hangup/> branch extending the existing runway check; worker/src/routes/config.ts PlatformConfig/DEFAULTS/numericKeys entries for paWatchdogMs + paZeroBalanceHangup (owned by the concurrent [PA-GATE-1] change)"
+ },
  "CALL-PRESENCE-3": {
   "description": "No-record is also offline (owner's rule, the Arti call avatok-6e17cdc2 2026-08-09): a clean presence read MISS means the account has not checked in for at least the key TTL (>= presenceOfflineSec*6) or never - route straight to Ava with offline_by=no_record. error/timeout reads stay fail-open to ringing. Combined with minAppBuild=10528 forcing all installs onto heartbeat-capable builds, every callee is now either fresh (ring), stale<5min (ring), stale>=5min (Ava), or no-record (Ava). Server-side only.",
   "shipped": "2026-08-09",
