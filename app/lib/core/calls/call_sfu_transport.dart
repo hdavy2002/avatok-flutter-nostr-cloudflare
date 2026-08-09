@@ -99,6 +99,7 @@ class CallSfuTransport {
     this.enableRed = false,
     this.onRedNegotiated,
     this.onStage,
+    this.onStaleAudioMuted,
     this.overlapPeerWait = true,
   });
 
@@ -152,6 +153,22 @@ class CallSfuTransport {
   /// transport stays free of the analytics and RemoteConfig imports.
   final void Function(String stage)? onStage;
 
+  /// [CALL-SFU-DUPAUDIO-1 2026-08-09] Reports how many STALE remote audio
+  /// tracks were muted after a repull replaced them.
+  ///
+  /// Why this exists: `_pull` adds a NEW recvonly m-section per repull and
+  /// nothing client-side ever silenced the previous one — the design relied
+  /// entirely on the server closing the peer's old seat. On 2026-08-08
+  /// (hdavy2002 × s.rgoavilla, 12:32–12:52 UTC) a handover produced a dual
+  /// rejoin + three repulls, and both phones played the peer's voice DOUBLED
+  /// for the rest of the call — heard as "echo" on speaker AND earpiece, with
+  /// a clean network (0% loss, MOS 4.3). The seat close runs over the network
+  /// that just died, and [CALL-SFU-MBB-1] deliberately keeps the old PC
+  /// publishing until the replacement exists, so "the old track goes quiet"
+  /// is not a guarantee, only a hope. A callback rather than a direct
+  /// `Analytics.capture` for the same reason as [onRedNegotiated].
+  final void Function(int count)? onStaleAudioMuted;
+
   /// [CALL-DEADAIR-1] Run the peer-seat poll CONCURRENTLY with our own publish
   /// instead of strictly after it.
   ///
@@ -171,6 +188,12 @@ class CallSfuTransport {
 
   /// Mids we have opened, for the close call on teardown.
   final List<String> _openMids = <String>[];
+
+  /// [CALL-SFU-DUPAUDIO-1] Mids of the remote AUDIO m-sections we are currently
+  /// pulling. Tracked separately from [_openMids] (which mixes publish, video
+  /// and audio mids and only exists for the close call) so a repull can tell
+  /// exactly which previous audio sections it just superseded and mute them.
+  final Set<String> _pulledAudioMids = <String>{};
 
   /// Track names are ours to choose. Namespacing by session id keeps them unique
   /// across a reconnect that mints a new session, so a peer that is briefly
@@ -354,6 +377,7 @@ class CallSfuTransport {
     _disposed = false;
     _sessionId = null;
     _openMids.clear();
+    _pulledAudioMids.clear(); // [CALL-SFU-DUPAUDIO-1] fresh PC, no stale sections
     return connect(
       localStream: localStream,
       fallbackIceServers: fallbackIceServers,
@@ -410,9 +434,46 @@ class CallSfuTransport {
       );
       await pc.setLocalDescription(tunedAnswer);
       await CallSfuApi.renegotiate(room, sid, tunedAnswer.sdp ?? '');
+      final newMids = <String>{};
       for (final t in r.tracks) {
         final mid = (t as Map?)?['mid']?.toString();
-        if (mid != null) _openMids.add(mid);
+        if (mid != null) {
+          _openMids.add(mid);
+          newMids.add(mid);
+        }
+      }
+      if (kind == 'audio' && newMids.isNotEmpty) {
+        // [CALL-SFU-DUPAUDIO-1] This pull SUPERSEDES any audio m-section we were
+        // pulling before — mute the old ones client-side instead of trusting
+        // the server to have closed the peer's previous seat. On 2026-08-08 that
+        // trust was misplaced during handover churn and both phones played the
+        // peer's voice doubled ("echo" in every route) for the rest of the call.
+        // Mute (`track.enabled = false`), NOT `transceiver.stop()`: stopping
+        // rewrites SDP state on a transport whose renegotiation is exclusively
+        // server-driven, and this must stay reversible if a future pull reuses
+        // the section.
+        final stale = _pulledAudioMids.difference(newMids);
+        var muted = 0;
+        if (stale.isNotEmpty) {
+          try {
+            final transceivers = await pc.getTransceivers();
+            for (final tr in transceivers) {
+              if (!stale.contains(tr.mid)) continue;
+              final track = tr.receiver.track;
+              if (track == null || track.kind != 'audio') continue;
+              if (track.enabled) {
+                track.enabled = false;
+                muted++;
+              }
+            }
+          } catch (e) {
+            AvaLog.I.log('call', 'stale audio mute failed: $e');
+          }
+        }
+        _pulledAudioMids
+          ..clear()
+          ..addAll(newMids);
+        if (muted > 0) onStaleAudioMuted?.call(muted);
       }
       return true;
     } catch (e) {
@@ -515,6 +576,7 @@ class CallSfuTransport {
       await CallSfuApi.close(room, sid, List<String>.from(_openMids));
     }
     _openMids.clear();
+    _pulledAudioMids.clear(); // [CALL-SFU-DUPAUDIO-1]
     _sessionId = null;
     // The peer connection itself belongs to CallSession once handed over — it
     // closes it in its own teardown, in its own order. Closing it here too would

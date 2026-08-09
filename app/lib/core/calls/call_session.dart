@@ -5958,6 +5958,17 @@ class CallSession {
       // [CALL-DEADAIR-1] Per-rung timings for `call_first_audio_ms`, and the
       // overlapped peer-seat poll. Both are inert when the flag is off.
       onStage: _stage,
+      // [CALL-SFU-DUPAUDIO-1 2026-08-09] A repull now mutes the audio sections
+      // it supersedes (2026-08-08 double-voice "echo" on both phones after a
+      // handover dual-rejoin). `count > 0` here IS the bug happening and being
+      // contained: the peer's old track was still audible when the new one
+      // arrived.
+      onStaleAudioMuted: (count) {
+        Analytics.capture('call_sfu_stale_audio_muted', {
+          'call_id': config.room,
+          'count': count,
+        });
+      },
       overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
     );
     _sfu = transport;
