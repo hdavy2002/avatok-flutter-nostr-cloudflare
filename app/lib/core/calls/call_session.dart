@@ -1788,6 +1788,11 @@ class CallSession {
       // [CF-CALL-P2P-1] Inbound-VIDEO decode counters, video calls only.
       bool foundInboundVideo = false;
       int? videoBytesReceived, videoFramesDecoded, videoFramesDropped;
+      // [CALL-VIDEO-RENDER-WATCH-1] Which TRACK the decoding stats belong to —
+      // the discriminator between "video is broken" and "video is fine but the
+      // renderer is showing a stale track" (prod 2026-08-08, avatok-b403ba59:
+      // 30fps decoded for 9 minutes while the screen held one frozen frame).
+      String? videoTrackIdentifier;
 
       final stats = await pc.getStats();
       final pairs = <String, Map<dynamic, dynamic>>{};
@@ -1809,6 +1814,15 @@ class CallSession {
               if (fd is num) videoFramesDecoded = fd.toInt();
               final fdr = v['framesDropped'];
               if (fdr is num) videoFramesDropped = fdr.toInt();
+              // [CALL-VIDEO-RENDER-WATCH-1] Prefer the ACTIVE inbound stream's
+              // track id when several exist: keep the one whose framesDecoded
+              // moved (this loop may see a dead m-section first).
+              final ti = (v['trackIdentifier'] ?? v['trackId'])?.toString();
+              if (ti != null && ti.isNotEmpty &&
+                  (videoTrackIdentifier == null ||
+                      (fd is num && fd.toInt() > 0))) {
+                videoTrackIdentifier = ti;
+              }
             }
             continue;
           }
@@ -1932,6 +1946,35 @@ class CallSession {
         try {
           final remoteStream = remoteRenderer.srcObject;
           rendererBound = remoteStream != null && remoteStream.getVideoTracks().isNotEmpty;
+          // ── [CALL-VIDEO-RENDER-WATCH-1] frozen-picture self-heal ──────────
+          //
+          // Prod 2026-08-08 (avatok-b403ba59): the receiver decoded the peer's
+          // video at 30fps for 9 straight minutes while the screen showed one
+          // frozen frame — decode healthy, renderer bound, picture dead. That
+          // state is detectable: the track the STATS say is decoding is not
+          // the track the RENDERER is bound to (an SFU re-pull / renegotiation
+          // left the renderer on a superseded track object). Two consecutive
+          // samples (~10s) are required so a rebind can never race a
+          // renegotiation that is mid-flight on the first sample.
+          if (videoDecodeProgressing == true &&
+              rendererBound == true &&
+              videoTrackIdentifier != null) {
+            String? boundId;
+            final vts = remoteStream!.getVideoTracks();
+            if (vts.isNotEmpty) boundId = vts.first.id;
+            if (boundId != null && boundId != videoTrackIdentifier) {
+              _renderStallStreak++;
+              if (_renderStallStreak >= 2) {
+                _renderStallStreak = 0;
+                unawaited(_healFrozenRemoteVideo(
+                    pc, videoTrackIdentifier!, boundId));
+              }
+            } else {
+              _renderStallStreak = 0;
+            }
+          } else {
+            _renderStallStreak = 0;
+          }
         } catch (_) {/* renderer disposed mid-poll — stays unknown */}
       }
 
@@ -5474,6 +5517,67 @@ class CallSession {
   /// [_newPC] (no legacy 10s `_failTimer` hard-end/`_tryIceRestart` path —
   /// this is a v1-relay-migration PC, and any further transport failure on it
   /// is owned by the CALL-REL-5 coordinator when that flag is also on).
+  // ── [CALL-VIDEO-RENDER-WATCH-1] frozen remote video self-heal ─────────────
+
+  /// Consecutive health samples where decode progressed on a track the
+  /// renderer is NOT bound to. Reset by any healthy/indeterminate sample.
+  int _renderStallStreak = 0;
+  bool _renderHealInFlight = false;
+
+  /// Rebind cap per call — a mismatch this logic cannot fix must not turn into
+  /// a rebind every 10 seconds for the rest of the call.
+  int _renderHealsThisCall = 0;
+
+  /// Rebind [remoteRenderer] to the video track the stats say is actually
+  /// decoding. Called by the media-health sampler after two consecutive
+  /// mismatch samples; gated by `callVideoRenderHealV1` (detection telemetry
+  /// is emitted either way, so prod shows how often this fires even when the
+  /// heal itself is killed).
+  Future<void> _healFrozenRemoteVideo(
+      RTCPeerConnection pc, String liveTrackId, String staleTrackId) async {
+    if (_renderHealInFlight || _ended) return;
+    _renderHealInFlight = true;
+    try {
+      final enabled = RemoteConfig.callVideoRenderHealV1;
+      var healed = false;
+      if (enabled && _renderHealsThisCall < 3) {
+        final receivers = await pc.getReceivers();
+        for (final r in receivers) {
+          final t = r.track;
+          if (t == null || t.kind != 'video' || t.id != liveTrackId) continue;
+          final s = remoteRenderer.srcObject;
+          if (s == null) break;
+          for (final old in List.of(s.getVideoTracks())) {
+            try {
+              await s.removeTrack(old);
+            } catch (_) {/* stale native track may already be gone */}
+          }
+          await s.addTrack(t);
+          // Re-assign so the native renderer re-attaches its sink — mutating
+          // the stream's track list alone does not repoint an already-bound
+          // texture on all platforms.
+          remoteRenderer.srcObject = null;
+          remoteRenderer.srcObject = s;
+          _renderHealsThisCall++;
+          healed = true;
+          break;
+        }
+      }
+      Analytics.capture('call_video_render_heal', {
+        'call_id': config.room,
+        'ok': healed,
+        'enabled': enabled,
+        'heals_this_call': _renderHealsThisCall,
+        'live_track': liveTrackId,
+        'stale_track': staleTrackId,
+      });
+    } catch (e, st) {
+      _telemetry.runtimeError(stage: 'video_render_heal', error: e, stack: st);
+    } finally {
+      _renderHealInFlight = false;
+    }
+  }
+
   void _promoteMigratedPc(RTCPeerConnection pc) {
     // [CF-CALL-P2P-1] This PC is about to become `_pc` — give it its own
     // generation so any STILL-pending event from whatever `_pc` it's

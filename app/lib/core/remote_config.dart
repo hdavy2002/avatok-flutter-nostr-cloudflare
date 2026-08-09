@@ -458,6 +458,11 @@ class RemoteConfig {
   static bool get callQualityIndicatorV1 => _b('callQualityIndicatorV1', false);
   static bool get callAudioRedExperimentV1 => _b('callAudioRedExperimentV1', false);
   static bool get callVideoDegradeV1 => _b('callVideoDegradeV1', false);
+  /// [CALL-VIDEO-RENDER-WATCH-1] Self-heal a frozen remote video: when inbound
+  /// video is decoding but the renderer holds a different (stale) track for two
+  /// consecutive health samples, rebind the renderer to the live track.
+  /// Declared in worker config.ts DEFAULTS (true) — kill switch for the heal.
+  static bool get callVideoRenderHealV1 => _b('callVideoRenderHealV1', true);
   /// [CALL-AUDIO-OWNER-1 2026-08-07] `CallAudioController` becomes THE single
   /// owner of call route/mode/speaker, replacing the hardcoded `selectRoute`
   /// at the end of `_bootMedia` and the flag-off `Helper.setSpeakerphoneOn`

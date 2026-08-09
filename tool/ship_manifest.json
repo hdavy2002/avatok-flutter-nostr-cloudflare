@@ -578,5 +578,26 @@
    }
   ],
   "_verified_at": "app/lib/core/calls/call_session.dart:_teardownImpl guard on CallRecordingStore.I.activeCallId/phase/isEscalated -> Analytics.capture('callrec_auto_stop') + CallRecordingStore.I.stop(); isEscalated added in call_recording_store.dart"
+ },
+ "CALL-VIDEO-RENDER-WATCH-1": {
+  "description": "Remote video froze while decode stayed at 30fps (prod 2026-08-08, avatok-b403ba59, owner report: 'played a sec then froze', audio fine). The media-health sampler now compares the inbound-rtp video trackIdentifier against the track bound to remoteRenderer; two consecutive mismatched samples (~10s) trigger a rebind of the renderer to the decoding receiver's track, capped at 3 heals/call, gated by callVideoRenderHealV1 (default true; detection telemetry emits even when the heal is killed).",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callVideoRenderHealV1"
+  ],
+  "success": [
+   {
+    "event": "call_video_render_heal",
+    "property": "ok",
+    "in": [
+     true
+    ],
+    "min_events": 1,
+    "note": "Fires only when the stall actually occurs, so read over a long window; absence in a quiet week is fine. ok=false with enabled=true means the decoding track could not be found among the receivers - the mechanism guessed wrong and the freeze class is different. Cross-check call_media_health: after a heal, video_decode_progressing should stay true and the user should not re-report freezes on that call."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart: sampler captures inbound-rtp trackIdentifier, _renderStallStreak>=2 -> _healFrozenRemoteVideo (getReceivers -> removeTrack/addTrack -> srcObject rebind) -> Analytics.capture('call_video_render_heal'); flag declared in worker/src/routes/config.ts DEFAULTS + PlatformConfig and read via RemoteConfig.callVideoRenderHealV1"
  }
 }

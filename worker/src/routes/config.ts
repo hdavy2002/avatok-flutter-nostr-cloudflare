@@ -607,6 +607,10 @@ export interface PlatformConfig {
   callAudioRedExperimentV1: boolean;
   callVideoDegradeV1: boolean;
   callVideoCodecPrefV1: boolean;
+  // [CALL-VIDEO-RENDER-WATCH-1] Renderer stall self-heal: when inbound video
+  // is DECODING but the renderer holds a different (stale) track, rebind it.
+  // Kill switch for the heal only; detection telemetry stays on either way.
+  callVideoRenderHealV1: boolean;
   receptionistReconnectV1: boolean;    // receptionist reattach-on-reconnect
   callRingAudibilityV1: boolean;       // REL-10 ring audibility fix
   // [CALL-SURVIVE-1 2026-08-04] Handover-survival tunables (numeric — MUST
@@ -1103,6 +1107,26 @@ export interface PlatformConfig {
   receptWrapCueMs: number;
   receptCloseMs: number;
   receptHardCapMs: number;
+  // [PA-GATE-1] (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md §3.4) PA stuck-session
+  // watchdog, in ms. An INDEPENDENT DO alarm one minute past `receptHardCapMs`: if a
+  // PA session is somehow still alive then (stuck timer, hung Gemini leg), it is
+  // force-finalized, `pa_watchdog_fired` is emitted and the settle is trued up to the
+  // hard cap — Ava must never sit engaged and billing for no reason. Failsafe, not a
+  // normal path: its presence in telemetry is a bug signal. NUMERIC → it MUST also
+  // appear in `numericKeys` below or `flags.sh set paWatchdogMs=420000` 400s
+  // `bad type` (fake-flag rule, CLAUDE.md).
+  paWatchdogMs: number;
+  // [PA-GATE-1] (spec §4) Zero-balance backstop on the PSTN answer webhook. The app
+  // dials the carrier MMI deactivation codes at zero balance, but only the phone can
+  // truly disable forwarding — so a stray forwarded call can still reach us. When
+  // TRUE, routes/pstn.ts's answer webhook returns an immediate `<Response><Hangup/>`
+  // for an owner whose SPENDABLE balance (paid + free daily, per
+  // [RECEPT-AVAIL-SPENDABLE-1]) is exactly zero: AvaTOK steps out entirely, so a
+  // decline is a normal decline and the call costs nothing. Low-but-nonzero balances
+  // are UNCHANGED — they still fall through to the voicemail lane. Ships FALSE: a
+  // hangup is user-visible behaviour and must not turn itself on by accident.
+  // Boolean → NOT in numericKeys.
+  paZeroBalanceHangup: boolean;
   // [RECEPT-BILLING-3] Phase 1 billing v2 (Specs/PLAN-2026-07-19-tokens-cockpit-pstn-master.md):
   // USD→INR conversion for the INTERNAL per-call cost ledger
   // (call_cost_ledger.actual_api_cost_inr, written by ReceptionRoom.finalize), and
@@ -1373,6 +1397,8 @@ const DEFAULTS: PlatformConfig = {
   receptWrapCueMs: 120_000,        // [AVA-CONVO-BUDGET-1] wrap-up cue at 2:00 (was 40s when menu off → double sign-off)
   receptCloseMs: 160_000,          // graceful close by ~2:40
   receptHardCapMs: 180_000,        // stall backstop 3:00
+  paWatchdogMs: 360_000,           // [PA-GATE-1] PA stuck-session watchdog — 1 min past a 5:00 hard cap
+  paZeroBalanceHangup: false,      // [PA-GATE-1] immediate <Hangup/> for zero-spendable owners — ships dark
   usdInrRate: 96.4,                // [RECEPT-BILLING-3] USD→INR for the internal call_cost_ledger (tune from KV as FX moves)
   receptMarginAlertPaise: 220,     // [RECEPT-BILLING-3] alert when real API cost > ₹2.20/min (price is ₹3/min)
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
@@ -1430,6 +1456,12 @@ const DEFAULTS: PlatformConfig = {
   // [CALL-VIDEO-CODEC-1] AV1>VP9>VP8>H264 preference + temporal SVC (L1T3) on
   // the 1:1 video sender. Ships dark — see remote_config.dart for why.
   callVideoCodecPrefV1: false,
+  // [CALL-VIDEO-RENDER-WATCH-1] ON by default: the heal only fires on the
+  // exact stall it exists for (decode progressing + renderer holding a
+  // different track, twice in a row), which healthy calls never produce.
+  // Observed in prod 2026-08-08 (avatok-b403ba59): 30fps decoded for 9 min
+  // while the screen showed one frozen frame.
+  callVideoRenderHealV1: true,
   receptionistReconnectV1: false,  // call-reliability program — ships dark
   callRingAudibilityV1: false,     // call-reliability program — ships dark
   callRecoveryDeadlineSec: 12,     // [CALL-SURVIVE-1] per-attempt ICE-recovery deadline
@@ -1831,6 +1863,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const numericKeys = new Set([
     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
+    // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
+    "paWatchdogMs",
     "usdInrRate", "receptMarginAlertPaise", "upiPayoutMinCoins", "upiPayoutReservationTtlHours", "upiVpaCooldownHours",
     // [AVABRAIN-FLAGS-1] media_memory caps + export cap + companion knobs.
     "mediaMemoryMaxSec", "mediaMemoryMaxBytes", "mediaMemoryFrameBudget", "mediaMemoryDailyPerUser",
