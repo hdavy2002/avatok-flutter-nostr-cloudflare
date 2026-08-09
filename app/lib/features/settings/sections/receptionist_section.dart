@@ -15,8 +15,10 @@ import '../../../core/voice/google_voice.dart';
 import '../../wallet/wallet_balance_chip.dart' show WalletBalanceStore;
 import '../../wallet/wallet_screen.dart';
 import '../settings_registry.dart';
+// [PA-UI-1] the two lane screens the hub branches to (owned by [PA-UI-2]).
+import 'pa_inapp_screen.dart';
+import 'pa_phone_screen.dart';
 import 'receptionist_analytics_page.dart';
-import 'receptionist_rules_screen.dart';
 
 /// [RECEPT-SETTINGS-1] Client-side token gate (must agree with the backend
 /// deduction agent). When the wallet's SPENDABLE token balance is AT OR BELOW
@@ -166,9 +168,9 @@ void registerReceptionistSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_receptionist',
-      // [AVARECEPT-LANES-1] voicemail retired; single "AI receptionist" page with
-      // per-lane + per-scenario toggles and the folded-in voice picker.
-      title: 'AI receptionist',
+      // [PA-UI-1] the mega-page became a small HUB ("Ava PA"): two lane screens
+      // (phone / AvaTOK) plus the SHARED voice + persona controls.
+      title: 'Ava PA',
       order: 24,
       builder: (context) => const _ReceptionistCard(),
     ),
@@ -272,6 +274,15 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     // are always live without polling.
     WalletBalanceStore.spendable.addListener(_onBalance);
     WalletBalanceStore.load();
+    // [PA-UI-1] hub open.
+    Analytics.uiInteraction('pa_hub_open', 0);
+  }
+
+  /// [PA-UI-1] Re-pull the settings after returning from a lane screen (which
+  /// owns its own toggles) so the hub's On/Off pills are fresh.
+  Future<void> _reload() async {
+    if (!mounted) return;
+    await _load();
   }
 
   void _onBalance() { if (mounted) setState(() {}); }
@@ -519,7 +530,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'answer_lang': answerLang.isEmpty ? 'auto' : answerLang,
       });
       AvaLog.I.log('receptionist', 'settings saved (enabled=$enabled, note=${note.isNotEmpty}, expiry=${expiresAt != null}, lang=${answerLang.isEmpty ? "auto" : answerLang})');
-      _toast(enabled ? 'Ava will answer your missed calls' : 'Saved');
+      // [PA-UI-1] sheets save on close, so the confirmation is a plain "Saved".
+      _toast('Saved');
     } else if (res.blocked) {
       _toast('Ava Receptionist is a premium feature — upgrade to enable it.');
     } else {
@@ -553,6 +565,23 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // the save and rolled back if it fails, so a failed save never leaves the
   // toggle lying about what the server has.
 
+  // ── [PA-UI-1] HUB ───────────────────────────────────────────────────────────
+  // The old mega-page is now a small hub. The eight per-lane toggles moved to
+  // PaPhoneScreen / PaInAppScreen (they load + save them through the same
+  // ReceptionistApi); the shared voice/persona controls live in three sheets
+  // here and save on close.
+
+  /// True when Ava answers ANY cell (PSTN) scenario. Gated by the token floor so
+  /// the pill never claims "On" while the wallet can't pay for a hand-off.
+  bool get _pstnOn =>
+      _tokensOk &&
+      (_pstnNotPickedUp || _pstnRejected || _pstnUnreachable || _pstnRedirectAll);
+
+  /// True when Ava answers ANY AvaTOK-to-AvaTOK scenario.
+  bool get _avatokOn =>
+      _tokensOk &&
+      (_avatokNotPickedUp || _avatokRejected || _avatokUnreachable || _avatokRedirectAll);
+
   @override
   Widget build(BuildContext context) {
     return AdCard(
@@ -572,19 +601,28 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('AI receptionist', style: ADText.rowName()),
+                    Text('Ava PA', style: ADText.rowName()),
                     const SizedBox(height: 2),
                     Text(
-                      'When you don’t take a call, Ava answers for you as a live '
-                      'AI voice agent. Choose which calls she handles and when.',
+                      'Ava answers the calls you don’t take and sends you the '
+                      'message.',
                       style: ADText.preview(),
                     ),
                   ]),
                 ),
-                // ALWAYS-ON (owner decision 2026-07-07): the on/off toggle is gone —
-                // Ava Receptionist can no longer be disabled per user.
               ]),
               ...[
+                if (_saving) ...[
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 8),
+                    Text('Saving…', style: ADText.preview()),
+                  ]),
+                ],
                 const SizedBox(height: 16),
                 // ── [RECEPT-SETTINGS-1] token gate banner ──────────────────
                 // Ava talks to callers on your tokens (3 tokens/min, capped at 3
@@ -601,261 +639,394 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                       if (mounted) await WalletBalanceStore.load(force: true);
                     },
                   ),
-                  const SizedBox(height: 16),
                 ],
-                // ── [RECEPT-SETTINGS-1] Group 1 — Cell (PSTN) calls ─────────
-                // Four INDEPENDENT toggles. Each alone decides whether Ava
-                // answers that scenario for cell calls.
-                Text('Cell (PSTN) calls', style: ADText.sectionLabel()),
-                const SizedBox(height: Msg.s1),
-                _receptToggle(
-                  'Call not picked up',
-                  'You didn’t answer before it stopped ringing.',
-                  _pstnNotPickedUp,
-                  'pstn_not_picked_up',
-                  (v) => _pstnNotPickedUp = v,
-                ),
-                const SizedBox(height: 8),
-                _receptToggle(
-                  'Call rejected',
-                  'You tapped Decline.',
-                  _pstnRejected,
-                  'pstn_rejected',
-                  (v) => _pstnRejected = v,
-                ),
-                const SizedBox(height: 8),
-                _receptToggle(
-                  'Phone offline / unreachable',
-                  'Your phone is off or has no connection.',
-                  _pstnUnreachable,
-                  'pstn_unreachable',
-                  (v) => _pstnUnreachable = v,
-                ),
-                const SizedBox(height: 8),
-                _receptToggle(
-                  'Redirect ALL calls to Ava',
-                  'Every cell call goes straight to Ava — she always answers first.',
-                  _pstnRedirectAll,
-                  'pstn_redirect_all',
-                  (v) => _pstnRedirectAll = v,
-                ),
-                const SizedBox(height: 16),
-                // ── [RECEPT-SETTINGS-1] Group 2 — AvaTOK-to-AvaTOK calls ────
-                Text('AvaTOK calls', style: ADText.sectionLabel()),
-                const SizedBox(height: Msg.s1),
-                _receptToggle(
-                  'Call not picked up',
-                  'You didn’t answer before it stopped ringing.',
-                  _avatokNotPickedUp,
-                  'avatok_not_picked_up',
-                  (v) => _avatokNotPickedUp = v,
-                ),
-                const SizedBox(height: 8),
-                _receptToggle(
-                  'Call rejected',
-                  'You tapped Decline.',
-                  _avatokRejected,
-                  'avatok_rejected',
-                  (v) => _avatokRejected = v,
-                ),
-                const SizedBox(height: 8),
-                _receptToggle(
-                  'Phone offline / unreachable',
-                  'Your phone is off or has no connection.',
-                  _avatokUnreachable,
-                  'avatok_unreachable',
-                  (v) => _avatokUnreachable = v,
-                ),
-                const SizedBox(height: 8),
-                _receptToggle(
-                  'Redirect ALL calls to Ava',
-                  'Every AvaTOK call goes straight to Ava — she always answers first.',
-                  _avatokRedirectAll,
-                  'avatok_redirect_all',
-                  (v) => _avatokRedirectAll = v,
-                ),
-                const SizedBox(height: Msg.s1),
-                Text(
-                  'Each toggle works on its own. If nothing here is on, an '
-                  'unanswered call is simply a missed call. Ava costs 3 tokens '
-                  'per minute, capped at 3 minutes.',
-                  style: ADText.preview(),
-                ),
-                const SizedBox(height: Msg.s3),
-                // ── The note: tell Ava your availability ───────────────────
-                AdField(
-                  controller: _note,
-                  label: 'Let Ava know if you’re busy, away, etc.',
-                  hint: 'e.g. I’m in meetings until 5pm — please take a message and I’ll call back.',
-                  maxLength: kReceptionistNoteMax,
-                  minLines: 3,
-                  maxLines: null,
-                  textCapitalization: TextCapitalization.sentences,
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: Msg.s1),
-                // Live character counter against the 500-char server cap.
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '${_note.text.length}/$kReceptionistNoteMax',
-                    style: ADText.statCaption(
-                      c: _note.text.length > kReceptionistNoteMax
-                          ? AD.danger
-                          : AD.textTertiary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Ava uses this to tell callers why you can’t pick up and to take a '
-                  'message in your words. Your name and gender come from your Profile.',
-                  style: ADText.preview(),
-                ),
-                const SizedBox(height: 16),
-                // ── Expiry chips ───────────────────────────────────────────
-                Text('Clear this note after', style: ADText.sectionLabel()),
-                const SizedBox(height: Msg.s2),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final o in _kExpiryOptions)
-                    AdChip(
-                      label: o.label,
-                      active: _isExpiryActive(o),
-                      onTap: () => _onExpiryTap(o),
-                    ),
-                ]),
-                if (_expiresAtMs != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Note clears at ${_formatExpiry(_expiresAtMs!)}',
-                    style: ADText.preview(),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                // ── Greeting ───────────────────────────────────────────────
-                Text('Greeting', style: ADText.sectionLabel()),
-                const SizedBox(height: Msg.s2),
-                _greetingDropdown(),
-                if (_greetingStyle == 'custom') ...[
-                  const SizedBox(height: Msg.s2),
-                  AdField(
-                    controller: _greeting,
-                    label: 'Your greeting',
-                    hint: 'e.g. Jai Shree Ram',
-                    maxLength: kReceptionistGreetingMax,
-                    textCapitalization: TextCapitalization.sentences,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ],
-                const SizedBox(height: Msg.s1),
-                Text(
-                  'Ava opens with this, then the caller’s name — e.g. '
-                  '“${_greetingPreview()} Anita, you can’t take the call right now…”.',
-                  style: ADText.preview(),
-                ),
-                const SizedBox(height: 12),
-                _toggleRow(
-                  'Festival greetings',
-                  'On festival days (Diwali, Holi, Eid, Christmas, New Year) Ava '
-                      'greets with the festival instead — e.g. “Happy Diwali”.',
-                  _festivalGreeting,
-                  (v) => setState(() => _festivalGreeting = v),
-                ),
-                const SizedBox(height: 16),
-                // ── Answering language ─────────────────────────────────────
-                Text('Answering language', style: ADText.sectionLabel()),
-                const SizedBox(height: Msg.s2),
-                ZinePressable(
-                  onTap: _pickLanguage,
-                  color: AD.card,
-                  borderColor: AD.borderControl,
-                  radius: BorderRadius.circular(AD.rInput),
-                  boxShadow: const [],
-                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
-                  child: Row(children: [
-                    Icon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                        size: 18, color: AD.textSecondary),
-                    const SizedBox(width: Msg.s2),
-                    Expanded(child: Text(_langLabel(), style: ADText.rowName())),
-                    Icon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
-                        size: 16, color: AD.textTertiary),
-                  ]),
-                ),
-                const SizedBox(height: Msg.s1),
-                Text(
-                  'Ava opens in this language, then follows the caller if they speak '
-                  'another.',
-                  style: ADText.preview(),
-                ),
-                const SizedBox(height: Msg.s4),
-                const Divider(height: 1, color: AD.borderHairline),
-                const SizedBox(height: 16),
-                // ── [AVARECEPT-LANES-1] Ava's voice (folded in from the old
-                // standalone "Ava voice" page). The voice + call language a
-                // hands-free Ava call speaks with; saved instantly via the prefs.
-                _voiceSection(),
-                const SizedBox(height: 16),
-                AdButton(
-                  label: _saving ? 'Saving…' : 'Save',
-                  fullWidth: true,
-                  fontSize: 15,
-                  loading: _saving,
-                  onPressed: _saving ? null : () => _save(enabled: true),
-                ),
-                const SizedBox(height: Msg.s2),
-                // ── [DYNW-RULES-UI-1] Call Rules entry ──────────────────────
-                ZinePressable(
+                // ── [PA-UI-1] Branch cards — one per lane ──────────────────
+                const SizedBox(height: 20),
+                _branchCard(
+                  icon: PhosphorIcons.phone(PhosphorIconsStyle.fill),
+                  accent: AD.online,
+                  title: 'Phone calls',
+                  subtitle: 'Ava as PA on your SIM number',
+                  on: _pstnOn,
                   onTap: () {
-                    Analytics.uiInteraction('recept_rules_entry_tapped', 0);
-                    Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const ReceptionistRulesScreen()));
+                    Analytics.uiInteraction('pa_lane_open', 0,
+                        extra: {'lane': 'pstn'});
+                    Navigator.of(context)
+                        .push(MaterialPageRoute<void>(
+                            builder: (_) => const PaPhoneScreen()))
+                        .then((_) => _reload());
                   },
-                  color: AD.card,
-                  borderColor: AD.borderControl,
-                  radius: BorderRadius.circular(AD.rInput),
-                  boxShadow: const [],
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
-                  child: Row(children: [
-                    Icon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
-                        size: 18, color: AD.textSecondary),
-                    const SizedBox(width: Msg.s2),
-                    Expanded(
-                        child: Text('Call Rules — tell Ava what to say',
-                            style: ADText.rowName())),
-                    Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                        size: 16, color: AD.textTertiary),
-                  ]),
                 ),
                 const SizedBox(height: Msg.s2),
-                // ── [RECEPT-STATS-1] Call analytics entry (plan §C3) ───────
+                _branchCard(
+                  icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
+                  accent: AD.iconVideo,
+                  title: 'AvaTOK calls',
+                  subtitle: 'Ava as receptionist in-app',
+                  on: _avatokOn,
+                  onTap: () {
+                    Analytics.uiInteraction('pa_lane_open', 0,
+                        extra: {'lane': 'avatok'});
+                    Navigator.of(context)
+                        .push(MaterialPageRoute<void>(
+                            builder: (_) => const PaInAppScreen()))
+                        .then((_) => _reload());
+                  },
+                ),
+                // ── [PA-UI-1] Shared voice / persona controls ──────────────
+                const SizedBox(height: 20),
+                Text('HOW AVA SPEAKS', style: ADText.sectionLabel()),
+                const SizedBox(height: Msg.s2),
+                AdCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(children: [
+                    _hubRow('Greeting', _greetingValueLabel(), _openGreetingSheet),
+                    _hubRow('Language and voice', _langVoiceValueLabel(),
+                        _openLanguageSheet),
+                    _hubRow('Tell Ava where you are', _noteValueLabel(),
+                        _openNoteSheet,
+                        last: true),
+                  ]),
+                ),
+                const SizedBox(height: 20),
+                // ── [RECEPT-STATS-1] Call activity ────────────────────────
                 ZinePressable(
                   onTap: () {
-                    Analytics.capture('recept_analytics_entry_tapped', {});
-                    Navigator.of(context).push(MaterialPageRoute(
+                    Analytics.uiInteraction('pa_call_activity_open', 0);
+                    Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => const ReceptionistAnalyticsPage()));
                   },
                   color: AD.card,
                   borderColor: AD.borderControl,
                   radius: BorderRadius.circular(AD.rInput),
                   boxShadow: const [],
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: Msg.s4, vertical: Msg.s4),
                   child: Row(children: [
                     Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
                         size: 18, color: AD.textSecondary),
                     const SizedBox(width: Msg.s2),
                     Expanded(
-                        child:
-                            Text('View call analytics', style: ADText.rowName())),
+                        child: Text('Call activity', style: ADText.rowName())),
                     Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
                         size: 16, color: AD.textTertiary),
                   ]),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    '3 tokens per minute · calls end within 5 minutes',
+                    style: ADText.preview(),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ],
             ]),
     );
   }
+
+  /// [PA-UI-1] A lane branch card: badge + title/subtitle + On/Off pill + caret.
+  Widget _branchCard({
+    required IconData icon,
+    required Color accent,
+    required String title,
+    required String subtitle,
+    required bool on,
+    required VoidCallback onTap,
+  }) {
+    return ZinePressable(
+      onTap: onTap,
+      color: AD.card,
+      borderColor: AD.borderControl,
+      radius: BorderRadius.circular(AD.rInput),
+      boxShadow: const [],
+      padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
+      child: Row(children: [
+        ZineIconBadge(icon: icon, color: accent, size: 36),
+        const SizedBox(width: Msg.s3),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: ADText.rowName()),
+            const SizedBox(height: 2),
+            Text(subtitle, style: ADText.preview()),
+          ]),
+        ),
+        const SizedBox(width: Msg.s2),
+        AdSticker(on ? 'On' : 'Off',
+            kind: on ? AdStickerKind.ok : AdStickerKind.hint),
+        const SizedBox(width: 4),
+        Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+            size: 16, color: AD.textTertiary),
+      ]),
+    );
+  }
+
+  /// [PA-UI-1] One row of the grouped "HOW AVA SPEAKS" card.
+  Widget _hubRow(String title, String value, VoidCallback onTap,
+      {bool last = false}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(children: [
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
+          child: Row(children: [
+            Expanded(
+              child:
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: ADText.rowName()),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: ADText.preview(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ]),
+            ),
+            const SizedBox(width: Msg.s2),
+            Icon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                size: 16, color: AD.textTertiary),
+          ]),
+        ),
+        if (!last) const Divider(height: 1, color: AD.borderHairline),
+      ]),
+    );
+  }
+
+  // ── [PA-UI-1] value labels for the three shared rows ────────────────────────
+
+  String _greetingValueLabel() {
+    if (_greetingStyle == 'custom') {
+      final t = _greeting.text.trim();
+      return t.isEmpty ? 'Custom…' : t;
+    }
+    return kReceptionistGreetingPresets[_greetingStyle] ?? 'No greeting (plain)';
+  }
+
+  String _langVoiceValueLabel() {
+    final voice = GoogleVoicePref.voice.value;
+    final lang = _langLabel();
+    return voice.isEmpty ? lang : '$lang · $voice';
+  }
+
+  String _noteValueLabel() {
+    final t = _note.text.trim();
+    if (t.isEmpty) return 'Off';
+    return t.length <= 60 ? t : '${t.substring(0, 60)}…';
+  }
+
+  // ── [PA-UI-1] the three sheets. Each saves on close. ────────────────────────
+
+  /// Shared sheet shell: dark rounded sheet, drag handle, keyboard-aware, and a
+  /// [StatefulBuilder] so the sheet body can rebuild itself. On dismiss it
+  /// rebuilds the hub, emits [tag] and persists via the existing [_save].
+  Future<void> _openSheet(
+    String tag,
+    String title,
+    Widget Function(BuildContext ctx, StateSetter setSheet) body,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+            ),
+            child: StatefulBuilder(
+              builder: (ctx2, setSheet) => Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: Msg.s2),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AD.borderControl,
+                        borderRadius: Msg.brPill,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        Msg.s4, Msg.s4, Msg.s4, Msg.s2),
+                    child: Text(title, style: ADText.rowName()),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(
+                          Msg.s4, 0, Msg.s4, Msg.s4),
+                      child: body(ctx2, setSheet),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        Msg.s4, 0, Msg.s4, Msg.s4),
+                    child: AdButton(
+                      label: 'Done',
+                      fullWidth: true,
+                      fontSize: 15,
+                      onPressed: () => Navigator.of(ctx2).pop(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {});
+    Analytics.uiInteraction(tag, 0);
+    await _save(enabled: true);
+  }
+
+  Future<void> _openGreetingSheet() {
+    return _openSheet('pa_greeting_saved', 'Greeting', (ctx, setSheet) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _greetingDropdown(setSheet),
+        if (_greetingStyle == 'custom') ...[
+          const SizedBox(height: Msg.s2),
+          AdField(
+            controller: _greeting,
+            label: 'Your greeting',
+            hint: 'e.g. Jai Shree Ram',
+            maxLength: kReceptionistGreetingMax,
+            textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) => setSheet(() {}),
+          ),
+        ],
+        const SizedBox(height: Msg.s1),
+        Text(
+          'Ava opens with this, then the caller’s name — e.g. '
+          '“${_greetingPreview()} Anita, you can’t take the call right now…”.',
+          style: ADText.preview(),
+        ),
+        const SizedBox(height: 12),
+        _toggleRow(
+          'Festival greetings',
+          'On festival days (Diwali, Holi, Eid, Christmas, New Year) Ava '
+              'greets with the festival instead — e.g. “Happy Diwali”.',
+          _festivalGreeting,
+          (v) {
+            _festivalGreeting = v;
+            setSheet(() {});
+          },
+        ),
+      ]);
+    });
+  }
+
+  Future<void> _openLanguageSheet() {
+    return _openSheet('pa_language_saved', 'Language and voice', (ctx, setSheet) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Answering language', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s2),
+        ZinePressable(
+          onTap: () async {
+            await _pickLanguage();
+            setSheet(() {});
+          },
+          color: AD.card,
+          borderColor: AD.borderControl,
+          radius: BorderRadius.circular(AD.rInput),
+          boxShadow: const [],
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
+          child: Row(children: [
+            Icon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                size: 18, color: AD.textSecondary),
+            const SizedBox(width: Msg.s2),
+            Expanded(child: Text(_langLabel(), style: ADText.rowName())),
+            Icon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                size: 16, color: AD.textTertiary),
+          ]),
+        ),
+        const SizedBox(height: Msg.s1),
+        Text(
+          'Ava opens in this language, then follows the caller if they speak '
+          'another.',
+          style: ADText.preview(),
+        ),
+        const SizedBox(height: Msg.s4),
+        const Divider(height: 1, color: AD.borderHairline),
+        const SizedBox(height: 16),
+        _voiceSection(),
+      ]);
+    });
+  }
+
+  Future<void> _openNoteSheet() {
+    return _openSheet('pa_note_saved', 'Tell Ava where you are',
+        (ctx, setSheet) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AdField(
+          controller: _note,
+          label: 'Let Ava know if you’re busy, away, etc.',
+          hint:
+              'e.g. I’m in meetings until 5pm — please take a message and I’ll call back.',
+          maxLength: kReceptionistNoteMax,
+          minLines: 3,
+          maxLines: null,
+          textCapitalization: TextCapitalization.sentences,
+          onChanged: (_) => setSheet(() {}),
+        ),
+        const SizedBox(height: Msg.s1),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            '${_note.text.length}/$kReceptionistNoteMax',
+            style: ADText.statCaption(
+              c: _note.text.length > kReceptionistNoteMax
+                  ? AD.danger
+                  : AD.textTertiary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Ava uses this to tell callers why you can’t pick up and to take a '
+          'message in your words. Your name and gender come from your Profile.',
+          style: ADText.preview(),
+        ),
+        const SizedBox(height: 16),
+        Text('Clear this note after', style: ADText.sectionLabel()),
+        const SizedBox(height: Msg.s2),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final o in _kExpiryOptions)
+            AdChip(
+              label: o.label,
+              active: _isExpiryActive(o),
+              onTap: () async {
+                await _onExpiryTap(o);
+                setSheet(() {});
+              },
+            ),
+        ]),
+        if (_expiresAtMs != null) ...[
+          const SizedBox(height: 8),
+          Text('Note clears at ${_formatExpiry(_expiresAtMs!)}',
+              style: ADText.preview()),
+        ],
+      ]);
+    });
+  }
+
+  // ── Legacy body removed by [PA-UI-1] ────────────────────────────────────────
+  // The eight per-lane toggles, the always-visible greeting dropdown, the inline
+  // language/voice sections, the inline note field and the Call Rules entry all
+  // moved out of this hub (the toggles to PaPhoneScreen / PaInAppScreen). The
+  // state variables that back the toggles are still loaded here and re-sent
+  // unchanged by [_save], so the API payload shape is unchanged.
 
   // ── Expiry helpers ──────────────────────────────────────────────────────────
 
@@ -935,7 +1106,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     return kReceptionistGreetingPresets[_greetingStyle] ?? 'Hey';
   }
 
-  Widget _greetingDropdown() {
+  /// [PA-UI-1] lives inside the greeting sheet now, so it takes the sheet's
+  /// [StateSetter] to repaint the sheet as well as the hub behind it.
+  Widget _greetingDropdown(StateSetter setSheet) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -953,64 +1126,14 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           for (final e in kReceptionistGreetingPresets.entries)
             DropdownMenuItem(value: e.key, child: Text(e.value, style: ADText.rowName())),
         ],
-        onChanged: (v) { if (v != null) setState(() => _greetingStyle = v); },
-      ),
-    );
-  }
-
-  /// [RECEPT-SETTINGS-1] A receptionist scenario toggle with the client-side
-  /// token gate baked in. [apply] mutates the backing field; [key] tags
-  /// telemetry + the top-up path. When the wallet is at/below [kReceptTokenFloor]
-  /// the row shows OFF and refuses to turn ON — tapping routes to a top-up
-  /// instead of silently enabling a feature the user can't pay for.
-  Widget _receptToggle(
-    String title,
-    String sub,
-    bool value,
-    String key,
-    void Function(bool) apply,
-  ) {
-    final gated = !_tokensOk;
-    return _toggleRow(
-      title,
-      sub,
-      gated ? false : value, // never show ON while gated
-      (v) {
-        if (gated) {
-          // Refuse to enable; point the user at their wallet.
-          Analytics.uiInteraction('recept_toggle_blocked', 0,
-              extra: {'toggle': key, 'tokens': _tokens, 'want': v});
-          AvaLog.I.log('receptionist',
-              'toggle $key blocked (tokens=$_tokens <= $kReceptTokenFloor)');
-          _showTopUp();
-          return;
-        }
-        setState(() => apply(v));
-        Analytics.uiInteraction('recept_toggle', 0,
-            extra: {'toggle': key, 'value': v, 'tokens': _tokens});
-      },
-    );
-  }
-
-  /// [RECEPT-SETTINGS-1] Told the user their wallet is too low to use Ava
-  /// Receptionist, with a one-tap route to top up.
-  void _showTopUp() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text(
-          'Top up your wallet to use Ava Receptionist — she needs tokens to '
-          'answer your calls.'),
-      action: SnackBarAction(
-        label: 'Top up',
-        onPressed: () async {
-          Analytics.uiInteraction('recept_topup_cta', 0,
-              extra: {'tokens': _tokens, 'source': 'toggle_snackbar'});
-          await Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => const WalletScreen()));
-          if (mounted) await WalletBalanceStore.load(force: true);
+        onChanged: (v) {
+          if (v == null) return;
+          _greetingStyle = v;
+          setSheet(() {});
+          setState(() {});
         },
       ),
-    ));
+    );
   }
 
   Widget _toggleRow(String title, String sub, bool value, ValueChanged<bool> onChanged) {
