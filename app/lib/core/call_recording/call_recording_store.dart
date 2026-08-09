@@ -471,6 +471,13 @@ class CallRecordingStore {
   /// session so the NEXT recording can never inherit it.
   _EscalatedTo? _escalation;
 
+  /// [CALLREC-STOP-ON-END-1] True when [callId]'s recording crossed a group
+  /// escalation. The 1:1 [CallSession] is torn down AFTER the conference is up
+  /// (make-before-break), and its teardown must NOT auto-stop a recording that
+  /// [markEscalatedToGroup] deliberately keeps running.
+  bool isEscalated(String callId) =>
+      _escalation != null && _escalation!.callId == callId;
+
   /// Abandon the current recording and delete its working file. Nothing is
   /// saved and nothing is uploaded.
   Future<void> cancel() async {

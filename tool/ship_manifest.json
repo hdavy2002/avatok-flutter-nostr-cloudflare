@@ -559,5 +559,24 @@
    }
   ],
   "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/callrecord/CallRecorderPlugin.kt MONO_BITRATE/STEREO_BITRATE; bytes_per_s emitted on client callrec_finalized (observed 4127 on build 10527, 2026-08-08)"
+ },
+ "CALLREC-STOP-ON-END-1": {
+  "description": "Recording outlived its call: stop() was only wired to the record button, so on 2026-08-08 the recorder from call avatok-85dc200b kept 'recording' after hangup, refused recording on the next call ('A recording is already running', owner screenshot 18:14 IST), and the audio was only salvaged by orphan recovery as an Unknown card. CallSession._teardownImpl now finalizes the recording with the call (unawaited, idempotent), exempting group escalation (make-before-break keeps the recorder alive by design).",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "callrec_auto_stop",
+    "property": "call_id",
+    "not_in": [
+     ""
+    ],
+    "min_events": 1,
+    "note": "Fires whenever a call ends while its recording is still running - i.e. any recorded call the user does not manually stop first. Cross-check: each callrec_auto_stop should be followed by a callrec_finalized reason=stop on the same call_id; a rising callrec_recovered rate on the new build means the auto-stop is not landing."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart:_teardownImpl guard on CallRecordingStore.I.activeCallId/phase/isEscalated -> Analytics.capture('callrec_auto_stop') + CallRecordingStore.I.stop(); isEscalated added in call_recording_store.dart"
  }
 }

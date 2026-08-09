@@ -8797,6 +8797,30 @@ class CallSession {
   Future<void> _teardownImpl({String? reason}) async {
     if (_ended || _teardownStarted) return;
     _teardownStarted = true;
+    // ── [CALLREC-STOP-ON-END-1] Finalize this call's recording WITH the call ──
+    //
+    // On 2026-08-08 (call avatok-85dc200b) nothing stopped the recorder when
+    // the call ended: stop() was only ever wired to the record BUTTON. The
+    // session died, both leg taps stalled 4s later, the zombie session then
+    // refused recording on the NEXT call ("A recording is already running",
+    // owner screenshot 18:14 IST), and the audio was only salvaged 30+ minutes
+    // later by orphan recovery — as an unattributed "Call with Unknown" card.
+    //
+    // stop() finalizes and SAVES (never discards), is idempotent through
+    // `_busy`, and remuxes off the call path — unawaited so teardown never
+    // blocks on it. The one deliberate exemption is a group escalation, whose
+    // design keeps the recorder running across this very teardown
+    // (make-before-break; see markEscalatedToGroup).
+    if (CallRecordingStore.I.activeCallId.value == config.room &&
+        CallRecordingStore.I.phase.value == CallRecordingPhase.recording &&
+        !CallRecordingStore.I.isEscalated(config.room)) {
+      unawaited(Analytics.capture('callrec_auto_stop', {
+        'call_id': config.room,
+        'rec_id': 'callrec:${config.room}',
+        'teardown_reason': reason ?? '',
+      }));
+      unawaited(CallRecordingStore.I.stop());
+    }
     // [CALL-LOG-TIME-1] Close the call-history row HERE as well as in `_endWith`.
     // `_endWith` is NOT the common end path: the red button goes
     // `endByUser()` → `hangup()` → here and never touches `_endWith` at all, so
