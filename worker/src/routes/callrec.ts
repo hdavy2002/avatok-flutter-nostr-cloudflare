@@ -446,15 +446,27 @@ async function finalizeRecording(
   env: Env, exec: ExecutionContext, uid: string,
   meta: ParsedMeta, stored: StoredAudio, route: string, transport: "inline" | "chunked",
 ): Promise<Response> {
-  const { callId, direction, startedAt, durationS, peerUid, peerName, peerKey } = meta;
+  const { callId, direction, startedAt, durationS, peerUid, peerKey } = meta;
   const conv = convFor(uid, peerKey);
   const clientId = clientIdFor(callId);
 
   // ── Inbox card ────────────────────────────────────────────────────────────
   // title/description START EMPTY. They are user-supplied (PATCH /meta) and are
   // never generated — there is no AI anywhere in this feature.
-  const peerAvatar = meta.peerAvatar
-    || (peerUid ? (await publicIdentityFor(env, peerUid).catch(() => null))?.avatar_url ?? "" : "");
+  //
+  // [CALLREC-PEERNAME-1] The client's peer_name is best-effort (an incoming
+  // call accepted from the shade can reach the recorder with no display name),
+  // and on 2026-08-08 a real recording landed as "Call with Unknown" while its
+  // peer_uid was present the whole time. The server profile is authoritative,
+  // so BOTH name and avatar are backfilled from publicIdentityFor when the
+  // client didn't send them — one lookup, already KV-cached. The client's own
+  // value still wins when present (it may carry a group label after an
+  // escalation, which the profile table knows nothing about).
+  const peerIdent = (peerUid && (!meta.peerName || !meta.peerAvatar))
+    ? await publicIdentityFor(env, peerUid).catch(() => null)
+    : null;
+  const peerName = meta.peerName || peerIdent?.display_name || "";
+  const peerAvatar = meta.peerAvatar || peerIdent?.avatar_url || "";
   const envelope = JSON.stringify({
     t: "callrec", title: "", description: "",
     call_id: callId, started_at: startedAt, duration_s: durationS, bytes: stored.bytes,
@@ -528,6 +540,11 @@ async function finalizeRecording(
     mime: stored.mime, direction, dedup: stored.dedup, appended, transport,
     peer_uid: peerUid || null, conv, media_id: stored.mediaId,
     presigned: !!playbackUrl,
+    // [CALLREC-PEERNAME-1] Who named the card: `client` (the app sent a
+    // peer_name), `server` (the profile backfill did), or `none` (peer_uid
+    // absent or no profile row — the card renders "Unknown", which is the
+    // failure this dimension exists to surface).
+    peer_name_resolved: meta.peerName ? "client" : peerName ? "server" : "none",
   }));
 
   return json({

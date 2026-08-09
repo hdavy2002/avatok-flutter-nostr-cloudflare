@@ -1,5 +1,5 @@
 {
- "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
+ "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory \u2014 see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
  "CALL-PRESENCE-3": {
   "description": "No-record is also offline (owner's rule, the Arti call avatok-6e17cdc2 2026-08-09): a clean presence read MISS means the account has not checked in for at least the key TTL (>= presenceOfflineSec*6) or never - route straight to Ava with offline_by=no_record. error/timeout reads stay fail-open to ringing. Combined with minAppBuild=10528 forcing all installs onto heartbeat-capable builds, every callee is now either fresh (ring), stale<5min (ring), stale>=5min (Ava), or no-record (Ava). Server-side only.",
@@ -133,7 +133,7 @@
      "null"
     ],
     "min_events": 1,
-    "note": "Only meaningful once a flag is flipped AND secrets/presets exist; while dark, every request emits call_rtk_blocked with reason=flag_off, which is correct behaviour, not failure. A join that returns without a meeting_id means the CF API response envelope changed shape (the route accepts both result.* and data.* — see call_rtk.ts) and the client got a token to nowhere."
+    "note": "Only meaningful once a flag is flipped AND secrets/presets exist; while dark, every request emits call_rtk_blocked with reason=flag_off, which is correct behaviour, not failure. A join that returns without a meeting_id means the CF API response envelope changed shape (the route accepts both result.* and data.* \u2014 see call_rtk.ts) and the client got a token to nowhere."
    }
   ],
   "_verified_at": "worker/src/routes/call_rtk.ts:329 (trackUser ... 'call_rtk_joined'), :210/:216/:226/:293 (call_rtk_blocked), :301/:322 (call_rtk_error)"
@@ -168,7 +168,7 @@
     "property": "join_ms",
     "lt": 3000,
     "min_events": 1,
-    "note": "Spec §5 Phase 1/2 assertion. Emitted in realtimekit_provider.dart after joinRoom succeeds, for both 1:1 and group."
+    "note": "Spec \u00a75 Phase 1/2 assertion. Emitted in realtimekit_provider.dart after joinRoom succeeds, for both 1:1 and group."
    },
    {
     "event": "call_network_handover",
@@ -180,7 +180,7 @@
      "failed"
     ],
     "min_events": 1,
-    "note": "THE WHATSAPP TEST (spec §5 Phase 2): outcome=survived on a deliberate WiFi->cellular switch mid-call, on two phones both on the new build. This event only exists when a network transition actually happened - it needs the deliberate two-phone test, it will not accumulate on its own. Do not describe [CALL-RTK-3] as shipped until this has been read with outcome=survived."
+    "note": "THE WHATSAPP TEST (spec \u00a75 Phase 2): outcome=survived on a deliberate WiFi->cellular switch mid-call, on two phones both on the new build. This event only exists when a network transition actually happened - it needs the deliberate two-phone test, it will not accumulate on its own. Do not describe [CALL-RTK-3] as shipped until this has been read with outcome=survived."
    }
   ],
   "_verified_at": "app/lib/core/calls/rtc/realtimekit_provider.dart:419,475 (rtk_join outcome), :485 (call_connected provider), :275,:292 (call_network_handover outcome failed/survived); call_session.dart:5602 (call_rtk_active), :5613 (call_rtk_fallback)"
@@ -448,7 +448,7 @@
   "_verified_at": "app/lib/core/calls/call_session.dart _emitAvaVmFallback -> Analytics.capture('ava_vm_fallback', {call_id, trigger, recorded_ms, stored, fallback_wait_ms, activation_mode, peer_uid, caller_uid}); requested from _onAvaLiveTimeout via ReceptionistCall.requestVoicemailFallback (receptionist_call.dart) and resolved by the DO's vm_result frame; server side worker/src/do/reception_room_cf.ts startVmFallback + finalize (ava_vm_fallback_started / ava_vm_fallback_result)"
  },
  "CALL-HONEST-FAIL-1": {
-  "description": "Tell the caller WHY the call stopped. The terminal reason was always known (21 distinct call_ended.reason values in 7 days of prod) and never rendered; ten attempts on 2026-08-07 all looked identical to the user. ONE table (app/lib/core/ui/call_failure_copy.dart) maps reason/scenario/outcome -> a sentence, shown on the call screen and on both call-log lists. Success is NOT 'the event fired' — it is that the event carries a REAL message_key, because an unmapped ending deliberately emits nothing at all.",
+  "description": "Tell the caller WHY the call stopped. The terminal reason was always known (21 distinct call_ended.reason values in 7 days of prod) and never rendered; ten attempts on 2026-08-07 all looked identical to the user. ONE table (app/lib/core/ui/call_failure_copy.dart) maps reason/scenario/outcome -> a sentence, shown on the call screen and on both call-log lists. Success is NOT 'the event fired' \u2014 it is that the event carries a REAL message_key, because an unmapped ending deliberately emits nothing at all.",
   "shipped": "2026-08-08",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -465,7 +465,7 @@
      "surface": "call_screen"
     },
     "min_events": 1,
-    "note": "A failed call that told the user nothing emits NO event, so absence here is the failure mode this issue exists to fix: it means the terminal reason fell outside the table and the caller was left guessing again. Cross-check against call_ended in the same window — every call_ended whose reason is in the explained set should have a paired call_failure_shown on the same call_id."
+    "note": "A failed call that told the user nothing emits NO event, so absence here is the failure mode this issue exists to fix: it means the terminal reason fell outside the table and the caller was left guessing again. Cross-check against call_ended in the same window \u2014 every call_ended whose reason is in the explained set should have a paired call_failure_shown on the same call_id."
    },
    {
     "event": "call_failure_shown",
@@ -479,5 +479,49 @@
    }
   ],
   "_verified_at": "app/lib/core/ui/call_failure_copy.dart:CallFailureTelemetry.shown -> Analytics.capture('call_failure_shown', {'call_id','entry_id','reason','message_key','surface','peer_uid'}); call sites: features/avatok/call_screen.dart (_resolveFailure, surface call_screen), features/avatok/calls_screen.dart and shell/v2/avadial_root.dart (row build, surface log_row)"
+ },
+ "CALLREC-PEERNAME-1": {
+  "description": "Recording Inbox card said 'Call with Unknown' for a call whose peer_uid was present the whole time (owner report 2026-08-09, call avatok-85dc200b). The worker now backfills peer_name AND peer_avatar from publicIdentityFor(peer_uid) in finalizeRecording when the client sent none; the client's own value still wins (group-escalation labels). Server-side only, so shipped clients get named cards on their NEXT recording with no app update.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "callrec_finalized",
+    "property": "peer_name_resolved",
+    "in": [
+     "client",
+     "server",
+     "none"
+    ],
+    "where": {
+     "side": "server"
+    },
+    "min_events": 1,
+    "note": "Emitted by the server finalize. 'server' means the backfill did the work; a steady stream of 'none' with a non-empty peer_uid means publicIdentityFor found no profile row and the card will still read Unknown - which is the failure this issue exists to fix."
+   }
+  ],
+  "_verified_at": "worker/src/routes/callrec.ts:finalizeRecording - peerIdent = publicIdentityFor(peerUid) when meta.peerName/meta.peerAvatar empty; peer_name_resolved property added to the server-side callrec_finalized emit in the same function"
+ },
+ "CALLREC-PLAYER-UI-1": {
+  "description": "Owner report 2026-08-09: play icon too small, and no way to scrub. Inbox card play icon 26->40, detail screen 34->56, and a shared draggable CallRecSeekBar (AudioPlaybackService.seek) on both surfaces with position/duration labels.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "callrec_seek",
+    "property": "surface",
+    "in": [
+     "inbox_card",
+     "callrec_detail"
+    ],
+    "min_events": 1,
+    "note": "One real drag from either surface proves the bar renders, accepts the gesture and lands a seek. to_ms/duration_ms ride along so a bar that always snaps back to 0 is visible as to_ms=0 rows."
+   }
+  ],
+  "_verified_at": "app/lib/features/avadial/inbox/call_recording_card.dart:CallRecSeekBar.onChangeEnd -> Analytics.capture('callrec_seek', {'track_id','surface','to_ms','duration_ms'}); mounted in call_recording_card.dart (inbox_card) and call_recording_detail_screen.dart (callrec_detail)"
  }
 }
