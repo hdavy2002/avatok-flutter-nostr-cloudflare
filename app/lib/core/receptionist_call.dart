@@ -77,6 +77,54 @@ class ReceptionistCall {
   bool _useNative = false;
   StreamSubscription<Uint8List>? _nativeMicSub;
 
+  // ── [CALL-RING-AUDIBLE-3 2026-08-09] deferred audio-session start ──────────
+  //
+  // MEASURED: prod call avatok-6e17cdc2 (2026-08-09 01:21, hdavy2002@gmail.com).
+  // [CALL-RING-AUDIBLE-2] proved the ringback tone is no longer STOPPED during
+  // the receptionist spin-up (`ringback_audible phase=prewarm playing=true` at
+  // both the 0 ms and the 2000 ms sample, position advancing). The owner still
+  // heard it go quiet at ~beep 7, at the exact second of
+  // `call_audio_owner_apply recept_prewarm_before/after`. So the tone played
+  // but stopped being AUDIBLE, and the only thing that runs between those two
+  // markers is [_startAudio] → `startEngine`.
+  //
+  // `startEngine` (android/.../AvaVoiceAudioPlugin.kt:461) writes
+  // `AudioManager.mode = MODE_IN_COMMUNICATION`, then (kt:473-487) re-selects
+  // the communication device for the `speaker` value this object was
+  // CONSTRUCTED with, then opens an AudioRecord (VOICE_COMMUNICATION + AEC) and
+  // an AudioTrack on `USAGE_VOICE_COMMUNICATION`. The ringback tone is on that
+  // very same output — `core/ringback_player.dart:150` pins
+  // `usageType: voiceCommunication` — so the mode switch, the device
+  // re-selection and the new AudioTrack all land on the stream the tone is
+  // sounding through, and re-level/re-route it mid-beep.
+  //
+  // The fix is ordering, not routing: nothing about that audio session is
+  // needed until Ava is actually about to be heard, and the ava-live gate
+  // ([CallSession._openAvaLiveGate]) already stops the tone at exactly that
+  // instant. Deferring the engine start to the gate makes "tone stops" and
+  // "device switches to the in-call session" the same moment, so there is no
+  // window in which an attenuated tone is still supposed to be audible.
+  //
+  // Gated by `RemoteConfig.callRingAudibilityV1` at the CALLER (call_session):
+  // when it is off nobody sets [deferAudioStart] and this file behaves exactly
+  // as before, byte for byte.
+
+  /// When true, [start] brings the SESSION up (config → /start → WebSocket) but
+  /// does NOT open the device audio session; [startAudioNow] does that later.
+  bool deferAudioStart = false;
+
+  /// Has [_startAudio] already run (either inline from [start] or deferred)?
+  bool _audioStarted = false;
+
+  /// Read-only probe supplied by the owner so `recept_engine_started` can record
+  /// whether the ava-live gate was already open when the engine started —
+  /// `gate_open: true` is the success value for [CALL-RING-AUDIBLE-3].
+  bool Function()? isAvaLiveGateOpen;
+
+  /// Epoch ms of when this call started ringing, supplied by the owner. Only
+  /// used to timestamp `recept_engine_started`.
+  int? ringStartedAtMs;
+
   // ── fallback engine (record + chunked-WAV playback) ──────────────────────────
   final AudioRecorder _rec = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
@@ -184,6 +232,11 @@ class ReceptionistCall {
       return false;
     }
     vmFallbackRequested = true;
+    // [CALL-RING-AUDIBLE-3] The dumb-voicemail flow RECORDS THE CALLER, so it
+    // needs the mic even though Ava never produced audio and the ava-live gate
+    // therefore never opened to start the engine for us. Fire and forget: the
+    // greeting/beep arrive over the same socket a moment later.
+    if (deferAudioStart && !_audioStarted) unawaited(startAudioNow());
     Analytics.capture('ava_vm_fallback_requested', {
       'trigger': trigger,
       'activation_mode': activationMode,
@@ -316,10 +369,17 @@ class ReceptionistCall {
         },
       );
 
-      final micOk = await _startAudio();
-      if (!micOk) {
-        _finish('no_mic');
-        return false;
+      // [CALL-RING-AUDIBLE-3] Deferred: the socket is up and Ava can start
+      // rendering server-side, but the device audio session (and with it the
+      // MODE_IN_COMMUNICATION switch that re-levels the ringback tone) stays
+      // closed until [startAudioNow] — called at the ava-live gate, the same
+      // instant the tone is stopped.
+      if (!deferAudioStart) {
+        final micOk = await _startAudio();
+        if (!micOk) {
+          _finish('no_mic');
+          return false;
+        }
       }
 
       _wsConnected = true;
@@ -361,10 +421,55 @@ class ReceptionistCall {
     }
   }
 
+  /// [CALL-RING-AUDIBLE-3] Open the device audio session NOW, for a session that
+  /// was started with [deferAudioStart]. Idempotent, and a no-op when the audio
+  /// session is already up (the flag-off path always starts it inline in
+  /// [start], so this can never double-open an engine).
+  ///
+  /// Called from [CallSession._openAvaLiveGate] immediately AFTER the ringback
+  /// tone has been stopped and awaited, and BEFORE [release] lets Ava's buffered
+  /// audio out — so the tone stop and the MODE_IN_COMMUNICATION switch happen
+  /// back to back with nothing audible in between, and Ava's first word still
+  /// plays through a fully-open engine.
+  Future<bool> startAudioNow() async {
+    if (_ended) return false;
+    if (_audioStarted) return true; // already open (inline or an earlier defer)
+    if (!deferAudioStart) return false; // never open an engine start() declined to
+    final ok = await _startAudio();
+    if (!ok) {
+      // No mic at the one moment we actually need one. Ava is live server-side
+      // but this device can neither hear nor be heard, so end honestly rather
+      // than sit in silence — same verdict [start] reaches on the inline path.
+      Analytics.capture('ava_recept_deferred_audio_failed', {
+        'activation_mode': activationMode,
+        if (callId case final id?) 'call_id': id,
+      });
+      await _finish('no_mic');
+      return false;
+    }
+    return true;
+  }
+
   /// Bring up audio capture + playback. Prefers the native full-duplex engine
   /// (AEC, smooth, barge-in); falls back to record + chunked-WAV. Returns false
   /// only when no mic could be opened.
   Future<bool> _startAudio() async {
+    _audioStarted = true;
+    // [CALL-RING-AUDIBLE-3] The engine-start site. `gate_open: true` is the
+    // SUCCESS VALUE for this fix (the engine — and therefore the
+    // MODE_IN_COMMUNICATION switch — ran at/after the ava-live gate, which is
+    // where the ringback tone is stopped). `gate_open: false` with
+    // `deferred: false` is the pre-fix behaviour this issue is about.
+    Analytics.capture('recept_engine_started', {
+      'at_ms_since_ring': ringStartedAtMs == null
+          ? -1
+          : DateTime.now().millisecondsSinceEpoch - ringStartedAtMs!,
+      'gate_open': isAvaLiveGateOpen?.call() ?? false,
+      'deferred': deferAudioStart,
+      'speaker': speaker,
+      'activation_mode': activationMode,
+      if (callId case final id?) 'call_id': id,
+    });
     // 1) Native engine (Android) — one AEC'd comm session for mic + playback.
     if (NativeVoiceAudio.isSupported) {
       _native.onEvent = (e) => Analytics.capture('ava_recept_native_event', {

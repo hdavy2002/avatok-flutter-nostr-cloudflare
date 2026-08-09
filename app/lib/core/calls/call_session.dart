@@ -8170,6 +8170,7 @@ class CallSession {
             ? 'unreachable'
             : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'),
         speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+    _armDeferredReceptAudio(call);
     _prewarmCall = call;
     _prewarmStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     final deadline = _serverRingDeadlineMs;
@@ -8204,6 +8205,31 @@ class CallSession {
       _prewarmStartFuture = null;
       Analytics.capture('ava_prewarm_aborted', {'call_id': config.room, 'reason': 'failed'});
     }
+  }
+
+  /// [CALL-RING-AUDIBLE-3 2026-08-09] Tell [call] not to open the device audio
+  /// session inside `start()`, and wire the two read-only probes its
+  /// `recept_engine_started` event reports with.
+  ///
+  /// WHY: [CALL-RING-AUDIBLE-2] proved the ringback tone is no longer stopped
+  /// during the receptionist spin-up (prod call avatok-6e17cdc2, 2026-08-09
+  /// 01:21 — `ringback_audible phase=prewarm playing=true` at both samples with
+  /// an advancing position), yet the owner still heard it die at ~beep 7, at the
+  /// exact second of `call_audio_owner_apply recept_prewarm_before/after`. The
+  /// tone plays on `USAGE_VOICE_COMMUNICATION` (core/ringback_player.dart:150)
+  /// and `startEngine` re-levels/re-routes precisely that output when it sets
+  /// `MODE_IN_COMMUNICATION` and re-selects the communication device
+  /// (AvaVoiceAudioPlugin.kt:461, :473-487) ~8s before the ring deadline. Moving
+  /// that to the ava-live gate — which is already the one place the tone is
+  /// stopped — collapses the attenuation window to zero.
+  ///
+  /// Flag OFF → not called, [ReceptionistCall.deferAudioStart] stays false and
+  /// the audio session comes up inside `start()` exactly as it does today.
+  void _armDeferredReceptAudio(ReceptionistCall call) {
+    call.ringStartedAtMs = _startedAtMs;
+    call.isAvaLiveGateOpen = () => _avaLiveGateOpen;
+    if (!RemoteConfig.callRingAudibilityV1) return;
+    call.deferAudioStart = true;
   }
 
   /// Abort a not-yet-adopted pre-warmed session (the callee answered, or the
@@ -8314,6 +8340,10 @@ class CallSession {
           : ReceptionistCall(
               calleeUid: config.seed, callId: config.room, activationMode: activationMode,
               speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+      // [CALL-RING-AUDIBLE-3] Cold start gets the same deferral as a pre-warm
+      // (a warm one was already armed in [_beginPrewarm]; re-arming is
+      // idempotent and just refreshes the gate probe onto this session).
+      _armDeferredReceptAudio(call);
       // Publish the pending object BEFORE either async server request. Teardown
       // can now cancel a start that is still in flight instead of losing the
       // only reference and letting Ava begin after the caller hung up.
@@ -8427,6 +8457,22 @@ class CallSession {
       // countdown, honour it; otherwise arm the watchdog now.
       if (_avaLiveGateOpen) {
         _setPhase('receptionist');
+      } else if (RemoteConfig.callRingAudibilityV1 && call.hasFirstAudio) {
+        // [CALL-RING-AUDIBLE-3] A pre-warmed session that already rendered its
+        // greeting (held/buffered, never heard) IS provably live — that is the
+        // same deterministic proof `onStatus('live')` carries, and its handler
+        // was the lightweight pre-warm one when it fired, so nothing opened the
+        // gate. Waiting on the `avaLevel` meter here can miss it entirely: the
+        // meter decays ~12x/s and Gemini sends nothing more until it hears the
+        // caller — which, with the audio session now deferred, it cannot. That
+        // would strand the tone until `ava_live_timeout`. Open the gate now:
+        // the tone stops, the engine starts and her buffered greeting is
+        // released, all at this one instant. The phase is set first because
+        // [_openAvaLiveGate] only advances the label from
+        // 'receptionist-connecting' (it must not stomp a wrapup/ended phase).
+        _setPhase('receptionist-connecting');
+        // ignore: unawaited_futures
+        _openAvaLiveGate();
       } else {
         _setPhase('receptionist-connecting');
         _armAvaLiveWatchdog(call);
@@ -8522,6 +8568,24 @@ class CallSession {
     await _ringback.stop(reason: 'ava_live_gate');
     Analytics.capture('call_tone_stopped',
         {'call_id': config.room, 'reason': 'ava_live_gate'});
+    // [CALL-RING-AUDIBLE-3] The tone is now stopped and awaited, so THIS is the
+    // safe moment to switch the device into the in-call audio session
+    // (`startEngine` → MODE_IN_COMMUNICATION + communication-device select),
+    // which is what was quietly re-levelling the still-playing ringback when it
+    // ran during pre-warm. Awaited before [release] so Ava's buffered first word
+    // is fed into a fully-open engine rather than dropped on the floor.
+    //
+    // `speaker` is re-pinned first: a pre-warmed ReceptionistCall captured the
+    // route at CONSTRUCTION time and `setSpeaker` is only ever routed to
+    // `_receptionist` (call_session:6793/6825), which is null while it is still
+    // `_prewarmCall` — so a Speaker press during the pre-warm window never
+    // reached it. This is a plain field write, not a route request:
+    // CallAudioController remains the single route owner.
+    final recept = _receptionist;
+    if (recept != null && recept.deferAudioStart) {
+      recept.speaker = _speaker;
+      await recept.startAudioNow();
+    }
     _receptionist?.release();
     Analytics.capture('ava_takeover_warm', {
       'call_id': config.room,
