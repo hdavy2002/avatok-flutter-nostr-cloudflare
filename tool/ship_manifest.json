@@ -1,6 +1,51 @@
 {
  "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+ "CALL-PRESENCE-3": {
+  "description": "No-record is also offline (owner's rule, the Arti call avatok-6e17cdc2 2026-08-09): a clean presence read MISS means the account has not checked in for at least the key TTL (>= presenceOfflineSec*6) or never - route straight to Ava with offline_by=no_record. error/timeout reads stay fail-open to ringing. Combined with minAppBuild=10528 forcing all installs onto heartbeat-capable builds, every callee is now either fresh (ring), stale<5min (ring), stale>=5min (Ava), or no-record (Ava). Server-side only.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "presenceOfflineSec",
+   "callPresenceRouting"
+  ],
+  "success": [
+   {
+    "event": "call_presence_decision",
+    "where": {
+     "offline_by": "no_record"
+    },
+    "property": "decision",
+    "equals": "receptionist_offline_immediate",
+    "min_events": 1,
+    "note": "The Arti scenario: call an account with no presence record (inactive account on a shared phone). Ava must engage without ring cycles. ring_unknown with presence_read=miss after this ships means presenceOfflineSec was set <= 0 or the deploy did not land."
+   }
+  ],
+  "_verified_at": "worker/src/routes/api.ts noRecord = presenceRead === 'miss' && offlineMs > 0, offlineBy no_record, decision receptionist_offline_immediate"
+ },
+ "CALL-RING-AUDIBLE-3": {
+  "description": "The 'sound almost died at beep 7' after CALL-RING-AUDIBLE-2: the tone kept PLAYING (ringback_audible proved it) but the receptionist prewarm's startEngine set MODE_IN_COMMUNICATION + re-selected the communication device + opened an AEC AudioTrack on the same voice output the tone uses, 8s before Ava spoke. Fix: defer the native engine start to the ava-live gate (tone stop and mode switch become simultaneous), re-pin the user's speaker choice at the gate (a Speaker press during prewarm never reached the prewarming call - it could open on earpiece), keep mic available for the voicemail-fallback lane. Flag-gated on callRingAudibilityV1 (true in prod).",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callRingAudibilityV1"
+  ],
+  "success": [
+   {
+    "event": "recept_engine_started",
+    "property": "gate_open",
+    "equals": true,
+    "min_events": 1,
+    "where": {
+     "deferred": true
+    },
+    "note": "Engine opened AT/AFTER Ava's first audio. gate_open=false with deferred=false is the pre-fix bug; gate_open=false with deferred=true is legitimately the voicemail-fallback lane ONLY. Cross-check: at_ms_since_ring >= the ringback_audible phase=prewarm 2000ms sample."
+   }
+  ],
+  "_verified_at": "app/lib/core/receptionist_call.dart deferAudioStart/startAudioNow + _startAudio emit; call_session.dart _openAvaLiveGate startAudioNow + speaker re-pin; commit 72232a1f"
+ },
  "CALL-RTK-5": {
   "description": "Kotlin plugin 2.1.10 -> 2.2.20 so the app can read realtimekit_core_android's Kotlin 2.3.0 metadata.",
   "shipped": "2026-08-08",
