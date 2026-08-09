@@ -1,8 +1,104 @@
 {
  "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory \u2014 see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
+ "PA-UI-1": {
+  "description": "Approved receptionist redesign, step 1: the Settings section `ava_receptionist` stops being a mega-page and becomes a small HUB titled \"Ava PA\" (settings/sections/receptionist_section.dart). The hub holds two lane entries \u2014 \"Phone calls\" (pa_phone_screen.dart) and \"AvaTOK calls\" (pa_inapp_screen.dart) \u2014 plus the SHARED voice/persona controls that used to be buried in the mega-page. Client-only; no worker change, no schema change, no new flag. Opening the hub emits ui_interaction name=pa_hub_open.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "ui_interaction",
+    "where": {
+     "name": "pa_hub_open"
+    },
+    "property": "phase",
+    "equals": "first_paint",
+    "min_events": 1,
+    "note": "The hub renders and is reached at all. ZERO pa_hub_open on the new build means the Settings row no longer opens the redesigned hub (registration or push regressed) \u2014 the old mega-page emitted no such event, so absence is not ambiguous. phase is uiInteraction's default and is asserted so this is a VALUE check, not an \"events are flowing\" check."
+   }
+  ],
+  "_verified_at": "app/lib/features/settings/sections/receptionist_section.dart:170-175 (SettingsSection id ava_receptionist, title 'Ava PA', order 24) and :278 Analytics.uiInteraction('pa_hub_open', 0); app/lib/core/analytics.dart:561-570 uiInteraction -> capture('ui_interaction', {name, latency_ms, phase: 'first_paint', ...})"
+ },
+ "PA-UI-2": {
+  "description": "Approved receptionist redesign, step 2: the two lane screens. pa_phone_screen.dart owns the PSTN lane (recept_pstn_rejected / _not_picked_up / _unreachable + the advanced recept_pstn_redirect_all) and shows a \"Carrier setup needed \u2192 Fix it\" banner that pushes the EXISTING PstnForwardingSetupScreen; pa_inapp_screen.dart owns the AvaTOK lane (recept_avatok_*), which needs no carrier setup. Both save immediately by re-sending the FULL receptionist settings payload with exactly one field changed, and revert the switch when the server refuses. Same change retired the standalone \"Voicemail\" settings row (registerPstnForwardingSection commented out in core/ava_bootstrap.dart) without deleting the setup screen or wizard.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "pstnVoicemail"
+  ],
+  "success": [
+   {
+    "event": "pa_phone_toggle_saved",
+    "property": "toggle",
+    "in": [
+     "recept_pstn_rejected",
+     "recept_pstn_not_picked_up",
+     "recept_pstn_unreachable",
+     "recept_pstn_redirect_all"
+    ],
+    "min_events": 1,
+    "note": "The PSTN lane actually PERSISTS. This event is emitted only on res.ok, so its presence is the server-accepted save \u2014 the failure twin pa_phone_toggle_failed is the thing to look at when this is absent. A toggle value outside this list means the screen is writing a column this lane does not own."
+   },
+   {
+    "event": "pa_inapp_toggle_saved",
+    "property": "toggle",
+    "in": [
+     "recept_avatok_rejected",
+     "recept_avatok_not_picked_up",
+     "recept_avatok_unreachable",
+     "recept_avatok_redirect_all"
+    ],
+    "min_events": 1,
+    "note": "Same assertion for the AvaTOK lane. The two lanes pass each other's columns through untouched on every PUT, so a save landing under the wrong prefix would silently clobber the other lane."
+   },
+   {
+    "event": "pa_phone_toggle_failed",
+    "property": "toggle",
+    "in": [
+     "recept_pstn_rejected",
+     "recept_pstn_not_picked_up",
+     "recept_pstn_unreachable",
+     "recept_pstn_redirect_all"
+    ],
+    "min_events": 0,
+    "note": "PRESENCE IS THE BUG SIGNAL: zero expected. Each occurrence is a user flipping a switch that the server refused (premium block or network) and the UI reverting under them."
+   }
+  ],
+  "_verified_at": "app/lib/features/settings/sections/pa_phone_screen.dart:174 uiInteraction('pa_phone_toggle'), :213 capture('pa_phone_toggle_saved'), :218 capture('pa_phone_toggle_failed'), field names :299/:307/:315/:334; pa_inapp_screen.dart:127/:164/:169 and field names :208/:215/:222/:237; core/ava_bootstrap.dart:165 registerPstnForwardingSection() commented out"
+ },
+ "PA-UI-3": {
+  "description": "Settings menu cleanup requested by the owner on 2026-08-09, alongside the PA redesign. Three removals, no behaviour change to any live lane: (1) the \"Auto-Responder\" row is deleted from settings_screen.dart and its page auto_responder_settings_page.dart is deleted with it \u2014 nothing else in app/lib referenced the page; the worker route /api/auto-responder and consumers/src/auto_reply.ts are untouched. (2) Confirmed the \"Voicemail\" row can no longer appear (its registerPstnForwardingSection() call site stays commented out from PA-UI-2); PstnForwardingSetupScreen and PstnForwardingWizard are deliberately KEPT because pa_phone_screen.dart's \"Fix it\" flow pushes them, and the stale \"Settings \u2192 Voicemail\" pointer in pstn_forwarding_intro.dart now says \"Ava PA \u2192 Phone calls\". (3) registerCampaignsSection() is COMMENTED OUT in core/ava_bootstrap.dart \u2014 the campaigns feature code and the server-side campaign lane are untouched, only the Settings entry is hidden.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "campaignsEnabled"
+  ],
+  "success": [
+   {
+    "event": "ui_interaction",
+    "where": {
+     "name": "pa_hub_open"
+    },
+    "property": "phase",
+    "equals": "first_paint",
+    "min_events": 1,
+    "note": "This change only REMOVES rows, so it has no positive event of its own \u2014 the assertion is that the Settings screen still builds and its surviving rows still open. pa_hub_open is the cheapest proof of that: it can only fire from a Settings list that rendered past the point where the deleted Auto-Responder tile used to sit. If the removal broke the build or the list, this goes to zero."
+   },
+   {
+    "event": "autoresponder_enabled",
+    "exists": true,
+    "min_events": 0,
+    "note": "PRESENCE IS THE BUG SIGNAL: zero expected on the new build. This event had exactly one emit site \u2014 the deleted auto_responder_settings_page.dart \u2014 so any occurrence on a build carrying this change means the page is still reachable from some path the removal missed. Occurrences from OLDER builds are expected and are not a failure."
+   }
+  ],
+  "_verified_at": "app/lib/features/settings/settings_screen.dart (Auto-Responder _tile + its import replaced by a [PA-UI-3] comment); auto_responder_settings_page.dart deleted, its only referrer was settings_screen.dart:23/:317 and the sole emit site of autoresponder_enabled was :127; app/lib/core/ava_bootstrap.dart registerCampaignsSection() + its import commented out; registerPstnForwardingSection() still commented out"
+ },
  "CALL-ACCEPT-STATUS-KILL-1": {
-  "description": "Caller-side accept-kills-call race (the 2026-08-08 18:10 IST davy↔Tiger ghost-calling cascade, prod call avatok-b3e2da5c). callCommand's FCM durable backstop pushed EVERY changed command's wire status to the peer, including `accept`; on the caller, CallSession._statusSub's catch-all ended any not-yet-connected session with whatever status arrived, so when the accept push beat WebRTC connect the caller killed the call at the moment of accept, auto-cancelled, and the callee's freshly-accepted call died — followed by instant redial → busy → retry storm. Fix is two-layered: worker only fans out terminal/handoff statuses (protects shipped clients on deploy); client catch-all ignores non-terminal statuses and emits call_status_ignored_nonterminal (next build).",
+  "description": "Caller-side accept-kills-call race (the 2026-08-08 18:10 IST davy\u2194Tiger ghost-calling cascade, prod call avatok-b3e2da5c). callCommand's FCM durable backstop pushed EVERY changed command's wire status to the peer, including `accept`; on the caller, CallSession._statusSub's catch-all ended any not-yet-connected session with whatever status arrived, so when the accept push beat WebRTC connect the caller killed the call at the moment of accept, auto-cancelled, and the callee's freshly-accepted call died \u2014 followed by instant redial \u2192 busy \u2192 retry storm. Fix is two-layered: worker only fans out terminal/handoff statuses (protects shipped clients on deploy); client catch-all ignores non-terminal statuses and emits call_status_ignored_nonterminal (next build).",
   "shipped": "2026-08-09",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -16,20 +112,20 @@
     "property": "connected",
     "equals": true,
     "min_events": 0,
-    "note": "PRESENCE IS THE BUG SIGNAL: the target is ZERO call_ended reason=accept events after the worker deploy. Any occurrence means a caller session was still torn down by an accept status — either the worker filter regressed or an old worker is live."
+    "note": "PRESENCE IS THE BUG SIGNAL: the target is ZERO call_ended reason=accept events after the worker deploy. Any occurrence means a caller session was still torn down by an accept status \u2014 either the worker filter regressed or an old worker is live."
    },
    {
     "event": "call_status_ignored_nonterminal",
     "property": "status",
     "equals": "accept",
     "min_events": 0,
-    "note": "Client guard (next build). Zero expected once the worker filter is live; any occurrence is the guard correctly swallowing a stray non-terminal status (replay/old worker) instead of killing the call — benign, but worth a look if it spikes."
+    "note": "Client guard (next build). Zero expected once the worker filter is live; any occurrence is the guard correctly swallowing a stray non-terminal status (replay/old worker) instead of killing the call \u2014 benign, but worth a look if it spikes."
    }
   ],
-  "_verified_at": "worker/src/routes/api.ts callCommand — BACKSTOP_STATUSES set gating the Q_PUSH send; app/lib/core/calls/call_session.dart _statusSub — terminal set guard before the _endWith catch-all, emit site of call_status_ignored_nonterminal"
+  "_verified_at": "worker/src/routes/api.ts callCommand \u2014 BACKSTOP_STATUSES set gating the Q_PUSH send; app/lib/core/calls/call_session.dart _statusSub \u2014 terminal set guard before the _endWith catch-all, emit site of call_status_ignored_nonterminal"
  },
  "PA-RETUNE-1": {
-  "description": "PA re-tune (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 1/3/6/7), worker-only, INBOUND vobiz lane only — campaign mode untouched. Ava now opens a forwarded PSTN call with a bare \"Hello?\", learns who is calling and what they want in a few sentences, refuses to engage with the subject matter (no product talk, no domain answers, no offers to connect), and ends the call herself. The one-line \"<who> called about <what>\" summary + an intent category ride on the end_call tool's NEW `summary`/`category` arguments — same Gemini session, no second model (owner decision 2026-06-30) — and become the inbox card headline (summary.reason, which the frozen client renderer already displays) and the push body. A 6-min DO ALARM watchdog force-finalizes a stuck session, and the settle is capped at hard_cap_ms so a stuck session can never bill past the cap.",
+  "description": "PA re-tune (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 1/3/6/7), worker-only, INBOUND vobiz lane only \u2014 campaign mode untouched. Ava now opens a forwarded PSTN call with a bare \"Hello?\", learns who is calling and what they want in a few sentences, refuses to engage with the subject matter (no product talk, no domain answers, no offers to connect), and ends the call herself. The one-line \"<who> called about <what>\" summary + an intent category ride on the end_call tool's NEW `summary`/`category` arguments \u2014 same Gemini session, no second model (owner decision 2026-06-30) \u2014 and become the inbox card headline (summary.reason, which the frozen client renderer already displays) and the push body. A 6-min DO ALARM watchdog force-finalizes a stuck session, and the settle is capped at hard_cap_ms so a stuck session can never bill past the cap.",
   "shipped": "2026-08-09",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -48,7 +144,7 @@
     "equals": true,
     "min_events": 2,
     "min_pass_rate": 0.7,
-    "note": "message_taken equivalent: this lane's canonical outcome event carrying the one-liner. The slack covers the REAL cases where Ava never reaches end_call and so cannot emit a summary — the caller hangs up first, the hard cap fires, or the watchdog fires. Those calls still deliver a recording; they just have no headline. A pass rate near 0 means the end_call summary/category arguments are not being produced at all."
+    "note": "message_taken equivalent: this lane's canonical outcome event carrying the one-liner. The slack covers the REAL cases where Ava never reaches end_call and so cannot emit a summary \u2014 the caller hangs up first, the hard cap fires, or the watchdog fires. Those calls still deliver a recording; they just have no headline. A pass rate near 0 means the end_call summary/category arguments are not being produced at all."
    },
    {
     "event": "ava_recept_call_summary",
@@ -79,7 +175,7 @@
     "property": "settle_trued_up",
     "equals": false,
     "min_events": 0,
-    "note": "PRESENCE IS THE BUG SIGNAL (spec 6a): the target is ZERO of these in the soak window. min_events 0 so an empty result is the pass; if any DO fire, settle_trued_up=true means the session ran past the cap and the settle was capped — investigate the hung leg."
+    "note": "PRESENCE IS THE BUG SIGNAL (spec 6a): the target is ZERO of these in the soak window. min_events 0 so an empty result is the pass; if any DO fire, settle_trued_up=true means the session ran past the cap and the settle was capped \u2014 investigate the hung leg."
    },
    {
     "event": "pa_message_delivery",
@@ -89,7 +185,7 @@
     "note": "The delivery half, decoupled from the call half. false here = the recording and message never reached the callee's inbox even though the call summary said the call completed."
    }
   ],
-  "_verified_at": "worker/src/do/vobiz_agent_room.ts — composePaPrompt() at init, end_call summary/category args in connectGemini + onGeminiMessage, alarm()/setAlarm watchdog, settleTruedUp cap in the [RECEPT-BILLING-3] block, evAwait(pa_watchdog_fired) + evAwait(pa_message_delivery) in finalize(); props spread in worker/src/lib/recept_stats.ts recordCallSummary()"
+  "_verified_at": "worker/src/do/vobiz_agent_room.ts \u2014 composePaPrompt() at init, end_call summary/category args in connectGemini + onGeminiMessage, alarm()/setAlarm watchdog, settleTruedUp cap in the [RECEPT-BILLING-3] block, evAwait(pa_watchdog_fired) + evAwait(pa_message_delivery) in finalize(); props spread in worker/src/lib/recept_stats.ts recordCallSummary()"
  },
  "PA-GATE-1": {
   "description": "PA zero-balance backstop + config-key declarations (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 5). The answer webhook returns an immediate <Hangup/> for owners with no spendable balance, so a stray forwarded call costs nothing when the wallet is empty (the app-side MMI deactivation is Phase B). Declares paWatchdogMs and paZeroBalanceHangup in PlatformConfig + DEFAULTS + numericKeys in the same change, per the fake-flag rule.",
@@ -720,5 +816,24 @@
    }
   ],
   "_verified_at": "app/lib/core/calls/call_session.dart: sampler captures inbound-rtp trackIdentifier, _renderStallStreak>=2 -> _healFrozenRemoteVideo (getReceivers -> removeTrack/addTrack -> srcObject rebind) -> Analytics.capture('call_video_render_heal'); flag declared in worker/src/routes/config.ts DEFAULTS + PlatformConfig and read via RemoteConfig.callVideoRenderHealV1"
+ },
+ "CALL-REDIAL-BUSY-1": {
+  "description": "Three redials in a row died instantly after a dropped call (prod 2026-08-08 12:39-12:43, owner+Tiger). Chain: (1) avatok-b3e2da5c - callee's stray P2P offer was applied to the caller's SFU PC mid-publish -> offer_handling_failed -> dead at 0s; (2) avatok-ac098486 - callee still on the dead call's terminal screen, callIsGenuinelyActive()==true -> auto-busy on_another_call; (3) avatok-8eb20bdc - same-caller rapid_retry window suppressed the third ring on an IDLE device. Fixes: ignore P2P offers while SFU active/starting; terminal-screen sessions no longer count as genuinely active; rapid_retry suppression requires an actual ring/call in progress.",
+  "shipped": "2026-08-09",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_same_caller_retry_suppressed",
+    "property": "reason",
+    "not_in": [
+     "rapid_retry"
+    ],
+    "min_events": 0,
+    "note": "On the new build, rapid_retry should only ever appear when a ring/call was genuinely in progress. The 2026-08-08 pattern to watch for NOT recurring: call_ended dur=0 -> next call from same caller suppressed within 20s while callee idle. call_p2p_offer_ignored_on_sfu firing instead of rtc_error stage=offer_handling_failed (glare_suspected=true) is the first fix working. call_incoming_autobusy busy_reason=on_another_call while the callee's previous call had already ended is the second fix failing."
+   }
+  ],
+  "_verified_at": "app/lib/features/avatok/call_screen.dart:callIsGenuinelyActive (isEnded check); app/lib/push/push_service.dart:_suppressSameCallerRetry (ringOrCallInProgress); app/lib/core/calls/call_session.dart 'offer' case guard -> Analytics.capture('call_p2p_offer_ignored_on_sfu')"
  }
 }

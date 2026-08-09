@@ -2602,7 +2602,19 @@ class PushService {
     final sameLiveCaller = callIsGenuinelyActive() && activePeer == caller;
     final previous = _recentIncomingByCaller[caller];
     _recentIncomingByCaller[caller] = now;
-    if (sameLiveCaller || (previous != null && callId != gActiveCallId)) {
+    // [CALL-REDIAL-BUSY-1 2026-08-09] `rapid_retry` only means anything while a
+    // ring or call from that caller is actually IN PROGRESS (its purpose: a
+    // stale fourth Accept must not replace a live call). On an IDLE device it
+    // was eating legitimate redials: prod 2026-08-08, avatok-8eb20bdc — the
+    // caller's two previous attempts had already died at 0s, the callee was on
+    // no call and hearing no ring, and the third attempt was suppressed +
+    // busy-signalled purely because it came within the 20s window. After a
+    // dropped call, an immediate redial is the single most natural thing a
+    // caller does; it must ring.
+    final ringOrCallInProgress = callIsGenuinelyActive() ||
+        (gIncomingRingingCallId != null && gIncomingRingingCallId != callId);
+    if (sameLiveCaller ||
+        (previous != null && callId != gActiveCallId && ringOrCallInProgress)) {
       Analytics.capture('call_same_caller_retry_suppressed', {
         'call_id': callId,
         'caller': caller,

@@ -6609,6 +6609,24 @@ class CallSession {
         // paper over a violation of the structural invariants above, which is
         // information worth having. Detect, name it, and let the existing
         // recovery ladder handle the call.
+        // [CALL-REDIAL-BUSY-1 2026-08-09] A P2P offer must NEVER be applied to
+        // the SFU peer connection. On the SFU path `_pc` IS the SFU PC, parked
+        // in have-local-offer while its publish answer is pending — prod
+        // 2026-08-08 (avatok-b3e2da5c): the callee's stray P2P offer hit this
+        // handler mid-publish, `setRemoteDescription` threw
+        // (`offer_handling_failed`, glare_suspected=true), and the call died at
+        // 0s on the caller while the callee sat on a dead screen for 30s. The
+        // legitimate P2P fallback arrives only AFTER `sfu-abort` has torn the
+        // SFU state down, at which point this guard no longer matches.
+        if (_sfuActive || _sfuStarting) {
+          Analytics.capture('call_p2p_offer_ignored_on_sfu', {
+            'call_id': config.room,
+            'sfu_active': _sfuActive,
+            'sfu_starting': _sfuStarting,
+            'connected': _connected,
+          });
+          break;
+        }
         final sigState = _pc?.signalingState;
         final collision = sigState != null &&
             sigState != RTCSignalingState.RTCSignalingStateStable &&

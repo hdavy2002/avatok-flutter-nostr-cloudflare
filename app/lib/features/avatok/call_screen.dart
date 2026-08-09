@@ -103,7 +103,17 @@ int gLiveCallScreensSince = 0;
 /// first, so a leaked teardown can't make this permanently return true either.
 bool callIsGenuinelyActive() {
   selfHealStaleLiveCallScreens();
-  return gLiveCallScreens > 0;
+  if (gLiveCallScreens <= 0) return false;
+  // [CALL-REDIAL-BUSY-1 2026-08-09] A terminal "Call ended" screen is NOT a
+  // call. Prod 2026-08-08 (avatok-ac098486): a redial arriving 21s after the
+  // previous attempt died at 0s was auto-busied `on_another_call` — the callee
+  // was staring at that dead call's end screen, whose mounted CallScreen kept
+  // this returning true. The session knows the difference; ask it. A mounted
+  // screen with NO session yet (the brief accept-mount window) still counts as
+  // active, exactly as before.
+  final s = CallSessionManager.instance.current;
+  if (s != null && s.isEnded) return false;
+  return true;
 }
 
 /// [AVATOK-DIAL-GUARD-1] Interim self-heal for a stuck [gLiveCallScreens].
