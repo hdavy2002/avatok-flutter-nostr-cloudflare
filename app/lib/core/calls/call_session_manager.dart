@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../analytics.dart';
+import '../call_recording/call_recording_store.dart';
 import '../voice/native_voice_audio.dart';
 import 'call_session.dart';
 
@@ -189,12 +192,41 @@ class CallSessionManager with WidgetsBindingObserver {
         session.phase.removeListener(watch);
         if (_logicalActive == session) _setActive(null);
         if (_byRoom[config.room] == session) _byRoom.remove(config.room);
+        // [CALLREC-AUTOSTOP-1 2026-08-09] The call is over — finalize any
+        // recording still running for this room. Until now NOTHING stopped the
+        // recorder unless the user tapped the Record tile again: on 2026-08-08
+        // hdavy2002's recording of avatok-85dc200b outlived its call by 45
+        // minutes, ran zombie THROUGH the next call (leg stalls, 12-minute
+        // gaps) and was only rescued by orphan recovery at 13:25. The manager's
+        // phase watcher is the one hook that fires however the call ends —
+        // hangup, remote bye, failure — even with the call screen disposed.
+        _autoStopRecordingFor(config.room);
       }
     }
     session.phase.addListener(watch);
     // ignore: unawaited_futures
     session.start();
     return session;
+  }
+
+  /// [CALLREC-AUTOSTOP-1] Finalize a recording whose call just ended.
+  ///
+  /// Respects [CallRecordingStore.isEscalated] ([CALLREC-STOP-ON-END-1]): a 1:1
+  /// session torn down because the call escalated to a group conference must
+  /// NOT stop the recording that deliberately keeps running across the
+  /// escalation. `stop()` is fire-and-forget — finalize remuxes the whole file
+  /// and teardown must never block on it.
+  void _autoStopRecordingFor(String room) {
+    try {
+      final store = CallRecordingStore.I;
+      if (store.activeCallId.value != room) return;
+      if (store.isEscalated(room)) return;
+      unawaited(Analytics.capture('callrec_auto_stop_on_end', {
+        'call_id': room,
+        'rec_id': 'callrec:$room',
+      }));
+      unawaited(store.stop());
+    } catch (_) {/* teardown must never throw over recording cleanup */}
   }
 
   /// [CALL-EXCL-1] SINGLE AUDIO AUTHORITY. Called from the accept path BEFORE a

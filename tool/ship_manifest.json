@@ -835,5 +835,79 @@
    }
   ],
   "_verified_at": "app/lib/features/avatok/call_screen.dart:callIsGenuinelyActive (isEnded check); app/lib/push/push_service.dart:_suppressSameCallerRetry (ringOrCallInProgress); app/lib/core/calls/call_session.dart 'offer' case guard -> Analytics.capture('call_p2p_offer_ignored_on_sfu')"
+ },
+ "CALL-SFU-DUPAUDIO-1": {
+  "description": "A repull ([CALL-SFU-REPULL-1]) now MUTES the remote audio m-sections it supersedes instead of trusting the server to have closed the peer's old seat. Root cause of the 2026-08-08 12:32-12:52 UTC call (hdavy2002 x s.rgoavilla): a handover dual-rejoin + three repulls left the peer's OLD audio section still audible next to the new one, so both phones played the peer's voice doubled - reported as 'echo' on speaker AND earpiece with a clean network (0% loss, MOS 4.3). CallSfuTransport._pull tracks pulled audio mids in _pulledAudioMids and disables the receiver track of any stale mid after a successful renegotiate; CallSession wires onStaleAudioMuted to a new call_sfu_stale_audio_muted event.",
+  "shipped": "2026-08-09",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_sfu_stale_audio_muted",
+    "property": "count",
+    "gte": 1,
+    "min_events": 1,
+    "note": "count>=1 IS the 2026-08-08 bug happening and being contained: a repull found the peer's previous audio section still live and silenced it. ABSENCE over the window is AMBIGUOUS (no handover churn happened), so pair this with a handover test call: flip WiFi off mid-call on one phone, confirm this event fires on the OTHER phone, then have both humans confirm no doubled voice. min_events 1 not more - one contained repull proves the path."
+   },
+   {
+    "event": "call_sfu_peer_repulled",
+    "property": "audio_ok",
+    "equals": true,
+    "min_events": 1,
+    "note": "Non-regression: the mute logic runs INSIDE _pull after renegotiate, so a bug there would surface as audio_ok=false (repull broken = one direction permanently silent, the pre-[CALL-SFU-REPULL-1] failure). Every repull in the window must still succeed."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_sfu_transport.dart:_pull (kind=='audio' branch: _pulledAudioMids.difference(newMids) -> track.enabled=false -> onStaleAudioMuted(muted)); app/lib/core/calls/call_session.dart transport construction onStaleAudioMuted -> Analytics.capture('call_sfu_stale_audio_muted', {call_id, count}); _repullPeerMedia -> capture('call_sfu_peer_repulled', {audio_ok})"
+ },
+ "RECEPT-REC-TIMELINE-1": {
+  "description": "Voicemail recording quality (owner report 2026-08-08: Ava crystal clear, caller rushed/overlapping/muffled/noisy). reception_room.ts: (1) caller frames arriving while Ava's turn is still streaming are HELD in pendingCallerPcm and flushed contiguously on turnComplete instead of being spliced into her faster-than-realtime burst (overlap); (2) appendCallerPcm inserts real silence for 240ms-3s wall-clock gaps between caller segments, capped at 1.5s, so the energy gate no longer time-compresses the caller into a rushed run-on; (3) callerGain cap 8x -> 4x in BOTH reception_room.ts and reception_room_cf.ts (8x amplified the noise floor as much as the voice). Muffled (16k source vs 24k TTS) is inherent to the caller's 16 kHz capture and NOT addressed here. Worker-only; no client change, no flag.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "ava_recept_recording_stored",
+    "property": "two_way",
+    "equals": true,
+    "min_events": 1,
+    "note": "A two-way recording still gets stored after the mixer change - the flush-on-turnComplete path and the finalize flush both feed the same pcmOut, so a bug here would most plausibly surface as caller frames lost (two_way=false / caller_rec_bytes=0 on calls where the caller demonstrably spoke) or as no recording stored at all."
+   },
+   {
+    "event": "ava_recept_recording_stored",
+    "property": "caller_gain",
+    "lte": 4.0,
+    "min_events": 1,
+    "note": "The 4x cap actually deployed. Any stored recording with caller_gain > 4 means the old worker code is still serving - this property is computed at the single pcm16ToWav call site the cap guards."
+   }
+  ],
+  "_verified_at": "worker/src/do/reception_room.ts: onClientMessage (avaSpeaking ? pendingCallerPcm.push : appendCallerPcm), appendCallerPcm (gap silence 240-3000ms cap 1500ms), flushPendingCaller (called on sc.turnComplete===true and at finalize before pcm16ToWav), callerGain Math.min(4,...) -> ev('ava_recept_recording_stored', {two_way, caller_gain}); worker/src/do/reception_room_cf.ts finalize callerGain Math.min(4,...)"
+ },
+ "CALLREC-AUTOSTOP-1": {
+  "description": "The in-call recorder is now STOPPED by CallSessionManager's phase watcher when its call ends. Until now nothing stopped it except the user re-tapping the Record tile: on 2026-08-08 hdavy2002's recording callrec:avatok-85dc200b outlived its call by ~45 minutes, ran zombie through the NEXT call (callrec_leg_stalled at 12:39:55 and 12:52:07, far_gap_ms up to 735s), and was only rescued by orphan recovery at 13:25 (callrec_finalized reason=recovered). The manager hook fires however the call ends (hangup, remote bye, failure) even with the call screen disposed, and respects isEscalated ([CALLREC-STOP-ON-END-1]) so a 1:1->group escalation still keeps its recording running.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "callrec_auto_stop_on_end",
+    "property": "call_id",
+    "exists": true,
+    "min_events": 1,
+    "note": "The auto-stop path actually runs: someone ended a call while recording without tapping stop first. To provoke deliberately: start a recording, hang up without touching the Record tile."
+   },
+   {
+    "event": "callrec_finalized",
+    "property": "reason",
+    "not_in": [
+     "recovered"
+    ],
+    "min_events": 1,
+    "note": "Recordings on the new build finalize at call end ('stop'), not via next-launch orphan recovery. reason=recovered appearing for a recording MADE on this build means the auto-stop did not fire and the zombie pattern is back. (Older builds' orphans recovering on upgrade day are expected - check the rec's own build.)"
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session_manager.dart: watch() ended branch -> _autoStopRecordingFor(config.room) -> activeCallId/isEscalated guards -> Analytics.capture('callrec_auto_stop_on_end') + store.stop(); app/lib/core/call_recording/call_recording_store.dart: stop() -> _persist(reason:'stop') -> callrec_finalized"
  }
 }
