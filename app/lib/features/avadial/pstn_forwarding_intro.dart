@@ -268,7 +268,9 @@ class _PstnForwardingIntroBodyState extends State<PstnForwardingIntroBody> {
             underline: AD.iconSearch,
           ),
           const SizedBox(height: Msg.s1),
-          Text('You can turn this on later in Settings → Voicemail.',
+          // [PA-UI-3] the standalone "Voicemail" settings row is gone (PA-UI-2);
+          // carrier forwarding is now reached from Ava PA → Phone calls.
+          Text('You can turn this on later in Settings → Ava PA → Phone calls.',
               textAlign: TextAlign.center,
               style: ADText.preview(c: AD.textTertiary).copyWith(fontSize: 11)),
         ],

@@ -15,8 +15,17 @@ library;
 
 import '../features/settings/sections/auto_download_section.dart';
 import '../features/settings/sections/backup_sync_section.dart';
-import '../features/settings/sections/campaigns_section.dart';
-import '../features/avadial/pstn_forwarding_setup.dart';
+// [PA-UI-3] Campaigns hidden for now (owner 2026-08-09) — import commented out
+// with its registerCampaignsSection() call site below. The campaigns feature
+// code (settings/sections/campaigns_section.dart, features/campaigns/**) and the
+// server-side campaign lane are NOT deleted; only the Settings entry is hidden.
+// import '../features/settings/sections/campaigns_section.dart';
+// [PA-UI-2] 2026-08-09: the standalone "Voicemail" settings entry is retired —
+// import removed with its registerPstnForwardingSection() call site below.
+// PstnForwardingSetupScreen and PstnForwardingWizard are NOT deleted: the
+// receptionist "Phone calls" screen (settings/sections/pa_phone_screen.dart)
+// pushes that screen as its "Fix it" carrier-setup flow.
+// import '../features/avadial/pstn_forwarding_setup.dart';
 // AVA-DIAL-6 → DISABLED 2026-07-16: default-dialer settings section no longer
 // registered (see registerDefaultDialerSection() call site below for why).
 // import '../features/settings/sections/default_dialer_section.dart';
@@ -91,7 +100,8 @@ class AvaBootstrap {
     // campaigns list/create + account-wide analytics. Hides itself when
     // RemoteConfig.campaignsEnabled is off (mirrors registerBusinessAgentSection's
     // gating below). Spec: Specs/OUTBOUND-AI-CALLING-CAMPAIGNS.md.
-    registerCampaignsSection();
+    // [PA-UI-3] Campaigns hidden for now (owner 2026-08-09)
+    // registerCampaignsSection();
     // WP6 (Specs/PLAN-2026-07-11-dialpad-business-calls-ava-voice-agent.md §4/§8
     // Phase C): "Ava Business Agent" settings section — primary-number Mode A
     // agent config + Mode-B service numbers + "My AI calls" entry. Hides itself
@@ -150,7 +160,14 @@ class AvaBootstrap {
     // pstnVoicemail flag are all on (v1 ships voicemail-only, dark by
     // default — Specs/PLAN-2026-07-16-ava-receptionist-guardian-FINAL.md).
     // Idempotent (registry keys by id).
-    registerPstnForwardingSection();
+    //
+    // [PA-UI-2] RETIRED 2026-08-09 (approved receptionist redesign): "Voicemail"
+    // is no longer a top-level settings row. Carrier forwarding is not a feature
+    // of its own — it is what makes the "Phone calls" receptionist lane work, so
+    // it is now surfaced there as a "Carrier setup needed → Fix it" banner
+    // (settings/sections/pa_phone_screen.dart), which pushes the very same
+    // PstnForwardingSetupScreen. Do NOT delete that screen or the wizard.
+    // registerPstnForwardingSection();
     // Load the persisted "Activate Ava AI locally" preference; if the user had
     // it on, warm the model in the background so chat surfaces use it.
     // ignore: unawaited_futures

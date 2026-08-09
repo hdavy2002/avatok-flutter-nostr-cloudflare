@@ -20,7 +20,9 @@ import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
 import '../avabrain/brain_settings_screen.dart';
-import 'auto_responder_settings_page.dart';
+// [PA-UI-3] 2026-08-09: the "Auto-Responder" settings row is removed (owner
+// request) and auto_responder_settings_page.dart is deleted with it — nothing
+// else in app/lib referenced that page.
 import 'settings_registry.dart';
 import '../../core/ui/messenger_theme.dart';
 
@@ -312,9 +314,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), AD.iconSearch, 'Display & fonts',
             'Make text across the app bigger or smaller', () => _push(const DisplayFontsScreen())),
-        // STREAM F — Auto-Responder ("Ava replies while you're away").
-        _tile(PhosphorIcons.robot(PhosphorIconsStyle.bold), AD.online, 'Auto-Responder',
-            'Let Ava reply while you\'re away', () => _push(const AutoResponderSettingsPage())),
+        // [PA-UI-3] 2026-08-09: the STREAM F "Auto-Responder" row ("Ava replies
+        // while you're away") is REMOVED at the owner's request, together with
+        // its page (auto_responder_settings_page.dart). The worker route
+        // /api/auto-responder is untouched.
         // Pluggable sections (Phase 0 contract): feature phases register a
         // SettingsSection from their own file under settings/sections/; each one
         // now renders as a row that opens the section in its own sub-page.
@@ -490,8 +493,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _SecMeta(PhosphorIcons.userFocus(PhosphorIconsStyle.bold), AD.iconSearch,
             'Let Ava act on your behalf');
       case 'ava_receptionist':
+        // [PA-UI-1] the section is now the "Ava PA" hub (title comes from the
+        // registry); the one-liner says what she actually does.
         return _SecMeta(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), AD.online,
-            'Your AI receptionist for incoming calls');
+            'Ava answers the calls you don’t take');
       case 'default_dialer':
         return _SecMeta(PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch,
             'Make AvaTOK your default phone & messages app');
