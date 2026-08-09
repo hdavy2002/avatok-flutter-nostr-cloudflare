@@ -627,7 +627,19 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       && offlineMs > 0
       && presenceAgeMs !== null
       && presenceAgeMs >= offlineMs;
-    if (presenceState === "stale" && (n === 0 || heartbeatLapsed)) {
+    // [CALL-PRESENCE-3] NO RECORD IS ALSO OFFLINE. The presence key lives under a
+    // TTL of at least presenceOfflineSec*6, so a clean `miss` (the read SUCCEEDED
+    // and found nothing) means the account has not checked in for AT LEAST the
+    // TTL — far past the offline threshold — or has never checked in at all.
+    // Owner's rule 2026-08-09 (the Arti call, avatok-6e17cdc2): same phone, two
+    // accounts; the inactive account has no record, and the caller sat through
+    // seven beeps that could not possibly be answered. Either way the phone that
+    // would ring is not checking in AS THIS ACCOUNT, so the caller goes straight
+    // to Ava. `error`/`timeout` reads stay fail-open below — a Redis hiccup must
+    // never divert a call. presenceOfflineSec <= 0 disables this arm with the
+    // same kill switch as the age arm.
+    const noRecord = presenceRead === "miss" && offlineMs > 0;
+    if ((presenceState === "stale" && (n === 0 || heartbeatLapsed)) || noRecord) {
       // PROVABLY OFFLINE, by either of two independent proofs:
       //   • `no_tokens` — the phone stopped checking in AND there is no FCM token
       //     left to wake it with ([CALL-PRESENCE-1]);
@@ -649,7 +661,9 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
             .catch(() => ({ eligible: false, reason: "wallet_unavailable" }));
       // Attribution BEFORE the emits below, so every event on this path (including
       // the two authority_unavailable early returns) carries it.
-      offlineBy = heartbeatLapsed && n > 0 ? "age" : (n === 0 ? "no_tokens" : "age");
+      offlineBy = noRecord && presenceState === "unknown"
+        ? "no_record"
+        : heartbeatLapsed && n > 0 ? "age" : (n === 0 ? "no_tokens" : "age");
       if (eligibility.eligible) {
         // A DISTINCT decision value when the AGE arm is what made this call skip
         // the ring and nothing else would have. `receptionist_offline` already
@@ -657,7 +671,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         // the new behaviour unprovable — a nonzero count of
         // `receptionist_offline_immediate` is the assertion that the owner's rule
         // is live (ship gate rule 3).
-        presenceDecision = heartbeatLapsed && n > 0
+        presenceDecision = (heartbeatLapsed && n > 0) || noRecord
           ? "receptionist_offline_immediate"
           : "receptionist_offline";
         try {
