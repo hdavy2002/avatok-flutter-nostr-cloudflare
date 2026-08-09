@@ -102,13 +102,19 @@ class CallRecorderPlugin :
         private const val SILENCE: Short = 0
 
         /**
-         * THE storage knob (see [OUT_RATE]). 32 kbps mono ≈ 14 MB/hour, so the 5 GB free
-         * pool still holds roughly 360 hours and §6.1's "free in practice for nearly
-         * everyone" conclusion is unchanged. Stereo carries two decorrelated voices, so
-         * it gets 48 kbps rather than a naive double.
+         * THE storage knob (see [OUT_RATE]).
+         *
+         * [CALLREC-VOICE-QUALITY-1] Raised 32k→64k mono (48k→96k stereo) after the
+         * owner reported the far side of a real recording sounding muffled
+         * (2026-08-09). The far leg is already band-limited by the network Opus
+         * decode; re-encoding it at 32 kbps AAC-LC stacked a second lossy pass on
+         * top and audibly dulled it further. 64 kbps mono ≈ 28 MB/hour — the 5 GB
+         * free pool still holds ~180 hours of calls, so §6.1's "free in practice"
+         * conclusion survives. Do NOT claw this back by dropping [OUT_RATE]; see
+         * that constant's doc for why sample rate buys no bytes.
          */
-        private const val MONO_BITRATE = 32_000
-        private const val STEREO_BITRATE = 48_000
+        private const val MONO_BITRATE = 64_000
+        private const val STEREO_BITRATE = 96_000
 
         /** Ring depth per leg. Deep enough to ride out a stalled encoder, not a stalled call. */
         private const val RING_MS = 4_000
