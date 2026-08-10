@@ -4,6 +4,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../core/analytics.dart';
+import '../../core/ava_dm_client.dart'; // [AVA-TOGGLE-DM-1] per-thread Ava mode
 import '../../core/avatar.dart';
 import '../../core/group_store.dart';
 import '../../core/remote_config.dart';
@@ -13,6 +15,7 @@ import '../../identity/identity.dart';
 import '../profile/qr_share.dart';
 import 'contacts.dart';
 import 'dialpad_prefill.dart';
+import 'stranger_gate_api.dart' show dmConvIdFor; // [AVA-TOGGLE-DM-1] server conv id
 
 /// Contact details: name, AvaTOK number, and shared groups.
 ///
@@ -40,6 +43,13 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   List<Group> _shared = [];
   String _number = '';
   String _email = '';
+
+  // [AVA-TOGGLE-DM-1 / WS-17] Per-thread Ava mode ('off'|'assistant'|'companion').
+  // Feature-detected: the section renders ONLY after a successful GET with
+  // `enabled:true` (avaDmToggleEnabled on server-side), so while the flag is
+  // dark this screen is pixel-identical to before.
+  AvaDmState? _avaDm;
+  bool _avaDmBusy = false;
   late String _name = widget.name;
   late String _avatarUrl = widget.avatarUrl ?? ''; // [AVA-GRP-UI] photo, refined below
 
@@ -84,6 +94,14 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         });
       }
     });
+    // [AVA-TOGGLE-DM-1] Load my Ava mode for this 1:1. Needs both uids for the
+    // deterministic conv id; silently skipped when either is unknown.
+    final myUid = AccountScope.id ?? '';
+    if (myUid.isNotEmpty && widget.uid.startsWith('user_') && myUid != widget.uid) {
+      AvaDmApi.getState(dmConvIdFor(myUid, widget.uid)).then((s) {
+        if (mounted && s != null && s.enabled) setState(() => _avaDm = s);
+      });
+    }
     Directory.resolve(widget.uid).then((c) {
       if (!mounted || c == null) return;
       setState(() {
@@ -217,6 +235,13 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
               }),
           ])),
         ],
+        // [AVA-TOGGLE-DM-1 / WS-17] Per-thread Ava mode — rendered only when the
+        // server said `enabled:true` (avaDmToggleEnabled), so this is invisible
+        // until the owner flips the flag with a client build already out.
+        if (_avaDm != null) ...[
+          const SizedBox(height: Msg.s4),
+          _avaDmSection(),
+        ],
         const SizedBox(height: Msg.s4),
         Text('SHARED GROUPS', style: ADText.sectionLabel()),
         const SizedBox(height: Msg.s1),
@@ -239,6 +264,101 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         ]),
       ),
     );
+  }
+
+  // ── [AVA-TOGGLE-DM-1 / WS-17] Ava-in-this-chat section ─────────────────────
+  // Mirrors group_info_screen's _companionModeSection: three chips, same
+  // vocabulary ('off'|'assistant'|'companion'). Differences that are the DM
+  // contract, not style choices:
+  //  * EITHER participant may change it (a DM has no admin) — chips are always
+  //    tappable; the server writes MY row only.
+  //  * `effective_mode` (min of both rows) is what governs the thread; when it
+  //    differs from my own choice we say so WITHOUT attributing it to the peer
+  //    (the GET deliberately never returns their row).
+  //  * The peer-visible disclosure notice is posted by the SERVER as Ava on an
+  //    effective change; nothing is posted from here.
+  Widget _avaDmSection() {
+    final s = _avaDm!;
+    const modes = [
+      ('off', 'Off'),
+      ('assistant', 'Assistant'),
+      ('companion', 'Companion'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(Msg.s4),
+      decoration: BoxDecoration(
+        color: AD.card,
+        borderRadius: BorderRadius.circular(AD.rListCard),
+        border: Border.all(color: AD.borderCard, width: 1),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 16, color: AD.iconVideo),
+          const SizedBox(width: 8),
+          Text('Ava in this chat', style: ADText.rowName()),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          'Off: no observation. Assistant: Ava replies only when asked directly. '
+          'Companion: Ava may quietly suggest things or occasionally join in — '
+          'always clearly as Ava. Either of you can change this; Off on either '
+          'side switches Ava off for both.',
+          style: ADText.preview(),
+        ),
+        if (s.effectiveMode != s.mode) ...[
+          const SizedBox(height: 4),
+          Text(
+            // Never attribute the difference to the peer — see the section doc.
+            'Right now Ava is ${s.effectiveMode == 'off' ? 'off' : 'limited to "${s.effectiveMode}"'} in this chat.',
+            style: ADText.preview(c: AD.textSecondary),
+          ),
+        ],
+        const SizedBox(height: Msg.s2),
+        Row(children: [
+          for (final m in modes) ...[
+            Expanded(child: _avaDmChip(m.$1, m.$2)),
+            if (m != modes.last) const SizedBox(width: 8),
+          ],
+        ]),
+      ]),
+    );
+  }
+
+  Widget _avaDmChip(String value, String label) {
+    final s = _avaDm!;
+    final selected = s.mode == value;
+    return GestureDetector(
+      onTap: _avaDmBusy || selected ? null : () => _setAvaDmMode(value),
+      child: Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: Msg.s3),
+        decoration: BoxDecoration(
+          color: selected ? AD.newGroup.withValues(alpha: 0.22) : AD.headerFooter,
+          borderRadius: BorderRadius.circular(AD.rChip),
+          border: Border.all(color: selected ? AD.newGroup : AD.borderControl, width: 1),
+        ),
+        child: Text(label, style: ADText.statCaption(c: selected ? AD.newGroup : AD.textSecondary)),
+      ),
+    );
+  }
+
+  Future<void> _setAvaDmMode(String mode) async {
+    final conv = _avaDm?.conv ?? '';
+    if (conv.isEmpty || _avaDmBusy) return;
+    setState(() => _avaDmBusy = true);
+    final next = await AvaDmApi.setMode(conv, mode);
+    if (!mounted) return;
+    setState(() {
+      _avaDmBusy = false;
+      if (next != null && next.enabled) _avaDm = next;
+    });
+    if (next == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not change Ava for this chat — please try again.')));
+    }
+    // Server already emits dm_ava_enabled/disabled with both emails; this is
+    // the client-side interaction marker only.
+    Analytics.capture('dm_ava_mode_tapped', {'mode': mode, 'ok': next != null});
   }
 
   /// Inline dark v2 header (replaces the light ZineAppBar): header/footer fill,

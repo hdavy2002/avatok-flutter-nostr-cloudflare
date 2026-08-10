@@ -929,5 +929,34 @@
    }
   ],
   "_verified_at": "app/lib/core/thread_snapshot.dart maxThreads; emit site app/lib/features/avatok/chat_thread.dart:631-645 Analytics.cacheEvent('chat_thread', snapCount>0?'hit':'miss', ...)"
+ },
+ "AVA-TOGGLE-DM-1": {
+  "description": "WS-17 client half: per-thread Ava mode for 1:1 chats. New app/lib/core/ava_dm_client.dart (GET/PUT /api/conversations/ava/dm-state) + 'Ava in this chat' 3-chip section in ContactProfileScreen, feature-detected via the GET's enabled flag so the UI is invisible until avaDmToggleEnabled flips. Server half (routes, ava_dm_state table, disclosure notices) shipped 2026-08-07 in [AVA-REACT-1]/[AVA-PRESENCE-1] commits. NOTE: prod D1 must have migration 2026-08-07-ava-dm-state.sql applied before the flag flips.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "avaDmToggleEnabled",
+   "avaDmDefaultOn"
+  ],
+  "success": [
+   {
+    "event": "dm_ava_mode_tapped",
+    "where": {},
+    "property": "ok",
+    "equals": true,
+    "min_events": 1,
+    "note": "Client chip tap round-tripped the PUT successfully. ok=false on every tap = the route/flag/migration chain is broken even though the UI rendered."
+   },
+   {
+    "event": "dm_ava_enabled",
+    "where": {},
+    "property": "effective_changed",
+    "equals": true,
+    "min_events": 1,
+    "note": "Server-side effective mode actually changed for a real thread (worker emits with both participants' emails). This is the two-sided proof: the peer device on the same build must also SEE the Ava disclosure notice in the thread."
+   }
+  ],
+  "_verified_at": "app/lib/features/avatok/contact_profile_screen.dart _setAvaDmMode -> Analytics.capture('dm_ava_mode_tapped',{mode, ok}); worker/src/routes/messaging.ts:2118-2128 Q_ANALYTICS dm_ava_enabled/disabled props.effective_changed"
  }
 }
