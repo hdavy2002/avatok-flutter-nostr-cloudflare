@@ -41,9 +41,19 @@ import '../identity/identity.dart' show AccountScope;
 /// (rather than relying on a switch hook remembering to call us) means a missed
 /// hook can never surface another account's messages.
 class ThreadSnapshot {
-  /// Conversations retained. Three covers the real navigation pattern (bounce
-  /// between two or three chats) without pinning a large working set.
-  static const int maxThreads = 3;
+  /// Conversations retained.
+  ///
+  /// [CHAT-THREAD-SNAP-2 2026-08-10] Raised 3 → 8. Owner telemetry (builds
+  /// 10534/10536, 2 days) showed 14 of 18 thread opens MISSING the snapshot —
+  /// the "images flash in when I open a chat" report is mostly this pop-in, not
+  /// the media tier (chat_media thumb hits were 0ms on the same builds). Three
+  /// only covered a two-or-three-chat bounce; real usage rotates through more.
+  /// Cost of 8: entries hold TEXT + metadata only (`_snapshotStore` nulls
+  /// `localBytes` before `put`), so the ceiling is ~8×300 lightweight messages —
+  /// still a working set, not a store. Keep this a compile-time constant: a
+  /// RemoteConfig knob would need a declared `config.ts` key per the fake-flag
+  /// rule and is not worth a flag round-trip for a cache bound.
+  static const int maxThreads = 8;
 
   /// Messages retained per conversation. Matches the JSON cache's own window, so
   /// a restore never claims to hold more history than the durable cache does.
