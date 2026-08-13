@@ -39,6 +39,16 @@ CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
 # [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
 # Safe to add now — only takes effect on a future PROD deploy (not run this session).
 ENVIRONMENT_NAME = "prod"
+# [AVA-MODEL-FLASH-1 2026-08-14] Agentic chat lane model swap (owner decision,
+# reversing the 2026-06-27 Kimi choice on measured data: kimi-k3 avg 15.4s /
+# max 34s per model call, TTFB ~17s — a reasoning model thinking silently is
+# what the owner reported as "Ava takes forever and doesn't stream"). Flash
+# first-tokens in ~1-2s. The ALT stays a DIFFERENT family on purpose
+# (composio.ts's outage rationale): Kimi becomes the fallback, so deep
+# reasoning stays on the ladder. Code defaults in composio.ts / ava_agent.ts
+# are deliberately unchanged — these vars override them.
+OPENROUTER_AGENT_MODEL = "google/gemini-3.5-flash"
+OPENROUTER_AGENT_MODEL_ALT = "moonshotai/kimi-k3"
 # [LIVE-DIDIT-1] didit.me liveness — the "AvaTOK Liveness" workflow (LIVENESS
 # feature only) created 2026-07-09 in the owner's Didit console. The API key is
 # a SECRET (`wrangler secret put DIDIT_API_KEY`), never in this file.

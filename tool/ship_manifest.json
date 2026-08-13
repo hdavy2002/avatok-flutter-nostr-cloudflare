@@ -1012,5 +1012,23 @@
    }
   ],
   "_verified_at": "app/lib/features/avatok/call_screen.dart:1509-1516 onTap (connected-gated) -> setState(_pipSwapped=!_pipSwapped) then Analytics.capture('call_pip_swapped',{call_id,swapped}); :1525 onPanEnd -> capture('call_pip_dragged',{call_id})"
+ },
+ "AVA-MODEL-FLASH-1": {
+  "description": "Swap the agentic chat lane's primary model kimi-k3 -> google/gemini-3.5-flash via OPENROUTER_AGENT_MODEL var in wrangler.toml prod [vars]; kimi-k3 becomes OPENROUTER_AGENT_MODEL_ALT (fallback). Owner decision 2026-08-14 on measured data: kimi avg 15.4s/max 34s per call, TTFB ~17s, reported as 'Ava takes forever, no streaming'. Worker deploy only; no code change.",
+  "shipped": "pending",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "ava_thread_turn_model",
+    "where": {},
+    "property": "model_actual",
+    "equals": "google/gemini-3.5-flash",
+    "min_events": 1,
+    "note": "The lane actually runs Flash (not just requests it). Companion check by hand: ava_thread_completed ttfb_ms should drop from ~17000 to low thousands; model_actual still kimi-k3 with fallback_reason set = Flash failing and the ladder saving it, which is survival, not success."
+   }
+  ],
+  "_verified_at": "worker/wrangler.toml prod [vars] OPENROUTER_AGENT_MODEL/_ALT; readers composio.ts orAgentModel()/orAgentModelAlt() (env first, code default second) and ava_agent.ts toolReqModel; emit site ava_agent.ts trackUserContact('ava_thread_turn_model', {model_actual: g.model})"
  }
 }
