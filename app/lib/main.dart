@@ -87,8 +87,12 @@ void main() async {
   if (NativeVoiceAudio.isSupported) {
     NativeVoiceAudio.instance.onNotificationHangup =
         (callId) => CallSessionManager.instance.hangupActive('notification-hangup');
-    NativeVoiceAudio.instance.onNotificationTapReturnToCall =
-        (callId) => returnToActiveCall();
+    NativeVoiceAudio.instance.onNotificationTapReturnToCall = (callId) {
+      // CALL-CHIP-1: success signal for the CallStyle chip/notification tap —
+      // proves the tap actually routed back into the call from outside the app.
+      Analytics.capture('call_notification_tap_return', {'call_id': callId});
+      returnToActiveCall();
+    };
   }
   // RAM budget (Scale proposal Phase 1): cap the global decoded-image cache.
   // Flutter's default is 1000 images / 100MB with no upper bound enforcement on

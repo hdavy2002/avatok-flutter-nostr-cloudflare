@@ -120,24 +120,59 @@ class CallForegroundService : Service() {
         // once in onStartCommand) so the timer reflects when the call actually
         // started, not when the notification was last rebuilt (e.g. on hangup-intent
         // updates or process restarts while the FGS is still alive).
-        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setContentTitle("Call with $peerName")
-            .setContentText("Tap to return to the call")
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Placeholder; replace with app's call icon
-            .setContentIntent(launchPendingIntent)
-            .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "Hang up",
-                hangUpPendingIntent
-            )
-            .setUsesChronometer(true)
-            .setChronometerCountDown(false)
-            .setWhen(startTimeMs)
-            .setShowWhen(true)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        //
+        // CALL-CHIP-1: on Android 12+ (API 31) use the platform CallStyle notification.
+        // Only CallStyle earns the OS's ongoing-call status-bar chip (the green pill
+        // with the timer next to the clock, Android 13/14+) that stays tappable from
+        // ANY app — a plain CATEGORY_CALL builder never gets the chip, which is why
+        // the only way back into an AvaTOK call from another app used to be the
+        // notification shade. CallStyle renders its own Hang up button from the
+        // pendingIntent we pass, so no explicit addAction on this path. The platform
+        // builder (not NotificationCompat) is used deliberately: it has carried
+        // CallStyle since API 31, so this compiles against whatever androidx.core
+        // version the app has. Pre-31 devices keep the compat builder below (the
+        // chip doesn't exist there anyway) — now with the real phone icon instead
+        // of the ic_dialog_info placeholder.
+        val notif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val person = android.app.Person.Builder()
+                .setName(if (peerName.isBlank()) "AvaTOK call" else peerName)
+                .setImportant(true)
+                .build()
+            android.app.Notification.Builder(this, CHANNEL_ID)
+                .setStyle(
+                    android.app.Notification.CallStyle.forOngoingCall(
+                        person, hangUpPendingIntent
+                    )
+                )
+                .setCategory(android.app.Notification.CATEGORY_CALL)
+                .setContentText("Tap to return to the call")
+                .setSmallIcon(ai.avatok.avatok_call.R.drawable.ic_avadial_phone)
+                .setContentIntent(launchPendingIntent)
+                .setUsesChronometer(true)
+                .setWhen(startTimeMs)
+                .setShowWhen(true)
+                .setOngoing(true)
+                .build()
+        } else {
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setContentTitle("Call with $peerName")
+                .setContentText("Tap to return to the call")
+                .setSmallIcon(ai.avatok.avatok_call.R.drawable.ic_avadial_phone)
+                .setContentIntent(launchPendingIntent)
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    "Hang up",
+                    hangUpPendingIntent
+                )
+                .setUsesChronometer(true)
+                .setChronometerCountDown(false)
+                .setWhen(startTimeMs)
+                .setShowWhen(true)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+        }
 
         try {
             // CALL-BG-B4: on Android 14+ (API 34) ServiceCompat.startForeground must be

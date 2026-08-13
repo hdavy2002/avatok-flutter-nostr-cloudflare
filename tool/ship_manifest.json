@@ -978,5 +978,22 @@
    }
   ],
   "_verified_at": "worker/src/do/ava_agent.ts agentic lane: facts appended to ctx after the attachments block; presence_state/delivery_state/facts_len added to the agentic trackUserContact('ava_thread_completed') at the postAva site; buildFacts/presenceState declared once above the lane split (line ~1140)"
+ },
+ "CALL-CHIP-1": {
+  "description": "WhatsApp-style return-to-call from anywhere: the ongoing-call FGS notification (CallForegroundService.kt) becomes a platform Notification.CallStyle.forOngoingCall on API 31+, which is the ONLY notification format Android 13/14+ grants the status-bar ongoing-call chip (the green pill with the timer, tappable from any app -> straight back into the call). Also replaces the ic_dialog_info placeholder small icon with ic_avadial_phone on both paths. Tap routing was already wired (CALL-BG-INT1); main.dart's onNotificationTapReturnToCall now emits call_notification_tap_return before returnToActiveCall(). Client-only, no flag, no worker change.",
+  "shipped": "2026-08-14",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_notification_tap_return",
+    "property": "call_id",
+    "exists": true,
+    "min_events": 1,
+    "note": "The chip/notification tap actually ROUTED back into the call from outside the app. Emitted only inside the onNotificationTapReturnToCall callback (main.dart), which fires solely from the FGS notification/chip content intent via MainActivity -> AvaVoiceAudioPlugin -> method channel — so one event with a call_id IS a user tapping the chip and landing back in the call. Absence on the new build after the owner tests the flow means either the CallStyle notification failed to post (CallStyle throws if misconfigured; the FGS catch at CallForegroundService.kt swallows it silently) or the tap intent no longer reaches Dart."
+   }
+  ],
+  "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/CallForegroundService.kt (CallStyle branch, API>=S) ; app/lib/main.dart onNotificationTapReturnToCall -> Analytics.capture('call_notification_tap_return', {call_id}) then returnToActiveCall()"
  }
 }
