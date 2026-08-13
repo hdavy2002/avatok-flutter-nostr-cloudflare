@@ -917,6 +917,26 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     }
   } catch { /* ODL must never touch the Guardian path */ }
 
+  // [AVA-AMBIENT-2 / WS-18b] The AI ambient lane (cloud gatekeeper) — ONE
+  // detached, fail-silent call per MESSAGE (not per recipient), DM-only, routed
+  // to the DM's LO participant's AvaAgentDO so the cooldown/budget ledger has
+  // exactly one home per conversation. Every real gate (kill switch re-check,
+  // companion consent, ledger, gatekeeper model, moderation) lives inside the
+  // DO's ambient(); this is only the cheap pre-filter + dispatch.
+  try {
+    if (!isGroup && conv.startsWith("dm_") &&
+        ((await readConfig(env)) as any).avaAmbientAiEnabled === true) {
+      const lo = conv.slice(3).split("__")[0];
+      if (lo) {
+        const stub = env.AVA_AGENT.get(env.AVA_AGENT.idFromName(lo));
+        void stub.fetch("https://ava-agent/ambient", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ conv, sender_uid: senderUid, text }),
+        }).catch(() => { /* a missed chime, never a failed delivery */ });
+      }
+    }
+  } catch { /* the ambient lane must never touch the Guardian path */ }
+
   // ILLEGAL-CONTENT FLOOR: message-level safety scan via Nemotron (:free). Runs once
   // per message (text is identical for all recipients). Async + FAIL-OPEN: any error
   // → no flag, `safety_scan_error`, delivery already happened. Adult sexual content

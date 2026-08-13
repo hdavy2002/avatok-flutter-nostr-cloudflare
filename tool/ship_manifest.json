@@ -1030,5 +1030,35 @@
    }
   ],
   "_verified_at": "worker/wrangler.toml prod [vars] OPENROUTER_AGENT_MODEL/_ALT; readers composio.ts orAgentModel()/orAgentModelAlt() (env first, code default second) and ava_agent.ts toolReqModel; emit site ava_agent.ts trackUserContact('ava_thread_turn_model', {model_actual: g.model})"
+ },
+ "AVA-AMBIENT-2": {
+  "description": "WS-18b cloud-gatekeeper ambient lane (owner decisions: cloud gatekeeper 2026-08-14, companion default). New AvaAgentDO /ambient op: gates (avaAmbientAiEnabled kill switch, DM-only, effectiveDmMode=companion, DO-SQLite ledger cooldown avaAmbientCooldownS + daily cap avaAmbientDailyCapPerConv, trivial prefilter) -> cheap gatekeeper model (OPENROUTER_AMBIENT_GK_MODEL, default gemini-2.5-flash, strict JSON, malformed=NO) -> composer (OPENROUTER_AGENT_MODEL, <=2 sentences) -> isSafeText moderation -> public postAva source=ambient. Hook: ava_guardian.ts guardianScan, one detached call per DM message routed to the LO participant's DO (single ledger home). Not billed to users; both model calls emit $ai_generation. New numeric config keys avaAmbientCooldownS=1800, avaAmbientDailyCapPerConv=8 (PlatformConfig+DEFAULTS+numericKeys same change).",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "avaAmbientAiEnabled",
+   "avaAmbientCooldownS",
+   "avaAmbientDailyCapPerConv"
+  ],
+  "success": [
+   {
+    "event": "ava_ambient_gate",
+    "where": {},
+    "property": "conv_kind",
+    "equals": "dm",
+    "min_events": 1,
+    "note": "The lane RUNS end-to-end to the gatekeeper on a companion DM (decision property carries chime/pass). Absent while companion chats are active = the hook or a gate is broken."
+   },
+   {
+    "event": "ava_ambient_posted",
+    "where": {},
+    "property": "conv_kind",
+    "equals": "dm",
+    "min_events": 1,
+    "note": "Ava actually posted an unprompted message that passed moderation. Two-sided proof: BOTH phones see the same Ava bubble in the thread. Test recipe: in a companion-mode DM, have both people discuss making a plan with no time/place ('let's meet somewhere next week?') and leave it unresolved - a designed chime=true trigger. n_today/cooldown enforce the caps; a second immediate trigger must NOT post (reason=cooldown)."
+   }
+  ],
+  "_verified_at": "worker/src/do/ava_agent.ts ambient()+orOnce() (emits ava_ambient_gate, ava_ambient_posted with email+peer_email via trackUserContact, 2x $ai_generation trace ambient:<conv>:<day>); hook worker/src/routes/ava_guardian.ts after the ODL block; config keys routes/config.ts interface+DEFAULTS+numericKeys"
  }
 }

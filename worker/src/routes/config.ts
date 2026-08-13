@@ -1248,7 +1248,15 @@ export interface PlatformConfig {
   avaDmDefaultOn: boolean;
   // WS-18b. The AI ambient lane (Ava reacting to group activity unprompted).
   // SHIPS DARK — needs WS-1, WS-15 and WS-17 first, plus an owner decision.
+  // [AVA-AMBIENT-2 2026-08-14] Owner decision made (cloud gatekeeper, companion
+  // default): this flag now gates lib/ava_ambient.ts + AvaAgentDO /ambient —
+  // the DM companion lane. It is THE kill switch for unprompted AI posts.
   avaAmbientAiEnabled: boolean;
+  // [AVA-AMBIENT-2] Minimum seconds between Ava's unprompted posts in ONE
+  // conversation (ledger in the conv's AvaAgentDO SQLite; DM lane).
+  avaAmbientCooldownS: number;
+  // [AVA-AMBIENT-2] Max unprompted Ava posts per conversation per UTC day.
+  avaAmbientDailyCapPerConv: number;
   // WS-19d. Flat per-action pricing (imageCostTokens / searchCostTokens / …)
   // instead of the live metered per-token billing. SHIPS DARK and MUST NOT be
   // switched on by a default change: flipping it REPLACES the billing path that
@@ -1739,7 +1747,9 @@ const DEFAULTS: PlatformConfig = {
   avaImageTwoTierEnabled: false,      // WS-10 dark
   avaDmToggleEnabled: false,          // WS-17 dark
   avaDmDefaultOn: false,              // WS-17 dark (owner flips this one on)
-  avaAmbientAiEnabled: false,         // WS-18b dark
+  avaAmbientAiEnabled: false,         // WS-18b — flip deliberately; kill switch for unprompted AI posts
+  avaAmbientCooldownS: 1800,          // [AVA-AMBIENT-2] 30 min between unprompted posts per conv
+  avaAmbientDailyCapPerConv: 8,       // [AVA-AMBIENT-2] hard daily cap per conv
   avaFlatPricingEnabled: false,       // WS-19d dark — replaces LIVE metered billing
   avaMessageSearchEnabled: false,     // WS-19 dark
   // WS-14 voice style enum: 0=en, 1=hi, 2=hinglish. Default 2 = Hinglish Gen-Z.
@@ -1865,6 +1875,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",
+    // [AVA-AMBIENT-2] DM companion ambient lane knobs.
+    "avaAmbientCooldownS", "avaAmbientDailyCapPerConv",
     "usdInrRate", "receptMarginAlertPaise", "upiPayoutMinCoins", "upiPayoutReservationTtlHours", "upiVpaCooldownHours",
     // [AVABRAIN-FLAGS-1] media_memory caps + export cap + companion knobs.
     "mediaMemoryMaxSec", "mediaMemoryMaxBytes", "mediaMemoryFrameBudget", "mediaMemoryDailyPerUser",
