@@ -958,5 +958,25 @@
    }
   ],
   "_verified_at": "app/lib/features/avatok/contact_profile_screen.dart _setAvaDmMode -> Analytics.capture('dm_ava_mode_tapped',{mode, ok}); worker/src/routes/messaging.ts:2118-2128 Q_ANALYTICS dm_ava_enabled/disabled props.effective_changed"
+ },
+ "AVA-PRESENCE-2": {
+  "description": "WS-16 follow-up: the buildFacts presence/delivery block was only wired into the PLAIN lane's buildPrompt, but real accounts route AGENTIC (every owner turn 2026-08-10/11 had agentic=true), so AVA-PRESENCE-1 shipped unreachable. Fix: append the same facts block to the agentic lane's ctx and carry presence_state/delivery_state/facts_len on the agentic ava_thread_completed emit. Worker-only.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "ava_thread_completed",
+    "where": {
+     "agentic": true
+    },
+    "property": "presence_state",
+    "equals": "online",
+    "min_events": 1,
+    "note": "Verification protocol: peer's phone is OPEN on the thread (online) while the owner asks '@ava is he online / did he see my message'. presence_state=online on an agentic turn is the value that proves the block reached the lane users actually hit. presence_state absent on agentic turns = this fix regressed; 'unknown' on every turn = the last-seen DO read is failing."
+   }
+  ],
+  "_verified_at": "worker/src/do/ava_agent.ts agentic lane: facts appended to ctx after the attachments block; presence_state/delivery_state/facts_len added to the agentic trackUserContact('ava_thread_completed') at the postAva site; buildFacts/presenceState declared once above the lane split (line ~1140)"
  }
 }
