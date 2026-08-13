@@ -963,7 +963,7 @@
   "description": "WS-16 follow-up: the buildFacts presence/delivery block was only wired into the PLAIN lane's buildPrompt, but real accounts route AGENTIC (every owner turn 2026-08-10/11 had agentic=true), so AVA-PRESENCE-1 shipped unreachable. Fix: append the same facts block to the agentic lane's ctx and carry presence_state/delivery_state/facts_len on the agentic ava_thread_completed emit. Worker-only.",
   "shipped": "pending",
   "two_sided": true,
-  "min_devices_on_build": 1,
+  "min_devices_on_build": 2,
   "flags": [],
   "success": [
    {
@@ -995,5 +995,22 @@
    }
   ],
   "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/CallForegroundService.kt (CallStyle branch, API>=S) ; app/lib/main.dart onNotificationTapReturnToCall -> Analytics.capture('call_notification_tap_return', {call_id}) then returnToActiveCall()"
+ },
+ "CALL-PIP-SWAP-1": {
+  "description": "WhatsApp-style self-view thumbnail on the 1:1 video call screen (call_screen.dart): bigger, draggable within screen bounds, and tap-to-swap — tapping the thumbnail puts the REMOTE feed in the thumbnail and your own video full screen (and back). Swap is enabled only once the call is connected (remote video exists); before that the tap is inert. Client-only, no flag, no worker change.",
+  "shipped": "2026-08-09",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_pip_swapped",
+    "property": "swapped",
+    "equals": true,
+    "min_events": 1,
+    "note": "A user actually performed the swap on a CONNECTED video call: the onTap handler is nil until `connected`, and the first tap always flips _pipSwapped false->true, so swapped=true is the guaranteed first-success value. Absence on builds where video calls happen means the tap target regressed (the thumbnail is a platform view; hit-testing needed HitTestBehavior.opaque to work at all). call_pip_dragged (call_id only) is the companion signal that the drag gesture lands."
+   }
+  ],
+  "_verified_at": "app/lib/features/avatok/call_screen.dart:1509-1516 onTap (connected-gated) -> setState(_pipSwapped=!_pipSwapped) then Analytics.capture('call_pip_swapped',{call_id,swapped}); :1525 onPanEnd -> capture('call_pip_dragged',{call_id})"
  }
 }
