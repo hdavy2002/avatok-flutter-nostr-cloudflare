@@ -1248,7 +1248,14 @@
    {
     "event": "call_status_ws_received",
     "property": "status",
-    "in": ["cancel", "bye", "hangup", "ended", "decline", "declined"],
+    "in": [
+     "cancel",
+     "bye",
+     "hangup",
+     "ended",
+     "decline",
+     "declined"
+    ],
     "min_events": 1,
     "note": "The frame ARRIVED over the inbox socket on the peer's phone. Test: caller dials, callee lets it ring, caller hangs up -> the callee's device must log this within ~1s and the ring must stop immediately (ring_transition source=inbox_ws), not at the 28s window."
    }
@@ -1265,11 +1272,32 @@
    {
     "event": "call_sfu_fallback",
     "property": "detail",
-    "in": ["disposed_during_setup", "disposed_after_publish"],
+    "in": [
+     "disposed_during_setup",
+     "disposed_after_publish"
+    ],
     "min_events": 0,
     "note": "VALUE check with an absence twin: on the new build, ZERO call_sfu_fallback rows may carry detail containing 'Null check operator'. The clean disposed_* details are the acceptable shape when teardown races a join; min_events 0 because the race itself should be rarer now that CALL-VIDEO-SFUGUARD-1 removed its main trigger."
    }
   ],
   "_verified_at": "app/lib/core/calls/call_sfu_transport.dart connect() — local `pc`, _pc assigned once; failure emit site unchanged in call_session.dart _startSfu"
+ },
+ "TELEMETRY-AWAIT-1": {
+  "description": "After the 2026-08-14 10:39 merged deploy, ALL unawaited Q_ANALYTICS sends from AvaAgentDO turn paths and guardianScan stopped arriving (awaited sends like presence_beat kept flowing; consumer verified healthy via live tail; turn verified running via live tail at 11:26 UTC with zero errors and no events landing). Fix: await every statement-level trackUserContact/trackUser emit in do/ava_agent.ts (24+3+2 sites incl. ambient $ai_generation) and guardianScan's guardian_scan track. Queue sends are milliseconds; the latency cost is nil and the drop class is eliminated.",
+  "shipped": "pending",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "ava_thread_turn_model",
+    "where": {},
+    "property": "model_actual",
+    "equals": "google/gemini-3.7-flash",
+    "min_events": 1,
+    "note": "One @ava turn after this deploy must land this event with the 3.7 model — this simultaneously proves the telemetry pipeline is back AND answers which model serves real turns. guardian_scan reappearing on message sends is the companion check."
+   }
+  ],
+  "_verified_at": "worker/src/do/ava_agent.ts (grep '^\\s*await trackUserContact' = 28 sites) ; worker/src/routes/ava_guardian.ts guardian_scan emit; diagnosis evidence: wrangler tail avatok-api 11:26 UTC turn OK + wrangler tail avatok-consumers 'Queue analytics (1 message) - Ok'"
  }
 }

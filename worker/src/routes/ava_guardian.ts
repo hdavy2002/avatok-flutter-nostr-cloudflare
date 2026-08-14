@@ -895,7 +895,7 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
   // Identity is the track() distinct id (uid); geo is coarse (country + colo) plus
   // hour_utc + guardian_enabled. Full geo + ip_hash are added only on guardian_flag.
   // Every scan: who sent (uid via track), to how many, where from (country/colo).
-  void track(env, senderUid, "guardian_scan", "guardian", {
+  await track(env, senderUid, "guardian_scan", "guardian", {
     conv, kind, is_group: isGroup, recipients: recipients.length, msg_len: text.length,
     cheap_hit: cheap.hit,
     country: geo.country ?? null, colo: geo.colo ?? null,
