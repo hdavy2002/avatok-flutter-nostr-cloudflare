@@ -3520,8 +3520,41 @@ class CallSession {
         }
       });
     }
-    _relayFallbackTimer = Timer(const Duration(seconds: 4), () {
+    _armRelayFallbackTimer(const Duration(seconds: 4));
+  }
+
+  /// [CALL-VIDEO-SFUGUARD-1 2026-08-14] The P2P relay-escalation ladder, now
+  /// SFU-aware. The 4s timer used to check only `_connected || _ended` — but
+  /// `CallSfuTransport.connect()` builds its PeerConnection through `_newPC`,
+  /// which assigns `_pc` as a side effect, and `_forceRelayRestart` closes
+  /// `_pc` unconditionally. On a VIDEO call the camera warm-up pushes the SFU
+  /// join past 4s every time, so the ladder fired mid-join, closed the SFU's
+  /// own PC, and the SFU answer then died with "setRemoteDescription: wrong
+  /// state: closed" (prod calls avatok-9f2fccad / -5fa7bef2 / -9f407abf,
+  /// 2026-08-14 — 3 of 3 accepted video calls never connected; the audio call
+  /// connected in ~4.5s and squeaked past the timer). Ten other paths in this
+  /// file already guard on `_sfuActive || _sfuStarting ||
+  /// _sfuReconnectInFlight`; this ladder was the one that didn't.
+  ///
+  /// While the SFU is STARTING/RECONNECTING the ladder DEFERS (re-arms, 2s) so
+  /// it still runs if the SFU attempt aborts back to P2P. While the SFU is
+  /// ACTIVE the ladder stops outright — media is flowing on a path the P2P
+  /// relay escalation has no business restarting.
+  void _armRelayFallbackTimer(Duration d) {
+    _relayFallbackTimer?.cancel();
+    _relayFallbackTimer = Timer(d, () {
       if (_connected || _ended) return;
+      if (_sfuActive) return;
+      if (_sfuStarting || _sfuReconnectInFlight) {
+        Analytics.capture('call_relay_fallback_deferred_sfu', {
+          'call_id': config.room,
+          'video': config.video,
+          'starting': _sfuStarting,
+          'reconnecting': _sfuReconnectInFlight,
+        });
+        _armRelayFallbackTimer(const Duration(seconds: 2));
+        return;
+      }
       // ── [CALL-RELAY-ANSWERER-1 2026-08-03] (audit M1, answerer half) ───────
       //
       // `_forceRelayRestart` returns early unless `_weOffered`, so only the
@@ -3570,6 +3603,20 @@ class CallSession {
   Future<void> _forceRelayRestart() async {
     if (_ended || _connected || _relayForced) return;
     if (!_weOffered || _remoteId == null) return;
+    // [CALL-VIDEO-SFUGUARD-1] Belt-and-braces on the restart itself: this is
+    // also reachable via the peer's `relay-fallback-request`, and the
+    // `_pc?.close()` below would kill an in-flight/active SFU join exactly the
+    // way the local timer used to (see _armRelayFallbackTimer).
+    if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) {
+      Analytics.capture('call_relay_fallback_deferred_sfu', {
+        'call_id': config.room,
+        'video': config.video,
+        'starting': _sfuStarting,
+        'reconnecting': _sfuReconnectInFlight,
+        'via': 'force_relay_restart',
+      });
+      return;
+    }
     _relayForced = true;
     _telemetry.onIceRestart();
     _telemetry.setMediaPath('relay'); // [CALL-REL-4/5] amends call_progress/call_media_health
