@@ -658,6 +658,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.speakerOn.addListener(_onSessionChanged);
     _session.cameraOn.addListener(_onSessionChanged);
     _session.videoActive.addListener(_onSessionChanged);
+    _session.remoteVideoStatus.addListener(_onSessionChanged);
     _session.onCellularHold.addListener(_onSessionChanged);
     _maybeFetchNoAnswerRouting(); // pre-seed from widget.initialRouted, if any
     // [DIALPAD-BIZ-CALLS Phase C] Server said 'agent' before the ring even
@@ -807,6 +808,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.speakerOn.removeListener(_onSessionChanged);
     _session.cameraOn.removeListener(_onSessionChanged);
     _session.videoActive.removeListener(_onSessionChanged);
+    _session.remoteVideoStatus.removeListener(_onSessionChanged);
     _session.onCellularHold.removeListener(_onSessionChanged);
     // Release our view-scoped hooks so a stale closure can't fire into a dead
     // context. If this exact session re-attaches to a new screen, it re-installs
@@ -1341,6 +1343,7 @@ class _CallScreenState extends State<CallScreen> {
     final phase = s.uiPhase.value;
     final connected = s.isConnected;
     final video = s.videoActive.value;
+    final remoteVideoStatus = s.remoteVideoStatus.value;
     final camOn = s.cameraOn.value;
     final speaker = s.speakerOn.value;
     final muted = s.muted.value;
@@ -1430,6 +1433,50 @@ class _CallScreenState extends State<CallScreen> {
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                 : Container(color: AD.bg),
           ),
+          if (connected && remoteVideoStatus == 'waiting')
+            Positioned(
+              left: 24,
+              right: 24,
+              top: MediaQuery.of(context).size.height * 0.42,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.62),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Text(
+                      'Waiting for remote video…',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (connected && remoteVideoStatus == 'unavailable')
+            Positioned(
+              left: 24,
+              right: 24,
+              top: MediaQuery.of(context).size.height * 0.42,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.68),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Text(
+                      'Video unavailable — audio is connected',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // [CALL-UI-COLLAPSE-1] Tap anywhere on the video to show/hide the
           // controls. A drag-only affordance is easy to miss, and this is the
           // gesture every other video-calling app trains people on. It also

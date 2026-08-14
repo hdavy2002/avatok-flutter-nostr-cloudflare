@@ -74,17 +74,34 @@ enum SfuFailure {
 }
 
 class CallSfuResult {
-  CallSfuResult.ok(this.pc, {required this.sessionId, required this.relayDegraded})
+  CallSfuResult.ok(this.pc, {
+    required this.sessionId,
+    required this.relayDegraded,
+    required this.videoRequested,
+    required this.peerVideoAvailable,
+    required this.videoConnected,
+  })
       : failure = null,
         detail = null;
   CallSfuResult.failed(this.failure, {this.detail})
       : pc = null,
         sessionId = null,
-        relayDegraded = false;
+        relayDegraded = false,
+        videoRequested = false,
+        peerVideoAvailable = false,
+        videoConnected = false;
 
   final RTCPeerConnection? pc;
   final String? sessionId;
   final bool relayDegraded;
+  /// True when this call requested video on the SFU path.
+  final bool videoRequested;
+  /// True when the peer advertised a video seat. False means audio-only is a
+  /// valid outcome; it is different from a failed video pull.
+  final bool peerVideoAvailable;
+  /// True when the SFU accepted the remote video pull negotiation. A later
+  /// renderer/first-frame event is still required to prove pixels are visible.
+  final bool videoConnected;
   final SfuFailure? failure;
   final String? detail;
 
@@ -352,13 +369,22 @@ class CallSfuTransport {
       // their camera on yet. A failure here must never fail the CALL — an
       // audio-only connection is a working call, and camera-on later is just
       // another pull.
-      if (wantVideo && peer.hasVideo) {
-        await _pull('video');
+      final peerVideoAvailable = peer.hasVideo;
+      var videoConnected = false;
+      if (wantVideo && peerVideoAvailable) {
+        videoConnected = await _pull('video');
       }
 
       _startHeartbeat();
       onStage?.call('sfu_ready');
-      return CallSfuResult.ok(pc, sessionId: join.sessionId, relayDegraded: join.relayDegraded);
+      return CallSfuResult.ok(
+        pc,
+        sessionId: join.sessionId,
+        relayDegraded: join.relayDegraded,
+        videoRequested: wantVideo,
+        peerVideoAvailable: peerVideoAvailable,
+        videoConnected: videoConnected,
+      );
     } on CallSfuException catch (e) {
       await _closePc();
       return CallSfuResult.failed(
@@ -420,6 +446,7 @@ class CallSfuTransport {
     if (sid == null || pc == null) return false;
     try {
       final r = await CallSfuApi.pull(room, sessionId: sid, kind: kind);
+      if (_disposed || !identical(pc, _pc)) return false;
       final sdp = r.offer?['sdp']?.toString();
       if (sdp == null) return false;
       if (!r.renegotiate) {
@@ -428,6 +455,7 @@ class CallSfuTransport {
         return true;
       }
       await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+      if (_disposed || !identical(pc, _pc)) return false;
       final answer = await pc.createAnswer();
       // [CALL-MEDIA-540P-1] `enableRed: false` here is deliberate and is NOT an
       // oversight to be "fixed" for symmetry with the two publish sites. This
@@ -442,6 +470,7 @@ class CallSfuTransport {
         answer.type,
       );
       await pc.setLocalDescription(tunedAnswer);
+      if (_disposed || !identical(pc, _pc)) return false;
       await CallSfuApi.renegotiate(room, sid, tunedAnswer.sdp ?? '');
       final newMids = <String>{};
       for (final t in r.tracks) {
@@ -504,6 +533,7 @@ class CallSfuTransport {
     if (sid == null || pc == null) return false;
     try {
       await pc.addTrack(videoTrack, stream);
+      if (_disposed || !identical(pc, _pc)) return false;
       // [CALL-MEDIA-540P-1] Configure BEFORE the offer, not after. This is the
       // first moment a video sender exists on this connection, so the limits
       // applied during `connect()` never saw it — a camera turned on mid-call
@@ -519,6 +549,7 @@ class CallSfuTransport {
         offer.type,
       );
       await pc.setLocalDescription(tunedOffer);
+      if (_disposed || !identical(pc, _pc)) return false;
       if (enableRed) {
         onRedNegotiated?.call(
           audio_tuning.sdpHasActiveRed(tunedOffer.sdp),
@@ -529,7 +560,9 @@ class CallSfuTransport {
         {'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(sid)},
       ]);
       if (answer == null || answer['sdp'] == null) return false;
+      if (_disposed || !identical(pc, _pc)) return false;
       await pc.setRemoteDescription(RTCSessionDescription(answer['sdp'].toString(), 'answer'));
+      if (_disposed || !identical(pc, _pc)) return false;
       _openMids.add('1');
       // The peer may already be sending video; pull it now rather than waiting
       // for something else to notice.

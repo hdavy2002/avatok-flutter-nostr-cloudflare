@@ -451,6 +451,15 @@ class CallSession {
   final ValueNotifier<bool> speakerOn = ValueNotifier<bool>(true);
   final ValueNotifier<bool> cameraOn = ValueNotifier<bool>(true);
   final ValueNotifier<bool> videoActive = ValueNotifier<bool>(true);
+  /// Remote video is separate from [videoActive], which represents OUR camera.
+  /// A call can have local video enabled while the peer's video negotiation or
+  /// renderer is unavailable.
+  final ValueNotifier<bool> remoteVideoActive = ValueNotifier<bool>(false);
+  /// `waiting` means negotiation is still in progress, `active` means a remote
+  /// video track arrived, and `unavailable` means the call is audio-connected
+  /// but remote video could not be established.
+  final ValueNotifier<String> remoteVideoStatus =
+      ValueNotifier<String>('idle');
   final ValueNotifier<bool> onCellularHold = ValueNotifier<bool>(false);
   /// SEAM for WS-D/C: true while the peer's signaling socket is gone but media
   /// may still be flowing (today: set on 'peer-left', cleared on reconnect /
@@ -1577,6 +1586,8 @@ class CallSession {
   // confirmation for 1:1 video calls (proposal Phase 5: "video decode/render
   // confirmation telemetry" — same 5s sampler, same flag gate, additive).
   int? _phVideoBytes, _phVideoFramesDecoded, _phVideoFramesDropped;
+  bool _firstRemoteVideoFrameReported = false;
+  bool _firstRemoteVideoTrackReported = false;
 
   // [CALL-REL-5] Recovery evidence (two consecutive healthy playout samples)
   // depends on this sampler, so callIceRecoveryV2 also starts it even if the
@@ -1606,6 +1617,8 @@ class CallSession {
     _phOutboundAudioEnergy = null;
     _lastOutVideoPacketsSent = _lastOutVideoPacketsLost = null;
     _phVideoBytes = _phVideoFramesDecoded = _phVideoFramesDropped = null;
+    _firstRemoteVideoFrameReported = false;
+    _firstRemoteVideoTrackReported = false;
     _noRtpStreak = 0;
     _noPlayoutStreak = 0;
     _relayThresholdStreak = 0;
@@ -1938,6 +1951,19 @@ class CallSession {
           }
           if (videoFramesDecodedDelta != null) {
             videoDecodeProgressing = videoFramesDecodedDelta > 0;
+            if (videoFramesDecodedDelta > 0 &&
+                !_firstRemoteVideoFrameReported) {
+              _firstRemoteVideoFrameReported = true;
+              Analytics.capture('call_first_remote_video_frame', {
+                'call_id': config.room,
+                'path': _sfuActive || _sfuStarting
+                    ? 'sfu'
+                    : (_relayForced ? 'relay' : 'direct'),
+                'ms_since_connected': _connectedAtMs > 0
+                    ? DateTime.now().millisecondsSinceEpoch - _connectedAtMs
+                    : -1,
+              });
+            }
           }
           _phVideoBytes = videoBytesReceived;
           _phVideoFramesDecoded = videoFramesDecoded;
@@ -2631,7 +2657,13 @@ class CallSession {
     // 45s is deliberately > the 22s outgoing `_ringTimeout`, so this never
     // pre-empts the richer outgoing no-answer flow (which has its own outcome
     // menu, receptionist hand-off, etc.). It is the backstop of last resort.
-    _connectWatchdog = Timer(const Duration(seconds: 45), () {
+    // SFU/RTK setup has several bounded network stages (join, publish, peer
+    // discovery, pull and renegotiation). Give that selected transport enough
+    // time to complete; the short accepted-side watchdog is also cancelled
+    // when a media transport actually begins below.
+    final setupWatchdogSeconds =
+        (RemoteConfig.callRealtimeKitV1 || RemoteConfig.callSfuV1) ? 75 : 45;
+    _connectWatchdog = Timer(Duration(seconds: setupWatchdogSeconds), () {
       if (_ended || _connected) return;
       // A call can legitimately live for a long time WITHOUT being connected —
       // these are outcomes, not hangs, and killing them would be a regression.
@@ -2663,6 +2695,7 @@ class CallSession {
         'got_welcome': _gotWelcome,
         // The 2026-07-14 signature: a session that never saw its peer at all.
         'peer_seen': _peerGens.isNotEmpty,
+        'setup_watchdog_seconds': setupWatchdogSeconds,
       });
       _endWith('network-error', reason: 'connect-timeout');
     });
@@ -4508,6 +4541,19 @@ class CallSession {
       if (_ended) return;
       if (e.streams.isNotEmpty) {
         remoteRenderer.srcObject = e.streams[0];
+        if (e.track.kind == 'video') {
+          remoteVideoActive.value = true;
+          remoteVideoStatus.value = 'active';
+          if (!_firstRemoteVideoTrackReported) {
+            _firstRemoteVideoTrackReported = true;
+            Analytics.capture('call_first_remote_video_track', {
+              'call_id': config.room,
+              'path': _sfuActive || _sfuStarting
+                  ? 'sfu'
+                  : (_relayForced ? 'relay' : 'direct'),
+            });
+          }
+        }
         _ringTimeout?.cancel();
         // [CALL-CONNECT-WATCHDOG-1] Media is flowing — disarm the backstop. This
         // runs BEFORE `_telemetry.connected()` sets `_connected`, hence cancel
@@ -5768,6 +5814,8 @@ class CallSession {
   /// or wedged join self-aborts to P2P instead of stranding the call.
   Future<void> _startRtkMedia() async {
     if (_ended || _connected || _rtkStarting || _rtkActive || _rtkAborted) return;
+    _connectWatchdogFast?.cancel();
+    _connectWatchdogFast = null;
     _rtkStarting = true;
     _stage('rtk_begin');
     final deadline = Duration(seconds: RemoteConfig.callRtkJoinDeadlineSec);
@@ -5977,7 +6025,13 @@ class CallSession {
     if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted) return;
     final stream = _stream;
     if (stream == null) return;
+    _connectWatchdogFast?.cancel();
+    _connectWatchdogFast = null;
     _sfuStarting = true;
+    if (config.video && !RemoteConfig.callSfuAudioOnly) {
+      remoteVideoActive.value = false;
+      remoteVideoStatus.value = 'waiting';
+    }
     _stage('sfu_begin'); // [CALL-DEADAIR-1]
     final transport = CallSfuTransport(
       room: room,
@@ -6019,11 +6073,31 @@ class CallSession {
       overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
     );
     _sfu = transport;
-    final result = await transport.connect(
-      localStream: stream,
-      fallbackIceServers: _ice,
-      video: config.video && !RemoteConfig.callSfuAudioOnly,
-    );
+    CallSfuResult result;
+    try {
+      result = await transport.connect(
+        localStream: stream,
+        fallbackIceServers: _ice,
+        video: config.video && !RemoteConfig.callSfuAudioOnly,
+      );
+    } catch (e, st) {
+      // The transport normally converts failures into CallSfuResult, but a
+      // provider/plugin exception must not strand `_sfuStarting` forever and
+      // suppress every later recovery attempt.
+      _sfuStarting = false;
+      _sfuAborted = true;
+      await transport.dispose();
+      _sfu = null;
+      Analytics.capture('call_sfu_fallback', {
+        'call_id': config.room,
+        'failure': 'transport_exception',
+        'detail': e.toString(),
+      });
+      _telemetry.runtimeError(stage: 'sfu_transport_exception', error: e, stack: st);
+      if (_remoteId != null) _send({'type': 'sfu-abort', 'to': _remoteId});
+      if (_sfuDecider) await _startP2pOffer();
+      return;
+    }
     if (_ended) {
       await transport.dispose();
       return;
@@ -6039,7 +6113,20 @@ class CallSession {
         'call_id': config.room,
         'video': config.video && !RemoteConfig.callSfuAudioOnly,
         'relay_degraded': result.relayDegraded,
+        'video_requested': result.videoRequested,
+        'video_negotiated': result.videoConnected,
       });
+      if (result.videoRequested && !result.videoConnected) {
+        remoteVideoStatus.value = 'unavailable';
+        Analytics.capture('call_video_negotiation_failed', {
+          'call_id': config.room,
+          'stage': 'initial_pull',
+          'reason': result.peerVideoAvailable
+              ? 'video_pull_failed'
+              : 'peer_video_unavailable',
+          'path': 'sfu',
+        });
+      }
       // [CALL-SFU-REPULL-1] Drain a peer re-pull that arrived while we were
       // still setting up. `_sfuPeerRepullPending` is set whenever `sfu-rejoined`
       // lands with `_sfuActive` false, which includes this initial-join window
@@ -6222,8 +6309,26 @@ class CallSession {
     // Video is best-effort: the peer may simply not have a camera on, and a
     // failure here must never take audio down with it.
     if (_video || config.video) {
-      // ignore: unawaited_futures
-      sfu.pullPeerVideo();
+      final okVideo = await sfu.pullPeerVideo();
+      Analytics.capture('call_sfu_peer_video_repulled', {
+        'call_id': config.room,
+        'why': why,
+        'video_ok': okVideo,
+      });
+      // A rejoin signal and the SFU seat can become visible in either order.
+      // One bounded retry closes that ordering gap without keeping a timer
+      // alive for the rest of the call.
+      if (!okVideo && !_ended) {
+        unawaited(Future<void>.delayed(const Duration(seconds: 2), () async {
+          if (_ended || !_sfuActive || !identical(_sfu, sfu)) return;
+          final retried = await sfu.pullPeerVideo();
+          Analytics.capture('call_sfu_peer_video_repull_retry', {
+            'call_id': config.room,
+            'why': why,
+            'video_ok': retried,
+          });
+        }));
+      }
     }
   }
 
@@ -6315,6 +6420,10 @@ class CallSession {
       final ok = await _sfu!.publishVideo(track, _stream!);
       if (!ok) {
         track.stop();
+        try { await _stream?.removeTrack(track); } catch (_) {}
+        _camOn = false;
+        cameraOn.value = false;
+        videoActive.value = false;
         Analytics.capture('call_sfu_video_publish_failed', {'call_id': config.room});
         return;
       }
@@ -9253,6 +9362,8 @@ class CallSession {
     await _safeAwait(() => _ws?.sink.close());
     try { localRenderer.srcObject = null; } catch (_) {}
     try { remoteRenderer.srcObject = null; } catch (_) {}
+    remoteVideoActive.value = false;
+    remoteVideoStatus.value = 'idle';
     if (!loanedOut) await _safeAwait(() => _stream?.dispose());
     _captureLoanCheck = null;
     _stream = null;
