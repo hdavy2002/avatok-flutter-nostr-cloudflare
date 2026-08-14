@@ -1782,7 +1782,7 @@ const DEFAULTS: PlatformConfig = {
   veniceMediaEnabled: false,
   veniceImageTokens: 2,
   veniceMusicTokens: 10,
-  veniceVideoTokens: 50,
+  veniceVideoTokens: 45,
   // [VENICE-CHAT-1 2026-08-14] ships dark; flip true in KV to let paid-tier
   // opted-in accounts route @ava chat to Venice Uncensored 1.2.
   veniceUncensoredChatEnabled: false,

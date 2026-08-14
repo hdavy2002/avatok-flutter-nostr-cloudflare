@@ -11,11 +11,9 @@
 // 2. `safe_mode` is ALWAYS true and `hide_watermark` is ALWAYS false on image
 //    calls. Venice's watermark is part of the [VENICE-LABEL-1] "AI-generated ·
 //    avatok.ai" disclosure obligation.
-// 3. Every model ID below was verified against live GET /models on 2026-08-14.
-//    The owner-spec'd `ltx-2-19b-distilled-*` does NOT exist on the live API;
-//    `ltx-2-v2-3-fast-*` is the cheapest live LTX pair ($0.40 / 6s @1080p,
-//    quoted 2026-08-14) and was substituted. If you change an ID, re-verify
-//    against /models first — do not trust docs or memory.
+// 3. The LTX 2.0 19B Distilled IDs below are the Venice private-model catalog
+//    entries for text-to-video and image-to-video. If you change an ID,
+//    re-verify against /models first — do not trust docs or memory.
 // 4. Auth is the worker secret VENICE_API_KEY (staging + prod). Never a
 //    hardcoded key, never a client-side key.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,12 +43,12 @@ const ROUTES: Record<VeniceIntent, Record<VeniceTier, VeniceRoute>> = {
     paid: { model: "venice-sd35", endpoint: "/image/generate", kind: "sync_image" },
   },
   video_t2v: {
-    free: { model: "ltx-2-v2-3-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
-    paid: { model: "ltx-2-v2-3-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    free: { model: "ltx-2-19b-distilled-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    paid: { model: "ltx-2-19b-distilled-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   video_i2v: {
-    free: { model: "ltx-2-v2-3-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
-    paid: { model: "ltx-2-v2-3-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    free: { model: "ltx-2-19b-distilled-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    paid: { model: "ltx-2-19b-distilled-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   music: {
     free: { model: "ace-step-15", endpoint: "/audio/queue", kind: "queue_audio" },
@@ -124,18 +122,12 @@ export async function veniceGenerateImage(
 }
 
 // ── Video (queue + poll) ─────────────────────────────────────────────────────
-// ltx-2-v2-3-fast enums (verified via /video/quote 2026-08-14):
-//   duration: "6s" | "8s" | "10s" | "12s" | "14s" | "16s" | "18s" | "20s"
-//   resolution: "1080p" | "1440p" | "2160p"
-export const VENICE_VIDEO_DEFAULT_DURATION = "6s";
+// Product tariff: 45 Tokens buys one 10-second clip.
+export const VENICE_VIDEO_DEFAULT_DURATION = "10s";
 export const VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p";
-// [VENICE-VID-DURATION-1] The only durations ltx-2-v2-3-fast accepts (verified
-// via /video/quote, see the header comment). `nearestVideoDuration` snaps any
-// caller-requested length (e.g. a user's "make it 15 seconds") onto the
-// closest live enum value instead of guessing or failing — used by
-// lib/venice_media.ts's runVeniceVideo, which plumbs the "Ns" string straight
-// into VeniceVideoOptions.duration below.
-export const VENICE_VIDEO_DURATIONS_S = [6, 8, 10, 12, 14, 16, 18, 20] as const;
+// [VENICE-VID-DURATION-1] The messaging product sells one fixed 10-second
+// clip. Any legacy/client duration is normalized to that product duration.
+export const VENICE_VIDEO_DURATIONS_S = [10] as const;
 export function nearestVideoDuration(seconds: number | undefined): string {
   if (!Number.isFinite(seconds as number) || (seconds as number) <= 0) return VENICE_VIDEO_DEFAULT_DURATION;
   const n = seconds as number;

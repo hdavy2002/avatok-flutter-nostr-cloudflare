@@ -62,9 +62,8 @@ export interface RunVeniceVideoArgs {
   /** Public URL (or base64 data: URL) of an existing image to animate —
    *  presence alone selects video_i2v over video_t2v (veniceRoute). */
   sourceImageUrl?: string;
-  /** [VENICE-VID-DURATION-1] Desired clip length in seconds, snapped to the
-   *  nearest live enum (6/8/10/12/14/16/18/20) by nearestVideoDuration().
-   *  Omitted/invalid -> the model's own default (6s). */
+  /** [VENICE-VID-DURATION-1] Legacy/client input is normalized to the
+   *  product's fixed 10-second clip by nearestVideoDuration(). */
   durationSeconds?: number;
   private: boolean;
   /** [VENICE-TIER-1] Caller-supplied — do/ava_agent.ts's onVideo closure
@@ -131,7 +130,7 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     capability, model: route.model, isPrivate: a.private, tier: a.tier,
     hasSourceImage: !!a.sourceImageUrl, durationSeconds: durationNum,
     label: "Generating your video…", deadlineMs: Date.now() + VIDEO_DEADLINE_MS, email,
-    // [VENICE-TOKENS-1] owner tariff 2026-08-14: video = cfg.veniceVideoTokens (50).
+    // [VENICE-TOKENS-1] owner tariff: 45 Tokens per 10-second video clip.
     flatPriceTokens: cfg.veniceVideoTokens,
   });
   if (!created.ok) {
