@@ -251,11 +251,20 @@ class CallSfuTransport {
 
       final wantVideo = video && join.videoAllowed;
 
-      _pc = await createPeerConnection(
+      // [CALL-SFU-NULLPC-1 2026-08-14] Hold the PC in a LOCAL for the whole
+      // connect. `_pc` is nulled by a concurrent dispose()/_closePc() (a
+      // cancelled or superseded call tearing down while this join is mid-await),
+      // and every `_pc!` below then threw "Null check operator used on a null
+      // value" into the generic catch — a crash-shaped failure instead of the
+      // clean `disposed_during_setup` result (seen on the caller of prod call
+      // avatok-9f407abf, 2026-08-14). The local stays valid; the `_disposed`
+      // checks remain the clean exits.
+      final pc = await createPeerConnection(
         join.iceServers.isNotEmpty ? join.iceServers : fallbackIceServers,
       );
+      _pc = pc;
       if (_disposed) {
-        await _pc?.close();
+        await pc.close();
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_during_setup');
       }
       onStage?.call('sfu_pc');
@@ -280,26 +289,26 @@ class CallSfuTransport {
         _peerPollAbort = true; // [CALL-DEADAIR-1] stop the overlapped poll
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_local_audio_track');
       }
-      await _pc!.addTrack(audio.first, localStream);
+      await pc.addTrack(audio.first, localStream);
       tracks.add({'mid': '0', 'kind': 'audio', 'trackName': _audioTrackName(join.sessionId)});
 
       if (wantVideo) {
         final cam = localStream.getVideoTracks();
         if (cam.isNotEmpty) {
-          await _pc!.addTrack(cam.first, localStream);
+          await pc.addTrack(cam.first, localStream);
           tracks.add({'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(join.sessionId)});
         }
       }
 
-      await configurePeerConnection?.call(_pc!);
+      await configurePeerConnection?.call(pc);
 
       // PUBLISH — we offer, the SFU answers.
-      final offer = await _pc!.createOffer();
+      final offer = await pc.createOffer();
       final tunedOffer = RTCSessionDescription(
         audio_tuning.tuneOpusSdp(offer.sdp, enableRed: enableRed),
         offer.type,
       );
-      await _pc!.setLocalDescription(tunedOffer);
+      await pc.setLocalDescription(tunedOffer);
       if (enableRed) {
         onRedNegotiated?.call(
           audio_tuning.sdpHasActiveRed(tunedOffer.sdp),
@@ -311,7 +320,7 @@ class CallSfuTransport {
         _peerPollAbort = true; // [CALL-DEADAIR-1]
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_answer_sdp');
       }
-      await _pc!.setRemoteDescription(
+      await pc.setRemoteDescription(
         RTCSessionDescription(answer['sdp'].toString(), 'answer'),
       );
       for (final t in tracks) {
@@ -349,7 +358,7 @@ class CallSfuTransport {
 
       _startHeartbeat();
       onStage?.call('sfu_ready');
-      return CallSfuResult.ok(_pc!, sessionId: join.sessionId, relayDegraded: join.relayDegraded);
+      return CallSfuResult.ok(pc, sessionId: join.sessionId, relayDegraded: join.relayDegraded);
     } on CallSfuException catch (e) {
       await _closePc();
       return CallSfuResult.failed(
