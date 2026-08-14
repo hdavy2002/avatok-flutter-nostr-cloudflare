@@ -1697,6 +1697,28 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
       if (!r.ok) return json({ error: "call_authority_unavailable" }, r.status === 403 ? 403 : 503);
     } catch { return json({ error: "call_authority_unavailable" }, 503); }
   }
+  // [CALL-STATUS-WSLANE-1 2026-08-14] FAST LANE FIRST, mirroring [WS-RING-1] /
+  // [CALL-RING-FIRST-1]. The DO fan-out above only reaches peers attached to
+  // the CallRoom socket — and a RINGING callee has never joined it (he joins on
+  // accept), so a caller's cancel had NO live path to the one phone that most
+  // needs it and rode FCM alone, which Android throttles after call bursts
+  // (prod avatok-9f407abf: cancel at :21, callee rang until his window expired
+  // at :31). Push the same status frame through the peer's live InboxDO WS —
+  // the exact pipe the ring itself arrived on — carrying the DO's monotonic
+  // seq so the client reducer collapses WS/FCM duplicates. Best-effort:
+  // offline devices miss it and rely on FCM exactly as before.
+  if (isTerminal || isHandoff) {
+    try {
+      const inboxStub = env.INBOX.get(env.INBOX.idFromName(recipient));
+      await inboxStub.fetch("https://inbox/event", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "call_status", callId: b.callId, status: b.status, ts: Date.now(),
+          ...(typeof doResult?.seq === "number" ? { seq: doResult.seq } : {}),
+        }),
+      });
+    } catch { /* best-effort — FCM below stays authoritative */ }
+  }
   const re = b.receptionist_enabled;
   // The FCM queue stays as the DURABLE backstop, always — the socket fan-out only
   // reaches peers that are currently attached, and a backgrounded/killed app is not.
@@ -1934,6 +1956,23 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
   ]);
   if (out.ok === true && out.changed === true && typeof out.peer_uid === "string" && out.peer_uid &&
       BACKSTOP_STATUSES.has(backstopStatus)) {
+    // [CALL-STATUS-WSLANE-1 2026-08-14] FAST LANE FIRST — same asymmetry fix as
+    // in callStatus above. `cancel_call` arrives HERE (client
+    // _notifyCalleeCanceled → /api/call/command), and its only path to a
+    // RINGING callee — who is not attached to the CallRoom socket until he
+    // accepts — was the throttled FCM backstop below. Push the frame through
+    // the peer's live InboxDO WS (the ring's own pipe), seq-tagged so the
+    // client reducer dedupes against the FCM copy.
+    try {
+      const inboxStub = env.INBOX.get(env.INBOX.idFromName(out.peer_uid));
+      await inboxStub.fetch("https://inbox/event", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "call_status", callId: b.callId, status: backstopStatus, ts: Date.now(),
+          ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
+        }),
+      });
+    } catch { /* best-effort — FCM below stays authoritative */ }
     try {
       await env.Q_PUSH.send({
         kind: "call-status", to: out.peer_uid, callId: b.callId,

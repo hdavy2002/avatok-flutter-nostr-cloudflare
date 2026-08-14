@@ -2497,6 +2497,45 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
 }
 
 class PushService {
+  /// [CALL-STATUS-WSLANE-1 2026-08-14] Terminal call-status (cancel / bye /
+  /// decline / …) delivered over the live InboxDO WebSocket — the same fast
+  /// lane the RING already uses ([WS-RING-1]), closing a delivery asymmetry:
+  /// the ring reached an online callee in <1s over this socket, but the
+  /// caller's CANCEL only travelled via CallRoom sockets (which a ringing,
+  /// not-yet-accepted callee is never attached to) plus the FCM backstop,
+  /// which Android throttles after bursts of calls. Prod call avatok-9f407abf
+  /// (2026-08-14): caller hung up at :21, the callee rang until his own 28s
+  /// window expired at :31 — the cancel never arrived in time.
+  ///
+  /// Routes through the SAME two sinks as the foreground FCM 'call-status'
+  /// branch: `callStatusBus` for a live caller session, and the ring reducer
+  /// (`applyRingTransition`, seq-deduped) for a ringing callee — whichever of
+  /// WS/FCM lands second is a no-op, exactly like the ring's dual delivery.
+  static Future<void> handleWsCallStatus(Map<String, dynamic> f) async {
+    final callId = (f['callId'] ?? '').toString();
+    final status = (f['status'] ?? '').toString();
+    if (callId.isEmpty || status.isEmpty) return;
+    Analytics.capture('call_status_ws_received', {
+      'call_id': callId,
+      'status': status,
+      'seq': int.tryParse((f['seq'] ?? '').toString()),
+    });
+    callStatusBus.add((
+      callId: callId,
+      status: status,
+      busyReason: null,
+      receptionistEnabled: false,
+      pronoun: null,
+      activationMode: null,
+      noAnswerReason: null,
+    ));
+    await applyRingTransition(
+      callId, status,
+      seq: int.tryParse((f['seq'] ?? '').toString()),
+      source: 'inbox_ws',
+    );
+  }
+
   /// [WS-RING-1] Incoming ring delivered over the live InboxDO WebSocket
   /// (SyncHub frame {type:'call_ring', ...}) — the FCM-latency bypass for
   /// ONLINE callees. Mirrors the foreground FCM 'call' branch's guards

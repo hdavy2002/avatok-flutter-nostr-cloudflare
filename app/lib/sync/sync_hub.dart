@@ -714,6 +714,16 @@ class SyncHub {
         // open AvaStorage screen. Same multiplexed socket, no extra connection.
         _storage.add(m);
         break;
+      case 'call_status':
+        // [CALL-STATUS-WSLANE-1] Terminal 1:1 call-status (cancel/bye/decline)
+        // over the inbox socket — the fast lane the ring already uses. Without
+        // this, a ringing callee only learned of the caller's hangup via
+        // throttled FCM and rang out his whole window. Guarded like call_ring:
+        // a malformed frame must never crash the socket handler.
+        try {
+          unawaited(PushService.handleWsCallStatus(m));
+        } catch (_) {/* tolerate a bad status frame */}
+        break;
       case 'group_call_ring_cancel':
         // [GCALL-W4-RING] The group call ended (last person left, swept, or the
         // starter gave up) while this phone was still ringing for it. Without

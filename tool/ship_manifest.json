@@ -1213,5 +1213,63 @@
     "note": "A paid+opted-in test account chats with Ava and the reply comes from provider=venice model venice-uncensored-1-2; a free account on the same build must show ZERO provider=venice chat_thread events."
    }
   ]
+ },
+ "CALL-VIDEO-SFUGUARD-1": {
+  "description": "The 4s P2P relay-escalation ladder (_armRelayFallbackTimer, was _relayFallbackTimer) and _forceRelayRestart now stand down while the SFU join is in flight (_sfuStarting/_sfuReconnectInFlight -> defer+re-arm 2s; _sfuActive -> stop). Before this, video calls failed 3/3 on 2026-08-14 (avatok-9f2fccad/-5fa7bef2/-9f407abf): camera warm-up pushed the SFU join past 4s, the ladder closed the SFU's own _pc (assigned via _newPC side effect), and the answer died with 'setRemoteDescription: wrong state: closed'. Audio connected in ~4.5s and squeaked past. Client-only, no flag.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_sfu_active",
+    "property": "video",
+    "equals": true,
+    "min_events": 1,
+    "note": "THE assertion: a two-sided VIDEO call between two phones on the new build reaches call_sfu_active video=true on BOTH persons. Before the fix this event had never once fired with video=true between these testers."
+   },
+   {
+    "event": "call_relay_fallback_deferred_sfu",
+    "property": "video",
+    "equals": true,
+    "min_events": 1,
+    "note": "The guard actually engaged during a video join (proves the new code path ran, not that the race vanished). Absence alongside a connected video call is fine (fast join); absence alongside another 'wrong state: closed' sfu_fallback means the guard is not in the build."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_session.dart _armRelayFallbackTimer (guard + capture call_relay_fallback_deferred_sfu) and _forceRelayRestart guard; call_sfu_active emit pre-existing at _startSfu result.connected"
+ },
+ "CALL-STATUS-WSLANE-1": {
+  "description": "Terminal call-status (cancel/bye/decline/...) now travels the SAME live InboxDO WS fast lane as the ring itself ([WS-RING-1]). Worker: callStatus and callCommand additionally POST {type:'call_status', callId, status, seq} to the peer's InboxDO /event (best-effort, FCM backstop unchanged). Client: sync_hub case 'call_status' -> PushService.handleWsCallStatus -> callStatusBus + applyRingTransition(source:'inbox_ws'), seq-deduped by the existing reducer. Fixes prod avatok-9f407abf 2026-08-14: caller cancelled at :21, ringing callee never received it and rang out his full 28s window. Needs worker deploy AND client build; old clients ignore the unknown frame (graceful).",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_status_ws_received",
+    "property": "status",
+    "in": ["cancel", "bye", "hangup", "ended", "decline", "declined"],
+    "min_events": 1,
+    "note": "The frame ARRIVED over the inbox socket on the peer's phone. Test: caller dials, callee lets it ring, caller hangs up -> the callee's device must log this within ~1s and the ring must stop immediately (ring_transition source=inbox_ws), not at the 28s window."
+   }
+  ],
+  "_verified_at": "worker/src/routes/api.ts callStatus (inbox leg before Q_PUSH) + callCommand backstop block; app/lib/sync/sync_hub.dart case 'call_status'; app/lib/push/push_service.dart handleWsCallStatus (captures call_status_ws_received)"
+ },
+ "CALL-SFU-NULLPC-1": {
+  "description": "CallSfuTransport.connect() held the PeerConnection only in the _pc field and used `_pc!` seven times; a concurrent dispose() nulled it mid-await and the join failed with a crash-shaped 'Null check operator used on a null value' (caller of avatok-9f407abf, 2026-08-14) instead of the clean disposed_during_setup result. The PC now lives in a local for the whole connect; _disposed checks remain the clean exits. Client-only, no flag, no behaviour change on the happy path.",
+  "shipped": "pending",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_sfu_fallback",
+    "property": "detail",
+    "in": ["disposed_during_setup", "disposed_after_publish"],
+    "min_events": 0,
+    "note": "VALUE check with an absence twin: on the new build, ZERO call_sfu_fallback rows may carry detail containing 'Null check operator'. The clean disposed_* details are the acceptable shape when teardown races a join; min_events 0 because the race itself should be rarer now that CALL-VIDEO-SFUGUARD-1 removed its main trigger."
+   }
+  ],
+  "_verified_at": "app/lib/core/calls/call_sfu_transport.dart connect() — local `pc`, _pc assigned once; failure emit site unchanged in call_session.dart _startSfu"
  }
 }
