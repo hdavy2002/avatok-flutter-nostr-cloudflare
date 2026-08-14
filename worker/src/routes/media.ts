@@ -1093,7 +1093,14 @@ export async function libraryRecord(req: Request, env: Env, exec: ExecutionConte
   //   4. Denying by default (404) when no matching owner row exists — a key
   //      with no real backing upload is a forgery attempt, not "record what
   //      I received".
-  const keyMatch = /^u\/([a-z0-9]+)\/(public|dm|private)\/[0-9a-f]{64}$/i.exec(key);
+  // [MEDIA-KEY-UID-1 2026-08-14] `[a-z0-9]+` REJECTED every real Clerk uid —
+  // they all contain an underscore (`user_3Auq…`), so since [AVA-MEDIA-AUTHZ-1]
+  // (2026-07-25) EVERY library/record call 400'd `invalid_key` and received
+  // media silently stopped being recorded (found via hdavy2002's device
+  // exception LibraryRecordException status=400 code=invalid_key). Charset now
+  // matches Clerk ids (word chars + hyphen); the 64-hex tail stays strict, so
+  // the AUTHZ-1 forgery protections are unchanged.
+  const keyMatch = /^u\/([A-Za-z0-9_-]+)\/(public|dm|private)\/[0-9a-f]{64}$/i.exec(key);
   if (!keyMatch) return json({ error: "invalid_key" }, 400);
   const senderUid = keyMatch[1];
   const conv = (b.conv || "").toString().trim();
