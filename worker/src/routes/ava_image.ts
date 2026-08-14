@@ -77,6 +77,9 @@ import { mediaSession } from "../db/shard";
 import { postAvaMessage } from "./ava_thread";
 import type { MessageScope } from "../lib/ava_kinds";
 import { imageModel } from "../lib/ava_reason/policy"; // One Brain B1: env-overridable image model
+// [VENICE-IMG-1 2026-08-14] Venice AI image client + routing map — dark behind
+// cfg.veniceMediaEnabled (routes/config.ts). See generateImageVenice() below.
+import { veniceGenerateImage, veniceRoute } from "../lib/venice";
 // [AVA-IMAGE-UX-1 / §44] Durable job/message state machine — the PRIMARY
 // mechanism a job-hydrated client (AiMediaJobRepository/AiMediaJobCard, M4)
 // reads. postChip()/endChip() below are kept as a best-effort SECONDARY
@@ -446,6 +449,18 @@ export function imageResolutionForTier(tier: unknown): string {
 export async function generateImage(
   env: Env, key: string, prompt: string, uid: string, editRef?: string, opts: GenerateImageOptions = {},
 ): Promise<GeneratedImage> {
+  // [VENICE-IMG-1 2026-08-14] Dark-by-default reroute: when the KV kill switch
+  // is flipped on, generate via Venice instead of OpenRouter. Default false ⇒
+  // byte-for-byte identical behaviour to before this change (see routes/config.ts
+  // DEFAULTS.veniceMediaEnabled). Does not (yet) cover editRef (image-to-image) —
+  // Venice's sync image endpoint used here is text-to-image only, so an edit
+  // request still falls through to OpenRouter below even when the flag is on.
+  if (!editRef) {
+    const cfg = await readConfig(env);
+    if (cfg.veniceMediaEnabled) {
+      return generateImageVenice(env, uid, prompt, opts);
+    }
+  }
   // One Brain B1: model is env-overridable (OPENROUTER_IMAGE_MODEL) via policy.
   const model = imageModel(env);
   const resolution = opts.resolution || DEFAULT_IMAGE_RESOLUTION;
@@ -512,6 +527,56 @@ export async function generateImage(
     : typeof usage?.completion_tokens === "number" ? usage.completion_tokens : undefined;
   const costUsd = typeof usage?.cost === "number" ? usage.cost : undefined;
   return { bytes, imageOutputTokens, costUsd, providerMs: Date.now() - t0, resolution };
+}
+
+// [VENICE-IMG-1 2026-08-14] Venice AI image path — only reached from
+// generateImage() above when cfg.veniceMediaEnabled is true. Mirrors the
+// OpenRouter path's telemetry shape (ava_reason_call / ava_image_error) with
+// provider "venice" and the routing-map model id, so dashboards built on
+// provider="openrouter" gain a sibling rather than a new taxonomy. Model comes
+// from veniceRoute("image","free").model, never hard-coded (lib/venice.ts is
+// the single source of truth for Venice model ids). No moderation gate,
+// output-safety gate, or watermarking here yet — those are [VENICE-SAFE-1] /
+// [VENICE-LABEL-1], separate issues per Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md.
+async function generateImageVenice(
+  env: Env, uid: string, prompt: string, opts: GenerateImageOptions,
+): Promise<GeneratedImage> {
+  const model = veniceRoute("image", "free").model;
+  const resolution = opts.resolution || DEFAULT_IMAGE_RESOLUTION;
+  const t0 = Date.now();
+  const emitReason = (ok: boolean, error: string | null) => {
+    try {
+      track(env, uid, "ava_reason_call", "avaai", {
+        role: "ava_image", capability: "image_generate", trigger: "image_create",
+        opportunity: null, feature: "ava_image", verb: "see", provider: "venice",
+        model, primary_model: null, ok, fallback_used: false, cache_hit: false,
+        latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
+        resolution,
+      });
+    } catch { /* telemetry best-effort */ }
+  };
+  let b64: string;
+  try {
+    ({ b64 } = await veniceGenerateImage(env as any, model, prompt, { aspectRatio: opts.aspectRatio }));
+  } catch (e: any) {
+    const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
+    track(env, uid, "ava_image_error", "avaai", { stage: "generate", model, provider: "venice", resolution, error: msg });
+    emitReason(false, msg);
+    throw e instanceof Error ? e : new Error(msg);
+  }
+  if (!b64) {
+    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model, provider: "venice", resolution });
+    emitReason(false, "venice returned no image");
+    throw new Error("venice returned no image");
+  }
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  emitReason(true, null);
+  // Venice's sync image response carries no per-call usage/cost fields today
+  // (unlike some OpenRouter image providers) — left undefined, never
+  // fabricated, per the §46/§48 rule this file already follows above.
+  return { bytes, providerMs: Date.now() - t0, resolution };
 }
 
 // LEGACY sync-path storage: the PUBLIC blob bucket (same layout + CDN path as

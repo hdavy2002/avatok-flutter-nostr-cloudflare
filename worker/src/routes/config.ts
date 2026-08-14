@@ -1290,6 +1290,16 @@ export interface PlatformConfig {
   // Forward declaration: music generation has NO code path yet. The key exists so
   // the tariff is set before the feature lands, not after it starts billing.
   musicCostPerMinuteTokens: number;
+
+  // [VENICE-IMG-1 2026-08-14] Venice AI media kill switch — Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md.
+  // Ships DARK (default false): generateImage() keeps using the existing OpenRouter
+  // path until this is explicitly flipped true in KV. Boolean → NOT in numericKeys.
+  veniceMediaEnabled: boolean;
+  // Venice tariffs in TOKENS (1 token = ₹1), read only when veniceMediaEnabled is
+  // true. All numeric → all in numericKeys.
+  veniceImageTokens: number;
+  veniceMusicTokens: number;
+  veniceVideoTokens: number;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -1762,6 +1772,11 @@ const DEFAULTS: PlatformConfig = {
   image2kUpgradeCostTokens: 4,
   searchCostTokens: 2,
   musicCostPerMinuteTokens: 5,        // forward declaration — no code path yet
+  // [VENICE-IMG-1 2026-08-14] ships dark; flip true in KV to route image gen to Venice.
+  veniceMediaEnabled: false,
+  veniceImageTokens: 2,
+  veniceMusicTokens: 10,
+  veniceVideoTokens: 50,
 };
 
 /**
@@ -1943,6 +1958,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // avaVoiceStyleDefault=1` 400s `bad type`.
     "avaVoiceStyleDefault", "imagePreviewResolutionTier", "imageFullResolutionTier",
     "imageCostTokens", "image2kUpgradeCostTokens", "searchCostTokens", "musicCostPerMinuteTokens",
+    // [VENICE-IMG-1 2026-08-14] Venice tariffs — numeric, must be here or
+    // `flags.sh set veniceImageTokens=3` 400s `bad type`. (`veniceMediaEnabled`
+    // is a BOOLEAN — not listed.)
+    "veniceImageTokens", "veniceMusicTokens", "veniceVideoTokens",
   ]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
