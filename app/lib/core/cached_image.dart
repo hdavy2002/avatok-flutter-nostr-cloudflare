@@ -219,6 +219,17 @@ class CachedImage extends StatefulWidget {
   /// ordinary stable URLs (unchanged behavior).
   final String? cacheKey;
 
+  /// [AVA-IMG-SELFHEAL-1] Optional, fired EXACTLY ONCE per [url]/[cacheKey]
+  /// (re-armed on [didUpdateWidget] when either changes) with whether this
+  /// image actually painted a real frame. `true` from either decode path's
+  /// `frameBuilder` (first non-null frame); `false` only when this widget
+  /// falls all the way through to the broken-image placeholder — a genuine
+  /// dead link, not a transient loading frame. Lets a caller (e.g. a
+  /// presigned-URL bubble whose link has a short server-side lifetime) react
+  /// to a load failure by re-minting the URL and swapping it in. Omit for the
+  /// default silent behavior (unchanged).
+  final void Function(bool ok)? onResult;
+
   const CachedImage(
     this.url, {
     super.key,
@@ -228,6 +239,7 @@ class CachedImage extends StatefulWidget {
     this.radius,
     this.cachePx,
     this.cacheKey,
+    this.onResult,
   });
 
   @override
@@ -242,6 +254,12 @@ class _CachedImageState extends State<CachedImage> {
   /// True once the async lookup has finished and produced nothing — only then do
   /// we fall through to a direct (uncached) network load.
   bool _missed = false;
+
+  /// [AVA-IMG-SELFHEAL-1] Guards [widget.onResult] to fire at most once per
+  /// [url]/[cacheKey] — reset in [didUpdateWidget] alongside [_file]/[_missed]
+  /// so a caller that swaps in a re-minted URL gets a fresh success/failure
+  /// signal for THAT url, not a stale guard left over from the old one.
+  bool _reported = false;
 
   int get _px {
     final safeW = widget.width.isFinite ? widget.width : 240.0;
@@ -263,8 +281,22 @@ class _CachedImageState extends State<CachedImage> {
         old.width != widget.width) {
       _file = null;
       _missed = false;
+      _reported = false;
       _resolve();
     }
+  }
+
+  /// [AVA-IMG-SELFHEAL-1] Fire [widget.onResult] at most once for the current
+  /// url/cacheKey. Scheduled via a post-frame callback since this can be
+  /// invoked from a `frameBuilder`/an inline call during THIS widget's own
+  /// build — calling straight into a caller's `setState` synchronously there
+  /// would risk "setState during build".
+  void _report(bool ok) {
+    if (_reported) return;
+    _reported = true;
+    final cb = widget.onResult;
+    if (cb == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => cb(ok));
   }
 
   void _resolve() {
@@ -319,12 +351,18 @@ class _CachedImageState extends State<CachedImage> {
         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
 
-  Widget _broken() => SizedBox(
-        width: widget.width,
-        height: widget.height ?? 120,
-        child: Center(
-            child: PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.regular))),
-      );
+  Widget _broken() {
+    // [AVA-IMG-SELFHEAL-1] Reaching the broken placeholder is the one honest
+    // "this image did not load" signal — every other exit (file hit, network
+    // hit) reports success via `frameBuilder` below instead.
+    _report(false);
+    return SizedBox(
+      width: widget.width,
+      height: widget.height ?? 120,
+      child: Center(
+          child: PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.regular))),
+    );
+  }
 
   Widget _network() => Image.network(
         // Ask Cloudflare for a SMALL variant when the host is ours; a no-op on
@@ -336,6 +374,11 @@ class _CachedImageState extends State<CachedImage> {
         cacheWidth: _px,
         loadingBuilder: (c, child, progress) =>
             progress == null ? child : _spinner(),
+        // [AVA-IMG-SELFHEAL-1] First real decoded frame = success.
+        frameBuilder: (_, child, frame, __) {
+          if (frame != null) _report(true);
+          return child;
+        },
         errorBuilder: (_, __, ___) => _broken(),
       );
 
@@ -354,6 +397,11 @@ class _CachedImageState extends State<CachedImage> {
         // 48dp list tile. Keyed consistently (ResizeImage folds the target width
         // into the image-cache key), and it never upscales.
         cacheWidth: _px,
+        // [AVA-IMG-SELFHEAL-1] First real decoded frame = success.
+        frameBuilder: (_, child, frame, __) {
+          if (frame != null) _report(true);
+          return child;
+        },
         // A poisoned/corrupt cache entry degrades to a live network load, never
         // to a broken tile.
         errorBuilder: (_, __, ___) => _network(),

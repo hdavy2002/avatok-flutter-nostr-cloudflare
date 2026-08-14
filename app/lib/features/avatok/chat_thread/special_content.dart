@@ -670,7 +670,7 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
         // Ava's image turns showed the caption but never the picture.
         final mediaRef = (e['media_ref'] ?? '').toString();
         if (mediaRef.isNotEmpty) {
-          return _avaImageBubble(mediaRef, body, fg);
+          return _avaImageBubble(m, mediaRef, body, fg);
         }
         // GenUI/A2UI surface (generic): the agent composed a layout from our Zine
         // catalog (calendar today, any tool tomorrow). Rendered natively.
@@ -859,42 +859,186 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
   }
 
   /// A finished Ava image bubble: the picture, tappable to open full-screen, with
-  /// a ⋮ overflow menu (Open / Download full-res / Share) in the top-right corner.
-  Widget _avaImageBubble(String mediaRef, String body, Color fg) {
+  /// a ⋮ overflow menu (Open / Download full-res / Download full quality / Share)
+  /// in the top-right corner.
+  ///
+  /// [AVA-IMG-SELFHEAL-1] `mediaRef` is a PRESIGNED URL baked permanently into
+  /// the message envelope (`extra.media_ref`) — it expires ~15 minutes after
+  /// Ava posts it (server-side mint, never re-signed). Rendered after expiry,
+  /// a bare `CachedImage(mediaRef)` was blank forever. The envelope also
+  /// carries `extra.meta.job_id` (postAvaMessage's `meta:{job_id}`), which
+  /// [_AvaImageBubbleImage] uses to re-mint a fresh URL via
+  /// `AiMediaJobRepository.fetch` — the same durable-job contract the `ai_job`
+  /// card already relies on (see media.dart's `_freshArtifactUrl`). Messages
+  /// that predate that wiring simply have no `job_id` and fall back to the
+  /// old (potentially-expired) behavior.
+  Widget _avaImageBubble(_Msg m, String mediaRef, String body, Color fg) {
+    final meta = m.extra?['meta'];
+    final jobId = (meta is Map ? meta['job_id'] : null)?.toString() ?? '';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (body.isNotEmpty)
         Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
       ClipRRect(
         borderRadius: BorderRadius.circular(Msg.rMd),
-        child: Stack(children: [
-          GestureDetector(
-            onTap: () => _openImageFull(mediaRef),
-            // Disk-cached so it loads instantly on reopen (no re-download).
-            child: CachedImage(mediaRef, width: 240),
+        child: _AvaImageBubbleImage(
+          mediaRef: mediaRef,
+          jobId: jobId,
+          postedTs: m.ts,
+          onOpen: _openImageFull,
+          onDownload: _downloadImage,
+          onShare: (url) => _downloadImage(url, share: true),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// [AVA-IMG-SELFHEAL-1] In-memory, job_id → last known-fresh `artifact_url`.
+/// Session-scoped only (never persisted) — a reopened thread re-resolves once
+/// per job the first time it's needed, then reuses this so scrolling the same
+/// bubble back into view doesn't refetch every rebuild. Deliberately NOT
+/// account-scoped: a job_id is a server-minted opaque id with no embedded
+/// secret, and the URL itself is short-lived, so there is nothing here worth
+/// separating per account (mirrors `AvatarCache`'s own reasoning for its
+/// shared, content-addressed pool).
+final Map<String, String> _avaResolvedImageUrls = {};
+
+/// [AVA-IMG-SELFHEAL-1] Renders an Ava-generated image and keeps it showing
+/// even after its presigned `mediaRef` URL expires, by re-minting a fresh one
+/// via the durable AI-media-job contract (`AiMediaJobRepository.fetch`) —
+/// PROACTIVELY when the message is already older than the presign's ~15-minute
+/// lifetime, and REACTIVELY whenever [CachedImage] reports a load failure
+/// (`onResult(false)`) for any other reason (clock skew, a shorter-than-usual
+/// mint, etc). Falls back to whatever URL is already showing if the refetch
+/// itself fails — never worse than the old behavior.
+class _AvaImageBubbleImage extends StatefulWidget {
+  const _AvaImageBubbleImage({
+    required this.mediaRef,
+    required this.jobId,
+    required this.postedTs,
+    required this.onOpen,
+    required this.onDownload,
+    required this.onShare,
+  });
+
+  final String mediaRef;
+  final String jobId; // '' for a message that predates AI-media-job wiring
+  final int postedTs; // _Msg.ts — epoch seconds, 0 if unknown
+  final void Function(String url) onOpen;
+  final void Function(String url) onDownload;
+  final void Function(String url) onShare;
+
+  @override
+  State<_AvaImageBubbleImage> createState() => _AvaImageBubbleImageState();
+}
+
+class _AvaImageBubbleImageState extends State<_AvaImageBubbleImage> {
+  // Conservatively under the server's ~15-minute presign lifetime (AVA-MEDIA-JOB-2's
+  // 900s), so a proactive refetch fires before the link is actually dead.
+  static const _presignLifetime = Duration(minutes: 14);
+
+  late String _url;
+  bool _refetching = false;
+  bool _refetched = false; // did THIS mount ever swap in a re-minted URL
+
+  @override
+  void initState() {
+    super.initState();
+    _url = _avaResolvedImageUrls[widget.jobId] ?? widget.mediaRef;
+    if (widget.jobId.isNotEmpty &&
+        !_avaResolvedImageUrls.containsKey(widget.jobId) &&
+        _isStale()) {
+      _refetch();
+    }
+  }
+
+  bool _isStale() {
+    if (widget.postedTs <= 0) return false;
+    final ageSec = DateTime.now().millisecondsSinceEpoch ~/ 1000 - widget.postedTs;
+    return ageSec > _presignLifetime.inSeconds;
+  }
+
+  Future<void> _refetch() async {
+    if (_refetching || widget.jobId.isEmpty) return;
+    _refetching = true;
+    try {
+      final job = await AiMediaJobRepository.I.fetch(widget.jobId);
+      final fresh = job?.artifactUrl;
+      if (fresh != null && fresh.isNotEmpty) {
+        _avaResolvedImageUrls[widget.jobId] = fresh;
+        if (mounted) setState(() { _url = fresh; _refetched = true; });
+      }
+    } finally {
+      _refetching = false;
+    }
+  }
+
+  /// A GUARANTEED-fresh url for a user-initiated action (open/download/share)
+  /// — never trusts whatever is currently painted, mirroring
+  /// `_freshArtifactUrl` in media.dart for the `ai_job` card. Falls back to
+  /// the best URL already known ([_url]) if the job fetch itself fails.
+  Future<String> _resolveForAction() async {
+    if (widget.jobId.isEmpty) return _url;
+    final job = await AiMediaJobRepository.I.fetch(widget.jobId);
+    final fresh = job?.artifactUrl;
+    if (fresh == null || fresh.isEmpty) return _url;
+    _avaResolvedImageUrls[widget.jobId] = fresh;
+    if (mounted && fresh != _url) setState(() { _url = fresh; _refetched = true; });
+    return fresh;
+  }
+
+  void _onLoadResult(bool ok) {
+    // [SRV-ERR-TRACK-1 bake-in] The presigned-URL expiry was invisible until
+    // now — nothing told anyone an Ava image bubble had gone permanently
+    // blank. `job_id` is included so a failure can be correlated back to the
+    // job that produced it.
+    Analytics.capture('ava_image_bubble_load', {
+      'ok': ok, 'refetched': _refetched, 'job_id': widget.jobId,
+    });
+    if (!ok && widget.jobId.isNotEmpty) _refetch();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(children: [
+      GestureDetector(
+        onTap: () async => widget.onOpen(await _resolveForAction()),
+        // Disk-cached (keyed by job_id when known, so a re-minted URL with a
+        // rotated signature still hits the same cache entry — see
+        // CachedImage's own `cacheKey` doc) so it loads instantly on reopen.
+        child: CachedImage(_url,
+            width: 240,
+            cacheKey: widget.jobId.isNotEmpty ? widget.jobId : null,
+            onResult: _onLoadResult),
+      ),
+      Positioned(
+        top: 6,
+        right: 6,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+          child: PopupMenuButton<String>(
+            tooltip: 'Image options',
+            icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
+            padding: EdgeInsets.zero,
+            onSelected: (v) async {
+              if (v == 'open') widget.onOpen(await _resolveForAction());
+              if (v == 'download') widget.onDownload(_url);
+              if (v == 'download_fresh') widget.onDownload(await _resolveForAction());
+              if (v == 'share') widget.onShare(await _resolveForAction());
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'open', child: Text('Open')),
+              const PopupMenuItem(value: 'download', child: Text('Download full-res')),
+              // [AVA-IMG-SELFHEAL-1] Only offered when this message actually
+              // carries a job_id — an old message has no durable job to
+              // re-fetch from, so there is nothing "fresh" to offer beyond
+              // the plain Download above.
+              if (widget.jobId.isNotEmpty)
+                const PopupMenuItem(value: 'download_fresh', child: Text('Download full quality')),
+              const PopupMenuItem(value: 'share', child: Text('Share')),
+            ],
           ),
-          Positioned(
-            top: 6,
-            right: 6,
-            child: DecoratedBox(
-              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-              child: PopupMenuButton<String>(
-                tooltip: 'Image options',
-                icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
-                padding: EdgeInsets.zero,
-                onSelected: (v) {
-                  if (v == 'open') _openImageFull(mediaRef);
-                  if (v == 'download') _downloadImage(mediaRef);
-                  if (v == 'share') _downloadImage(mediaRef, share: true);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'open', child: Text('Open')),
-                  PopupMenuItem(value: 'download', child: Text('Download full-res')),
-                  PopupMenuItem(value: 'share', child: Text('Share')),
-                ],
-              ),
-            ),
-          ),
-        ]),
+        ),
       ),
     ]);
   }
