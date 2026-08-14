@@ -51,7 +51,11 @@ ENVIRONMENT_NAME = "prod"
 # 2026-08-13; same family/shape, OpenRouter slug verified). Drives BOTH the
 # agentic chat lane and the [AVA-AMBIENT-2] composer.
 OPENROUTER_AGENT_MODEL = "google/gemini-3.7-flash"
-OPENROUTER_AGENT_MODEL_ALT = "moonshotai/kimi-k3"
+# [AVA-MODEL-FLASH-2] Fallback: kimi-k3 → x-ai/grok-4.1-fast (owner 2026-08-14).
+# Still a different family from the Google primary (the outage rationale holds);
+# "fast" variant, reasoning-off by default via OpenRouter — unlike kimi-k3 it
+# won't add 15s of silent thinking on the rare turns the ladder falls back.
+OPENROUTER_AGENT_MODEL_ALT = "x-ai/grok-4.1-fast"
 # [LIVE-DIDIT-1] didit.me liveness — the "AvaTOK Liveness" workflow (LIVENESS
 # feature only) created 2026-07-09 in the owner's Didit console. The API key is
 # a SECRET (`wrangler secret put DIDIT_API_KEY`), never in this file.
