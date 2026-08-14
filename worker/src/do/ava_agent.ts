@@ -1872,7 +1872,10 @@ export class AvaAgentDO {
       // Capture the last successful CONNECTED-APP tool result so we can render it
       // as a GenUI surface (generic across all of Composio, not per-app).
       let lastApp: { tool: string; data: unknown } | null = null;
-      const onTool = (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number; result?: unknown; is_app?: boolean }) => {
+      // [TELEMETRY-AWAIT-1] async so the emit can be awaited like every other
+      // send (the runtime drops unawaited queue sends); callers fire it
+      // synchronously as before — the callback's own promise is short-lived.
+      const onTool = async (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number; result?: unknown; is_app?: boolean }) => {
         toolCount++; toolNames.push(ev.tool); toolMs += ev.ms; if (!ev.ok) toolError = true;
         if (ev.ok && ev.is_app && ev.result != null) lastApp = { tool: ev.tool, data: ev.result };
         await trackUserContact(this.env, uid, email, phone, "ava_tool_call", "avaai", {
