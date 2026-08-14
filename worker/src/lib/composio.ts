@@ -1314,6 +1314,16 @@ export async function runAgentLoop(
     // breaking change. Gating (dark-flag + premium + per-user daily fair-use
     // cap + wallet reservation) lives inside the handler, keyed to the caller.
     onImage?: (prompt: string, editRef?: string) => Promise<string | { status: string; job_id?: string | null }>;
+    // [VENICE-VID-1] In-thread video generation, same async/durable-job shape
+    // as onImage above (see lib/venice_media.ts's runVeniceVideo, invoked via
+    // do/ava_agent.ts's onVideo callback). `sourceImageUrl` is the public URL
+    // of an existing image the model was given (the tool's `source_image_url`
+    // arg) — its PRESENCE alone selects image-to-video over text-to-video.
+    onVideo?: (prompt: string, sourceImageUrl?: string) => Promise<string | { status: string; job_id?: string | null }>;
+    // [VENICE-MUS-1] In-thread music generation, same shape. `durationSeconds`
+    // is optional — the handler (lib/venice_media.ts's runVeniceMusic) clamps
+    // it 60-210s and defaults to 60 when omitted.
+    onMusic?: (prompt: string, durationSeconds?: number) => Promise<string | { status: string; job_id?: string | null }>;
     // Multimodal input: images/files (base64) the user attached this turn. Added
     // as inline_data parts on the FIRST user turn so the model can SEE/READ them
     // (file & photo understanding). Used by ChatAVA file uploads; Messenger passes
@@ -1375,7 +1385,45 @@ export async function runAgentLoop(
         },
       }
     : null;
-  const tools = toOpenAITools([memDecl, ...appDecls, ...(imageDecl ? [imageDecl] : [])]);
+  // [VENICE-VID-1] Mirrors imageDecl's shape exactly (same async/durable-job
+  // contract, see onVideo's doc comment above) — intent phrasing "make/create/
+  // generate/animate a video" routes here.
+  const videoDecl = opts?.onVideo
+    ? {
+        name: "generate_video",
+        description: "Create a short AI-generated VIDEO clip when the user EXPLICITLY asks to generate, create, make, or animate a video (e.g. 'make a video of a sunset', 'create a short clip of a cat surfing', 'turn this photo into a video', 'animate this image'). Generation is asynchronous and posts into the chat on its own — do NOT describe the video as if it's already shown; just acknowledge briefly that you're creating it. Do not call this for a still picture (use generate_image instead) or for plain questions.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "A vivid, self-contained description of the video's subject, motion and style. Fold in the relevant context from the conversation since the generator has no chat history." },
+            source_image_url: { type: "string", description: "Optional: the public URL of an existing image to animate into a video (image-to-video). Omit for a plain text-to-video request." },
+          },
+          required: ["prompt"],
+        },
+      }
+    : null;
+  // [VENICE-MUS-1] Same shape again — intent phrasing "make/create a song/
+  // track/music" routes here.
+  const musicDecl = opts?.onMusic
+    ? {
+        name: "generate_music",
+        description: "Create a short AI-generated MUSIC track or song when the user EXPLICITLY asks to generate, create, or make music, a song, a beat, or a track (e.g. 'make me a lo-fi beat', 'create a song about summer', 'generate an upbeat guitar track'). Generation is asynchronous and posts into the chat on its own — do NOT describe the track as if it's already shown; just acknowledge briefly that you're creating it.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "A vivid, self-contained description of the music: genre, mood, instruments, tempo, and (if requested) a lyrical theme. Fold in the relevant context from the conversation since the generator has no chat history." },
+            duration_seconds: { type: "number", description: "Optional desired length in seconds, 60-210. Defaults to 60 when omitted." },
+          },
+          required: ["prompt"],
+        },
+      }
+    : null;
+  const tools = toOpenAITools([
+    memDecl, ...appDecls,
+    ...(imageDecl ? [imageDecl] : []),
+    ...(videoDecl ? [videoDecl] : []),
+    ...(musicDecl ? [musicDecl] : []),
+  ]);
   const sys =
     "You are Ava, the user's warm, concise personal assistant. "
     + "DEFAULT TO ANSWERING DIRECTLY IN ONE STEP. For greetings, small talk, opinions, "
@@ -1401,6 +1449,12 @@ export async function runAgentLoop(
       : "")
     + (imageDecl
       ? "When the user explicitly asks you to create or edit an image (a picture, logo, poster, etc.), call generate_image with a vivid prompt that folds in the needed context from the chat. The image generates in the background and appears in this chat on its own — so reply with a brief, natural acknowledgement (e.g. 'On it — creating that logo now ✨') and NEVER claim it's already visible or paste a link. If generate_image reports it was blocked or unavailable, relay that message plainly instead. "
+      : "")
+    + (videoDecl
+      ? "When the user explicitly asks you to create, generate, or animate a VIDEO clip, call generate_video with a vivid prompt (and source_image_url if they gave you an existing image to animate). Video generation takes a few minutes and appears in this chat on its own — acknowledge briefly (e.g. 'On it — making that video now, it'll take a few minutes ✨') and NEVER claim it's already visible. If generate_video reports it was blocked or unavailable, relay that message plainly instead. Do not call generate_video for a still picture — use generate_image instead. "
+      : "")
+    + (musicDecl
+      ? "When the user explicitly asks you to create, generate, or make MUSIC, a song, a beat, or a track, call generate_music with a vivid prompt describing genre/mood/instruments. Music generation takes a few minutes and appears in this chat on its own — acknowledge briefly and NEVER claim it's already visible. If generate_music reports it was blocked or unavailable, relay that message plainly instead. "
       : "")
     + "Do not show your reasoning. "
     + UNTRUSTED_BOUNDARY_RULE
@@ -1467,6 +1521,13 @@ export async function runAgentLoop(
   };
 
   let imageStarted = false; // one image generation per turn (avoid loops/dupes)
+  // [VENICE-VID-1 / VENICE-MUS-1] Same per-turn dedupe guard as imageStarted.
+  // No forced-tool-call fast path for video/music (unlike imageDecl's
+  // looksLikeImageRequest() below) — deliberately smaller scope for this
+  // pass; the model routes to generate_video/generate_music via the system
+  // prompt + tool descriptions alone. See this task's final report for why.
+  let videoStarted = false;
+  let musicStarted = false;
 
   // IMAGE FAST-PATH. When the request clearly asks for a picture, force a single
   // non-streamed generate_image call up front. This fixes the silent failure where
@@ -1576,6 +1637,31 @@ export async function runAgentLoop(
             const jobId = typeof r === "string" ? null : (r.job_id ?? null);
             result = jobId ? { job_id: jobId, status: "queued" } : { status };
           }
+        } else if (name === "generate_video" && opts?.onVideo) {
+          // [VENICE-VID-1] Same async/durable-job contract as generate_image
+          // above (lib/venice_media.ts's runVeniceVideo via do/ava_agent.ts's
+          // onVideo) — one video per turn, tool RESULT shape identical.
+          if (videoStarted) {
+            result = { status: "A video is already being generated for this request." };
+          } else {
+            videoStarted = true;
+            const r = await opts.onVideo(String(args?.prompt ?? query), args?.source_image_url ? String(args.source_image_url) : undefined);
+            const status = typeof r === "string" ? r : r.status;
+            const jobId = typeof r === "string" ? null : (r.job_id ?? null);
+            result = jobId ? { job_id: jobId, status: "queued" } : { status };
+          }
+        } else if (name === "generate_music" && opts?.onMusic) {
+          // [VENICE-MUS-1] Same contract again.
+          if (musicStarted) {
+            result = { status: "A track is already being generated for this request." };
+          } else {
+            musicStarted = true;
+            const durationArg = args?.duration_seconds != null ? Number(args.duration_seconds) : undefined;
+            const r = await opts.onMusic(String(args?.prompt ?? query), Number.isFinite(durationArg) ? durationArg : undefined);
+            const status = typeof r === "string" ? r : r.status;
+            const jobId = typeof r === "string" ? null : (r.job_id ?? null);
+            result = jobId ? { job_id: jobId, status: "queued" } : { status };
+          }
         } else {
           const r = await executeTool(env, userId, name, args);
           // Composio can return HTTP 200 with a tool-level failure (successful:false
@@ -1598,7 +1684,7 @@ export async function runAgentLoop(
           ...(count != null ? { count } : {}),
           // The trimmed tool result + whether it's a connected-app tool (vs.
           // search_memory) — lets the caller render the data as a GenUI surface.
-          result, is_app: name !== "search_memory" && name !== "generate_image",
+          result, is_app: !["search_memory", "generate_image", "generate_video", "generate_music"].includes(name),
         });
       } catch { /* telemetry is best-effort, never breaks the loop */ }
       messages.push({ role: "tool", tool_call_id: c.id, name, content: JSON.stringify(result) });

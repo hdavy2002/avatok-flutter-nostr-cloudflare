@@ -146,6 +146,11 @@ export async function veniceQueueVideo(
     prompt,
     duration: opts.duration || VENICE_VIDEO_DEFAULT_DURATION,
     resolution: opts.resolution || VENICE_VIDEO_DEFAULT_RESOLUTION,
+    // [VENICE-VID-1] NSFW enforcement layer 1 (Specs/VENICE-AI-MEDIA-PLAN-
+    // 2026-08-14.md "NSFW enforcement" §1): "send the API-level safety param
+    // on every image/video call ... Never disable it." Pinned true, same as
+    // veniceGenerateImage() above — never make this an option.
+    safe_mode: true,
   };
   if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
   if (opts.imageUrl) body.image_url = opts.imageUrl;
@@ -179,6 +184,12 @@ export interface VeniceMusicOptions {
   durationSeconds?: number;
 }
 
+// [VENICE-MUS-1] No `safe_mode` sent here: the spec's NSFW-enforcement layer 1
+// ("send the API-level safety param on every image/video call") is scoped to
+// image/video only, and Venice's /audio/queue docs (checked 2026-08-14) don't
+// document an equivalent field for the music models. The prompt gate
+// (moderate(..., field:"venice_music_prompt"), lib/venice_media.ts) is still
+// mandatory and unconditional for every music request regardless.
 export async function veniceQueueMusic(
   env: VeniceEnv, model: string, prompt: string, opts: VeniceMusicOptions = {},
 ): Promise<{ queueId: string }> {

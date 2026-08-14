@@ -46,6 +46,7 @@ import {
 import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
+import { runVeniceVideo, runVeniceMusic } from "../lib/venice_media"; // [VENICE-VID-1 / VENICE-MUS-1] in-thread video/music gen, same async-job shape as runAvaImage
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchOutlookInbox } from "../lib/outlook"; // same cards for Outlook-only users
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
@@ -1796,6 +1797,32 @@ export class AvaAgentDO {
               return priv
                 ? "Image generation started — it'll appear here privately in a few seconds."
                 : "Image generation started — it will appear in this chat in a few seconds.";
+            },
+            // [VENICE-VID-1 / VENICE-MUS-1] In-thread video/music gen. Same
+            // shape as onImage above — moderation + wallet reservation live
+            // inside lib/venice_media.ts's runVeniceVideo/runVeniceMusic,
+            // keyed to THIS caller. No keepAlive/detach needed: unlike
+            // runAvaImage, the multi-minute wait is pushed onto the queue
+            // consumer (queues/venice_media.ts), not kept alive in this DO's
+            // own call stack — see lib/venice_media.ts's file header.
+            //
+            // [VENICE-TIER-1] `tier: "free"` is hardcoded here — the ONE call
+            // site, on purpose, per the work order: veniceTier(env, uid) (the
+            // 18+ toggle + paid-balance check) is a separate, not-yet-built
+            // piece of work. Both functions take tier as a parameter
+            // specifically so wiring the real check later is a one-line change
+            // at this call site, not a signature change.
+            onVideo: async (prompt, sourceImageUrl) => {
+              const r = await runVeniceVideo(this.env, {
+                uid, conv, prompt, sourceImageUrl, private: priv, tier: "free",
+              });
+              return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
+            },
+            onMusic: async (prompt, durationSeconds) => {
+              const r = await runVeniceMusic(this.env, {
+                uid, conv, prompt, durationSeconds, private: priv, tier: "free",
+              });
+              return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
           },
         );

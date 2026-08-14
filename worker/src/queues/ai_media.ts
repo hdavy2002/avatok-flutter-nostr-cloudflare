@@ -58,10 +58,24 @@ import {
   extractDocumentText, summarizeDocumentForArtifact, translateDocumentForArtifact,
   buildDocumentArtifactBytes,
 } from "../routes/ava_copilot";
+// [VENICE-VID-1 / VENICE-MUS-1] The shared Q_AI_MEDIA queue now also carries
+// Venice video/music POLL messages — see queues/venice_media.ts's header for
+// why they reuse this queue rather than a new binding, and
+// lib/venice_media_jobs.ts's header for why they are a SEPARATE small job
+// table rather than a new AiMediaJobKind. isVeniceMediaKind()/
+// runVeniceMediaJobMessage() are the discriminator + handler this file
+// dispatches to below, before ANY ai_media_jobs.ts lookup.
+import { isVeniceMediaKind, runVeniceMediaJobMessage } from "./venice_media";
+import type { VeniceMediaJobKind } from "../lib/venice_media_jobs";
 
 export interface AiMediaJobQueueMsg {
   job_id: string;
-  kind: AiMediaJobKind;
+  // Widened (not just AiMediaJobKind) because this ONE queue message shape is
+  // now shared with venice_media_jobs' own kind values — see the import
+  // comment above. Env.Q_AI_MEDIA (worker/src/types.ts) already types `kind`
+  // as a plain `string`, so this was always safe to widen; nothing about the
+  // wire format changed.
+  kind: AiMediaJobKind | VeniceMediaJobKind;
 }
 
 /** Thrown by a kind handler to request a queue-level retry (CF redelivers up
@@ -462,6 +476,15 @@ export async function enqueueAiMediaJob(env: Env, _ctx: ExecutionContext | undef
 export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg, attempts = 1): Promise<void> {
   const jobId = String(msg?.job_id || "");
   if (!jobId) return; // malformed message — nothing to do, ack and move on
+
+  // [VENICE-VID-1 / VENICE-MUS-1] Discriminate BEFORE any ai_media_jobs.ts
+  // lookup: a venice_* kind would 404 against THAT table (claimAiMediaJob ->
+  // "not_found" -> silent return below) and the job would never be polled
+  // again. See queues/venice_media.ts for the actual poll/deliver logic.
+  if (isVeniceMediaKind(msg.kind)) {
+    await runVeniceMediaJobMessage(env, { job_id: jobId, kind: msg.kind });
+    return;
+  }
 
   const claimed = await claimAiMediaJob(env, jobId);
   if (!claimed.ok) return; // already claimed/terminal — safe no-op (at-least-once redelivery)
