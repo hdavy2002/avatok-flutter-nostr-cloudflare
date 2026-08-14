@@ -184,9 +184,12 @@ export type AvaStringId =
  *  language of a string emitted before the user has said anything). */
 export const AVA_STRINGS: Record<AvaStringId, Record<ResolvedVoiceStyle, string>> = {
   chip_working: {
-    en: "Ava is working…",
-    hi: "अवा काम कर रही है…",
-    hinglish: "Ava kaam kar rahi hai…",
+    // [AVA-CHIP-COPY-1 2026-08-14] Owner: "Ava is thinking" across ALL styles
+    // (the Hinglish "kaam kar rahi hai" read as slow/laboring; "thinking"
+    // matches what users expect from an assistant that's about to type).
+    en: "Ava is thinking…",
+    hi: "Ava सोच रही है…",
+    hinglish: "Ava is thinking…",
   },
   chip_image_generating: {
     en: "Ava is generating an image…",

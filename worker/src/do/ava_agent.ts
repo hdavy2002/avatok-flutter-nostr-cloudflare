@@ -1484,7 +1484,12 @@ export class AvaAgentDO {
       };
       const onDelta = async (t: string): Promise<void> => {
         pending += t; streamedChars += t.length;
-        if (pending.length >= 24) await flush();
+        // [AVA-TTFB-1 2026-08-14] FIRST delta flushes IMMEDIATELY — the 24-char
+        // coalescer made the user wait for the model to produce ~6 words before
+        // ANYTHING replaced the "Ava is thinking…" chip, which is the exact
+        // "takes forever then suddenly answers" feel the owner reported. One
+        // early 1-frame costs nothing; only SUBSEQUENT frames coalesce to 24.
+        if (!started || pending.length >= 24) await flush();
       };
 
       // ---------------------------------------------------------------------
