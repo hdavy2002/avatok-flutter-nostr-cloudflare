@@ -27,7 +27,7 @@ import type { Env } from "../types";
 import { readConfig } from "../routes/config";
 import { moderate } from "./moderation";
 import {
-  veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds,
+  veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
   type VeniceIntent, type VeniceTier,
 } from "./venice";
 import {
@@ -37,6 +37,9 @@ import { enqueueVeniceMediaPoll } from "../queues/venice_media";
 import { track } from "../hooks";
 import { emailFor } from "./identity";
 import { avaString, readVoiceStyle, type AvaVoiceStyle } from "./ava_persona";
+// [VENICE-PROMPT-1 / VENICE-SONG-1] Gemini-3.7-via-Venice prompt/lyrics
+// crafting — see lib/media_prompt.ts's header for the fail-soft contract.
+import { craftVideoPrompt, draftLyrics } from "./media_prompt";
 
 const VIDEO_DEADLINE_MS = 10 * 60_000; // ~10 min hard ceiling, per the work order
 const MUSIC_DEADLINE_MS = 5 * 60_000;  // ~5 min hard ceiling
@@ -59,6 +62,10 @@ export interface RunVeniceVideoArgs {
   /** Public URL (or base64 data: URL) of an existing image to animate —
    *  presence alone selects video_i2v over video_t2v (veniceRoute). */
   sourceImageUrl?: string;
+  /** [VENICE-VID-DURATION-1] Desired clip length in seconds, snapped to the
+   *  nearest live enum (6/8/10/12/14/16/18/20) by nearestVideoDuration().
+   *  Omitted/invalid -> the model's own default (6s). */
+  durationSeconds?: number;
   private: boolean;
   /** [VENICE-TIER-1] Caller-supplied — do/ava_agent.ts's onVideo closure
    *  resolves this via lib/venice_tier.ts's veniceTier(env, uid) before
@@ -67,9 +74,9 @@ export interface RunVeniceVideoArgs {
 }
 
 export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<RunVeniceMediaResult> {
-  const prompt = String(a.prompt ?? "").trim();
-  if (!prompt) return { ok: false, message: "Tell me what video to create." };
-  if (prompt.length > 2000) return { ok: false, message: "That prompt is too long." };
+  const rawPrompt = String(a.prompt ?? "").trim();
+  if (!rawPrompt) return { ok: false, message: "Tell me what video to create." };
+  if (rawPrompt.length > 2000) return { ok: false, message: "That prompt is too long." };
 
   const cfg = await readConfig(env);
   if (cfg.aiEnabled === false) return { ok: false, message: "Ava is currently turned off." };
@@ -83,7 +90,21 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 
   const email = await emailFor(env, a.uid).catch(() => null);
 
+  // [VENICE-VID-DURATION-1] Snap to the nearest live enum FIRST — the numeric
+  // form feeds both the prompt crafter (below, so it paces the described
+  // action to the real clip length) and the job record.
+  const durationStr = nearestVideoDuration(a.durationSeconds);
+  const durationNum = parseInt(durationStr, 10);
+
+  // [VENICE-PROMPT-1] Gemini-3.7 (via Venice) strengthens the user's raw ask
+  // into a more detailed, duration-aware prompt before it ever reaches the
+  // video model. Fails soft internally (see media_prompt.ts) — `prompt` is
+  // always at least `rawPrompt` on any craft failure.
+  const prompt = await craftVideoPrompt(env, rawPrompt, durationNum);
+
   // ── PROMPT GATE (mandatory, before any reservation/provider call) ────────
+  // Gates the prompt actually sent to Venice (the crafted version), which is
+  // a superset of the user's own ask — moderating it also covers the raw ask.
   const verdict = await moderate(env, { text: prompt, field: "venice_video_prompt" });
   if (!verdict.safe) {
     void track(env, a.uid, "venice_nsfw_blocked", "avaai", {
@@ -108,7 +129,7 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   const created = await createVeniceMediaJob(env, {
     ownerUid: a.uid, convId: a.conv, kind: "venice_video_generate",
     capability, model: route.model, isPrivate: a.private, tier: a.tier,
-    hasSourceImage: !!a.sourceImageUrl, durationSeconds: null,
+    hasSourceImage: !!a.sourceImageUrl, durationSeconds: durationNum,
     label: "Generating your video…", deadlineMs: Date.now() + VIDEO_DEADLINE_MS, email,
     // [VENICE-TOKENS-1] owner tariff 2026-08-14: video = cfg.veniceVideoTokens (50).
     flatPriceTokens: cfg.veniceVideoTokens,
@@ -128,7 +149,8 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     // interface (worker/src/types.ts) — matches the existing cast at
     // routes/ava_image.ts's generateImageVenice() call site, not a new pattern.
     const { queueId } = await veniceQueueVideo(
-      env as any, route.model, prompt, a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {},
+      env as any, route.model, prompt,
+      { duration: durationStr, ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}) },
     );
     await attachVeniceQueueId(env, jobId, queueId);
     await enqueueVeniceMediaPoll(env, jobId, "venice_video_generate", INITIAL_POLL_DELAY_S);
@@ -143,6 +165,7 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl,
+    duration_seconds: durationNum, prompt_crafted: prompt !== rawPrompt,
   });
   return {
     ok: true, job_id: jobId,
@@ -160,6 +183,11 @@ export interface RunVeniceMusicArgs {
   conv: string;
   prompt: string;
   durationSeconds?: number;
+  /** [VENICE-SONG-1] Approved lyrics (from the draft_lyrics tool, after the
+   *  user signed off) — concatenated onto `prompt` (the style/genre/mood
+   *  description) so Venice receives one combined generation prompt. Absent
+   *  for a plain instrumental/music request. */
+  lyrics?: string;
   private: boolean;
   /** [VENICE-TIER-1] see RunVeniceVideoArgs.tier doc — resolved via
    *  lib/venice_tier.ts's veniceTier(env, uid) at the do/ava_agent.ts onMusic
@@ -168,9 +196,16 @@ export interface RunVeniceMusicArgs {
 }
 
 export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<RunVeniceMediaResult> {
-  const prompt = String(a.prompt ?? "").trim();
-  if (!prompt) return { ok: false, message: "Tell me what kind of track to create." };
-  if (prompt.length > 2000) return { ok: false, message: "That prompt is too long." };
+  const stylePrompt = String(a.prompt ?? "").trim();
+  if (!stylePrompt) return { ok: false, message: "Tell me what kind of track to create." };
+  if (stylePrompt.length > 2000) return { ok: false, message: "That prompt is too long." };
+  const lyrics = String(a.lyrics ?? "").trim().slice(0, 4000);
+  // [VENICE-SONG-1] The ACTUAL Venice prompt: style/genre/mood plus the
+  // approved lyrics, when there are any. Gated + generated as ONE string so
+  // the moderation gate below covers the full sung content, not just the
+  // style description.
+  const prompt = lyrics ? `${stylePrompt}\n\nLyrics:\n${lyrics}` : stylePrompt;
+  if (prompt.length > 6000) return { ok: false, message: "That's too long — trim the lyrics a little." };
 
   const cfg = await readConfig(env);
   if (cfg.aiEnabled === false) return { ok: false, message: "Ava is currently turned off." };
@@ -239,6 +274,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
 
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_music_generate", tier: a.tier, duration_seconds: durationSeconds,
+    has_lyrics: !!lyrics,
   });
   return {
     ok: true, job_id: jobId,
@@ -246,4 +282,76 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
       ? "🎵 Working on your track — it can take a few minutes. It'll appear here privately when it's ready."
       : "🎵 Working on your track — it can take a few minutes. It'll appear in this chat when it's ready.",
   };
+}
+
+// ---------------------------------------------------------------------------
+// [VENICE-SONG-1] LYRICS DRAFT — text-only, synchronous, no wallet charge.
+// This is step (b) of the song flow (Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md
+// owner requirement B): Ava asks the length, drafts lyrics here, shows them in
+// chat, and ONLY generates the actual track (runVeniceMusic above) once the
+// user explicitly approves. Called from do/ava_agent.ts's onDraftLyrics via
+// composio.ts's draft_lyrics tool.
+// ---------------------------------------------------------------------------
+export interface RunVeniceDraftLyricsArgs {
+  uid: string;
+  theme: string;
+  durationSeconds?: number;
+}
+export interface RunVeniceDraftLyricsResult {
+  ok: boolean;
+  blocked?: boolean;
+  lyrics?: string;
+  message: string;
+}
+
+export async function runVeniceDraftLyrics(env: Env, a: RunVeniceDraftLyricsArgs): Promise<RunVeniceDraftLyricsResult> {
+  const theme = String(a.theme ?? "").trim();
+  if (!theme) return { ok: false, message: "Tell me what the song should be about." };
+  if (theme.length > 2000) return { ok: false, message: "That's too long — give me a shorter theme." };
+
+  const cfg = await readConfig(env);
+  if (cfg.aiEnabled === false) return { ok: false, message: "Ava is currently turned off." };
+  // Same kill switch as the rest of the Venice media lane — lyrics drafting
+  // is a step INSIDE the song flow that ends at runVeniceMusic above, so it
+  // stays behind the same switch rather than a flag of its own.
+  if (cfg.veniceMediaEnabled !== true) {
+    return { ok: false, message: "Song writing is currently turned off." };
+  }
+
+  // ── PROMPT GATE (mandatory) ── reuses the music prompt gate verbatim, same
+  // rubric as runVeniceMusic above — lyrics are user-facing text a moment
+  // after this call, so they must clear the same bar before drafting starts.
+  const verdict = await moderate(env, { text: theme, field: "venice_music_prompt" });
+  if (!verdict.safe) {
+    void track(env, a.uid, "venice_nsfw_blocked", "avaai", {
+      stage: "prompt", media: "lyrics", reason: verdict.reason, categories: verdict.categories, provider: "venice",
+    });
+    return { ok: false, blocked: true, message: verdict.reason || "I can't write lyrics about that. Let's keep things safe — try a different idea." };
+  }
+
+  const durationSeconds = clampMusicSeconds(a.durationSeconds);
+  const t0 = Date.now();
+  let lyrics = "";
+  let ok = true;
+  let error: string | null = null;
+  try {
+    lyrics = await draftLyrics(env, theme, durationSeconds);
+  } catch (e: any) {
+    ok = false;
+    error = String(e?.message ?? e ?? "unknown").slice(0, 300);
+  }
+  // No wallet reservation — lyrics drafting is text-only and free (owner work
+  // order §6) — but every Venice model call still gets an ava_reason_call row
+  // so spend/latency is visible, same as the media calls above.
+  void track(env, a.uid, "ava_reason_call", "avaai", {
+    role: "ava_lyrics", capability: "media_lyrics_draft", trigger: "draft_lyrics",
+    opportunity: null, feature: "ava_music", verb: "hear", provider: "venice",
+    model: "gemini-3-7-flash", primary_model: null, ok, fallback_used: false, cache_hit: false,
+    latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
+  });
+  if (!ok || !lyrics) {
+    return { ok: false, message: "I couldn't draft lyrics right now — please try again." };
+  }
+  void track(env, a.uid, "venice_lyrics_drafted", "avaai", { duration_seconds: durationSeconds, chars: lyrics.length });
+  return { ok: true, lyrics, message: lyrics };
 }

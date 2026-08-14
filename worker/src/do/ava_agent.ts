@@ -46,7 +46,10 @@ import {
 import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
-import { runVeniceVideo, runVeniceMusic } from "../lib/venice_media"; // [VENICE-VID-1 / VENICE-MUS-1] in-thread video/music gen, same async-job shape as runAvaImage
+import { runVeniceVideo, runVeniceMusic, runVeniceDraftLyrics } from "../lib/venice_media"; // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] in-thread video/music/lyrics gen, same async-job shape as runAvaImage
+// [AVA-IMG-EDIT-1] Reads a job's freshly-minted artifact URL by id — used to
+// resolve "the image you just made" into an edit source (see onImage below).
+import { getAiMediaJob } from "../lib/ai_media_jobs";
 import { veniceTier } from "../lib/venice_tier"; // [VENICE-TIER-1] 18+ opt-in AND paid balance -> "paid" | "free"
 import { veniceChatComplete, VENICE_UNCENSORED_CHAT_MODEL } from "../lib/venice"; // [VENICE-CHAT-1] uncensored-text chat lane
 import { track } from "../hooks"; // [VENICE-CHAT-1] ava_reason_call telemetry (provider "venice")
@@ -175,6 +178,29 @@ function settle<T>(p: Promise<T>): Promise<Settled<T>> {
     (value) => ({ ok: true as const, value }),
     (error) => ({ ok: false as const, error }),
   );
+}
+
+// [VENICE-VID-1 / VENICE-SONG-1 / AVA-IMG-EDIT-1] Per-conversation LAST-ASSET
+// MEMORY — Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md owner requirements A/B/C
+// (2026-08-14). One small JSON blob per conv in this DO's own durable storage
+// (key `lastmedia:<conv>`, via state.storage — the same KV-style API
+// do/call_room.ts already relies on for its own DO state), keeping the LAST
+// job of each kind plus the last user-uploaded image seen in the conv. This
+// is what lets "edit the image/video I just made" and "turn that photo into
+// a video" work without the client doing anything new: the tool-calling loop
+// (lib/composio.ts's runAgentLoop) never sees a conv id or DO storage at all
+// — it only relays the model's intent (edit_previous / use_last_image) through
+// the onImage/onVideo/onMusic closures below, which resolve it here.
+interface LastMediaEntry { job_id: string; prompt: string; ts: number }
+interface LastMediaMemory {
+  image?: LastMediaEntry;
+  video?: LastMediaEntry;
+  music?: LastMediaEntry;
+  /** The most recent MINE image-like attachment's identifier (the client's
+   *  ChatMedia.id / user_media content-hash form — NOT a URL; resolving it to
+   *  a URL happens lazily, only when actually needed, and only for public
+   *  media — see resolvePublicImageRef()). */
+  lastUserImageRef?: { id: string; ts: number };
 }
 
 export class AvaAgentDO {
@@ -403,6 +429,51 @@ export class AvaAgentDO {
       }
     } catch { /* not JSON — no attachment */ }
     return null;
+  }
+
+  // ---- [VENICE-VID-1 / VENICE-SONG-1 / AVA-IMG-EDIT-1] last-asset memory ------
+  private async getLastMedia(conv: string): Promise<LastMediaMemory> {
+    try {
+      return (await this.state.storage.get<LastMediaMemory>(`lastmedia:${conv}`)) ?? {};
+    } catch { return {}; }
+  }
+  private async rememberLastMedia(conv: string, kind: "image" | "video" | "music", jobId: string, prompt: string): Promise<void> {
+    try {
+      const cur = await this.getLastMedia(conv);
+      cur[kind] = { job_id: jobId, prompt: String(prompt || "").slice(0, 500), ts: Date.now() };
+      await this.state.storage.put(`lastmedia:${conv}`, cur);
+    } catch { /* best-effort — never blocks the turn */ }
+  }
+  private async rememberLastUserImage(conv: string, ref: string): Promise<void> {
+    if (!ref) return;
+    try {
+      const cur = await this.getLastMedia(conv);
+      cur.lastUserImageRef = { id: ref, ts: Date.now() };
+      await this.state.storage.put(`lastmedia:${conv}`, cur);
+    } catch { /* best-effort */ }
+  }
+  // Resolve a stored attachment identifier to a fetchable URL — ONLY when the
+  // underlying user_media row is visibility='public'. Mirrors the same
+  // public-only pattern lib/ai_media_jobs.ts's resolveArtifactUrl/
+  // findSourceMediaRows use elsewhere in this codebase: private/E2E media is
+  // never resolvable server-side (CLAUDE.md's media-caching-pipeline rule),
+  // so a private last-user-image simply yields null here rather than being
+  // fetched or decrypted. Never throws.
+  private async resolvePublicImageRef(identifier: string): Promise<string | null> {
+    if (!identifier) return null;
+    try {
+      let row = await this.env.DB_MEDIA.prepare(
+        "SELECT key, visibility FROM user_media WHERE id=?1 AND deleted_at IS NULL",
+      ).bind(identifier).first<{ key: string; visibility: string }>();
+      if (!row) {
+        const escaped = identifier.replace(/[\\%_]/g, (m) => `\\${m}`);
+        row = await this.env.DB_MEDIA.prepare(
+          "SELECT key, visibility FROM user_media WHERE key LIKE '%/' || ?1 ESCAPE '\\' AND deleted_at IS NULL LIMIT 1",
+        ).bind(escaped).first<{ key: string; visibility: string }>();
+      }
+      if (!row || row.visibility !== "public") return null;
+      return `${this.env.BLOSSOM_BASE_URL}/${row.key}`;
+    } catch { return null; }
   }
 
   // ---- rolling summary --------------------------------------------------------
@@ -1192,6 +1263,18 @@ export class AvaAgentDO {
       if (!premiumR.ok) throw premiumR.error;
       const { window, attachments, maxId, windowLen, payloadBytes, route: windowRoute, receipts } = winR.value;
       const premium = premiumR.value;
+      // [VENICE-VID-1 / AVA-IMG-EDIT-1] Best-effort: remember the most recent
+      // MINE image-like attachment's identifier so a later "turn that photo
+      // into a video" (generate_video's use_last_image) has something to
+      // resolve, even on a turn that never mentions video at all. Cheap (one
+      // DO storage write) and never blocks/fails the turn — see
+      // rememberLastUserImage's doc comment for the privacy contract.
+      const lastUserImgAttachment = [...attachments].reverse().find(
+        (a) => a.mine && (a.kind === "image" || /^image\//.test(a.mime || "")),
+      );
+      if (lastUserImgAttachment?.key) {
+        await this.rememberLastUserImage(conv, lastUserImgAttachment.key);
+      }
       // [AVA-PRESENCE-1 / WS-16] Presence is a nicety; it must never cost a turn.
       // A rejected read degrades to `null`, which buildFacts renders as "could
       // not be checked — do not guess", NOT as offline.
@@ -1807,6 +1890,12 @@ export class AvaAgentDO {
       const loopT0 = Date.now();
       let answer = "";
       let loopFailed = false;
+      // [VENICE-VID-1 / VENICE-SONG-1] Read ONCE up front so the system prompt
+      // can reference "the last video/song you made" (see runAgentLoop's
+      // lastMedia opt) — the closures below re-read the DO's own storage
+      // lazily instead (cheap, and only when the respective tool actually
+      // fires), so this is purely for the prompt injection.
+      const lastMediaMem = await this.getLastMedia(conv).catch(() => ({} as LastMediaMemory));
       try {
         answer = await runAgentLoop(
           this.env, uid, userText, ctx,
@@ -1828,13 +1917,43 @@ export class AvaAgentDO {
             // readVoiceStyle(env, uid) when this is absent — passing it skips a
             // second, identical KV read on the same turn.
             style,
+            // [VENICE-VID-1 / VENICE-SONG-1] What the system prompt can say
+            // about media already made in THIS conversation — see runAgentLoop's
+            // lastMedia doc comment.
+            lastMedia: {
+              image: lastMediaMem.image ? { prompt: lastMediaMem.image.prompt } : undefined,
+              video: lastMediaMem.video ? { prompt: lastMediaMem.video.prompt } : undefined,
+              music: lastMediaMem.music ? { prompt: lastMediaMem.music.prompt } : undefined,
+            },
             // In-thread image gen. All gating (premium + per-user daily allowance)
             // lives in runAvaImage, keyed to THIS caller. PRIVACY: pass `private`
             // so a @ava image goes ONLY to the requester (private), and a #ava image
             // fans out to the whole conversation (public) — same scoping as text.
-            onImage: async (prompt, editRef) => {
+            //
+            // [AVA-IMG-EDIT-1] ITERATION — "the image you made needs an edit".
+            // When the model set edit_previous (imgOpts.editPrevious) and gave
+            // no explicit editRef, resolve the LAST image job's artifact to a
+            // fresh URL (ai_media_jobs.ts's getAiMediaJob mints one on every
+            // read — never a stale/expired presign) and use THAT as the edit
+            // source, with the model's instruction as the prompt. No previous
+            // image (or it's not done yet) -> a plain, honest message instead
+            // of silently falling back to a fresh unrelated generation.
+            onImage: async (prompt, editRef, imgOpts) => {
+              let finalEditRef = editRef;
+              if (imgOpts?.editPrevious && !finalEditRef) {
+                const last = await this.getLastMedia(conv);
+                if (last.image?.job_id) {
+                  try {
+                    const jobRes = await getAiMediaJob(this.env, last.image.job_id, uid);
+                    if (jobRes.ok && jobRes.job.artifact_url) finalEditRef = jobRes.job.artifact_url;
+                  } catch { /* fall through to the "no previous image" message below */ }
+                }
+                if (!finalEditRef) {
+                  return "I don't have a finished image in this chat to edit yet — describe what you'd like and I'll create a new one.";
+                }
+              }
               const r = await runAvaImage(this.env, {
-                uid, conv, prompt, editRef, private: priv,
+                uid, conv, prompt, editRef: finalEditRef, private: priv,
                 // [AVA-IMG-KEEPALIVE-1 / WS-3] THE agent-lane half of the fix.
                 // runAvaImage detaches fulfil(); without a lifetime source that
                 // is a bare `void` promise the runtime is never told to keep
@@ -1848,14 +1967,21 @@ export class AvaAgentDO {
                 style,
               });
               if (!r.ok) return r.message ?? "I couldn't start that image right now.";
+              // [VENICE-VID-1] Remember this as the LAST image for future
+              // edit_previous/use_last_image resolution, keyed by the job id
+              // runAvaImage just minted (the artifact isn't ready yet, but the
+              // job id is — getAiMediaJob resolves the URL fresh whenever it's
+              // actually needed).
+              if (r.job_id) await this.rememberLastMedia(conv, "image", r.job_id, prompt);
               return priv
                 ? "Image generation started — it'll appear here privately in a few seconds."
                 : "Image generation started — it will appear in this chat in a few seconds.";
             },
-            // [VENICE-VID-1 / VENICE-MUS-1] In-thread video/music gen. Same
-            // shape as onImage above — moderation + wallet reservation live
-            // inside lib/venice_media.ts's runVeniceVideo/runVeniceMusic,
-            // keyed to THIS caller. No keepAlive/detach needed: unlike
+            // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] In-thread video/
+            // music/lyrics gen. Same shape as onImage above — moderation +
+            // wallet reservation live inside lib/venice_media.ts's
+            // runVeniceVideo/runVeniceMusic/runVeniceDraftLyrics, keyed to
+            // THIS caller. No keepAlive/detach needed for video/music: unlike
             // runAvaImage, the multi-minute wait is pushed onto the queue
             // consumer (queues/venice_media.ts), not kept alive in this DO's
             // own call stack — see lib/venice_media.ts's file header.
@@ -1870,19 +1996,50 @@ export class AvaAgentDO {
             // venice_tier.ts). Both runVeniceVideo/runVeniceMusic already took
             // tier as a parameter for exactly this reason, so this is a
             // one-line change at the call site, not a signature change.
-            onVideo: async (prompt, sourceImageUrl) => {
+            //
+            // [VENICE-I2V-AUTO-1] use_last_image resolution order: the last
+            // image AVA generated in this conv wins (it's already a public,
+            // durable artifact); failing that, the last image the USER
+            // uploaded, but ONLY when it resolves to a public URL (private/
+            // E2E media is never readable server-side — resolvePublicImageRef
+            // fails closed to null, never a decrypt attempt).
+            onVideo: async (prompt, sourceImageUrl, videoOpts) => {
               const tier = await veniceTier(this.env, uid);
+              let src = sourceImageUrl;
+              if (!src && videoOpts?.useLastImage) {
+                const last = await this.getLastMedia(conv);
+                if (last.image?.job_id) {
+                  try {
+                    const jobRes = await getAiMediaJob(this.env, last.image.job_id, uid);
+                    if (jobRes.ok && jobRes.job.artifact_url) src = jobRes.job.artifact_url;
+                  } catch { /* fall through to the user-image fallback below */ }
+                }
+                if (!src && last.lastUserImageRef?.id) {
+                  src = (await this.resolvePublicImageRef(last.lastUserImageRef.id)) ?? undefined;
+                }
+              }
               const r = await runVeniceVideo(this.env, {
-                uid, conv, prompt, sourceImageUrl, private: priv, tier,
+                uid, conv, prompt, sourceImageUrl: src, private: priv, tier,
+                durationSeconds: videoOpts?.durationSeconds,
               });
+              if (r.job_id) await this.rememberLastMedia(conv, "video", r.job_id, prompt);
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
-            onMusic: async (prompt, durationSeconds) => {
+            onMusic: async (prompt, durationSeconds, lyrics) => {
               const tier = await veniceTier(this.env, uid);
               const r = await runVeniceMusic(this.env, {
-                uid, conv, prompt, durationSeconds, private: priv, tier,
+                uid, conv, prompt, durationSeconds, lyrics, private: priv, tier,
               });
+              if (r.job_id) await this.rememberLastMedia(conv, "music", r.job_id, lyrics ? `${prompt}\n\nLyrics:\n${lyrics}` : prompt);
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
+            },
+            // [VENICE-SONG-1] Step (b) of the song flow — text-only, no wallet
+            // reservation, no job/last-media write (draft_lyrics can be called
+            // several times per turn/conversation while the user fine-tunes;
+            // only the eventual generate_music call is remembered above).
+            onDraftLyrics: async (theme, durationSeconds) => {
+              const r = await runVeniceDraftLyrics(this.env, { uid, theme, durationSeconds });
+              return r.lyrics ?? r.message;
             },
           },
         );

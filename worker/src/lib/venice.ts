@@ -129,6 +129,24 @@ export async function veniceGenerateImage(
 //   resolution: "1080p" | "1440p" | "2160p"
 export const VENICE_VIDEO_DEFAULT_DURATION = "6s";
 export const VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p";
+// [VENICE-VID-DURATION-1] The only durations ltx-2-v2-3-fast accepts (verified
+// via /video/quote, see the header comment). `nearestVideoDuration` snaps any
+// caller-requested length (e.g. a user's "make it 15 seconds") onto the
+// closest live enum value instead of guessing or failing — used by
+// lib/venice_media.ts's runVeniceVideo, which plumbs the "Ns" string straight
+// into VeniceVideoOptions.duration below.
+export const VENICE_VIDEO_DURATIONS_S = [6, 8, 10, 12, 14, 16, 18, 20] as const;
+export function nearestVideoDuration(seconds: number | undefined): string {
+  if (!Number.isFinite(seconds as number) || (seconds as number) <= 0) return VENICE_VIDEO_DEFAULT_DURATION;
+  const n = seconds as number;
+  let best: number = VENICE_VIDEO_DURATIONS_S[0];
+  let bestDiff = Infinity;
+  for (const d of VENICE_VIDEO_DURATIONS_S) {
+    const diff = Math.abs(d - n);
+    if (diff < bestDiff) { bestDiff = diff; best = d; }
+  }
+  return `${best}s`;
+}
 
 export interface VeniceVideoOptions {
   duration?: string;
