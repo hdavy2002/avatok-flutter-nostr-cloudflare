@@ -231,6 +231,19 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     }
   }
 
+  /// A server-side Venice submit/completion envelope is only a lifecycle
+  /// signal. The durable job card is the single visual representation, so the
+  /// text envelope itself must not create a duplicate chat bubble.
+  Future<void> _hydrateAiJobFromEnvelope(Map<String, dynamic>? extra) async {
+    final meta = extra?['meta'];
+    if (meta is! Map) return;
+    final jobId = (meta['job_id'] ?? '').toString();
+    if (jobId.isEmpty || (meta['media_job_kind'] ?? '').toString().isEmpty) return;
+    final job = await AiMediaJobRepository.I.fetch(jobId);
+    if (!mounted || job == null) return;
+    _upsertJobMessage(job);
+  }
+
   /// Bind the app-wide job-update stream once. Filters to THIS conversation at
   /// EVENT time (`_serverConvId ?? _convKey`), so it's safe to call this before
   /// either is resolved — see `initState`.
@@ -262,6 +275,13 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// new state.
   void _upsertJobMessage(AiMediaJob job) {
     _mutMsgs(() {
+      // The legacy image producer emits an early ava_status card before the
+      // durable job id exists. Once the job card is hydrated, retire that
+      // duplicate so the animated job card is the only lifecycle surface.
+      if (job.kind == AiMediaJobKind.imageGenerate) {
+        _msgs.removeWhere((m) => m.special == 'ava_status' &&
+            (m.extra?['source'] ?? '').toString() == 'image');
+      }
       final i = _msgs.indexWhere((m) => m.special == 'ai_job' && m.extra?['job_id'] == job.jobId);
       if (i >= 0) return; // card already placed; _aiJobBubble reads fresh state every rebuild
       _msgs.add(_Msg(_seq++, false, '', _fmtTime(job.createdAt),
@@ -358,7 +378,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// ordinary chat file — just fed bytes fetched from [url] instead of a
   /// decrypted `ChatMedia`.
   Future<void> _openJobArtifact(AiMediaJob job) async {
-    if (job.kind == AiMediaJobKind.audioTranslate) { await _playJobArtifact(job); return; }
+    if (job.kind == AiMediaJobKind.audioTranslate || job.kind == AiMediaJobKind.musicGenerate) {
+      await _playJobArtifact(job); return;
+    }
     final url = await _freshArtifactUrl(job);
     if (url == null) return;
     if (job.kind == AiMediaJobKind.imageGenerate) { _openImageFull(url); return; }
@@ -513,7 +535,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       await AudioPlaybackService.I.playArtifact(
         artifactMediaId: artifactId,
         bytes: bytes,
-        subtitle: job.label.isNotEmpty ? job.label : 'Translated audio',
+        subtitle: job.label.isNotEmpty
+            ? job.label
+            : (job.kind == AiMediaJobKind.musicGenerate ? 'Ava song' : 'Translated audio'),
         originRoute: _convKey,
       );
     } catch (e, st) {
@@ -531,6 +555,8 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// `media_ref` already uses); doc/audio kinds render the typed row.
   Widget _aiJobBubble(AiMediaJob job) {
     final isImage = job.kind == AiMediaJobKind.imageGenerate;
+    final isVideo = job.kind == AiMediaJobKind.videoGenerate;
+    final isMusic = job.kind == AiMediaJobKind.musicGenerate;
     final succeeded = job.isSucceeded;
     final artifactUrl = job.artifactUrl;
     return AiMediaJobCard(
@@ -541,6 +567,10 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       // itself would miss every time; `artifactMediaId` is the stable id.
       thumbnailWidget: (isImage && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
           ? CachedImage(artifactUrl, width: 240, cacheKey: job.artifactMediaId)
+          : (isVideo && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
+              ? _AiVideoJobPreview(url: artifactUrl, width: 240)
+              : (isMusic && succeeded)
+                  ? _AiMusicJobPreview(width: 240)
           : null,
       onTapOpen: succeeded ? () => _openJobArtifact(job) : null,
       onDownload: succeeded ? () => _downloadJobArtifact(job) : null,
@@ -548,7 +578,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       onSaveToLibrary: succeeded ? () => _saveJobArtifactToDrive(job) : null,
       onCopyResult: (succeeded &&
               job.kind != AiMediaJobKind.imageGenerate &&
-              job.kind != AiMediaJobKind.audioTranslate)
+              job.kind != AiMediaJobKind.audioTranslate &&
+              job.kind != AiMediaJobKind.videoGenerate &&
+              job.kind != AiMediaJobKind.musicGenerate)
           ? () => _copyJobResult(job)
           : null,
       onDelete: job.isTerminal ? () => _deleteJobArtifact(job) : null,
@@ -1472,4 +1504,74 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       _capNote('Could not attach from library.');
     }
   }
+
+}
+
+/// Lightweight inline preview for a completed Venice video. The signed URL is
+/// intentionally supplied by the live job record and is never persisted here.
+class _AiVideoJobPreview extends StatefulWidget {
+  const _AiVideoJobPreview({required this.url, required this.width});
+  final String url;
+  final double width;
+
+  @override
+  State<_AiVideoJobPreview> createState() => _AiVideoJobPreviewState();
+}
+
+class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
+  VideoPlayerController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    try {
+      await c.initialize();
+      c.setLooping(true);
+      if (!mounted) { await c.dispose(); return; }
+      setState(() => _controller = c);
+    } catch (_) {
+      await c.dispose();
+    }
+  }
+
+  @override
+  void dispose() { _controller?.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _controller;
+    return Container(
+      width: widget.width, height: widget.width,
+      color: Colors.black,
+      child: c != null && c.value.isInitialized
+          ? Stack(alignment: Alignment.center, children: [
+              Center(child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c))),
+              const Icon(Icons.play_circle_fill, color: Colors.white, size: 52),
+            ])
+          : const Center(child: CircularProgressIndicator(color: Colors.white)),
+    );
+  }
+}
+
+class _AiMusicJobPreview extends StatelessWidget {
+  const _AiMusicJobPreview({required this.width});
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: width, height: width,
+        color: AD.mediaPlaceholderBg,
+        child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.musicNote(PhosphorIconsStyle.duotone), size: 54, color: AD.bubbleOutPlay),
+          const SizedBox(height: 12),
+          Text('Song ready', style: ADText.rowName(c: AD.textPrimary)),
+          const SizedBox(height: 4),
+          Text('Tap to play', style: ADText.statCaption(c: AD.textSecondary)),
+        ])),
+      );
 }

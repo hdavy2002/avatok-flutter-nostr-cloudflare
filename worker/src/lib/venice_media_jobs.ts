@@ -99,6 +99,27 @@ export async function getVeniceMediaJob(env: Env, jobId: string): Promise<Venice
   }
 }
 
+/** Account/conversation-scoped hydration for the shared AI media UI. */
+export async function listVeniceMediaJobs(
+  env: Env,
+  ownerUid: string,
+  convId: string,
+  limit = 50,
+): Promise<VeniceMediaJobRecord[]> {
+  try {
+    const rows = await env.DB_MEDIA.prepare(
+      "SELECT * FROM venice_media_jobs WHERE owner_uid=?1 AND conv_id=?2 ORDER BY created_at DESC LIMIT ?3",
+    ).bind(ownerUid, convId, Math.max(1, Math.min(100, limit))).all<any>();
+    return (rows.results ?? []).map(rowToRecord);
+  } catch (e) {
+    void trackException(env, e, {
+      route: "venice_media_jobs.listVeniceMediaJobs", handled: true,
+      extra: { conv_id: convId },
+    });
+    return [];
+  }
+}
+
 // [§66] Deliberately conservative — Venice's models are not (yet) in
 // ai_billing.ts's AI_PRICE_CATALOG (a different agent's file ownership), so
 // `rateFor()` falls back to AI_DEFAULT_RATE for the RESERVE-time estimate.

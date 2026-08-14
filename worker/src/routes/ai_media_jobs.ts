@@ -23,12 +23,50 @@ import {
   createAiMediaJob, getAiMediaJob, cancelAiMediaJob, listAiMediaJobs, failAiMediaJob,
   type AiMediaJobKind, type AiMediaJobStatus,
 } from "../lib/ai_media_jobs";
+import { getVeniceMediaJob, listVeniceMediaJobs, failVeniceMediaJob } from "../lib/venice_media_jobs";
+import { presignDigitalReadUrl } from "./media";
 import { enqueueAiMediaJob, isAiMediaKindImplemented } from "../queues/ai_media";
 
 const VALID_KINDS = new Set<AiMediaJobKind>([
   "image_generate", "doc_summarize", "doc_translate", "audio_transcribe", "audio_translate",
 ]);
 const VALID_STATUSES = new Set<AiMediaJobStatus>(["queued", "running", "succeeded", "failed", "cancelled"]);
+
+function veniceAsAiJob(job: Awaited<ReturnType<typeof getVeniceMediaJob>>, artifactUrl: string | null = null): any {
+  if (!job) return null;
+  return {
+    job_id: job.job_id,
+    owner_uid: job.owner_uid,
+    conv_id: job.conv_id,
+    kind: job.kind,
+    status: job.status === "submitting" || job.status === "polling" ? "running" : job.status,
+    source_media_id: null,
+    label: job.label ?? (job.kind === "venice_video_generate" ? "Generating your video…" : "Generating your song…"),
+    progress: null,
+    artifact_media_id: job.artifact_media_id,
+    artifact_url: artifactUrl,
+    error_code: job.error_code,
+    reservation_id: job.reservation_id,
+    created_at: job.created_at,
+    updated_at: job.updated_at,
+    completed_at: job.completed_at,
+  };
+}
+
+async function veniceArtifactUrl(env: Env, artifactMediaId: string | null): Promise<string | null> {
+  if (!artifactMediaId) return null;
+  try {
+    const row = await env.DB_MEDIA.prepare("SELECT key, visibility, storage FROM user_media WHERE id=?1")
+      .bind(artifactMediaId).first<{ key: string; visibility: string; storage: string }>();
+    if (!row) return null;
+    if (row.storage === "digital" || row.visibility === "private") return await presignDigitalReadUrl(env, row.key);
+    return `${env.BLOSSOM_BASE_URL}/${row.key}`;
+  } catch { return null; }
+}
+
+async function hydrateVenice(env: Env, job: Awaited<ReturnType<typeof getVeniceMediaJob>>): Promise<any> {
+  return veniceAsAiJob(job, await veniceArtifactUrl(env, job?.artifact_media_id ?? null));
+}
 
 // POST /api/ai/jobs
 export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
@@ -103,8 +141,10 @@ export async function aiMediaJobsGet(req: Request, env: Env, jobId: string): Pro
   const id = String(jobId || "").trim();
   if (!id) return json({ error: "job_id required" }, 400);
   const r = await getAiMediaJob(env, id, ctxUser.uid);
-  if (!r.ok) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
-  return json({ ok: true, job: r.job });
+  if (r.ok) return json({ ok: true, job: r.job });
+  const v = await getVeniceMediaJob(env, id);
+  if (!v || v.owner_uid !== ctxUser.uid) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
+  return json({ ok: true, job: await hydrateVenice(env, v) });
 }
 
 // POST /api/ai/jobs/:job_id/cancel
@@ -114,8 +154,13 @@ export async function aiMediaJobsCancel(req: Request, env: Env, jobId: string): 
   const id = String(jobId || "").trim();
   if (!id) return json({ error: "job_id required" }, 400);
   const r = await cancelAiMediaJob(env, id, ctxUser.uid);
-  if (!r.ok) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
-  return json({ ok: true, job: r.job });
+  if (r.ok) return json({ ok: true, job: r.job });
+  const v = await getVeniceMediaJob(env, id);
+  if (!v || v.owner_uid !== ctxUser.uid) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
+  const cancelled = await failVeniceMediaJob(env, { jobId: id, errorCode: "cancelled_by_user", reason: "user_cancelled" });
+  return cancelled.ok
+    ? json({ ok: true, job: await hydrateVenice(env, cancelled.job) })
+    : json({ error: cancelled.error }, 409);
 }
 
 // GET /api/ai/jobs?conv=...&status=queued,running&limit=50
@@ -132,5 +177,7 @@ export async function aiMediaJobsList(req: Request, env: Env): Promise<Response>
   const limitRaw = Number(url.searchParams.get("limit"));
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
   const jobs = await listAiMediaJobs(env, { ownerUid: ctxUser.uid, convId: conv, statuses, limit });
-  return json({ ok: true, jobs });
+  const venice = await listVeniceMediaJobs(env, ctxUser.uid, conv, limit ?? 50);
+  const veniceJobs = await Promise.all(venice.map((j) => hydrateVenice(env, j)));
+  return json({ ok: true, jobs: [...jobs, ...veniceJobs].sort((a, b) => Number(a.created_at) - Number(b.created_at)) });
 }

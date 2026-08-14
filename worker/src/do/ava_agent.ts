@@ -39,7 +39,7 @@ import {
 } from "../lib/ai_gate"; // P2 gate
 import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval (available/source/degraded_reason)
 import {
-  runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest,
+  runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest, looksLikeVideoRequest, looksLikeMusicRequest,
   guardOutput, newAgentLoopStats, type AgentLoopStats, // AVA-KIMI-TOOLS-1: shared output guard + tool-lane model telemetry
   orStreamStep, // [AVA-STREAM-PLAIN-1 / WS-5] the tested SSE parser, shared with the tool lane
 } from "../lib/composio"; // AvaApps + unified agentic loop
@@ -1139,6 +1139,15 @@ export class AvaAgentDO {
     const store = String(b.store || "").trim();
     if (!conv || !uid || !userText) return { ok: false, error: "conv, uid, text required" };
 
+    // Song approval is a server-side state transition, not a prompt promise.
+    // A later generate_music call is accepted only when the current draft was
+    // explicitly approved in a separate user turn.
+    const songDraftKey = `song_draft:${conv}`;
+    if (/\b(?:yes|approved|go ahead|make it|generate it|create it|looks good|perfect)\b/i.test(userText)) {
+      const draft = await this.state.storage.get<any>(songDraftKey);
+      if (draft?.lyrics) await this.state.storage.put(songDraftKey, { ...draft, approved: true, approved_at: Date.now() });
+    }
+
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
     const convKind = conv.startsWith("g_") ? "group" : "dm"; // never log the raw conv id
@@ -1215,7 +1224,8 @@ export class AvaAgentDO {
     // plain lane: worst case one unused retrieval on an attachment turn, never a
     // missing one. The tool lane's own callback reuses this in-flight promise
     // when the model happens to search for the same string (see memorySearch).
-    const maybePlain = !byoKey && !looksLikeImageRequest(userText) && !this.looksLikeApps(userText);
+    const maybePlain = !byoKey && !looksLikeImageRequest(userText) &&
+      !looksLikeVideoRequest(userText) && !looksLikeMusicRequest(userText) && !this.looksLikeApps(userText);
     const memP = maybePlain ? settle(this.brainSearch(uid, userText)) : null;
     // Input-side moderation. Previously ran AFTER the free-budget reserve; it now
     // runs from turn entry. The only consequence of the reorder is one extra
@@ -1439,7 +1449,8 @@ export class AvaAgentDO {
       // that path exactly as it runs today.
       const appsIntent = appsCap && premium && this.looksLikeApps(userText);
       const imageIntent = looksLikeImageRequest(userText);
-      const wantsTools = attachments.length > 0 || appsIntent || imageIntent;
+      const wantsTools = attachments.length > 0 || appsIntent || imageIntent ||
+        looksLikeVideoRequest(userText) || looksLikeMusicRequest(userText);
 
       // ---------------------------------------------------------------------
       // [AVA-STREAM-PLAIN-1 / WS-5] Streaming machinery, HOISTED above the lane
@@ -1559,7 +1570,7 @@ export class AvaAgentDO {
             await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
             await this.postAva({
               conv, uid, text: ack, private: priv, source: "image",
-              ...(r.job_id ? { meta: { job_id: r.job_id } } : {}),
+              ...(r.job_id ? { meta: { job_id: r.job_id, media_job_kind: "image_generate" } } : {}),
             });
           } else if (r.message) {
             fastPathOutcome = `blocked:${r.reason ?? "unknown"}`;
@@ -2034,6 +2045,10 @@ export class AvaAgentDO {
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             onMusic: async (prompt, durationSeconds, lyrics) => {
+              const draft = await this.state.storage.get<any>(songDraftKey);
+              if (lyrics && (!draft?.approved || String(draft.lyrics).trim() !== String(lyrics).trim())) {
+                return "Please approve the latest lyrics first — say ‘yes, make it’ when they are ready.";
+              }
               const tier = await veniceTier(this.env, uid);
               const r = await runVeniceMusic(this.env, {
                 uid, conv, prompt, durationSeconds, lyrics, private: priv, tier,
@@ -2047,6 +2062,9 @@ export class AvaAgentDO {
             // only the eventual generate_music call is remembered above).
             onDraftLyrics: async (theme, durationSeconds) => {
               const r = await runVeniceDraftLyrics(this.env, { uid, theme, durationSeconds });
+              if (r.lyrics) await this.state.storage.put(songDraftKey, {
+                theme: String(theme).slice(0, 2000), lyrics: r.lyrics, approved: false, updated_at: Date.now(),
+              });
               return r.lyrics ?? r.message;
             },
           },

@@ -1241,6 +1241,18 @@ export function looksLikeImageRequest(s: string): boolean {
   return true;
 }
 
+const MEDIA_CREATE_RE = /\b(?:generate|create|make|animate|produce|render)\b/;
+export function looksLikeVideoRequest(s: string): boolean {
+  const t = (s || '').toLowerCase();
+  return MEDIA_CREATE_RE.test(t) && /\b(?:video|clip|movie|reel|animation|animate)\b/.test(t) &&
+      !/\b(?:call|calling|meeting|conference)\b/.test(t);
+}
+
+export function looksLikeMusicRequest(s: string): boolean {
+  const t = (s || '').toLowerCase();
+  return MEDIA_CREATE_RE.test(t) && /\b(?:song|music|track|lyrics|sing|singer|vocals)\b/.test(t);
+}
+
 // [AVA-IMG-EDIT-1] Resolve a generate_image tool call's args into the actual
 // prompt text + edit intent, shared by BOTH call sites (the forced fast-path
 // call and the main loop's dispatch below) so they can never drift apart.
@@ -1581,7 +1593,7 @@ export async function runAgentLoop(
   // (via OpenRouter), then the ALT model (orAgentModelAlt) so a hiccup — timeout,
   // 429/5xx surviving one same-model retry, malformed tool-call JSON, or an empty
   // response (see orStep) — never breaks the turn. Also the fallback when SSE
-  // streaming fails mid-loop. forceImage pins tool_choice to generate_image so the
+  // streaming fails mid-loop. A forced tool pins tool_choice so the
   // model MUST call it (can't "answer" the image as text).
   // [AVA-TOOL-BACKOFF-1 / WS-13b] `skipPrimary` exists because the streamed step
   // below already spent a full attempt (plus a backed-off same-model retry) on
@@ -1592,13 +1604,13 @@ export async function runAgentLoop(
   // formatting, not a transient. Both cost ~45 s worst case before the ALT model
   // is reached. A timeout/5xx still gets the primary once more (those genuinely
   // are transient, and the primary is the better model).
-  const once = async (forceImage = false, skipPrimary = false): Promise<{ calls: OrCall[]; text: string }> => {
+  const once = async (forcedTool?: string, skipPrimary = false): Promise<{ calls: OrCall[]; text: string }> => {
     let lastErr = "";
     const candidates = skipPrimary ? [orAgentModelAlt(env)] : [orAgentModel(env), orAgentModelAlt(env)];
     for (let i = 0; i < candidates.length; i++) {
       const m = candidates[i];
       try {
-        const tc = forceImage ? { type: "function", function: { name: "generate_image" } } : undefined;
+        const tc = forcedTool ? { type: "function", function: { name: forcedTool } } : undefined;
         const r = await orStep(env, m, messages, tools, { toolChoice: tc });
         if (opts?.modelStats) {
           opts.modelStats.model_actual = m;
@@ -1635,7 +1647,7 @@ export async function runAgentLoop(
   // block) — we relay THAT verbatim, never a fabricated acknowledgement.
   if (imageDecl && opts?.onImage && looksLikeImageRequest(query)) {
     try {
-      const forced = await once(true);
+      const forced = await once("generate_image");
       const call = forced.calls.find((c) => c.name === "generate_image");
       if (call) {
         const args = call.args ?? {};
@@ -1671,9 +1683,20 @@ export async function runAgentLoop(
     } catch { /* on any failure, fall back to the standard agent loop */ }
   }
 
+  // Video and music used to rely entirely on the model deciding to emit a
+  // function call. A fallback model could answer "I'm text-only" instead. For
+  // unmistakable requests, force the capability tool just like images.
+  var forcedTurn = looksLikeVideoRequest(query) && videoDecl
+      ? await once("generate_video")
+      : (looksLikeMusicRequest(query) && lyricsDecl
+          ? await once("draft_lyrics")
+          : null);
+
   for (let step = 0; step < 6; step++) {
     let calls: OrCall[]; let text: string;
-    if (opts?.onDelta) {
+    if (forcedTurn) {
+      calls = forcedTurn.calls; text = forcedTurn.text; forcedTurn = null;
+    } else if (opts?.onDelta) {
       // Stream this step's text live; on transport failure, fall back to a
       // reliable non-streamed step (no live deltas, but the turn still answers).
       const streamModel = orAgentModel(env);
@@ -1691,7 +1714,7 @@ export async function runAgentLoop(
         // [AVA-TOOL-BACKOFF-1 / WS-13b] a 429 or a malformed tool-call parse on
         // the primary means "do not ask this model again right now" — go to the
         // ALT directly instead of paying for the primary a third time. See once().
-        const r = await once(false, reason === "429" || reason === "parse");
+        const r = await once(undefined, reason === "429" || reason === "parse");
         calls = r.calls; text = r.text;
       }
     } else {

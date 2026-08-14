@@ -37,6 +37,7 @@ import { enqueueVeniceMediaPoll } from "../queues/venice_media";
 import { track } from "../hooks";
 import { emailFor } from "./identity";
 import { avaString, readVoiceStyle, type AvaVoiceStyle } from "./ava_persona";
+import { postAvaMessage } from "../routes/ava_thread";
 // [VENICE-PROMPT-1 / VENICE-SONG-1] Gemini-3.7-via-Venice prompt/lyrics
 // crafting — see lib/media_prompt.ts's header for the fail-soft contract.
 import { craftVideoPrompt, draftLyrics } from "./media_prompt";
@@ -166,6 +167,12 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl,
     duration_seconds: durationNum, prompt_crafted: prompt !== rawPrompt,
   });
+  await postAvaMessage(env, {
+    ownerUid: a.uid, conv: a.conv,
+    text: a.private ? "Ava is creating your video…" : "Ava is creating a video…",
+    private: a.private, source: "video",
+    meta: { job_id: jobId, media_job_kind: "venice_video_generate" },
+  }).catch(() => {});
   return {
     ok: true, job_id: jobId,
     message: a.private
@@ -275,6 +282,12 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     job_id: jobId, kind: "venice_music_generate", tier: a.tier, duration_seconds: durationSeconds,
     has_lyrics: !!lyrics,
   });
+  await postAvaMessage(env, {
+    ownerUid: a.uid, conv: a.conv,
+    text: a.private ? "Ava is creating your song…" : "Ava is creating a song…",
+    private: a.private, source: "music",
+    meta: { job_id: jobId, media_job_kind: "venice_music_generate" },
+  }).catch(() => {});
   return {
     ok: true, job_id: jobId,
     message: a.private

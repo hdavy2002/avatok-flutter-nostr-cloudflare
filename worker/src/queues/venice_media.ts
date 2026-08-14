@@ -181,6 +181,7 @@ async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, bytes: Ui
     : job.kind === "venice_video_generate" ? "mp4" : "mp3";
   const fileName = `ava-${job.kind === "venice_video_generate" ? "video" : "music"}-${job.job_id.slice(0, 8)}.${ext}`;
   let stored: { id: string; key: string };
+  let deliveryUrl: string | null = null;
   try {
     const r = await registerArtifactMedia(env, {
       uid: job.owner_uid, bytes, mimeType, fileName,
@@ -191,6 +192,11 @@ async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, bytes: Ui
       sensitivity: "private",
     });
     stored = { id: r.id, key: r.key };
+    deliveryUrl = r.url ?? await presignDigitalReadUrl(env, r.key);
+    if (!deliveryUrl) {
+      await failTerminal(env, job, "artifact_unavailable", "private_artifact_url_unavailable");
+      return;
+    }
   } catch (e) {
     void trackException(env, e, {
       uid: job.owner_uid, route: "queues.venice_media", handled: true,
@@ -215,12 +221,12 @@ async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, bytes: Ui
   // [B3-style contract, mirrors ai_media_jobs.ts] Mint the delivery URL fresh
   // right here rather than persisting one — a private artifact's presigned
   // URL expires in 900s, so a stored one would go stale in old chat history.
-  const mediaRef = (await presignDigitalReadUrl(env, stored.key)) ?? undefined;
+  const mediaRef = deliveryUrl ?? (await presignDigitalReadUrl(env, stored.key)) ?? undefined;
   const caption = job.kind === "venice_video_generate" ? "Here's your video ✨" : "Here's your track ✨";
   await postAvaMessage(env, {
     ownerUid: job.owner_uid, conv: job.conv_id, text: caption, media_ref: mediaRef,
     source: job.kind === "venice_video_generate" ? "video" : "music",
-    private: job.is_private, meta: { job_id: job.job_id },
+    private: job.is_private, meta: { job_id: job.job_id, media_job_kind: job.kind },
   });
 
   const email = await emailFor(env, job.owner_uid).catch(() => null);

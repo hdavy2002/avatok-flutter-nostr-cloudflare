@@ -117,6 +117,8 @@ class AiMediaJobCard extends StatelessWidget {
 
 IconData _kindIcon(AiMediaJobKind k) => switch (k) {
       AiMediaJobKind.imageGenerate => PhosphorIcons.image(PhosphorIconsStyle.duotone),
+      AiMediaJobKind.videoGenerate => PhosphorIcons.videoCamera(PhosphorIconsStyle.duotone),
+      AiMediaJobKind.musicGenerate => PhosphorIcons.musicNote(PhosphorIconsStyle.duotone),
       AiMediaJobKind.docSummarize => PhosphorIcons.fileText(PhosphorIconsStyle.duotone),
       AiMediaJobKind.docTranslate => PhosphorIcons.translate(PhosphorIconsStyle.duotone),
       AiMediaJobKind.audioTranscribe => PhosphorIcons.fileAudio(PhosphorIconsStyle.duotone),
@@ -127,6 +129,8 @@ String _workingLabel(AiMediaJob job) {
   if (job.label.isNotEmpty) return job.label;
   return switch (job.kind) {
     AiMediaJobKind.imageGenerate => 'Working on your image…',
+    AiMediaJobKind.videoGenerate => 'Ava is creating a video…',
+    AiMediaJobKind.musicGenerate => 'Ava is creating a song…',
     AiMediaJobKind.docSummarize => 'Preparing summary…',
     AiMediaJobKind.docTranslate => 'Translating your document…',
     AiMediaJobKind.audioTranscribe => 'Converting to text…',
@@ -138,6 +142,8 @@ String _readyLabel(AiMediaJob job) {
   if (job.label.isNotEmpty) return job.label;
   return switch (job.kind) {
     AiMediaJobKind.imageGenerate => 'Image ready',
+    AiMediaJobKind.videoGenerate => 'Video ready',
+    AiMediaJobKind.musicGenerate => 'Song ready',
     AiMediaJobKind.docSummarize => 'Summary ready',
     AiMediaJobKind.docTranslate => 'Translation ready',
     AiMediaJobKind.audioTranscribe => 'Transcript ready',
@@ -157,6 +163,7 @@ String _friendlyError(AiMediaJob job) {
     'unsupported_format' => "This file type isn't supported for this action.",
     'input_too_large' => 'This file is too large for this action.',
     'insufficient_balance' => 'Not enough Tokens to finish this.',
+    'artifact_unavailable' => 'The result was created but could not be delivered. Please retry.',
     'cancelled_by_user' => 'Cancelled.',
     _ => "Couldn't finish your $noun.",
   };
@@ -239,20 +246,11 @@ class _WorkingCard extends StatelessWidget {
       width: width,
       borderColor: accent,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          SizedBox(
-            width: 20, height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: accent),
-          ),
-          const SizedBox(width: Msg.s2),
-          PhosphorIcon(_kindIcon(job.kind), size: 18, color: accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(_workingLabel(job),
-                maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: ADText.rowName(c: AD.textPrimary).copyWith(fontStyle: FontStyle.italic)),
-          ),
-        ]),
+        _AnimatedMediaPlaceholder(kind: job.kind, accent: accent, size: width - 24),
+        const SizedBox(height: Msg.s2),
+        Text(_workingLabel(job),
+            maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: ADText.rowName(c: AD.textPrimary).copyWith(fontStyle: FontStyle.italic)),
         if (job.progress != null) ...[
           const SizedBox(height: Msg.s2),
           ClipRRect(
@@ -275,6 +273,96 @@ class _WorkingCard extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// A calm, unmistakable media placeholder. It is deliberately square so the
+/// finished image/video can replace the same footprint instead of making the
+/// conversation jump while Venice is working.
+class _AnimatedMediaPlaceholder extends StatefulWidget {
+  const _AnimatedMediaPlaceholder({required this.kind, required this.accent, required this.size});
+  final AiMediaJobKind kind;
+  final Color accent;
+  final double size;
+
+  @override
+  State<_AnimatedMediaPlaceholder> createState() => _AnimatedMediaPlaceholderState();
+}
+
+class _AnimatedMediaPlaceholderState extends State<_AnimatedMediaPlaceholder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _clock = AnimationController(
+    vsync: this, duration: const Duration(milliseconds: 1800),
+  )..repeat();
+
+  @override
+  void dispose() { _clock.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = _kindIcon(widget.kind);
+    return SizedBox(
+      width: widget.size, height: widget.size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AD.mediaPlaceholderBg,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: widget.accent.withValues(alpha: 0.8)),
+        ),
+        child: AnimatedBuilder(
+          animation: _clock,
+          builder: (_, __) => Stack(alignment: Alignment.center, children: [
+            Positioned.fill(
+              child: CustomPaint(painter: _MediaWorkPainter(widget.accent, _clock.value)),
+            ),
+            Container(
+              width: 58, height: 58,
+              decoration: BoxDecoration(
+                color: AD.card,
+                shape: BoxShape.circle,
+                border: Border.all(color: widget.accent.withValues(alpha: 0.8)),
+              ),
+              child: Center(child: PhosphorIcon(icon, size: 28, color: widget.accent)),
+            ),
+            Positioned(
+              bottom: 18,
+              child: Row(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) {
+                final phase = ((_clock.value * 3) - i).abs() % 3;
+                final alpha = (1 - (phase / 2)).clamp(0.25, 1.0);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Opacity(opacity: alpha, child: _dot(widget.accent)),
+                );
+              })),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _dot(Color color) => Container(width: 5, height: 5, decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+}
+
+class _MediaWorkPainter extends CustomPainter {
+  const _MediaWorkPainter(this.color, this.phase);
+  final Color color;
+  final double phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = color.withValues(alpha: 0.16)..style = PaintingStyle.stroke..strokeWidth = 1.5;
+    final center = size.center(Offset.zero);
+    final maxR = size.shortestSide * 0.38;
+    for (var i = 0; i < 3; i++) {
+      final r = maxR * (0.45 + ((phase + i / 3) % 1) * 0.55);
+      canvas.drawCircle(center, r, p);
+    }
+    final scan = size.height * ((phase + 0.1) % 1);
+    canvas.drawLine(Offset(size.width * 0.16, scan), Offset(size.width * 0.84, scan), p);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MediaWorkPainter oldDelegate) => oldDelegate.phase != phase;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -309,7 +397,10 @@ class _ReadyCard extends StatelessWidget {
   final VoidCallback? onDelete;
 
   bool get _hasVisual =>
-      job.kind == AiMediaJobKind.imageGenerate && (thumbnailWidget != null || thumbnailBytes != null);
+      (job.kind == AiMediaJobKind.imageGenerate ||
+          job.kind == AiMediaJobKind.videoGenerate ||
+          job.kind == AiMediaJobKind.musicGenerate) &&
+      (thumbnailWidget != null || thumbnailBytes != null);
 
   List<PopupMenuEntry<String>> _menuItems() {
     final items = <PopupMenuEntry<String>>[];
@@ -353,7 +444,7 @@ class _ReadyCard extends StatelessWidget {
     final menu = _menuItems();
 
     if (_hasVisual) {
-      // Image-forward layout, matching the existing finished-Ava-image bubble
+      // Media-forward layout, matching the existing finished-Ava-image bubble
       // convention (see chat_thread.dart::_avaImageBubble) so a generated image
       // looks the same whether it arrives via the job card or the legacy path
       // during the migration window.

@@ -103,7 +103,7 @@ import {
 // nothing here is used at module-evaluation time: every binding on both sides
 // is a hoisted function declaration called only at request time.
 import { enqueueAiMediaJob } from "../queues/ai_media";
-import { registerArtifactMedia } from "./media";
+import { registerArtifactMedia, presignDigitalReadUrl } from "./media";
 import { emailFor } from "../lib/identity";
 // [AVA-VOICE-STYLE-1 / WS-14e] The ONE table of user-visible canned strings.
 // The image chip is the string the owner asked for by name ("hold karo, mein 2K
@@ -661,13 +661,13 @@ async function storePublicImage(env: Env, uid: string, bytes: Uint8Array): Promi
 // generated image always lands in the DIGITAL (private, presign-on-read)
 // bucket. Do NOT force it public — that is the §44 contract M1 built
 // ai_media_jobs.ts against.
-async function storeImageArtifact(env: Env, uid: string, bytes: Uint8Array): Promise<{ id: string; url: string | null }> {
+async function storeImageArtifact(env: Env, uid: string, bytes: Uint8Array): Promise<{ id: string; url: string | null; key: string }> {
   const hash = await sha256Hex(bytes);
   const sensitivity = await resolveArtifactSensitivity(env, null);
   const r = await registerArtifactMedia(env, {
     uid, bytes, mimeType: "image/png", fileName: `ava-image-${hash.slice(0, 8)}.png`, category: "image", sensitivity,
   });
-  return { id: r.id, url: r.url };
+  return { id: r.id, url: r.url, key: r.key };
 }
 
 // [§46 error-code vocabulary] Maps a thrown Error to ONE of the SAFE,
@@ -786,6 +786,14 @@ async function fulfil(a: FulfilArgs): Promise<void> {
     const tStore = Date.now();
     const stored = await storeImageArtifact(env, uid, gen.bytes);
     storeMs = Date.now() - tStore;
+    // A private artifact is not deliverable until production can mint its
+    // signed read URL. Do not settle/bill or post a false-success message.
+    const deliveryUrl = stored.url ?? await presignDigitalReadUrl(env, stored.key);
+    if (!deliveryUrl) {
+      await failAiMediaJob(env, { jobId, errorCode: "artifact_unavailable", reason: "private_artifact_url_unavailable" });
+      await endChipOnce();
+      throw new Error("artifact_unavailable: private artifact URL unavailable");
+    }
     await updateAiMediaJobProgress(env, jobId, "stored");
     // Consume ONE image from today's per-tier allowance only AFTER a successful
     // delivery, so a failed generation never burns the user's daily grant. The
@@ -827,12 +835,12 @@ async function fulfil(a: FulfilArgs): Promise<void> {
     // GET /api/ai/jobs/:job_id, re-minted every read) is the durable,
     // authoritative way to open/download/share the result once a job-hydrated
     // client (M4) reads it.
-    const mediaRef = completed.ok ? (completed.job.artifact_url ?? undefined) : undefined;
+    const mediaRef = completed.ok ? (completed.job.artifact_url ?? deliveryUrl) : deliveryUrl;
     // PRIVACY: private:true posts ONLY to the requester (kind ava_private, scope
     // to:<uid>) — a @ava image never reaches the other participant.
     await postAvaMessage(env, {
       ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image", private: priv,
-      meta: { job_id: jobId },
+      meta: { job_id: jobId, media_job_kind: "image_generate" },
     });
     settleMs = Date.now() - tSettle;
 

@@ -48,11 +48,13 @@ import 'disk_cache.dart';
 /// safe by construction.
 
 /// Mirrors `AiMediaJobKind` in `worker/src/lib/ai_media_jobs.ts`.
-enum AiMediaJobKind { imageGenerate, docSummarize, docTranslate, audioTranscribe, audioTranslate }
+enum AiMediaJobKind { imageGenerate, videoGenerate, musicGenerate, docSummarize, docTranslate, audioTranscribe, audioTranslate }
 
 extension AiMediaJobKindWire on AiMediaJobKind {
   String get wire => switch (this) {
         AiMediaJobKind.imageGenerate => 'image_generate',
+        AiMediaJobKind.videoGenerate => 'venice_video_generate',
+        AiMediaJobKind.musicGenerate => 'venice_music_generate',
         AiMediaJobKind.docSummarize => 'doc_summarize',
         AiMediaJobKind.docTranslate => 'doc_translate',
         AiMediaJobKind.audioTranscribe => 'audio_transcribe',
@@ -63,6 +65,8 @@ extension AiMediaJobKindWire on AiMediaJobKind {
   /// the server's own `label` when present; this is only the fallback.
   String get displayNoun => switch (this) {
         AiMediaJobKind.imageGenerate => 'image',
+        AiMediaJobKind.videoGenerate => 'video',
+        AiMediaJobKind.musicGenerate => 'song',
         AiMediaJobKind.docSummarize => 'summary',
         AiMediaJobKind.docTranslate => 'translation',
         AiMediaJobKind.audioTranscribe => 'transcript',
@@ -71,6 +75,8 @@ extension AiMediaJobKindWire on AiMediaJobKind {
 
   static AiMediaJobKind? fromWire(String? s) => switch (s) {
         'image_generate' => AiMediaJobKind.imageGenerate,
+        'venice_video_generate' => AiMediaJobKind.videoGenerate,
+        'venice_music_generate' => AiMediaJobKind.musicGenerate,
         'doc_summarize' => AiMediaJobKind.docSummarize,
         'doc_translate' => AiMediaJobKind.docTranslate,
         'audio_transcribe' => AiMediaJobKind.audioTranscribe,

@@ -111,6 +111,10 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     if (_deletedIds.contains(m.rumorId)) {
       text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
     }
+    final isMediaJobEnvelope = (special == 'ava' || special == 'ava_private') &&
+        extra?['meta'] is Map &&
+        ((extra!['meta'] as Map)['job_id']?.toString().isNotEmpty ?? false) &&
+        ((extra['meta'] as Map)['media_job_kind']?.toString().isNotEmpty ?? false);
     _mutMsgs(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
@@ -343,10 +347,14 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     if (_deletedIds.contains(m.rumorId)) {
       text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
     }
+    final isMediaJobEnvelope = (special == 'ava' || special == 'ava_private') &&
+        extra?['meta'] is Map &&
+        ((extra!['meta'] as Map)['job_id']?.toString().isNotEmpty ?? false) &&
+        ((extra['meta'] as Map)['media_job_kind']?.toString().isNotEmpty ?? false);
     _mutMsgs(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
-      _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
+      if (!isMediaJobEnvelope) _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: forwarded, expireAt: exp, special: special, extra: extra,
           sent: m.mine, // my own messages reaching here are already on the relay
@@ -359,6 +367,7 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
       }
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
+    if (isMediaJobEnvelope) unawaited(_hydrateAiJobFromEnvelope(extra));
     // Persist the inline flag so the red bubble survives reopen (mirrors how the
     // deep-lane safety_flag frame is persisted). Best-effort.
     if (inlineSafetyCat != null) {
