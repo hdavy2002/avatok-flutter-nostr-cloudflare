@@ -1300,6 +1300,12 @@ export interface PlatformConfig {
   veniceImageTokens: number;
   veniceMusicTokens: number;
   veniceVideoTokens: number;
+  // [VENICE-CHAT-1 2026-08-14] Uncensored-TEXT chat lane kill switch. Ships
+  // DARK (default false): even when a caller's veniceTier(env, uid)
+  // (lib/venice_tier.ts) resolves to "paid" (18+ opt-in AND paid balance > 0),
+  // the plain @ava chat lane keeps using the Gemma/Gemini ladder until this
+  // is explicitly flipped true in KV. Boolean → NOT in numericKeys.
+  veniceUncensoredChatEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -1777,6 +1783,9 @@ const DEFAULTS: PlatformConfig = {
   veniceImageTokens: 2,
   veniceMusicTokens: 10,
   veniceVideoTokens: 50,
+  // [VENICE-CHAT-1 2026-08-14] ships dark; flip true in KV to let paid-tier
+  // opted-in accounts route @ava chat to Venice Uncensored 1.2.
+  veniceUncensoredChatEnabled: false,
 };
 
 /**

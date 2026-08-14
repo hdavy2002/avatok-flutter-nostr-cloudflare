@@ -207,3 +207,43 @@ export async function veniceRetrieveAudio(
   const j = await venicePost(env, "/audio/retrieve", { queue_id: queueId }, 30000);
   return { status: String(j?.status ?? "unknown"), url: typeof j?.url === "string" ? j.url : undefined };
 }
+
+// ── Chat (sync, OpenAI-compatible) ───────────────────────────────────────────
+// [VENICE-CHAT-1] The uncensored-TEXT chat lane only (VENICE_UNCENSORED_CHAT_MODEL
+// above) — gated by lib/venice_tier.ts's veniceTier() === "paid" AND the
+// veniceUncensoredChatEnabled remote-config flag (routes/config.ts). Everyone
+// else stays on the existing Gemma/Gemini ladder untouched. Non-streamed only
+// for v1 (do/ava_agent.ts's callThreadModel calls this before its own
+// streamed/non-streamed OpenRouter ladder, and only when the Venice branch
+// applies) — Venice's /chat/completions is OpenAI-compatible SSE too, so a
+// streamed variant can be added later by mirroring composio.ts's orStreamStep
+// parser against VENICE_BASE instead of OR_URL.
+
+export interface VeniceChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface VeniceChatResult {
+  text: string;
+  tokensIn: number | null;
+  tokensOut: number | null;
+}
+
+export async function veniceChatComplete(
+  env: VeniceEnv, model: string, messages: VeniceChatMessage[],
+  opts: { maxTokens?: number; temperature?: number; timeoutMs?: number } = {},
+): Promise<VeniceChatResult> {
+  const body: any = { model, messages };
+  if (opts.maxTokens != null) body.max_tokens = opts.maxTokens;
+  if (opts.temperature != null) body.temperature = opts.temperature;
+  const j = await venicePost(env, "/chat/completions", body, opts.timeoutMs ?? 30000);
+  const content = j?.choices?.[0]?.message?.content;
+  const text = typeof content === "string" ? content.trim() : "";
+  const usage = j?.usage ?? {};
+  return {
+    text,
+    tokensIn: Number.isFinite(usage?.prompt_tokens) ? Number(usage.prompt_tokens) : null,
+    tokensOut: Number.isFinite(usage?.completion_tokens) ? Number(usage.completion_tokens) : null,
+  };
+}

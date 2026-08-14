@@ -47,6 +47,9 @@ import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // A
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
 import { runVeniceVideo, runVeniceMusic } from "../lib/venice_media"; // [VENICE-VID-1 / VENICE-MUS-1] in-thread video/music gen, same async-job shape as runAvaImage
+import { veniceTier } from "../lib/venice_tier"; // [VENICE-TIER-1] 18+ opt-in AND paid balance -> "paid" | "free"
+import { veniceChatComplete, VENICE_UNCENSORED_CHAT_MODEL } from "../lib/venice"; // [VENICE-CHAT-1] uncensored-text chat lane
+import { track } from "../hooks"; // [VENICE-CHAT-1] ava_reason_call telemetry (provider "venice")
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchOutlookInbox } from "../lib/outlook"; // same cards for Outlook-only users
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
@@ -913,12 +916,63 @@ export class AvaAgentDO {
   // turn faster, never make it fail. `streamed` is reported back so the caller
   // can emit truthful telemetry rather than the hardcoded `streamed:false` this
   // lane shipped with.
-  private async callThreadModel(sys: string, user: string, onDelta?: (t: string) => Promise<void>): Promise<{
+  private async callThreadModel(uid: string, sys: string, user: string, onDelta?: (t: string) => Promise<void>): Promise<{
     text: string; model: string; provider: string;
     tokensIn: number | null; tokensOut: number | null;
     fallbackReason: string | null; latencyMs: number; streamed: boolean;
   }> {
     const t0 = Date.now();
+
+    // [VENICE-CHAT-1] Uncensored-TEXT chat lane — Specs/VENICE-AI-MEDIA-
+    // PLAN-2026-08-14.md. Only when BOTH veniceTier(env, uid) resolves "paid"
+    // (18+ opt-in AND paid wallet balance > 0, lib/venice_tier.ts) AND the
+    // veniceUncensoredChatEnabled kill switch (routes/config.ts) is true.
+    // Everyone else falls straight through to the unchanged Gemma/Gemini
+    // ladder below — this branch never runs for a free-tier account even if
+    // the flag is on. Non-streamed for v1 (see venice.ts's veniceChatComplete
+    // doc comment); a failure here (network, 4xx/5xx, empty response) falls
+    // through to the existing ladder rather than failing the turn — Venice
+    // being briefly unavailable must never dark a paid-tier user's chat.
+    try {
+      const cfg = await readConfig(this.env);
+      if ((cfg as any).veniceUncensoredChatEnabled === true) {
+        const tier = await veniceTier(this.env, uid);
+        if (tier === "paid") {
+          try {
+            const out = await veniceChatComplete(
+              this.env as any, VENICE_UNCENSORED_CHAT_MODEL,
+              [{ role: "system", content: sys }, { role: "user", content: user }],
+              { maxTokens: MAX_TOKENS, temperature: 0.7, timeoutMs: THREAD_TIMEOUT_MS },
+            );
+            const text = stripReasoning(out.text);
+            if (text) {
+              void track(this.env, uid, "ava_reason_call", "avaai", {
+                role: "ava_thread", capability: "chat_thread", trigger: "ava_thread_turn",
+                opportunity: null, feature: "ava_thread_venice", verb: "reason", provider: "venice",
+                model: VENICE_UNCENSORED_CHAT_MODEL, primary_model: this.threadModel(), ok: true,
+                fallback_used: false, cache_hit: false, latency_ms: Date.now() - t0,
+                tokens_in: out.tokensIn, tokens_out: out.tokensOut, error: null,
+              });
+              return {
+                text, model: VENICE_UNCENSORED_CHAT_MODEL, provider: "venice",
+                tokensIn: out.tokensIn, tokensOut: out.tokensOut,
+                fallbackReason: null, latencyMs: Date.now() - t0, streamed: false,
+              };
+            }
+          } catch (e: any) {
+            void track(this.env, uid, "ava_reason_call", "avaai", {
+              role: "ava_thread", capability: "chat_thread", trigger: "ava_thread_turn",
+              opportunity: null, feature: "ava_thread_venice", verb: "reason", provider: "venice",
+              model: VENICE_UNCENSORED_CHAT_MODEL, primary_model: this.threadModel(), ok: false,
+              fallback_used: true, cache_hit: false, latency_ms: Date.now() - t0,
+              tokens_in: null, tokens_out: null, error: String(e?.message ?? e).slice(0, 200),
+            });
+            // fall through to the standard ladder below
+          }
+        }
+      }
+    } catch { /* config/tier read failure — fall through to the standard ladder */ }
+
     const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
     const primary = this.threadModel();
     const alt = this.threadAltModel();
@@ -1547,7 +1601,7 @@ export class AvaAgentDO {
           // so the answer types out from ~1 s instead of appearing whole at ~5.8 s.
           // Passing onDelta only when streaming is enabled keeps AVA_STREAM_OFF=1
           // as a true kill switch for BOTH lanes.
-          g = await this.callThreadModel(sys, user, streaming ? onDelta : undefined);
+          g = await this.callThreadModel(uid, sys, user, streaming ? onDelta : undefined);
         } catch (e) {
           await releaseAiJob(this.env, reservation, { uid, opId, capability: "chat_thread", reason: "provider_error" });
           if (moderationInputTokens) {
@@ -1806,21 +1860,27 @@ export class AvaAgentDO {
             // consumer (queues/venice_media.ts), not kept alive in this DO's
             // own call stack — see lib/venice_media.ts's file header.
             //
-            // [VENICE-TIER-1] `tier: "free"` is hardcoded here — the ONE call
-            // site, on purpose, per the work order: veniceTier(env, uid) (the
-            // 18+ toggle + paid-balance check) is a separate, not-yet-built
-            // piece of work. Both functions take tier as a parameter
-            // specifically so wiring the real check later is a one-line change
-            // at this call site, not a signature change.
+            // [VENICE-TIER-1] `tier` is now resolved per-invocation via
+            // veniceTier(env, uid) (18+ opt-in AND paid balance > 0 -> "paid",
+            // else "free" — lib/venice_tier.ts), replacing the hardcoded
+            // "free" this call site shipped with. Resolved lazily INSIDE each
+            // closure — only paid when the model actually calls generate_video/
+            // generate_music this turn, not on every turn regardless of tool
+            // use — and fails safe to "free" on any read error (see
+            // venice_tier.ts). Both runVeniceVideo/runVeniceMusic already took
+            // tier as a parameter for exactly this reason, so this is a
+            // one-line change at the call site, not a signature change.
             onVideo: async (prompt, sourceImageUrl) => {
+              const tier = await veniceTier(this.env, uid);
               const r = await runVeniceVideo(this.env, {
-                uid, conv, prompt, sourceImageUrl, private: priv, tier: "free",
+                uid, conv, prompt, sourceImageUrl, private: priv, tier,
               });
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             onMusic: async (prompt, durationSeconds) => {
+              const tier = await veniceTier(this.env, uid);
               const r = await runVeniceMusic(this.env, {
-                uid, conv, prompt, durationSeconds, private: priv, tier: "free",
+                uid, conv, prompt, durationSeconds, private: priv, tier,
               });
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },

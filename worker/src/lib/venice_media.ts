@@ -60,8 +60,9 @@ export interface RunVeniceVideoArgs {
    *  presence alone selects video_i2v over video_t2v (veniceRoute). */
   sourceImageUrl?: string;
   private: boolean;
-  /** [VENICE-TIER-1] Caller-supplied — see do/ava_agent.ts's call site for
-   *  why this is hardcoded 'free' today rather than decided in here. */
+  /** [VENICE-TIER-1] Caller-supplied — do/ava_agent.ts's onVideo closure
+   *  resolves this via lib/venice_tier.ts's veniceTier(env, uid) before
+   *  calling in. */
   tier: VeniceTier;
 }
 
@@ -160,7 +161,9 @@ export interface RunVeniceMusicArgs {
   prompt: string;
   durationSeconds?: number;
   private: boolean;
-  /** [VENICE-TIER-1] see RunVeniceVideoArgs.tier doc. */
+  /** [VENICE-TIER-1] see RunVeniceVideoArgs.tier doc — resolved via
+   *  lib/venice_tier.ts's veniceTier(env, uid) at the do/ava_agent.ts onMusic
+   *  call site. */
   tier: VeniceTier;
 }
 
