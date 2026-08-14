@@ -23,8 +23,11 @@ class AppOrderScreen extends StatelessWidget {
   static final Map<RootId, (IconData, String, String, Color)> _meta = {
     RootId.avaDial: (
       PhosphorIcons.phone(PhosphorIconsStyle.regular),
-      'AvaDialer',
-      'Phone, spam shield & device contacts',
+      // [IOS-PORT-DISABLE-1] 2026-08-14 owner rename: 'AvaDialer' → 'Calls'
+      // (display-only; RootId.key stays 'avadial'). The device-phone-app layer
+      // is retired on all platforms; this root is AvaTOK-network calls.
+      'Calls',
+      'AvaTOK calls, contacts & voicemail',
       AD.iconSearch
     ),
     // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only; RootId.key

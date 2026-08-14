@@ -118,7 +118,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // shell/v2/shell_chrome.dart — all three must be kept in sync.
   // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
   static final Map<RootId, (IconData, IconData, String)> _meta = {
-    RootId.avaDial: (PhosphorIcons.phone(PhosphorIconsStyle.regular), PhosphorIcons.phone(PhosphorIconsStyle.fill), 'AvaDialer'),
+    RootId.avaDial: (PhosphorIcons.phone(PhosphorIconsStyle.regular), PhosphorIcons.phone(PhosphorIconsStyle.fill), 'Calls'),
     RootId.avaTalk: (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'AvaTalk'),
     RootId.services: (PhosphorIcons.storefront(PhosphorIconsStyle.regular), PhosphorIcons.storefront(PhosphorIconsStyle.fill), 'Services'),
   };

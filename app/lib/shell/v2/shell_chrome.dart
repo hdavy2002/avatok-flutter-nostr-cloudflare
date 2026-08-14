@@ -158,7 +158,10 @@ class ShellSidebar extends StatelessWidget {
               // RootId.key stays 'avatalk'). Mirror of app_switcher_bar `_meta`.
               appRow(RootId.avaTalk, 'AvaTalk', 'Messages & in-network calls',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online),
-              appRow(RootId.avaDial, 'AvaDialer', 'Phone, spam shield & device contacts',
+              // [IOS-PORT-DISABLE-1] 2026-08-14 owner rename: 'AvaDialer' →
+              // 'Calls' (display-only; RootId.key stays 'avadial'). Mirror of
+              // app_switcher_bar `_meta`.
+              appRow(RootId.avaDial, 'Calls', 'AvaTOK calls, contacts & voicemail',
                   PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch),
               appRow(RootId.services, 'Services', 'Marketplace, wallet & more',
                   PhosphorIcons.storefront(PhosphorIconsStyle.bold), AD.danger),

@@ -837,9 +837,12 @@ class _PstnForwardingSetupScreenState extends State<PstnForwardingSetupScreen> {
 /// (`registerPstnForwardingSection`) and section id (`pstn_forwarding`) are
 /// UNCHANGED from the original multi-step guided-setup version — only the
 /// title and the screen behind it changed (2026-07-16 default-dialer
-/// retirement, see class doc above). This rides on the AvaDial telecom layer
-/// (CALL_PHONE / USSD), so it stays hidden unless `avaDialer` is ALSO on, in
-/// addition to this feature's own `pstnVoicemail` flag.
+/// retirement, see class doc above). [IOS-PORT-DISABLE-1] 2026-08-14: gate is
+/// `pstnVoicemail` ONLY. The old extra `avaDialer` condition is gone — the
+/// wizard dials MMI codes via CALL_PHONE, which needs NO dialer role, and the
+/// owner is retiring the AvaDialer phone-app layer on all platforms while
+/// KEEPING forwarding (it is the product). Re-coupling these flags would make
+/// the future `avaDialer=false` prod flip silently kill the forwarding wizard.
 void registerPstnForwardingSection() {
   SettingsSectionRegistry.register(
     SettingsSection(
@@ -847,8 +850,7 @@ void registerPstnForwardingSection() {
       title: 'Voicemail',
       order: 26, // AVA-DIAL-6's "Default phone & messages" (26) is retired —
       // Voicemail takes its slot in the settings order.
-      visible: () =>
-          Platform.isAndroid && RemoteConfig.avaDialer && RemoteConfig.pstnVoicemail,
+      visible: () => Platform.isAndroid && RemoteConfig.pstnVoicemail,
       builder: (context) => const _PstnForwardingRow(),
     ),
   );

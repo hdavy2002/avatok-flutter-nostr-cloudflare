@@ -114,8 +114,11 @@ class _PaPhoneScreenState extends State<PaPhoneScreen> {
   /// Carrier forwarding is an Android-only, flagged capability. When it isn't
   /// available we simply don't talk about carrier setup at all — a "Fix it"
   /// button that opens a self-guarded empty screen would be worse than silence.
+  /// [IOS-PORT-DISABLE-1] 2026-08-14: `avaDialer` removed from this gate —
+  /// forwarding must survive the AvaDialer retirement (see
+  /// pstn_forwarding_setup.dart registerPstnForwardingSection doc).
   bool get _carrierSupported =>
-      Platform.isAndroid && RemoteConfig.avaDialer && RemoteConfig.pstnVoicemail;
+      Platform.isAndroid && RemoteConfig.pstnVoicemail;
 
   @override
   void initState() {
