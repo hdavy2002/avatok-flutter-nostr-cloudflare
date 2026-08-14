@@ -2418,7 +2418,11 @@ export class AvaAgentDO {
         authorization: `Bearer ${key}`, "content-type": "application/json",
         "HTTP-Referer": "https://avatok.ai", "X-Title": "AvaTOK ambient",
       },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.6 }),
+      // [AVA-NOTHINK-1] reasoning off — the ambient lane's whole point is a
+      // quick light touch; a hybrid reasoner thinking silently here burns
+      // budget and delays a message nobody is waiting for. Ignored by models
+      // without a reasoning mode.
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.6, reasoning: { enabled: false } }),
       signal: AbortSignal.timeout(20000),
     });
     const out: any = await res.json().catch(() => ({}));
