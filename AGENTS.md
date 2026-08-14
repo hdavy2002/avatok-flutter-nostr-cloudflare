@@ -51,6 +51,35 @@ gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk
 `android.yml` has a **guard step**: prod must be built from `main`, staging from
 `staging`. A mismatched dispatch fails fast instead of shipping the wrong code.
 
+### SHIP IT — OWNER'S RELEASE COMMAND (canonical)
+
+The exact owner phrase **“ship it”** is an explicit request for the complete
+production release pipeline. It is not a staging request and does not require
+asking the environment/format widgets above. Follow this fixed flow:
+
+1. Confirm the release commit is on `main`; do not ship uncommitted working-tree
+   changes or silently include unrelated files. Check for an already queued or
+   running `android.yml` run for the same app revision first.
+2. Dispatch GitHub Actions only (never build locally):
+
+   ```bash
+   gh workflow run android.yml --ref main \\
+     -f environment=prod -f artifact=both -f play_track=internal
+   ```
+
+3. The workflow creates the signed arm64 APK and signed Play-upload AAB, uploads
+   both as GitHub artifacts/release assets, publishes the AAB to Google Play
+   Internal testing, and updates the app's `latestAppBuild` pointer after the
+   internal publication succeeds.
+4. Wait for the production GitHub Environment approval gate and approve the exact
+   requested run. Report the workflow URL, run result, build number, artifact
+   links, Play track, and pointer-update result.
+
+The `android.yml` branch/environment guard remains mandatory: production is
+`main` + `prod`; staging is `staging` + `staging`. Never publish a staging build
+to Play. A normal “build” request still follows RULE 2; only the exact phrase
+“ship it” selects this fixed production pipeline.
+
 Builds are `workflow_dispatch` only. **Never trigger one unless the owner explicitly
 asks** (see the Git protocol section below). Report back the run URL.
 
