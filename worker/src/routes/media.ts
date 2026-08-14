@@ -716,7 +716,9 @@ function userKey(uid: string, kind: "public" | "dm" | "private", hash: string): 
 // configured — callers must treat that as "not downloadable yet", the same
 // precondition routes/olx.ts's presigned branch already has.
 export async function presignDigitalReadUrl(env: Env, r2Key: string, expiresSec = 900): Promise<string | null> {
-  if (!(env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_ACCOUNT_ID)) return null;
+  if (!(env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_ACCOUNT_ID)) {
+    return await fallbackPrivateMediaUrl(env, r2Key, expiresSec);
+  }
   // [AVA-MEDIA-AUTHZ-1 fix] Per-environment bucket name (staging vs prod use
   // different avatok-digital* bucket names, worker/wrangler.toml). NO
   // hardcoded "avatok-digital" fallback anymore — that silently made staging
@@ -733,6 +735,71 @@ export async function presignDigitalReadUrl(env: Env, r2Key: string, expiresSec 
       expiresSec,
     });
   } catch { return null; }
+}
+
+// [AI-MEDIA-DELIVERY-1] Private AI artifacts must remain private even when the
+// account has not created R2 S3 API tokens. The normal path above returns a
+// presigned R2 URL. This fallback uses the Worker-bound R2 bucket directly and
+// a short-lived HMAC bearer URL, so generated images still open without making
+// the user's private artifact public or blocking the whole generation job.
+function privateMediaSigningSecret(env: Env): string {
+  return String(env.JWT_SECRET || env.VENICE_API_KEY || env.OPENROUTER_API_KEY || "");
+}
+
+async function hmacHex(secret: string, value: string): Promise<string | null> {
+  if (!secret) return null;
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+    );
+    const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)));
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch { return null; }
+}
+
+async function fallbackPrivateMediaUrl(env: Env, r2Key: string, expiresSec: number): Promise<string | null> {
+  const key = String(r2Key || "");
+  // Only the per-user private namespace can be exposed by this fallback. It
+  // never becomes a general-purpose R2 proxy.
+  if (!key.startsWith("u/") || key.includes("..")) return null;
+  const exp = Math.floor(Date.now() / 1000) + Math.max(60, Math.min(900, expiresSec));
+  const payload = `${exp}.${key}`;
+  const sig = await hmacHex(privateMediaSigningSecret(env), payload);
+  if (!sig) return null;
+  const host = env.ENVIRONMENT_NAME === "staging" ? "api-staging.avatok.ai" : "api.avatok.ai";
+  return `https://${host}/api/media/private-read?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
+}
+
+/** Serve a short-lived private-media fallback URL using the Worker R2 binding.
+ * This route intentionally has no Clerk/NIP-98 requirement: the HMAC URL is
+ * the bearer capability minted only after the caller passed media authz. */
+export async function privateMediaRead(req: Request, env: Env): Promise<Response> {
+  const u = new URL(req.url);
+  const key = u.searchParams.get("key") || "";
+  const exp = Number(u.searchParams.get("exp") || 0);
+  const sig = u.searchParams.get("sig") || "";
+  if (!key.startsWith("u/") || key.includes("..") || !Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000) || !sig) {
+    return new Response("Not found", { status: 404 });
+  }
+  const expected = await hmacHex(privateMediaSigningSecret(env), `${exp}.${key}`);
+  if (!expected || expected.length !== sig.length || !cryptoSafeEqual(expected, sig)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const object = await env.DIGITAL.get(key);
+  if (!object) return new Response("Not found", { status: 404 });
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("cache-control", "private, max-age=900");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("etag", object.httpEtag);
+  return new Response(object.body, { headers });
+}
+
+function cryptoSafeEqual(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i % Math.max(1, b.length));
+  return diff === 0;
 }
 
 // VIDPOL-2: 64 MB hard cap on video uploads (both /upload/public and

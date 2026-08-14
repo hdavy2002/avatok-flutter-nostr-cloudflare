@@ -8,7 +8,7 @@
 import type { Env } from "./types";
 import { json, preflight } from "./util";
 import * as api from "./routes/api";
-import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce } from "./routes/media";
+import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead } from "./routes/media";
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
@@ -978,6 +978,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/communities" && req.method === "GET") return await api.communities(req, env);
 
       // --- media (NIP-98) ---
+      if (p === "/api/media/private-read" && req.method === "GET") return await privateMediaRead(req, env);
       if (p === "/upload/public" && req.method === "POST") return await uploadPublic(req, env, ctx);
       if (p === "/upload/private" && req.method === "POST") return await uploadPrivate(req, env, ctx);
       if (p === "/api/media/commit" && req.method === "POST") return await mediaCommit(req, env, ctx);
