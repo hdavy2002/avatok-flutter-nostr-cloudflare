@@ -1133,12 +1133,25 @@ export async function runAvaImage(
   // gate chain, in front of the chip) was started at the top of this function
   // and is already in flight — this await is normally free.
   const email = await emailP;
+  // [VENICE-TOKENS-1] Reserve site: when Venice image generation is live for
+  // this call, reserve the Venice flat tariff (cfg.veniceImageTokens) instead
+  // of the legacy OpenRouter catalog estimate — see ai_billing.ts's
+  // ReserveAiJobInput.flatPriceTokens for how the override actually skips the
+  // catalog computation. Gated on `!a.editRef` too: generateImage() (above)
+  // only routes to Venice for a plain text-to-image request — an edit
+  // (editRef set) always falls through to the OpenRouter path even when
+  // veniceMediaEnabled is true, so reserving the Venice tariff for an edit
+  // would price a call that never actually reaches Venice. Flag off (or an
+  // edit) ⇒ undefined ⇒ byte-for-byte identical reserve behaviour to before
+  // this change.
+  const flatPriceTokens = cfg.veniceMediaEnabled && !a.editRef ? cfg.veniceImageTokens : undefined;
   const created = await createAiMediaJob(env, {
     ownerUid: uid, convId: conv, kind: "image_generate",
     sourceMediaId: null,
     label: chipLabel,
     estimate: { images: 1 },
     email,
+    flatPriceTokens,
   });
   if (!created.ok) {
     // AWAITED — early-return error path (see blockedResult's comment).

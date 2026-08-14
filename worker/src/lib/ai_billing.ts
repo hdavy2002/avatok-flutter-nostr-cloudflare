@@ -429,6 +429,15 @@ export interface ReserveAiJobInput {
   maxOutputTokens: number;
   units?: Partial<Pick<UsageUnits, "images" | "ocrPages" | "avSeconds">>;
   email?: string | null;
+  /** [VENICE-TOKENS-1] Optional flat reserve override, in TOKENS (never USD
+   *  or micro-USD) — when a positive finite number is supplied, reserveAiJob
+   *  skips the catalog/estimateTokens() worst-case computation below entirely
+   *  and reserves exactly this many tokens (still floored at 1). Undefined
+   *  (the default for every existing caller) preserves the catalog-estimate
+   *  path byte-for-byte. Introduced for Venice media's flat per-action tariff
+   *  (cfg.veniceImageTokens) — the caller (ai_media_jobs.ts's
+   *  createAiMediaJob) decides WHEN to pass one; this function only honours it. */
+  flatPriceTokens?: number;
 }
 
 export interface ReserveAiJobResult {
@@ -597,7 +606,17 @@ export async function reserveAiJob(env: Env, input: ReserveAiJobInput): Promise<
   // both, or settle_ai_cost will under-reserve-driven under-collect it as
   // unrecovered platform loss for no reason.
   const debtMicroUsd = await currentDebtMicroUsd(env, input.uid);
-  const amount = Math.max(1, Math.ceil((debtMicroUsd + est.userChargeMicroUsd) / TOKEN_MICRO_USD));
+  // [VENICE-TOKENS-1] Flat reserve override: a caller-supplied flat tariff
+  // (Venice's cfg.veniceImageTokens today) replaces the catalog-derived
+  // worst-case estimate entirely — it deliberately does NOT fold in existing
+  // sub-cent debt (est.userChargeMicroUsd/debtMicroUsd above), since a flat
+  // per-action price is not an estimate and must not silently grow. `est` is
+  // still computed above so this branch costs nothing structurally; when
+  // flatPriceTokens is absent (every pre-existing caller) this is exactly the
+  // prior computation, unchanged.
+  const amount = input.flatPriceTokens != null && Number.isFinite(input.flatPriceTokens) && input.flatPriceTokens > 0
+    ? Math.max(1, Math.trunc(input.flatPriceTokens))
+    : Math.max(1, Math.ceil((debtMicroUsd + est.userChargeMicroUsd) / TOKEN_MICRO_USD));
   const expiresAt = Date.now() + reservationTtlMsFor(input.modality);
 
   const reserved = await walletOp(env, input.uid, {

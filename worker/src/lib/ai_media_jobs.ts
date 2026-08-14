@@ -423,6 +423,13 @@ export interface CreateAiMediaJobInput {
    *  dedupe (see findUpgradeJobFor below) rather than reserve a second charge
    *  for an upgrade that is already running or already done. */
   upgradeOfJobId?: string | null;
+  /** [VENICE-TOKENS-1] Optional flat reserve override in tokens, passed
+   *  straight through to ai_billing.ts's reserveAiJob() (see
+   *  ReserveAiJobInput.flatPriceTokens for the full contract). Undefined
+   *  (every pre-existing caller) preserves the catalog-estimate reserve
+   *  exactly. Distinct from flatPriceTokensFor()/avaFlatPricingEnabled below,
+   *  which is a separate, still-dark, reporting-only tariff lookup. */
+  flatPriceTokens?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -529,6 +536,9 @@ export async function createAiMediaJob(env: Env, input: CreateAiMediaJobInput): 
     maxInputTokens: usage.inputTokens, maxOutputTokens: usage.outputTokens,
     units: { images: usage.images, avSeconds: usage.avSeconds },
     email: input.email ?? null,
+    // [VENICE-TOKENS-1] Undefined for every caller that doesn't pass one —
+    // reserveAiJob's catalog-estimate path is then byte-for-byte unchanged.
+    flatPriceTokens: input.flatPriceTokens ?? undefined,
   });
   if (!reservation.ok) {
     return {
