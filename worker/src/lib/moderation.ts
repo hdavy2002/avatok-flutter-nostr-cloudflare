@@ -28,7 +28,8 @@ export type ModField =
   | "bio" | "persona" | "prompt"
   | "listing_title" | "listing_desc"
   | "greeting" | "status"
-  | "message" | "generic";
+  | "message" | "generic"
+  | "venice_image_prompt";
 
 export interface ModResult {
   safe: boolean;
@@ -51,6 +52,40 @@ export function namePlausible(text: string): boolean {
   return NAME_RE.test(t);
 }
 
+// ── [VENICE-SAFE-1] prompt-gate rubric for the Venice image path ────────────
+// Spec: Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md, "NSFW enforcement" §2 +
+// "Real-person content policy". THE ONE PLACE to tune this rubric — every call
+// site (generateImageVenice in routes/ava_image.ts) reads it via
+// policyFor("venice_image_prompt"), so editing this const is the only edit
+// needed to retune the gate. Political satire is EXPLICITLY allowed — that is
+// the product feature (Gemini-class models over-refuse it); do not narrow the
+// ALLOW list into blocking "politician + ridicule".
+export const VENICE_IMAGE_PROMPT_RUBRIC =
+  "You are a content-safety classifier for an AI IMAGE-GENERATION request on a mainstream, " +
+  "general-audience app (Google Play policy applies — no adult content, ever). Classify the " +
+  "IMAGE PROMPT below that a user wants generated.\n\n" +
+  "ALLOW (this is a deliberate product feature — do NOT over-block it): obvious satire, parody, " +
+  "caricature, or meme-format humor of PUBLIC FIGURES (politicians, celebrities, other public " +
+  "persons), including political satire and ridicule, when the style is exaggerated, cartoonish, " +
+  "meme-captioned, or otherwise clearly unreal. \"Politician + ridicule\" alone is NEVER a " +
+  "violation — that is the feature, not an edge case.\n\n" +
+  "BLOCK the prompt if it asks for ANY of the following:\n" +
+  "(a) Sexual, nude, or sexually degrading content of ANY real person, or ANY request for " +
+  "nudity/sexual content at all, of anyone, real or fictional — this app is SFW-only, no " +
+  "exceptions, no tier, no \"artistic\" framing.\n" +
+  "(b) A real, identifiable person depicted committing or suffering violence, or doing something " +
+  "criminal or harmful — even inside a satire/joke framing. Play treats this as bullying, " +
+  "harassment, or defamation regardless of the satire label.\n" +
+  "(c) Deceptive realism — anything designed to be mistaken for a real event, statement, or " +
+  "document: photorealistic \"caught on camera\" staging, fake news-article/broadcast screenshots, " +
+  "fabricated quotes presented as real (realistic font/attribution), fake official documents or " +
+  "seals, or fake election announcements/results.\n" +
+  "(d) Generation of an identifiable PRIVATE individual (i.e. not a public figure) in any " +
+  "sexual, violent, or humiliating context, or as a photorealistic likeness at all.\n\n" +
+  "When in doubt between satire and a BLOCK category above, the BLOCK category wins — the " +
+  "allowance is for humor/caricature ABOUT public figures, never for sexualizing, defaming, or " +
+  "deceptively depicting anyone.";
+
 // ── per-field policy text fed to the classifier ─────────────────────────────
 function policyFor(field: ModField): string {
   const base =
@@ -63,6 +98,12 @@ function policyFor(field: ModField): string {
     "Treat any offer, request, or advertisement of sex, sexual acts, or one's body for money/hire as UNSAFE " +
     "with category \"solicitation\".";
   switch (field) {
+    case "venice_image_prompt":
+      // Self-contained rubric (not the generic `base` text above) — the Venice
+      // image-generation prompt gate has its own ALLOW/BLOCK contract. See
+      // VENICE_IMAGE_PROMPT_RUBRIC's doc comment for why this is the ONE place
+      // to tune it.
+      return VENICE_IMAGE_PROMPT_RUBRIC;
     case "name":
     case "handle":
     case "persona_name":
@@ -296,5 +337,105 @@ export async function classifyThreat(env: Env, text: string): Promise<ThreatResu
     };
   } catch {
     return { unsafe: false, category: "none", severity: 0, reason: "", ms: Date.now() - t0, ok: false };
+  }
+}
+
+// ── [VENICE-SAFE-1] output gate — Gemma vision lane, ported into worker/src ──
+// The project's IMAGE/vision moderation (as opposed to the text lane above) has
+// always lived in consumers/src/moderation.ts's classifyGemma(): a Workers-AI
+// vision-capable model (`@cf/google/gemma-4-26b-a4b-it`, env-overridable via
+// MODERATION_MODEL) rates an image 0-100 on nsfw/violence via prompt+parse (NOT
+// the classifier/label variant — that needs a different model type this repo
+// doesn't have wired). This is the SAME prompt/parse contract, reimplemented
+// here because the Venice image path (routes/ava_image.ts) runs inside the
+// worker package and needs a SYNCHRONOUS answer before it hands bytes back to
+// the caller — the consumers package only ever sees this asynchronously, off
+// the Q_MODERATION queue, which is too late for "never deliver an unsafe
+// generated image in the first place". Do not duplicate this a third time;
+// route any other worker-side inline image scan through this function.
+const IMG_MOD_MODEL_DEFAULT = "@cf/google/gemma-4-26b-a4b-it";
+// Threshold: consumers/moderation.ts uses 0.85 "reject" / 0.60 "flag" for
+// USER-UPLOADED content, where a false positive means re-reviewing someone
+// else's photo. Freshly AI-GENERATED output has no such cost to being
+// cautious — discarding a false positive just means the user gets a "can't
+// create that" and can re-roll the prompt — so this gate uses the lower FLAG
+// bar (0.60) as its BLOCK line, matching CLAUDE.md's "no nudity/NSFW media —
+// ever" product rule rather than the more lenient upload bar.
+const VENICE_OUTPUT_BLOCK_SCORE = 0.60;
+
+export interface ImageModResult {
+  blocked: boolean;
+  nsfw: number;      // 0..1
+  violence: number;  // 0..1
+  label: string;
+  ok: boolean;        // true = classifier actually ran; false = errored
+}
+
+function imgToBase64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function imgSniffMime(b: Uint8Array): string {
+  if (b[0] === 0x89 && b[1] === 0x50) return "image/png";
+  if (b[0] === 0xff && b[1] === 0xd8) return "image/jpeg";
+  if (b[0] === 0x47 && b[1] === 0x49) return "image/gif";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[8] === 0x57 && b[9] === 0x45) return "image/webp";
+  return "image/jpeg";
+}
+function imgPct(text: string, key: string): number {
+  const m = text.match(new RegExp(key + "\\s*[=:]\\s*([0-9]+(?:\\.[0-9]+)?)"));
+  if (!m) return 0;
+  let v = parseFloat(m[1]);
+  if (v > 1) v = v / 100; // 0-100 scale → 0..1
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * Rate a freshly-generated image for NSFW/violence via the Gemma vision lane
+ * (`avaReason` verb "see", pinned `@cf/...` model — routes straight to cf_ai
+ * regardless of dialect, see ava_reason/policy.ts's pinnedCf branch). ONE call,
+ * no retries (pragmatic about cost/latency, per [VENICE-SAFE-1]).
+ *
+ * FAILS CLOSED on a classifier error (`ok:false` ⇒ `blocked:true`) — the
+ * opposite posture from the text lane above. This mirrors consumers/
+ * moderation.ts's [MOD-FAILCLOSED-1]: "AI scan unavailable → FAIL CLOSED...
+ * never auto-pass an unscanned image." That precedent was written for
+ * user uploads; it applies at least as strongly to output this product
+ * promises is NEVER NSFW.
+ */
+export async function moderateGeneratedImage(
+  env: Env, uid: string, bytes: Uint8Array,
+): Promise<ImageModResult> {
+  const model = (env as any).MODERATION_MODEL || IMG_MOD_MODEL_DEFAULT;
+  const prompt =
+    "You are a strict content-safety classifier. Rate the image for two risks on a 0-100 scale: " +
+    "NSFW (explicit sexual content / nudity) and VIOLENCE (gore, graphic injury, weapons used to harm). " +
+    "Reply with ONLY this exact line, nothing else: nsfw=<0-100> violence=<0-100> label=<one short word>";
+  try {
+    const text = (await avaReason(env, {
+      role: "moderation", capability: "content_check", trigger: "venice_output_scan",
+      appName: "avaai", uid,
+      model,
+      verb: "see",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: `data:${imgSniffMime(bytes)};base64,${imgToBase64(bytes)}` } },
+        ],
+      }],
+      temperature: 0,
+      aiOptions: { chat_template_kwargs: { enable_thinking: false }, max_completion_tokens: 32 },
+      fallback: false, // multimodal input — keep on Workers AI, no OpenRouter hop
+      timeoutMs: 15000,
+    })).toLowerCase();
+    const nsfw = imgPct(text, "nsfw");
+    const violence = imgPct(text, "violence");
+    const label = text.match(/label\s*[=:]\s*([a-z_]+)/)?.[1] || (nsfw >= violence ? "nsfw" : "violence");
+    const score = Math.max(nsfw, violence);
+    return { blocked: score >= VENICE_OUTPUT_BLOCK_SCORE, nsfw, violence, label, ok: true };
+  } catch {
+    return { blocked: true, nsfw: 0, violence: 0, label: "scan_error", ok: false };
   }
 }

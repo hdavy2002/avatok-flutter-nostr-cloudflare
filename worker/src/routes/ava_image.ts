@@ -80,6 +80,11 @@ import { imageModel } from "../lib/ava_reason/policy"; // One Brain B1: env-over
 // [VENICE-IMG-1 2026-08-14] Venice AI image client + routing map — dark behind
 // cfg.veniceMediaEnabled (routes/config.ts). See generateImageVenice() below.
 import { veniceGenerateImage, veniceRoute } from "../lib/venice";
+// [VENICE-SAFE-1 2026-08-14] The two moderation gates around the Venice path —
+// prompt gate (text lane, politics-allowed rubric) and output gate (Gemma
+// vision lane). See lib/moderation.ts for the rubric + fail-open/fail-closed
+// reasoning; nothing here re-implements either classifier.
+import { moderate, moderateGeneratedImage } from "../lib/moderation";
 // [AVA-IMAGE-UX-1 / §44] Durable job/message state machine — the PRIMARY
 // mechanism a job-hydrated client (AiMediaJobRepository/AiMediaJobCard, M4)
 // reads. postChip()/endChip() below are kept as a best-effort SECONDARY
@@ -535,9 +540,21 @@ export async function generateImage(
 // provider "venice" and the routing-map model id, so dashboards built on
 // provider="openrouter" gain a sibling rather than a new taxonomy. Model comes
 // from veniceRoute("image","free").model, never hard-coded (lib/venice.ts is
-// the single source of truth for Venice model ids). No moderation gate,
-// output-safety gate, or watermarking here yet — those are [VENICE-SAFE-1] /
-// [VENICE-LABEL-1], separate issues per Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md.
+// the single source of truth for Venice model ids).
+//
+// [VENICE-SAFE-1 2026-08-14] TWO moderation gates wrap the provider call:
+//   1. PROMPT GATE (before the Venice call): lib/moderation.ts's text lane
+//      with the "venice_image_prompt" rubric — blocks sexual/nude requests of
+//      any real person, real-person violence/crime depictions, deceptive-
+//      realism framing, and private-individual generation, while EXPLICITLY
+//      allowing political satire/caricature/memes of public figures.
+//   2. OUTPUT GATE (after the Venice call, before returning bytes to the
+//      caller): lib/moderation.ts's Gemma vision lane — the backstop for
+//      anything the prompt gate or Venice's own safe_mode missed.
+// Both gates throw `Error("content_blocked: <reason>")` on a block, which
+// classifyImageJobError() below recognizes via KNOWN_JOB_ERROR_CODES, and both
+// emit `venice_nsfw_blocked` telemetry so a block is auditable per-user.
+// [VENICE-LABEL-1] watermarking is a separate, not-yet-done issue.
 async function generateImageVenice(
   env: Env, uid: string, prompt: string, opts: GenerateImageOptions,
 ): Promise<GeneratedImage> {
@@ -555,6 +572,23 @@ async function generateImageVenice(
       });
     } catch { /* telemetry best-effort */ }
   };
+
+  // ── (1) PROMPT GATE — text lane, "venice_image_prompt" rubric ────────────
+  // Runs unconditionally on the Venice path (NOT gated behind
+  // cfg.aiContentModerationEnabled — that flag governs the generic llama-guard
+  // guardInput() call in runAvaImage()/generateAvaImageSync(), which is a
+  // separate, currently-dark gate). This one is the SFW-only, politics-allowed
+  // gate the Venice lane specifically requires and must always run.
+  const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
+  if (!promptVerdict.safe) {
+    track(env, uid, "venice_nsfw_blocked", "avaai", {
+      stage: "prompt", uid, reason: promptVerdict.reason, categories: promptVerdict.categories,
+      model, provider: "venice",
+    });
+    emitReason(false, `content_blocked: ${promptVerdict.reason || "prompt not allowed"}`);
+    throw new Error(`content_blocked: ${promptVerdict.reason || "That image can't be created."}`);
+  }
+
   let b64: string;
   try {
     ({ b64 } = await veniceGenerateImage(env as any, model, prompt, { aspectRatio: opts.aspectRatio }));
@@ -572,6 +606,22 @@ async function generateImageVenice(
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+  // ── (2) OUTPUT GATE — Gemma vision lane, one call, no retries ────────────
+  // The backstop for anything the prompt gate or Venice's own safe_mode
+  // missed. Runs BEFORE this function returns bytes to the caller, so a
+  // blocked image is never stored, watermarked, or posted into a thread.
+  const outputVerdict = await moderateGeneratedImage(env, uid, bytes);
+  if (outputVerdict.blocked) {
+    track(env, uid, "venice_nsfw_blocked", "avaai", {
+      stage: "output", uid, label: outputVerdict.label, nsfw: outputVerdict.nsfw,
+      violence: outputVerdict.violence, classifier_ok: outputVerdict.ok,
+      model, provider: "venice",
+    });
+    emitReason(false, "content_blocked: output failed safety check");
+    throw new Error("content_blocked: That image can't be created — it didn't pass our safety check.");
+  }
+
   emitReason(true, null);
   // Venice's sync image response carries no per-call usage/cost fields today
   // (unlike some OpenRouter image providers) — left undefined, never
@@ -630,9 +680,14 @@ async function storeImageArtifact(env: Env, uid: string, bytes: Uint8Array): Pro
 // raw provider/network error) falls back to the generic
 // 'provider_unavailable'. Duplicated (identically) in queues/ai_media.ts —
 // no shared job-utils module in this wave's file ownership.
+// [VENICE-SAFE-1] "content_blocked" added for the Venice prompt/output
+// moderation gates below — a distinct code from provider_unavailable so a
+// safety refusal isn't misreported to the client (and telemetry) as a
+// provider outage.
 const KNOWN_JOB_ERROR_CODES = new Set([
   "provider_timeout", "provider_unavailable", "unsupported_format",
   "input_too_large", "insufficient_balance", "cancelled_by_user",
+  "content_blocked",
 ]);
 function classifyImageJobError(e: unknown): string {
   const msg = String((e as any)?.message ?? e ?? "");
