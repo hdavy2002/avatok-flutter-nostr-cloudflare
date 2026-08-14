@@ -1,11 +1,19 @@
 import type { Env } from "../types";
 import { failAiMediaJob } from "../lib/ai_media_jobs";
 import { loadQueuedImageInput, purgeExpiredQueuedImageInputs } from "../lib/ai_media_inputs";
+import {
+  claimVeniceMediaRecoveryLease,
+  failVeniceMediaJob,
+  listVeniceMediaJobsForRecovery,
+} from "../lib/venice_media_jobs";
+import { enqueueVeniceMediaPoll } from "./venice_media";
 import { track, trackException } from "../hooks";
 
 const QUEUED_STALE_MS = 2 * 60 * 1000;
 const RUNNING_STALE_MS = 3 * 60 * 1000;
 const MAX_RESTARTS = 3;
+const VENICE_STALE_MS = 3 * 60 * 1000;
+const MAX_VENICE_POLL_ATTEMPTS = 40;
 const BATCH_LIMIT = 100;
 
 /**
@@ -13,10 +21,18 @@ const BATCH_LIMIT = 100;
  * enough; this is the safety net for dropped messages, isolate eviction and
  * worker deploys. It is bounded, idempotent, and never charges a second time.
  */
-export async function recoverAiMediaJobs(env: Env): Promise<{ requeued: number; failed: number; purged: number }> {
+export async function recoverAiMediaJobs(env: Env): Promise<{
+  requeued: number;
+  failed: number;
+  purged: number;
+  veniceRequeued: number;
+  veniceFailed: number;
+}> {
   const now = Date.now();
   let requeued = 0;
   let failed = 0;
+  let veniceRequeued = 0;
+  let veniceFailed = 0;
 
   const queued = await env.DB_MEDIA.prepare(
     `SELECT job_id, owner_uid FROM ai_media_jobs
@@ -66,6 +82,67 @@ export async function recoverAiMediaJobs(env: Env): Promise<{ requeued: number; 
   }
 
   const purged = await purgeExpiredQueuedImageInputs(env).catch(() => 0);
-  if (requeued || failed || purged) console.log("[ai-media-recovery]", JSON.stringify({ requeued, failed, purged }));
-  return { requeued, failed, purged };
+
+  // Venice video/music jobs have their own durable table because the provider
+  // work is asynchronous. The queue consumer has a hard deadline, but this
+  // sweep is the second line of defence when a delayed poll message is lost,
+  // the Worker is evicted, or submission never transitions to polling.
+  const veniceJobs = await listVeniceMediaJobsForRecovery(env, now, now - VENICE_STALE_MS, BATCH_LIMIT);
+  for (const job of veniceJobs) {
+    try {
+      if (job.status === "submitting") {
+        const result = await failVeniceMediaJob(env, {
+          jobId: job.job_id,
+          errorCode: "PROVIDER_TIMEOUT",
+          reason: "stale_submission_watchdog",
+        });
+        if (result.ok) {
+          veniceFailed++;
+          void track(env, job.owner_uid, "venice_media_job_watchdog_failed", "avaai", {
+            job_id: job.job_id, kind: job.kind, reason: "stale_submission", attempts: job.attempts,
+          });
+        }
+        continue;
+      }
+
+      if (now >= job.deadline_at || job.attempts >= MAX_VENICE_POLL_ATTEMPTS) {
+        const result = await failVeniceMediaJob(env, {
+          jobId: job.job_id,
+          errorCode: "PROVIDER_TIMEOUT",
+          reason: now >= job.deadline_at ? "watchdog_deadline_exceeded" : "watchdog_poll_attempt_limit",
+        });
+        if (result.ok) {
+          veniceFailed++;
+          void track(env, job.owner_uid, "venice_media_job_watchdog_failed", "avaai", {
+            job_id: job.job_id, kind: job.kind,
+            reason: now >= job.deadline_at ? "deadline_exceeded" : "poll_attempt_limit",
+            attempts: job.attempts,
+          });
+        }
+        continue;
+      }
+
+      const leased = await claimVeniceMediaRecoveryLease(
+        env, job.job_id, now - VENICE_STALE_MS, now,
+      );
+      if (!leased) continue;
+      await enqueueVeniceMediaPoll(env, job.job_id, job.kind);
+      veniceRequeued++;
+      void track(env, job.owner_uid, "venice_media_job_watchdog_requeued", "avaai", {
+        job_id: job.job_id, kind: job.kind, attempts: job.attempts,
+      });
+    } catch (e) {
+      void trackException(env, e, {
+        uid: job.owner_uid, route: "ai_media_recovery.venice", handled: true,
+        extra: { job_id: job.job_id, kind: job.kind },
+      });
+    }
+  }
+
+  if (requeued || failed || purged || veniceRequeued || veniceFailed) {
+    console.log("[ai-media-recovery]", JSON.stringify({
+      requeued, failed, purged, veniceRequeued, veniceFailed,
+    }));
+  }
+  return { requeued, failed, purged, veniceRequeued, veniceFailed };
 }

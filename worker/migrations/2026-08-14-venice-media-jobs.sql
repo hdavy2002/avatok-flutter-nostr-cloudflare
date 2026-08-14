@@ -60,3 +60,5 @@ CREATE TABLE IF NOT EXISTS venice_media_jobs (
 CREATE INDEX IF NOT EXISTS idx_venice_media_jobs_owner_status ON venice_media_jobs(owner_uid, status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_venice_media_jobs_owner_conv   ON venice_media_jobs(owner_uid, conv_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_venice_media_jobs_queue_id     ON venice_media_jobs(venice_queue_id);
+CREATE INDEX IF NOT EXISTS idx_venice_media_jobs_recovery
+  ON venice_media_jobs(status, updated_at, deadline_at);

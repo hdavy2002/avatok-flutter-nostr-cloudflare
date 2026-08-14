@@ -120,6 +120,57 @@ export async function listVeniceMediaJobs(
   }
 }
 
+/** Return only non-terminal Venice jobs that the scheduled recovery sweep can
+ * safely inspect. The deadline predicate catches jobs whose provider poll
+ * message was delayed past its hard stop; the updated_at predicate catches a
+ * lost queue message before the deadline. */
+export async function listVeniceMediaJobsForRecovery(
+  env: Env,
+  nowMs: number,
+  staleBeforeMs: number,
+  limit = 100,
+): Promise<VeniceMediaJobRecord[]> {
+  try {
+    const rows = await env.DB_MEDIA.prepare(
+      `SELECT * FROM venice_media_jobs
+       WHERE status IN ('submitting','polling')
+         AND (deadline_at<=?1 OR updated_at<?2)
+       ORDER BY updated_at LIMIT ?3`,
+    ).bind(nowMs, staleBeforeMs, Math.max(1, Math.min(100, limit))).all<any>();
+    return (rows.results ?? []).map(rowToRecord);
+  } catch (e) {
+    void trackException(env, e, {
+      route: "venice_media_jobs.listVeniceMediaJobsForRecovery", handled: true,
+    });
+    return [];
+  }
+}
+
+/** Claim a recovery lease without changing job state. Only a stale row can be
+ * leased, so concurrent cron invocations requeue a job at most once per
+ * recovery window. If sending the replacement message fails, the timestamp
+ * naturally becomes eligible again on the next sweep. */
+export async function claimVeniceMediaRecoveryLease(
+  env: Env,
+  jobId: string,
+  staleBeforeMs: number,
+  leasedAtMs: number,
+): Promise<boolean> {
+  try {
+    const result = await env.DB_MEDIA.prepare(
+      `UPDATE venice_media_jobs SET updated_at=?2
+       WHERE job_id=?1 AND status='polling' AND updated_at<?3`,
+    ).bind(jobId, leasedAtMs, staleBeforeMs).run();
+    return (result.meta?.changes ?? 0) > 0;
+  } catch (e) {
+    void trackException(env, e, {
+      route: "venice_media_jobs.claimVeniceMediaRecoveryLease", handled: true,
+      extra: { job_id: jobId },
+    });
+    return false;
+  }
+}
+
 // [§66] Deliberately conservative — Venice's models are not (yet) in
 // ai_billing.ts's AI_PRICE_CATALOG (a different agent's file ownership), so
 // `rateFor()` falls back to AI_DEFAULT_RATE for the RESERVE-time estimate.
