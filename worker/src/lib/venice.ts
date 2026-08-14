@@ -148,9 +148,19 @@ export function nearestVideoDuration(seconds: number | undefined): string {
   return `${best}s`;
 }
 
+// [VENICE-API-SHAPE-1 2026-08-14] The LIVE /video/queue schema (verified by a
+// real paid call, NOT the docs — the docs were wrong on three counts):
+//   - `safe_mode` is REJECTED ("Unrecognized key") on /video/queue — it is an
+//     image-endpoint param only. Video NSFW enforcement is therefore the
+//     prompt gate (lib/moderation.ts) — documented in queues/venice_media.ts.
+//   - `aspect_ratio` is REQUIRED: '16:9' | '9:16'. Default '9:16' (phones).
+//   - The response field is `queue_id`, not `id`.
+export const VENICE_VIDEO_DEFAULT_ASPECT = "9:16";
+
 export interface VeniceVideoOptions {
   duration?: string;
   resolution?: string;
+  aspectRatio?: "16:9" | "9:16";
   negativePrompt?: string;
   /** https URL or base64 data: URL of the source image (i2v only). */
   imageUrl?: string;
@@ -164,25 +174,57 @@ export async function veniceQueueVideo(
     prompt,
     duration: opts.duration || VENICE_VIDEO_DEFAULT_DURATION,
     resolution: opts.resolution || VENICE_VIDEO_DEFAULT_RESOLUTION,
-    // [VENICE-VID-1] NSFW enforcement layer 1 (Specs/VENICE-AI-MEDIA-PLAN-
-    // 2026-08-14.md "NSFW enforcement" §1): "send the API-level safety param
-    // on every image/video call ... Never disable it." Pinned true, same as
-    // veniceGenerateImage() above — never make this an option.
-    safe_mode: true,
+    aspect_ratio: opts.aspectRatio || VENICE_VIDEO_DEFAULT_ASPECT, // REQUIRED — see header
   };
   if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
   if (opts.imageUrl) body.image_url = opts.imageUrl;
   const j = await venicePost(env, "/video/queue", body, 30000);
-  const queueId = String(j?.id ?? "");
+  const queueId = String(j?.queue_id ?? j?.id ?? "");
   if (!queueId) throw new Error("venice video: no queue id in response");
   return { queueId };
 }
 
+// [VENICE-API-SHAPE-1] Live /video|audio/retrieve behaviour (verified with a
+// real completed job): the request REQUIRES { queue_id, model } (model missing
+// → "Model is required"), and the response is DUAL-SHAPE — JSON
+// { status: "PROCESSING"|... } while pending, but the RAW MEDIA BYTES
+// (video/mp4, audio/flac, …) once complete. There is no { status, url } shape
+// at all; the docs' url-polling example does not match production.
+export interface VeniceRetrieveResult {
+  status: string;
+  bytes?: Uint8Array;
+  mime?: string;
+}
+
+async function veniceRetrieveMedia(
+  env: VeniceEnv, path: string, queueId: string, model: string,
+): Promise<VeniceRetrieveResult> {
+  const r = await fetch(`${VENICE_BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${veniceKey(env)}` },
+    body: JSON.stringify({ queue_id: queueId, model }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const ct = (r.headers.get("content-type") || "").toLowerCase();
+  if (ct.includes("application/json")) {
+    const j = (await r.json().catch(() => ({}))) as any;
+    if (!r.ok) {
+      const msg = String(j?.error ?? j?.message ?? "unknown").slice(0, 300);
+      const err: any = new Error(`venice ${r.status}: ${msg}`);
+      err.status = r.status;
+      throw err;
+    }
+    return { status: String(j?.status ?? "unknown") };
+  }
+  if (!r.ok) throw new Error(`venice retrieve ${r.status} (non-json)`);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { status: "completed", bytes, mime: ct || undefined };
+}
+
 export async function veniceRetrieveVideo(
-  env: VeniceEnv, queueId: string,
-): Promise<{ status: string; url?: string }> {
-  const j = await venicePost(env, "/video/retrieve", { queue_id: queueId }, 30000);
-  return { status: String(j?.status ?? "unknown"), url: typeof j?.url === "string" ? j.url : undefined };
+  env: VeniceEnv, queueId: string, model: string,
+): Promise<VeniceRetrieveResult> {
+  return veniceRetrieveMedia(env, "/video/retrieve", queueId, model);
 }
 
 // ── Music (queue + poll) ─────────────────────────────────────────────────────
@@ -212,18 +254,23 @@ export async function veniceQueueMusic(
   env: VeniceEnv, model: string, prompt: string, opts: VeniceMusicOptions = {},
 ): Promise<{ queueId: string }> {
   const body: any = { model, prompt };
-  if (model === "ace-step-15") body.duration = clampMusicSeconds(opts.durationSeconds);
+  // [VENICE-API-SHAPE-1 2026-08-14] Live schema: the field is
+  // `duration_seconds` — `duration` is REJECTED ("Unrecognized key"). Verified
+  // with a real queued job; /audio/quote accepts { model, duration_seconds }
+  // (no prompt) and priced 60s at $0.03 as catalogued.
+  if (model === "ace-step-15") body.duration_seconds = clampMusicSeconds(opts.durationSeconds);
   const j = await venicePost(env, "/audio/queue", body, 30000);
-  const queueId = String(j?.id ?? "");
+  const queueId = String(j?.queue_id ?? j?.id ?? "");
   if (!queueId) throw new Error("venice music: no queue id in response");
   return { queueId };
 }
 
+/** [VENICE-API-SHAPE-1] Same dual-shape retrieve as video — JSON while
+ *  pending, raw media bytes (audio/flac observed live) once complete. */
 export async function veniceRetrieveAudio(
-  env: VeniceEnv, queueId: string,
-): Promise<{ status: string; url?: string }> {
-  const j = await venicePost(env, "/audio/retrieve", { queue_id: queueId }, 30000);
-  return { status: String(j?.status ?? "unknown"), url: typeof j?.url === "string" ? j.url : undefined };
+  env: VeniceEnv, queueId: string, model: string,
+): Promise<VeniceRetrieveResult> {
+  return veniceRetrieveMedia(env, "/audio/retrieve", queueId, model);
 }
 
 // ── Chat (sync, OpenAI-compatible) ───────────────────────────────────────────

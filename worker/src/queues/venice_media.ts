@@ -61,17 +61,15 @@ function nextDelaySeconds(attempt: number): number {
   return Math.min(POLL_BACKOFF_MAX_S, POLL_BACKOFF_BASE_S + attempt * POLL_BACKOFF_STEP_S);
 }
 
-// Venice's queue status vocabulary isn't pinned down anywhere in this repo
-// (lib/venice.ts's veniceRetrieveVideo/Audio just pass the raw `status`
-// string through) — matched loosely so a status string this code hasn't seen
-// before defaults to "still pending" (re-enqueue) rather than a false
-// terminal failure/success.
+// Venice's queue status vocabulary isn't pinned down anywhere in this repo —
+// matched loosely so a status string this code hasn't seen before defaults to
+// "still pending" (re-enqueue) rather than a false terminal failure/success.
+// [VENICE-API-SHAPE-1] Success is signalled by the retrieve response carrying
+// the RAW MEDIA BYTES (lib/venice.ts's dual-shape veniceRetrieveMedia), so
+// bytes-present is the unambiguous success signal; the status string only
+// matters while the response is still JSON.
 function isFailureStatus(status: string): boolean {
   return /fail|error|cancel|reject|denied/i.test(status);
-}
-function isSuccessStatus(status: string, url?: string): boolean {
-  if (url) return true; // a returned URL is unambiguous, whatever the status string says
-  return /^(complete|completed|succeeded|success|done|finished)$/i.test(status.trim());
 }
 
 /**
@@ -96,11 +94,12 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
   }
   const attempt = await bumpVeniceMediaJobAttempt(env, jobId);
 
-  let result: { status: string; url?: string };
+  let result: { status: string; bytes?: Uint8Array; mime?: string };
   try {
+    // [VENICE-API-SHAPE-1] retrieve REQUIRES the model alongside queue_id.
     result = job.kind === "venice_video_generate"
-      ? await veniceRetrieveVideo(env as any, job.venice_queue_id)
-      : await veniceRetrieveAudio(env as any, job.venice_queue_id);
+      ? await veniceRetrieveVideo(env as any, job.venice_queue_id, job.model)
+      : await veniceRetrieveAudio(env as any, job.venice_queue_id, job.model);
   } catch (e) {
     void trackException(env, e, {
       uid: job.owner_uid, route: "queues.venice_media", handled: true,
@@ -117,21 +116,18 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
     return;
   }
 
+  if (result.bytes && result.bytes.byteLength > 0) {
+    // Bytes in hand — that IS completion, whatever the status string says.
+    await deliverVeniceMedia(env, job, result.bytes, result.mime);
+    return;
+  }
   if (isFailureStatus(result.status)) {
     await failTerminal(env, job, "provider_unavailable", `venice_status:${result.status}`);
     return;
   }
-  if (!isSuccessStatus(result.status, result.url)) {
-    await enqueueVeniceMediaPoll(env, jobId, job.kind, nextDelaySeconds(attempt));
-    return;
-  }
-  if (!result.url) {
-    // Reported success with no URL — nothing to deliver; treat as a provider
-    // fault rather than silently completing with no artifact.
-    await failTerminal(env, job, "provider_unavailable", "no_url_on_completion");
-    return;
-  }
-  await deliverVeniceMedia(env, job, result.url);
+  // Still JSON/pending (QUEUED, PROCESSING, or anything unrecognized) —
+  // re-enqueue within the deadline.
+  await enqueueVeniceMediaPoll(env, jobId, job.kind, nextDelaySeconds(attempt));
 }
 
 /** Mark the job failed (releasing, never billing, the reservation) and post a
@@ -162,7 +158,7 @@ async function failTerminal(env: Env, job: VeniceMediaJobRecord, errorCode: stri
  * (registerArtifactMedia), settle the job, and deliver it into the thread —
  * the async counterpart to routes/ava_image.ts's fulfil() success path.
  */
-async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, url: string): Promise<void> {
+async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, bytes: Uint8Array, mime?: string): Promise<void> {
   // [VENICE-SAFE-1] OUTPUT-GATE SCOPE NOTE (v1). The image path
   // (routes/ava_image.ts's generateImageVenice) runs moderateGeneratedImage()
   // on the finished BYTES before delivery — a real backstop behind the prompt
@@ -176,23 +172,13 @@ async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, url: stri
   // frame, or add an async frame-extract step before a video job is
   // considered final. Music has no comparable visual-NSFW risk, so no output
   // gate is expected for it either.
-  let bytes: Uint8Array;
-  let mimeType: string;
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
-    if (!r.ok) throw new Error(`venice media fetch ${r.status}`);
-    mimeType = r.headers.get("content-type") || (job.kind === "venice_video_generate" ? "video/mp4" : "audio/mpeg");
-    bytes = new Uint8Array(await r.arrayBuffer());
-  } catch (e) {
-    void trackException(env, e, {
-      uid: job.owner_uid, route: "queues.venice_media", handled: true,
-      extra: { job_id: job.job_id, kind: job.kind, stage: "download" },
-    });
-    await failTerminal(env, job, "provider_unavailable", "download_failed");
-    return;
-  }
-
-  const ext = job.kind === "venice_video_generate" ? "mp4" : "mp3";
+  // [VENICE-API-SHAPE-1] No separate download step — the retrieve response IS
+  // the media (raw bytes; live capture showed video/mp4 and audio/flac).
+  const mimeType = (mime && mime.split(";")[0].trim())
+    || (job.kind === "venice_video_generate" ? "video/mp4" : "audio/flac");
+  const ext = mimeType.includes("flac") ? "flac"
+    : mimeType.includes("mpeg") || mimeType.includes("mp3") ? "mp3"
+    : job.kind === "venice_video_generate" ? "mp4" : "mp3";
   const fileName = `ava-${job.kind === "venice_video_generate" ? "video" : "music"}-${job.job_id.slice(0, 8)}.${ext}`;
   let stored: { id: string; key: string };
   try {
