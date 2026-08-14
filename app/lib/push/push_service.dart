@@ -2515,10 +2515,11 @@ class PushService {
     final callId = (f['callId'] ?? '').toString();
     final status = (f['status'] ?? '').toString();
     if (callId.isEmpty || status.isEmpty) return;
+    final seq = int.tryParse((f['seq'] ?? '').toString());
     Analytics.capture('call_status_ws_received', {
       'call_id': callId,
       'status': status,
-      'seq': int.tryParse((f['seq'] ?? '').toString()),
+      if (seq != null) 'seq': seq,
     });
     callStatusBus.add((
       callId: callId,
