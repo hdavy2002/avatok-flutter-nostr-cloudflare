@@ -109,6 +109,8 @@ import { emailFor } from "../lib/identity";
 // The image chip is the string the owner asked for by name ("hold karo, mein 2K
 // la raha hoon" — it surfaces verbatim in ai_media_job_card.dart's job.label).
 import { readVoiceStyle, avaString, type AvaVoiceStyle } from "../lib/ava_persona";
+import { deleteQueuedImageInput, sealQueuedImageInput, type QueuedImageInput } from "../lib/ai_media_inputs";
+import type { AiMediaJobRecord } from "../lib/ai_media_jobs";
 
 // ---------------------------------------------------------------------------
 // [AVA-IMG-KEEPALIVE-1 / WS-3] Detached-work lifetime.
@@ -748,6 +750,8 @@ interface FulfilArgs {
   t0: number;
   timeToPlaceholderMs: number;
   gateChainMs: number;
+  /** True when the durable queue has already claimed the row. */
+  alreadyClaimed?: boolean;
 }
 
 async function fulfil(a: FulfilArgs): Promise<void> {
@@ -763,8 +767,10 @@ async function fulfil(a: FulfilArgs): Promise<void> {
   // Idempotent claim by job_id — a second concurrent trigger (there shouldn't
   // be one; kept for safety/symmetry with the queue-driven kinds) is a safe
   // no-op, never a double generation/double charge.
-  const claimed = await claimAiMediaJob(env, jobId);
-  if (!claimed.ok) { await endChipOnce(); return; }
+  if (!a.alreadyClaimed) {
+    const claimed = await claimAiMediaJob(env, jobId);
+    if (!claimed.ok) { await endChipOnce(); return; }
+  }
   // Phase markers, NOT a percentage — no image provider reports a real
   // fraction. See updateAiMediaJobProgress() in lib/ai_media_jobs.ts for the
   // full reasoning and for why the client should render elapsed time.
@@ -889,7 +895,34 @@ async function fulfil(a: FulfilArgs): Promise<void> {
     }).catch(() => {});
   } finally {
     await endChipOnce();
+    await deleteQueuedImageInput(env, jobId).catch(() => {});
   }
+}
+
+/** Queue-owned image fulfillment. The queue claims the job before calling this
+ * helper; all provider/storage/billing behavior remains in the one canonical
+ * fulfil() implementation above. */
+export async function fulfilQueuedImage(env: Env, job: AiMediaJobRecord, input: QueuedImageInput): Promise<void> {
+  await fulfil({
+    env,
+    uid: job.owner_uid,
+    conv: job.conv_id,
+    prompt: input.prompt,
+    key: String(env.OPENROUTER_API_KEY || ""),
+    tier: input.tier,
+    jobId: job.job_id,
+    statusId: input.statusId,
+    editRef: input.editRef,
+    priv: input.private,
+    genOptions: input.genOptions,
+    chipLabel: input.chipLabel,
+    chipPosted: Promise.resolve(),
+    emailP: emailFor(env, job.owner_uid).catch(() => null),
+    t0: input.createdAt,
+    timeToPlaceholderMs: input.timeToPlaceholderMs,
+    gateChainMs: input.gateChainMs,
+    alreadyClaimed: true,
+  });
 }
 
 // Structured result so BOTH callers (the HTTP route and the @ava agent tool)
@@ -1190,20 +1223,21 @@ export async function runAvaImage(
     environment: environmentTag(env),
   }), "trackRequest", uid);
 
-  // (4–6) heavy work runs detached — return now while the image is produced,
-  // the job is completed, and the image is posted into the SAME conversation
-  // when ready. The caller must NOT wait behind this: runAvaImage() returns
-  // job_id immediately, below.
-  //
-  // [AVA-IMG-KEEPALIVE-1 / WS-3] detach(), NOT a bare `void`: on the HTTP path
-  // the runtime cancels work it was never told about the moment the Response
-  // is returned, which is very likely why images sometimes simply never
-  // arrived. See AvaImageKeepAlive at the top of this file for why the two
-  // call paths need different lifetime sources.
-  detach(env, a.keepAlive, fulfil({
-    env, uid, conv, prompt, key, tier, jobId, statusId, editRef: a.editRef, priv,
-    genOptions, chipPosted, emailP, t0, timeToPlaceholderMs, gateChainMs, chipLabel,
-  }), "fulfil", uid);
+  // Durable handoff: prompts are sealed before entering D1, then the queue
+  // consumer claims and fulfills the job. No provider work depends on the
+  // HTTP request or Durable Object lifetime.
+  try {
+    await sealQueuedImageInput(env, jobId, uid, {
+      prompt, editRef: a.editRef, private: priv, statusId, chipLabel, tier,
+      genOptions, timeToPlaceholderMs, gateChainMs, createdAt: t0,
+    });
+    await enqueueAiMediaJob(env, undefined, jobId, "image_generate");
+  } catch (e) {
+    await failAiMediaJob(env, { jobId, errorCode: "QUEUE_UNAVAILABLE", reason: "image_queue_dispatch_failed" }).catch(() => {});
+    await endChip(env, uid, conv, statusId, priv, chipLabel).catch(() => {});
+    await trackException(env, e, { uid, route: "ava_image", method: "queue_dispatch", handled: true, extra: { job_id: jobId } });
+    return { ok: false, reason: "queue_unavailable", message: avaString("err_image_start", style, prompt), httpStatus: 503 };
+  }
 
   return { ok: true, conv, job_id: jobId, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
 }

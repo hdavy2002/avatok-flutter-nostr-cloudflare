@@ -113,6 +113,7 @@ export interface AiMediaJobRecord {
   created_at: number;
   updated_at: number;
   completed_at: number | null;
+  attempt_count: number;
 }
 
 const VALID_KINDS = new Set<AiMediaJobKind>([
@@ -221,6 +222,7 @@ function rowToRecord(r: any): AiMediaJobRecord {
     reservation_id: r.reservation_id ?? null,
     created_at: Number(r.created_at), updated_at: Number(r.updated_at),
     completed_at: r.completed_at != null ? Number(r.completed_at) : null,
+    attempt_count: Number(r.attempt_count ?? 0),
   };
 }
 
@@ -599,7 +601,7 @@ export type ClaimAiMediaJobResult =
 export async function claimAiMediaJob(env: Env, jobId: string): Promise<ClaimAiMediaJobResult> {
   const ts = now();
   const res = await env.DB_MEDIA.prepare(
-    "UPDATE ai_media_jobs SET status='running', updated_at=?2 WHERE job_id=?1 AND status='queued'",
+    "UPDATE ai_media_jobs SET status='running', attempt_count=attempt_count+1, updated_at=?2 WHERE job_id=?1 AND status='queued'",
   ).bind(jobId, ts).run();
   if ((res.meta?.changes ?? 0) > 0) {
     const job = await fetchJob(env, jobId);

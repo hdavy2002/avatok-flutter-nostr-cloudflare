@@ -43,6 +43,7 @@ import { runLivenessChecks } from "./routes/liveness";
 import { runLivenessV3Checks } from "./routes/liveness_v3";
 import { diditSession, diditResult, diditDone, diditWebhook, connectorsDone, livenessConsent } from "./routes/liveness_didit";
 import * as hooks from "./hooks"; // [AVA-IDGATE-1] legacy-route telemetry
+import { recoverAiMediaJobs } from "./queues/ai_media_recovery";
 
 // [AVA-IDGATE-1] Routes closed 2026-07-10. Each previously called setVerifiedCache(),
 // so each could mark a user "verified" without a Didit liveness check ever running —
@@ -358,6 +359,8 @@ export default {
         runPlayVoidedPurchaseSweep(env)
           .then((r) => { if (r.scanned) console.log("[play-voids]", JSON.stringify(r)); })
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
+        recoverAiMediaJobs(env)
+          .catch((e) => { console.error("[ai-media-recovery] failed:", String(e)); }),
       ]),
     );
   },

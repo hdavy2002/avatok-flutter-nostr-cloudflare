@@ -16,11 +16,9 @@
 // handlers (routes/stt.ts's transcribeAudioBuffer() + routes/ava_copilot.ts's
 // extraction/summarize/translate functions + the pinned attachment text
 // model from lib/ava_reason/policy.ts) — see KIND_HANDLERS below.
-// image_generate remains a deliberate stub HERE — that kind's owning route
-// fulfils it directly (a bare image PROMPT has no persisted source_media_id
-// to safely re-fetch on a queue redelivery, per §41/§42 — unlike a document
-// or an audio file, which both already live in R2 before the job exists).
-// See unreachableDirectRouteKind's doc comment below.
+// image_generate used to be route-owned because its prompt was not persisted.
+// It now uses the queue with an encrypted input record; plaintext prompts
+// still never enter D1 or the queue body.
 //
 // ARCHITECTURE DECISION (documents, [AVA-DOC-ARTIFACT-1]): doc_summarize/
 // doc_translate are QUEUE-DRIVEN, exactly like audio_transcribe/
@@ -51,7 +49,8 @@ import { transcribeAudioBuffer, sttFormatFor, bytesToBase64 } from "../routes/st
 // ONE provider call rather than opening a second, drifting copy of the
 // OpenRouter Images request — telemetry, error classification, usage/cost
 // extraction and the resolution parameter all stay in one place.
-import { generateImage, imageResolutionForTier } from "../routes/ava_image";
+import { generateImage, imageResolutionForTier, fulfilQueuedImage } from "../routes/ava_image";
+import { loadQueuedImageInput } from "../lib/ai_media_inputs";
 import { imageModel } from "../lib/ava_reason/policy";
 import { readConfig } from "../routes/config";
 import {
@@ -122,20 +121,9 @@ function classifyJobError(e: unknown): string {
   return "provider_unavailable"; // safe generic fallback — never the raw message (§41/§42)
 }
 
-// [AVA-IMAGE-UX-1 / §44] image_generate is INTENTIONALLY NOT dispatched
-// through this generic, job_id-only, at-least-once-redelivery consumer. The
-// input this job table deliberately never stores — a bare image PROMPT, with
-// no source_media_id at all — is exactly what a redelivery would need to redo
-// the work, and persisting it here (or in the queue message) would violate
-// §41/§42 (no prompts in the job table or its queue messages). Its owning
-// route (routes/ava_image.ts) creates the job AND claims+completes/fails it
-// directly in the SAME request's closure, where the prompt still legitimately
-// lives. Reaching this stub means something enqueued image_generate through
-// this queue, which nothing in this codebase does — a real bug, not a normal
-// outcome. See KIND_HANDLERS / IMPLEMENTED_KINDS below — [AVA-IMAGE-UX-1]
-// (a different agent's file ownership: ava_image.ts/composio.ts) is
-// responsible for wiring image_generate into IMPLEMENTED_KINDS in the same
-// commit that gives it a real, route-owned fulfilment path.
+// [AVA-IMAGE-UX-1 / §44] Legacy fallback for malformed/old messages. Normal
+// image messages are intercepted by runAiMediaJobMessage after their encrypted
+// input is loaded, then fulfilled by routes/ava_image.ts.
 async function unreachableDirectRouteKind(_env: Env, job: AiMediaJobRecord): Promise<HandlerResult> {
   throw new Error(`provider_unavailable: ${job.kind} is fulfilled directly by its owning route, not this queue — this stub should be unreachable`);
 }
@@ -144,10 +132,8 @@ const handleImageGenerate: KindHandler = unreachableDirectRouteKind;
 // ---------------------------------------------------------------------------
 // [AVA-IMG-TIERS-1 / WS-10] image_upgrade — the on-demand 2K rendition.
 //
-// WHY THIS ONE *IS* QUEUE-DRIVEN, UNLIKE image_generate.
-// image_generate is route-owned for exactly one reason: its input is an
-// ephemeral user PROMPT that §41/§42 forbids persisting, so a job_id-only
-// redelivery could never redo the work. An upgrade has neither half of that
+// WHY THIS ONE *IS* QUEUE-DRIVEN. Image generation now uses the same queue
+// with an encrypted prompt input. An upgrade has neither half of that
 // problem. Its input is the PREVIEW ARTIFACT, already durably stored in R2 and
 // referenced by `source_media_id` (authorized once, at createAiMediaJob time),
 // and its prompt is UPSCALE_INSTRUCTION below — a fixed, non-sensitive
@@ -442,12 +428,9 @@ const KIND_HANDLERS: Record<AiMediaJobKind, KindHandler> = {
 // provider pipeline. The route (worker/src/routes/ai_media_jobs.ts, M1-owned)
 // checks this before creating/reserving a job. [AVA-DOC-ARTIFACT-1 /
 // AVA-AUDIO-ARTIFACT-1] adds all four text/audio kinds here in this commit;
-// image_generate is a DIFFERENT agent's file ownership (ava_image.ts) and
-// stays out until that route wires its own direct-fulfilment path.
+// image_generate is dispatched by runAvaImage after sealing its input.
 // [AVA-IMG-TIERS-1 / WS-10] image_upgrade joins in the SAME commit that gives
 // it a real handler (handleImageUpgrade above), per the rule stated here.
-// image_generate still does not: it remains route-owned by ava_image.ts for
-// the ephemeral-prompt reason documented on unreachableDirectRouteKind.
 const IMPLEMENTED_KINDS = new Set<AiMediaJobKind>(["image_upgrade", "doc_summarize", "doc_translate", "audio_transcribe", "audio_translate"]);
 
 export function isAiMediaKindImplemented(kind: AiMediaJobKind): boolean {
@@ -489,6 +472,19 @@ export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg, at
   const claimed = await claimAiMediaJob(env, jobId);
   if (!claimed.ok) return; // already claimed/terminal — safe no-op (at-least-once redelivery)
   const job = claimed.job;
+
+  // Image prompts are sealed in D1 before enqueue. This removes the last
+  // provider path that depended on a request/DO lifetime and could strand a
+  // paid row at 15% forever.
+  if (job.kind === "image_generate") {
+    const input = await loadQueuedImageInput(env, job.job_id, job.owner_uid);
+    if (!input) {
+      await failAiMediaJob(env, { jobId, errorCode: "INPUT_EXPIRED", reason: "image_input_missing" });
+      return;
+    }
+    await fulfilQueuedImage(env, job, input);
+    return;
+  }
 
   const handler = KIND_HANDLERS[job.kind];
   // [AVA-IMG-PROGRESS-1 / WS-9] Phase markers, not a percentage — see

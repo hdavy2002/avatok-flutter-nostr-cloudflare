@@ -19,7 +19,7 @@ compatibility_flags = ["nodejs_compat", "enable_ctx_exports"]
 # schedule is code wiring only; production remains dark until the flags and
 # migration are deliberately enabled.
 [triggers]
-crons = ["17 * * * *"]
+crons = ["*/5 * * * *"]
 
 # Apex-zone custom domain. The long *.workers.dev host intermittently fails mobile
 # DNS resolution (errno 7) on wifi/LTE transitions — fatal for the persistent

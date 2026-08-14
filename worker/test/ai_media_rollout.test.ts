@@ -6,13 +6,9 @@
 // kinds now have real queue handlers, so this test flipped from "all five are
 // dark" to asserting the actual contract — which of the five the QUEUE owns.
 //
-// `image_generate` is deliberately NOT queue-implemented and must stay that
-// way: its input is an ephemeral prompt that §41/§42 forbids persisting to the
-// job table or a queue message, so a job_id-only redelivery could never safely
-// redo it. It is fulfilled inline by its owning route (`routes/ava_image.ts`
-// `fulfil()`), which holds the prompt in the same request closure. If someone
-// later adds it to IMPLEMENTED_KINDS, this test is the thing that should stop
-// them and send them to read Part VI §44 first.
+// `image_generate` is intentionally not advertised through the generic public
+// job-create API. Its owning route seals the prompt and dispatches an internal
+// queue message, while this set remains the public capability contract.
 import { describe, expect, it } from "vitest";
 import { isAiMediaKindImplemented } from "../src/queues/ai_media";
 import type { AiMediaJobKind } from "../src/lib/ai_media_jobs";
@@ -32,7 +28,7 @@ describe("AI media per-kind readiness", () => {
     }
   });
 
-  it("never advertises image_generate as queue-implemented (prompt must not be persisted)", () => {
+  it("does not advertise image_generate through the generic public job API", () => {
     for (const kind of ROUTE_OWNED) {
       expect(isAiMediaKindImplemented(kind), `${kind} is route-owned, not queue-owned`).toBe(false);
     }

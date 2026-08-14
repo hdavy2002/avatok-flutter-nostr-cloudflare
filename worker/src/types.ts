@@ -12,6 +12,10 @@ export interface Env {
   // [DYNW-CORE-1] STAGING-ONLY secret for the dynw acceptance battery
   // (routes/dynw_test.ts). Never set in prod — absent = header auth disabled.
   DYNW_TEST_SECRET?: string;
+  AI_MEDIA_INPUT_KEY?: string;
+  VENICE_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
+  JWT_SECRET?: string;
   // [DYNW-FLOWS-1] Cloudflare Workflows binding for the DARK PARALLEL account-
   // deletion cascade (worker/src/workflows/deletion.ts). The LIVE path is still
   // Q_DELETE below → consumers/src/deletion.ts; this binding is only ever called
