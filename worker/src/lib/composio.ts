@@ -784,6 +784,13 @@ async function orStep(
 ): Promise<{ text: string; calls: OrCall[]; usage?: OrUsage }> {
   const key = (env as any).OPENROUTER_API_KEY ?? "";
   const body: any = { model, messages };
+  // [AVA-FAST-1 2026-08-14] Owner: the chat lanes must be fast — Gemini 3.x
+  // flash models THINK BY DEFAULT (dynamic thinking budget), which adds
+  // seconds of dead air before the first token. OpenRouter's unified
+  // `reasoning.enabled=false` maps to thinkingBudget 0 for Gemini. Scoped to
+  // gemini models only so ladder alternates (kimi/deepseek) keep today's
+  // behaviour.
+  if (/gemini/i.test(model)) body.reasoning = { enabled: false };
   if (tools.length) body.tools = tools;
   if (opts?.toolChoice) body.tool_choice = opts.toolChoice;
   const timeoutMs = opts?.timeoutMs ?? OR_STEP_TIMEOUT_MS;
@@ -855,6 +862,9 @@ export async function orStreamStep(
   // (empty choices, `usage` populated) so streamed steps can be metered too —
   // otherwise only non-streamed orStep() calls would report token spend.
   const body: any = { model, messages, stream: true, stream_options: { include_usage: true } };
+  // [AVA-FAST-1] Same thinking-off rule as orStep() above — the STREAMED lane
+  // is the user-facing one, so first-token latency matters most here.
+  if (/gemini/i.test(model)) body.reasoning = { enabled: false };
   if (tools.length) body.tools = tools;
   if (opts?.maxTokens != null) body.max_tokens = opts.maxTokens;
   if (opts?.temperature != null) body.temperature = opts.temperature;

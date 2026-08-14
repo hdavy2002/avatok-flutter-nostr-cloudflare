@@ -253,6 +253,13 @@ export async function veniceChatComplete(
   opts: { maxTokens?: number; temperature?: number; timeoutMs?: number } = {},
 ): Promise<VeniceChatResult> {
   const body: any = { model, messages };
+  // [AVA-FAST-1 2026-08-14] Owner: gemini-3-7-flash (and every chat call on
+  // this lane) must be FAST — no thinking/reasoning pass. Venice-level toggle
+  // per docs (guides/features/reasoning-models.mdx): reasoning.enabled=false
+  // stops reasoning params from reaching the provider entirely. Pinned for
+  // ALL veniceChatComplete callers (lyrics/prompt crafting, uncensored chat) —
+  // none of them wants a thinking delay.
+  body.reasoning = { enabled: false };
   if (opts.maxTokens != null) body.max_tokens = opts.maxTokens;
   if (opts.temperature != null) body.temperature = opts.temperature;
   const j = await venicePost(env, "/chat/completions", body, opts.timeoutMs ?? 30000);
