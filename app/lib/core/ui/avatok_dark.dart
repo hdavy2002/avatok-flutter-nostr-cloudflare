@@ -302,9 +302,10 @@ class ADText {
   /// Chat-row contact name — 15 / 500.
   static TextStyle rowName({Color c = AD.textPrimary}) =>
       _s(15, FontWeight.w500, c);
-  /// Chat bubble body — 15 / 400. Body copy is Regular, full stop.
+  /// Chat bubble body — 16 / 400. Slightly larger than the original stable-UI
+  /// pass for comfortable reading without restoring global scale inflation.
   static TextStyle bubbleBody({Color c = AD.textPrimary}) =>
-      _s(15, FontWeight.w400, c, height: 1.35);
+      _s(16, FontWeight.w400, c, height: 1.35);
   /// Message preview line — 14 / 400, muted. Sits UNDER rowName in weight,
   /// size and colour, which is what makes the name read as the heading.
   static TextStyle preview({Color c = AD.textSecondary}) =>
