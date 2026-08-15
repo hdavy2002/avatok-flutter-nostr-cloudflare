@@ -1099,7 +1099,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       unawaited(Db.I.distinctDmConvs().then((convs) {
         if (convs.isNotEmpty) {
           Analytics.capture('chat_projection_preserved', {'reason': 'empty_contacts_with_messages', 'convs': convs.length});
-          return;
+          return Future<void>.value();
         }
         return Db.I.chatsOnce().then((existing) {
           if (existing.isNotEmpty) {
