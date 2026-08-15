@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 import 'money_api.dart';
 
@@ -94,8 +96,13 @@ class WalletTopupBilling {
       return false;
     }
     final param = PurchaseParam(productDetails: resp.productDetails.first);
-    // Consumable: autoConsume (default true) lets the tier be re-purchased.
-    return _iap.buyConsumable(purchaseParam: param);
+    // Android must not consume until the Worker has verified and credited the
+    // purchase. Otherwise a transient verification failure permanently removes
+    // the purchase from Play's owned-purchases queue and it cannot be retried.
+    return _iap.buyConsumable(
+      purchaseParam: param,
+      autoConsume: Platform.isIOS,
+    );
   }
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> list) async {
@@ -141,6 +148,10 @@ class WalletTopupBilling {
       }
 
       if (res['ok'] == true) {
+        if (Platform.isAndroid) {
+          final android = _iap.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
+          await android.consumePurchase(p);
+        }
         if (p.pendingCompletePurchase) await _iap.completePurchase(p);
         final credited = (res['credited'] as num?)?.toInt() ?? (res['coins'] as num?)?.toInt() ?? 0;
         _onCredited?.call(credited);
