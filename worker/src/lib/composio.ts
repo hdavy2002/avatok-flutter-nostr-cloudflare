@@ -1242,6 +1242,17 @@ export function looksLikeImageRequest(s: string): boolean {
 }
 
 const MEDIA_CREATE_RE = /\b(?:generate|create|make|animate|produce|render)\b/;
+export const BARE_SONG_QUESTION = "What should the song be about or tell a story of, what mood or genre would you like, and should it be 1, 1.5, 2, or 3 minutes?";
+
+// Keep this deliberately narrow. A short request such as "#ava make a song
+// for me" has no usable creative direction, so draft_lyrics would invent it.
+// Anything with a theme, genre, lyric request, or other detail stays on the
+// normal lyrics-first route below.
+export function isBareSongRequest(s: string): boolean {
+  const t = (s || '').trim().toLowerCase();
+  return /^(?:#ava\s+)?(?:can\s+you\s+|could\s+you\s+|please\s+)?(?:make|create|generate|write|compose)\s+(?:me\s+)?(?:a\s+)?song(?:\s+for\s+me)?[.!?]*$/.test(t);
+}
+
 export function looksLikeVideoRequest(s: string): boolean {
   const t = (s || '').toLowerCase();
   return MEDIA_CREATE_RE.test(t) && /\b(?:video|clip|movie|reel|animation|animate)\b/.test(t) &&
@@ -1249,8 +1260,35 @@ export function looksLikeVideoRequest(s: string): boolean {
 }
 
 export function looksLikeMusicRequest(s: string): boolean {
+  return looksLikeSongRequest(s) || looksLikeInstrumentalMusicRequest(s);
+}
+
+// Songs are always lyrics-first: Ava must let the user review and approve the
+// words before a vocal track can be generated.
+export function looksLikeSongRequest(s: string): boolean {
   const t = (s || '').toLowerCase();
-  return MEDIA_CREATE_RE.test(t) && /\b(?:song|music|track|lyrics|sing|singer|vocals)\b/.test(t);
+  const noVocals = /\b(?:no|without)\s+(?:singing|vocals?|lyrics)\b/.test(t);
+  if (noVocals) return false;
+  if (MEDIA_CREATE_RE.test(t)
+      && /\b(?:song|lyrics|sing|singer|vocals)\b/.test(t)) return true;
+  // A request to *write* a song is a lyrics-first request, not an instruction
+  // to promise that an audio track is already being generated. Keep the verb
+  // requirement so descriptive mentions such as "a song about home" are not
+  // misread as creation requests.
+  return /\b(?:write|compose|draft)\b(?:\s+\S+){0,5}\s+\b(?:song|lyrics)\b/.test(t);
+}
+
+// A beat, instrumental, or explicitly no-vocals music request can go straight
+// to generate_music. Do not treat a generic "make music" as instrumental: it
+// is ambiguous and belongs to the normal conversational loop.
+export function looksLikeInstrumentalMusicRequest(s: string): boolean {
+  const t = (s || '').toLowerCase();
+  const noVocals = /\b(?:no|without)\s+(?:singing|vocals?|lyrics)\b/.test(t);
+  if (!MEDIA_CREATE_RE.test(t)
+      || (!noVocals && /\b(?:song|lyrics|sing|singer)\b/.test(t))
+      || (!noVocals && /\bvocals\b/.test(t))) return false;
+  return /\b(?:instrumental|beat)\b/.test(t)
+    || noVocals;
 }
 
 // [AVA-IMG-EDIT-1] Resolve a generate_image tool call's args into the actual
@@ -1411,6 +1449,10 @@ export async function runAgentLoop(
     style?: AvaVoiceStyle;
   },
 ): Promise<string> {
+  // Ask for the minimum song brief before either the forced draft route or the
+  // regular tool loop can run. This prevents an underspecified "make a song"
+  // from becoming a generic lyrics draft or a false generation promise.
+  if (opts?.onDraftLyrics && isBareSongRequest(query)) return BARE_SONG_QUESTION;
   if (opts?.modelStats) opts.modelStats.model_requested = orAgentModel(env);
   const orKey = (env as any).OPENROUTER_API_KEY ?? "";
   if (!orKey) return "Ava is temporarily unavailable.";
@@ -1685,12 +1727,32 @@ export async function runAgentLoop(
 
   // Video and music used to rely entirely on the model deciding to emit a
   // function call. A fallback model could answer "I'm text-only" instead. For
-  // unmistakable requests, force the capability tool just like images.
-  var forcedTurn = looksLikeVideoRequest(query) && videoDecl
-      ? await once("generate_video")
-      : (looksLikeMusicRequest(query) && lyricsDecl
-          ? await once("draft_lyrics")
-          : null);
+  // unmistakable requests, force the capability tool just like images. Unlike
+  // image, this route must never become a turn-level outage: an OpenRouter or
+  // forced-tool-routing failure is recorded as a failed tool attempt and the
+  // regular agent loop gets a chance to answer safely.
+  const tryForcedTurn = async (tool: "generate_video" | "generate_music" | "draft_lyrics") => {
+    const tStart = Date.now();
+    try {
+      return await once(tool);
+    } catch (e: any) {
+      const error = String(e?.message ?? e).slice(0, 200);
+      try {
+        opts?.onTool?.({ tool, ok: false, ms: Date.now() - tStart, error, is_app: false });
+      } catch { /* telemetry is best-effort, never breaks the loop */ }
+      return null;
+    }
+  };
+  let forcedTurn: { calls: OrCall[]; text: string } | null = null;
+  if (looksLikeVideoRequest(query) && videoDecl) {
+    forcedTurn = await tryForcedTurn("generate_video");
+  } else if (looksLikeSongRequest(query) && lyricsDecl) {
+    // Songs always start with conversational lyrics review; never force music
+    // generation before the user has seen and approved the draft.
+    forcedTurn = await tryForcedTurn("draft_lyrics");
+  } else if (looksLikeInstrumentalMusicRequest(query) && musicDecl) {
+    forcedTurn = await tryForcedTurn("generate_music");
+  }
 
   for (let step = 0; step < 6; step++) {
     let calls: OrCall[]; let text: string;
