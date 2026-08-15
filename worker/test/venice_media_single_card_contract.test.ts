@@ -6,6 +6,7 @@ describe("Venice media single-card envelopes", () => {
   const queue = readFileSync("src/queues/venice_media.ts", "utf8");
   const routes = readFileSync("src/routes/ai_media_jobs.ts", "utf8");
   const venice = readFileSync("src/lib/venice.ts", "utf8");
+  const recovery = readFileSync("src/queues/ai_media_recovery.ts", "utf8");
 
   it("tags tool-loop acknowledgements with the started media job", () => {
     expect(agent).toContain("let lastStartedMedia:");
@@ -25,5 +26,13 @@ describe("Venice media single-card envelopes", () => {
     expect(routes).toContain("cdn-cgi/image/format=avif");
     expect(routes).toContain('cache-control: asset === "thumbnail" ? "public, max-age=31536000, immutable"');
     expect(routes).toContain('Made on <a href="https://avatok.ai">AvaTOK AI</a>');
+  });
+
+  it("gates video admission before billing and watches the thumbnail sidecar", () => {
+    expect(venice).toContain("veniceVideoPreflight");
+    expect(venice).toContain("VIDEO_CIRCUIT_LIMIT = 3");
+    expect(recovery).toContain("listVeniceVideoThumbnailJobsForRecovery");
+    expect(recovery).toContain("venice_media_watchdog_scan");
+    expect(routes).toContain("videoThumbnailShareable");
   });
 });

@@ -5,6 +5,7 @@ import {
   claimVeniceMediaRecoveryLease,
   failVeniceMediaJob,
   listVeniceMediaJobsForRecovery,
+  listVeniceVideoThumbnailJobsForRecovery,
 } from "../lib/venice_media_jobs";
 import { enqueueVeniceMediaPoll } from "./venice_media";
 import { track, trackException } from "../hooks";
@@ -93,7 +94,7 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
       if (job.status === "submitting") {
         const result = await failVeniceMediaJob(env, {
           jobId: job.job_id,
-          errorCode: "PROVIDER_TIMEOUT",
+          errorCode: "provider_submission_stalled",
           reason: "stale_submission_watchdog",
         });
         if (result.ok && result.transitioned) {
@@ -151,6 +152,24 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
       });
     }
   }
+
+  const thumbnailJobs = await listVeniceVideoThumbnailJobsForRecovery(env, now - VENICE_STALE_MS, BATCH_LIMIT);
+  for (const job of thumbnailJobs) {
+    try {
+      await env.Q_AI_MEDIA.send({ job_id: job.job_id, kind: job.kind });
+      veniceRequeued++;
+      void track(env, job.owner_uid, "venice_video_thumbnail_watchdog_requeued", "avaai", { job_id: job.job_id, kind: job.kind });
+    } catch (e) {
+      void trackException(env, e, { uid: job.owner_uid, route: "ai_media_recovery.video_thumbnail", handled: true, extra: { job_id: job.job_id } });
+    }
+  }
+
+  // This heartbeat is the operational watchdog: an absent event means the
+  // scheduled recovery itself is unhealthy, not merely that one video failed.
+  void track(env, "system", "venice_media_watchdog_scan", "avaai", {
+    active_jobs: veniceJobs.length, thumbnail_jobs: thumbnailJobs.length,
+    requeued: veniceRequeued, failed: veniceFailed,
+  });
 
   if (requeued || failed || purged || veniceRequeued || veniceFailed) {
     console.log("[ai-media-recovery]", JSON.stringify({

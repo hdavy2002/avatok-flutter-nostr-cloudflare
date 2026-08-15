@@ -165,6 +165,26 @@ export async function listVeniceMediaJobsForRecovery(
   }
 }
 
+/** Completed video jobs whose share thumbnail sidecar never reached a terminal
+ * state. This is separate from provider polling recovery: the video bytes are
+ * already safe, so the watchdog only repairs the share-card sidecar. */
+export async function listVeniceVideoThumbnailJobsForRecovery(
+  env: Env, staleBeforeMs: number, limit = 100,
+): Promise<VeniceMediaJobRecord[]> {
+  try {
+    const rows = await env.DB_MEDIA.prepare(
+      `SELECT * FROM venice_media_jobs
+       WHERE kind='venice_video_generate' AND status='succeeded'
+         AND cover_status IN ('pending','generating') AND updated_at<?1
+       ORDER BY updated_at LIMIT ?2`,
+    ).bind(staleBeforeMs, Math.max(1, Math.min(100, limit))).all<any>();
+    return (rows.results ?? []).map(rowToRecord);
+  } catch (e) {
+    void trackException(env, e, { route: "venice_media_jobs.listVeniceVideoThumbnailJobsForRecovery", handled: true });
+    return [];
+  }
+}
+
 /** Claim a recovery lease without changing job state. Only a stale row can be
  * leased, so concurrent cron invocations requeue a job at most once per
  * recovery window. If sending the replacement message fails, the timestamp

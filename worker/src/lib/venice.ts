@@ -74,6 +74,74 @@ export function classifyVeniceError(error: unknown): "provider_auth" | "provider
   return "provider_unavailable";
 }
 
+export type VeniceVideoPreflightCode = "provider_auth" | "provider_capacity" | "provider_invalid_request" | "provider_unavailable" | "provider_timeout" | "provider_circuit_open";
+const VIDEO_CIRCUIT_KEY = "watchdog:venice:video:circuit";
+const VIDEO_CIRCUIT_LIMIT = 3;
+const VIDEO_CIRCUIT_COOLDOWN_MS = 60_000;
+const VIDEO_MODEL_CACHE_KEY = "watchdog:venice:video:models";
+
+type VideoCircuitState = { failures: number; opened_at?: number };
+
+async function readVideoCircuit(env: VeniceEnv & { TOKENS?: KVNamespace }): Promise<VideoCircuitState> {
+  try { return (await env.TOKENS?.get(VIDEO_CIRCUIT_KEY, "json")) as VideoCircuitState || { failures: 0 }; }
+  catch { return { failures: 0 }; }
+}
+
+async function writeVideoCircuit(env: VeniceEnv & { TOKENS?: KVNamespace }, state: VideoCircuitState): Promise<void> {
+  try { await env.TOKENS?.put(VIDEO_CIRCUIT_KEY, JSON.stringify(state), { expirationTtl: 300 }); } catch { /* health state is best-effort */ }
+}
+
+export async function recordVeniceVideoProviderFailure(env: VeniceEnv & { TOKENS?: KVNamespace }): Promise<void> {
+  const current = await readVideoCircuit(env);
+  const failures = current.failures + 1;
+  await writeVideoCircuit(env, { failures, ...(failures >= VIDEO_CIRCUIT_LIMIT ? { opened_at: Date.now() } : {}) });
+}
+
+export async function recordVeniceVideoProviderSuccess(env: VeniceEnv & { TOKENS?: KVNamespace }): Promise<void> {
+  await writeVideoCircuit(env, { failures: 0 });
+}
+
+/** Provider admission gate. It runs before billing and prevents known-bad
+ * model/configuration requests from entering the async job pipeline. */
+export async function veniceVideoPreflight(
+  env: VeniceEnv & { TOKENS?: KVNamespace }, model: string,
+): Promise<{ ok: true } | { ok: false; code: VeniceVideoPreflightCode }> {
+  const circuit = await readVideoCircuit(env);
+  if (circuit.opened_at && Date.now() - circuit.opened_at < VIDEO_CIRCUIT_COOLDOWN_MS) {
+    return { ok: false, code: "provider_circuit_open" };
+  }
+  try {
+    // Never let a cached model catalog hide a missing/rotated secret.
+    const key = veniceKey(env);
+    let models: any = null;
+    try { models = await env.TOKENS?.get(VIDEO_MODEL_CACHE_KEY, "json"); } catch { /* fall through to provider */ }
+    if (!models) {
+      const response = await fetch(`${VENICE_BASE}/models?type=video`, {
+        headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000),
+      });
+      const body = await response.json().catch(() => ({})) as any;
+      if (!response.ok) {
+        const error: any = new Error(`venice models ${response.status}: ${String(body?.error ?? body?.message ?? "unknown")}`);
+        error.status = response.status;
+        throw error;
+      }
+      models = body;
+      try { await env.TOKENS?.put(VIDEO_MODEL_CACHE_KEY, JSON.stringify(models), { expirationTtl: 60 }); } catch { /* cache is optional */ }
+    }
+    const rows = Array.isArray(models) ? models : Array.isArray(models?.data) ? models.data : Array.isArray(models?.models) ? models.models : [];
+    const available = rows.map((row: any) => String(row?.id ?? row?.model ?? row ?? ""));
+    if (available.length > 0 && !available.includes(model)) {
+      await recordVeniceVideoProviderFailure(env);
+      return { ok: false, code: "provider_invalid_request" };
+    }
+    return { ok: true };
+  } catch (error) {
+    const code = classifyVeniceError(error) as VeniceVideoPreflightCode;
+    await recordVeniceVideoProviderFailure(env);
+    return { ok: false, code };
+  }
+}
+
 function veniceKey(env: VeniceEnv): string {
   const k = env.VENICE_API_KEY;
   if (!k) throw new Error("venice_key_missing: VENICE_API_KEY secret not set on this worker");

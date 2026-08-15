@@ -159,6 +159,7 @@ String _friendlyError(AiMediaJob job) {
   final noun = job.kind.displayNoun;
   return switch (job.errorCode) {
     'provider_timeout' => "This took too long and didn't finish.",
+    'provider_submission_stalled' => 'The video request got stuck before the provider accepted it. Please retry.',
     'provider_auth' => 'The video service is not configured correctly yet.',
     'provider_capacity' => 'The video service is busy or out of capacity. Please try again shortly.',
     'provider_invalid_request' => "That video request isn't supported by the current video model.",

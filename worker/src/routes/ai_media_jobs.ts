@@ -83,6 +83,16 @@ async function veniceArtifactUrl(env: Env, artifactMediaId: string | null): Prom
   } catch { return null; }
 }
 
+async function videoThumbnailShareable(env: Env, job: VeniceMediaJobRecord): Promise<boolean> {
+  if (!job.cover_media_id) return false;
+  try {
+    const row = await env.DB_MEDIA.prepare(
+      "SELECT key, mime_type, storage FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1",
+    ).bind(job.cover_media_id, job.owner_uid).first<{ key: string; mime_type: string; storage: string }>();
+    return !!row && row.storage === "digital" && String(row.mime_type || "").toLowerCase().startsWith("image/") && !!row.key;
+  } catch { return false; }
+}
+
 async function hydrateVenice(env: Env, job: Awaited<ReturnType<typeof getVeniceMediaJob>>): Promise<any> {
   return veniceAsAiJob(
     job,
@@ -197,7 +207,7 @@ export async function aiMediaJobVideoShare(req: Request, env: Env, jobId: string
   if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
   let job = await getVeniceMediaJob(env, String(jobId || "").trim());
   if (!job || job.owner_uid !== ctxUser.uid) return json({ error: "not_found" }, 404);
-  if (job.kind !== "venice_video_generate" || job.status !== "succeeded" || !job.artifact_media_id || !job.cover_media_id) return json({ error: "video_not_ready" }, 409);
+  if (job.kind !== "venice_video_generate" || job.status !== "succeeded" || !job.artifact_media_id || !(await videoThumbnailShareable(env, job))) return json({ error: "video_not_ready" }, 409);
   if (!job.share_token) {
     const token = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     await env.DB_MEDIA.prepare("UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL").bind(job.job_id, token, Date.now()).run();
