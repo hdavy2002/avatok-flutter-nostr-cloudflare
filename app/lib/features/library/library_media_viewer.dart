@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -25,10 +26,12 @@ class _LibraryMediaViewerState extends State<LibraryMediaViewer> {
   VideoPlayerController? _video;
   AudioPlayer? _audio;
   File? _file;
+  Uint8List? _image;
   String _status = 'Opening…';
   bool _playing = false;
 
   bool get _isVideo => widget.item.category == 'video' || widget.item.mime.startsWith('video/');
+  bool get _isImage => widget.item.category == 'image' || widget.item.mime.startsWith('image/');
 
   @override
   void initState() {
@@ -39,6 +42,10 @@ class _LibraryMediaViewerState extends State<LibraryMediaViewer> {
   Future<void> _open() async {
     try {
       final bytes = await MediaService.downloadLibraryItem(widget.item);
+      if (_isImage) {
+        if (mounted) setState(() { _image = bytes; _status = ''; });
+        return;
+      }
       final dir = await getTemporaryDirectory();
       _file = File('${dir.path}/library_${widget.item.key.hashCode}_${widget.item.name}');
       await _file!.writeAsBytes(bytes, flush: true);
@@ -97,7 +104,9 @@ class _LibraryMediaViewerState extends State<LibraryMediaViewer> {
             style: ADText.threadName(c: AD.textPrimary)),
       ),
       body: Center(
-        child: video != null && video.value.isInitialized
+        child: _image != null
+            ? InteractiveViewer(child: Image.memory(_image!, fit: BoxFit.contain))
+            : video != null && video.value.isInitialized
             ? Column(mainAxisSize: MainAxisSize.min, children: [
                 AspectRatio(aspectRatio: video.value.aspectRatio, child: VideoPlayer(video)),
                 _controls(),

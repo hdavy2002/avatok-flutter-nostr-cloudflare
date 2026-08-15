@@ -1010,6 +1010,11 @@ class _FolderViewState extends State<_FolderView> {
     // media. The old branch rejected private rows before attempting the
     // available enc_blob/local-cache path, making the library useless for the
     // user's own music and videos.
+    if (LibThumbs.isImage(m) && m.isPrivate) {
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => LibraryMediaViewer(item: m)));
+      return;
+    }
     if (LibThumbs.isImage(m) && !m.isPrivate && m.displayUrl.isNotEmpty) {
       Analytics.capture('library_image_opened', {
         'id': m.id,
