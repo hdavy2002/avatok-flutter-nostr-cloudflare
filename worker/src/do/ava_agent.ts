@@ -82,7 +82,7 @@ import {
   SONG_BRIEF_QUESTION, INSTRUMENTAL_BRIEF_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
   classifySongRequest,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongLyrics,
-  hasSongProductionContext, songBriefQuestion,
+  hasSongProductionContext, missingSongProductionContext, nextSongBriefField, songBriefQuestion,
   type SongFlowState,
 } from "../lib/song_flow";
 
@@ -1297,6 +1297,8 @@ export class AvaAgentDO {
           await this.postAva({ conv, uid, text: question, private: priv, source: "music" });
           await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
             conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "question_posted",
+            next_field: songAction.flow.kind === "instrumental" ? "instrumental_brief" : nextSongBriefField(songAction.flow.brief ?? ""),
+            missing_count: songAction.flow.kind === "instrumental" ? null : missingSongProductionContext(songAction.flow.brief ?? "").length,
           }).catch(() => {});
           return { ok: true, status_id: statusId };
         }

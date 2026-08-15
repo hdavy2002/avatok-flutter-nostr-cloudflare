@@ -35,11 +35,15 @@ const SINGER_RE = /\b(?:male|female|woman|man|group|choir|duet|trio|ensemble|boy
 const VOICE_RE = /\b(?:warm|intimate|bright|soulful|deep|powerful|airy|dreamlike|raspy|gritty|smooth|gentle|soft|strong|rich|playful|youthful|mature|baritone|tenor|alto|soprano)\b/i;
 const GENRE_RE = /\b(?:reggae|dancehall|rock|pop|jazz|lofi|lo-fi|ambient|house|edm|hip[- ]?hop|rap|classical|funk|soul|r&b|country|folk|indie|metal|blues|gospel|cinematic|afrobeat|latin|bollywood)\b/i;
 const MOOD_RE = /\b(?:happy|joyful|upbeat|hopeful|romantic|sad|melancholy|peaceful|relaxed|dreamy|energetic|funky|dark|moody|emotional|inspiring|uplifting|playful|calm|warm|chill|celebratory|healing|vibe|mood|energy)\b/i;
-const INSTRUMENT_RE = /\b(?:instrument|bass|drum|percussion|guitar|piano|keyboard|organ|synth|strings|violin|cello|brass|horn|trumpet|sax(?:ophone)?|flute|ukulele|tabla|sitar|dhol|marimba|steel\s+drum|conga|bongo|shaker|skank|one-drop|808)\b/i;
+const INSTRUMENT_RE = /\b(?:instrument|bass|heavy\s+base|deep\s+base|drum|percussion|guitar|piano|keyboard|organ|synth|strings|violin|cello|brass|horn|trumpet|sax(?:ophone)?|flute|ukulele|tabla|sitar|dhol|marimba|steel\s+drum|conga|bongo|shaker|skank|one-drop|808)\b/i;
 const ACCEPT_SUGGESTIONS_RE = /\b(?:use|take|choose|go with|keep)\s+(?:all\s+)?(?:your|those|the)\s+(?:instrument\s+)?suggestions?\b|\b(?:those|suggested)\s+instruments?\b/i;
 
 export function missingSongProductionContext(text: string): SongBriefField[] {
-  const t = stripAvaWakeWordForIntent(text);
+  // Chat and speech-to-text are imperfect. Normalize only unambiguous phrases
+  // that commonly appear in this interview; keep the original brief intact.
+  const t = stripAvaWakeWordForIntent(text)
+    .replace(/\ba\s+out\b/gi, "about")
+    .replace(/\b(heavy|deep)\s+base\b/gi, "$1 bass");
   const missing: SongBriefField[] = [];
   if (!/\b(?:about|story|theme|inspired by|dedicated to|for (?!me\b)|celebrat(?:e|ing)|island|love|home|life|journey|party|travel)\b/i.test(t)) missing.push("theme");
   if (!GENRE_RE.test(t)) missing.push("genre");
@@ -65,27 +69,53 @@ export function suggestedSongInstruments(text: string): string {
   return "bass, drums, rhythm guitar or piano, light percussion, and one distinctive melodic instrument";
 }
 
-/** A tailored follow-up that asks only for context still missing from this song. */
+export function nextSongBriefField(text: string): SongBriefField | null {
+  const missing = missingSongProductionContext(text);
+  const order: SongBriefField[] = ["genre", "theme", "instruments", "mood", "language", "singer", "voice", "duration"];
+  return order.find(field => missing.includes(field)) ?? null;
+}
+
+function latestSongBriefTurn(brief: string): string {
+  return String(brief || "").split(/\n\s*\n/).filter(Boolean).at(-1)?.trim() ?? "";
+}
+
+function acknowledgeSongChoices(brief: string): string {
+  const latest = latestSongBriefTurn(brief)
+    .replace(/\ba\s+out\b/gi, "about")
+    .replace(/\b(heavy|deep)\s+base\b/gi, "$1 bass");
+  const choices: string[] = [];
+  const genre = latest.match(GENRE_RE)?.[0];
+  const mood = latest.match(MOOD_RE)?.[0];
+  const singer = latest.match(SINGER_RE)?.[0];
+  const language = latest.match(LANGUAGE_RE)?.[0];
+  const instrument = latest.match(/\b(?:heavy|deep)\s+bass\b/i)?.[0]
+    ?? latest.match(/\b(?:bass|guitar|piano|organ|synth|drums?|percussion|strings|brass|saxophone|tabla|sitar|dhol)\b/i)?.[0];
+  const theme = latest.match(/\babout\s+([^.,;!?]{2,40})/i)?.[1]?.trim();
+  if (genre) choices.push(genre.toLowerCase());
+  if (theme) choices.push(`a ${theme} theme`);
+  if (mood) choices.push(`${mood.toLowerCase()} energy`);
+  if (singer) choices.push(`${singer.toLowerCase()} vocals`);
+  if (instrument) choices.push(instrument.toLowerCase());
+  if (language && language.toLowerCase() !== "language") choices.push(language);
+  return choices.length ? `Got it — ${choices.slice(0, 4).join(", ")}. ` : "";
+}
+
+/** A short conversational follow-up: acknowledge progress, then ask one thing. */
 export function songBriefQuestion(flow: SongFlowState): string {
   const brief = flow.brief ?? "";
-  const missing = missingSongProductionContext(brief);
-  const parts: string[] = [];
-  if (missing.includes("instruments")) {
-    parts.push(`For this song, I’d suggest ${suggestedSongInstruments(brief)}. Which should I use? You can also say “use those suggestions”.`);
-  }
-  const prompts: Record<Exclude<SongBriefField, "instruments">, string> = {
-    theme: "what the song should be about",
-    genre: "the genre",
-    mood: "the mood or energy",
-    language: "the language",
-    singer: "male, female, duet, or group singing",
-    voice: "the voice character (for example warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike)",
-    duration: "the length (1, 1.5, 2, or 3 minutes)",
+  const next = nextSongBriefField(brief);
+  if (!next) return "That gives me everything I need. I’m ready to draft the lyrics.";
+  const prompts: Record<SongBriefField, string> = {
+    theme: "What should the song be about? One line is enough.",
+    genre: "What musical style should it have — reggae, pop, rock, soul, something else?",
+    mood: "How should it feel — happy and uplifting, relaxed, romantic, emotional, or something else?",
+    instruments: `For this sound, I’d suggest ${suggestedSongInstruments(brief)}. Which would you like, or should I use that combination?`,
+    language: "What language should the lyrics use?",
+    singer: "Who should sing it — a male voice, female voice, duet, or group?",
+    voice: "How should the voice sound — youthful and bright, warm and soulful, deep and powerful, airy and dreamlike, or something else?",
+    duration: "How long should it be — 1, 1.5, 2, or 3 minutes?",
   };
-  const remaining = missing.filter((field): field is Exclude<SongBriefField, "instruments"> => field !== "instruments").map(field => prompts[field]);
-  if (remaining.length) parts.push(`I still need ${remaining.join(", ")}.`);
-  parts.push("I’ll draft the lyrics after those choices, and you can revise them before approving the track.");
-  return parts.join(" ");
+  return `${acknowledgeSongChoices(brief)}${prompts[next]}`;
 }
 
 export function hasSongProductionContext(text: string): boolean {

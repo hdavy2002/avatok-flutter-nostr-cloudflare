@@ -118,7 +118,32 @@ describe("deterministic song flow", () => {
     const question = songBriefQuestion(asked.flow);
     expect(question).toContain("deep electric bass");
     expect(question).toContain("skank guitar");
-    expect(question).toContain("Which should I use?");
+    expect(question).toContain("Which would you like");
     expect(nextSongFlow(asked.flow, "English, female voice").kind).toBe("ask_brief");
+  });
+
+  it("acknowledges answers and asks one conversational follow-up instead of repeating the checklist", () => {
+    const asked = nextSongFlow(null, "make a reggae song about Gen Z in English");
+    expect(asked.kind).toBe("ask_brief");
+    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
+    expect(songBriefQuestion(asked.flow)).toContain("Which would you like");
+
+    const answered = nextSongFlow(asked.flow, "song is a out GenZ. use heavy base. duet singers, mood is happy");
+    expect(answered.kind).toBe("ask_brief");
+    if (answered.kind !== "ask_brief") throw new Error("expected ask_brief");
+    const voiceQuestion = songBriefQuestion(answered.flow);
+    expect(voiceQuestion).toContain("Got it");
+    expect(voiceQuestion).toContain("happy energy");
+    expect(voiceQuestion).toContain("duet vocals");
+    expect(voiceQuestion).toContain("heavy bass");
+    expect(voiceQuestion).toContain("How should the voice sound");
+    expect(voiceQuestion).not.toContain("Which would you like");
+    expect(voiceQuestion).not.toContain("I still need");
+
+    const voiced = nextSongFlow(answered.flow, "youthful and bright");
+    expect(voiced.kind).toBe("ask_brief");
+    if (voiced.kind !== "ask_brief") throw new Error("expected ask_brief");
+    expect(songBriefQuestion(voiced.flow)).toContain("How long should it be");
+    expect(nextSongFlow(voiced.flow, "2 minutes")).toMatchObject({ kind: "draft", flow: { durationSeconds: 120 } });
   });
 });
