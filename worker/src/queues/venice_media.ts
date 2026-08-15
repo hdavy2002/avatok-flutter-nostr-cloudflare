@@ -197,8 +197,8 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
   }
 
   try {
-    const title = job.song_title || "Original Ava Song";
-    const description = job.song_description || "Original song created with Ava.";
+    const title = job.song_title || "Untitled track";
+    const description = job.song_description || "A focused original track shaped by the requested sound and mood.";
     const prompt = job.kind === "venice_video_generate"
       ? `Full-frame cinematic thumbnail image for a short video titled "${title}". ${description} Show one clear representative moment, edge-to-edge composition, no borders, no text, no letters, no logos, no watermark.`
       : `Square album cover artwork for a song titled "${title}". ${description} Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;

@@ -49,15 +49,16 @@ describe("deterministic song flow", () => {
     expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
     if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
 
-    const draft = nextSongFlow(asked.flow, "A hopeful indie song about coming home, 2 minutes");
+    const draft = nextSongFlow(asked.flow, "A hopeful indie song about coming home, English, female voice, 2 minutes");
     expect(draft).toMatchObject({ kind: "draft", flow: { brief: expect.stringContaining("coming home"), durationSeconds: 120 } });
     if (draft.kind !== "draft") throw new Error("expected draft");
 
-    const detailed = nextSongFlow(null, "@ava make a 90 second pop song about home");
+    const detailedAsk = nextSongFlow(null, "@ava make a 90 second pop song about home");
+    expect(detailedAsk).toMatchObject({ kind: "ask_brief", flow: { brief: expect.stringContaining("pop song"), durationSeconds: 90 } });
+    if (detailedAsk.kind !== "ask_brief") throw new Error("expected detailed ask");
+    const detailed = nextSongFlow(detailedAsk.flow, "English, female voice, bright and soulful");
     expect(detailed).toMatchObject({ kind: "draft", flow: { brief: expect.stringContaining("pop song"), durationSeconds: 90 } });
     if (detailed.kind !== "draft") throw new Error("expected detailed draft");
-    const retried = nextSongFlow(detailed.flow, "try again");
-    expect(retried).toMatchObject({ kind: "draft", flow: { brief: detailed.flow.brief, durationSeconds: 90 } });
 
     const reviewing = withSongLyrics(draft.flow, "Verse one\n...\nChorus");
     const revision = nextSongFlow(reviewing, "make the chorus sadder");

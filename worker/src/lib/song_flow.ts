@@ -18,7 +18,17 @@ export type SongFlowAction =
   | { kind: "generate"; flow: SongFlowState };
 
 export const SONG_BRIEF_QUESTION =
-  "What should the song be about or tell a story of, what mood or genre would you like, and should it be 1, 1.5, 2, or 3 minutes?";
+  "Let’s shape it together. What should it be about, and what genre, mood, instruments, language, and length (1, 1.5, 2, or 3 minutes) do you want? For vocals, choose male, female, or group singing; voice ideas include warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike. I’ll draft the lyrics only after we have those choices, then you can revise them before I make the track.";
+
+export const SONG_CONTEXT_QUESTION =
+  "Before I draft the lyrics, what language should I use, and would you like a male, female, or group voice? You can also pick a voice character such as warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike. I’ll keep refining the brief with you until you say it’s ready.";
+
+function hasSongProductionContext(text: string): boolean {
+  const t = stripAvaWakeWordForIntent(text).toLowerCase();
+  const hasLanguage = /\b(?:english|hindi|spanish|french|german|tamil|telugu|bengali|marathi|punjabi|urdu|portuguese|language)\b/.test(t);
+  const hasVoice = /\b(?:male|female|woman|man|group|choir|duet|voice|singer|singing)\b/.test(t);
+  return hasLanguage && hasVoice;
+}
 
 /** Removes only a leading Ava wake word for intent parsing; it never determines privacy. */
 export function stripAvaWakeWordForIntent(text: string): string {
@@ -104,7 +114,7 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
   if (isSongCreationRequest(text) && (!flow || flow.phase === "completed")) {
     const brief = stripAvaWakeWordForIntent(text);
     return {
-      kind: "draft",
+      kind: "ask_brief",
       flow: { phase: "awaiting_brief", brief, durationSeconds: parseSongDurationSeconds(brief) ?? 60 },
     };
   }
@@ -114,14 +124,19 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
   }
 
   if (flow.phase === "awaiting_brief") {
-    if (flow.brief && /^(?:please\s+)?(?:try|retry)(?:\s+again)?[.!?]*$/i.test(stripAvaWakeWordForIntent(text))) {
+    if (flow.brief && hasSongProductionContext(flow.brief)
+        && /^(?:please\s+)?(?:try|retry)(?:\s+again)?[.!?]*$/i.test(stripAvaWakeWordForIntent(text))) {
       return { kind: "draft", flow };
     }
     const brief = stripAvaWakeWordForIntent(text);
     if (!brief) return { kind: "ask_brief", flow };
+    const combined = [flow.brief, brief].filter(Boolean).join("\n\n");
+    if (!hasSongProductionContext(combined)) {
+      return { kind: "ask_brief", flow: { ...flow, brief: combined } };
+    }
     return {
       kind: "draft",
-      flow: { phase: "awaiting_brief", brief, durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60 },
+      flow: { phase: "awaiting_brief", brief: combined, durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60 },
     };
   }
 

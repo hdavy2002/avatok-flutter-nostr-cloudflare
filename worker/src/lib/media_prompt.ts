@@ -85,16 +85,28 @@ export async function craftSongCardMetadata(
   stylePrompt: string,
   lyrics: string,
 ): Promise<{ title: string; description: string }> {
+  const instrumental = !String(lyrics || '').trim();
+  const fallbackSource = String(stylePrompt || '').replace(/\s+/g, ' ').trim();
+  const fallbackWords = fallbackSource
+    .replace(/^(?:please\s+)?(?:make|create|generate|compose)\s+(?:me\s+)?/i, '')
+    .split(/\s+/).filter(Boolean).slice(0, 6).join(' ');
+  const fallbackTitle = fallbackWords
+    ? fallbackWords.charAt(0).toUpperCase() + fallbackWords.slice(1)
+    : (instrumental ? 'Midnight Instrumental' : 'A New Story');
   const fallback = {
-    title: "Original Ava Song",
-    description: "An original song created with AvaTOK. Ready to play, seek and share.",
+    title: fallbackTitle.slice(0, 80),
+    description: instrumental
+      ? `A ${fallbackSource || 'mood-led'} instrumental shaped around its requested rhythm, texture and atmosphere.`
+      : `A song shaped by its lyrics, pairing the requested sound with a focused story and emotional arc.`,
   };
   const source = [String(stylePrompt || "").trim(), String(lyrics || "").trim()]
     .filter(Boolean).join("\n\n").slice(0, 6000);
   if (!source) return fallback;
   try {
     const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-      { role: "system", content: "Create promotional share-card metadata for an original song. Study the lyrics closely and infer the song's real theme, emotion, and imagery. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, appealing and accurate). Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis." },
+      { role: "system", content: instrumental
+        ? "Create promotional share-card metadata for an instrumental track. Study the musical brief closely and infer its real genre, instruments, mood, energy, setting, and listener intent. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, appealing and accurate). Do not invent lyrics or singers. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis."
+        : "Create promotional share-card metadata for an original song. Study the approved lyrics closely and infer the song's real theme, emotion, imagery, and audience; use the musical brief as secondary context. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, appealing and accurate). Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis." },
       { role: "user", content: source },
     ], { maxTokens: 180, temperature: 0.45, timeoutMs: CRAFT_TIMEOUT_MS });
     const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");

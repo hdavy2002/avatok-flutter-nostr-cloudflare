@@ -662,7 +662,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
                   ? _AiVideoJobPreview(url: artifactUrl, width: 240)
               : (isMusic && succeeded)
                   ? _AiMusicJobPreview(
-                      width: 240,
+                      width: double.infinity,
                       job: job,
                       onPlay: () => _playJobArtifact(job),
                       onShare: () => _shareJobArtifact(job),
@@ -1752,23 +1752,6 @@ class _AiMusicJobPreview extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Positioned(
-                    left: 16,
-                    top: 14,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.72),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                        child: Text(
-                          'AVATOK ORIGINAL',
-                          style: ADText.statCaption(c: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ),
                   Center(
                     child: Container(
                       width: 104,
@@ -1803,7 +1786,7 @@ class _AiMusicJobPreview extends StatelessWidget {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: ADText.threadName(c: AD.textPrimary).copyWith(fontSize: 18),
+                        style: ADText.threadName(c: Colors.black).copyWith(fontSize: 18),
                       ),
                     ),
                     IconButton(
@@ -1818,7 +1801,7 @@ class _AiMusicJobPreview extends StatelessWidget {
                   description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12, height: 1.25),
+                  style: ADText.preview(c: Colors.black87).copyWith(fontSize: 12, height: 1.25),
                 ),
                 const SizedBox(height: Msg.s2),
                 ValueListenableBuilder<PlaybackState?>(
@@ -1880,10 +1863,10 @@ class _AiMusicJobPreview extends StatelessWidget {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(_time(position), style: ADText.statCaption(c: AD.textSecondary)),
+                                  Text(_time(position), style: ADText.statCaption(c: Colors.black54)),
                                   Text(
                                     duration == null ? '—:—' : _time(duration),
-                                    style: ADText.statCaption(c: AD.textSecondary),
+                                    style: ADText.statCaption(c: Colors.black54),
                                   ),
                                 ],
                               ),

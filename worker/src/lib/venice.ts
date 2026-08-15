@@ -51,8 +51,8 @@ const ROUTES: Record<VeniceIntent, Record<VeniceTier, VeniceRoute>> = {
     paid: { model: "ltx-2-19b-distilled-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   music: {
-    free: { model: "ace-step-15", endpoint: "/audio/queue", kind: "queue_audio" },
-    paid: { model: "minimax-music-v25", endpoint: "/audio/queue", kind: "queue_audio" },
+    free: { model: "minimax-music-v26", endpoint: "/audio/queue", kind: "queue_audio" },
+    paid: { model: "minimax-music-v26", endpoint: "/audio/queue", kind: "queue_audio" },
   },
 };
 
@@ -313,8 +313,7 @@ export async function veniceRetrieveVideo(
 }
 
 // ── Music (queue + poll) ─────────────────────────────────────────────────────
-// ace-step-15 is duration-priced in bands 60/90/120/150/180/210s (verified in
-// /models pricing 2026-08-14); minimax-music-v25 is flat and takes no duration.
+// minimax-music-v26 accepts the requested duration in 60–210 second bands.
 export const VENICE_MUSIC_MIN_SECONDS = 60;
 export const VENICE_MUSIC_MAX_SECONDS = 210;
 export const VENICE_MUSIC_DEFAULT_SECONDS = 60;
@@ -325,7 +324,7 @@ export function clampMusicSeconds(requested: number | undefined): number {
 }
 
 export interface VeniceMusicOptions {
-  /** Only sent for duration-priced models (ace-step-15). Clamped 60–210. */
+  /** Requested duration for minimax-music-v26, clamped to 60–210 seconds. */
   durationSeconds?: number;
   /** Approved vocal lyrics sent separately from the musical-direction prompt. */
   lyricsPrompt?: string;
@@ -346,7 +345,7 @@ export async function veniceQueueMusic(
   // `duration_seconds` — `duration` is REJECTED ("Unrecognized key"). Verified
   // with a real queued job; /audio/quote accepts { model, duration_seconds }
   // (no prompt) and priced 60s at $0.03 as catalogued.
-  if (model === "ace-step-15") body.duration_seconds = clampMusicSeconds(opts.durationSeconds);
+  if (model === "minimax-music-v26") body.duration_seconds = clampMusicSeconds(opts.durationSeconds);
   const j = await venicePost(env, "/audio/queue", body, 30000);
   const queueId = String(j?.queue_id ?? j?.id ?? "");
   if (!queueId) throw new Error("venice music: no queue id in response");

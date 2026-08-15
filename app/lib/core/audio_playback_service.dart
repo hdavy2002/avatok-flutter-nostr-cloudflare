@@ -189,7 +189,7 @@ class AudioPlaybackService with WidgetsBindingObserver {
       _state.value = cur.copyWith(
         playing: false,
         completed: true,
-        position: cur.duration ?? cur.position,
+        position: Duration.zero,
       );
       Analytics.capture('audio_playback_complete', {
         'track_id': trackId,
@@ -339,8 +339,14 @@ class AudioPlaybackService with WidgetsBindingObserver {
     final cur = _state.value;
     if (cur == null) return;
     try {
+      final restart = cur.completed || (cur.duration != null && cur.position >= cur.duration!);
+      if (restart) {
+        await _player.seek(Duration.zero);
+        _positions.remove(cur.track.trackId);
+        await _persistPositions();
+      }
       await _player.resume();
-      _state.value = cur.copyWith(playing: true, completed: false);
+      _state.value = cur.copyWith(playing: true, completed: false, position: restart ? Duration.zero : cur.position);
       Analytics.capture('audio_playback_resume', {'track_id': cur.track.trackId});
     } catch (e) {
       AvaLog.I.log('audio', 'resume failed: $e');

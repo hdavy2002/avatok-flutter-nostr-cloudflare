@@ -79,7 +79,7 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 // turn — above all the working chip, which this file used to inline 13 times.
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
 import {
-  SONG_BRIEF_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
+  SONG_BRIEF_QUESTION, SONG_CONTEXT_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongLyrics,
   type SongFlowState,
 } from "../lib/song_flow";
@@ -1289,7 +1289,8 @@ export class AvaAgentDO {
         if (songAction.kind === "ask_brief") {
           await this.state.storage.put(flowKey, songAction.flow);
           await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
-          await this.postAva({ conv, uid, text: SONG_BRIEF_QUESTION, private: priv, source: "music" });
+          const question = songAction.flow.brief ? SONG_CONTEXT_QUESTION : SONG_BRIEF_QUESTION;
+          await this.postAva({ conv, uid, text: question, private: priv, source: "music" });
           await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
             conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "question_posted",
           }).catch(() => {});

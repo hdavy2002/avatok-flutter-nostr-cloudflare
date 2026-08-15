@@ -228,10 +228,12 @@ export function songCardMetadata(stylePrompt: string, durationSeconds: number, h
   const rawTitle = words.join(" ").replace(/[.,;:!?\-]+$/g, "").trim();
   const title = rawTitle
     ? rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1)
-    : "Original Ava Song";
+    : "A New Story";
   const seconds = Math.max(1, Math.trunc(durationSeconds));
   const length = seconds >= 120 ? `${Math.round(seconds / 60)}-minute` : `${seconds}-second`;
-  const description = `${length} ${hasLyrics ? "original song" : "instrumental"} created with Ava. Ready to play, seek and share.`;
+  const description = hasLyrics
+    ? `${length} song about ${rawTitle || "a feeling worth holding onto"}, carried by its requested story and sound.`
+    : `${length} instrumental built around ${rawTitle || "a focused mood"}, with room for texture, rhythm and atmosphere.`;
   return { title: title.slice(0, 80), description: description.slice(0, 160) };
 }
 
@@ -264,11 +266,8 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
 
   const route = veniceRoute("music", a.tier);
   const capability = "media_music_generate";
-  // Duration only applies to the free-tier duration-priced model (ace-step-15,
-  // clamped 60-210s per lib/venice.ts). The paid model (minimax-music-v25) is
-  // flat and takes no duration — clampMusicSeconds still returns a number for
-  // the job row/telemetry, but veniceQueueMusic only SENDS it when the model
-  // is ace-step-15 (see that function).
+  // minimax-music-v26 is the single production music route. Keep the agreed
+  // duration in the request and job row so the player and share card agree.
   const durationSeconds = clampMusicSeconds(a.durationSeconds);
   // Use the approved lyrics as the source of truth for public promotional copy;
   // the style brief alone produced generic titles that did not match the song.

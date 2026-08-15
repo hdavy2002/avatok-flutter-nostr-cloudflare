@@ -2,7 +2,7 @@
 // Spec: Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md.
 //
 // REVISED SCOPE (owner, 2026-08-14): tier ONLY selects (a) the music model
-// (minimax-music-v25 vs ace-step-15, lib/venice.ts's ROUTES) and (b) the
+// (minimax-music-v26, lib/venice.ts's ROUTES) and (b) the
 // uncensored-TEXT chat lane ([VENICE-CHAT-1]). It NEVER unlocks NSFW media —
 // there is no such lane; image/video stay SFW-only for everyone regardless
 // of tier (see venice.ts's file header).
