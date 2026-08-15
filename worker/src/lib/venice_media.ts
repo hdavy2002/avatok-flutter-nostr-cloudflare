@@ -190,9 +190,8 @@ export interface RunVeniceMusicArgs {
   prompt: string;
   durationSeconds?: number;
   /** [VENICE-SONG-1] Approved lyrics (from the draft_lyrics tool, after the
-   *  user signed off) — concatenated onto `prompt` (the style/genre/mood
-   *  description) so Venice receives one combined generation prompt. Absent
-   *  for a plain instrumental/music request. */
+   *  user signed off). Sent to Venice's dedicated `lyrics_prompt` field;
+   *  absent for a plain instrumental/music request. */
   lyrics?: string;
   private: boolean;
   /** [VENICE-TIER-1] see RunVeniceVideoArgs.tier doc — resolved via
@@ -206,12 +205,11 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   if (!stylePrompt) return { ok: false, message: "Tell me what kind of track to create." };
   if (stylePrompt.length > 2000) return { ok: false, message: "That prompt is too long." };
   const lyrics = String(a.lyrics ?? "").trim().slice(0, 4000);
-  // [VENICE-SONG-1] The ACTUAL Venice prompt: style/genre/mood plus the
-  // approved lyrics, when there are any. Gated + generated as ONE string so
-  // the moderation gate below covers the full sung content, not just the
-  // style description.
-  const prompt = lyrics ? `${stylePrompt}\n\nLyrics:\n${lyrics}` : stylePrompt;
-  if (prompt.length > 6000) return { ok: false, message: "That's too long — trim the lyrics a little." };
+  // [VENICE-SONG-1] Venice receives musical direction and approved lyrics in
+  // distinct fields. Keep one combined string only for the mandatory safety
+  // gate, so moderation still covers both the style and sung content.
+  const moderationText = lyrics ? `${stylePrompt}\n\nLyrics:\n${lyrics}` : stylePrompt;
+  if (moderationText.length > 6000) return { ok: false, message: "That's too long — trim the lyrics a little." };
 
   const cfg = await readConfig(env);
   if (cfg.aiEnabled === false) return { ok: false, message: "Ava is currently turned off." };
@@ -221,7 +219,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
 
   const email = await emailFor(env, a.uid).catch(() => null);
 
-  const verdict = await moderate(env, { text: prompt, field: "venice_music_prompt" });
+  const verdict = await moderate(env, { text: moderationText, field: "venice_music_prompt" });
   if (!verdict.safe) {
     void track(env, a.uid, "venice_nsfw_blocked", "avaai", {
       stage: "prompt", media: "music", reason: verdict.reason, categories: verdict.categories, provider: "venice",
@@ -259,19 +257,19 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     emitReason(false, created.error);
     if (created.error === "AI_INSUFFICIENT_TOKENS") {
       const style: AvaVoiceStyle = await readVoiceStyle(env, a.uid).catch(() => "auto");
-      return { ok: false, blocked: true, message: avaString("err_out_of_tokens", style, prompt) };
+      return { ok: false, blocked: true, message: avaString("err_out_of_tokens", style, moderationText) };
     }
     return { ok: false, message: "I couldn't start that track right now — please try again." };
   }
   const jobId = created.job.job_id;
 
   try {
-    // Venice's audio queue accepts the musical direction in `prompt`; include
-    // the lyrics the user approved so the generated track actually sings them.
-    const queuePrompt = lyrics?.trim()
-      ? `${prompt}\n\nApproved lyrics to sing:\n${lyrics.trim()}`
-      : prompt;
-    const { queueId } = await veniceQueueMusic(env as any, route.model, queuePrompt, { durationSeconds });
+    // Venice's audio queue accepts musical direction in `prompt` and approved
+    // lyrics in `lyrics_prompt`; neither field repeats the other.
+    const { queueId } = await veniceQueueMusic(env as any, route.model, stylePrompt, {
+      durationSeconds,
+      lyricsPrompt: lyrics || undefined,
+    });
     await attachVeniceQueueId(env, jobId, queueId);
     await enqueueVeniceMediaPoll(env, jobId, "venice_music_generate", INITIAL_POLL_DELAY_S);
     emitReason(true, null);

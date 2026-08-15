@@ -234,6 +234,8 @@ export function clampMusicSeconds(requested: number | undefined): number {
 export interface VeniceMusicOptions {
   /** Only sent for duration-priced models (ace-step-15). Clamped 60–210. */
   durationSeconds?: number;
+  /** Approved vocal lyrics sent separately from the musical-direction prompt. */
+  lyricsPrompt?: string;
 }
 
 // [VENICE-MUS-1] No `safe_mode` sent here: the spec's NSFW-enforcement layer 1
@@ -246,6 +248,7 @@ export async function veniceQueueMusic(
   env: VeniceEnv, model: string, prompt: string, opts: VeniceMusicOptions = {},
 ): Promise<{ queueId: string }> {
   const body: any = { model, prompt };
+  if (opts.lyricsPrompt) body.lyrics_prompt = opts.lyricsPrompt;
   // [VENICE-API-SHAPE-1 2026-08-14] Live schema: the field is
   // `duration_seconds` — `duration` is REJECTED ("Unrecognized key"). Verified
   // with a real queued job; /audio/quote accepts { model, duration_seconds }
