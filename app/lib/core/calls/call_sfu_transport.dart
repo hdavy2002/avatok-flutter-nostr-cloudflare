@@ -268,6 +268,18 @@ class CallSfuTransport {
 
       final wantVideo = video && join.videoAllowed;
 
+      // [CALL-SFU-EARLY-SEAT-1] `/join` has registered our server-side seat,
+      // and `/peer` is a read of the *other* seat only. Start that read loop
+      // now rather than waiting for local PC creation, track attachment, codec
+      // tuning and offer generation. The later `_pull` is still strictly after
+      // our publish has completed, so this changes no SFU negotiation ordering.
+      //
+      // This is especially useful for the callee: both sides have already
+      // joined by the time its local setup finishes, so the peer seat is often
+      // available before this phone has generated its publish offer.
+      final Future<CallSfuPeer?>? earlyPeer =
+          overlapPeerWait ? _awaitPeerAudio(_peerWaitOverlapped) : null;
+
       // [CALL-SFU-NULLPC-1 2026-08-14] Hold the PC in a LOCAL for the whole
       // connect. `_pc` is nulled by a concurrent dispose()/_closePc() (a
       // cancelled or superseded call tearing down while this join is mid-await),
@@ -285,13 +297,6 @@ class CallSfuTransport {
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_during_setup');
       }
       onStage?.call('sfu_pc');
-
-      // [CALL-DEADAIR-1] Start looking for the peer's seat NOW, not after our
-      // own publish round trip. See [overlapPeerWait] for why this is safe:
-      // `_awaitPeerAudio` only reads `/peer`, and the pull below still cannot
-      // begin until the publish has completed.
-      final Future<CallSfuPeer?>? earlyPeer =
-          overlapPeerWait ? _awaitPeerAudio(_peerWaitOverlapped) : null;
 
       // Hand it over before any track exists, so the caller's onTrack is armed
       // before the pull below can deliver remote media.
