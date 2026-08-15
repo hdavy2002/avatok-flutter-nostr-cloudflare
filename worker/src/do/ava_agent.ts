@@ -2416,7 +2416,7 @@ export class AvaAgentDO {
   private async postAva(b: {
     conv: string; uid: string; text: string; private?: boolean;
     source?: string; media_ref?: string; meta?: Record<string, unknown>;
-    emails?: unknown[]; a2ui?: unknown;
+    emails?: unknown[]; a2ui?: unknown; client_id?: string;
   }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
@@ -2445,16 +2445,20 @@ export class AvaAgentDO {
 
     const payload = {
       conv, sender: "ava", kind, body: envelope,
-      media_ref: b.media_ref ?? null, created_at: Date.now(), scope,
+      media_ref: b.media_ref ?? null,
+      client_id: b.client_id ? String(b.client_id).slice(0, 160) : undefined,
+      created_at: Date.now(), scope,
     };
 
     if (priv) {
       // Private: write ONLY the caller's InboxDO. Server-side privacy enforcement
       // (the other party's InboxDO is never written).
-      await this.appendTo(uid, payload);
+      const delivered = await this.appendTo(uid, payload);
+      if (!delivered) return { ok: false, error: "inbox_append_failed" };
     } else {
       const mem = await this.members(conv, uid);
-      await Promise.all(mem.map((m) => this.appendTo(m, payload)));
+      const delivered = await Promise.all(mem.map((m) => this.appendTo(m, payload)));
+      if (delivered.some((ok) => !ok)) return { ok: false, error: "inbox_append_failed" };
     }
     return { ok: true };
   }
@@ -2702,12 +2706,13 @@ export class AvaAgentDO {
     } catch { /* best-effort; streaming is a progressive enhancement */ }
   }
 
-  private async appendTo(owner: string, payload: Record<string, unknown>): Promise<void> {
+  private async appendTo(owner: string, payload: Record<string, unknown>): Promise<boolean> {
     try {
-      await this.inbox(owner).fetch("https://inbox/append", {
+      const res = await this.inbox(owner).fetch("https://inbox/append", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...payload, owner }),
       });
-    } catch { /* best-effort; never throw out of a fan-out */ }
+      return res.ok;
+    } catch { return false; }
   }
 }

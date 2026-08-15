@@ -96,12 +96,25 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
           errorCode: "PROVIDER_TIMEOUT",
           reason: "stale_submission_watchdog",
         });
-        if (result.ok) {
+        if (result.ok && result.transitioned) {
           veniceFailed++;
           void track(env, job.owner_uid, "venice_media_job_watchdog_failed", "avaai", {
             job_id: job.job_id, kind: job.kind, reason: "stale_submission", attempts: job.attempts,
           });
         }
+        continue;
+      }
+
+      // Once provider bytes have been durably staged, the provider deadline no
+      // longer applies. Always requeue final settlement/notification recovery;
+      // the stable billing operation id makes this safe and idempotent.
+      if (job.status === "delivering") {
+        const leased = await claimVeniceMediaRecoveryLease(
+          env, job.job_id, now - VENICE_STALE_MS, now,
+        );
+        if (!leased) continue;
+        await enqueueVeniceMediaPoll(env, job.job_id, job.kind);
+        veniceRequeued++;
         continue;
       }
 
@@ -111,7 +124,7 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
           errorCode: "PROVIDER_TIMEOUT",
           reason: now >= job.deadline_at ? "watchdog_deadline_exceeded" : "watchdog_poll_attempt_limit",
         });
-        if (result.ok) {
+        if (result.ok && result.transitioned) {
           veniceFailed++;
           void track(env, job.owner_uid, "venice_media_job_watchdog_failed", "avaai", {
             job_id: job.job_id, kind: job.kind,

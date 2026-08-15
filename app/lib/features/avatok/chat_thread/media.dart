@@ -459,7 +459,72 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
 
   /// Same OS share-sheet affordance as Download — a job artifact has no
   /// separate "send elsewhere" mechanic to distinguish the two actions.
-  Future<void> _shareJobArtifact(AiMediaJob job) => _downloadJobArtifact(job);
+  Future<void> _shareJobArtifact(AiMediaJob job) async {
+    if (job.kind != AiMediaJobKind.musicGenerate) {
+      await _downloadJobArtifact(job);
+      return;
+    }
+    try {
+      final fresh = await AiMediaJobRepository.I.fetch(job.jobId);
+      final audioUrl = fresh?.artifactUrl;
+      if (fresh == null || audioUrl == null || audioUrl.isEmpty) {
+        _toast("Couldn't load — try again in a moment.");
+        return;
+      }
+      final title = (fresh.songTitle ?? '').trim().isEmpty ? 'Ava original' : fresh.songTitle!.trim();
+      final description = (fresh.songDescription ?? '').trim().isEmpty
+          ? 'An original song created with Ava.'
+          : fresh.songDescription!.trim();
+      final shareUrl = await AiMediaJobRepository.I.createSongShareLink(fresh.jobId);
+      if (shareUrl != null) {
+        await Share.share('$title\n$description\n$shareUrl', subject: title);
+        Analytics.capture('ai_media_job_artifact_share', {
+          'kind': fresh.kind.wire, 'job_id': fresh.jobId, 'ok': true,
+          'share_kind': 'song_link',
+        });
+        return;
+      }
+      // Fail-soft for an older Worker or a temporary share-route outage: send
+      // the audio and cover files directly instead of losing Share entirely.
+      final (audioBytes, audioMime) = await _fetchArtifactBytes(audioUrl);
+      final dir = await getTemporaryDirectory();
+      final audio = File('${dir.path}/${_artifactFileName(fresh, audioMime)}');
+      await audio.writeAsBytes(audioBytes, flush: true);
+      final files = <XFile>[XFile(audio.path, mimeType: audioMime.isEmpty ? null : audioMime)];
+      final coverUrl = fresh.coverUrl;
+      if (coverUrl != null && coverUrl.isNotEmpty) {
+        try {
+          final (coverBytes, coverMime) = await _fetchArtifactBytes(coverUrl);
+          final coverExt = switch (coverMime.toLowerCase().split(';').first.trim()) {
+            'image/jpeg' => 'jpg',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            _ => 'png',
+          };
+          final shortId = fresh.jobId.length <= 8 ? fresh.jobId : fresh.jobId.substring(0, 8);
+          final cover = File('${dir.path}/ava_song_cover_$shortId.$coverExt');
+          await cover.writeAsBytes(coverBytes, flush: true);
+          files.add(XFile(cover.path, mimeType: coverMime.isEmpty ? 'image/png' : coverMime));
+        } catch (_) {
+          // Artwork is optional. A stale/missing cover must never block the
+          // user from sharing the successfully downloaded song itself.
+        }
+      }
+      await Share.shareXFiles(files, subject: title, text: '$title\n$description');
+      Analytics.capture('ai_media_job_artifact_share', {
+        'kind': fresh.kind.wire, 'job_id': fresh.jobId, 'ok': true,
+        'with_cover': files.length > 1,
+      });
+    } catch (e, st) {
+      Analytics.capture('ai_media_job_artifact_share', {
+        'kind': job.kind.wire, 'job_id': job.jobId, 'ok': false,
+        'error': e.runtimeType.toString(),
+      });
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'share_music_job', 'job_id': job.jobId});
+      if (mounted) _toast("Couldn't share this song.");
+    }
+  }
 
   /// "Save to AvaStorage" — fetch + upload to the user's AvaTOK Drive folder.
   Future<void> _saveJobArtifactToDrive(AiMediaJob job) async {
@@ -585,7 +650,12 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           : (isVideo && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
               ? _AiVideoJobPreview(url: artifactUrl, width: 240)
               : (isMusic && succeeded)
-                  ? _AiMusicJobPreview(width: 240)
+                  ? _AiMusicJobPreview(
+                      width: 240,
+                      job: job,
+                      onPlay: () => _playJobArtifact(job),
+                      onShare: () => _shareJobArtifact(job),
+                    )
           : null,
       onTapOpen: succeeded ? () => _openJobArtifact(job) : null,
       onDownload: succeeded ? () => _downloadJobArtifact(job) : null,
@@ -1574,19 +1644,311 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
 }
 
 class _AiMusicJobPreview extends StatelessWidget {
-  const _AiMusicJobPreview({required this.width});
+  const _AiMusicJobPreview({
+    required this.width,
+    required this.job,
+    required this.onPlay,
+    required this.onShare,
+  });
+
   final double width;
+  final AiMediaJob job;
+  final Future<void> Function() onPlay;
+  final Future<void> Function() onShare;
+
+  static String _titleFor(AiMediaJob job) {
+    final songTitle = (job.songTitle ?? '').trim();
+    if (songTitle.isNotEmpty) return songTitle;
+    final label = job.label.trim();
+    if (label.isNotEmpty &&
+        !RegExp(
+          r'^(generating|ava is creating|song ready|your (song|track))',
+          caseSensitive: false,
+        ).hasMatch(label)) {
+      return label;
+    }
+    return 'Ava original';
+  }
+
+  static String _time(Duration value) {
+    final totalSeconds = value.inSeconds;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: width, height: width,
+  Widget build(BuildContext context) {
+    final trackId = job.artifactMediaId ?? '';
+    final title = _titleFor(job);
+    final description = (job.songDescription ?? '').trim().isNotEmpty
+        ? job.songDescription!.trim()
+        : title == 'Ava original'
+            ? 'AI-generated song\nTap play to listen'
+            : 'An Ava-generated original\nReady to play or share';
+
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
         color: AD.mediaPlaceholderBg,
-        child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.musicNote(PhosphorIconsStyle.duotone), size: 54, color: AD.bubbleOutPlay),
-          const SizedBox(height: 12),
-          Text('Song ready', style: ADText.rowName(c: AD.textPrimary)),
-          const SizedBox(height: 4),
-          Text('Tap to play', style: ADText.statCaption(c: AD.textSecondary)),
-        ])),
+        border: Border.all(color: AD.borderHairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: width,
+            height: width,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AD.headerFooter, AD.bubbleOutPlay.withValues(alpha: 0.72)],
+                ),
+              ),
+              child: Stack(
+                children: [
+                  if ((job.coverUrl ?? '').isNotEmpty)
+                    Positioned.fill(
+                      child: _AiMusicCoverImage(
+                        jobId: job.jobId,
+                        initialUrl: job.coverUrl!,
+                        width: width,
+                        cacheKey: job.coverMediaId,
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.center,
+                          colors: [Colors.black.withValues(alpha: 0.42), Colors.transparent],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: -28,
+                    top: -20,
+                    child: Container(
+                      width: 144,
+                      height: 144,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 16,
+                    top: 14,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                        child: Text(
+                          'AVATOK ORIGINAL',
+                          style: ADText.statCaption(c: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      width: 104,
+                      height: 104,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AD.headerFooter.withValues(alpha: 0.84),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.32), width: 7),
+                      ),
+                      child: Center(
+                        child: PhosphorIcon(
+                          PhosphorIcons.musicNote(PhosphorIconsStyle.fill),
+                          size: 42,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s2, Msg.s3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ADText.threadName(c: AD.textPrimary).copyWith(fontSize: 18),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Share $title',
+                      onPressed: () => unawaited(onShare()),
+                      icon: const Icon(Icons.ios_share_rounded),
+                      color: AD.textSecondary,
+                    ),
+                  ],
+                ),
+                Text(
+                  description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 12, height: 1.25),
+                ),
+                const SizedBox(height: Msg.s2),
+                ValueListenableBuilder<PlaybackState?>(
+                  valueListenable: AudioPlaybackService.I.state,
+                  builder: (context, state, _) {
+                    final isCurrent = trackId.isNotEmpty && AudioPlaybackService.I.isCurrent(trackId);
+                    final duration = isCurrent
+                        ? state?.duration
+                        : AudioPlaybackService.I.knownDuration(trackId);
+                    final position = isCurrent
+                        ? (state?.position ?? Duration.zero)
+                        : (AudioPlaybackService.I.savedPosition(trackId) ?? Duration.zero);
+                    final durationMs = duration?.inMilliseconds ?? 0;
+                    final maxMs = durationMs > 0 ? durationMs : 1;
+                    final positionMs = position.inMilliseconds.clamp(0, maxMs).toDouble();
+                    final playing = isCurrent && (state?.playing ?? false);
+                    final canSeek = isCurrent && durationMs > 0;
+
+                    return Row(
+                      children: [
+                        IconButton.filled(
+                          tooltip: playing ? 'Pause $title' : 'Play $title',
+                          onPressed: trackId.isEmpty
+                              ? null
+                              : () => unawaited(
+                                    isCurrent
+                                        ? (playing
+                                            ? AudioPlaybackService.I.pause()
+                                            : AudioPlaybackService.I.resume())
+                                        : onPlay(),
+                                  ),
+                          icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                          color: AD.headerFooter,
+                          style: IconButton.styleFrom(backgroundColor: AD.bubbleOutPlay),
+                        ),
+                        const SizedBox(width: Msg.s2),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                ),
+                                child: Slider(
+                                  value: positionMs,
+                                  max: maxMs.toDouble(),
+                                  activeColor: AD.bubbleOutPlay,
+                                  inactiveColor: AD.borderHairline,
+                                  onChanged: canSeek
+                                      ? (value) => unawaited(
+                                            AudioPlaybackService.I.seek(
+                                              Duration(milliseconds: value.round()),
+                                            ),
+                                          )
+                                      : null,
+                                ),
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(_time(position), style: ADText.statCaption(c: AD.textSecondary)),
+                                  Text(
+                                    duration == null ? '—:—' : _time(duration),
+                                    style: ADText.statCaption(c: AD.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Paints a private generated cover from its short-lived URL and re-mints the
+/// URL once if that credential expired before the disk cache was populated.
+class _AiMusicCoverImage extends StatefulWidget {
+  const _AiMusicCoverImage({
+    required this.jobId,
+    required this.initialUrl,
+    required this.width,
+    this.cacheKey,
+  });
+
+  final String jobId;
+  final String initialUrl;
+  final double width;
+  final String? cacheKey;
+
+  @override
+  State<_AiMusicCoverImage> createState() => _AiMusicCoverImageState();
+}
+
+class _AiMusicCoverImageState extends State<_AiMusicCoverImage> {
+  late String _url = widget.initialUrl;
+  bool _refetching = false;
+  bool _refetched = false;
+
+  @override
+  void didUpdateWidget(covariant _AiMusicCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialUrl != widget.initialUrl || oldWidget.jobId != widget.jobId) {
+      _url = widget.initialUrl;
+      _refetching = false;
+      _refetched = false;
+    }
+  }
+
+  Future<void> _onResult(bool ok) async {
+    if (ok || _refetching || _refetched) return;
+    _refetching = true;
+    _refetched = true;
+    try {
+      final fresh = await AiMediaJobRepository.I.fetch(widget.jobId);
+      final freshUrl = fresh?.coverUrl;
+      if (mounted && freshUrl != null && freshUrl.isNotEmpty && freshUrl != _url) {
+        setState(() => _url = freshUrl);
+      }
+    } finally {
+      _refetching = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => CachedImage(
+        _url,
+        width: widget.width,
+        height: widget.width,
+        fit: BoxFit.cover,
+        cacheKey: widget.cacheKey,
+        transformUrl: false,
+        onResult: (ok) => unawaited(_onResult(ok)),
       );
 }

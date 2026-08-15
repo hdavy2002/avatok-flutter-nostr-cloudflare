@@ -475,7 +475,7 @@ class _ReadyCard extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                   child: PopupMenuButton<String>(
-                    tooltip: 'Image options',
+                    tooltip: 'Media options',
                     icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
                     padding: EdgeInsets.zero,
                     onSelected: _onMenuSelected,
@@ -483,18 +483,19 @@ class _ReadyCard extends StatelessWidget {
                   ),
                 ),
               ),
-            Positioned(
-              left: 6, bottom: 6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
-                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: Msg.brPill),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 12, color: accent),
-                  const SizedBox(width: 4),
-                  Text('READY', style: ADText.statCaption(c: Colors.white)),
-                ]),
+            if (job.kind != AiMediaJobKind.musicGenerate)
+              Positioned(
+                left: 6, bottom: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: Msg.s1),
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: Msg.brPill),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 12, color: accent),
+                    const SizedBox(width: 4),
+                    Text('READY', style: ADText.statCaption(c: Colors.white)),
+                  ]),
+                ),
               ),
-            ),
           ]),
         ),
       );

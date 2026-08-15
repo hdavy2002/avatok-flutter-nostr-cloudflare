@@ -202,7 +202,10 @@ import { avaGuardianScan } from "./routes/ava_guardian"; // P8
 import { moderateText } from "./routes/moderate";        // save-time content validation (Nemotron)
 import { avaImage } from "./routes/ava_image";          // P9
 import { avaDocSummarize, avaDocTranslate, avaDocTranslateFile, avaChatToggle } from "./routes/ava_copilot"; // Copilot A+B (doc actions + per-chat toggle)
-import { aiMediaJobsCreate, aiMediaJobsGet, aiMediaJobsCancel, aiMediaJobsList } from "./routes/ai_media_jobs"; // [AVA-MEDIA-JOB-1] durable AI media job state machine
+import {
+  aiMediaJobsCreate, aiMediaJobsGet, aiMediaJobsCancel, aiMediaJobsList,
+  aiMediaJobSongShare, aiMediaSongSharePage, aiMediaSongShareAsset,
+} from "./routes/ai_media_jobs"; // [AVA-MEDIA-JOB-1] durable AI media job state machine
 import { runAiMediaJobMessage, type AiMediaJobQueueMsg } from "./queues/ai_media"; // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
 import { avaGroupModeGet, avaGroupModePost, avaGroupPolicyGet, avaGroupDraftApprove, avaGroupDraftReject, avaGroupDraftsGet } from "./routes/ava_group"; // [AVABRAIN-COMPANION-2]/[AVABRAIN-COMPANION-UI-1] group Companion mode + effective policy + draft approval + pending-draft list
@@ -742,8 +745,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // [AVA-MEDIA-JOB-1] durable AI media job state machine (image/doc/audio jobs)
       if (p === "/api/ai/jobs" && req.method === "POST") return await aiMediaJobsCreate(req, env, ctx);
       if (p === "/api/ai/jobs" && req.method === "GET") return await aiMediaJobsList(req, env);
+      { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})\/share$/); if (m && req.method === "POST") return await aiMediaJobSongShare(req, env, m[1]); }
       { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})\/cancel$/); if (m && req.method === "POST") return await aiMediaJobsCancel(req, env, m[1]); }
       { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})$/); if (m && req.method === "GET") return await aiMediaJobsGet(req, env, m[1]); }
+      { const m = p.match(/^\/s\/song\/([A-Za-z0-9_-]{32,128})$/); if (m && req.method === "GET") return await aiMediaSongSharePage(req, env, m[1]); }
+      { const m = p.match(/^\/s\/song\/([A-Za-z0-9_-]{32,128})\/(cover|audio)$/); if (m && req.method === "GET") return await aiMediaSongShareAsset(req, env, m[1], m[2] as "cover" | "audio"); }
       // [AVABRAIN-COMPANION-2] group Companion mode + effective policy + draft approval (routes/ava_group.ts)
       if (p === "/api/ava/group/mode" && req.method === "GET") return await avaGroupModeGet(req, env);
       if (p === "/api/ava/group/mode" && req.method === "POST") return await avaGroupModePost(req, env);

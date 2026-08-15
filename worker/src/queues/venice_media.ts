@@ -22,10 +22,14 @@
 import type { Env } from "../types";
 import {
   getVeniceMediaJob, bumpVeniceMediaJobAttempt, completeVeniceMediaJob, failVeniceMediaJob,
+  claimSongCover, finishSongCover, claimVeniceMediaDelivery,
+  claimVeniceDeliveryNotification, finishVeniceDeliveryNotification,
   type VeniceMediaJobKind, type VeniceMediaJobRecord,
 } from "../lib/venice_media_jobs";
-import { veniceRetrieveVideo, veniceRetrieveAudio } from "../lib/venice";
+import { veniceRetrieveVideo, veniceRetrieveAudio, veniceRoute, veniceGenerateImage } from "../lib/venice";
 import { registerArtifactMedia, presignDigitalReadUrl } from "../routes/media";
+import { reserveAiJob, settleAiJob, releaseAiJob } from "../lib/ai_billing";
+import { moderate, moderateGeneratedImage } from "../lib/moderation";
 import { postAvaMessage } from "../routes/ava_thread";
 import { track, trackException, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
@@ -75,18 +79,33 @@ function isFailureStatus(status: string): boolean {
 /**
  * The queue consumer entrypoint for venice_* kinds — called from
  * queues/ai_media.ts's runAiMediaJobMessage() once it discriminates the
- * message's `kind`. Never claims/locks the job (single-poller-at-a-time isn't
- * needed: only this consumer ever re-enqueues a job's next poll, so at most
- * one message per job is in flight at a time by construction) — it just reads
- * current state, asks Venice, and either delivers, fails, or re-enqueues.
+ * message's `kind`. Polling is safe under Queue at-least-once delivery; the
+ * finished artifact crosses an atomic polling -> delivering lease before any
+ * settlement or chat notification, so duplicate queue messages cannot deliver
+ * the same song/video twice.
  */
 export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMsg): Promise<void> {
   const jobId = String(msg?.job_id || "");
   if (!jobId) return;
   const job = await getVeniceMediaJob(env, jobId);
-  // Terminal already / not yet submitted (venice_queue_id unset) / row
-  // missing — every case is a safe no-op under at-least-once queue delivery.
-  if (!job || job.status !== "polling" || !job.venice_queue_id) return;
+  if (!job) return;
+  // Resume a crash after the artifact was durably staged but before settlement.
+  if (job.status === "delivering" && job.artifact_media_id) {
+    await finalizeVeniceMediaDelivery(env, job);
+    return;
+  }
+  // A successful row may still need its independently leased chat notification
+  // or best-effort song cover after a prior Worker died.
+  if (job.status === "succeeded") {
+    await notifyVeniceMediaDelivery(env, job);
+    if (job.kind === "venice_music_generate" && job.cover_status !== "succeeded" && job.cover_status !== "failed") {
+      const coverTerminal = await generateSongCover(env, job);
+      if (!coverTerminal) await enqueueVeniceMediaPoll(env, job.job_id, job.kind, 30);
+    }
+    return;
+  }
+  // Not yet submitted (queue id unset) or another non-pollable terminal state.
+  if (job.status !== "polling" || !job.venice_queue_id) return;
 
   if (Date.now() >= job.deadline_at) {
     await failTerminal(env, job, "provider_timeout", "deadline_exceeded");
@@ -135,7 +154,8 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
  *  clients hydrate/update the single failed job card and suppress the legacy
  *  bubble; old clients still show the apology text. */
 async function failTerminal(env: Env, job: VeniceMediaJobRecord, errorCode: string, reason: string): Promise<void> {
-  await failVeniceMediaJob(env, { jobId: job.job_id, errorCode, reason });
+  const failed = await failVeniceMediaJob(env, { jobId: job.job_id, errorCode, reason });
+  if (!failed.ok || !failed.transitioned) return;
   const text = job.kind === "venice_video_generate"
     ? "I couldn't finish that video — please try again."
     : "I couldn't finish that track — please try again.";
@@ -143,10 +163,88 @@ async function failTerminal(env: Env, job: VeniceMediaJobRecord, errorCode: stri
     ownerUid: job.owner_uid, conv: job.conv_id, text, private: job.is_private,
     source: job.kind === "venice_video_generate" ? "video" : "music",
     meta: { job_id: job.job_id, media_job_kind: job.kind },
+    client_id: `venice-failure:${job.job_id}`,
   }).catch(() => {});
   void track(env, job.owner_uid, "venice_media_job_terminal_failed_notified", "avaai", {
     job_id: job.job_id, kind: job.kind, error_code: errorCode, reason, attempts: job.attempts,
   });
+}
+
+/** Best-effort square cover sidecar for completed songs. The song remains
+ * playable if cover generation, storage, or its separate one-Token reserve
+ * fails. A stable operation id makes reserve/settle idempotent. */
+async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<boolean> {
+  if (job.kind !== "venice_music_generate") return true;
+  if (!(await claimSongCover(env, job.job_id))) {
+    const current = await getVeniceMediaJob(env, job.job_id);
+    return current?.cover_status === "succeeded" || current?.cover_status === "failed";
+  }
+  const opId = `song-cover:${job.job_id}`;
+  const capability = "media_song_cover_generate";
+  const model = veniceRoute("image", "free").model;
+  const email = await emailFor(env, job.owner_uid).catch(() => null);
+  const reservation = await reserveAiJob(env, {
+    uid: job.owner_uid, opId, capability, modality: "image", model,
+    maxInputTokens: 0, maxOutputTokens: 0, units: { images: 1 },
+    flatPriceTokens: 1, email,
+  });
+  if (!reservation.ok) {
+    await finishSongCover(env, job.job_id, null).catch(() => {});
+    void track(env, job.owner_uid, "venice_song_cover_failed", "avaai", {
+      job_id: job.job_id, reason: reservation.error || "reserve_failed",
+    });
+    return true;
+  }
+
+  try {
+    const title = job.song_title || "Original Ava Song";
+    const description = job.song_description || "Original song created with Ava.";
+    const prompt = `Square album cover artwork for a song titled "${title}". ${description} Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
+    const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
+    if (!promptVerdict.safe) throw new Error("cover_prompt_blocked");
+    const seedWords = new Uint32Array(1);
+    crypto.getRandomValues(seedWords);
+    const { b64 } = await veniceGenerateImage(env as any, model, prompt, {
+      aspectRatio: "1:1", format: "png", seed: 1 + (seedWords[0] % 999_999_999),
+    });
+    const bin = atob(b64);
+    const coverBytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) coverBytes[i] = bin.charCodeAt(i);
+    const outputVerdict = await moderateGeneratedImage(env, job.owner_uid, coverBytes);
+    if (outputVerdict.blocked) throw new Error("cover_output_blocked");
+    const stored = await registerArtifactMedia(env, {
+      uid: job.owner_uid, bytes: coverBytes, mimeType: "image/png",
+      fileName: `ava-song-cover-${job.job_id.slice(0, 8)}.png`,
+      category: "image", sensitivity: "private",
+    });
+    const settled = await settleAiJob(env, reservation, {
+      opId, uid: job.owner_uid, capability, modality: "image",
+      modelRequested: model, modelActual: model, usage: { images: 1 },
+      flatChargeTokens: 1, email,
+    });
+    if (!settled.ok) throw new Error("cover_settlement_failed");
+    await finishSongCover(env, job.job_id, stored.id);
+    await postAvaMessage(env, {
+      ownerUid: job.owner_uid, conv: job.conv_id, text: "Song artwork ready.",
+      source: "music", private: job.is_private,
+      meta: { job_id: job.job_id, media_job_kind: job.kind },
+      client_id: `venice-cover:${job.job_id}`,
+    }).catch(() => {});
+    void track(env, job.owner_uid, "venice_song_cover_completed", "avaai", {
+      job_id: job.job_id, cover_media_id: stored.id, charged_tokens: settled.charged_tokens,
+    });
+    return true;
+  } catch (e) {
+    await releaseAiJob(env, reservation, {
+      uid: job.owner_uid, opId, capability, reason: "song_cover_failed",
+    }).catch(() => {});
+    await finishSongCover(env, job.job_id, null).catch(() => {});
+    void trackException(env, e, {
+      uid: job.owner_uid, route: "queues.venice_media.generateSongCover", handled: true,
+      extra: { job_id: job.job_id },
+    });
+    return true;
+  }
 }
 
 /**
@@ -204,32 +302,70 @@ async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, bytes: Ui
     return;
   }
 
-  await completeVeniceMediaJob(env, {
-    jobId: job.job_id, artifactMediaId: stored.id,
-    // No per-call cost is available from Venice's video/audio retrieve
-    // response (same gap the image path notes — "Venice's sync image
-    // response carries no per-call usage/cost fields today"), so this settles
-    // with cost_source:'unknown' (ai_billing.ts charges 0 and alerts
-    // AI_PRICE_UNKNOWN) until Venice models are added to AI_PRICE_CATALOG —
-    // a different agent's file ownership (lib/ai_billing.ts) this wave.
+  // Only the winner of this atomic state transition may settle or notify.
+  if (!(await claimVeniceMediaDelivery(env, job.job_id, stored.id))) return;
+  const claimed = await getVeniceMediaJob(env, job.job_id);
+  if (!claimed) throw new Error("venice_delivery_claim_lost");
+  await finalizeVeniceMediaDelivery(env, claimed, deliveryUrl ?? undefined);
+}
+
+async function artifactUrlFor(env: Env, mediaId: string | null): Promise<string | undefined> {
+  if (!mediaId) return undefined;
+  const row = await env.DB_MEDIA.prepare(
+    "SELECT key, visibility, storage FROM user_media WHERE id=?1",
+  ).bind(mediaId).first<{ key: string; visibility: string; storage: string }>();
+  if (!row) return undefined;
+  if (row.storage === "digital" || row.visibility === "private") {
+    return (await presignDigitalReadUrl(env, row.key)) ?? undefined;
+  }
+  return `${env.BLOSSOM_BASE_URL}/${row.key}`;
+}
+
+async function finalizeVeniceMediaDelivery(
+  env: Env, job: VeniceMediaJobRecord, knownUrl?: string,
+): Promise<void> {
+  if (!job.artifact_media_id) throw new Error("venice_delivery_artifact_missing");
+  const completed = await completeVeniceMediaJob(env, {
+    jobId: job.job_id, artifactMediaId: job.artifact_media_id,
+    // Venice supplies no per-call cost, so completion settles the exact fixed
+    // retail tariff persisted with the reservation (10 music / 45 video at
+    // current defaults) rather than releasing the reservation as unknown.
     settlement: { modelActual: job.model, usage: { avSeconds: job.duration_seconds ?? undefined } },
   });
+  if (!completed.ok) throw new Error(`venice_delivery_${completed.error}`);
+  await notifyVeniceMediaDelivery(env, completed.job, knownUrl);
+  if (completed.job.kind === "venice_music_generate") {
+    await enqueueVeniceMediaPoll(env, completed.job.job_id, completed.job.kind);
+  }
+}
 
-  // [B3-style contract, mirrors ai_media_jobs.ts] Mint the delivery URL fresh
-  // right here rather than persisting one — a private artifact's presigned
-  // URL expires in 900s, so a stored one would go stale in old chat history.
-  const mediaRef = deliveryUrl ?? (await presignDigitalReadUrl(env, stored.key)) ?? undefined;
-  const caption = job.kind === "venice_video_generate" ? "Here's your video ✨" : "Here's your track ✨";
-  await postAvaMessage(env, {
-    ownerUid: job.owner_uid, conv: job.conv_id, text: caption, media_ref: mediaRef,
-    source: job.kind === "venice_video_generate" ? "video" : "music",
-    private: job.is_private, meta: { job_id: job.job_id, media_job_kind: job.kind },
-  });
+async function notifyVeniceMediaDelivery(
+  env: Env, job: VeniceMediaJobRecord, knownUrl?: string,
+): Promise<void> {
+  if (job.delivery_status === "sent") return;
+  if (!(await claimVeniceDeliveryNotification(env, job.job_id))) return;
+  try {
+    // Mint rather than persist private URLs; their credentials expire in 900s.
+    const mediaRef = knownUrl ?? await artifactUrlFor(env, job.artifact_media_id);
+    if (!mediaRef) throw new Error("private_artifact_url_unavailable");
+    const caption = job.kind === "venice_video_generate" ? "Here's your video ✨" : "Here's your track ✨";
+    const posted = await postAvaMessage(env, {
+      ownerUid: job.owner_uid, conv: job.conv_id, text: caption, media_ref: mediaRef,
+      source: job.kind === "venice_video_generate" ? "video" : "music",
+      private: job.is_private, meta: { job_id: job.job_id, media_job_kind: job.kind },
+      client_id: `venice-delivery:${job.job_id}`,
+    });
+    if (!posted.ok) throw new Error(`venice_delivery_post_failed:${posted.error || "unknown"}`);
+    await finishVeniceDeliveryNotification(env, job.job_id, true);
 
-  const email = await emailFor(env, job.owner_uid).catch(() => null);
-  await trackUser(env, job.owner_uid, email, "venice_media_delivered", "avaai", {
-    job_id: job.job_id, kind: job.kind, tier: job.tier, private: job.is_private,
-    attempts: job.attempts, model: job.model, has_source_image: job.has_source_image,
-    duration_seconds: job.duration_seconds,
-  }).catch(() => {});
+    const email = await emailFor(env, job.owner_uid).catch(() => null);
+    await trackUser(env, job.owner_uid, email, "venice_media_delivered", "avaai", {
+      job_id: job.job_id, kind: job.kind, tier: job.tier, private: job.is_private,
+      attempts: job.attempts, model: job.model, has_source_image: job.has_source_image,
+      duration_seconds: job.duration_seconds,
+    }).catch(() => {});
+  } catch (e) {
+    await finishVeniceDeliveryNotification(env, job.job_id, false).catch(() => {});
+    throw e;
+  }
 }

@@ -171,6 +171,8 @@ export async function postAvaMessage(env: Env, args: {
   source?: string;
   media_ref?: string;
   meta?: Record<string, unknown>;
+  /** Optional durable InboxDO idempotency key for retried internal posts. */
+  client_id?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!args.ownerUid || !args.conv || !args.text) return { ok: false, error: "ownerUid, conv, text required" };
   try {
@@ -179,7 +181,7 @@ export async function postAvaMessage(env: Env, args: {
       body: JSON.stringify({
         conv: args.conv, uid: args.ownerUid, text: args.text,
         private: !!args.private, source: args.source ?? "chat",
-        media_ref: args.media_ref, meta: args.meta,
+        media_ref: args.media_ref, meta: args.meta, client_id: args.client_id,
       }),
     });
     const out: any = await res.json();

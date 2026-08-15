@@ -35,7 +35,7 @@ import {
 import { track, trackException } from "../hooks";
 
 export type VeniceMediaJobKind = "venice_video_generate" | "venice_music_generate";
-export type VeniceMediaJobStatus = "submitting" | "polling" | "succeeded" | "failed" | "cancelled";
+export type VeniceMediaJobStatus = "submitting" | "polling" | "delivering" | "succeeded" | "failed" | "cancelled";
 
 export const MODALITY_BY_VENICE_KIND: Record<VeniceMediaJobKind, AiModality> = {
   venice_video_generate: "video",
@@ -57,7 +57,16 @@ export interface VeniceMediaJobRecord {
   capability: string;
   model: string;
   reservation_id: string | null;
+  flat_price_tokens: number | null;
   artifact_media_id: string | null;
+  song_title: string | null;
+  song_description: string | null;
+  cover_media_id: string | null;
+  cover_status: "not_applicable" | "pending" | "generating" | "succeeded" | "failed";
+  share_token: string | null;
+  shared_at: number | null;
+  delivery_status: "pending" | "sending" | "sent";
+  delivery_lease_at: number | null;
   error_code: string | null;
   attempts: number;
   deadline_at: number;
@@ -80,7 +89,17 @@ function rowToRecord(r: any): VeniceMediaJobRecord {
     label: r.label ?? null,
     capability: r.capability, model: r.model,
     reservation_id: r.reservation_id ?? null,
+    flat_price_tokens: r.flat_price_tokens != null ? Number(r.flat_price_tokens) : null,
     artifact_media_id: r.artifact_media_id ?? null,
+    song_title: r.song_title ?? null,
+    song_description: r.song_description ?? null,
+    cover_media_id: r.cover_media_id ?? null,
+    cover_status: r.cover_status === "pending" || r.cover_status === "generating" || r.cover_status === "succeeded" || r.cover_status === "failed"
+      ? r.cover_status : "not_applicable",
+    share_token: r.share_token ?? null,
+    shared_at: r.shared_at != null ? Number(r.shared_at) : null,
+    delivery_status: r.delivery_status === "sending" || r.delivery_status === "sent" ? r.delivery_status : "pending",
+    delivery_lease_at: r.delivery_lease_at != null ? Number(r.delivery_lease_at) : null,
     error_code: r.error_code ?? null,
     attempts: Number(r.attempts ?? 0),
     deadline_at: Number(r.deadline_at),
@@ -133,7 +152,7 @@ export async function listVeniceMediaJobsForRecovery(
   try {
     const rows = await env.DB_MEDIA.prepare(
       `SELECT * FROM venice_media_jobs
-       WHERE status IN ('submitting','polling')
+       WHERE status IN ('submitting','polling','delivering')
          AND (deadline_at<=?1 OR updated_at<?2)
        ORDER BY updated_at LIMIT ?3`,
     ).bind(nowMs, staleBeforeMs, Math.max(1, Math.min(100, limit))).all<any>();
@@ -159,7 +178,7 @@ export async function claimVeniceMediaRecoveryLease(
   try {
     const result = await env.DB_MEDIA.prepare(
       `UPDATE venice_media_jobs SET updated_at=?2
-       WHERE job_id=?1 AND status='polling' AND updated_at<?3`,
+       WHERE job_id=?1 AND status IN ('polling','delivering') AND updated_at<?3`,
     ).bind(jobId, leasedAtMs, staleBeforeMs).run();
     return (result.meta?.changes ?? 0) > 0;
   } catch (e) {
@@ -201,6 +220,8 @@ export interface CreateVeniceMediaJobInput {
   // cfg.veniceMusicTokens, set by the caller). When present, reserveAiJob()
   // reserves exactly this amount instead of the catalog estimate.
   flatPriceTokens?: number | null;
+  songTitle?: string | null;
+  songDescription?: string | null;
 }
 
 export type CreateVeniceMediaJobResult =
@@ -239,13 +260,20 @@ export async function createVeniceMediaJob(env: Env, input: CreateVeniceMediaJob
     await env.DB_MEDIA.prepare(
       `INSERT INTO venice_media_jobs
          (job_id, owner_uid, conv_id, kind, status, venice_queue_id, is_private, tier, has_source_image,
-          duration_seconds, label, capability, model, reservation_id, artifact_media_id, error_code,
-          attempts, deadline_at, created_at, updated_at, completed_at)
-       VALUES (?1,?2,?3,?4,'submitting',NULL,?5,?6,?7,?8,?9,?10,?11,?12,NULL,NULL,0,?13,?14,?14,NULL)`,
+          duration_seconds, label, capability, model, reservation_id, flat_price_tokens,
+          artifact_media_id, song_title, song_description, cover_media_id, cover_status,
+          error_code, attempts, deadline_at, created_at, updated_at, completed_at)
+       VALUES (?1,?2,?3,?4,'submitting',NULL,?5,?6,?7,?8,?9,?10,?11,?12,?13,NULL,?14,?15,NULL,?16,NULL,0,?17,?18,?18,NULL)`,
     ).bind(
       jobId, ownerUid, convId, input.kind, input.isPrivate ? 1 : 0, input.tier,
       input.hasSourceImage ? 1 : 0, input.durationSeconds ?? null, input.label ? String(input.label).slice(0, 200) : null,
-      input.capability, input.model, reservationId, input.deadlineMs, ts,
+      input.capability, input.model, reservationId,
+      input.flatPriceTokens != null && Number.isFinite(input.flatPriceTokens) && input.flatPriceTokens > 0
+        ? Math.max(1, Math.trunc(input.flatPriceTokens)) : null,
+      input.songTitle ? String(input.songTitle).slice(0, 80) : null,
+      input.songDescription ? String(input.songDescription).slice(0, 240) : null,
+      input.kind === "venice_music_generate" ? "pending" : "not_applicable",
+      input.deadlineMs, ts,
     ).run();
   } catch (e) {
     await releaseAiJob(env, reservation, { uid: ownerUid, opId: jobId, capability: input.capability, reason: "job_row_insert_failed" }).catch(() => {});
@@ -295,34 +323,93 @@ export interface CompleteVeniceMediaJobInput {
   settlement: { modelActual: string; usage: UsageUnits; providerCostUsdMicro?: number };
   email?: string | null;
 }
+
+/** Atomically select the one queue delivery allowed to store/settle an
+ * at-least-once Venice result. The artifact id is persisted with the lease so
+ * a redelivery can resume after a Worker crash without calling Venice again. */
+export async function claimVeniceMediaDelivery(env: Env, jobId: string, artifactMediaId: string): Promise<boolean> {
+  const res = await env.DB_MEDIA.prepare(
+    "UPDATE venice_media_jobs SET status='delivering', artifact_media_id=?2, updated_at=?3 WHERE job_id=?1 AND status='polling'",
+  ).bind(jobId, artifactMediaId, now()).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+/** One durable chat notification per completed media job. A stale lease can
+ * be reclaimed after a Worker dies between posting and marking it sent. */
+export async function claimVeniceDeliveryNotification(env: Env, jobId: string): Promise<boolean> {
+  const ts = now();
+  const res = await env.DB_MEDIA.prepare(
+    `UPDATE venice_media_jobs SET delivery_status='sending', delivery_lease_at=?2, updated_at=?2
+     WHERE job_id=?1 AND status='succeeded'
+       AND (delivery_status='pending' OR (delivery_status='sending' AND COALESCE(delivery_lease_at,0)<?3))`,
+  ).bind(jobId, ts, ts - 120_000).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+export async function finishVeniceDeliveryNotification(env: Env, jobId: string, sent: boolean): Promise<void> {
+  await env.DB_MEDIA.prepare(
+    "UPDATE venice_media_jobs SET delivery_status=?2, delivery_lease_at=NULL, updated_at=?3 WHERE job_id=?1 AND status='succeeded' AND delivery_status='sending'",
+  ).bind(jobId, sent ? "sent" : "pending", now()).run();
+}
+
+/** Atomically claim the optional music-cover sidecar. */
+export async function claimSongCover(env: Env, jobId: string): Promise<boolean> {
+  try {
+    const ts = now();
+    const res = await env.DB_MEDIA.prepare(
+      "UPDATE venice_media_jobs SET cover_status='generating', updated_at=?2 WHERE job_id=?1 AND kind='venice_music_generate' AND (cover_status='pending' OR (cover_status='generating' AND updated_at<?3))",
+    ).bind(jobId, ts, ts - 120_000).run();
+    return (res.meta?.changes ?? 0) > 0;
+  } catch (e) {
+    void trackException(env, e, { route: "venice_media_jobs.claimSongCover", handled: true, extra: { job_id: jobId } });
+    return false;
+  }
+}
+
+export async function finishSongCover(env: Env, jobId: string, coverMediaId: string | null): Promise<void> {
+  const status = coverMediaId ? "succeeded" : "failed";
+  await env.DB_MEDIA.prepare(
+    "UPDATE venice_media_jobs SET cover_status=?2, cover_media_id=?3, updated_at=?4 WHERE job_id=?1 AND kind='venice_music_generate'",
+  ).bind(jobId, status, coverMediaId, now()).run();
+}
 export type CompleteVeniceMediaJobResult = { ok: true; job: VeniceMediaJobRecord } | { ok: false; error: string };
 
-/** polling -> succeeded + settle (ai_billing.ts settleAiJob, exactly once by
+/** delivering -> succeeded + settle (ai_billing.ts settleAiJob, exactly once by
  *  job_id). Idempotent: a replay against an already-succeeded job is a no-op. */
 export async function completeVeniceMediaJob(env: Env, input: CompleteVeniceMediaJobInput): Promise<CompleteVeniceMediaJobResult> {
   const job = await getVeniceMediaJob(env, input.jobId);
   if (!job) return { ok: false, error: "not_found" };
   if (job.status === "succeeded") return { ok: true, job }; // idempotent replay
 
+  if (job.status !== "delivering") return { ok: false, error: `invalid_state:${job.status}` };
+
+  if (job.reservation_id) {
+    const reservation: ReserveAiJobResult = {
+      ok: true, metered: true,
+      reserved_tokens: job.flat_price_tokens ?? 0,
+      ref: job.reservation_id,
+    };
+    const settled = await settleAiJob(env, reservation, {
+      opId: input.jobId, uid: job.owner_uid, capability: job.capability, modality: MODALITY_BY_VENICE_KIND[job.kind],
+      modelRequested: job.model, modelActual: input.settlement.modelActual, usage: input.settlement.usage,
+      providerCostUsdMicro: input.settlement.providerCostUsdMicro,
+      flatChargeTokens: job.flat_price_tokens ?? undefined,
+      email: input.email ?? null,
+    }).catch((e) => {
+      void trackException(env, e, { uid: job.owner_uid, route: "venice_media_jobs.completeVeniceMediaJob", method: "settleAiJob", handled: true, extra: { job_id: input.jobId } });
+      return null;
+    });
+    if (!settled?.ok) return { ok: false, error: settled?.error || "settlement_failed" };
+  }
+
   const ts = now();
   const upd = await env.DB_MEDIA.prepare(
-    "UPDATE venice_media_jobs SET status='succeeded', artifact_media_id=?2, completed_at=?3, updated_at=?3 WHERE job_id=?1 AND status='polling'",
+    "UPDATE venice_media_jobs SET status='succeeded', artifact_media_id=?2, completed_at=?3, updated_at=?3 WHERE job_id=?1 AND status='delivering'",
   ).bind(input.jobId, input.artifactMediaId, ts).run();
   if ((upd.meta?.changes ?? 0) === 0) {
     const cur = await getVeniceMediaJob(env, input.jobId);
     if (cur?.status === "succeeded") return { ok: true, job: cur };
     return { ok: false, error: cur ? `invalid_state:${cur.status}` : "not_found" };
-  }
-
-  if (job.reservation_id) {
-    const reservation: ReserveAiJobResult = { ok: true, metered: true, reserved_tokens: 0, ref: job.reservation_id };
-    await settleAiJob(env, reservation, {
-      opId: input.jobId, uid: job.owner_uid, capability: job.capability, modality: MODALITY_BY_VENICE_KIND[job.kind],
-      modelRequested: job.model, modelActual: input.settlement.modelActual, usage: input.settlement.usage,
-      providerCostUsdMicro: input.settlement.providerCostUsdMicro, email: input.email ?? null,
-    }).catch((e) => {
-      void trackException(env, e, { uid: job.owner_uid, route: "venice_media_jobs.completeVeniceMediaJob", method: "settleAiJob", handled: true, extra: { job_id: input.jobId } });
-    });
   }
 
   void track(env, job.owner_uid, "venice_media_job_completed", "avaai", { job_id: input.jobId, kind: job.kind, status: "succeeded" });
@@ -335,7 +422,7 @@ export interface FailVeniceMediaJobInput {
   errorCode: string; // short safe code only — never a raw provider message
   reason: string;
 }
-export type FailVeniceMediaJobResult = { ok: true; job: VeniceMediaJobRecord } | { ok: false; error: string };
+export type FailVeniceMediaJobResult = { ok: true; job: VeniceMediaJobRecord; transitioned: boolean } | { ok: false; error: string };
 
 /** -> failed, releasing (never billing) the reservation. Idempotent: a replay
  *  against an already-terminal job is a no-op, never a double release. */
@@ -343,12 +430,12 @@ export async function failVeniceMediaJob(env: Env, input: FailVeniceMediaJobInpu
   const job = await getVeniceMediaJob(env, input.jobId);
   if (!job) return { ok: false, error: "not_found" };
   if (job.status === "failed" || job.status === "cancelled" || job.status === "succeeded") {
-    return { ok: true, job }; // idempotent
+    return { ok: true, job, transitioned: false }; // idempotent
   }
   const ts = now();
   const errorCode = String(input.errorCode || "unknown_error").slice(0, 64);
   const upd = await env.DB_MEDIA.prepare(
-    "UPDATE venice_media_jobs SET status='failed', error_code=?2, updated_at=?3 WHERE job_id=?1 AND status IN ('submitting','polling')",
+    "UPDATE venice_media_jobs SET status='failed', error_code=?2, updated_at=?3 WHERE job_id=?1 AND status IN ('submitting','polling','delivering')",
   ).bind(input.jobId, errorCode, ts).run();
 
   if ((upd.meta?.changes ?? 0) > 0 && job.reservation_id) {
@@ -359,5 +446,5 @@ export async function failVeniceMediaJob(env: Env, input: FailVeniceMediaJobInpu
   }
   void track(env, job.owner_uid, "venice_media_job_failed", "avaai", { job_id: input.jobId, kind: job.kind, error_code: errorCode, reason: input.reason });
   const finalRow = await getVeniceMediaJob(env, input.jobId);
-  return { ok: true, job: finalRow! };
+  return { ok: true, job: finalRow!, transitioned: (upd.meta?.changes ?? 0) > 0 };
 }

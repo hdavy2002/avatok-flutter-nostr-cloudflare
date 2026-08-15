@@ -186,6 +186,14 @@ class AiMediaJob {
   /// an actual network fetch without a fresh re-read first.
   final String? artifactUrl;
 
+  /// Optional rich-card metadata for generated music. Cover URLs follow the
+  /// same short-lived presign contract as [artifactUrl].
+  final String? songTitle;
+  final String? songDescription;
+  final String? coverMediaId;
+  final String? coverUrl;
+  final String? coverStatus;
+
   /// Safe error code only (e.g. `provider_timeout`, `unsupported_format`) —
   /// NEVER a raw provider error string. The card renders a friendly message
   /// keyed off this code and always offers Retry; it never surfaces [errorCode]
@@ -214,6 +222,11 @@ class AiMediaJob {
     this.progress,
     this.artifactMediaId,
     this.artifactUrl,
+    this.songTitle,
+    this.songDescription,
+    this.coverMediaId,
+    this.coverUrl,
+    this.coverStatus,
     this.errorCode,
     required this.createdAt,
     required this.updatedAt,
@@ -237,6 +250,11 @@ class AiMediaJob {
     double? progress,
     String? artifactMediaId,
     String? artifactUrl,
+    String? songTitle,
+    String? songDescription,
+    String? coverMediaId,
+    String? coverUrl,
+    String? coverStatus,
     String? errorCode,
     int? updatedAt,
     int? completedAt,
@@ -252,6 +270,11 @@ class AiMediaJob {
         progress: progress ?? this.progress,
         artifactMediaId: artifactMediaId ?? this.artifactMediaId,
         artifactUrl: artifactUrl ?? this.artifactUrl,
+        songTitle: songTitle ?? this.songTitle,
+        songDescription: songDescription ?? this.songDescription,
+        coverMediaId: coverMediaId ?? this.coverMediaId,
+        coverUrl: coverUrl ?? this.coverUrl,
+        coverStatus: coverStatus ?? this.coverStatus,
         errorCode: errorCode ?? this.errorCode,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -287,6 +310,11 @@ class AiMediaJob {
       progress: _progress(j['progress']),
       artifactMediaId: _str(j, ['artifact_media_id']),
       artifactUrl: _str(j, ['artifact_url']),
+      songTitle: _str(j, ['song_title']),
+      songDescription: _str(j, ['song_description']),
+      coverMediaId: _str(j, ['cover_media_id']),
+      coverUrl: _str(j, ['cover_url']),
+      coverStatus: _str(j, ['cover_status']),
       errorCode: _str(j, ['error_code']),
       createdAt: _epoch(j['created_at']),
       updatedAt: _epoch(j['updated_at'], fallback: _epoch(j['created_at'])),
@@ -311,6 +339,11 @@ class AiMediaJob {
         // it's read back. Every actual open/download/share/play call site
         // re-fetches the job first; see [artifactUrl]'s own doc comment.
         if (artifactUrl != null) 'artifact_url': artifactUrl,
+        if (songTitle != null) 'song_title': songTitle,
+        if (songDescription != null) 'song_description': songDescription,
+        if (coverMediaId != null) 'cover_media_id': coverMediaId,
+        if (coverUrl != null) 'cover_url': coverUrl,
+        if (coverStatus != null) 'cover_status': coverStatus,
         if (errorCode != null) 'error_code': errorCode,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -535,6 +568,28 @@ class AiMediaJobRepository {
       await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true, extra: {
         'stage': 'fetch',
       });
+      return null;
+    }
+  }
+
+  /// Explicitly publish a completed generated song and return its opaque
+  /// share page URL. The server does not create this token until this method
+  /// is called, so private generated audio is not public by default.
+  Future<String?> createSongShareLink(String jobId) async {
+    try {
+      final res = await ApiAuth.postJson(
+        '$kApiBase/ai/jobs/${Uri.encodeComponent(jobId)}/share',
+        const <String, dynamic>{},
+        timeout: const Duration(seconds: 12),
+      );
+      if (res.statusCode != 200) return null;
+      final decoded = jsonDecode(res.body);
+      if (decoded is! Map) return null;
+      final url = (decoded['url'] ?? '').toString().trim();
+      return url.isEmpty ? null : url;
+    } catch (e, st) {
+      await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true,
+          extra: {'stage': 'create_song_share_link'});
       return null;
     }
   }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { veniceQueueMusic } from "../src/lib/venice";
+import { songCardMetadata } from "../src/lib/venice_media";
 
 describe("Venice music queue request", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -48,5 +49,16 @@ describe("Venice music queue request", () => {
       model: "minimax-music-v25",
       prompt: "Instrumental piano and strings",
     });
+  });
+});
+
+describe("song card metadata", () => {
+  it("creates bounded share copy without persisting lyrics", () => {
+    const card = songCardMetadata("Create me a song about finding home after a long journey", 120, true);
+    expect(card.title).toBe("Finding home after a long journey");
+    expect(card.description).toContain("2-minute original song");
+    expect(card.title.length).toBeLessThanOrEqual(80);
+    expect(card.description.length).toBeLessThanOrEqual(160);
+    expect(card.description.toLowerCase()).not.toContain("lyrics");
   });
 });

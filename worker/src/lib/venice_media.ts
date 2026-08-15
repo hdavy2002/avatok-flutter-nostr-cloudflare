@@ -200,6 +200,25 @@ export interface RunVeniceMusicArgs {
   tier: VeniceTier;
 }
 
+export function songCardMetadata(stylePrompt: string, durationSeconds: number, hasLyrics: boolean): {
+  title: string;
+  description: string;
+} {
+  const cleaned = String(stylePrompt || "")
+    .replace(/\s+/g, " ")
+    .replace(/^(?:please\s+)?(?:make|create|generate|write|compose)\s+(?:me\s+)?(?:an?\s+)?(?:song|track|music)\s*(?:about|for|with|in)?\s*/i, "")
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean).slice(0, 7);
+  const rawTitle = words.join(" ").replace(/[.,;:!?\-]+$/g, "").trim();
+  const title = rawTitle
+    ? rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1)
+    : "Original Ava Song";
+  const seconds = Math.max(1, Math.trunc(durationSeconds));
+  const length = seconds >= 120 ? `${Math.round(seconds / 60)}-minute` : `${seconds}-second`;
+  const description = `${length} ${hasLyrics ? "original song" : "instrumental"} created with Ava. Ready to play, seek and share.`;
+  return { title: title.slice(0, 80), description: description.slice(0, 160) };
+}
+
 export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<RunVeniceMediaResult> {
   const stylePrompt = String(a.prompt ?? "").trim();
   if (!stylePrompt) return { ok: false, message: "Tell me what kind of track to create." };
@@ -235,6 +254,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   // the job row/telemetry, but veniceQueueMusic only SENDS it when the model
   // is ace-step-15 (see that function).
   const durationSeconds = clampMusicSeconds(a.durationSeconds);
+  const card = songCardMetadata(stylePrompt, durationSeconds, !!lyrics);
   const t0 = Date.now();
   const emitReason = (ok: boolean, error: string | null) => {
     void track(env, a.uid, "ava_reason_call", "avaai", {
@@ -250,6 +270,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     capability, model: route.model, isPrivate: a.private, tier: a.tier,
     hasSourceImage: false, durationSeconds,
     label: "Generating your track…", deadlineMs: Date.now() + MUSIC_DEADLINE_MS, email,
+    songTitle: card.title, songDescription: card.description,
     // [VENICE-TOKENS-1] owner tariff 2026-08-14: music = cfg.veniceMusicTokens (10).
     flatPriceTokens: cfg.veniceMusicTokens,
   });

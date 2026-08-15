@@ -23,7 +23,10 @@ import {
   createAiMediaJob, getAiMediaJob, cancelAiMediaJob, listAiMediaJobs, failAiMediaJob,
   type AiMediaJobKind, type AiMediaJobStatus,
 } from "../lib/ai_media_jobs";
-import { getVeniceMediaJob, listVeniceMediaJobs, failVeniceMediaJob } from "../lib/venice_media_jobs";
+import {
+  getVeniceMediaJob, listVeniceMediaJobs, failVeniceMediaJob,
+  type VeniceMediaJobRecord,
+} from "../lib/venice_media_jobs";
 import { presignDigitalReadUrl } from "./media";
 import { enqueueAiMediaJob, isAiMediaKindImplemented } from "../queues/ai_media";
 
@@ -32,19 +35,28 @@ const VALID_KINDS = new Set<AiMediaJobKind>([
 ]);
 const VALID_STATUSES = new Set<AiMediaJobStatus>(["queued", "running", "succeeded", "failed", "cancelled"]);
 
-function veniceAsAiJob(job: Awaited<ReturnType<typeof getVeniceMediaJob>>, artifactUrl: string | null = null): any {
+function veniceAsAiJob(
+  job: Awaited<ReturnType<typeof getVeniceMediaJob>>,
+  artifactUrl: string | null = null,
+  coverUrl: string | null = null,
+): any {
   if (!job) return null;
   return {
     job_id: job.job_id,
     owner_uid: job.owner_uid,
     conv_id: job.conv_id,
     kind: job.kind,
-    status: job.status === "submitting" || job.status === "polling" ? "running" : job.status,
+    status: job.status === "submitting" || job.status === "polling" || job.status === "delivering" ? "running" : job.status,
     source_media_id: null,
     label: job.label ?? (job.kind === "venice_video_generate" ? "Generating your video…" : "Generating your song…"),
     progress: null,
     artifact_media_id: job.artifact_media_id,
     artifact_url: artifactUrl,
+    song_title: job.song_title,
+    song_description: job.song_description,
+    cover_media_id: job.cover_media_id,
+    cover_url: coverUrl,
+    cover_status: job.cover_status,
     error_code: job.error_code,
     reservation_id: job.reservation_id,
     created_at: job.created_at,
@@ -65,7 +77,11 @@ async function veniceArtifactUrl(env: Env, artifactMediaId: string | null): Prom
 }
 
 async function hydrateVenice(env: Env, job: Awaited<ReturnType<typeof getVeniceMediaJob>>): Promise<any> {
-  return veniceAsAiJob(job, await veniceArtifactUrl(env, job?.artifact_media_id ?? null));
+  return veniceAsAiJob(
+    job,
+    await veniceArtifactUrl(env, job?.artifact_media_id ?? null),
+    await veniceArtifactUrl(env, job?.cover_media_id ?? null),
+  );
 }
 
 // POST /api/ai/jobs
@@ -145,6 +161,110 @@ export async function aiMediaJobsGet(req: Request, env: Env, jobId: string): Pro
   const v = await getVeniceMediaJob(env, id);
   if (!v || v.owner_uid !== ctxUser.uid) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
   return json({ ok: true, job: await hydrateVenice(env, v) });
+}
+
+// POST /api/ai/jobs/:job_id/share — explicit publication of a succeeded song.
+export async function aiMediaJobSongShare(req: Request, env: Env, jobId: string): Promise<Response> {
+  const ctxUser = await requireUser(req, env);
+  if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
+  let job = await getVeniceMediaJob(env, String(jobId || "").trim());
+  if (!job || job.owner_uid !== ctxUser.uid) return json({ error: "not_found" }, 404);
+  if (job.kind !== "venice_music_generate" || job.status !== "succeeded" || !job.artifact_media_id) {
+    return json({ error: "song_not_ready" }, 409);
+  }
+  if (!job.share_token) {
+    const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    await env.DB_MEDIA.prepare(
+      "UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL",
+    ).bind(job.job_id, token, Date.now()).run();
+    job = await getVeniceMediaJob(env, job.job_id);
+  }
+  if (!job?.share_token) return json({ error: "share_unavailable" }, 503);
+  const origin = new URL(req.url).origin;
+  return json({ ok: true, url: `${origin}/s/song/${job.share_token}` });
+}
+
+function songHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[ch] || ch));
+}
+
+async function sharedSong(env: Env, token: string): Promise<VeniceMediaJobRecord | null> {
+  const row = await env.DB_MEDIA.prepare(
+    "SELECT * FROM venice_media_jobs WHERE share_token=?1 AND kind='venice_music_generate' AND status='succeeded' LIMIT 1",
+  ).bind(token).first<any>();
+  if (!row?.job_id) return null;
+  return await getVeniceMediaJob(env, String(row.job_id));
+}
+
+/** Public OG/landing page. The opaque token is created only by the owner share action. */
+export async function aiMediaSongSharePage(req: Request, env: Env, token: string): Promise<Response> {
+  const job = await sharedSong(env, token);
+  if (!job?.artifact_media_id) return new Response("Song not found", { status: 404 });
+  const origin = new URL(req.url).origin;
+  const title = songHtml(job.song_title || "Ava original");
+  const description = songHtml(job.song_description || "An original song created with Ava.");
+  const canonical = `${origin}/s/song/${token}`;
+  const cover = job.cover_media_id ? `${canonical}/cover` : "";
+  const audio = `${canonical}/audio`;
+  const coverMeta = cover
+    ? `<meta property="og:image" content="${cover}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${cover}">`
+    : `<meta name="twitter:card" content="summary">`;
+  const coverBody = cover
+    ? `<img class="cover" src="${cover}" alt="${title} cover art">`
+    : `<div class="cover fallback" aria-label="Song cover">♪</div>`;
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title} · AvaTOK</title><meta name="description" content="${description}">
+<link rel="canonical" href="${canonical}"><meta property="og:type" content="music.song"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${coverMeta}<meta property="og:audio" content="${audio}">
+<style>body{margin:0;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;display:grid;place-items:center}.card{width:min(92vw,520px);background:#18242b;border:1px solid #34434b;border-radius:24px;overflow:hidden;box-shadow:0 24px 70px #0008}.cover{display:block;width:100%;aspect-ratio:1;object-fit:cover}.fallback{display:grid;place-items:center;font-size:120px;background:linear-gradient(135deg,#193b4c,#19a974)}.copy{padding:22px}.eyebrow{color:#55d696;font-size:12px;letter-spacing:.14em;font-weight:700}.title{font-size:28px;margin:7px 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0 0 18px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}audio{width:100%;accent-color:#35ce86}</style></head><body><main class="card">${coverBody}<section class="copy"><div class="eyebrow">AVATOK ORIGINAL</div><h1 class="title">${title}</h1><p class="desc">${description}</p><audio controls preload="metadata" src="${audio}">Your browser cannot play this song.</audio></section></main></body></html>`;
+  return new Response(body, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=300",
+      "content-security-policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+/** Token-gated media endpoints used by OG crawlers and the landing player. */
+export async function aiMediaSongShareAsset(
+  req: Request, env: Env, token: string, asset: "cover" | "audio",
+): Promise<Response> {
+  const job = await sharedSong(env, token);
+  const mediaId = asset === "cover" ? job?.cover_media_id : job?.artifact_media_id;
+  if (!mediaId) return new Response("Not found", { status: 404 });
+  const row = await env.DB_MEDIA.prepare(
+    "SELECT key, mime_type, storage FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1",
+  ).bind(mediaId, job!.owner_uid).first<{ key: string; mime_type: string; storage: string }>();
+  if (!row || row.storage !== "digital") return new Response("Not found", { status: 404 });
+  // Forward Range so the browser player can seek without downloading the
+  // entire song first. R2 returns the selected range as a stream.
+  const object = await env.DIGITAL.get(row.key, { range: req.headers });
+  if (!object) return new Response("Not found", { status: 404 });
+  const headers = new Headers({
+    "content-type": row.mime_type || (asset === "cover" ? "image/png" : "audio/mpeg"),
+    "cache-control": "public, max-age=300",
+    "content-disposition": "inline",
+    "x-content-type-options": "nosniff",
+    "accept-ranges": "bytes",
+    "etag": object.httpEtag,
+  });
+  let status = 200;
+  if (object.range && "offset" in object.range && "length" in object.range) {
+    status = 206;
+    const start = object.range.offset;
+    const length = object.range.length;
+    headers.set("content-length", String(length));
+    headers.set("content-range", `bytes ${start}-${start + length - 1}/${object.size}`);
+  } else {
+    headers.set("content-length", String(object.size));
+  }
+  return new Response(object.body, {
+    status,
+    headers,
+  });
 }
 
 // POST /api/ai/jobs/:job_id/cancel
