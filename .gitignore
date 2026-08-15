@@ -139,3 +139,77 @@ theme/design/calender.zip
 # clone and every agent. Absent => cf.sh falls back to the branch (main => prod,
 # which is fail-closed behind ALLOW_PROD=1 anyway).
 .avatok-target
+
+# Local audit/report drops and design exports (2026-08-15).
+# These were created in the shared workspace but are not part of the release
+# source tree. Existing tracked files remain tracked even when listed here.
+AUDIT-postmortem-claims-2026-08-08.md
+BUG-account-delete-not-cascading.md
+CALL-CHANGES-SIMPLE-2026-07-07.md
+CALL-CONDITIONS-REPORT-2026-07-07.md
+CALL-CONDITIONS-SIMPLE-2026-07-07.md
+CALL-RACE-AUDIT-2026-08-03.md
+CALL-RACE-STUDY-2026-08-03.md
+CALL-TRANSLATE-1-IMPLEMENTATION-REPORT.md
+CALL-WORK-PLAIN-ENGLISH-2026-08-03.md
+COMMIT_CALLFIX_7_10.sh
+ENG-REPORT-AI-MESSENGER-BATCH-2026-07-03.md
+INFRA-COST-AUDIT-RESULTS-2026-06-30.md
+INFRA-COST-BRIEFING-2026-06-30.md
+INFRA-COST-CLARIFY-ANSWERS-2026-06-30.md
+LOST-FILES-2026-07-31.md
+PLAY-COMPLIANCE-AUDIT-2026-07-01.md
+PLAY-STORE-LISTING-WALKTHROUGH.md
+REPORT-call-failures-2026-08-02.md
+REPORT-why-calls-dont-ring-2026-07-19.md
+WALLET-DEEP-DIVE-REPORT-2026-08-02.md
+account-deletion-watch-hdavy2005.md
+emulator-shot.png
+logo/
+proposals/AvaTok_Tiered_Pricing_Brief.pdf
+scroll-site-generator.skill
+design/
+tools/
+
+Specs/AUDIT-2026-08-07-guardian-and-ava-in-chat.md
+Specs/AUDIT-GROUP-MESSAGING-2026-08-04.md
+Specs/AVA-FIX-PLAN-2026-08-07.md
+Specs/AVA-IN-CHAT-PLAIN-ENGLISH-2026-08-07.md
+Specs/AVA-MEDIA-DESCRIPTIONS-2026-08-07.md
+Specs/AVA-MULTIMODAL-RAG-2026-08-07.md
+Specs/AVA-SPEC-SEND-VERIFICATION-2026-08-07.md
+Specs/AVA-SPECULATIVE-SEND-2026-08-07.md
+Specs/AVA-V2-HANDOVER-2026-08-07.md
+Specs/AVA-V2-IMPLEMENTATION-2026-08-07.md
+Specs/AVA-V2-PROGRESS-REPORT-2026-08-07.md
+Specs/AVA-V2-SIMPLE-REPORT-2026-08-07.md
+Specs/CALL-FAILURE-AUDIT-2026-08-03.md
+Specs/CALL-MESSAGING-RECEPTIONIST-REMEDIATION-PLAN.md
+Specs/CX-what-the-evening-actually-felt-like-2026-08-08.md
+Specs/PENDING-2026-08-03-deploys-migrations-flags.md
+Specs/PLAIN-ENGLISH-call-debate-and-permanent-fix-2026-08-08.md
+Specs/PLAN-CALL-TRANSLATION-2-HARDENING-HANDOVER.md
+Specs/PLAN-LIVE-CALL-TRANSLATION-UI.md
+Specs/PLAY-BILLING-SETUP.md
+Specs/RCA-2026-08-03-call-accept-native-decline.md
+Specs/REPORT-2026-08-03-group-calls-and-member-refresh.md
+Specs/REPORT-2026-08-03-group-calls-wave1-implemented.md
+Specs/REPORT-2026-08-03-group-calls-wave2-implemented.md
+Specs/REPORT-2026-08-03-group-calls-wave3-implemented.md
+Specs/REPORT-2026-08-03-group-calls-wave4-implemented.md
+Specs/REPORT-2026-08-07-ava-always-on-memory-cost-and-deletion.md
+Specs/REPORT-2026-08-07-ava-latency.md
+Specs/REPORT-2026-08-07-local-memory-option.md
+Specs/REPORT-why-the-call-fixes-did-not-land-2026-08-08.md
+Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md
+Specs/STUDY-LIVE-CALL-TRANSLATION.md
+Specs/SUMMARY-2026-08-03-group-calls-plain-english.md
+Specs/WAN-STREAMER-LIVE-AVATAR-PLAN.md
+Specs/WORK-DONE-BUSY-CARD-GLUE-2026-07-07.md
+Specs/proposals/ENG-NOTE-personalization-whats-possible.md
+Specs/proposals/PLAIN-personalization-features.md
+Specs/proposals/PROPOSAL-CHAT-PERSONALIZATION-SUITE.md
+
+# Local audio/TTS drops.
+tools/*.mp3
+tools/**/*.mp3
