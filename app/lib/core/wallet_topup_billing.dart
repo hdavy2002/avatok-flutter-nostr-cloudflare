@@ -52,6 +52,7 @@ class WalletTopupBilling {
   void Function(String message)? _onNotice;
   void Function(int tokensCredited)? _onCredited;
   bool _started = false;
+  final Set<String> _inFlightTokens = <String>{};
 
   /// Begin listening to the global purchase stream. Safe to call on every screen
   /// mount — it rebinds the callbacks but only attaches the listener once.
@@ -121,24 +122,38 @@ class WalletTopupBilling {
 
   Future<void> _credit(PurchaseDetails p) async {
     final token = p.verificationData.serverVerificationData;
+    if (token.isEmpty || !_inFlightTokens.add(token)) return;
+
     Map<String, dynamic> res = const {};
     try {
-      res = await MoneyApi.topupPlayVerify(p.productID, token);
-    } catch (_) {/* fall through to the failure notice */}
-    // Always finish the purchase so Play doesn't leave it dangling. Crediting is
-    // idempotent on Google's orderId, so a later re-verify can't double-credit.
-    if (p.pendingCompletePurchase) await _iap.completePurchase(p);
-
-    if (res['ok'] == true) {
-      final credited = (res['credited'] as num?)?.toInt() ?? (res['coins'] as num?)?.toInt() ?? 0;
-      _onCredited?.call(credited);
-      if (res['duplicate'] == true) {
-        _notice('This top-up was already added to your wallet.');
-      } else {
-        _notice('Top-up complete — Tokens added to your wallet!');
+      // Keep the Play purchase pending while the server is unavailable. The
+      // old flow completed the consumable even on a 503/502, which discarded
+      // the only delivery signal before the promised automatic credit could
+      // happen. Play will redeliver an unfinished purchase after restart.
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          res = await MoneyApi.topupPlayVerify(p.productID, token);
+          if (res['ok'] == true || attempt == 2) break;
+        } catch (_) {
+          if (attempt == 2) break;
+        }
+        await Future<void>.delayed(Duration(seconds: 1 << attempt));
       }
-    } else {
-      _notice('We couldn’t confirm your top-up yet. If you were charged it will be credited automatically.');
+
+      if (res['ok'] == true) {
+        if (p.pendingCompletePurchase) await _iap.completePurchase(p);
+        final credited = (res['credited'] as num?)?.toInt() ?? (res['coins'] as num?)?.toInt() ?? 0;
+        _onCredited?.call(credited);
+        if (res['duplicate'] == true) {
+          _notice('This top-up was already added to your wallet.');
+        } else {
+          _notice('Top-up complete — Tokens added to your wallet!');
+        }
+      } else {
+        _notice('We couldn’t confirm your top-up yet. We’ll keep retrying automatically.');
+      }
+    } finally {
+      _inFlightTokens.remove(token);
     }
   }
 

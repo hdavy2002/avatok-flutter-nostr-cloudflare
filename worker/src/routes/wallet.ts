@@ -401,23 +401,24 @@ export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Res
   return creditPlayTopup(env, ctx.uid, coins, orderRef, productId, purchaseToken, v);
 }
 
-// Credit a verified Play top-up. Idempotent twice over: a topup_records row keyed
-// on the Google orderId (stripe_session_id column, unique-indexed) short-circuits
-// replays, and the WalletDO dedupes on op_id `topup:play:<orderId>` so even a
-// racing double-submit credits exactly once.
+// Credit a verified Play top-up. A topup_records row keyed on the Google orderId
+// (stripe_session_id column, unique-indexed) records `pending_credit` before the
+// WalletDO call and becomes `paid` only after the wallet confirms. That leaves a
+// safe retry path for a transient DO/D1 failure; the WalletDO also dedupes on
+// op_id `topup:play:<orderId>` so a replay credits exactly once.
 async function creditPlayTopup(
   env: Env, uid: string, coins: number, orderRef: string, productId: string,
   purchaseToken: string, play: { priceAmountMicros?: number; priceCurrencyCode?: string; purchaseTimeMillis?: number },
 ): Promise<Response> {
   const existing = await env.DB_WALLET.prepare(
-    "SELECT status FROM topup_records WHERE stripe_session_id=?1 AND uid=?2",
-  ).bind(orderRef, uid).first<{ status: string }>();
-  if (existing) {
+    "SELECT id, status FROM topup_records WHERE stripe_session_id=?1 AND uid=?2",
+  ).bind(orderRef, uid).first<{ id: string; status: string }>();
+  if (existing?.status === "paid") {
     const bal = await walletOp(env, uid, { op: "balance", uid });
     return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
   }
 
-  const id = crypto.randomUUID();
+  const id = existing?.id || crypto.randomUUID();
   const priceCurrency = String(play.priceCurrencyCode || "usd").toLowerCase();
   const priceMinor = Number.isFinite(Number(play.priceAmountMicros))
     ? Math.max(0, Math.round(Number(play.priceAmountMicros) / 10_000))
@@ -427,14 +428,20 @@ async function creditPlayTopup(
       `INSERT INTO topup_records
        (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, paid_at, created_at,
         provider, provider_purchase_token, provider_order_id, provider_price_minor, provider_price_currency, provider_purchase_at)
-       VALUES (?1,?2,?3,?4,?5,?6,'paid',?7,?7,'google_play',?8,?3,?9,?10,?11)`,
+       VALUES (?1,?2,?3,?4,?5,?6,'pending_credit',?7,?7,'google_play',?8,?3,?9,?10,?11)`,
     ).bind(id, uid, orderRef, coins, priceMinor, priceCurrency, Date.now(), purchaseToken,
       priceMinor, priceCurrency, play.purchaseTimeMillis ?? null).run();
   } catch {
-    // UNIQUE(stripe_session_id) violation → a concurrent request already recorded
-    // this order. Treat as a duplicate; the op_id dedup guarantees single credit.
-    const bal = await walletOp(env, uid, { op: "balance", uid });
-    return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
+    // A concurrent request may have inserted the same order. Re-read it and
+    // continue from pending_credit; only a paid row is a completed duplicate.
+    const raced = await env.DB_WALLET.prepare(
+      "SELECT id, status FROM topup_records WHERE stripe_session_id=?1 AND uid=?2",
+    ).bind(orderRef, uid).first<{ id: string; status: string }>();
+    if (!raced) return json({ ok: false, error: "top-up recording failed", reason: "record_failed" }, 503);
+    if (raced.status === "paid") {
+      const bal = await walletOp(env, uid, { op: "balance", uid });
+      return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
+    }
   }
 
   const meta: any = {
@@ -445,6 +452,20 @@ async function creditPlayTopup(
     op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: orderRef, op_id: `topup:play:${orderRef}`,
     ledger: { debit: "external:google_play", credit: acctUser(uid), type: "topup", ref: orderRef, meta: JSON.stringify(meta) },
   });
+
+  if (r.status !== 200 || r.body?.ok !== true) {
+    track(env, uid, "wallet_topup_credit_failed", "avawallet", {
+      coins, source: "play", order_ref: orderRef, status: r.status,
+    });
+    return json({ ok: false, error: "wallet credit pending", reason: "wallet_credit_failed" }, 503);
+  }
+  const marked = await env.DB_WALLET.prepare(
+    "UPDATE topup_records SET status='paid' WHERE id=?1 AND uid=?2 AND status='pending_credit'",
+  ).bind(id, uid).run();
+  if (!marked.meta.changes) {
+    const bal = await walletOp(env, uid, { op: "balance", uid });
+    return json({ ok: true, duplicate: true, coins, balance: bal.body?.balance ?? null });
+  }
 
   try { await payAffiliateOnTopup(env, uid, coins, id); } catch { /* best-effort */ }
   try { await sendReceipt(env, uid, "topup", { orderId: id, title: `${coins} Tokens`, lines: [{ label: `${coins} Tokens`, amount: coins }], total: coins }); } catch { /* best-effort */ }
