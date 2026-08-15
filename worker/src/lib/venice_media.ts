@@ -307,6 +307,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     flatPriceTokens: cfg.veniceMusicTokens,
   });
   if (!created.ok) {
+    void track(env, a.uid, "ava_music_error", "avaai", {
+      stage: "job_create", model: route.model, provider: "venice", error: created.error,
+    });
     emitReason(false, created.error);
     if (created.error === "AI_INSUFFICIENT_TOKENS") {
       const style: AvaVoiceStyle = await readVoiceStyle(env, a.uid).catch(() => "auto");

@@ -13,6 +13,12 @@ describe("Venice song rich-card contract", () => {
     expect(migration).toContain("delivery_status");
   });
 
+  it("keeps the media-job insert aligned with all 27 database columns", () => {
+    const jobs = readFileSync("src/lib/venice_media_jobs.ts", "utf8");
+    expect(jobs).toContain("NULL,?15,?16,NULL,?17,NULL,0,?18,?19,?19,NULL");
+    expect(jobs).not.toContain("?19,?20,?20,NULL");
+  });
+
   it("leases at-least-once delivery and retries settlement before success", () => {
     const jobs = readFileSync("src/lib/venice_media_jobs.ts", "utf8");
     const queue = readFileSync("src/queues/venice_media.ts", "utf8");

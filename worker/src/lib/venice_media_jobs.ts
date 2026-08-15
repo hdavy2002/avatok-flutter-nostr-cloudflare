@@ -286,7 +286,7 @@ export async function createVeniceMediaJob(env: Env, input: CreateVeniceMediaJob
           duration_seconds, label, capability, model, reservation_id, flat_price_tokens, music_mode,
           artifact_media_id, song_title, song_description, cover_media_id, cover_status,
           error_code, attempts, deadline_at, created_at, updated_at, completed_at)
-       VALUES (?1,?2,?3,?4,'submitting',NULL,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,NULL,?15,?16,?17,NULL,?18,NULL,0,?19,?20,?20,NULL)`,
+       VALUES (?1,?2,?3,?4,'submitting',NULL,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,NULL,?15,?16,NULL,?17,NULL,0,?18,?19,?19,NULL)`,
     ).bind(
       jobId, ownerUid, convId, input.kind, input.isPrivate ? 1 : 0, input.tier,
       input.hasSourceImage ? 1 : 0, input.durationSeconds ?? null, input.label ? String(input.label).slice(0, 200) : null,
