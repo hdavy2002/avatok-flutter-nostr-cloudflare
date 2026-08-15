@@ -98,6 +98,11 @@ export interface VeniceImageOptions {
   aspectRatio?: string;
   format?: "webp" | "png";
   negativePrompt?: string;
+  /// Explicit per-generation randomness. Venice documents an omitted seed as
+  /// random, but sending one removes provider/model ambiguity and guarantees
+  /// that repeated prompts request a fresh variation rather than replaying a
+  /// model-default composition.
+  seed?: number;
 }
 
 /** Returns base64 image bytes. safe_mode/hide_watermark are pinned — see header. */
@@ -115,6 +120,7 @@ export async function veniceGenerateImage(
   if (opts.height) body.height = opts.height;
   if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
   if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
+  if (opts.seed != null) body.seed = opts.seed;
   const j = await venicePost(env, "/image/generate", body, 60000);
   const b64 = Array.isArray(j?.images) ? String(j.images[0] ?? "") : "";
   if (!b64) throw new Error("venice image: empty images[] in response");

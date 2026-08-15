@@ -562,6 +562,15 @@ async function generateImageVenice(
 ): Promise<GeneratedImage> {
   const model = veniceRoute("image", "free").model;
   const resolution = opts.resolution || DEFAULT_IMAGE_RESOLUTION;
+  // [AVA-IMG-VARIETY-1] Always give Venice an explicit fresh seed. Although
+  // its API says an omitted seed is random, the owner observed near-identical
+  // logo results repeating in chat. A cryptographic 32-bit sample mapped into
+  // Venice's documented positive range makes every request unambiguously ask
+  // for a new variation without changing the user's prompt or producing more
+  // than the one image they requested.
+  const seedWords = new Uint32Array(1);
+  crypto.getRandomValues(seedWords);
+  const generationSeed = 1 + (seedWords[0] % 999_999_999);
   const t0 = Date.now();
   const emitReason = (ok: boolean, error: string | null) => {
     try {
@@ -570,7 +579,7 @@ async function generateImageVenice(
         opportunity: null, feature: "ava_image", verb: "see", provider: "venice",
         model, primary_model: null, ok, fallback_used: false, cache_hit: false,
         latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
-        resolution,
+        resolution, seeded: true,
       });
     } catch { /* telemetry best-effort */ }
   };
@@ -593,7 +602,10 @@ async function generateImageVenice(
 
   let b64: string;
   try {
-    ({ b64 } = await veniceGenerateImage(env as any, model, prompt, { aspectRatio: opts.aspectRatio }));
+    ({ b64 } = await veniceGenerateImage(env as any, model, prompt, {
+      aspectRatio: opts.aspectRatio,
+      seed: generationSeed,
+    }));
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
     track(env, uid, "ava_image_error", "avaai", { stage: "generate", model, provider: "venice", resolution, error: msg });
