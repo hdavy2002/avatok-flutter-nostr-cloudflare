@@ -1242,6 +1242,8 @@ export function looksLikeImageRequest(s: string): boolean {
 }
 
 const MEDIA_CREATE_RE = /\b(?:generate|create|make|animate|produce|render)\b/;
+const IMAGE_TO_VIDEO_RE = /\bturn\s+(?:this|that|the)\s+(?:photo|image|picture)\s+into\s+(?:a\s+)?video\b/;
+const IMAGE_ANIMATE_RE = /\b(?:animate\s+it|make\s+it\s+move|bring\s+it\s+to\s+life)\b/;
 export const BARE_SONG_QUESTION = "What should the song be about or tell a story of, what mood or genre would you like, and should it be 1, 1.5, 2, or 3 minutes?";
 
 // Keep this deliberately narrow. A short request such as "#ava make a song
@@ -1249,14 +1251,19 @@ export const BARE_SONG_QUESTION = "What should the song be about or tell a story
 // Anything with a theme, genre, lyric request, or other detail stays on the
 // normal lyrics-first route below.
 export function isBareSongRequest(s: string): boolean {
-  const t = (s || '').trim().toLowerCase();
-  return /^(?:#ava\s+)?(?:can\s+you\s+|could\s+you\s+|please\s+)?(?:make|create|generate|write|compose)\s+(?:me\s+)?(?:a\s+)?song(?:\s+for\s+me)?[.!?]*$/.test(t);
+  const t = (s || '').trim().toLowerCase()
+    .replace(/^[@#]ava(?:!|\b)\s*/, "")
+    .replace(/^\(?private\)?\s*[:,–-]?\s*/i, "");
+  return /^(?:can\s+you\s+|could\s+you\s+|please\s+)?(?:make|create|generate|write|compose)\s+(?:me\s+)?(?:a\s+)?song(?:\s+for\s+me)?[.!?]*$/.test(t);
 }
 
 export function looksLikeVideoRequest(s: string): boolean {
   const t = (s || '').toLowerCase();
-  return MEDIA_CREATE_RE.test(t) && /\b(?:video|clip|movie|reel|animation|animate)\b/.test(t) &&
-      !/\b(?:call|calling|meeting|conference)\b/.test(t);
+  const communicationIntent = /\bvideo\s+call\b/.test(t)
+    || /\b(?:start|join|schedule|host|begin|place)\b.{0,30}\b(?:call|meeting|conference)\b/.test(t);
+  return (MEDIA_CREATE_RE.test(t) && /\b(?:video|clip|movie|reel|animation|animate)\b/.test(t)
+      || IMAGE_TO_VIDEO_RE.test(t) || IMAGE_ANIMATE_RE.test(t)) &&
+      !communicationIntent;
 }
 
 export function looksLikeMusicRequest(s: string): boolean {

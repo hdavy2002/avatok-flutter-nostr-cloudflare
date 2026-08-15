@@ -52,7 +52,7 @@ import { runVeniceVideo, runVeniceMusic, runVeniceDraftLyrics } from "../lib/ven
 import { getAiMediaJob } from "../lib/ai_media_jobs";
 import { veniceTier } from "../lib/venice_tier"; // [VENICE-TIER-1] 18+ opt-in AND paid balance -> "paid" | "free"
 import { veniceChatComplete, VENICE_UNCENSORED_CHAT_MODEL } from "../lib/venice"; // [VENICE-CHAT-1] uncensored-text chat lane
-import { track } from "../hooks"; // [VENICE-CHAT-1] ava_reason_call telemetry (provider "venice")
+import { track, trackException } from "../hooks"; // [VENICE-CHAT-1] ava_reason_call telemetry (provider "venice")
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchOutlookInbox } from "../lib/outlook"; // same cards for Outlook-only users
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
@@ -78,6 +78,11 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 // safety rules); `avaString` supplies the handful of strings a user sees on EVERY
 // turn — above all the working chip, which this file used to inline 13 times.
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
+import {
+  SONG_BRIEF_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
+  nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongLyrics,
+  type SongFlowState,
+} from "../lib/song_flow";
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
 //   chat  — answer directly in conversation
@@ -237,6 +242,11 @@ export class AvaAgentDO {
       // [AVA-AMBIENT-2 / WS-18b] Unprompted companion lane (cloud gatekeeper).
       if (url.pathname.endsWith("/ambient")) return json(await this.ambient(b));
     } catch (e: any) {
+      this.state.waitUntil(trackException(this.env, e, {
+        uid: typeof b?.uid === "string" ? b.uid : undefined,
+        route: url.pathname, method: req.method, handled: true, app_name: "avaai",
+        extra: { durable_object: "AvaAgentDO" },
+      }).catch(() => {}));
       return json({ error: String(e?.message ?? e) }, 500);
     }
     return json({ error: "unknown op" }, 400);
@@ -1139,14 +1149,24 @@ export class AvaAgentDO {
     const store = String(b.store || "").trim();
     if (!conv || !uid || !userText) return { ok: false, error: "conv, uid, text required" };
 
-    // Song approval is a server-side state transition, not a prompt promise.
-    // A later generate_music call is accepted only when the current draft was
-    // explicitly approved in a separate user turn.
     const songDraftKey = `song_draft:${conv}`;
-    if (/\b(?:yes|approved|go ahead|make it|generate it|create it|looks good|perfect)\b/i.test(userText)) {
-      const draft = await this.state.storage.get<any>(songDraftKey);
-      if (draft?.lyrics) await this.state.storage.put(songDraftKey, { ...draft, approved: true, approved_at: Date.now() });
+    const flowKey = songFlowKey(conv);
+    const storedFlow = await this.state.storage.get<unknown>(flowKey);
+    let songFlow: SongFlowState | null = isSongFlowState(storedFlow) ? storedFlow : null;
+    // Upgrade an in-progress pre-fix lyric draft in place. This lets a user who
+    // already saw lyrics say the same strict approval phrase after deployment.
+    if (!songFlow && isSongApproval(userText)) {
+      const legacyDraft = await this.state.storage.get<any>(songDraftKey);
+      if (legacyDraft?.lyrics) {
+        songFlow = {
+          phase: "reviewing",
+          brief: String(legacyDraft.theme ?? "Song from the approved lyrics"),
+          durationSeconds: Number(legacyDraft.durationSeconds ?? 60),
+          lyrics: String(legacyDraft.lyrics),
+        };
+      }
     }
+    const songAction = nextSongFlow(songFlow, userText);
 
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
@@ -1256,9 +1276,92 @@ export class AvaAgentDO {
     const phone = contactR.ok ? contactR.value.phone : null;
     await trackUserContact(this.env, uid, email, phone, "ava_thread_turn", "avaai", {
       conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
-    });
+    }).catch(() => {});
 
     try {
+      // Song creation is a deterministic persisted conversation, not an LLM
+      // routing hope. `@ava`/`#ava` decide visibility in the client and `priv`
+      // is carried unchanged through every status, lyric and media message.
+      if (songAction.kind !== "none") {
+        const chipR = await chipP;
+        if (!chipR.ok) throw chipR.error;
+
+        if (songAction.kind === "ask_brief") {
+          await this.state.storage.put(flowKey, songAction.flow);
+          await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+          await this.postAva({ conv, uid, text: SONG_BRIEF_QUESTION, private: priv, source: "music" });
+          await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+            conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "question_posted",
+          }).catch(() => {});
+          return { ok: true, status_id: statusId };
+        }
+
+        if (songAction.kind === "draft") {
+          await this.state.storage.put(flowKey, songAction.flow);
+          const drafted = await runVeniceDraftLyrics(this.env, {
+            uid,
+            theme: songAction.flow.brief ?? stripAvaWakeWordForIntent(userText),
+            durationSeconds: songAction.flow.durationSeconds,
+          });
+          if (drafted.ok && drafted.lyrics) {
+            const reviewing = withSongLyrics(songAction.flow, drafted.lyrics);
+            await this.state.storage.put(flowKey, reviewing);
+            await this.state.storage.put(songDraftKey, {
+              theme: reviewing.brief, durationSeconds: reviewing.durationSeconds,
+              lyrics: reviewing.lyrics, approved: false, updated_at: Date.now(),
+            });
+            await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+            await this.postAva({
+              conv, uid, private: priv, source: "music",
+              text: `${drafted.lyrics}\n\nIf these lyrics are ready, say “yes, make it”. Or tell me what to change.`,
+            });
+          } else {
+            await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+            await this.postAva({ conv, uid, text: drafted.message, private: priv, source: "music" });
+          }
+          await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+            conv_kind: convKind, private: priv, phase: "draft", outcome: drafted.ok ? "lyrics_posted" : "failed",
+            duration_seconds: songAction.flow.durationSeconds ?? 60,
+          }).catch(() => {});
+          return { ok: drafted.ok, status_id: statusId, ...(!drafted.ok ? { error: "lyrics_draft_failed" } : {}) };
+        }
+
+        const reviewing: SongFlowState = { ...songAction.flow, phase: "reviewing" };
+        // Keep the durable state retryable until the provider confirms a queued
+        // job. If the DO is interrupted mid-call, the next approval can retry.
+        await this.state.storage.put(flowKey, reviewing);
+        const mediaTier = await veniceTier(this.env, uid);
+        let music: Awaited<ReturnType<typeof runVeniceMusic>>;
+        try {
+          music = await runVeniceMusic(this.env, {
+            uid, conv,
+            prompt: songAction.flow.brief ?? "Create a song from the approved lyrics",
+            durationSeconds: songAction.flow.durationSeconds,
+            lyrics: songAction.flow.lyrics,
+            private: priv, tier: mediaTier,
+          });
+        } catch {
+          music = { ok: false, message: "I couldn't start that track right now — please try again." };
+        }
+        if (music.ok && music.job_id) {
+          await this.state.storage.put(flowKey, completeSongFlow(songAction.flow));
+          await this.state.storage.put(songDraftKey, {
+            theme: songAction.flow.brief, durationSeconds: songAction.flow.durationSeconds,
+            lyrics: songAction.flow.lyrics, approved: true, approved_at: Date.now(),
+          });
+          await this.rememberLastMedia(conv, "music", music.job_id, songAction.flow.brief ?? "Approved song");
+        } else {
+          await this.state.storage.put(flowKey, reviewing);
+          await this.postAva({ conv, uid, text: music.message, private: priv, source: "music" });
+        }
+        await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+        await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+          conv_kind: convKind, private: priv, phase: "generate", outcome: music.ok ? "job_started" : "failed",
+          duration_seconds: songAction.flow.durationSeconds ?? 60, job_id: music.job_id ?? null,
+        }).catch(() => {});
+        return { ok: music.ok, status_id: statusId, ...(!music.ok ? { error: "music_start_failed" } : {}) };
+      }
+
       const [chipR, winR, premiumR] = await Promise.all([chipP, windowP, premiumP]);
       // postStatus used to be awaited OUTSIDE this try, so a members() D1 failure
       // escaped turn() entirely and the caller got a bare 500 with the chip never
@@ -1449,8 +1552,77 @@ export class AvaAgentDO {
       // that path exactly as it runs today.
       const appsIntent = appsCap && premium && this.looksLikeApps(userText);
       const imageIntent = looksLikeImageRequest(userText);
+      const videoIntent = looksLikeVideoRequest(userText);
       const wantsTools = attachments.length > 0 || appsIntent || imageIntent ||
-        looksLikeVideoRequest(userText) || looksLikeMusicRequest(userText);
+        videoIntent || looksLikeMusicRequest(userText);
+
+      // Video generation has the same deterministic fast path as images. The
+      // regex has already classified a creation request, so an OpenRouter call
+      // to merely choose `generate_video` adds a failure point and token charge.
+      // Requests that also need an app action stay in the tool loop.
+      if (videoIntent && !appsIntent) {
+        const f0 = Date.now();
+        const prompt = this.imagePromptFrom(userText);
+        const referencesImage = attachments.some((a) => a.kind === "image" || /^image\//.test(a.mime || ""))
+          || /\b(?:this|that|the|last|previous)\s+(?:photo|image|picture)\b/i.test(userText);
+        let src: string | undefined;
+        const explicitUrl = userText.match(/https:\/\/[^\s<>"']+/i)?.[0]?.replace(/[),.!?]+$/, "");
+        if (explicitUrl) {
+          try {
+            const parsed = new URL(explicitUrl);
+            if (parsed.protocol === "https:") src = parsed.toString();
+          } catch { /* use conversation image resolution below */ }
+        }
+        if (referencesImage && !src) {
+          const last = await this.getLastMedia(conv);
+          if (last.image?.job_id) {
+            try {
+              const jobRes = await getAiMediaJob(this.env, last.image.job_id, uid);
+              if (jobRes.ok && jobRes.job.artifact_url) src = jobRes.job.artifact_url;
+            } catch { /* try the latest public user image below */ }
+          }
+          if (!src && last.lastUserImageRef?.id) {
+            src = (await this.resolvePublicImageRef(last.lastUserImageRef.id)) ?? undefined;
+          }
+        }
+        if (!src && /\b(?:animate\s+it|make\s+it\s+move|bring\s+it\s+to\s+life)\b/i.test(userText)) {
+          const last = await this.getLastMedia(conv);
+          if (last.image?.job_id) {
+            try {
+              const jobRes = await getAiMediaJob(this.env, last.image.job_id, uid);
+              if (jobRes.ok && jobRes.job.artifact_url) src = jobRes.job.artifact_url;
+            } catch { /* fall back to text-to-video */ }
+          }
+        }
+        const mediaTier = await veniceTier(this.env, uid);
+        let video: Awaited<ReturnType<typeof runVeniceVideo>>;
+        try {
+          video = await runVeniceVideo(this.env, {
+            uid, conv, prompt, sourceImageUrl: src, private: priv, tier: mediaTier,
+          });
+        } catch {
+          video = { ok: false, message: "I couldn't start that video right now — please try again." };
+        }
+        if (video.ok && video.job_id) {
+          await this.rememberLastMedia(conv, "video", video.job_id, prompt);
+        } else {
+          await this.postAva({ conv, uid, text: video.message, private: priv, source: "video" });
+        }
+        await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+        await trackUserContact(this.env, uid, email, phone, "ava_video_fastpath", "avaai", {
+          conv_kind: convKind, private: priv, outcome: video.ok ? "job_started" : "failed",
+          image_to_video: !!src, job_id: video.job_id ?? null, ms: Date.now() - f0,
+        }).catch(() => {});
+        await trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
+          conv_kind: convKind, tier, agentic: false, surface: "video_fastpath",
+          streamed: false, genui: false, answer_len: 0, latency_ms: Date.now() - t0,
+          tools_called: 0, tool_names: "", tools_ms: Date.now() - f0, tool_error: !video.ok,
+          attachments: attachments.length,
+          attachments_captioned: attachments.filter((a) => !!a.caption).length,
+          ...winMeta,
+        }).catch(() => {});
+        return { ok: video.ok, status_id: statusId, ...(!video.ok ? { error: "video_start_failed" } : {}) };
+      }
 
       // ---------------------------------------------------------------------
       // [AVA-STREAM-PLAIN-1 / WS-5] Streaming machinery, HOISTED above the lane
@@ -1888,6 +2060,7 @@ export class AvaAgentDO {
       // Capture the last successful CONNECTED-APP tool result so we can render it
       // as a GenUI surface (generic across all of Composio, not per-app).
       let lastApp: { tool: string; data: unknown } | null = null;
+      let lastStartedMedia: { job_id: string; media_job_kind: string } | null = null;
       // [TELEMETRY-AWAIT-1] async so the emit can be awaited like every other
       // send (the runtime drops unawaited queue sends); callers fire it
       // synchronously as before — the callback's own promise is short-lived.
@@ -1992,6 +2165,7 @@ export class AvaAgentDO {
               // job id is — getAiMediaJob resolves the URL fresh whenever it's
               // actually needed).
               if (r.job_id) await this.rememberLastMedia(conv, "image", r.job_id, prompt);
+              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "image_generate" };
               return priv
                 ? "Image generation started — it'll appear here privately in a few seconds."
                 : "Image generation started — it will appear in this chat in a few seconds.";
@@ -2042,6 +2216,7 @@ export class AvaAgentDO {
                 durationSeconds: videoOpts?.durationSeconds,
               });
               if (r.job_id) await this.rememberLastMedia(conv, "video", r.job_id, prompt);
+              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "venice_video_generate" };
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             onMusic: async (prompt, durationSeconds, lyrics) => {
@@ -2054,6 +2229,7 @@ export class AvaAgentDO {
                 uid, conv, prompt, durationSeconds, lyrics, private: priv, tier,
               });
               if (r.job_id) await this.rememberLastMedia(conv, "music", r.job_id, lyrics ? `${prompt}\n\nLyrics:\n${lyrics}` : prompt);
+              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "venice_music_generate" };
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             // [VENICE-SONG-1] Step (b) of the song flow — text-only, no wallet
@@ -2062,9 +2238,17 @@ export class AvaAgentDO {
             // only the eventual generate_music call is remembered above).
             onDraftLyrics: async (theme, durationSeconds) => {
               const r = await runVeniceDraftLyrics(this.env, { uid, theme, durationSeconds });
-              if (r.lyrics) await this.state.storage.put(songDraftKey, {
-                theme: String(theme).slice(0, 2000), lyrics: r.lyrics, approved: false, updated_at: Date.now(),
-              });
+              if (r.lyrics) {
+                const reviewing: SongFlowState = withSongLyrics({
+                  phase: "awaiting_brief", brief: String(theme).slice(0, 2000),
+                  durationSeconds,
+                }, r.lyrics);
+                await this.state.storage.put(songDraftKey, {
+                  theme: reviewing.brief, durationSeconds: reviewing.durationSeconds,
+                  lyrics: r.lyrics, approved: false, updated_at: Date.now(),
+                });
+                await this.state.storage.put(flowKey, reviewing);
+              }
               return r.lyrics ?? r.message;
             },
           },
@@ -2075,11 +2259,17 @@ export class AvaAgentDO {
         await releaseAiJob(this.env, toolReservation, { uid, opId: toolOpId, capability: "ava_thread_tools", reason: "provider_error" });
         await trackUserContact(this.env, uid, email, phone, "ava_thread_error", "avaai", {
           conv_kind: convKind, detail: String(e?.message ?? e).slice(0, 200), latency_ms: Date.now() - t0,
-        });
+        }).catch(() => {});
         answer = "";
       }
       if (streaming) { await flush(); if (started) await this.streamFrame(uid, conv, statusId, "end", ""); }
-      if (!answer) answer = avaString("err_unavailable", style, userText);
+      if (!answer) {
+        await trackUserContact(this.env, uid, email, phone, "ava_thread_unavailable", "avaai", {
+          conv_kind: convKind, private: priv, lane: "tools",
+          reason: loopFailed ? "loop_error" : "empty_model_output",
+        }).catch(() => {});
+        answer = avaString("err_unavailable", style, userText);
+      }
       // F8 minimal output guard (see guardOutput doc). NOTE: a streamed preview was
       // already sent live via streamFrame above; the guard does not retroactively
       // scrub it — only the persisted final message. TODO(F8): full gateway.
@@ -2184,7 +2374,10 @@ export class AvaAgentDO {
         conv, uid, text: answer, private: priv,
         source: a2uiSurface ? "apps_genui" : "chat",
         ...(a2uiSurface ? { a2ui: a2uiSurface } : {}),
-        meta: started ? { stream_id: statusId } : undefined,
+        meta: started || lastStartedMedia ? {
+          ...(started ? { stream_id: statusId } : {}),
+          ...(lastStartedMedia ?? {}),
+        } : undefined,
       });
       await trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
         conv_kind: convKind, tier, agentic: true, streamed: started, genui: !!a2uiSurface,

@@ -131,13 +131,9 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
 }
 
 /** Mark the job failed (releasing, never billing, the reservation) and post a
- *  plain in-thread apology. Unlike routes/ava_image.ts's fulfil(), which
- *  deliberately does NOT post a new message on failure (a job-hydrated client
- *  renders Retry from the job's own state), video/music have no client job
- *  card yet — so silence here would leave the user with only the earlier
- *  "it'll appear here in a few minutes" ack and no resolution, ever. Posting a
- *  short failure note is the deliberate, documented deviation from the image
- *  pattern for this reason. */
+ *  compatibility failure envelope carrying the same job metadata. Current
+ *  clients hydrate/update the single failed job card and suppress the legacy
+ *  bubble; old clients still show the apology text. */
 async function failTerminal(env: Env, job: VeniceMediaJobRecord, errorCode: string, reason: string): Promise<void> {
   await failVeniceMediaJob(env, { jobId: job.job_id, errorCode, reason });
   const text = job.kind === "venice_video_generate"
@@ -146,6 +142,7 @@ async function failTerminal(env: Env, job: VeniceMediaJobRecord, errorCode: stri
   await postAvaMessage(env, {
     ownerUid: job.owner_uid, conv: job.conv_id, text, private: job.is_private,
     source: job.kind === "venice_video_generate" ? "video" : "music",
+    meta: { job_id: job.job_id, media_job_kind: job.kind },
   }).catch(() => {});
   void track(env, job.owner_uid, "venice_media_job_terminal_failed_notified", "avaai", {
     job_id: job.job_id, kind: job.kind, error_code: errorCode, reason, attempts: job.attempts,

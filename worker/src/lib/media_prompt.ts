@@ -14,10 +14,9 @@
 // Both call Venice's OpenAI-compatible /chat/completions via lib/venice.ts's
 // veniceChatComplete, on the model verified live on Venice 2026-08-14:
 // "gemini-3-7-flash" (see Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md and the
-// owner's work order for this file). FAIL SOFT: any error (missing key,
-// timeout, malformed/empty response) returns the caller's OWN text unchanged
-// rather than throwing — neither the video nor the song flow may ever hard-
-// fail just because the crafting step is unavailable.
+// owner's work order for this file). Video prompt enhancement fails soft to
+// the user's original prompt. Lyrics drafting fails closed: a theme must never
+// be mislabeled and saved as generated lyrics when the provider is unavailable.
 import type { Env } from "../types";
 import { veniceChatComplete } from "./venice";
 
@@ -64,8 +63,8 @@ export async function craftVideoPrompt(env: Env, userAsk: string, durationSecond
 
 /**
  * Draft ORIGINAL song lyrics for `theme`, sized for a track roughly
- * `durationSeconds` long (defaults to 60s). Never throws — returns `theme`
- * unchanged on any failure, so the caller always has SOMETHING to show.
+ * `durationSeconds` long (defaults to 60s). Throws on provider/empty output so
+ * the caller can retain the brief and ask the user to retry safely.
  */
 export async function draftLyrics(env: Env, theme: string, durationSeconds?: number): Promise<string> {
   const t = String(theme ?? "").trim();
@@ -87,8 +86,9 @@ export async function draftLyrics(env: Env, theme: string, durationSeconds?: num
       { role: "user", content: t },
     ], { maxTokens: 700, temperature: 0.85, timeoutMs: CRAFT_TIMEOUT_MS });
     const text = (r.text || "").trim();
-    return text || t;
-  } catch {
-    return t;
+    if (!text) throw new Error("empty lyrics response");
+    return text;
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
