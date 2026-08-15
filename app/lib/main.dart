@@ -373,13 +373,12 @@ class AvaTalkApp extends StatelessWidget {
       builder: (context, child) {
         final mq = MediaQuery.of(context);
         final sys = mq.textScaler.scale(1.0);
-        // UI-WHATSAPP-STABLE-1: do not enlarge every screen by default. The
-        // prior 1.22x base multiplier made otherwise compact type feel oversized
-        // and reduced layout headroom. OS accessibility and the in-app Display
-        // & fonts preference still apply, with the established width-based safe
-        // ceilings preventing controls from being squeezed off small screens.
+        // APP-TYPE-SCALE-1: a modest app-wide lift, including chat-list previews,
+        // tabs, navigation labels and secondary metadata. The former 1.22x bump
+        // was too large; 1.10x restores comfortable readability while retaining
+        // the established small-screen ceilings and the user's own font setting.
         final double w = mq.size.width;
-        const double baseBump = 1.0;
+        const double baseBump = 1.10;
         final double ceil = w >= 360
             ? 1.30
             : w >= 320
