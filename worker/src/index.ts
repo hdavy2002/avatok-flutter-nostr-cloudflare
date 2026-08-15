@@ -695,7 +695,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // header + worker/src/lib/voice_billing.ts. No-ops while avaBrainVoiceBillingEnabled is off.
       if (p === "/api/ava/live/heartbeat" && req.method === "POST") return await avaLiveHeartbeat(req, env);
       if (p === "/api/ava/live/close" && req.method === "POST") return await avaLiveClose(req, env);
-      if (p === "/api/ava/thread/turn" && req.method === "POST") return await avaThreadTurn(req, env); // P3
+      if (p === "/api/ava/thread/turn" && req.method === "POST") return await avaThreadTurn(req, env, ctx); // P3
       if (p === "/api/ava/rag/ingest" && req.method === "POST") return await avaRagIngest(req, env);   // RAG
       if (p === "/api/ava/rag/store" && req.method === "GET") return await avaRagStore(req, env);      // RAG
       if (p === "/api/ava/rag/search" && req.method === "POST") return await avaRagSearch(req, env);   // RAG
