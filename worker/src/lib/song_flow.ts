@@ -8,9 +8,27 @@ export type SongRequestKind = "vocal" | "instrumental";
 export interface SongFlowState {
   phase: SongFlowPhase;
   kind?: SongRequestKind;
+  /** Raw user turns retained for the AI-led interview. */
+  conversation?: string;
+  /** Structured choices extracted by AI; server validation decides readiness. */
+  context?: SongProductionContext;
+  /** The last natural AI reply, needed to understand answers such as "you choose". */
+  lastInterviewReply?: string;
   brief?: string;
   durationSeconds?: number;
   lyrics?: string;
+}
+
+export interface SongProductionContext {
+  theme?: string;
+  genre?: string;
+  mood?: string;
+  instruments?: string[];
+  language?: string;
+  vocalArrangement?: string;
+  voiceStyle?: string;
+  durationSeconds?: number;
+  intendedUse?: string;
 }
 
 export type SongFlowAction =
@@ -19,113 +37,49 @@ export type SongFlowAction =
   | { kind: "draft"; flow: SongFlowState }
   | { kind: "generate"; flow: SongFlowState };
 
-export const SONG_BRIEF_QUESTION =
-  "Let’s shape it together. What should it be about, and what genre, mood, instruments, language, and length (1, 1.5, 2, or 3 minutes) do you want? For vocals, choose male, female, or group singing; voice ideas include warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike. I’ll draft the lyrics only after we have those choices, then you can revise them before I make the track.";
-
-export const SONG_CONTEXT_QUESTION =
-    "Before I draft the lyrics, what language should I use, and would you like a male, female, or group voice? You can also pick a voice character such as warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike. I’ll keep refining the brief with you until you say it’s ready.";
-
-export const INSTRUMENTAL_BRIEF_QUESTION =
-  "Let’s shape the instrumental. What genre, mood, energy, setting, instruments, tempo, and intended use do you want? For example: a funky reggae groove with warm bass, skank guitar, hand percussion, and an upbeat beach feel for a travel reel. I’ll use that direction to make the track — no lyrics or vocals.";
-
-export type SongBriefField = "theme" | "genre" | "mood" | "instruments" | "language" | "singer" | "voice" | "duration";
-
-const LANGUAGE_RE = /\b(?:english|hindi|spanish|french|german|tamil|telugu|bengali|marathi|punjabi|urdu|portuguese|arabic|mandarin|cantonese|japanese|korean|language)\b/i;
-const SINGER_RE = /\b(?:male|female|woman|man|group|choir|duet|trio|ensemble|boy|girl)\b/i;
-const VOICE_RE = /\b(?:warm|intimate|bright|soulful|deep|powerful|airy|dreamlike|raspy|gritty|smooth|gentle|soft|strong|rich|playful|youthful|mature|baritone|tenor|alto|soprano)\b/i;
-const GENRE_RE = /\b(?:reggae|dancehall|rock|pop|jazz|lofi|lo-fi|ambient|house|edm|hip[- ]?hop|rap|classical|funk|soul|r&b|country|folk|indie|metal|blues|gospel|cinematic|afrobeat|latin|bollywood)\b/i;
-const MOOD_RE = /\b(?:happy|joyful|upbeat|hopeful|romantic|sad|melancholy|peaceful|relaxed|dreamy|energetic|funky|dark|moody|emotional|inspiring|uplifting|playful|calm|warm|chill|celebratory|healing|vibe|mood|energy)\b/i;
-const INSTRUMENT_RE = /\b(?:instrument|bass|heavy\s+base|deep\s+base|drum|percussion|guitar|piano|keyboard|organ|synth|strings|violin|cello|brass|horn|trumpet|sax(?:ophone)?|flute|ukulele|tabla|sitar|dhol|marimba|steel\s+drum|conga|bongo|shaker|skank|one-drop|808)\b/i;
-const ACCEPT_SUGGESTIONS_RE = /\b(?:use|take|choose|go with|keep)\s+(?:all\s+)?(?:your|those|the)\s+(?:instrument\s+)?suggestions?\b|\b(?:those|suggested)\s+instruments?\b/i;
-
-export function missingSongProductionContext(text: string): SongBriefField[] {
-  // Chat and speech-to-text are imperfect. Normalize only unambiguous phrases
-  // that commonly appear in this interview; keep the original brief intact.
-  const t = stripAvaWakeWordForIntent(text)
-    .replace(/\ba\s+out\b/gi, "about")
-    .replace(/\b(heavy|deep)\s+base\b/gi, "$1 bass");
-  const missing: SongBriefField[] = [];
-  if (!/\b(?:about|story|theme|inspired by|dedicated to|for (?!me\b)|celebrat(?:e|ing)|island|love|home|life|journey|party|travel)\b/i.test(t)) missing.push("theme");
-  if (!GENRE_RE.test(t)) missing.push("genre");
-  if (!MOOD_RE.test(t)) missing.push("mood");
-  if (!INSTRUMENT_RE.test(t) && !ACCEPT_SUGGESTIONS_RE.test(t)) missing.push("instruments");
-  if (!LANGUAGE_RE.test(t)) missing.push("language");
-  if (!SINGER_RE.test(t)) missing.push("singer");
-  if (!VOICE_RE.test(t)) missing.push("voice");
-  if (parseSongDurationSeconds(t) == null) missing.push("duration");
-  return missing;
+function hasText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
-export function suggestedSongInstruments(text: string): string {
-  const t = stripAvaWakeWordForIntent(text).toLowerCase();
-  if (/\b(?:reggae|dancehall)\b/.test(t)) return "deep electric bass, offbeat skank guitar, one-drop drums, hand percussion, and warm organ or brass";
-  if (/\b(?:rock|metal)\b/.test(t)) return "electric guitar, live bass, punchy drums, and a subtle organ or synth layer";
-  if (/\b(?:jazz|blues|soul)\b/.test(t)) return "upright or electric bass, brushed drums, piano, warm guitar, and saxophone or trumpet";
-  if (/\b(?:hip[- ]?hop|rap|r&b)\b/.test(t)) return "deep 808 bass, tight drums, textured keys, atmospheric synths, and selective guitar accents";
-  if (/\b(?:folk|country|indie)\b/.test(t)) return "acoustic guitar, warm bass, restrained drums, piano, and light strings or mandolin";
-  if (/\b(?:classical|cinematic|ambient)\b/.test(t)) return "piano, layered strings, soft percussion, atmospheric pads, and a restrained brass or woodwind color";
-  if (/\b(?:house|edm|dance)\b/.test(t)) return "four-on-the-floor drums, a driving synth bass, bright chords, rhythmic percussion, and a memorable lead synth";
-  if (/\b(?:bollywood|hindi)\b/.test(t)) return "tabla or dhol, melodic strings, harmonium or piano, bass, and modern rhythmic percussion";
-  return "bass, drums, rhythm guitar or piano, light percussion, and one distinctive melodic instrument";
+export function isSongProductionContextReady(context: SongProductionContext | undefined, kind: SongRequestKind): boolean {
+  if (!context) return false;
+  const musicalCore = hasText(context.theme) && hasText(context.genre) && hasText(context.mood)
+    && Array.isArray(context.instruments) && context.instruments.some(hasText)
+    && Number.isFinite(context.durationSeconds) && Number(context.durationSeconds) >= 60;
+  if (!musicalCore) return false;
+  return kind === "instrumental" || (
+    hasText(context.language) && hasText(context.vocalArrangement) && hasText(context.voiceStyle)
+  );
 }
 
-export function nextSongBriefField(text: string): SongBriefField | null {
-  const missing = missingSongProductionContext(text);
-  const order: SongBriefField[] = ["genre", "theme", "instruments", "mood", "language", "singer", "voice", "duration"];
-  return order.find(field => missing.includes(field)) ?? null;
+export function songProductionBrief(context: SongProductionContext, kind: SongRequestKind): string {
+  return [
+    `Theme / intent: ${context.theme ?? ""}`,
+    `Genre: ${context.genre ?? ""}`,
+    `Mood / energy: ${context.mood ?? ""}`,
+    `Instruments: ${(context.instruments ?? []).join(", ")}`,
+    kind === "vocal" ? `Language: ${context.language ?? ""}` : "No lyrics or vocals.",
+    kind === "vocal" ? `Vocal arrangement: ${context.vocalArrangement ?? ""}` : "",
+    kind === "vocal" ? `Voice character: ${context.voiceStyle ?? ""}` : "",
+    context.intendedUse ? `Intended use: ${context.intendedUse}` : "",
+    `Length: ${context.durationSeconds ?? 60} seconds`,
+  ].filter(Boolean).join("\n");
 }
 
-function latestSongBriefTurn(brief: string): string {
-  return String(brief || "").split(/\n\s*\n/).filter(Boolean).at(-1)?.trim() ?? "";
-}
-
-function acknowledgeSongChoices(brief: string): string {
-  const latest = latestSongBriefTurn(brief)
-    .replace(/\ba\s+out\b/gi, "about")
-    .replace(/\b(heavy|deep)\s+base\b/gi, "$1 bass");
-  const choices: string[] = [];
-  const genre = latest.match(GENRE_RE)?.[0];
-  const mood = latest.match(MOOD_RE)?.[0];
-  const singer = latest.match(SINGER_RE)?.[0];
-  const language = latest.match(LANGUAGE_RE)?.[0];
-  const instrument = latest.match(/\b(?:heavy|deep)\s+bass\b/i)?.[0]
-    ?? latest.match(/\b(?:bass|guitar|piano|organ|synth|drums?|percussion|strings|brass|saxophone|tabla|sitar|dhol)\b/i)?.[0];
-  const theme = latest.match(/\babout\s+([^.,;!?]{2,40})/i)?.[1]?.trim();
-  if (genre) choices.push(genre.toLowerCase());
-  if (theme) choices.push(`a ${theme} theme`);
-  if (mood) choices.push(`${mood.toLowerCase()} energy`);
-  if (singer) choices.push(`${singer.toLowerCase()} vocals`);
-  if (instrument) choices.push(instrument.toLowerCase());
-  if (language && language.toLowerCase() !== "language") choices.push(language);
-  return choices.length ? `Got it — ${choices.slice(0, 4).join(", ")}. ` : "";
-}
-
-/** A short conversational follow-up: acknowledge progress, then ask one thing. */
-export function songBriefQuestion(flow: SongFlowState): string {
-  const brief = flow.brief ?? "";
-  const next = nextSongBriefField(brief);
-  if (!next) return "That gives me everything I need. I’m ready to draft the lyrics.";
-  const prompts: Record<SongBriefField, string> = {
-    theme: "What should the song be about? One line is enough.",
-    genre: "What musical style should it have — reggae, pop, rock, soul, something else?",
-    mood: "How should it feel — happy and uplifting, relaxed, romantic, emotional, or something else?",
-    instruments: `For this sound, I’d suggest ${suggestedSongInstruments(brief)}. Which would you like, or should I use that combination?`,
-    language: "What language should the lyrics use?",
-    singer: "Who should sing it — a male voice, female voice, duet, or group?",
-    voice: "How should the voice sound — youthful and bright, warm and soulful, deep and powerful, airy and dreamlike, or something else?",
-    duration: "How long should it be — 1, 1.5, 2, or 3 minutes?",
+export function withSongInterview(
+  flow: SongFlowState,
+  context: SongProductionContext,
+  reply: string,
+): SongFlowState {
+  const kind = flow.kind ?? "vocal";
+  const ready = isSongProductionContextReady(context, kind);
+  return {
+    ...flow,
+    context,
+    lastInterviewReply: reply,
+    durationSeconds: context.durationSeconds ?? flow.durationSeconds ?? 60,
+    ...(ready ? { brief: songProductionBrief(context, kind) } : {}),
   };
-  return `${acknowledgeSongChoices(brief)}${prompts[next]}`;
-}
-
-export function hasSongProductionContext(text: string): boolean {
-  return missingSongProductionContext(text).length === 0;
-}
-
-export function hasInstrumentalProductionContext(text: string): boolean {
-  const t = stripAvaWakeWordForIntent(text).toLowerCase();
-  return /\b(?:instrumental|beat|no\s+vocals?|without\s+(?:singing|vocals?|lyrics))\b/.test(t)
-    && /\b(?:genre|reggae|rock|pop|jazz|lofi|lo-fi|ambient|house|hip[- ]?hop|classical|funk|soul|mood|vibe|energy|tempo|bpm|instrument|bass|drum|guitar|piano|synth|strings|percussion|cinematic|focus|travel|dance|relax)\b/.test(t);
 }
 
 /** Removes only a leading Ava wake word for intent parsing; it never determines privacy. */
@@ -185,6 +139,9 @@ export function isSongFlowState(value: unknown): value is SongFlowState {
   const flow = value as SongFlowState;
   return ["awaiting_brief", "reviewing", "generating", "completed"].includes(flow.phase)
     && (flow.kind == null || flow.kind === "vocal" || flow.kind === "instrumental")
+    && (flow.conversation == null || typeof flow.conversation === "string")
+    && (flow.context == null || typeof flow.context === "object")
+    && (flow.lastInterviewReply == null || typeof flow.lastInterviewReply === "string")
     && (flow.brief == null || typeof flow.brief === "string")
     && (flow.durationSeconds == null || (typeof flow.durationSeconds === "number" && Number.isFinite(flow.durationSeconds)))
     && (flow.lyrics == null || typeof flow.lyrics === "string");
@@ -211,11 +168,14 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
   // A fresh creation request replaces an abandoned older brief/draft. Revision
   // language stays attached to the current draft instead of restarting it.
   if (requestKind && (!flow || flow.phase === "completed" ||
-      (flow.phase !== "generating" && !isSongRevisionIntent(text)))) {
+      (flow.phase === "reviewing" && !isSongRevisionIntent(text)))) {
     const brief = stripAvaWakeWordForIntent(text);
     return {
       kind: "ask_brief",
-      flow: { phase: "awaiting_brief", kind: requestKind, brief, durationSeconds: parseSongDurationSeconds(brief) ?? 60 },
+      flow: {
+        phase: "awaiting_brief", kind: requestKind, brief, conversation: brief,
+        durationSeconds: parseSongDurationSeconds(brief) ?? 60,
+      },
     };
   }
   if (!flow) {
@@ -225,26 +185,19 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
   }
 
   if (flow.phase === "awaiting_brief") {
-    if (flow.brief && hasSongProductionContext(flow.brief)
-        && /^(?:please\s+)?(?:try|retry)(?:\s+again)?[.!?]*$/i.test(stripAvaWakeWordForIntent(text))) {
-      return { kind: "draft", flow };
-    }
     const brief = stripAvaWakeWordForIntent(text);
     if (!brief) return { kind: "ask_brief", flow };
-    const combined = [flow.brief, brief].filter(Boolean).join("\n\n");
-    const kind = flow.kind ?? "vocal";
-    const complete = kind === "instrumental"
-      ? hasInstrumentalProductionContext(combined)
-      : hasSongProductionContext(combined);
-    if (!complete) {
-      return { kind: "ask_brief", flow: { ...flow, brief: combined } };
-    }
-    if (kind === "instrumental") {
-      return { kind: "generate", flow: { ...flow, kind, phase: "generating", brief: combined, durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60 } };
-    }
+    const priorConversation = flow.conversation ?? flow.brief;
+    const conversation = [priorConversation, brief].filter(Boolean).join("\n\n");
+    // AI owns interpretation and the conversational response. This transition
+    // only persists raw user turns; it never keyword-matches answers or writes a
+    // questionnaire. AvaAgentDO promotes the flow after structured extraction.
     return {
-      kind: "draft",
-      flow: { phase: "awaiting_brief", kind, brief: combined, durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60 },
+      kind: "ask_brief",
+      flow: {
+        ...flow, phase: "awaiting_brief", conversation,
+        durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60,
+      },
     };
   }
 
@@ -256,6 +209,9 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
         kind: "draft",
         flow: {
           phase: "awaiting_brief",
+          kind: flow.kind ?? "vocal",
+          conversation: [flow.conversation ?? flow.brief, revision].filter(Boolean).join("\n\n"),
+          context: flow.context,
           brief: [flow.brief, revision].filter(Boolean).join("\n\n"),
           durationSeconds: parseSongDurationSeconds(revision) ?? flow.durationSeconds ?? 60,
         },

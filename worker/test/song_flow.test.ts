@@ -1,149 +1,94 @@
 import { describe, expect, it } from "vitest";
 import {
   clampSongDurationSeconds,
-  isSongApproval,
-  isSongRevisionIntent,
-  hasSongProductionContext,
-  missingSongProductionContext,
-  songBriefQuestion,
-  hasInstrumentalProductionContext,
   classifySongRequest,
+  isSongApproval,
+  isSongProductionContextReady,
+  isSongRevisionIntent,
   nextSongFlow,
   parseSongDurationSeconds,
+  songProductionBrief,
   stripAvaWakeWordForIntent,
+  withSongInterview,
   withSongLyrics,
+  type SongProductionContext,
 } from "../src/lib/song_flow";
 
-describe("deterministic song flow", () => {
-  it("classifies music once and keeps instrumental requests lyric-free", () => {
+const completeVocal: SongProductionContext = {
+  theme: "Gen Z finding confidence and community",
+  genre: "funky island reggae",
+  mood: "happy, youthful and uplifting",
+  instruments: ["heavy electric bass", "skank guitar", "one-drop drums", "warm organ"],
+  language: "English",
+  vocalArrangement: "male and female duet",
+  voiceStyle: "youthful, bright and soulful",
+  durationSeconds: 120,
+};
+
+describe("AI-led song flow guardrails", () => {
+  it("classifies vocal and instrumental creation without writing the conversation", () => {
     expect(classifySongRequest("make a reggae song for me")).toBe("vocal");
     expect(classifySongRequest("make an instrumental reggae beat")).toBe("instrumental");
-    expect(hasInstrumentalProductionContext("reggae instrumental, upbeat, bass, drums, guitar")).toBe(true);
-    const asked = nextSongFlow(null, "make an instrumental reggae beat");
-    expect(asked).toMatchObject({ kind: "ask_brief", flow: { kind: "instrumental" } });
-    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
-    expect(nextSongFlow(asked.flow, "reggae, upbeat, bass and drums for a travel reel")).toMatchObject({
-      kind: "generate", flow: { kind: "instrumental", phase: "generating" },
-    });
-  });
-  it("requires the complete production context before drafting", () => {
-    const asked = nextSongFlow(null, "create a reggae song for me");
-    expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
-    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
-    const stillAsking = nextSongFlow(asked.flow, "reggae, English, female voice");
-    expect(stillAsking).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
-    expect(hasSongProductionContext("reggae, English, female voice")).toBe(false);
-    expect(hasSongProductionContext("reggae, English")).toBe(false);
-    expect(missingSongProductionContext("reggae, English, female voice")).toContain("instruments");
-    const complete = nextSongFlow(stillAsking.flow, "Upbeat and joyful, warm soulful singer, bass, skank guitar, one-drop drums and organ, about island life, 2 minutes");
-    expect(complete).toMatchObject({ kind: "draft", flow: { durationSeconds: 120 } });
-  });
-  it("strips only a leading Ava marker for intent", () => {
-    expect(stripAvaWakeWordForIntent("@ava make me a song")).toBe("make me a song");
-    expect(stripAvaWakeWordForIntent("#ava make me a song")).toBe("make me a song");
-    expect(stripAvaWakeWordForIntent("@ava private: make me a song")).toBe("make me a song");
-    expect(stripAvaWakeWordForIntent("@ava! make me a song")).toBe("make me a song");
-    expect(stripAvaWakeWordForIntent("please ask @ava to make a song")).toBe("please ask @ava to make a song");
+    expect(classifySongRequest("I listened to a reggae song")).toBeNull();
   });
 
-  it("parses offered duration choices and clamps explicit durations", () => {
-    expect(parseSongDurationSeconds("sad indie, 1 minute")).toBe(60);
-    expect(parseSongDurationSeconds("1.5 minutes please")).toBe(90);
-    expect(parseSongDurationSeconds("make it 2 min")).toBe(120);
-    expect(parseSongDurationSeconds("3 minutes")).toBe(180);
-    expect(parseSongDurationSeconds("500 seconds")).toBe(210);
-    expect(clampSongDurationSeconds(10)).toBe(60);
+  it("persists free-form turns for AI instead of keyword-matching answers", () => {
+    const asked = nextSongFlow(null, "make a reggae song about Gen Z");
+    expect(asked).toMatchObject({ kind: "ask_brief", flow: { kind: "vocal", phase: "awaiting_brief" } });
+    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
+    const continued = nextSongFlow(asked.flow, "you know, something sunny but not cheesy; you pick the band");
+    expect(continued).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
+    if (continued.kind !== "ask_brief") throw new Error("expected ask_brief");
+    expect(continued.flow.conversation).toContain("something sunny but not cheesy");
   });
 
-  it("keeps approval strict and identifies revision requests", () => {
+  it("lets server validation—not model prose—decide when the vocal brief is ready", () => {
+    expect(isSongProductionContextReady(completeVocal, "vocal")).toBe(true);
+    expect(isSongProductionContextReady({ ...completeVocal, instruments: [] }, "vocal")).toBe(false);
+    expect(isSongProductionContextReady({ ...completeVocal, voiceStyle: undefined }, "vocal")).toBe(false);
+    expect(isSongProductionContextReady({ ...completeVocal, language: undefined }, "instrumental")).toBe(true);
+  });
+
+  it("stores AI-extracted choices and assembles the actual model brief", () => {
+    const asked = nextSongFlow(null, "make a reggae song about Gen Z");
+    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
+    const interviewed = withSongInterview(asked.flow, completeVocal, "That direction has real lift. I have enough to write it.");
+    expect(interviewed.durationSeconds).toBe(120);
+    expect(interviewed.context).toEqual(completeVocal);
+    expect(interviewed.brief).toContain("funky island reggae");
+    expect(interviewed.brief).toContain("heavy electric bass");
+    expect(songProductionBrief(completeVocal, "vocal")).toContain("male and female duet");
+  });
+
+  it("keeps approval strict and preserves AI context through lyric revisions", () => {
+    const reviewing = withSongLyrics({
+      phase: "awaiting_brief", kind: "vocal", context: completeVocal,
+      conversation: "make a reggae song about Gen Z", brief: songProductionBrief(completeVocal, "vocal"),
+      durationSeconds: 120,
+    }, "[Verse]\nA new day\n[Chorus]\nWe rise");
     expect(isSongApproval("yes, make it")).toBe(true);
     expect(isSongApproval("I think yes, make it eventually")).toBe(false);
-    expect(isSongRevisionIntent("make the chorus sadder")).toBe(true);
-    expect(isSongRevisionIntent("this reminds me of a song")).toBe(false);
-  });
-
-  it("transitions bare request, brief, review, revision, and approval deterministically", () => {
-    const asked = nextSongFlow(null, "@ava make me a song");
-    expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
-    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
-
-    const draft = nextSongFlow(asked.flow, "A hopeful indie song about coming home, English, warm soulful female voice, acoustic guitar, bass, drums and piano, 2 minutes");
-    expect(draft).toMatchObject({ kind: "draft", flow: { brief: expect.stringContaining("coming home"), durationSeconds: 120 } });
-    if (draft.kind !== "draft") throw new Error("expected draft");
-
-    const detailedAsk = nextSongFlow(null, "@ava make a 90 second pop song about home");
-    expect(detailedAsk).toMatchObject({ kind: "ask_brief", flow: { brief: expect.stringContaining("pop song"), durationSeconds: 90 } });
-    if (detailedAsk.kind !== "ask_brief") throw new Error("expected detailed ask");
-    const detailed = nextSongFlow(detailedAsk.flow, "English, female voice, bright and soulful, upbeat, guitar, bass, drums and synth, about returning to family");
-    expect(detailed).toMatchObject({ kind: "draft", flow: { brief: expect.stringContaining("pop song"), durationSeconds: 90 } });
-    if (detailed.kind !== "draft") throw new Error("expected detailed draft");
-
-    const reviewing = withSongLyrics(draft.flow, "Verse one\n...\nChorus");
-    const revision = nextSongFlow(reviewing, "make the chorus sadder");
-    expect(revision).toMatchObject({ kind: "draft", flow: { phase: "awaiting_brief", durationSeconds: 120 } });
-
-    const approved = nextSongFlow(reviewing, "yes, make it");
-    expect(approved).toMatchObject({ kind: "generate", flow: { phase: "generating", lyrics: "Verse one\n...\nChorus" } });
-
-    const restarted = nextSongFlow({ ...reviewing, phase: "completed" }, "make another song");
-    expect(restarted).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
-  });
-
-  it("replaces an abandoned draft when the user explicitly asks for a new song", () => {
-    const stale: Parameters<typeof nextSongFlow>[0] = {
-      phase: "reviewing",
-      kind: "vocal",
-      brief: "an older mountain song, English, female voice",
-      lyrics: "Old lyrics",
-      durationSeconds: 60,
-    };
-    const restarted = nextSongFlow(
-      stale,
-      "can you make me a reggae song for me. It's about an island called Anguilla",
-    );
-    expect(restarted).toMatchObject({
-      kind: "ask_brief",
-      flow: {
-        phase: "awaiting_brief",
-        kind: "vocal",
-        brief: expect.stringContaining("Anguilla"),
-      },
+    expect(isSongRevisionIntent("make the chorus more playful")).toBe(true);
+    expect(nextSongFlow(reviewing, "yes, make it")).toMatchObject({ kind: "generate", flow: { phase: "generating" } });
+    expect(nextSongFlow(reviewing, "make the chorus more playful")).toMatchObject({
+      kind: "draft", flow: { phase: "awaiting_brief", context: completeVocal },
     });
   });
 
-  it("offers reggae-specific instruments and blocks the Anguilla lyrics until they are chosen", () => {
-    const asked = nextSongFlow(null, "make me a reggae song about the island of Anguilla");
-    expect(asked.kind).toBe("ask_brief");
-    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
-    const question = songBriefQuestion(asked.flow);
-    expect(question).toContain("deep electric bass");
-    expect(question).toContain("skank guitar");
-    expect(question).toContain("Which would you like");
-    expect(nextSongFlow(asked.flow, "English, female voice").kind).toBe("ask_brief");
+  it("restarts an abandoned draft when a fresh song is requested", () => {
+    const reviewing = withSongLyrics({
+      phase: "awaiting_brief", kind: "vocal", context: completeVocal,
+      brief: songProductionBrief(completeVocal, "vocal"), durationSeconds: 120,
+    }, "Old lyrics");
+    expect(nextSongFlow(reviewing, "make another song about Anguilla")).toMatchObject({
+      kind: "ask_brief", flow: { phase: "awaiting_brief", kind: "vocal", conversation: expect.stringContaining("Anguilla") },
+    });
   });
 
-  it("acknowledges answers and asks one conversational follow-up instead of repeating the checklist", () => {
-    const asked = nextSongFlow(null, "make a reggae song about Gen Z in English");
-    expect(asked.kind).toBe("ask_brief");
-    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
-    expect(songBriefQuestion(asked.flow)).toContain("Which would you like");
-
-    const answered = nextSongFlow(asked.flow, "song is a out GenZ. use heavy base. duet singers, mood is happy");
-    expect(answered.kind).toBe("ask_brief");
-    if (answered.kind !== "ask_brief") throw new Error("expected ask_brief");
-    const voiceQuestion = songBriefQuestion(answered.flow);
-    expect(voiceQuestion).toContain("Got it");
-    expect(voiceQuestion).toContain("happy energy");
-    expect(voiceQuestion).toContain("duet vocals");
-    expect(voiceQuestion).toContain("heavy bass");
-    expect(voiceQuestion).toContain("How should the voice sound");
-    expect(voiceQuestion).not.toContain("Which would you like");
-    expect(voiceQuestion).not.toContain("I still need");
-
-    const voiced = nextSongFlow(answered.flow, "youthful and bright");
-    expect(voiced.kind).toBe("ask_brief");
-    if (voiced.kind !== "ask_brief") throw new Error("expected ask_brief");
-    expect(songBriefQuestion(voiced.flow)).toContain("How long should it be");
-    expect(nextSongFlow(voiced.flow, "2 minutes")).toMatchObject({ kind: "draft", flow: { durationSeconds: 120 } });
+  it("still normalizes wake words and duration bounds", () => {
+    expect(stripAvaWakeWordForIntent("@ava private: make me a song")).toBe("make me a song");
+    expect(parseSongDurationSeconds("1.5 minutes please")).toBe(90);
+    expect(parseSongDurationSeconds("500 seconds")).toBe(210);
+    expect(clampSongDurationSeconds(10)).toBe(60);
   });
 });
