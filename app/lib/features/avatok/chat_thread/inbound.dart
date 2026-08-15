@@ -118,7 +118,11 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     _mutMsgs(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
-      _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
+      // A media-job envelope is a lifecycle signal, not a second Ava reply.
+      // Keep the envelope invisible while its durable job card is hydrated
+      // below. The server's legacy envelope remains unchanged for older app
+      // versions; this client renders the durable representation instead.
+      if (!isMediaJobEnvelope) _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
           starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true,
@@ -137,6 +141,7 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
+    if (isMediaJobEnvelope) unawaited(_hydrateAiJobFromEnvelope(extra));
     // Full-thread RAG: index a member's LIVE group text into my own store.
     // `_ragLive` gates out the history that replays on open (avoids re-indexing).
     if (!m.mine && _ragLive && special == null && media == null) {

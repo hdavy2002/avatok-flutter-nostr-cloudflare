@@ -286,6 +286,16 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
             (m.extra?['label'] ?? '').toString().toLowerCase().contains('image') ||
             m.text.toLowerCase().contains('image')));
       }
+      // The old wire format also carried the completed/submitted media job as
+      // an ordinary Ava reply. Remove that legacy rendering for THIS job only:
+      // a durable card is now the one visual representation for image, video,
+      // and music jobs alike. Non-job Ava replies and envelopes for another job
+      // remain untouched, preserving normal chat history and server fallback.
+      _msgs.removeWhere((m) {
+        if (m.special != 'ava' && m.special != 'ava_private') return false;
+        final meta = m.extra?['meta'];
+        return meta is Map && (meta['job_id'] ?? '').toString() == job.jobId;
+      });
       final i = _msgs.indexWhere((m) => m.special == 'ai_job' && m.extra?['job_id'] == job.jobId);
       if (i >= 0) return; // card already placed; _aiJobBubble reads fresh state every rebuild
       _msgs.add(_Msg(_seq++, false, '', _fmtTime(job.createdAt),
