@@ -2199,6 +2199,14 @@ export async function callState(req: Request, env: Env): Promise<Response> {
     const r = await stub.fetch("https://call/state", { method: "GET" });
     if (!r.ok) return json({ ok: false, terminal_status: null });
     const j = (await r.json()) as Record<string, unknown>;
+    // This proxy is intentionally participant-scoped.  The CallRoom's internal
+    // /state endpoint is reachable only from this Worker, but this public route
+    // must not let an authenticated third party probe arbitrary call ids.
+    const callerUid = typeof j.caller_uid === "string" ? j.caller_uid : "";
+    const calleeUid = typeof j.callee_uid === "string" ? j.callee_uid : "";
+    if (!callerUid || !calleeUid || (ctx.uid !== callerUid && ctx.uid !== calleeUid)) {
+      return json({ error: "not_a_call_participant" }, 403);
+    }
     const sessionState = typeof j.session_state === "string" ? j.session_state : "";
     const wireStatus = typeof j.wire_status === "string" ? j.wire_status : "";
     const calleeHandoff = sessionState === "handoff" && j.callee_uid === ctx.uid;

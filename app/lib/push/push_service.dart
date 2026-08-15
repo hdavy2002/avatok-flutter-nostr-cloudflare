@@ -2162,12 +2162,45 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
     return;
   }
-  AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
   final receivedAtMs = DateTime.now().millisecondsSinceEpoch;
   final sentAtMs = int.tryParse((d['ts'] ?? '').toString());
   final deliveryAgeMs = sentAtMs == null || sentAtMs <= 0
       ? null
       : (receivedAtMs >= sentAtMs ? receivedAtMs - sentAtMs : 0);
+  // [CALL-LATE-RING-GUARD-1] A queued FCM ring can arrive after its matching
+  // queued cancel, and Android may run those messages in separate background
+  // lifetimes. In that ordering the in-memory terminal cache above is empty,
+  // despite the CallRoom already being terminal (prod avatok-81da5f09 rang
+  // about six seconds after the caller hung up). Do a small, fail-open durable
+  // check only for materially delayed FCM delivery: the normal WS/fast FCM ring
+  // remains latency-free, while a stale queue item cannot resurrect a dead call.
+  const lateRingGuardMs = 3000;
+  if (route != 'ws' && ringCallId.isNotEmpty &&
+      deliveryAgeMs != null && deliveryAgeMs >= lateRingGuardMs) {
+    final durableStatus = await PushService.fetchDurableCallStatus(
+      ringCallId,
+      timeout: const Duration(milliseconds: 900),
+    );
+    if (durableStatus != null) {
+      _noteTerminalCall(ringCallId);
+      Analytics.capture('call_ring_suppressed_durable_terminal', {
+        'call_id': ringCallId,
+        'route': route,
+        'delivery_age_ms': deliveryAgeMs,
+        'status': durableStatus,
+      });
+      await _track(CallEvents.callIncomingShown, {
+        'call_id': ringCallId,
+        'route': route,
+        'shown': false,
+        'skip_reason': 'durable_terminal',
+        'delivery_age_ms': deliveryAgeMs,
+      });
+      try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+      return;
+    }
+  }
+  AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
   // [CALL-4RINGS-1 2026-08-08] `callRingLifetimeMaxMs`, not `callRingLifetimeMs`.
   // The ring lease is per-call now (see ringInviteRemainingMs); a hard 20 000
   // ceiling here would end the native ring partway through the fourth cycle —
