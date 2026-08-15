@@ -401,6 +401,34 @@ export async function walletTopupPlayVerify(req: Request, env: Env): Promise<Res
   return creditPlayTopup(env, ctx.uid, coins, orderRef, productId, purchaseToken, v);
 }
 
+// Temporary production recovery path for the three Play orders consumed by the
+// old client before server verification. It is protected by a one-time Worker
+// secret, re-verifies each token with Google, checks the expected order id, and
+// then uses the normal idempotent credit path. Removed immediately after use.
+export async function walletTopupPlayRecover(req: Request, env: Env): Promise<Response> {
+  const recoveryKey = String((env as any).PLAY_RECOVERY_KEY || "");
+  if (!recoveryKey) return json({ error: "not found" }, 404);
+  if (req.headers.get("x-play-recovery-key") !== recoveryKey) {
+    return json({ error: "forbidden" }, 403);
+  }
+
+  const b = (await req.json().catch(() => ({}))) as any;
+  const uid = String(b.uid || "");
+  const productId = String(b.productId || "");
+  const purchaseToken = String(b.purchaseToken || "");
+  const expectedOrderId = String(b.orderId || "");
+  const coins = PLAY_TOPUP_PRODUCTS[productId];
+  if (!uid || !purchaseToken || !expectedOrderId || !coins) {
+    return json({ error: "uid, productId, purchaseToken and orderId required" }, 400);
+  }
+
+  const v = await verifyPlayProduct(env, productId, purchaseToken);
+  if (!v.ok) return json({ ok: false, error: "play verification failed", reason: v.reason }, 502);
+  if (!v.purchased) return json({ ok: false, error: "purchase not completed" }, 402);
+  if (v.orderId !== expectedOrderId) return json({ ok: false, error: "order mismatch" }, 409);
+  return creditPlayTopup(env, uid, coins, expectedOrderId, productId, purchaseToken, v);
+}
+
 // Credit a verified Play top-up. A topup_records row keyed on the Google orderId
 // (stripe_session_id column, unique-indexed) records `pending_credit` before the
 // WalletDO call and becomes `paid` only after the wallet confirms. That leaves a
