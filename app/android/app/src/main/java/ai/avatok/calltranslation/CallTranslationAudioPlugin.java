@@ -62,9 +62,10 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
      * Must move in lockstep with {@code CALL_TRANSLATION_API_VERSION} in
      * worker/src/routes/call_translation.ts — a token minted under one version and
      * presented to a socket on another is precisely the failure a scattered literal
-     * causes. See that constant for why v1alpha.
+     * causes. Live Translate now requires v1beta for ephemeral-token sessions;
+     * production's old v1alpha mint returned HTTP 400 on 2026-08-15.
      */
-    private static final String API_VERSION = "v1alpha";
+    private static final String API_VERSION = "v1beta";
     /**
      * [CALL-TRANSLATE-APIVER-1] The CONSTRAINED method — not plain BidiGenerateContent.
      *
@@ -444,7 +445,7 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
      * The language is captured PER SOCKET rather than read from {@link #targetLanguage} at
      * send time: during a Phase C cutover two sockets are alive on two OkHttp reader threads,
      * and the pending one must announce the NEW language (matching the new token's
-     * {@code bidiGenerateContentSetup}) while the live one keeps translating in the old one.
+     * {@code liveConnectConstraints.config}) while the live one keeps translating in the old one.
      * The field is only moved to the new value once THIS socket reaches setupComplete.
      */
     private void connectSocket(String handle, String language) {
@@ -466,18 +467,12 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                             .put("targetLanguageCode", socketLanguage)
                             .put("echoTargetLanguage", false);
                     // NOTE: input/outputAudioTranscription are deliberately ABSENT — captions are
-                    // deferred and the minted token's bidiGenerateContentSetup omits them too. The
+                    // deferred and the minted token constraints omit them too. The
                     // two setups MUST match or the provider rejects the session.
                     //
-                    // [CALL-TRANSLATE-APIVER-1] This frame is kept faithful on purpose even though
-                    // the token may make it redundant: the mint sends no `fieldMask`, and per
-                    // ai.google.dev/api/live that means the effective setup is taken ENTIRELY from
-                    // the token and this message is ignored. Keeping it identical to the token
-                    // means the session is correct either way. The one thing that CANNOT survive
-                    // that rule is `sessionResumption.handle` below — a resume may therefore start
-                    // a fresh session rather than resuming. Needs a keyed end-to-end check; the
-                    // fix, if it does not resume, is `lockAdditionalFields: []` on the mint so only
-                    // the model/config fields are locked and the client may still supply a handle.
+                    // [CALL-TRANSLATE-APIVER-2] Keep the WebSocket setup semantically identical
+                    // to the v1beta token constraint. The wire setup uses generationConfig while
+                    // the token's REST constraint calls the same object `config`.
                     JSONObject generation = new JSONObject()
                             .put("responseModalities", new JSONArray().put("AUDIO"))
                             .put("translationConfig", translation);

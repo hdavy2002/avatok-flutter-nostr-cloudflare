@@ -23,14 +23,14 @@ export const CALL_TRANSLATION_MODEL = "gemini-3.5-live-translate-preview";
  * under one version and presented to a socket on another is the exact failure this
  * constant exists to make impossible to reintroduce by a scattered literal.
  *
- * `v1alpha` matches the Live Translate guide ("you must use the v1alpha endpoint"
- * with ephemeral tokens) AND the two lanes in this repo that are already proven in
- * production — routes/translate.ts mints on v1alpha and
- * avachat/voice_call/live_voice_controller.dart connects on v1alpha. Probed live on
- * 2026-08-04: v1beta and v1alpha accept an identical mint body and behave identically
- * on the socket, so this is a consistency choice, not a functional one.
+ * [CALL-TRANSLATE-APIVER-2] Google's Live Translate contract changed after the
+ * original launch probe. The model-specific guide now requires `v1beta` for both
+ * constrained token minting and the Live WebSocket. Production telemetry on
+ * 2026-08-15 proved the old v1alpha mint now returns HTTP 400 (`bad_request`).
  */
-export const CALL_TRANSLATION_API_VERSION = "v1alpha";
+export const CALL_TRANSLATION_API_VERSION = "v1beta";
+export const CALL_TRANSLATION_AUTH_TOKEN_URL =
+  `https://generativelanguage.googleapis.com/${CALL_TRANSLATION_API_VERSION}/auth_tokens`;
 export const CALL_TRANSLATION_RATE = 5;
 export const CALL_TRANSLATION_MIN_START = 5;
 // Android's host bridge attaches to flutter_webrtc's decoded-playback callback;
@@ -184,24 +184,49 @@ async function chargeMinute(env: Env, s: CallSession, minute: number): Promise<b
 /**
  * [CALL-TRANSLATE-OBS-2] Why the provider mint is instrumented at all.
  *
- * `mintToken` returning `null` is what killed EVERY session between launch and
- * 2026-08-04: the body carried the SDK-only field name `liveConnectConstraints`,
- * Google answered 400, every mint returned null, and every `/start`, `/language`
- * and `/token` answered 502. The only trace that left in PostHog was an absence —
- * twelve `call_translation_stopped` events and zero `call_translation_started`.
- * A whole session of digging went into noticing a gap between two event streams.
+ * `mintToken` returning `null` has caused two provider-contract incidents. The
+ * first was visible only as missing success events. The second, on 2026-08-15,
+ * was immediately identifiable as v1alpha + HTTP 400 because this event existed.
+ * Google's model-specific contract now uses v1beta + liveConnectConstraints.
  *
  * So the mint now states its own outcome. One event, `call_translation_mint`,
  * carrying Google's HTTP status and a failure CLASS, on success and on every
  * failure. If Google changes the contract again this is one breakdown query, not
  * one archaeology session.
  *
- * NEVER put the API key, the minted token, or any response body in here. The
- * status code and the class below are the whole payload; a response body from
- * this endpoint is not audio-derived, but "we only log bodies that look safe" is
- * exactly the rule that erodes, so the body is simply never read on a failure.
+ * NEVER put the API key, minted token, provider message, or response body in
+ * telemetry. On failure the Worker may parse the response only to retain the
+ * bounded machine status (`INVALID_ARGUMENT`, etc.); all other response data is
+ * discarded.
  */
 export type MintPurpose = "start" | "warm_up" | "switch" | "refresh";
+
+/**
+ * [CALL-TRANSLATE-APIVER-2] Exact REST shape from the model-specific Live
+ * Translate guide. Keep this pure/exported so a contract test catches drift
+ * before another provider change turns every Translate tap into a 502.
+ *
+ * `liveConnectConstraints.config` is intentionally minimal. Live Translate is
+ * an audio-restricted model and the official constrained-token example includes
+ * only response modalities plus translationConfig. Session resumption remains a
+ * client setup concern; it must not make the token mint itself invalid.
+ */
+export function callTranslationAuthTokenBody(targetLang: string, expiresAt: number) {
+  return {
+    uses: 1,
+    expireTime: new Date(expiresAt).toISOString(),
+    liveConnectConstraints: {
+      model: `models/${CALL_TRANSLATION_MODEL}`,
+      config: {
+        responseModalities: ["AUDIO"],
+        translationConfig: {
+          targetLanguageCode: targetLang,
+          echoTargetLanguage: false,
+        },
+      },
+    },
+  };
+}
 
 /**
  * Bucket an HTTP status from Google into an actionable class. These strings are
@@ -239,50 +264,16 @@ async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{
   const expiresAt = Date.now() + 30 * 60_000;
   let response: Response;
   try {
-    response = await fetch(`https://generativelanguage.googleapis.com/${CALL_TRANSLATION_API_VERSION}/auth_tokens`, {
+    response = await fetch(CALL_TRANSLATION_AUTH_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
     /**
-     * [CALL-TRANSLATE-APIVER-1] `bidiGenerateContentSetup` is the REAL wire field.
-     *
-     * `liveConnectConstraints` — which this used to send, and which the published
-     * REST curl on ai.google.dev/gemini-api/docs/live-api/ephemeral-tokens still
-     * shows — is an SDK-LEVEL name only. The genai SDKs rewrite it to
-     * `bidiGenerateContentSetup` before it reaches the wire
-     * (`createAuthTokenConfigToMldev` -> `liveConnectConstraintsToMldev` in
-     * @google/genai). Posted raw it is rejected outright:
-     *
-     *   400 Invalid JSON payload received. Unknown name "liveConnectConstraints"
-     *       at 'auth_token': Cannot find field.
-     *
-     * Probed against the live endpoint 2026-08-04 on BOTH v1beta and v1alpha —
-     * body validation runs before key validation, so this needs no key to
-     * reproduce. Every mint therefore returned null and every /start, /language
-     * and /token answered 502 provider_unavailable: the feature could not have
-     * worked once. routes/translate.ts has had the correct shape since
-     * 2026-06-11; this route diverged from it.
-     *
-     * Note the nesting, which is NOT the SDK's: `responseModalities` and
-     * `translationConfig` live under `generationConfig`, while `sessionResumption`
-     * and `contextWindowCompression` are siblings of it — this object is a
-     * BidiGenerateContentSetup, not a LiveConnectConfig.
+     * [CALL-TRANSLATE-APIVER-2] Do not substitute the generic AuthToken resource
+     * shape here. Live Translate has a model-specific constrained-token contract:
+     * v1beta + liveConnectConstraints + config. This request deliberately mirrors
+     * Google's REST example rather than relying on SDK field rewriting.
      */
-    body: JSON.stringify({
-      uses: 1, expireTime: new Date(expiresAt).toISOString(),
-      bidiGenerateContentSetup: {
-        model: `models/${CALL_TRANSLATION_MODEL}`,
-        generationConfig: {
-          // [CALL-TRANSLATE-2A-1] Captions are deferred (owner). Transcription is
-          // deliberately NOT requested here: the token constraints and the native
-          // setup JSON must agree, and no transcript text may ever leave the
-          // provider session for this feature.
-          responseModalities: ["AUDIO"],
-          translationConfig: { targetLanguageCode: targetLang, echoTargetLanguage: false },
-        },
-        sessionResumption: {},
-        contextWindowCompression: { slidingWindow: {} },
-      },
-    }),
+    body: JSON.stringify(callTranslationAuthTokenBody(targetLang, expiresAt)),
     });
   } catch (e) {
     // Transport failure: no status exists. `error_name` is the exception CLASS
@@ -296,9 +287,21 @@ async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{
     return null;
   }
   if (!response.ok) {
+    // Read the failure only to extract Google's bounded machine status (for
+    // example INVALID_ARGUMENT). Never emit the provider message/body: it can
+    // drift into request-derived data. This makes the next 400 diagnosable
+    // without weakening the no-provider-body telemetry rule.
+    const errorBody = await response.json().catch(() => ({})) as {
+      error?: { status?: unknown };
+    };
+    const rawProviderStatus = String(errorBody.error?.status ?? "");
+    const providerStatus = /^[A-Z][A-Z0-9_]{0,39}$/.test(rawProviderStatus)
+      ? rawProviderStatus
+      : "";
     await track(env, mctx.uid, "call_translation_mint", APP, {
       ...base, ok: false, http_status: response.status,
-      failure_class: mintFailureClass(response.status), duration_ms: Date.now() - startedAt,
+      failure_class: mintFailureClass(response.status), provider_status: providerStatus,
+      duration_ms: Date.now() - startedAt,
     });
     return null;
   }

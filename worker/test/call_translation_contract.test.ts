@@ -12,6 +12,7 @@ vi.mock("../src/authz", () => ({
 
 import {
   CALL_TRANSLATION_LANGS, CALL_TRANSLATION_MIN_START, CALL_TRANSLATION_RATE, CALL_TRANSLATION_MODEL,
+  CALL_TRANSLATION_API_VERSION, CALL_TRANSLATION_AUTH_TOKEN_URL, callTranslationAuthTokenBody,
   CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED, mintFailureClass, stopEndReason, stopReasonOrDefault,
   STOP_BODY_TIMEOUT_MS,
   callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop,
@@ -43,6 +44,30 @@ describe("[CALL-TRANSLATE-1] contract", () => {
 
   it("allows the reviewed decoded-playback Android bridge", () => {
     expect(CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED).toBe(true);
+  });
+
+  it("matches the current model-specific Live Translate ephemeral-token contract", () => {
+    expect(CALL_TRANSLATION_API_VERSION).toBe("v1beta");
+    expect(CALL_TRANSLATION_AUTH_TOKEN_URL).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
+    );
+
+    const body = callTranslationAuthTokenBody("es", Date.parse("2026-08-15T08:30:00Z"));
+    expect(body).toEqual({
+      uses: 1,
+      expireTime: "2026-08-15T08:30:00.000Z",
+      liveConnectConstraints: {
+        model: "models/gemini-3.5-live-translate-preview",
+        config: {
+          responseModalities: ["AUDIO"],
+          translationConfig: {
+            targetLanguageCode: "es",
+            echoTargetLanguage: false,
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("bidiGenerateContentSetup");
   });
 });
 
