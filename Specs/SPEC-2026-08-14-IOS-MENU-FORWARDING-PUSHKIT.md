@@ -2,6 +2,12 @@
 
 Owner decisions (2026-08-14, this session):
 
+> **Superseded in part — owner decision 2026-08-15:** every Android production
+> **SHIP IT** must send a quiet FCM "Update available" notification after the
+> build is successfully published to Google Play Internal. The notification is
+> required even though the retired self-updating APK path stays retired. CI must
+> verify the FCM fan-out completed before reporting the release successful.
+
 1. The device-phone-app layer is retired on **all platforms** — AvaDialer as a
    phone app, AvaSMS, the missed-call overlay, and the self-updating APK.
    Done today: prod KV `avaSms=false`, `missedCallOverlay=false`,

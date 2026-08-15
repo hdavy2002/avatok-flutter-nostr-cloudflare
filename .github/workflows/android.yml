@@ -3,7 +3,8 @@ name: Android build
 # All app builds run on GitHub Actions — never on a local machine.
 # Builds the app under app/ as a signed arm64 side-loadable APK and, when
 # requested, a signed Play-upload AAB. Production "ship it" runs request both,
-# publishes the AAB to Google Play Internal testing, and updates latestAppBuild.
+# publishes the AAB to Google Play Internal testing, updates latestAppBuild, and
+# verifies that the matching FCM update notification reached the fan-out worker.
 # The APK remains attached to the GitHub Release for side-loading.
 
 # Staging lane (creator-marketplace Phase 1, A1): pushes to the `staging`
@@ -401,7 +402,10 @@ jobs:
           # ^4.0.0 this repo pins — so install first and keep CI deterministic.
           # Only runs on publishing builds, so it costs nothing on a normal one.
           ( cd worker && npm ci --no-audit --no-fund --silent )
-          scripts/flags.sh set "latestAppBuild=$BUILD_NO"
+          # [SHIP-UPDATE-FCM-1] An intentional production ship always enables the
+          # update notice. This is a quiet, user-tapped notice—not a silent APK
+          # install—and is now part of the owner's canonical SHIP IT contract.
+          scripts/flags.sh set "latestAppBuild=$BUILD_NO" "inAppUpdateEnabled=true"
           # Prove it landed. /api/config is edge-cached for 60s, so a plain curl
           # here would happily echo the OLD value and turn this check into a lie.
           if [ "$AVATOK_ENV" = "prod" ]; then API=https://api.avatok.ai; else API=https://api-staging.avatok.ai; fi
@@ -409,6 +413,36 @@ jobs:
           GOT=$(curl -s -H 'Cache-Control: no-cache' "$API/api/config?cb=$RANDOM$$" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("latestAppBuild"))')
           echo "live latestAppBuild = $GOT (expected $BUILD_NO)"
           [ "$GOT" = "$BUILD_NO" ] || echo "::warning::latestAppBuild reads $GOT, expected $BUILD_NO — likely the 60s edge cache or colo propagation. Re-check with: curl -H 'Cache-Control: no-cache' \"$API/api/config?cb=\$RANDOM\""
+
+      # [SHIP-UPDATE-FCM-1] The consumer used to notice latestAppBuild on its
+      # minute cron, but the workflow never checked whether that happened. A Play
+      # publish could therefore be green while every tester missed the update
+      # push. The consumer now writes two durable KV markers: STARTED after the
+      # broadcast is queued, COMPLETED after both modern + legacy token tables
+      # have been paged. Do not report a successful SHIP IT without both.
+      - name: Send and verify the update FCM notification (internal track only)
+        if: env.PLAY_TRACK == 'internal'
+        env:
+          ALLOW_PROD: '1'
+          AVATOK_TARGET: ${{ env.AVATOK_ENV }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          BUILD_NO=$((10000 + GITHUB_RUN_NUMBER))
+          DEADLINE=$((SECONDS + 180))
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            STARTED=$(scripts/cf.sh worker kv key get update_broadcast_last_build --binding TOKENS --remote 2>/dev/null || true)
+            COMPLETED=$(scripts/cf.sh worker kv key get update_broadcast_completed_build --binding TOKENS --remote 2>/dev/null || true)
+            echo "FCM update fan-out: started=${STARTED:-missing} completed=${COMPLETED:-missing} expected=$BUILD_NO"
+            if [ "$STARTED" = "$BUILD_NO" ] && [ "$COMPLETED" = "$BUILD_NO" ]; then
+              echo "Update FCM fan-out completed for build $BUILD_NO"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Build $BUILD_NO reached Play Internal, but its FCM update fan-out did not complete within 180 seconds. Do not report this SHIP IT as successful."
+          exit 1
 
       # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every
       # native lib and grows to ~220MB, which Android's installer rejects as

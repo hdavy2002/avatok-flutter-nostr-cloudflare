@@ -553,11 +553,19 @@ async function handleAppUpdateBroadcast(msg: PushMsg, env: Env): Promise<void> {
     build, phase, cursor, rows: rows.length, sent, failed, last_rowid: lastRowid,
   });
 
-  // Continuation: more rows in THIS phase → next page; else device→legacy; else done.
+  // Continuation: more rows in THIS phase → next page; else device→legacy; else
+  // record durable completion. CI waits for this marker before a production
+  // "ship it" run may report success, so a release can no longer turn green
+  // merely because latestAppBuild changed while the FCM consumer was unhealthy.
   if (rows.length === UPDATE_BCAST_PAGE) {
     await env.Q_PUSH?.send({ kind: "app_update_broadcast", build, phase, cursor: lastRowid });
   } else if (phase === "device") {
     await env.Q_PUSH?.send({ kind: "app_update_broadcast", build, phase: "legacy", cursor: 0 });
+  } else {
+    await env.TOKENS.put(UPDATE_BCAST_COMPLETED_MARKER, String(build));
+    await capturePush(env, "app_update_broadcast_completed", "app_update", {
+      build, phase, cursor, rows: rows.length, sent, failed,
+    });
   }
 }
 
@@ -565,13 +573,15 @@ async function handleAppUpdateBroadcast(msg: PushMsg, env: Env): Promise<void> {
 // and staging use separate KV namespaces). Guards the diff so a bump fans out
 // EXACTLY once.
 const UPDATE_BCAST_MARKER = "update_broadcast_last_build";
+const UPDATE_BCAST_COMPLETED_MARKER = "update_broadcast_completed_build";
 
 // Called every minute from the consumers cron. Reads latestAppBuild from the SAME
 // KV blob the app config is served from; when it rises above the marker, enqueues
-// one broadcast and advances the marker. First run after deploy adopts the current
-// build SILENTLY (never spam a build users already have) — only future increases
-// fan out. Best-effort: any failure leaves the marker untouched so the next tick
-// retries. Returns the build it broadcast (or 0).
+// one broadcast and advances the marker. A missing marker broadcasts the current
+// build too: adopting it silently made a fresh/recovered consumer skip the exact
+// release notification it was installed to deliver. Duplicate update wakes are
+// harmless, while a silently missed release is not. Any failure leaves the marker
+// untouched so the next tick retries. Returns the build it broadcast (or 0).
 export async function maybeBroadcastAppUpdate(env: Env): Promise<number> {
   if (!env.Q_PUSH) return 0;
   const cfg = (await env.TOKENS.get("platform_config", "json")) as Record<string, unknown> | null;
@@ -583,11 +593,6 @@ export async function maybeBroadcastAppUpdate(env: Env): Promise<number> {
 
   const markerRaw = await env.TOKENS.get(UPDATE_BCAST_MARKER);
   const marker = Number(markerRaw ?? "0");
-  if (!marker) {
-    // First observation in this environment — adopt silently, broadcast nothing.
-    await env.TOKENS.put(UPDATE_BCAST_MARKER, String(latest));
-    return 0;
-  }
   if (latest <= marker) return 0;
 
   // A newer build was published. Enqueue the fan-out FIRST, then advance the

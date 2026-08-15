@@ -69,11 +69,16 @@ asking the environment/format widgets above. Follow this fixed flow:
 
 3. The workflow creates the signed arm64 APK and signed Play-upload AAB, uploads
    both as GitHub artifacts/release assets, publishes the AAB to Google Play
-   Internal testing, and updates the app's `latestAppBuild` pointer after the
-   internal publication succeeds.
+   Internal testing, updates the app's `latestAppBuild` pointer, and sends the
+   matching quiet FCM `app_update` notification to registered devices. The run
+   MUST verify both `update_broadcast_last_build` and
+   `update_broadcast_completed_build` equal the new build before it is successful.
+   **Owner decision 2026-08-15:** this FCM notice is a permanent, required part
+   of every exact **“ship it” / “SHIP IT”** release; never omit it or treat it as
+   best-effort. It fires only after the Play Internal publication succeeds.
 4. Wait for the production GitHub Environment approval gate and approve the exact
    requested run. Report the workflow URL, run result, build number, artifact
-   links, Play track, and pointer-update result.
+   links, Play track, pointer-update result, and FCM fan-out completion result.
 
 The `android.yml` branch/environment guard remains mandatory: production is
 `main` + `prod`; staging is `staging` + `staging`. Never publish a staging build
