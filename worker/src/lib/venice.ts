@@ -63,6 +63,17 @@ export function veniceRoute(intent: VeniceIntent, tier: VeniceTier): VeniceRoute
   return ROUTES[intent][tier];
 }
 
+/** Map provider failures to the small safe vocabulary exposed to clients. */
+export function classifyVeniceError(error: unknown): "provider_auth" | "provider_capacity" | "provider_invalid_request" | "provider_unavailable" | "provider_timeout" {
+  const status = Number((error as any)?.status ?? 0);
+  const message = String((error as any)?.message ?? error ?? "").toLowerCase();
+  if (status === 401 || status === 403 || /key_missing|unauthori[sz]ed|forbidden|api.?key/.test(message)) return "provider_auth";
+  if (status === 402 || /balance|credit|quota/.test(message)) return "provider_capacity";
+  if (status === 400 || status === 422 || /invalid|unsupported|model|parameter|duration|resolution|aspect/.test(message)) return "provider_invalid_request";
+  if (status === 408 || status === 504 || /timeout|timed out|abort/.test(message)) return "provider_timeout";
+  return "provider_unavailable";
+}
+
 function veniceKey(env: VeniceEnv): string {
   const k = env.VENICE_API_KEY;
   if (!k) throw new Error("venice_key_missing: VENICE_API_KEY secret not set on this worker");
@@ -130,7 +141,9 @@ export async function veniceGenerateImage(
 // ── Video (queue + poll) ─────────────────────────────────────────────────────
 // Product tariff: 45 Tokens buys one 10-second clip.
 export const VENICE_VIDEO_DEFAULT_DURATION = "10s";
-export const VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p";
+// 720p is the common denominator across the live Venice video catalog;
+// requesting 1080p made otherwise valid LTX jobs fail with a provider 400.
+export const VENICE_VIDEO_DEFAULT_RESOLUTION = "720p";
 // [VENICE-VID-DURATION-1] The messaging product sells one fixed 10-second
 // clip. Any legacy/client duration is normalized to that product duration.
 export const VENICE_VIDEO_DURATIONS_S = [10] as const;
@@ -211,6 +224,12 @@ async function veniceRetrieveMedia(
       const err: any = new Error(`venice ${r.status}: ${msg}`);
       err.status = r.status;
       throw err;
+    }
+    const downloadUrl = typeof j?.download_url === "string" ? j.download_url : typeof j?.url === "string" ? j.url : "";
+    if (downloadUrl && /completed|succeeded|done/i.test(String(j?.status ?? ""))) {
+      const media = await fetch(downloadUrl, { signal: AbortSignal.timeout(120000) });
+      if (!media.ok) throw new Error(`venice media download ${media.status}`);
+      return { status: "completed", bytes: new Uint8Array(await media.arrayBuffer()), mime: media.headers.get("content-type") || undefined };
     }
     return { status: String(j?.status ?? "unknown") };
   }

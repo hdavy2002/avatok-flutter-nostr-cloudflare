@@ -28,7 +28,7 @@ import { readConfig } from "../routes/config";
 import { moderate } from "./moderation";
 import {
   veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
-  type VeniceIntent, type VeniceTier,
+  type VeniceIntent, type VeniceTier, classifyVeniceError,
 } from "./venice";
 import {
   createVeniceMediaJob, attachVeniceQueueId, failVeniceMediaJob,
@@ -40,7 +40,7 @@ import { avaString, readVoiceStyle, type AvaVoiceStyle } from "./ava_persona";
 import { postAvaMessage } from "../routes/ava_thread";
 // [VENICE-PROMPT-1 / VENICE-SONG-1] Gemini-3.7-via-Venice prompt/lyrics
 // crafting — see lib/media_prompt.ts's header for the fail-soft contract.
-import { craftVideoPrompt, draftLyrics } from "./media_prompt";
+import { craftVideoPrompt, craftVideoCardMetadata, draftLyrics } from "./media_prompt";
 
 const VIDEO_DEADLINE_MS = 10 * 60_000; // ~10 min hard ceiling, per the work order
 const MUSIC_DEADLINE_MS = 5 * 60_000;  // ~5 min hard ceiling
@@ -101,6 +101,7 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   // video model. Fails soft internally (see media_prompt.ts) — `prompt` is
   // always at least `rawPrompt` on any craft failure.
   const prompt = await craftVideoPrompt(env, rawPrompt, durationNum);
+  const card = await craftVideoCardMetadata(env, rawPrompt);
 
   // ── PROMPT GATE (mandatory, before any reservation/provider call) ────────
   // Gates the prompt actually sent to Venice (the crafted version), which is
@@ -133,6 +134,9 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     label: "Generating your video…", deadlineMs: Date.now() + VIDEO_DEADLINE_MS, email,
     // [VENICE-TOKENS-1] owner tariff: 45 Tokens per 10-second video clip.
     flatPriceTokens: cfg.veniceVideoTokens,
+    // The existing card columns are deliberately reused for video metadata;
+    // they are safe, generated copy and never contain the source prompt.
+    songTitle: card.title, songDescription: card.description,
   });
   if (!created.ok) {
     emitReason(false, created.error);
@@ -157,7 +161,8 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     emitReason(true, null);
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
-    await failVeniceMediaJob(env, { jobId, errorCode: "provider_unavailable", reason: "submit_failed" });
+    const errorCode = classifyVeniceError(e);
+    await failVeniceMediaJob(env, { jobId, errorCode, reason: "submit_failed" });
     void track(env, a.uid, "ava_video_error", "avaai", { stage: "submit", model: route.model, provider: "venice", error: msg, job_id: jobId });
     emitReason(false, msg);
     return { ok: false, message: "I couldn't start that video right now — please try again." };

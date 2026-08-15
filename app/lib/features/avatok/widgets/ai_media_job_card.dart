@@ -159,6 +159,9 @@ String _friendlyError(AiMediaJob job) {
   final noun = job.kind.displayNoun;
   return switch (job.errorCode) {
     'provider_timeout' => "This took too long and didn't finish.",
+    'provider_auth' => 'The video service is not configured correctly yet.',
+    'provider_capacity' => 'The video service is busy or out of capacity. Please try again shortly.',
+    'provider_invalid_request' => "That video request isn't supported by the current video model.",
     'provider_unavailable' => 'The AI service is unavailable right now.',
     'unsupported_format' => "This file type isn't supported for this action.",
     'input_too_large' => 'This file is too large for this action.',
@@ -445,6 +448,25 @@ class _ReadyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = AD.bubbleOutPlay; // green = "done"
     final menu = _menuItems();
+
+    if (job.kind == AiMediaJobKind.videoGenerate && _hasVisual) {
+      return Container(
+        width: width, margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(AD.rListCard)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          GestureDetector(onTap: onTapOpen, child: thumbnailWidget ?? Image.memory(thumbnailBytes!, fit: BoxFit.cover)),
+          Container(color: Colors.black, padding: const EdgeInsets.fromLTRB(16, 14, 16, 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(job.videoTitle ?? 'AvaTOK video', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text(job.videoDescription ?? 'A short video created with AvaTOK AI.', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black, fontSize: 13, height: 1.35)),
+            const SizedBox(height: 8),
+            const Text('Made on AvaTOK AI', style: TextStyle(color: Colors.black, fontSize: 10)),
+          ])),
+          if (menu.isNotEmpty) Align(alignment: Alignment.centerRight, child: PopupMenuButton<String>(onSelected: _onMenuSelected, itemBuilder: (_) => menu)),
+        ]),
+      );
+    }
 
     if (_hasVisual) {
       // Media-forward layout, matching the existing finished-Ava-image bubble

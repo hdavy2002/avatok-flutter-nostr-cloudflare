@@ -460,6 +460,15 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// Same OS share-sheet affordance as Download — a job artifact has no
   /// separate "send elsewhere" mechanic to distinguish the two actions.
   Future<void> _shareJobArtifact(AiMediaJob job) async {
+    if (job.kind == AiMediaJobKind.videoGenerate) {
+      final fresh = await AiMediaJobRepository.I.fetch(job.jobId);
+      if (fresh == null) { _toast("Couldn't load — try again in a moment."); return; }
+      final shareUrl = await AiMediaJobRepository.I.createVideoShareLink(fresh.jobId);
+      if (shareUrl != null) {
+        await Share.share('${fresh.videoTitle ?? 'AvaTOK video'}\n${fresh.videoDescription ?? 'A short video created with AvaTOK AI.'}\n$shareUrl', subject: fresh.videoTitle ?? 'AvaTOK video');
+        return;
+      }
+    }
     if (job.kind != AiMediaJobKind.musicGenerate) {
       await _downloadJobArtifact(job);
       return;
@@ -647,8 +656,10 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       thumbnailWidget: (isImage && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
           ? CachedImage(artifactUrl, width: double.infinity,
               cacheKey: job.artifactMediaId, transformUrl: false)
-          : (isVideo && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
-              ? _AiVideoJobPreview(url: artifactUrl, width: 240)
+          : (isVideo && succeeded && job.thumbnailUrl != null && job.thumbnailUrl!.isNotEmpty)
+              ? CachedImage(job.thumbnailUrl!, width: double.infinity, cacheKey: job.coverMediaId, transformUrl: false)
+              : (isVideo && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
+                  ? _AiVideoJobPreview(url: artifactUrl, width: 240)
               : (isMusic && succeeded)
                   ? _AiMusicJobPreview(
                       width: 240,

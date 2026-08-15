@@ -204,7 +204,7 @@ import { avaImage } from "./routes/ava_image";          // P9
 import { avaDocSummarize, avaDocTranslate, avaDocTranslateFile, avaChatToggle } from "./routes/ava_copilot"; // Copilot A+B (doc actions + per-chat toggle)
 import {
   aiMediaJobsCreate, aiMediaJobsGet, aiMediaJobsCancel, aiMediaJobsList,
-  aiMediaJobSongShare, aiMediaSongSharePage, aiMediaSongShareAsset,
+  aiMediaJobSongShare, aiMediaSongSharePage, aiMediaSongShareAsset, aiMediaJobVideoShare, aiMediaVideoSharePage, aiMediaVideoShareAsset,
 } from "./routes/ai_media_jobs"; // [AVA-MEDIA-JOB-1] durable AI media job state machine
 import { runAiMediaJobMessage, type AiMediaJobQueueMsg } from "./queues/ai_media"; // [AVA-MEDIA-JOB-1] self-consumed, same pattern as money-settlements/liveness-verify below
 import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
@@ -746,10 +746,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ai/jobs" && req.method === "POST") return await aiMediaJobsCreate(req, env, ctx);
       if (p === "/api/ai/jobs" && req.method === "GET") return await aiMediaJobsList(req, env);
       { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})\/share$/); if (m && req.method === "POST") return await aiMediaJobSongShare(req, env, m[1]); }
+      { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})\/video-share$/); if (m && req.method === "POST") return await aiMediaJobVideoShare(req, env, m[1]); }
       { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})\/cancel$/); if (m && req.method === "POST") return await aiMediaJobsCancel(req, env, m[1]); }
       { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})$/); if (m && req.method === "GET") return await aiMediaJobsGet(req, env, m[1]); }
       { const m = p.match(/^\/s\/song\/([A-Za-z0-9_-]{32,128})$/); if (m && req.method === "GET") return await aiMediaSongSharePage(req, env, m[1]); }
       { const m = p.match(/^\/s\/song\/([A-Za-z0-9_-]{32,128})\/(cover|audio)$/); if (m && req.method === "GET") return await aiMediaSongShareAsset(req, env, m[1], m[2] as "cover" | "audio"); }
+      { const m = p.match(/^\/s\/video\/([A-Za-z0-9_-]{32,128})$/); if (m && req.method === "GET") return await aiMediaVideoSharePage(req, env, m[1]); }
+      { const m = p.match(/^\/s\/video\/([A-Za-z0-9_-]{32,128})\/(thumbnail|video)$/); if (m && req.method === "GET") return await aiMediaVideoShareAsset(req, env, m[1], m[2] as "thumbnail" | "video"); }
       // [AVABRAIN-COMPANION-2] group Companion mode + effective policy + draft approval (routes/ava_group.ts)
       if (p === "/api/ava/group/mode" && req.method === "GET") return await avaGroupModeGet(req, env);
       if (p === "/api/ava/group/mode" && req.method === "POST") return await avaGroupModePost(req, env);

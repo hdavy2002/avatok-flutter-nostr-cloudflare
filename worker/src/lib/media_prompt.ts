@@ -61,6 +61,24 @@ export async function craftVideoPrompt(env: Env, userAsk: string, durationSecond
   }
 }
 
+/** Safe, persisted share-card copy. The source prompt is never persisted. */
+export async function craftVideoCardMetadata(env: Env, userAsk: string): Promise<{ title: string; description: string }> {
+  const fallback = { title: "AvaTOK video", description: "A short video created with AvaTOK AI." };
+  const ask = String(userAsk ?? "").trim();
+  if (!ask) return fallback;
+  try {
+    const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
+      { role: "system", content: "Create share-card metadata for the user's video request. Return ONLY valid JSON with two string fields: title (5-80 characters, concise and specific) and description (one or two sentences, 40-160 characters). Do not use markdown, emojis, or unsupported claims." },
+      { role: "user", content: ask },
+    ], { maxTokens: 180, temperature: 0.35, timeoutMs: CRAFT_TIMEOUT_MS });
+    const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");
+    const parsed = JSON.parse(raw) as { title?: unknown; description?: unknown };
+    const title = String(parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const description = String(parsed.description ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    return title && description ? { title, description } : fallback;
+  } catch { return fallback; }
+}
+
 /**
  * Draft ORIGINAL song lyrics for `theme`, sized for a track roughly
  * `durationSeconds` long (defaults to 60s). Throws on provider/empty output so

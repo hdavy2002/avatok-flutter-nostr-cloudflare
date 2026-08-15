@@ -53,4 +53,13 @@ void main() {
     expect(card, contains('this.width = double.infinity'));
     expect(card, contains('final previewSize = constraints.maxWidth.isFinite'));
   });
+
+  test('video cards use the generated thumbnail and share metadata', () {
+    final card = File('lib/features/avatok/widgets/ai_media_job_card.dart').readAsStringSync();
+    final media = File('lib/features/avatok/chat_thread/media.dart').readAsStringSync();
+    expect(card, contains("job.kind == AiMediaJobKind.videoGenerate"));
+    expect(card, contains("Made on AvaTOK AI"));
+    expect(media, contains('createVideoShareLink'));
+    expect(media, contains('job.thumbnailUrl'));
+  });
 }

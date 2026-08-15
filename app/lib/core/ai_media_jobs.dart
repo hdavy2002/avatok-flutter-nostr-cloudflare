@@ -193,6 +193,10 @@ class AiMediaJob {
   final String? coverMediaId;
   final String? coverUrl;
   final String? coverStatus;
+  final String? videoTitle;
+  final String? videoDescription;
+  final String? thumbnailUrl;
+  final String? thumbnailStatus;
 
   /// Safe error code only (e.g. `provider_timeout`, `unsupported_format`) —
   /// NEVER a raw provider error string. The card renders a friendly message
@@ -227,6 +231,10 @@ class AiMediaJob {
     this.coverMediaId,
     this.coverUrl,
     this.coverStatus,
+    this.videoTitle,
+    this.videoDescription,
+    this.thumbnailUrl,
+    this.thumbnailStatus,
     this.errorCode,
     required this.createdAt,
     required this.updatedAt,
@@ -255,6 +263,10 @@ class AiMediaJob {
     String? coverMediaId,
     String? coverUrl,
     String? coverStatus,
+    String? videoTitle,
+    String? videoDescription,
+    String? thumbnailUrl,
+    String? thumbnailStatus,
     String? errorCode,
     int? updatedAt,
     int? completedAt,
@@ -275,6 +287,10 @@ class AiMediaJob {
         coverMediaId: coverMediaId ?? this.coverMediaId,
         coverUrl: coverUrl ?? this.coverUrl,
         coverStatus: coverStatus ?? this.coverStatus,
+        videoTitle: videoTitle ?? this.videoTitle,
+        videoDescription: videoDescription ?? this.videoDescription,
+        thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+        thumbnailStatus: thumbnailStatus ?? this.thumbnailStatus,
         errorCode: errorCode ?? this.errorCode,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -315,6 +331,10 @@ class AiMediaJob {
       coverMediaId: _str(j, ['cover_media_id']),
       coverUrl: _str(j, ['cover_url']),
       coverStatus: _str(j, ['cover_status']),
+      videoTitle: _str(j, ['video_title']),
+      videoDescription: _str(j, ['video_description']),
+      thumbnailUrl: _str(j, ['thumbnail_url']),
+      thumbnailStatus: _str(j, ['thumbnail_status']),
       errorCode: _str(j, ['error_code']),
       createdAt: _epoch(j['created_at']),
       updatedAt: _epoch(j['updated_at'], fallback: _epoch(j['created_at'])),
@@ -344,6 +364,10 @@ class AiMediaJob {
         if (coverMediaId != null) 'cover_media_id': coverMediaId,
         if (coverUrl != null) 'cover_url': coverUrl,
         if (coverStatus != null) 'cover_status': coverStatus,
+        if (videoTitle != null) 'video_title': videoTitle,
+        if (videoDescription != null) 'video_description': videoDescription,
+        if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
+        if (thumbnailStatus != null) 'thumbnail_status': thumbnailStatus,
         if (errorCode != null) 'error_code': errorCode,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -592,6 +616,16 @@ class AiMediaJobRepository {
           extra: {'stage': 'create_song_share_link'});
       return null;
     }
+  }
+
+  Future<String?> createVideoShareLink(String jobId) async {
+    try {
+      final res = await ApiAuth.postJson('$kApiBase/ai/jobs/${Uri.encodeComponent(jobId)}/video-share', const <String, dynamic>{}, timeout: const Duration(seconds: 12));
+      if (res.statusCode != 200) return null;
+      final decoded = jsonDecode(res.body);
+      final url = decoded is Map ? (decoded['url'] ?? '').toString().trim() : '';
+      return url.isEmpty ? null : url;
+    } catch (_) { return null; }
   }
 
   // ── Mutations ────────────────────────────────────────────────────────────

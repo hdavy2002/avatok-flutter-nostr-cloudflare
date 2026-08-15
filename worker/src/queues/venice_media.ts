@@ -26,7 +26,7 @@ import {
   claimVeniceDeliveryNotification, finishVeniceDeliveryNotification,
   type VeniceMediaJobKind, type VeniceMediaJobRecord,
 } from "../lib/venice_media_jobs";
-import { veniceRetrieveVideo, veniceRetrieveAudio, veniceRoute, veniceGenerateImage } from "../lib/venice";
+import { veniceRetrieveVideo, veniceRetrieveAudio, veniceRoute, veniceGenerateImage, classifyVeniceError } from "../lib/venice";
 import { registerArtifactMedia, presignDigitalReadUrl } from "../routes/media";
 import { reserveAiJob, settleAiJob, releaseAiJob } from "../lib/ai_billing";
 import { moderate, moderateGeneratedImage } from "../lib/moderation";
@@ -98,7 +98,7 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
   // or best-effort song cover after a prior Worker died.
   if (job.status === "succeeded") {
     await notifyVeniceMediaDelivery(env, job);
-    if (job.kind === "venice_music_generate" && job.cover_status !== "succeeded" && job.cover_status !== "failed") {
+    if ((job.kind === "venice_music_generate" || job.kind === "venice_video_generate") && job.cover_status !== "succeeded" && job.cover_status !== "failed") {
       const coverTerminal = await generateSongCover(env, job);
       if (!coverTerminal) await enqueueVeniceMediaPoll(env, job.job_id, job.kind, 30);
     }
@@ -130,7 +130,7 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
     if (Date.now() + 2000 < job.deadline_at) {
       await enqueueVeniceMediaPoll(env, jobId, job.kind, nextDelaySeconds(attempt));
     } else {
-      await failTerminal(env, job, "provider_unavailable", "poll_exception");
+      await failTerminal(env, job, classifyVeniceError(e), "poll_exception");
     }
     return;
   }
@@ -141,7 +141,7 @@ export async function runVeniceMediaJobMessage(env: Env, msg: VeniceMediaQueueMs
     return;
   }
   if (isFailureStatus(result.status)) {
-    await failTerminal(env, job, "provider_unavailable", `venice_status:${result.status}`);
+    await failTerminal(env, job, /auth|key|forbid/i.test(result.status) ? "provider_auth" : /capacity|balance|quota/i.test(result.status) ? "provider_capacity" : "provider_unavailable", `venice_status:${result.status}`);
     return;
   }
   // Still JSON/pending (QUEUED, PROCESSING, or anything unrecognized) —
@@ -174,7 +174,7 @@ async function failTerminal(env: Env, job: VeniceMediaJobRecord, errorCode: stri
  * playable if cover generation, storage, or its separate one-Token reserve
  * fails. A stable operation id makes reserve/settle idempotent. */
 async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<boolean> {
-  if (job.kind !== "venice_music_generate") return true;
+  if (job.kind !== "venice_music_generate" && job.kind !== "venice_video_generate") return true;
   if (!(await claimSongCover(env, job.job_id))) {
     const current = await getVeniceMediaJob(env, job.job_id);
     return current?.cover_status === "succeeded" || current?.cover_status === "failed";
@@ -199,7 +199,9 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
   try {
     const title = job.song_title || "Original Ava Song";
     const description = job.song_description || "Original song created with Ava.";
-    const prompt = `Square album cover artwork for a song titled "${title}". ${description} Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
+    const prompt = job.kind === "venice_video_generate"
+      ? `Full-frame cinematic thumbnail image for a short video titled "${title}". ${description} Show one clear representative moment, edge-to-edge composition, no borders, no text, no letters, no logos, no watermark.`
+      : `Square album cover artwork for a song titled "${title}". ${description} Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
     const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
     if (!promptVerdict.safe) throw new Error("cover_prompt_blocked");
     const seedWords = new Uint32Array(1);
@@ -214,7 +216,7 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
     if (outputVerdict.blocked) throw new Error("cover_output_blocked");
     const stored = await registerArtifactMedia(env, {
       uid: job.owner_uid, bytes: coverBytes, mimeType: "image/png",
-      fileName: `ava-song-cover-${job.job_id.slice(0, 8)}.png`,
+      fileName: `ava-${job.kind === "venice_video_generate" ? "video-thumbnail" : "song-cover"}-${job.job_id.slice(0, 8)}.png`,
       category: "image", sensitivity: "private",
     });
     const settled = await settleAiJob(env, reservation, {
@@ -225,12 +227,12 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
     if (!settled.ok) throw new Error("cover_settlement_failed");
     await finishSongCover(env, job.job_id, stored.id);
     await postAvaMessage(env, {
-      ownerUid: job.owner_uid, conv: job.conv_id, text: "Song artwork ready.",
-      source: "music", private: job.is_private,
+      ownerUid: job.owner_uid, conv: job.conv_id, text: job.kind === "venice_video_generate" ? "Video thumbnail ready." : "Song artwork ready.",
+      source: job.kind === "venice_video_generate" ? "video" : "music", private: job.is_private,
       meta: { job_id: job.job_id, media_job_kind: job.kind },
       client_id: `venice-cover:${job.job_id}`,
     }).catch(() => {});
-    void track(env, job.owner_uid, "venice_song_cover_completed", "avaai", {
+    void track(env, job.owner_uid, job.kind === "venice_video_generate" ? "venice_video_thumbnail_completed" : "venice_song_cover_completed", "avaai", {
       job_id: job.job_id, cover_media_id: stored.id, charged_tokens: settled.charged_tokens,
     });
     return true;
@@ -334,7 +336,7 @@ async function finalizeVeniceMediaDelivery(
   });
   if (!completed.ok) throw new Error(`venice_delivery_${completed.error}`);
   await notifyVeniceMediaDelivery(env, completed.job, knownUrl);
-  if (completed.job.kind === "venice_music_generate") {
+  if (completed.job.kind === "venice_music_generate" || completed.job.kind === "venice_video_generate") {
     await enqueueVeniceMediaPoll(env, completed.job.job_id, completed.job.kind);
   }
 }

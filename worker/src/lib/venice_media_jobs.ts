@@ -272,7 +272,7 @@ export async function createVeniceMediaJob(env: Env, input: CreateVeniceMediaJob
         ? Math.max(1, Math.trunc(input.flatPriceTokens)) : null,
       input.songTitle ? String(input.songTitle).slice(0, 80) : null,
       input.songDescription ? String(input.songDescription).slice(0, 240) : null,
-      input.kind === "venice_music_generate" ? "pending" : "not_applicable",
+      input.kind === "venice_music_generate" || input.kind === "venice_video_generate" ? "pending" : "not_applicable",
       input.deadlineMs, ts,
     ).run();
   } catch (e) {
@@ -352,12 +352,12 @@ export async function finishVeniceDeliveryNotification(env: Env, jobId: string, 
   ).bind(jobId, sent ? "sent" : "pending", now()).run();
 }
 
-/** Atomically claim the optional music-cover sidecar. */
+/** Atomically claim the optional music-cover/video-thumbnail sidecar. */
 export async function claimSongCover(env: Env, jobId: string): Promise<boolean> {
   try {
     const ts = now();
     const res = await env.DB_MEDIA.prepare(
-      "UPDATE venice_media_jobs SET cover_status='generating', updated_at=?2 WHERE job_id=?1 AND kind='venice_music_generate' AND (cover_status='pending' OR (cover_status='generating' AND updated_at<?3))",
+      "UPDATE venice_media_jobs SET cover_status='generating', updated_at=?2 WHERE job_id=?1 AND kind IN ('venice_music_generate','venice_video_generate') AND (cover_status='pending' OR (cover_status='generating' AND updated_at<?3))",
     ).bind(jobId, ts, ts - 120_000).run();
     return (res.meta?.changes ?? 0) > 0;
   } catch (e) {
@@ -369,7 +369,7 @@ export async function claimSongCover(env: Env, jobId: string): Promise<boolean> 
 export async function finishSongCover(env: Env, jobId: string, coverMediaId: string | null): Promise<void> {
   const status = coverMediaId ? "succeeded" : "failed";
   await env.DB_MEDIA.prepare(
-    "UPDATE venice_media_jobs SET cover_status=?2, cover_media_id=?3, updated_at=?4 WHERE job_id=?1 AND kind='venice_music_generate'",
+    "UPDATE venice_media_jobs SET cover_status=?2, cover_media_id=?3, updated_at=?4 WHERE job_id=?1 AND kind IN ('venice_music_generate','venice_video_generate')",
   ).bind(jobId, status, coverMediaId, now()).run();
 }
 export type CompleteVeniceMediaJobResult = { ok: true; job: VeniceMediaJobRecord } | { ok: false; error: string };

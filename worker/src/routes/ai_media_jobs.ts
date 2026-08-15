@@ -57,6 +57,13 @@ function veniceAsAiJob(
     cover_media_id: job.cover_media_id,
     cover_url: coverUrl,
     cover_status: job.cover_status,
+    // Video jobs reuse the same safe card metadata/artwork columns as music;
+    // expose modality-specific names to clients and OG/share code.
+    video_title: job.kind === "venice_video_generate" ? job.song_title : null,
+    video_description: job.kind === "venice_video_generate" ? job.song_description : null,
+    thumbnail_media_id: job.kind === "venice_video_generate" ? job.cover_media_id : null,
+    thumbnail_url: job.kind === "venice_video_generate" ? coverUrl : null,
+    thumbnail_status: job.kind === "venice_video_generate" ? job.cover_status : null,
     error_code: job.error_code,
     reservation_id: job.reservation_id,
     created_at: job.created_at,
@@ -184,6 +191,22 @@ export async function aiMediaJobSongShare(req: Request, env: Env, jobId: string)
   return json({ ok: true, url: `${origin}/s/song/${job.share_token}` });
 }
 
+/** Explicitly publish a completed video and its generated thumbnail. */
+export async function aiMediaJobVideoShare(req: Request, env: Env, jobId: string): Promise<Response> {
+  const ctxUser = await requireUser(req, env);
+  if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
+  let job = await getVeniceMediaJob(env, String(jobId || "").trim());
+  if (!job || job.owner_uid !== ctxUser.uid) return json({ error: "not_found" }, 404);
+  if (job.kind !== "venice_video_generate" || job.status !== "succeeded" || !job.artifact_media_id || !job.cover_media_id) return json({ error: "video_not_ready" }, 409);
+  if (!job.share_token) {
+    const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    await env.DB_MEDIA.prepare("UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL").bind(job.job_id, token, Date.now()).run();
+    job = await getVeniceMediaJob(env, job.job_id);
+  }
+  if (!job?.share_token) return json({ error: "share_unavailable" }, 503);
+  return json({ ok: true, url: `${new URL(req.url).origin}/s/video/${job.share_token}` });
+}
+
 function songHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -265,6 +288,36 @@ export async function aiMediaSongShareAsset(
     status,
     headers,
   });
+}
+
+async function sharedVideo(env: Env, token: string): Promise<VeniceMediaJobRecord | null> {
+  const row = await env.DB_MEDIA.prepare("SELECT * FROM venice_media_jobs WHERE share_token=?1 AND kind='venice_video_generate' AND status='succeeded' LIMIT 1").bind(token).first<any>();
+  return row?.job_id ? await getVeniceMediaJob(env, String(row.job_id)) : null;
+}
+
+export async function aiMediaVideoSharePage(req: Request, env: Env, token: string): Promise<Response> {
+  const job = await sharedVideo(env, token);
+  if (!job?.artifact_media_id || !job.cover_media_id) return new Response("Video not found", { status: 404 });
+  const origin = new URL(req.url).origin, canonical = `${origin}/s/video/${token}`;
+  const esc = (v: string) => songHtml(v);
+  const title = esc(job.song_title || "AvaTOK video");
+  const description = esc(job.song_description || "A short video created with AvaTOK AI.");
+  const thumbnail = `${origin}/cdn-cgi/image/format=avif,quality=60,width=1200,fit=cover/s/video/${token}/thumbnail`, video = `${canonical}/video`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · AvaTOK</title><meta name="description" content="${description}"><link rel="canonical" href="${canonical}"><meta property="og:type" content="video.other"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:image" content="${thumbnail}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${thumbnail}"><style>body{margin:0;background:#090b0d;font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}.card{width:min(92vw,560px);background:#000;border-radius:24px;overflow:hidden}.thumb{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}.copy{padding:18px 20px;background:#000;color:#000}.title,.desc,.brand,.brand a{color:#000;background:#000}.title{font-size:27px;margin:0 0 8px}.desc{line-height:1.45;margin:0 0 14px}.brand{font-size:10px}.video{display:block;width:100%}</style></head><body><main class="card"><img class="thumb" src="${thumbnail}" alt="${title}"><section class="copy"><h1 class="title">${title}</h1><p class="desc">${description}</p><div class="brand">Made on <a href="https://avatok.ai">AvaTOK AI</a></div><video class="video" controls preload="metadata" poster="${thumbnail}" src="${video}"></video></section></main></body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "content-security-policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
+}
+
+export async function aiMediaVideoShareAsset(req: Request, env: Env, token: string, asset: "thumbnail" | "video"): Promise<Response> {
+  const job = await sharedVideo(env, token), mediaId = asset === "thumbnail" ? job?.cover_media_id : job?.artifact_media_id;
+  if (!job || !mediaId) return new Response("Not found", { status: 404 });
+  const row = await env.DB_MEDIA.prepare("SELECT key, mime_type, storage FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1").bind(mediaId, job.owner_uid).first<{ key:string; mime_type:string; storage:string }>();
+  if (!row || row.storage !== "digital") return new Response("Not found", { status: 404 });
+  const object = await env.DIGITAL.get(row.key, asset === "video" ? { range: req.headers } : undefined);
+  if (!object) return new Response("Not found", { status: 404 });
+  const headers = new Headers({ "content-type": row.mime_type || (asset === "thumbnail" ? "image/png" : "video/mp4"), "cache-control": asset === "thumbnail" ? "public, max-age=31536000, immutable" : "public, max-age=300", "content-disposition": "inline", "x-content-type-options": "nosniff", "etag": object.httpEtag });
+  if (asset === "video" && object.range && "offset" in object.range && "length" in object.range) { headers.set("content-length", String(object.range.length)); headers.set("content-range", `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`); headers.set("accept-ranges", "bytes"); return new Response(object.body, { status: 206, headers }); }
+  headers.set("content-length", String(object.size));
+  return new Response(object.body, { headers });
 }
 
 // POST /api/ai/jobs/:job_id/cancel
