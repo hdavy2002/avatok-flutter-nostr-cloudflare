@@ -242,14 +242,14 @@ class AvatarCache {
   /// though the fetched URL differs byte-for-byte each time. [rawUrl] is
   /// still what's actually fetched on a miss. Omit for ordinary stable URLs
   /// (unchanged behavior).
-  static Future<File?> getAny(String rawUrl, int px, {String? cacheKey}) async {
+  static Future<File?> getAny(String rawUrl, int px, {String? cacheKey, bool transform = true}) async {
     if (rawUrl.isEmpty) return null;
     try {
       final name = _name(rawUrl, px, keyOverride: cacheKey);
       final f = File('${(await _dir()).path}/$name');
       if (await f.exists() && await f.length() > 0) { _remember(name, f); return f; }
       final host = Uri.parse(rawUrl).host;
-      final fetchUrl = host.endsWith('avatok.ai') ? transformUrl(rawUrl, px) : rawUrl;
+      final fetchUrl = transform && host.endsWith('avatok.ai') ? transformUrl(rawUrl, px) : rawUrl;
       final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200 && _looksLikeImage(res.bodyBytes)) {
         await _write(f, res.bodyBytes);

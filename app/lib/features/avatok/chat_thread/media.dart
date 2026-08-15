@@ -18,7 +18,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
             minScale: 0.8,
             maxScale: 4,
             child: Center(
-              child: Image.network(AvatarCache.sizedUrl(url, 1600),
+              // AI artifacts use signed private-read URLs; never send those
+              // through the public Cloudflare image transformer.
+              child: Image.network(url,
                   errorBuilder: (_, __, ___) => const Padding(
                       padding: EdgeInsets.all(24),
                       child: Text('Image unavailable',
@@ -279,8 +281,10 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       // durable job id exists. Once the job card is hydrated, retire that
       // duplicate so the animated job card is the only lifecycle surface.
       if (job.kind == AiMediaJobKind.imageGenerate) {
-        _msgs.removeWhere((m) => m.special == 'ava_status' &&
-            (m.extra?['source'] ?? '').toString() == 'image');
+        _msgs.removeWhere((m) => m.special == 'ava_status' && (
+            (m.extra?['source'] ?? '').toString() == 'image' ||
+            (m.extra?['label'] ?? '').toString().toLowerCase().contains('image') ||
+            m.text.toLowerCase().contains('image')));
       }
       final i = _msgs.indexWhere((m) => m.special == 'ai_job' && m.extra?['job_id'] == job.jobId);
       if (i >= 0) return; // card already placed; _aiJobBubble reads fresh state every rebuild
@@ -566,7 +570,8 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       // job read (`_freshArtifactUrl`'s doc), so keying the cache on the url
       // itself would miss every time; `artifactMediaId` is the stable id.
       thumbnailWidget: (isImage && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
-          ? CachedImage(artifactUrl, width: 240, cacheKey: job.artifactMediaId)
+          ? CachedImage(artifactUrl, width: double.infinity,
+              cacheKey: job.artifactMediaId, transformUrl: false)
           : (isVideo && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
               ? _AiVideoJobPreview(url: artifactUrl, width: 240)
               : (isMusic && succeeded)

@@ -266,7 +266,12 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   const jobId = created.job.job_id;
 
   try {
-    const { queueId } = await veniceQueueMusic(env as any, route.model, prompt, { durationSeconds });
+    // Venice's audio queue accepts the musical direction in `prompt`; include
+    // the lyrics the user approved so the generated track actually sings them.
+    const queuePrompt = lyrics?.trim()
+      ? `${prompt}\n\nApproved lyrics to sing:\n${lyrics.trim()}`
+      : prompt;
+    const { queueId } = await veniceQueueMusic(env as any, route.model, queuePrompt, { durationSeconds });
     await attachVeniceQueueId(env, jobId, queueId);
     await enqueueVeniceMediaPoll(env, jobId, "venice_music_generate", INITIAL_POLL_DELAY_S);
     emitReason(true, null);

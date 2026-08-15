@@ -219,6 +219,9 @@ class CachedImage extends StatefulWidget {
   /// ordinary stable URLs (unchanged behavior).
   final String? cacheKey;
 
+  /// Signed/private artifact URLs must be fetched exactly as issued.
+  final bool transformUrl;
+
   /// [AVA-IMG-SELFHEAL-1] Optional, fired EXACTLY ONCE per [url]/[cacheKey]
   /// (re-armed on [didUpdateWidget] when either changes) with whether this
   /// image actually painted a real frame. `true` from either decode path's
@@ -239,6 +242,7 @@ class CachedImage extends StatefulWidget {
     this.radius,
     this.cachePx,
     this.cacheKey,
+    this.transformUrl = true,
     this.onResult,
   });
 
@@ -277,6 +281,7 @@ class _CachedImageState extends State<CachedImage> {
     super.didUpdateWidget(old);
     if (old.url != widget.url ||
         old.cacheKey != widget.cacheKey ||
+        old.transformUrl != widget.transformUrl ||
         old.cachePx != widget.cachePx ||
         old.width != widget.width) {
       _file = null;
@@ -318,7 +323,8 @@ class _CachedImageState extends State<CachedImage> {
     unawaited(() async {
       File? f;
       try {
-        f = await AvatarCache.getAny(widget.url, px, cacheKey: widget.cacheKey);
+        f = await AvatarCache.getAny(widget.url, px,
+            cacheKey: widget.cacheKey, transform: widget.transformUrl);
       } catch (_) {
         f = null;
       }
@@ -367,7 +373,7 @@ class _CachedImageState extends State<CachedImage> {
   Widget _network() => Image.network(
         // Ask Cloudflare for a SMALL variant when the host is ours; a no-op on
         // every other host (see [AvatarCache.sizedUrl]).
-        AvatarCache.sizedUrl(widget.url, _px),
+        widget.transformUrl ? AvatarCache.sizedUrl(widget.url, _px) : widget.url,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,

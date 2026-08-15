@@ -30,7 +30,7 @@ class AiMediaJobCard extends StatelessWidget {
   const AiMediaJobCard({
     super.key,
     required this.job,
-    this.width = 240,
+    this.width = double.infinity,
     this.thumbnailBytes,
     this.thumbnailWidget,
     this.onTapOpen,
@@ -245,8 +245,10 @@ class _WorkingCard extends StatelessWidget {
     return _CardShell(
       width: width,
       borderColor: accent,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _AnimatedMediaPlaceholder(kind: job.kind, accent: accent, size: width - 24),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final previewSize = constraints.maxWidth.isFinite ? constraints.maxWidth : 240.0;
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _AnimatedMediaPlaceholder(kind: job.kind, accent: accent, size: previewSize),
         const SizedBox(height: Msg.s2),
         Text(_workingLabel(job),
             maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -270,7 +272,8 @@ class _WorkingCard extends StatelessWidget {
             child: _pillButton(label: 'Cancel', onPressed: onCancel, color: AD.textSecondary),
           ),
         ],
-      ]),
+      ]);
+      }),
     );
   }
 }
