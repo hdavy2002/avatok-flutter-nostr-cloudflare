@@ -4,6 +4,8 @@ import {
   isSongApproval,
   isSongRevisionIntent,
   hasSongProductionContext,
+  missingSongProductionContext,
+  songBriefQuestion,
   hasInstrumentalProductionContext,
   classifySongRequest,
   nextSongFlow,
@@ -29,9 +31,12 @@ describe("deterministic song flow", () => {
     expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
     if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
     const stillAsking = nextSongFlow(asked.flow, "reggae, English, female voice");
-    expect(stillAsking).toMatchObject({ kind: "draft", flow: { phase: "awaiting_brief" } });
-    expect(hasSongProductionContext("reggae, English, female voice")).toBe(true);
+    expect(stillAsking).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
+    expect(hasSongProductionContext("reggae, English, female voice")).toBe(false);
     expect(hasSongProductionContext("reggae, English")).toBe(false);
+    expect(missingSongProductionContext("reggae, English, female voice")).toContain("instruments");
+    const complete = nextSongFlow(stillAsking.flow, "Upbeat and joyful, warm soulful singer, bass, skank guitar, one-drop drums and organ, about island life, 2 minutes");
+    expect(complete).toMatchObject({ kind: "draft", flow: { durationSeconds: 120 } });
   });
   it("strips only a leading Ava marker for intent", () => {
     expect(stripAvaWakeWordForIntent("@ava make me a song")).toBe("make me a song");
@@ -62,14 +67,14 @@ describe("deterministic song flow", () => {
     expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
     if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
 
-    const draft = nextSongFlow(asked.flow, "A hopeful indie song about coming home, English, female voice, 2 minutes");
+    const draft = nextSongFlow(asked.flow, "A hopeful indie song about coming home, English, warm soulful female voice, acoustic guitar, bass, drums and piano, 2 minutes");
     expect(draft).toMatchObject({ kind: "draft", flow: { brief: expect.stringContaining("coming home"), durationSeconds: 120 } });
     if (draft.kind !== "draft") throw new Error("expected draft");
 
     const detailedAsk = nextSongFlow(null, "@ava make a 90 second pop song about home");
     expect(detailedAsk).toMatchObject({ kind: "ask_brief", flow: { brief: expect.stringContaining("pop song"), durationSeconds: 90 } });
     if (detailedAsk.kind !== "ask_brief") throw new Error("expected detailed ask");
-    const detailed = nextSongFlow(detailedAsk.flow, "English, female voice, bright and soulful");
+    const detailed = nextSongFlow(detailedAsk.flow, "English, female voice, bright and soulful, upbeat, guitar, bass, drums and synth, about returning to family");
     expect(detailed).toMatchObject({ kind: "draft", flow: { brief: expect.stringContaining("pop song"), durationSeconds: 90 } });
     if (detailed.kind !== "draft") throw new Error("expected detailed draft");
 
@@ -104,5 +109,16 @@ describe("deterministic song flow", () => {
         brief: expect.stringContaining("Anguilla"),
       },
     });
+  });
+
+  it("offers reggae-specific instruments and blocks the Anguilla lyrics until they are chosen", () => {
+    const asked = nextSongFlow(null, "make me a reggae song about the island of Anguilla");
+    expect(asked.kind).toBe("ask_brief");
+    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
+    const question = songBriefQuestion(asked.flow);
+    expect(question).toContain("deep electric bass");
+    expect(question).toContain("skank guitar");
+    expect(question).toContain("Which should I use?");
+    expect(nextSongFlow(asked.flow, "English, female voice").kind).toBe("ask_brief");
   });
 });

@@ -79,10 +79,10 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 // turn — above all the working chip, which this file used to inline 13 times.
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
 import {
-  SONG_BRIEF_QUESTION, SONG_CONTEXT_QUESTION, INSTRUMENTAL_BRIEF_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
+  SONG_BRIEF_QUESTION, INSTRUMENTAL_BRIEF_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
   classifySongRequest,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongLyrics,
-  hasSongProductionContext,
+  hasSongProductionContext, songBriefQuestion,
   type SongFlowState,
 } from "../lib/song_flow";
 
@@ -1293,7 +1293,7 @@ export class AvaAgentDO {
           await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
           const question = songAction.flow.kind === "instrumental"
             ? INSTRUMENTAL_BRIEF_QUESTION
-            : (songAction.flow.brief ? SONG_CONTEXT_QUESTION : SONG_BRIEF_QUESTION);
+            : (songAction.flow.brief ? songBriefQuestion(songAction.flow) : SONG_BRIEF_QUESTION);
           await this.postAva({ conv, uid, text: question, private: priv, source: "music" });
           await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
             conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "question_posted",
@@ -1346,7 +1346,11 @@ export class AvaAgentDO {
             musicMode: songAction.flow.kind === "instrumental" ? "instrumental" : "vocal",
             private: priv, tier: mediaTier,
           });
-        } catch {
+        } catch (e) {
+          void trackException(this.env, e, {
+            uid, route: "ava_agent.song_generate", handled: true,
+            extra: { conv_kind: convKind, music_mode: songAction.flow.kind ?? "vocal" },
+          });
           music = { ok: false, message: "I couldn't start that track right now — please try again." };
         }
         if (music.ok && music.job_id) {

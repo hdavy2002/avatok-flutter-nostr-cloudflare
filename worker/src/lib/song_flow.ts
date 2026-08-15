@@ -28,11 +28,68 @@ export const SONG_CONTEXT_QUESTION =
 export const INSTRUMENTAL_BRIEF_QUESTION =
   "Let’s shape the instrumental. What genre, mood, energy, setting, instruments, tempo, and intended use do you want? For example: a funky reggae groove with warm bass, skank guitar, hand percussion, and an upbeat beach feel for a travel reel. I’ll use that direction to make the track — no lyrics or vocals.";
 
-export function hasSongProductionContext(text: string): boolean {
+export type SongBriefField = "theme" | "genre" | "mood" | "instruments" | "language" | "singer" | "voice" | "duration";
+
+const LANGUAGE_RE = /\b(?:english|hindi|spanish|french|german|tamil|telugu|bengali|marathi|punjabi|urdu|portuguese|arabic|mandarin|cantonese|japanese|korean|language)\b/i;
+const SINGER_RE = /\b(?:male|female|woman|man|group|choir|duet|trio|ensemble|boy|girl)\b/i;
+const VOICE_RE = /\b(?:warm|intimate|bright|soulful|deep|powerful|airy|dreamlike|raspy|gritty|smooth|gentle|soft|strong|rich|playful|youthful|mature|baritone|tenor|alto|soprano)\b/i;
+const GENRE_RE = /\b(?:reggae|dancehall|rock|pop|jazz|lofi|lo-fi|ambient|house|edm|hip[- ]?hop|rap|classical|funk|soul|r&b|country|folk|indie|metal|blues|gospel|cinematic|afrobeat|latin|bollywood)\b/i;
+const MOOD_RE = /\b(?:happy|joyful|upbeat|hopeful|romantic|sad|melancholy|peaceful|relaxed|dreamy|energetic|funky|dark|moody|emotional|inspiring|uplifting|playful|calm|warm|chill|celebratory|healing|vibe|mood|energy)\b/i;
+const INSTRUMENT_RE = /\b(?:instrument|bass|drum|percussion|guitar|piano|keyboard|organ|synth|strings|violin|cello|brass|horn|trumpet|sax(?:ophone)?|flute|ukulele|tabla|sitar|dhol|marimba|steel\s+drum|conga|bongo|shaker|skank|one-drop|808)\b/i;
+const ACCEPT_SUGGESTIONS_RE = /\b(?:use|take|choose|go with|keep)\s+(?:all\s+)?(?:your|those|the)\s+(?:instrument\s+)?suggestions?\b|\b(?:those|suggested)\s+instruments?\b/i;
+
+export function missingSongProductionContext(text: string): SongBriefField[] {
+  const t = stripAvaWakeWordForIntent(text);
+  const missing: SongBriefField[] = [];
+  if (!/\b(?:about|story|theme|inspired by|dedicated to|for (?!me\b)|celebrat(?:e|ing)|island|love|home|life|journey|party|travel)\b/i.test(t)) missing.push("theme");
+  if (!GENRE_RE.test(t)) missing.push("genre");
+  if (!MOOD_RE.test(t)) missing.push("mood");
+  if (!INSTRUMENT_RE.test(t) && !ACCEPT_SUGGESTIONS_RE.test(t)) missing.push("instruments");
+  if (!LANGUAGE_RE.test(t)) missing.push("language");
+  if (!SINGER_RE.test(t)) missing.push("singer");
+  if (!VOICE_RE.test(t)) missing.push("voice");
+  if (parseSongDurationSeconds(t) == null) missing.push("duration");
+  return missing;
+}
+
+export function suggestedSongInstruments(text: string): string {
   const t = stripAvaWakeWordForIntent(text).toLowerCase();
-  const hasLanguage = /\b(?:english|hindi|spanish|french|german|tamil|telugu|bengali|marathi|punjabi|urdu|portuguese|language)\b/.test(t);
-  const hasVoice = /\b(?:male|female|woman|man|group|choir|duet|voice|singer|singing)\b/.test(t);
-  return hasLanguage && hasVoice;
+  if (/\b(?:reggae|dancehall)\b/.test(t)) return "deep electric bass, offbeat skank guitar, one-drop drums, hand percussion, and warm organ or brass";
+  if (/\b(?:rock|metal)\b/.test(t)) return "electric guitar, live bass, punchy drums, and a subtle organ or synth layer";
+  if (/\b(?:jazz|blues|soul)\b/.test(t)) return "upright or electric bass, brushed drums, piano, warm guitar, and saxophone or trumpet";
+  if (/\b(?:hip[- ]?hop|rap|r&b)\b/.test(t)) return "deep 808 bass, tight drums, textured keys, atmospheric synths, and selective guitar accents";
+  if (/\b(?:folk|country|indie)\b/.test(t)) return "acoustic guitar, warm bass, restrained drums, piano, and light strings or mandolin";
+  if (/\b(?:classical|cinematic|ambient)\b/.test(t)) return "piano, layered strings, soft percussion, atmospheric pads, and a restrained brass or woodwind color";
+  if (/\b(?:house|edm|dance)\b/.test(t)) return "four-on-the-floor drums, a driving synth bass, bright chords, rhythmic percussion, and a memorable lead synth";
+  if (/\b(?:bollywood|hindi)\b/.test(t)) return "tabla or dhol, melodic strings, harmonium or piano, bass, and modern rhythmic percussion";
+  return "bass, drums, rhythm guitar or piano, light percussion, and one distinctive melodic instrument";
+}
+
+/** A tailored follow-up that asks only for context still missing from this song. */
+export function songBriefQuestion(flow: SongFlowState): string {
+  const brief = flow.brief ?? "";
+  const missing = missingSongProductionContext(brief);
+  const parts: string[] = [];
+  if (missing.includes("instruments")) {
+    parts.push(`For this song, I’d suggest ${suggestedSongInstruments(brief)}. Which should I use? You can also say “use those suggestions”.`);
+  }
+  const prompts: Record<Exclude<SongBriefField, "instruments">, string> = {
+    theme: "what the song should be about",
+    genre: "the genre",
+    mood: "the mood or energy",
+    language: "the language",
+    singer: "male, female, duet, or group singing",
+    voice: "the voice character (for example warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike)",
+    duration: "the length (1, 1.5, 2, or 3 minutes)",
+  };
+  const remaining = missing.filter((field): field is Exclude<SongBriefField, "instruments"> => field !== "instruments").map(field => prompts[field]);
+  if (remaining.length) parts.push(`I still need ${remaining.join(", ")}.`);
+  parts.push("I’ll draft the lyrics after those choices, and you can revise them before approving the track.");
+  return parts.join(" ");
+}
+
+export function hasSongProductionContext(text: string): boolean {
+  return missingSongProductionContext(text).length === 0;
 }
 
 export function hasInstrumentalProductionContext(text: string): boolean {
