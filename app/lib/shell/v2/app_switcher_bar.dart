@@ -97,6 +97,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // a drop target — both drive the lift/shift animations.
   int? _dragging;
   int? _hoverTarget;
+  // SHELL-NAV-DRAWER-1: collapsed by default to return chat height to content.
+  // A clear handle remains visible and supports both tap and vertical swipe.
+  bool _expanded = false;
 
   @override
   void initState() {
@@ -157,6 +160,17 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     widget.onReorder(next);
   }
 
+  void _setExpanded(bool value) {
+    if (_expanded == value) return;
+    HapticFeedback.selectionClick();
+    setState(() => _expanded = value);
+  }
+
+  void _activate(VoidCallback action) {
+    if (_expanded) setState(() => _expanded = false);
+    action();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -166,28 +180,60 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       ),
       child: SafeArea(
         top: false,
-        // Restored to the original 66px height + icon/text sizes (2026-07-12
-        // owner feedback: the shrunk 50px version made the icons/labels too
-        // small to read).
-        child: SizedBox(
-          height: 66,
-          child: Row(
-            children: [
-              for (var i = 0; i < widget.order.length; i++) ...[
-                Expanded(child: _draggableSlot(i)),
-                // [AVA-RCPT-8 footer move] FIXED "Inbox" action, inserted right
-                // after AvaDialer's slot (between AvaDialer and Marketplace in
-                // the default order) — not draggable / not a drop target, same
-                // as the "AvaBrain" slot it replaces. Gated on pstnVoicemail:
-                // hidden entirely while the flag is off (the footer's standard
-                // hidden pattern — no placeholder slot, exactly like every
-                // other flag-gated AvaDial surface).
-                if (widget.order[i] == RootId.avaDial && RemoteConfig.pstnVoicemail)
-                  Expanded(child: _inboxSlot()),
-              ],
-              Expanded(child: _avaBrainSlot()),
-            ],
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Semantics(
+              button: true,
+              label: _expanded ? 'Hide app menu' : 'Swipe up to show app menu',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _setExpanded(!_expanded),
+                onVerticalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity < -80) _setExpanded(true);
+                  if (velocity > 80) _setExpanded(false);
+                },
+                child: SizedBox(
+                  height: 30,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _expanded
+                            ? Icons.keyboard_arrow_down_rounded
+                            : Icons.keyboard_arrow_up_rounded,
+                        size: 18,
+                        color: AD.textSecondary,
+                      ),
+                      const SizedBox(width: Msg.s1),
+                      Text(
+                        _expanded ? 'Swipe down · hide' : 'Swipe up · menu',
+                        style: ADText.sectionLabel(c: AD.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_expanded)
+              // Keep the proven full-size cells when open. Only the closed state
+              // is compact; users never have to target shrunken icons.
+              SizedBox(
+                height: 66,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < widget.order.length; i++) ...[
+                      Expanded(child: _draggableSlot(i)),
+                      if (widget.order[i] == RootId.avaDial &&
+                          RemoteConfig.pstnVoicemail)
+                        Expanded(child: _inboxSlot()),
+                    ],
+                    Expanded(child: _avaBrainSlot()),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -252,8 +298,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             scale: isHover ? 1.12 : 1.0,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () =>
-                  affiliate ? widget.onOpenAffiliate() : widget.onSelect(root),
+              onTap: () => _activate(() => affiliate
+                  ? widget.onOpenAffiliate()
+                  : widget.onSelect(root)),
               child: item,
             ),
           ),
@@ -273,7 +320,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   Widget _inboxSlot() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.onOpenInbox,
+      onTap: () => _activate(widget.onOpenInbox),
       child: _labelledIcon(
         icon: PhosphorIcons.voicemail(PhosphorIconsStyle.regular),
         selectedIcon: PhosphorIcons.voicemail(PhosphorIconsStyle.fill),
@@ -289,7 +336,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   Widget _avaBrainSlot() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.onAskAva,
+      onTap: () => _activate(widget.onAskAva),
       child: _labelledIcon(
         icon: PhosphorIcons.sparkle(PhosphorIconsStyle.regular),
         selectedIcon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
