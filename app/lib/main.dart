@@ -364,26 +364,27 @@ class AvaTalkApp extends StatelessWidget {
       // instant the user moves the slider.
       //
       // RESPUI-1 (2026-07-04): the resulting factor is clamped app-wide to
-      // 0.85–1.3 — the previous 0.9–2.8 range let headers/buttons/inputs blow
+      // 0.85–1.45 (with tighter small-screen ceilings) — the previous
+      // 0.9–2.8 range let headers/buttons/inputs blow
       // up on high system-font-scale devices (<360dp phones esp.), squeezing
       // layouts and hiding actionable elements. This absorbs/replaces the
       // per-widget body-only scoping in NoUserFontScale's caller sites; that
       // helper still works (it pins a subtree back to a fixed size) but the
-      // root ceiling is now the same 1.3 everywhere, so it has less to undo.
+      // root ceiling is bounded everywhere, so it has less to undo.
       builder: (context, child) {
         final mq = MediaQuery.of(context);
         final sys = mq.textScaler.scale(1.0);
-        // APP-TYPE-SCALE-1: a modest app-wide lift, including chat-list previews,
-        // tabs, navigation labels and secondary metadata. The former 1.22x bump
-        // was too large; 1.10x restores comfortable readability while retaining
-        // the established small-screen ceilings and the user's own font setting.
+        // APP-TYPE-SCALE-2: owner feedback on the production build confirmed
+        // 1.10x still reads too small app-wide. Restore the clearly readable
+        // 1.22x base while retaining width-aware ceilings; the swipe-menu title
+        // has its own explicit 3x treatment in AppSwitcherBar.
         final double w = mq.size.width;
-        const double baseBump = 1.10;
+        const double baseBump = 1.22;
         final double ceil = w >= 360
-            ? 1.30
+            ? 1.45
             : w >= 320
-                ? 1.15
-                : 1.05;
+                ? 1.30
+                : 1.20;
         _reportScreenMetricsOnce(w, mq.size.height, mq.devicePixelRatio,
             sys, baseBump, ceil);
         return ValueListenableBuilder<double>(
