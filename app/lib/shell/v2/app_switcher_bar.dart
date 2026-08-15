@@ -207,11 +207,20 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                         color: AD.textSecondary,
                       ),
                       const SizedBox(width: Msg.s1),
-                      Text(
-                        _expanded ? 'Swipe down · hide' : 'Swipe up · menu',
-                        style: ADText.sectionLabel(c: AD.textSecondary).copyWith(
-                          fontSize: 33,
-                          height: 1,
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AD.bubbleOutPlay,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          child: Text(
+                            _expanded ? 'Swipe down · hide' : 'Swipe up · menu',
+                            style: ADText.sectionLabel(c: Colors.white).copyWith(
+                              fontSize: 15,
+                              height: 1.1,
+                            ),
+                          ),
                         ),
                       ),
                     ],

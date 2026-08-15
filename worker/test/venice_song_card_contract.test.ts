@@ -45,6 +45,10 @@ describe("Venice song rich-card contract", () => {
     expect(routes).toContain("export async function aiMediaJobSongShare");
     expect(routes).toContain('if (!job.share_token)');
     expect(routes).toContain('property="og:image"');
+    expect(routes).toContain("cdn-cgi/image/format=avif,quality=60");
+    expect(routes).toContain("MADE ON AVATOK APP");
+    expect(routes).toContain("wa.me");
+    expect(routes).toContain("linkedin.com/sharing");
     expect(routes).toContain('property="og:audio"');
     expect(routes).toContain("<audio controls");
   });

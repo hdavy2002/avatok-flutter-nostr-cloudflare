@@ -79,6 +79,34 @@ export async function craftVideoCardMetadata(env: Env, userAsk: string): Promise
   } catch { return fallback; }
 }
 
+/** Build share-card copy from the approved lyrics, with the musical brief as context. */
+export async function craftSongCardMetadata(
+  env: Env,
+  stylePrompt: string,
+  lyrics: string,
+): Promise<{ title: string; description: string }> {
+  const fallback = {
+    title: "Original Ava Song",
+    description: "An original song created with AvaTOK. Ready to play, seek and share.",
+  };
+  const source = [String(stylePrompt || "").trim(), String(lyrics || "").trim()]
+    .filter(Boolean).join("\n\n").slice(0, 6000);
+  if (!source) return fallback;
+  try {
+    const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
+      { role: "system", content: "Create promotional share-card metadata for an original song. Study the lyrics closely and infer the song's real theme, emotion, and imagery. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, appealing and accurate). Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis." },
+      { role: "user", content: source },
+    ], { maxTokens: 180, temperature: 0.45, timeoutMs: CRAFT_TIMEOUT_MS });
+    const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");
+    const parsed = JSON.parse(raw) as { title?: unknown; description?: unknown };
+    const title = String(parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const description = String(parsed.description ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    return title && description ? { title, description } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Draft ORIGINAL song lyrics for `theme`, sized for a track roughly
  * `durationSeconds` long (defaults to 60s). Throws on provider/empty output so

@@ -180,7 +180,7 @@ export async function aiMediaJobSongShare(req: Request, env: Env, jobId: string)
     return json({ error: "song_not_ready" }, 409);
   }
   if (!job.share_token) {
-    const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    const token = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     await env.DB_MEDIA.prepare(
       "UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL",
     ).bind(job.job_id, token, Date.now()).run();
@@ -199,7 +199,7 @@ export async function aiMediaJobVideoShare(req: Request, env: Env, jobId: string
   if (!job || job.owner_uid !== ctxUser.uid) return json({ error: "not_found" }, 404);
   if (job.kind !== "venice_video_generate" || job.status !== "succeeded" || !job.artifact_media_id || !job.cover_media_id) return json({ error: "video_not_ready" }, 409);
   if (!job.share_token) {
-    const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    const token = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     await env.DB_MEDIA.prepare("UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL").bind(job.job_id, token, Date.now()).run();
     job = await getVeniceMediaJob(env, job.job_id);
   }
@@ -229,22 +229,24 @@ export async function aiMediaSongSharePage(req: Request, env: Env, token: string
   const title = songHtml(job.song_title || "Ava original");
   const description = songHtml(job.song_description || "An original song created with Ava.");
   const canonical = `${origin}/s/song/${token}`;
-  const cover = job.cover_media_id ? `${canonical}/cover` : "";
+  const cover = job.cover_media_id
+    ? `${origin}/cdn-cgi/image/format=avif,quality=60,width=1200,fit=cover/s/song/${token}/cover`
+    : "";
   const audio = `${canonical}/audio`;
   const coverMeta = cover
     ? `<meta property="og:image" content="${cover}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${cover}">`
     : `<meta name="twitter:card" content="summary">`;
   const coverBody = cover
-    ? `<img class="cover" src="${cover}" alt="${title} cover art">`
+    ? `<img class="cover" src="${cover}" alt="${title} cover art" width="1200" height="1200">`
     : `<div class="cover fallback" aria-label="Song cover">♪</div>`;
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} · AvaTOK</title><meta name="description" content="${description}">
 <link rel="canonical" href="${canonical}"><meta property="og:type" content="music.song"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${coverMeta}<meta property="og:audio" content="${audio}">
-<style>body{margin:0;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;display:grid;place-items:center}.card{width:min(92vw,520px);background:#18242b;border:1px solid #34434b;border-radius:24px;overflow:hidden;box-shadow:0 24px 70px #0008}.cover{display:block;width:100%;aspect-ratio:1;object-fit:cover}.fallback{display:grid;place-items:center;font-size:120px;background:linear-gradient(135deg,#193b4c,#19a974)}.copy{padding:22px}.eyebrow{color:#55d696;font-size:12px;letter-spacing:.14em;font-weight:700}.title{font-size:28px;margin:7px 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0 0 18px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}audio{width:100%;accent-color:#35ce86}</style></head><body><main class="card">${coverBody}<section class="copy"><div class="eyebrow">AVATOK ORIGINAL</div><h1 class="title">${title}</h1><p class="desc">${description}</p><audio controls preload="metadata" src="${audio}">Your browser cannot play this song.</audio></section></main></body></html>`;
+<style>body{margin:0;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;display:grid;place-items:center}.card{width:min(92vw,520px);background:#18242b;border:1px solid #34434b;border-radius:24px;overflow:hidden;box-shadow:0 24px 70px #0008}.cover{display:block;width:100%;aspect-ratio:1;object-fit:cover}.fallback{display:grid;place-items:center;font-size:120px;background:linear-gradient(135deg,#193b4c,#19a974)}.copy{padding:22px}.eyebrow{color:#55d696;font-size:12px;letter-spacing:.14em;font-weight:700}.title{font-size:28px;margin:7px 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0 0 18px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}audio{width:100%;accent-color:#35ce35}.shares{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.shares a,.store-badge{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-weight:800;text-decoration:none}.shares a{background:#25363d;color:#fff}.store-badge{background:#55d696;color:#092019}.stores{display:flex;gap:10px;margin-top:14px}.made{color:#8e9ca3;font-size:12px;margin-top:16px}.made strong{color:#55d696}</style></head><body><main class="card">${coverBody}<section class="copy"><div class="eyebrow">MADE ON AVATOK APP</div><h1 class="title">${title}</h1><p class="desc">${description}</p><audio controls preload="metadata" src="${audio}">Your browser cannot play this song.</audio><div class="shares" aria-label="Share this song"><a href="https://wa.me/?text=${encodeURIComponent(`${title} — ${canonical}`)}" aria-label="WhatsApp">WA</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonical)}" aria-label="LinkedIn">in</a><a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonical)}" aria-label="Facebook">f</a><a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(canonical)}" aria-label="X">𝕏</a><a href="mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${description}\n${canonical}`)}" aria-label="Email">✉</a></div><div class="stores" aria-label="Download AvaTOK"><span class="store-badge" title="Google Play coming soon">▶</span><span class="store-badge" title="Apple App Store coming soon">●</span></div><div class="made">Made on <strong>AvaTOK App</strong></div></section></main></body></html>`;
   return new Response(body, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "public, max-age=300",
+      "cache-control": "public, max-age=3600, s-maxage=86400",
       "content-security-policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
     },
@@ -268,7 +270,7 @@ export async function aiMediaSongShareAsset(
   if (!object) return new Response("Not found", { status: 404 });
   const headers = new Headers({
     "content-type": row.mime_type || (asset === "cover" ? "image/png" : "audio/mpeg"),
-    "cache-control": "public, max-age=300",
+    "cache-control": asset === "cover" ? "public, max-age=31536000, immutable" : "public, max-age=300",
     "content-disposition": "inline",
     "x-content-type-options": "nosniff",
     "accept-ranges": "bytes",

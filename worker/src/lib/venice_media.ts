@@ -29,6 +29,7 @@ import { moderate } from "./moderation";
 import {
   veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
   type VeniceIntent, type VeniceTier, classifyVeniceError,
+  veniceVideoPreflight, recordVeniceVideoProviderFailure, recordVeniceVideoProviderSuccess,
 } from "./venice";
 import {
   createVeniceMediaJob, attachVeniceQueueId, failVeniceMediaJob,
@@ -40,7 +41,7 @@ import { avaString, readVoiceStyle, type AvaVoiceStyle } from "./ava_persona";
 import { postAvaMessage } from "../routes/ava_thread";
 // [VENICE-PROMPT-1 / VENICE-SONG-1] Gemini-3.7-via-Venice prompt/lyrics
 // crafting — see lib/media_prompt.ts's header for the fail-soft contract.
-import { craftVideoPrompt, craftVideoCardMetadata, draftLyrics } from "./media_prompt";
+import { craftVideoPrompt, craftVideoCardMetadata, craftSongCardMetadata, draftLyrics } from "./media_prompt";
 
 const VIDEO_DEADLINE_MS = 10 * 60_000; // ~10 min hard ceiling, per the work order
 const MUSIC_DEADLINE_MS = 5 * 60_000;  // ~5 min hard ceiling
@@ -116,6 +117,14 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 
   const intent: VeniceIntent = a.sourceImageUrl ? "video_i2v" : "video_t2v";
   const route = veniceRoute(intent, a.tier);
+  const preflight = await veniceVideoPreflight(env as any, route.model);
+  if (!preflight.ok) {
+    void track(env, a.uid, "venice_video_preflight_failed", "avaai", { model: route.model, provider: "venice", error_code: preflight.code });
+    const message = preflight.code === "provider_circuit_open"
+      ? "Video creation is temporarily paused while the AI video service recovers. Please try again shortly."
+      : "The AI video service is not ready for this request yet. Please try again shortly.";
+    return { ok: false, message };
+  }
   const capability = "media_video_generate";
   const t0 = Date.now();
   const emitReason = (ok: boolean, error: string | null) => {
@@ -162,11 +171,13 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
     const errorCode = classifyVeniceError(e);
+    await recordVeniceVideoProviderFailure(env as any);
     await failVeniceMediaJob(env, { jobId, errorCode, reason: "submit_failed" });
     void track(env, a.uid, "ava_video_error", "avaai", { stage: "submit", model: route.model, provider: "venice", error: msg, job_id: jobId });
     emitReason(false, msg);
     return { ok: false, message: "I couldn't start that video right now — please try again." };
   }
+  await recordVeniceVideoProviderSuccess(env as any);
 
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl,
@@ -259,7 +270,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   // the job row/telemetry, but veniceQueueMusic only SENDS it when the model
   // is ace-step-15 (see that function).
   const durationSeconds = clampMusicSeconds(a.durationSeconds);
-  const card = songCardMetadata(stylePrompt, durationSeconds, !!lyrics);
+  // Use the approved lyrics as the source of truth for public promotional copy;
+  // the style brief alone produced generic titles that did not match the song.
+  const card = await craftSongCardMetadata(env, stylePrompt, lyrics);
   const t0 = Date.now();
   const emitReason = (ok: boolean, error: string | null) => {
     void track(env, a.uid, "ava_reason_call", "avaai", {
