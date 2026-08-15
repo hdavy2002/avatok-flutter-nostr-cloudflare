@@ -21,7 +21,9 @@ void main() {
     expect(media, contains('onResult: (ok) => unawaited(_onResult(ok))'));
     expect(media, contains("'image/webp' => 'webp'"));
     expect(media, contains('Artwork is optional.'));
-    expect(media, contains('color: Colors.black.withValues(alpha: 0.72)'));
+    expect(media, contains('width: double.infinity'));
+    expect(media, contains('style: ADText.threadName(c: Colors.black)'));
+    expect(media, isNot(contains("'AVATOK ORIGINAL'")));
     expect(media, contains('createSongShareLink(fresh.jobId)'));
     expect(media, contains("'share_kind': 'song_link'"));
     expect(media, contains("text: '\$title\\n\$description'"));
