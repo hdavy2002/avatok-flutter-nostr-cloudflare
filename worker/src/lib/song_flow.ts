@@ -121,7 +121,10 @@ export function completeSongFlow(flow: SongFlowState): SongFlowState {
  */
 export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlowAction {
   const requestKind = classifySongRequest(text);
-  if (requestKind && (!flow || flow.phase === "completed")) {
+  // A fresh creation request replaces an abandoned older brief/draft. Revision
+  // language stays attached to the current draft instead of restarting it.
+  if (requestKind && (!flow || flow.phase === "completed" ||
+      (flow.phase !== "generating" && !isSongRevisionIntent(text)))) {
     const brief = stripAvaWakeWordForIntent(text);
     return {
       kind: "ask_brief",

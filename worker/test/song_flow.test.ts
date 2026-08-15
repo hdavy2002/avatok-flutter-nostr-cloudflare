@@ -83,4 +83,26 @@ describe("deterministic song flow", () => {
     const restarted = nextSongFlow({ ...reviewing, phase: "completed" }, "make another song");
     expect(restarted).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
   });
+
+  it("replaces an abandoned draft when the user explicitly asks for a new song", () => {
+    const stale: Parameters<typeof nextSongFlow>[0] = {
+      phase: "reviewing",
+      kind: "vocal",
+      brief: "an older mountain song, English, female voice",
+      lyrics: "Old lyrics",
+      durationSeconds: 60,
+    };
+    const restarted = nextSongFlow(
+      stale,
+      "can you make me a reggae song for me. It's about an island called Anguilla",
+    );
+    expect(restarted).toMatchObject({
+      kind: "ask_brief",
+      flow: {
+        phase: "awaiting_brief",
+        kind: "vocal",
+        brief: expect.stringContaining("Anguilla"),
+      },
+    });
+  });
 });
