@@ -1244,6 +1244,11 @@ export function looksLikeImageRequest(s: string): boolean {
 const MEDIA_CREATE_RE = /\b(?:generate|create|make|animate|produce|render)\b/;
 const IMAGE_TO_VIDEO_RE = /\bturn\s+(?:this|that|the)\s+(?:photo|image|picture)\s+into\s+(?:a\s+)?video\b/;
 const IMAGE_ANIMATE_RE = /\b(?:animate\s+it|make\s+it\s+move|bring\s+it\s+to\s+life)\b/;
+// A correction such as "I mean 6 second video of …" is a complete generation
+// brief even though it does not repeat a creation verb. Keep this anchored and
+// require a duration plus a visual-subject qualifier so ordinary statements
+// about watching videos never enter the media lane.
+const VIDEO_CORRECTION_FRAGMENT_RE = /^(?:\s*[@#]ava(?:!|\b)\s*)?(?:\(?private\)?\s*[:,–-]?\s*)?(?:i\s+mean|i\s+meant|actually|instead|correction)\s*[:,–-]?\s+(?:an?\s+)?\d+(?:\.\d+)?\s*(?:[-–]\s*)?(?:seconds?|secs?|sec|s)\s+(?:video|clip|reel|animation)\s+(?:of|showing|featuring)\b/i;
 export const BARE_SONG_QUESTION = "What should the song be about or tell a story of, what mood or genre would you like, and should it be 1, 1.5, 2, or 3 minutes?";
 
 // Keep this deliberately narrow. A short request such as "#ava make a song
@@ -1262,7 +1267,7 @@ export function looksLikeVideoRequest(s: string): boolean {
   const communicationIntent = /\bvideo\s+call\b/.test(t)
     || /\b(?:start|join|schedule|host|begin|place)\b.{0,30}\b(?:call|meeting|conference)\b/.test(t);
   return (MEDIA_CREATE_RE.test(t) && /\b(?:video|clip|movie|reel|animation|animate)\b/.test(t)
-      || IMAGE_TO_VIDEO_RE.test(t) || IMAGE_ANIMATE_RE.test(t)) &&
+      || IMAGE_TO_VIDEO_RE.test(t) || IMAGE_ANIMATE_RE.test(t) || VIDEO_CORRECTION_FRAGMENT_RE.test(t)) &&
       !communicationIntent;
 }
 
