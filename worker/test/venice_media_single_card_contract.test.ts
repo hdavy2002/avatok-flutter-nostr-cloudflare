@@ -30,8 +30,9 @@ describe("Venice media single-card envelopes", () => {
 
   it("gates video admission before billing and watches the thumbnail sidecar", () => {
     expect(venice).toContain("veniceVideoPreflight");
-    expect(venice).toContain("seedance-2-0-fast-text-to-video");
-    expect(venice).toContain("seedance-2-0-fast-image-to-video");
+    expect(venice).toContain("ltx-2-v2-3-fast-text-to-video");
+    expect(venice).toContain("ltx-2-v2-3-fast-image-to-video");
+    expect(venice).toContain("VENICE_VIDEO_MAX_SECONDS = 15");
     expect(venice).toContain("same-intent model from the live catalog");
     expect(venice).toContain("VIDEO_CIRCUIT_LIMIT = 3");
     expect(recovery).toContain("listVeniceVideoThumbnailJobsForRecovery");

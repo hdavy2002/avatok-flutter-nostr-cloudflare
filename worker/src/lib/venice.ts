@@ -43,12 +43,12 @@ const ROUTES: Record<VeniceIntent, Record<VeniceTier, VeniceRoute>> = {
     paid: { model: "venice-sd35", endpoint: "/image/generate", kind: "sync_image" },
   },
   video_t2v: {
-    free: { model: "seedance-2-0-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
-    paid: { model: "seedance-2-0-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    free: { model: "ltx-2-v2-3-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    paid: { model: "ltx-2-v2-3-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   video_i2v: {
-    free: { model: "seedance-2-0-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
-    paid: { model: "seedance-2-0-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    free: { model: "ltx-2-v2-3-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    paid: { model: "ltx-2-v2-3-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   music: {
     free: { model: "minimax-music-v26", endpoint: "/audio/queue", kind: "queue_audio" },
@@ -217,24 +217,20 @@ export async function veniceGenerateImage(
 }
 
 // ── Video (queue + poll) ─────────────────────────────────────────────────────
-// Product tariff: 45 Tokens buys one 10-second clip.
+// Product tariff: 45 Tokens buys one video clip, regardless of its 8–15s
+// duration. Venice provider pricing is variable; this keeps the AvaTOK price
+// predictable while the low-cost LTX Fast route is used for testing.
 export const VENICE_VIDEO_DEFAULT_DURATION = "10s";
+export const VENICE_VIDEO_MIN_SECONDS = 8;
+export const VENICE_VIDEO_MAX_SECONDS = 15;
 // 720p is the common denominator across the live Venice video catalog;
 // requesting 1080p made otherwise valid LTX jobs fail with a provider 400.
 export const VENICE_VIDEO_DEFAULT_RESOLUTION = "720p";
-// [VENICE-VID-DURATION-1] The messaging product sells one fixed 10-second
-// clip. Any legacy/client duration is normalized to that product duration.
-export const VENICE_VIDEO_DURATIONS_S = [10] as const;
+// [VENICE-VID-DURATION-2] Users may request any whole-second clip from 8–15s.
+export const VENICE_VIDEO_DURATIONS_S = [8, 9, 10, 11, 12, 13, 14, 15] as const;
 export function nearestVideoDuration(seconds: number | undefined): string {
   if (!Number.isFinite(seconds as number) || (seconds as number) <= 0) return VENICE_VIDEO_DEFAULT_DURATION;
-  const n = seconds as number;
-  let best: number = VENICE_VIDEO_DURATIONS_S[0];
-  let bestDiff = Infinity;
-  for (const d of VENICE_VIDEO_DURATIONS_S) {
-    const diff = Math.abs(d - n);
-    if (diff < bestDiff) { bestDiff = diff; best = d; }
-  }
-  return `${best}s`;
+  return `${Math.round(seconds as number)}s`;
 }
 
 // [VENICE-API-SHAPE-1 2026-08-14] The LIVE /video/queue schema (verified by a

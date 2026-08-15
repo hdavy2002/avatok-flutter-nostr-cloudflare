@@ -28,6 +28,7 @@ import { readConfig } from "../routes/config";
 import { moderate } from "./moderation";
 import {
   veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
+  VENICE_VIDEO_MIN_SECONDS, VENICE_VIDEO_MAX_SECONDS,
   type VeniceIntent, type VeniceTier, classifyVeniceError,
   veniceVideoPreflight, recordVeniceVideoProviderFailure, recordVeniceVideoProviderSuccess,
 } from "./venice";
@@ -64,8 +65,7 @@ export interface RunVeniceVideoArgs {
   /** Public URL (or base64 data: URL) of an existing image to animate —
    *  presence alone selects video_i2v over video_t2v (veniceRoute). */
   sourceImageUrl?: string;
-  /** [VENICE-VID-DURATION-1] Legacy/client input is normalized to the
-   *  product's fixed 10-second clip by nearestVideoDuration(). */
+  /** Users may request any whole-second video from 8 through 15 seconds. */
   durationSeconds?: number;
   private: boolean;
   /** [VENICE-TIER-1] Caller-supplied — do/ava_agent.ts's onVideo closure
@@ -91,9 +91,18 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 
   const email = await emailFor(env, a.uid).catch(() => null);
 
-  // [VENICE-VID-DURATION-1] Snap to the nearest live enum FIRST — the numeric
-  // form feeds both the prompt crafter (below, so it paces the described
-  // action to the real clip length) and the job record.
+  const requestedDuration = Number(a.durationSeconds);
+  if (Number.isFinite(requestedDuration)) {
+    const rounded = Math.round(requestedDuration);
+    if (rounded < VENICE_VIDEO_MIN_SECONDS) {
+      return { ok: false, message: `Video length must be at least ${VENICE_VIDEO_MIN_SECONDS} seconds.` };
+    }
+    if (rounded > VENICE_VIDEO_MAX_SECONDS) {
+      return { ok: false, message: `Videos longer than ${VENICE_VIDEO_MAX_SECONDS} seconds are not supported yet.` };
+    }
+  }
+  // Preserve the user's requested whole-second duration for prompt pacing and
+  // the durable job record; omitted duration defaults to 10 seconds.
   const durationStr = nearestVideoDuration(a.durationSeconds);
   const durationNum = parseInt(durationStr, 10);
 
