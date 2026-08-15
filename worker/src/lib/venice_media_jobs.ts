@@ -52,6 +52,7 @@ export interface VeniceMediaJobRecord {
   is_private: boolean;
   tier: "free" | "paid";
   has_source_image: boolean;
+  music_mode: "vocal" | "instrumental" | null;
   duration_seconds: number | null;
   label: string | null;
   capability: string;
@@ -85,6 +86,7 @@ function rowToRecord(r: any): VeniceMediaJobRecord {
     is_private: Number(r.is_private) === 1,
     tier: r.tier === "paid" ? "paid" : "free",
     has_source_image: Number(r.has_source_image) === 1,
+    music_mode: r.music_mode === "vocal" || r.music_mode === "instrumental" ? r.music_mode : null,
     duration_seconds: r.duration_seconds != null ? Number(r.duration_seconds) : null,
     label: r.label ?? null,
     capability: r.capability, model: r.model,
@@ -242,6 +244,7 @@ export interface CreateVeniceMediaJobInput {
   flatPriceTokens?: number | null;
   songTitle?: string | null;
   songDescription?: string | null;
+  musicMode?: "vocal" | "instrumental" | null;
 }
 
 export type CreateVeniceMediaJobResult =
@@ -280,16 +283,17 @@ export async function createVeniceMediaJob(env: Env, input: CreateVeniceMediaJob
     await env.DB_MEDIA.prepare(
       `INSERT INTO venice_media_jobs
          (job_id, owner_uid, conv_id, kind, status, venice_queue_id, is_private, tier, has_source_image,
-          duration_seconds, label, capability, model, reservation_id, flat_price_tokens,
+          duration_seconds, label, capability, model, reservation_id, flat_price_tokens, music_mode,
           artifact_media_id, song_title, song_description, cover_media_id, cover_status,
           error_code, attempts, deadline_at, created_at, updated_at, completed_at)
-       VALUES (?1,?2,?3,?4,'submitting',NULL,?5,?6,?7,?8,?9,?10,?11,?12,?13,NULL,?14,?15,NULL,?16,NULL,0,?17,?18,?18,NULL)`,
+       VALUES (?1,?2,?3,?4,'submitting',NULL,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,NULL,?15,?16,?17,NULL,?18,NULL,0,?19,?20,?20,NULL)`,
     ).bind(
       jobId, ownerUid, convId, input.kind, input.isPrivate ? 1 : 0, input.tier,
       input.hasSourceImage ? 1 : 0, input.durationSeconds ?? null, input.label ? String(input.label).slice(0, 200) : null,
       input.capability, input.model, reservationId,
       input.flatPriceTokens != null && Number.isFinite(input.flatPriceTokens) && input.flatPriceTokens > 0
         ? Math.max(1, Math.trunc(input.flatPriceTokens)) : null,
+      input.kind === "venice_music_generate" ? (input.musicMode ?? null) : null,
       input.songTitle ? String(input.songTitle).slice(0, 80) : null,
       input.songDescription ? String(input.songDescription).slice(0, 240) : null,
       input.kind === "venice_music_generate" || input.kind === "venice_video_generate" ? "pending" : "not_applicable",

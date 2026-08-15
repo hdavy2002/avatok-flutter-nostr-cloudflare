@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  BARE_SONG_QUESTION,
-  isBareSongRequest,
-  looksLikeInstrumentalMusicRequest,
-  looksLikeMusicRequest,
-  looksLikeSongRequest,
   looksLikeVideoRequest,
-  runAgentLoop,
 } from "../src/lib/composio";
+import { classifySongRequest } from "../src/lib/song_flow";
 
 describe("forced media routing intent", () => {
   it("recognizes unmistakable video creation without treating calls as video", () => {
@@ -29,33 +24,11 @@ describe("forced media routing intent", () => {
     expect(looksLikeVideoRequest("schedule a conference meeting with Maya")).toBe(false);
   });
 
-  it("routes bare song-writing requests into the lyrics-first conversation", () => {
-    expect(looksLikeMusicRequest("write me a song about finding home")).toBe(true);
-    expect(looksLikeMusicRequest("a song about finding home")).toBe(false);
-    expect(looksLikeMusicRequest("what song is playing?")).toBe(false);
-  });
-
-  it("sends explicit instrumentals to music generation, never the lyric draft", () => {
-    expect(looksLikeInstrumentalMusicRequest("make an instrumental beat")).toBe(true);
-    expect(looksLikeSongRequest("make an instrumental beat")).toBe(false);
-    expect(looksLikeMusicRequest("make music with no vocals")).toBe(true);
-    expect(looksLikeSongRequest("make music with no vocals")).toBe(false);
-    expect(looksLikeSongRequest("make a song with no vocals")).toBe(false);
-    expect(looksLikeInstrumentalMusicRequest("make a song with no vocals")).toBe(true);
-    expect(looksLikeInstrumentalMusicRequest("make some music")).toBe(false);
-  });
-
-  it("asks for a brief for bare @ava/#ava song requests before drafting lyrics", async () => {
-    let drafted = false;
-    expect(isBareSongRequest("#ava make a song for me")).toBe(true);
-    expect(isBareSongRequest("@ava make me a song")).toBe(true);
-    expect(isBareSongRequest("@ava private make a song for me")).toBe(true);
-    expect(isBareSongRequest("make a song about finding home")).toBe(false);
-
-    await expect(runAgentLoop(
-      {} as any, "user", "@ava private make a song for me", "", async () => [],
-      { onDraftLyrics: async () => { drafted = true; return "unused"; } },
-    )).resolves.toBe(BARE_SONG_QUESTION);
-    expect(drafted).toBe(false);
+  it("uses the unified song classifier for vocal and instrumental routes", () => {
+    expect(classifySongRequest("write me a song about finding home")).toBe("vocal");
+    expect(classifySongRequest("make an instrumental reggae beat with bass")).toBe("instrumental");
+    expect(classifySongRequest("make music with no vocals")).toBe("instrumental");
+    expect(classifySongRequest("what song is playing?")).toBe(null);
+    expect(classifySongRequest("start a video call with Maya")).toBe(null);
   });
 });

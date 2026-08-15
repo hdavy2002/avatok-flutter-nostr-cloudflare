@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   clampSongDurationSeconds,
-  isBareSongRequest,
-  isSongCreationRequest,
   isSongApproval,
   isSongRevisionIntent,
   hasSongProductionContext,
+  hasInstrumentalProductionContext,
+  classifySongRequest,
   nextSongFlow,
   parseSongDurationSeconds,
   stripAvaWakeWordForIntent,
@@ -13,6 +13,17 @@ import {
 } from "../src/lib/song_flow";
 
 describe("deterministic song flow", () => {
+  it("classifies music once and keeps instrumental requests lyric-free", () => {
+    expect(classifySongRequest("make a reggae song for me")).toBe("vocal");
+    expect(classifySongRequest("make an instrumental reggae beat")).toBe("instrumental");
+    expect(hasInstrumentalProductionContext("reggae instrumental, upbeat, bass, drums, guitar")).toBe(true);
+    const asked = nextSongFlow(null, "make an instrumental reggae beat");
+    expect(asked).toMatchObject({ kind: "ask_brief", flow: { kind: "instrumental" } });
+    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
+    expect(nextSongFlow(asked.flow, "reggae, upbeat, bass and drums for a travel reel")).toMatchObject({
+      kind: "generate", flow: { kind: "instrumental", phase: "generating" },
+    });
+  });
   it("requires the complete production context before drafting", () => {
     const asked = nextSongFlow(null, "create a reggae song for me");
     expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
@@ -28,14 +39,6 @@ describe("deterministic song flow", () => {
     expect(stripAvaWakeWordForIntent("@ava private: make me a song")).toBe("make me a song");
     expect(stripAvaWakeWordForIntent("@ava! make me a song")).toBe("make me a song");
     expect(stripAvaWakeWordForIntent("please ask @ava to make a song")).toBe("please ask @ava to make a song");
-  });
-
-  it("recognizes only genuinely bare song requests", () => {
-    expect(isBareSongRequest("@ava make me a song")).toBe(true);
-    expect(isBareSongRequest("#ava write a song for me")).toBe(true);
-    expect(isBareSongRequest("@ava make another song")).toBe(true);
-    expect(isBareSongRequest("make a song about home")).toBe(false);
-    expect(isSongCreationRequest("@ava make a 90-second pop song about home")).toBe(true);
   });
 
   it("parses offered duration choices and clamps explicit durations", () => {

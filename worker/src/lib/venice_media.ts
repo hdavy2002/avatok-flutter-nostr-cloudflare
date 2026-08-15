@@ -210,6 +210,7 @@ export interface RunVeniceMusicArgs {
    *  user signed off). Sent to Venice's dedicated `lyrics_prompt` field;
    *  absent for a plain instrumental/music request. */
   lyrics?: string;
+  musicMode?: "vocal" | "instrumental";
   private: boolean;
   /** [VENICE-TIER-1] see RunVeniceVideoArgs.tier doc — resolved via
    *  lib/venice_tier.ts's veniceTier(env, uid) at the do/ava_agent.ts onMusic
@@ -243,6 +244,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   if (!stylePrompt) return { ok: false, message: "Tell me what kind of track to create." };
   if (stylePrompt.length > 2000) return { ok: false, message: "That prompt is too long." };
   const lyrics = String(a.lyrics ?? "").trim().slice(0, 4000);
+  const musicMode = a.musicMode ?? (lyrics ? "vocal" : "instrumental");
+  if (musicMode === "vocal" && !lyrics) return { ok: false, message: "I need approved lyrics before creating a vocal song." };
+  if (musicMode === "instrumental" && lyrics) return { ok: false, message: "Instrumental tracks cannot include lyrics." };
   // [VENICE-SONG-1] Venice receives musical direction and approved lyrics in
   // distinct fields. Keep one combined string only for the mandatory safety
   // gate, so moderation still covers both the style and sung content.
@@ -289,6 +293,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     hasSourceImage: false, durationSeconds,
     label: "Generating your track…", deadlineMs: Date.now() + MUSIC_DEADLINE_MS, email,
     songTitle: card.title, songDescription: card.description,
+    musicMode,
     // [VENICE-TOKENS-1] owner tariff 2026-08-14: music = cfg.veniceMusicTokens (10).
     flatPriceTokens: cfg.veniceMusicTokens,
   });

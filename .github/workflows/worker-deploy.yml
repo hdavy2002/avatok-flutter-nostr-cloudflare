@@ -14,6 +14,11 @@ on:
         required: true
         default: false
         type: boolean
+      apply_music_route_guard_migration:
+        description: Add the server-owned vocal/instrumental route provenance column
+        required: true
+        default: false
+        type: boolean
       enable_venice_media:
         description: Enable the Venice video/music production flag
         required: true
@@ -65,6 +70,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
         run: scripts/flags.sh set veniceMediaEnabled=true
+
+      - name: Apply music route guard migration
+        if: ${{ inputs.apply_music_route_guard_migration }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: |
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-08-15-venice-music-route-guard.sql --binding DB_MEDIA
+          scripts/cf.sh worker d1 execute DB_MEDIA --remote --command "CREATE INDEX IF NOT EXISTS idx_venice_media_jobs_music_mode ON venice_media_jobs(kind, music_mode, status);"
 
       - name: Deploy Worker
         env:

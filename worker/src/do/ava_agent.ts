@@ -39,7 +39,7 @@ import {
 } from "../lib/ai_gate"; // P2 gate
 import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval (available/source/degraded_reason)
 import {
-  runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest, looksLikeVideoRequest, looksLikeMusicRequest,
+  runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest, looksLikeVideoRequest,
   guardOutput, newAgentLoopStats, type AgentLoopStats, // AVA-KIMI-TOOLS-1: shared output guard + tool-lane model telemetry
   orStreamStep, // [AVA-STREAM-PLAIN-1 / WS-5] the tested SSE parser, shared with the tool lane
 } from "../lib/composio"; // AvaApps + unified agentic loop
@@ -79,7 +79,8 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 // turn — above all the working chip, which this file used to inline 13 times.
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
 import {
-  SONG_BRIEF_QUESTION, SONG_CONTEXT_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
+  SONG_BRIEF_QUESTION, SONG_CONTEXT_QUESTION, INSTRUMENTAL_BRIEF_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
+  classifySongRequest,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongLyrics,
   hasSongProductionContext,
   type SongFlowState,
@@ -1246,7 +1247,7 @@ export class AvaAgentDO {
     // missing one. The tool lane's own callback reuses this in-flight promise
     // when the model happens to search for the same string (see memorySearch).
     const maybePlain = !byoKey && !looksLikeImageRequest(userText) &&
-      !looksLikeVideoRequest(userText) && !looksLikeMusicRequest(userText) && !this.looksLikeApps(userText);
+      !looksLikeVideoRequest(userText) && !classifySongRequest(userText) && !this.looksLikeApps(userText);
     const memP = maybePlain ? settle(this.brainSearch(uid, userText)) : null;
     // Input-side moderation. Previously ran AFTER the free-budget reserve; it now
     // runs from turn entry. The only consequence of the reorder is one extra
@@ -1290,7 +1291,9 @@ export class AvaAgentDO {
         if (songAction.kind === "ask_brief") {
           await this.state.storage.put(flowKey, songAction.flow);
           await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
-          const question = songAction.flow.brief ? SONG_CONTEXT_QUESTION : SONG_BRIEF_QUESTION;
+          const question = songAction.flow.kind === "instrumental"
+            ? INSTRUMENTAL_BRIEF_QUESTION
+            : (songAction.flow.brief ? SONG_CONTEXT_QUESTION : SONG_BRIEF_QUESTION);
           await this.postAva({ conv, uid, text: question, private: priv, source: "music" });
           await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
             conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "question_posted",
@@ -1337,9 +1340,10 @@ export class AvaAgentDO {
         try {
           music = await runVeniceMusic(this.env, {
             uid, conv,
-            prompt: songAction.flow.brief ?? "Create a song from the approved lyrics",
+            prompt: songAction.flow.brief ?? "Create a track from the approved musical brief",
             durationSeconds: songAction.flow.durationSeconds,
-            lyrics: songAction.flow.lyrics,
+            lyrics: songAction.flow.kind === "instrumental" ? undefined : songAction.flow.lyrics,
+            musicMode: songAction.flow.kind === "instrumental" ? "instrumental" : "vocal",
             private: priv, tier: mediaTier,
           });
         } catch {
@@ -1349,7 +1353,7 @@ export class AvaAgentDO {
           await this.state.storage.put(flowKey, completeSongFlow(songAction.flow));
           await this.state.storage.put(songDraftKey, {
             theme: songAction.flow.brief, durationSeconds: songAction.flow.durationSeconds,
-            lyrics: songAction.flow.lyrics, approved: true, approved_at: Date.now(),
+            lyrics: songAction.flow.lyrics, approved: true, kind: songAction.flow.kind ?? "vocal", approved_at: Date.now(),
           });
           await this.rememberLastMedia(conv, "music", music.job_id, songAction.flow.brief ?? "Approved song");
         } else {
@@ -1556,7 +1560,7 @@ export class AvaAgentDO {
       const imageIntent = looksLikeImageRequest(userText);
       const videoIntent = looksLikeVideoRequest(userText);
       const wantsTools = attachments.length > 0 || appsIntent || imageIntent ||
-        videoIntent || looksLikeMusicRequest(userText);
+        videoIntent || !!classifySongRequest(userText);
 
       // Video generation has the same deterministic fast path as images. The
       // regex has already classified a creation request, so an OpenRouter call
@@ -2222,20 +2226,23 @@ export class AvaAgentDO {
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             onMusic: async (prompt, durationSeconds, lyrics) => {
+              const active = await this.state.storage.get<unknown>(flowKey);
               const draft = await this.state.storage.get<any>(songDraftKey);
               // A model/tool turn must never bypass the deterministic song
               // interview. The old tool lane could call generate_music with
               // no approved lyrics, which is exactly how a bare "make a
               // reggae song" request skipped language/voice/review.
-              if (!lyrics && (!draft?.approved || !draft?.lyrics)) {
+              if (!lyrics && !(isSongFlowState(active) && active.kind === "instrumental" && active.phase === "generating")) {
                 return "Before I make the track, let’s choose the genre and mood, instruments, language, voice (male, female, or group), and voice character. I’ll draft lyrics for your approval first.";
               }
-              if (lyrics && (!draft?.approved || String(draft.lyrics).trim() !== String(lyrics).trim())) {
+              if (lyrics && !(isSongFlowState(active) && active.kind !== "instrumental" && active.phase === "generating"
+                  && draft?.approved && String(draft.lyrics).trim() === String(lyrics).trim())) {
                 return "Please approve the latest lyrics first — say ‘yes, make it’ when they are ready.";
               }
               const tier = await veniceTier(this.env, uid);
               const r = await runVeniceMusic(this.env, {
-                uid, conv, prompt, durationSeconds, lyrics, private: priv, tier,
+                uid, conv, prompt, durationSeconds, lyrics,
+                musicMode: lyrics ? "vocal" : "instrumental", private: priv, tier,
               });
               if (r.job_id) await this.rememberLastMedia(conv, "music", r.job_id, lyrics ? `${prompt}\n\nLyrics:\n${lyrics}` : prompt);
               if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "venice_music_generate" };
@@ -2247,7 +2254,7 @@ export class AvaAgentDO {
             // only the eventual generate_music call is remembered above).
             onDraftLyrics: async (theme, durationSeconds) => {
               const active = await this.state.storage.get<unknown>(flowKey);
-              if (!isSongFlowState(active) || active.phase !== "awaiting_brief" ||
+              if (!isSongFlowState(active) || active.kind === "instrumental" || active.phase !== "awaiting_brief" ||
                   !hasSongProductionContext(active.brief ?? "")) {
                 return SONG_BRIEF_QUESTION;
               }

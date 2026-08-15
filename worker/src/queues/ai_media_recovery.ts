@@ -91,6 +91,18 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
   const veniceJobs = await listVeniceMediaJobsForRecovery(env, now, now - VENICE_STALE_MS, BATCH_LIMIT);
   for (const job of veniceJobs) {
     try {
+      if (job.kind === "venice_music_generate" && !job.music_mode) {
+        const result = await failVeniceMediaJob(env, {
+          jobId: job.job_id,
+          errorCode: "MUSIC_ROUTE_UNVERIFIED",
+          reason: "watchdog_rejects_legacy_music_route",
+        });
+        if (result.ok && result.transitioned) veniceFailed++;
+        void track(env, job.owner_uid, "venice_media_job_watchdog_rejected", "avaai", {
+          job_id: job.job_id, kind: job.kind, reason: "unverified_music_route",
+        });
+        continue;
+      }
       if (job.status === "submitting") {
         const result = await failVeniceMediaJob(env, {
           jobId: job.job_id,
