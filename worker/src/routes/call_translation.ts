@@ -58,6 +58,17 @@ const ABANDONED_AFTER_MS = 10 * 60_000;
 /** Bound the reconciliation sweep so one `/start` can never fan out. */
 const ABANDON_REAP_LIMIT = 5;
 
+/**
+ * [CALL-TRANSLATE-WATCHDOG-1] Provider provisioning is on the user's tap path,
+ * so it must be fast, bounded, and incapable of multiplying traffic forever.
+ * One retry covers a transient edge/provider failure; contract/auth/quota errors
+ * are terminal because replaying the same rejected request only makes things
+ * worse. The D1 pending-row claim in `/start` separately serializes concurrent
+ * taps before either of them reaches this watchdog.
+ */
+export const CALL_TRANSLATION_MINT_TIMEOUT_MS = 6_000;
+export const CALL_TRANSLATION_MINT_MAX_ATTEMPTS = 2;
+
 // Keep this list server-owned. The client mirrors it for the picker, but the
 // Worker is authoritative and rejects unknown BCP-47 values.
 export const CALL_TRANSLATION_LANGS = new Set([
@@ -244,6 +255,11 @@ export function mintFailureClass(status: number): string {
   return "http_other";
 }
 
+/** Only failures that can plausibly recover without changing the request. */
+export function mintRetryable(status: number): boolean {
+  return status === 0 || status === 408 || status >= 500;
+}
+
 type MintCtx = { uid: string; sessionId: string; callRef: string; purpose: MintPurpose };
 
 async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{ token: string; expiresAt: number } | null> {
@@ -262,27 +278,53 @@ async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{
     return null;
   }
   const expiresAt = Date.now() + 30 * 60_000;
-  let response: Response;
-  try {
-    response = await fetch(CALL_TRANSLATION_AUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-    /**
-     * [CALL-TRANSLATE-APIVER-2] Do not substitute the generic AuthToken resource
-     * shape here. Live Translate has a model-specific constrained-token contract:
-     * v1beta + liveConnectConstraints + config. This request deliberately mirrors
-     * Google's REST example rather than relying on SDK field rewriting.
-     */
-    body: JSON.stringify(callTranslationAuthTokenBody(targetLang, expiresAt)),
+  let response: Response | null = null;
+  let failureClass = "network";
+  let errorName = "";
+  let attempts = 0;
+  for (let attempt = 1; attempt <= CALL_TRANSLATION_MINT_MAX_ATTEMPTS; attempt++) {
+    attempts = attempt;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), CALL_TRANSLATION_MINT_TIMEOUT_MS);
+    try {
+      response = await fetch(CALL_TRANSLATION_AUTH_TOKEN_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        /**
+         * [CALL-TRANSLATE-APIVER-2] Do not substitute the generic AuthToken resource
+         * shape here. Live Translate has a model-specific constrained-token contract:
+         * v1beta + liveConnectConstraints + config. This request deliberately mirrors
+         * Google's REST example rather than relying on SDK field rewriting.
+         */
+        body: JSON.stringify(callTranslationAuthTokenBody(targetLang, expiresAt)),
+        signal: controller.signal,
+      });
+      failureClass = response.ok ? "" : mintFailureClass(response.status);
+      errorName = "";
+    } catch (e) {
+      // Exception CLASS only; messages may include request-derived details.
+      errorName = String((e as { name?: string } | null)?.name ?? "Error").slice(0, 40);
+      failureClass = /abort|timeout/i.test(errorName) ? "timeout" : "network";
+      response = null;
+    } finally {
+      clearTimeout(deadline);
+    }
+
+    const status = response?.status ?? 0;
+    const retry = attempt < CALL_TRANSLATION_MINT_MAX_ATTEMPTS && mintRetryable(status);
+    await track(env, mctx.uid, "call_translation_provider_watchdog", APP, {
+      ...base, attempt, max_attempts: CALL_TRANSLATION_MINT_MAX_ATTEMPTS,
+      state: response?.ok ? "healthy" : retry ? "retrying" : "exhausted",
+      http_status: status, failure_class: failureClass,
+      timeout_ms: CALL_TRANSLATION_MINT_TIMEOUT_MS,
     });
-  } catch (e) {
-    // Transport failure: no status exists. `error_name` is the exception CLASS
-    // only (never the message, which can carry a URL with the key in it).
-    const name = String((e as { name?: string } | null)?.name ?? "Error").slice(0, 40);
+    if (!retry) break;
+  }
+
+  if (!response) {
     await track(env, mctx.uid, "call_translation_mint", APP, {
-      ...base, ok: false, http_status: 0,
-      failure_class: /abort|timeout/i.test(name) ? "timeout" : "network",
-      error_name: name, duration_ms: Date.now() - startedAt,
+      ...base, ok: false, http_status: 0, failure_class: failureClass,
+      error_name: errorName, attempts, duration_ms: Date.now() - startedAt,
     });
     return null;
   }
@@ -301,7 +343,7 @@ async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{
     await track(env, mctx.uid, "call_translation_mint", APP, {
       ...base, ok: false, http_status: response.status,
       failure_class: mintFailureClass(response.status), provider_status: providerStatus,
-      duration_ms: Date.now() - startedAt,
+      attempts, duration_ms: Date.now() - startedAt,
     });
     return null;
   }
@@ -311,13 +353,13 @@ async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{
     // is the class that looks like success in Cloudflare logs and isn't.
     await track(env, mctx.uid, "call_translation_mint", APP, {
       ...base, ok: false, http_status: response.status,
-      failure_class: "malformed_response", duration_ms: Date.now() - startedAt,
+      failure_class: "malformed_response", attempts, duration_ms: Date.now() - startedAt,
     });
     return null;
   }
   await track(env, mctx.uid, "call_translation_mint", APP, {
     ...base, ok: true, http_status: response.status, failure_class: "",
-    duration_ms: Date.now() - startedAt, token_ttl_ms: expiresAt - startedAt,
+    attempts, duration_ms: Date.now() - startedAt, token_ttl_ms: expiresAt - startedAt,
   });
   return { token: body.name, expiresAt };
 }
@@ -631,10 +673,21 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   // Check for an existing session BEFORE spending rate-limit budget: a duplicate
   // /start is the client converging, not abuse, and burning quota on the 409 was
   // part of how a legitimate payer got locked out.
-  const existing = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
+  const existing = await metaDb(env).prepare("SELECT id,status FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string; status: string }>();
   if (existing) {
+    const inProgress = existing.status !== "active";
+    await track(env, ctx.uid, "call_translation_provider_watchdog", APP, {
+      session_id: id, call_ref: callRef, purpose: b.warm_up === true ? "warm_up" : "start",
+      language: lang, api_version: CALL_TRANSLATION_API_VERSION, model: CALL_TRANSLATION_MODEL,
+      state: inProgress ? "queued_behind_existing" : "already_active",
+      existing_session_id: existing.id,
+    });
     await startFailed(env, ctx.uid, callRef, "already_active", { existing_session_id: existing.id, warm_up: b.warm_up === true });
-    return json({ error: "translation already active", session_id: existing.id, call_ref: callRef }, 409);
+    return json({
+      error: inProgress ? "translation_start_in_progress" : "translation already active",
+      session_id: existing.id, call_ref: callRef,
+      ...(inProgress ? { retry_after_ms: 750, billable: false } : {}),
+    }, 409);
   }
   /**
    * [CALL-TRANSLATE-2D-3] Rate limiting: two buckets, both tunable from KV.
@@ -688,19 +741,15 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
   }
   const now = Date.now();
   const lease = crypto.randomUUID();
-  // Provision the constrained provider session before the paid boundary. The
-  // Android bridge must receive setupComplete before it calls /activate.
-  // `id` is minted at the top of the handler so the mint event and the row that
-  // follows carry the SAME session id — never a second identifier scheme.
-  const token = await mintToken(env, lang, {
-    uid: ctx.uid, sessionId: id, callRef, purpose: warmUp ? "warm_up" : "start",
-  });
-  if (!token) {
-    // The mint event above says WHY (status + failure class); this one says what
-    // the user experienced, so one funnel query still shows where starts die.
-    await startFailed(env, ctx.uid, callRef, "provider_unavailable", { warm_up: warmUp, language: lang });
-    return json({ error: "provider_unavailable", billable: false }, 502);
-  }
+  /**
+   * [CALL-TRANSLATE-WATCHDOG-1] Claim the call BEFORE contacting Google.
+   *
+   * The prior order was check -> mint -> insert. Two simultaneous taps could
+   * both pass the check and mint two single-use provider tokens before D1's
+   * unique index selected a winner. This pending row is the queue admission
+   * token: exactly one request wins, every follower gets a bounded retry hint,
+   * and only the winner reaches the provider pipeline. No money moves here.
+   */
   try {
     await metaDb(env).prepare(
       `INSERT INTO translation_call_sessions (id,payer_uid,call_ref,target_lang,source_lease,status,started_at,last_billed_minute,billed_tokens,updated_at,device_nonce)
@@ -708,8 +757,39 @@ export async function callTranslationStart(req: Request, env: Env): Promise<Resp
     ).bind(id, ctx.uid, callRef, lang, lease, now, deviceNonce).run();
   } catch {
     const winner = await metaDb(env).prepare("SELECT id FROM translation_call_sessions WHERE payer_uid=?1 AND call_ref=?2 AND status IN ('pending','activating','active') LIMIT 1").bind(ctx.uid, callRef).first<{ id: string }>();
+    await track(env, ctx.uid, "call_translation_provider_watchdog", APP, {
+      session_id: id, call_ref: callRef, purpose: warmUp ? "warm_up" : "start",
+      language: lang, api_version: CALL_TRANSLATION_API_VERSION, model: CALL_TRANSLATION_MODEL,
+      state: "queued_behind_existing", existing_session_id: winner?.id ?? "",
+    });
     await startFailed(env, ctx.uid, callRef, "insert_conflict", { existing_session_id: winner?.id ?? "", warm_up: warmUp });
-    return json({ error: "translation already active", session_id: winner?.id, call_ref: callRef }, 409);
+    return json({
+      error: "translation_start_in_progress", session_id: winner?.id,
+      call_ref: callRef, retry_after_ms: 750, billable: false,
+    }, 409);
+  }
+  // Provision the constrained provider session before the paid boundary. The
+  // Android bridge must receive setupComplete before it calls /activate.
+  // `id` is minted at the top of the handler so the mint event and claimed row
+  // carry the SAME session id — never a second identifier scheme.
+  const token = await mintToken(env, lang, {
+    uid: ctx.uid, sessionId: id, callRef, purpose: warmUp ? "warm_up" : "start",
+  });
+  if (!token) {
+    // Release the queue claim immediately. A later tap can retry instead of
+    // waiting for the ten-minute abandoned-session reconciliation window.
+    const closed = await metaDb(env).prepare(
+      "UPDATE translation_call_sessions SET status='provider-stopped',updated_at=?2 WHERE id=?1 AND status='pending'",
+    ).bind(id, Date.now()).run();
+    await track(env, ctx.uid, "call_translation_provider_watchdog", APP, {
+      session_id: id, call_ref: callRef, purpose: warmUp ? "warm_up" : "start",
+      language: lang, api_version: CALL_TRANSLATION_API_VERSION, model: CALL_TRANSLATION_MODEL,
+      state: closed.meta.changes === 1 ? "claim_released" : "claim_release_lost",
+    });
+    // The mint event above says WHY (status + failure class); this one says what
+    // the user experienced, so one funnel query still shows where starts die.
+    await startFailed(env, ctx.uid, callRef, "provider_unavailable", { warm_up: warmUp, language: lang });
+    return json({ error: "provider_unavailable", billable: false }, 502);
   }
   await track(env, ctx.uid, "call_translation_start_ready", APP, {
     session_id: id, call_ref: callRef, language: lang, warm_up: warmUp,

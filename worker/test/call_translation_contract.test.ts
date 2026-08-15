@@ -14,6 +14,7 @@ import {
   CALL_TRANSLATION_LANGS, CALL_TRANSLATION_MIN_START, CALL_TRANSLATION_RATE, CALL_TRANSLATION_MODEL,
   CALL_TRANSLATION_API_VERSION, CALL_TRANSLATION_AUTH_TOKEN_URL, callTranslationAuthTokenBody,
   CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED, mintFailureClass, stopEndReason, stopReasonOrDefault,
+  mintRetryable, CALL_TRANSLATION_MINT_TIMEOUT_MS, CALL_TRANSLATION_MINT_MAX_ATTEMPTS,
   STOP_BODY_TIMEOUT_MS,
   callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop,
 } from "../src/routes/call_translation";
@@ -68,6 +69,18 @@ describe("[CALL-TRANSLATE-1] contract", () => {
       },
     });
     expect(JSON.stringify(body)).not.toContain("bidiGenerateContentSetup");
+    expect(CALL_TRANSLATION_AUTH_TOKEN_URL).not.toContain("v1alpha");
+  });
+
+  it("bounds the provider watchdog and retries only transient failures", () => {
+    expect(CALL_TRANSLATION_MINT_TIMEOUT_MS).toBe(6_000);
+    expect(CALL_TRANSLATION_MINT_MAX_ATTEMPTS).toBe(2);
+    expect(mintRetryable(0)).toBe(true);
+    expect(mintRetryable(408)).toBe(true);
+    expect(mintRetryable(503)).toBe(true);
+    expect(mintRetryable(400)).toBe(false);
+    expect(mintRetryable(401)).toBe(false);
+    expect(mintRetryable(429)).toBe(false);
   });
 });
 
@@ -208,6 +221,9 @@ class FakeDb {
     }
     if (sql.includes("SET status='funds-stopped'")) {
       return upd(r.status === "active", () => { r.status = "funds-stopped"; r.updated_at = Number(a[1]); });
+    }
+    if (sql.includes("SET status='provider-stopped'") && sql.includes("status='pending'")) {
+      return upd(r.status === "pending", () => { r.status = "provider-stopped"; r.updated_at = Number(a[1]); });
     }
     if (sql.includes("SET status='activating'")) {
       return upd(r.status === "pending", () => { r.status = "activating"; r.updated_at = Number(a[1]); });
@@ -394,6 +410,40 @@ describe("[CALL-TRANSLATE-OBS-3] reapAbandoned", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toMatchObject({ error: "provider_unavailable" });
     expect(h.named("call_translation_start_failed").map((p) => p.reason)).toContain("provider_unavailable");
+  });
+});
+
+describe("[CALL-TRANSLATE-WATCHDOG-1] start admission", () => {
+  it("queues a duplicate behind the pending winner without contacting the provider", async () => {
+    const h = harness();
+    h.db.seed(row({ id: "winner", call_ref: "c_queue", status: "pending" }));
+
+    const res = await callTranslationStart(post({
+      call_ref: "c_queue", target_lang: "fr",
+      source_capability: "webrtc_same_capture_pcm16_v1",
+    }), h.env);
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: "translation_start_in_progress", session_id: "winner",
+      retry_after_ms: 750, billable: false,
+    });
+    expect(h.named("call_translation_mint")).toHaveLength(0);
+    expect(h.named("call_translation_provider_watchdog")).toContainEqual(
+      expect.objectContaining({ state: "queued_behind_existing", existing_session_id: "winner" }),
+    );
+  });
+
+  it("releases a winning claim immediately when provider provisioning fails", async () => {
+    const h = harness();
+    const res = await startWith(h, "c_release");
+
+    expect(res.status).toBe(502);
+    const created = [...h.db.rows.values()].find((r) => r.call_ref === "c_release");
+    expect(created?.status).toBe("provider-stopped");
+    expect(h.named("call_translation_provider_watchdog")).toContainEqual(
+      expect.objectContaining({ state: "claim_released" }),
+    );
   });
 });
 
