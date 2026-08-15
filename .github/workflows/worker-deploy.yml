@@ -1,0 +1,74 @@
+name: Deploy Cloudflare Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment target
+        required: true
+        default: staging
+        type: choice
+        options: [staging, prod]
+      apply_song_card_migration:
+        description: Apply the additive Venice song-card DB_MEDIA migration
+        required: true
+        default: false
+        type: boolean
+      enable_venice_media:
+        description: Enable the Venice video/music production flag
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard branch and target
+        run: |
+          if [ "${{ inputs.environment }}" = "prod" ] && [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Production Worker deployments must use main."
+            exit 1
+          fi
+          if [ "${{ inputs.environment }}" = "staging" ] && [ "$GITHUB_REF_NAME" != "staging" ]; then
+            echo "::error::Staging Worker deployments must use staging."
+            exit 1
+          fi
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Select target
+        run: printf '%s\n' '${{ inputs.environment }}' > .avatok-target
+
+      - name: Apply song-card migration
+        if: ${{ inputs.apply_song_card_migration }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: |
+          scripts/d1_apply_alters.py worker/migrations/2026-08-15-venice-song-cards.sql --binding DB_MEDIA
+          scripts/cf.sh worker d1 execute DB_MEDIA --remote --command "CREATE UNIQUE INDEX IF NOT EXISTS idx_venice_media_jobs_share_token ON venice_media_jobs(share_token) WHERE share_token IS NOT NULL;"
+
+      - name: Enable Venice media
+        if: ${{ inputs.enable_venice_media }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: scripts/flags.sh set veniceMediaEnabled=true
+
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
+        run: scripts/cf.sh worker deploy
