@@ -113,6 +113,29 @@ class _Msg {
        this.starred = false, this.forwarded = false, this.hidden = false, this.expireAt, this.special, this.extra,
        this.aiLocal = false, Map<String, int>? readBy, Map<String, int>? deliveredTo, this.system = false})
       : readBy = readBy ?? {}, deliveredTo = deliveredTo ?? {};
+
+  /// Stable identity for rows that do not have a transport event id.
+  ///
+  /// Private Ava prompts and AI media job cards are deliberately local-only, so
+  /// [evId] is null. The warm snapshot and disk cache are both restored on an
+  /// open; without an identity those rows were appended twice on every reopen.
+  String get cacheIdentity {
+    final transportId = evId;
+    if (transportId != null && transportId.isNotEmpty) {
+      return 'event:$transportId';
+    }
+    if (special == 'ai_job') {
+      final jobId = (extra?['job_id'] ?? '').toString();
+      if (jobId.isNotEmpty) return 'ai_job:$jobId';
+    }
+    return 'local:${jsonEncode(<Object?>[
+      me,
+      ts,
+      special ?? '',
+      media?.id ?? '',
+      text,
+    ])}';
+  }
 }
 
 /// One semantic ("smart search") hit returned by /api/brain/thread-search and

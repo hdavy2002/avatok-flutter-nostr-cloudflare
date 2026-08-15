@@ -304,6 +304,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // back to "sent" on thread load (old builds persisted delivered group messages
   // as pending). Emitted once via `grp_sendstate_healed` after the cache restore.
   int _grpSendStateHealed = 0;
+  // Local-only messages have no transport event id. Older builds restored them
+  // once from ThreadSnapshot and again from MessageStore on every thread open.
+  // Count removals so the one-time repair can be persisted and measured.
+  int _cacheDuplicatesHealed = 0;
   NostrClient? _nostr;
   bool _realMode = false;
   final Set<String> _seenEv = {};
@@ -522,6 +526,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _deletedIds.addAll(snap.deleted);
     final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final restored = <_Msg>[];
+    final restoredIds = <String>{};
     for (final m in snap.messages.cast<_Msg>()) {
       // DISAPPEARING MESSAGES: `_pruneTimer` only sweeps expired rows while the
       // thread is OPEN, so a snapshot taken before a message's `expireAt` would
@@ -534,6 +539,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       if (m.evId != null) {
         if (_hiddenIds[m.evId] == true) m.hidden = true;
         if (_deletedIds.contains(m.evId)) _tombstone(m);
+      }
+      if (!restoredIds.add(m.cacheIdentity)) {
+        _cacheDuplicatesHealed++;
+        continue;
       }
       restored.add(m);
     }

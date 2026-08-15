@@ -23,8 +23,15 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
     // when we restore not-yet-ACKed bubbles (sending… vs not-sent affordance).
     await Outbox.I.ensureLoaded();
     final cached = await _msgStore.load(key);
-    if (cached.isEmpty || !mounted) return;
+    if (cached.isEmpty || !mounted) {
+      _reportCacheDuplicateHeal();
+      return;
+    }
     final loaded = <_Msg>[];
+    final restoredLocalIds = _msgs
+        .where((m) => m.evId == null || m.evId!.isEmpty)
+        .map((m) => m.cacheIdentity)
+        .toSet();
     for (final j in cached) {
       final ev = j['evId'] as String?;
       if (ev != null) {
@@ -72,6 +79,7 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
         reaction: j['reaction'] as String?,
         starred: j['starred'] == true,
         hidden: j['hidden'] == true || _hiddenIds[ev] == true,
+        aiLocal: j['aiLocal'] == true,
         system: j['system'] == true, // [AVAGRP-BUBBLE-2]
         // [AVAGRP-BUBBLE-2 §6] Restore per-member receipts so the Info sheet /
         // group ticks survive an app restart instead of resetting to "no
@@ -82,6 +90,11 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
         readBy: (j['readBy'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         deliveredTo: (j['deliveredTo'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
       );
+      if ((ev == null || ev.isEmpty) &&
+          !restoredLocalIds.add(msg.cacheIdentity)) {
+        _cacheDuplicatesHealed++;
+        continue;
+      }
       // [MSG-OUTBOX-1] Restore a NOT-yet-ACKed send with the right affordance so it
       // never silently vanishes (the original bug). If its clientId (=evId) is STILL
       // queued in the durable outbox, it's genuinely in flight → show "sending…"
@@ -116,7 +129,10 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
       if (ev != null && _deletedIds.contains(ev)) _tombstone(msg);
       loaded.add(msg);
     }
-    if (loaded.isEmpty || !mounted) return;
+    if (loaded.isEmpty || !mounted) {
+      _reportCacheDuplicateHeal();
+      return;
+    }
     _mutMsgs(() {
       _msgs.addAll(loaded);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
@@ -137,6 +153,17 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
       });
       _schedulePersist();
     }
+    _reportCacheDuplicateHeal();
+  }
+
+  void _reportCacheDuplicateHeal() {
+    if (_cacheDuplicatesHealed == 0 || !mounted) return;
+    Analytics.capture('chat_cache_duplicates_healed', {
+      'count': _cacheDuplicatesHealed,
+      'conv_kind': _isGroup ? 'group' : 'direct',
+    });
+    _cacheDuplicatesHealed = 0;
+    _schedulePersist();
   }
 
 
@@ -180,6 +207,7 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
         if (m.reaction != null) 'reaction': m.reaction,
         if (m.starred) 'starred': true,
         if (m.hidden) 'hidden': true, // soft-delete survives reopen; data retained for Undo
+        if (m.aiLocal) 'aiLocal': true,
         if (m.system) 'system': true, // [AVAGRP-BUBBLE-2]
         // [AVAGRP-BUBBLE-2 §6] Per-member receipts — see the `fromJson` restore
         // side for why these survive an app restart now instead of resetting.
