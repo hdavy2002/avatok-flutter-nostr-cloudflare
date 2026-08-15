@@ -24,7 +24,7 @@ import { presenceBeat } from "./routes/presence"; // [CALL-PRESENCE-1] device he
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
-import { walletTopup, walletTopupIntent, walletTopupPlayRecover, walletTopupPlayVerify, runPlayVoidedPurchaseSweep, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
+import { walletTopup, walletTopupIntent, walletTopupPlayVerify, runPlayVoidedPurchaseSweep, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { dynwAcceptance } from "./routes/dynw_test"; // [DYNW-CORE-1] Phase 0 acceptance battery (admin-only, dark behind dynamicWorkersEnabled)
@@ -1070,7 +1070,6 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/subscribe/cancel" && req.method === "POST") return await subscribeCancel(req, env);
       if (p === "/api/wallet/topup/intent" && req.method === "POST") return await walletTopupIntent(req, env);
       if (p === "/api/wallet/topup/play/verify" && req.method === "POST") return await walletTopupPlayVerify(req, env);
-      if (p === "/api/internal/play-topup-recover-20260815" && req.method === "POST") return await walletTopupPlayRecover(req, env);
       if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);
       if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
