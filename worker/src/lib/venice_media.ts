@@ -125,20 +125,21 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
       : "The AI video service is not ready for this request yet. Please try again shortly.";
     return { ok: false, message };
   }
+  const providerModel = preflight.model;
   const capability = "media_video_generate";
   const t0 = Date.now();
   const emitReason = (ok: boolean, error: string | null) => {
     void track(env, a.uid, "ava_reason_call", "avaai", {
       role: "ava_video", capability, trigger: intent,
       opportunity: null, feature: "ava_video", verb: "see", provider: "venice",
-      model: route.model, primary_model: null, ok, fallback_used: false, cache_hit: false,
+      model: providerModel, primary_model: null, ok, fallback_used: providerModel !== route.model, cache_hit: false,
       latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
     });
   };
 
   const created = await createVeniceMediaJob(env, {
     ownerUid: a.uid, convId: a.conv, kind: "venice_video_generate",
-    capability, model: route.model, isPrivate: a.private, tier: a.tier,
+    capability, model: providerModel, isPrivate: a.private, tier: a.tier,
     hasSourceImage: !!a.sourceImageUrl, durationSeconds: durationNum,
     label: "Generating your video…", deadlineMs: Date.now() + VIDEO_DEADLINE_MS, email,
     // [VENICE-TOKENS-1] owner tariff: 45 Tokens per 10-second video clip.
@@ -162,7 +163,7 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     // interface (worker/src/types.ts) — matches the existing cast at
     // routes/ava_image.ts's generateImageVenice() call site, not a new pattern.
     const { queueId } = await veniceQueueVideo(
-      env as any, route.model, prompt,
+      env as any, providerModel, prompt,
       { duration: durationStr, ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}) },
     );
     await attachVeniceQueueId(env, jobId, queueId);
@@ -173,14 +174,14 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     const errorCode = classifyVeniceError(e);
     await recordVeniceVideoProviderFailure(env as any);
     await failVeniceMediaJob(env, { jobId, errorCode, reason: "submit_failed" });
-    void track(env, a.uid, "ava_video_error", "avaai", { stage: "submit", model: route.model, provider: "venice", error: msg, job_id: jobId });
+    void track(env, a.uid, "ava_video_error", "avaai", { stage: "submit", model: providerModel, provider: "venice", error: msg, job_id: jobId });
     emitReason(false, msg);
     return { ok: false, message: "I couldn't start that video right now — please try again." };
   }
   await recordVeniceVideoProviderSuccess(env as any);
 
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
-    job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl,
+    job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl, model: providerModel,
     duration_seconds: durationNum, prompt_crafted: prompt !== rawPrompt,
   });
   await postAvaMessage(env, {

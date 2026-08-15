@@ -43,12 +43,12 @@ const ROUTES: Record<VeniceIntent, Record<VeniceTier, VeniceRoute>> = {
     paid: { model: "venice-sd35", endpoint: "/image/generate", kind: "sync_image" },
   },
   video_t2v: {
-    free: { model: "ltx-2-19b-distilled-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
-    paid: { model: "ltx-2-19b-distilled-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    free: { model: "seedance-2-0-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    paid: { model: "seedance-2-0-fast-text-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   video_i2v: {
-    free: { model: "ltx-2-19b-distilled-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
-    paid: { model: "ltx-2-19b-distilled-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    free: { model: "seedance-2-0-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
+    paid: { model: "seedance-2-0-fast-image-to-video", endpoint: "/video/queue", kind: "queue_video" },
   },
   music: {
     free: { model: "minimax-music-v26", endpoint: "/audio/queue", kind: "queue_audio" },
@@ -105,7 +105,7 @@ export async function recordVeniceVideoProviderSuccess(env: VeniceEnv & { TOKENS
  * model/configuration requests from entering the async job pipeline. */
 export async function veniceVideoPreflight(
   env: VeniceEnv & { TOKENS?: KVNamespace }, model: string,
-): Promise<{ ok: true } | { ok: false; code: VeniceVideoPreflightCode }> {
+): Promise<{ ok: true; model: string } | { ok: false; code: VeniceVideoPreflightCode }> {
   const circuit = await readVideoCircuit(env);
   if (circuit.opened_at && Date.now() - circuit.opened_at < VIDEO_CIRCUIT_COOLDOWN_MS) {
     return { ok: false, code: "provider_circuit_open" };
@@ -131,10 +131,20 @@ export async function veniceVideoPreflight(
     const rows = Array.isArray(models) ? models : Array.isArray(models?.data) ? models.data : Array.isArray(models?.models) ? models.models : [];
     const available = rows.map((row: any) => String(row?.id ?? row?.model ?? row ?? ""));
     if (available.length > 0 && !available.includes(model)) {
+      // Venice rotates its video catalog. Prefer the configured model, but do
+      // not make a catalog rename take the entire video lane offline. Select a
+      // same-intent model from the live catalog and send that exact ID to the
+      // queue endpoint. A real provider rejection still trips the circuit in
+      // the submit catch below.
+      const wantsImageToVideo = /image-to-video|reference-to-video/i.test(model);
+      const fallback = available.find((id) => wantsImageToVideo
+        ? /image-to-video|reference-to-video/i.test(id)
+        : /text-to-video/i.test(id));
+      if (fallback) return { ok: true, model: fallback };
       await recordVeniceVideoProviderFailure(env);
       return { ok: false, code: "provider_invalid_request" };
     }
-    return { ok: true };
+    return { ok: true, model };
   } catch (error) {
     const code = classifyVeniceError(error) as VeniceVideoPreflightCode;
     await recordVeniceVideoProviderFailure(env);
