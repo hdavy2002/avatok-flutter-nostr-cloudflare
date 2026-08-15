@@ -777,13 +777,14 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
   /// posts an 'ava_status' frame gets this with no extra UI work.
   Widget _avaStatusChip(_Msg m) {
     final label = (m.extra?['label'] ?? m.text).toString();
-    // Image generation gets a ChatGPT-style inline placeholder (a blank, image-
-    // shaped card with a spinner) instead of the small text pill. It auto-
-    // collapses when the finished image (a normal ava media_ref message) arrives
-    // and this transient 'ava_status' chip is dropped.
+    // Image generation is represented exclusively by its durable `ai_job`
+    // card. The legacy start chip is emitted before a job id exists and can
+    // arrive after the job lifecycle envelope, so rendering it creates a small
+    // placeholder beside (or before) the full-size job card. Keep receiving it
+    // for old-server compatibility, but make it non-visual on current clients.
     final isImage = (m.extra?['source'] ?? '').toString() == 'image' ||
         label.toLowerCase().contains('generating an image');
-    if (isImage) return _imageGeneratingCard(label);
+    if (isImage) return const SizedBox.shrink();
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -822,38 +823,6 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
           border: Border.all(color: kBubbleTheirs.border, width: 1),
         ),
         child: _TypingDots(color: kBubbleTheirs.ink),
-      ),
-    );
-  }
-
-  /// ChatGPT-style placeholder shown WHILE Ava generates an image: a blank,
-  /// image-shaped card with a spinner and a status line. Replaced by the real
-  /// picture (a normal ava media_ref bubble) when generation finishes.
-  Widget _imageGeneratingCard(String label) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        width: 240,
-        height: 200,
-        decoration: BoxDecoration(
-          color: AD.bubbleInBg,
-          borderRadius: BorderRadius.circular(Msg.rMd),
-          border: Border.all(color: AD.bubbleInInk, width: 1),
-          boxShadow: const [],
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.duotone),
-              size: 34, color: AD.bubbleInInk),
-          const SizedBox(height: 14),
-          const SizedBox(
-              width: 20, height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: AD.bubbleInInk)),
-          const SizedBox(height: 12),
-          Text(label.isEmpty ? 'Generating image…' : label,
-              style: ADText.bubbleBody(c: AD.bubbleInInk)
-                  .copyWith(fontStyle: FontStyle.italic)),
-        ]),
       ),
     );
   }

@@ -34,4 +34,23 @@ void main() {
     expect(media, contains("m.special != 'ava' && m.special != 'ava_private'"));
     expect(media, contains("(meta['job_id'] ?? '').toString() == job.jobId"));
   });
+
+  test('legacy image status never renders a second compact placeholder', () {
+    final specialContent = File(
+      'lib/features/avatok/chat_thread/special_content.dart',
+    ).readAsStringSync();
+
+    // `ava_status` is emitted before an image job has an id and may arrive
+    // after its tagged lifecycle envelope. Current clients must keep that
+    // fallback signal non-visual and render only the durable full-size card.
+    expect(specialContent, contains('if (isImage) return const SizedBox.shrink();'));
+    expect(specialContent, isNot(contains('Widget _imageGeneratingCard(')));
+    expect(specialContent, isNot(contains('width: 240,\n        height: 200,')));
+
+    final card = File(
+      'lib/features/avatok/widgets/ai_media_job_card.dart',
+    ).readAsStringSync();
+    expect(card, contains('this.width = double.infinity'));
+    expect(card, contains('final previewSize = constraints.maxWidth.isFinite'));
+  });
 }
