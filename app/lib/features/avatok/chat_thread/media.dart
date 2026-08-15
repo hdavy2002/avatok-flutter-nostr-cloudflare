@@ -662,7 +662,6 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
                   ? _AiVideoJobPreview(url: artifactUrl, width: 240)
               : (isMusic && succeeded)
                   ? _AiMusicJobPreview(
-                      width: double.infinity,
                       job: job,
                       onPlay: () => _playJobArtifact(job),
                       onShare: () => _shareJobArtifact(job),
@@ -1656,13 +1655,11 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
 
 class _AiMusicJobPreview extends StatelessWidget {
   const _AiMusicJobPreview({
-    required this.width,
     required this.job,
     required this.onPlay,
     required this.onShare,
   });
 
-  final double width;
   final AiMediaJob job;
   final Future<void> Function() onPlay;
   final Future<void> Function() onShare;
@@ -1699,7 +1696,7 @@ class _AiMusicJobPreview extends StatelessWidget {
             : 'An Ava-generated original\nReady to play or share';
 
     return Container(
-      width: width,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: AD.mediaPlaceholderBg,
         border: Border.all(color: AD.borderHairline),
@@ -1707,9 +1704,14 @@ class _AiMusicJobPreview extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: width,
-            height: width,
+          AspectRatio(
+            // Never derive height from an unconstrained `double.infinity` width.
+            // A completed song is built inside a vertical ListView, where an
+            // infinite explicit height prevents the entire message viewport from
+            // laying out. AspectRatio consumes the finite cross-axis constraint
+            // supplied by the thread and keeps the large square cover requested by
+            // product without letting one card blank every message in the chat.
+            aspectRatio: 1,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -1722,11 +1724,13 @@ class _AiMusicJobPreview extends StatelessWidget {
                 children: [
                   if ((job.coverUrl ?? '').isNotEmpty)
                     Positioned.fill(
-                      child: _AiMusicCoverImage(
-                        jobId: job.jobId,
-                        initialUrl: job.coverUrl!,
-                        width: width,
-                        cacheKey: job.coverMediaId,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => _AiMusicCoverImage(
+                          jobId: job.jobId,
+                          initialUrl: job.coverUrl!,
+                          width: constraints.maxWidth,
+                          cacheKey: job.coverMediaId,
+                        ),
                       ),
                     ),
                   Positioned.fill(

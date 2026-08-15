@@ -7,6 +7,10 @@ void main() {
     final media = File(
       'lib/features/avatok/chat_thread/media.dart',
     ).readAsStringSync();
+    final musicPreview = media.substring(
+      media.indexOf('class _AiMusicJobPreview'),
+      media.indexOf('class _AiMusicCoverImage'),
+    );
 
     expect(media, contains('class _AiMusicJobPreview extends StatelessWidget'));
     expect(media, contains('AudioPlaybackService.I.state'));
@@ -21,7 +25,12 @@ void main() {
     expect(media, contains('onResult: (ok) => unawaited(_onResult(ok))'));
     expect(media, contains("'image/webp' => 'webp'"));
     expect(media, contains('Artwork is optional.'));
-    expect(media, contains('width: double.infinity'));
+    expect(musicPreview, contains('AspectRatio('));
+    expect(musicPreview, contains('aspectRatio: 1'));
+    expect(musicPreview, contains('LayoutBuilder('));
+    expect(musicPreview, contains('width: constraints.maxWidth'));
+    expect(musicPreview, isNot(contains('height: width')));
+    expect(musicPreview, isNot(contains('required this.width')));
     expect(media, contains('style: ADText.threadName(c: Colors.black)'));
     expect(media, isNot(contains("'AVATOK ORIGINAL'")));
     expect(media, contains('createSongShareLink(fresh.jobId)'));
