@@ -61,6 +61,7 @@ class SyncHub {
   StreamSubscription? _sub;
   Timer? _pingTimer;
   Timer? _reconnectTimer;
+  Timer? _syncRecoveryTimer;
   bool _wantConnected = false;
   bool _connecting = false;
   int _retry = 0;
@@ -72,6 +73,14 @@ class SyncHub {
   int _lastRecvAt = 0;
   int _pingsUnanswered = 0; // [ZOMBIE-GRACE-1] consecutive pings with no inbound frame
   int _cursor = 0; // highest InboxDO message id ingested (persisted per account)
+  // Cursor for the current bounded cold-sync page. This is intentionally separate
+  // from [_cursor]: a live message can advance the global high-water while older
+  // pages are still arriving, and page 2 must continue from page 1 rather than
+  // skipping to that live id.
+  int _syncPageCursor = 0;
+  int _syncPageNumber = 0;
+  bool _syncRecoveryActive = false;
+  bool _syncRequestedWhileActive = false;
   static const String _kCursorKey = 'ava_inbox_cursor';
   String? _cursorUid;       // account the in-memory _cursor was loaded for
   Timer? _cursorPersistTimer;
@@ -176,6 +185,7 @@ class SyncHub {
     _pingTimer?.cancel(); _pingTimer = null;
     _cursorPersistTimer?.cancel(); _cursorPersistTimer = null;
     _convSeqPersistTimer?.cancel(); _convSeqPersistTimer = null;
+    _syncRecoveryTimer?.cancel(); _syncRecoveryTimer = null;
     _sub?.cancel(); _sub = null;
     try { _ch?.sink.close(); } catch (_) {}
     _ch = null;
@@ -187,6 +197,10 @@ class SyncHub {
     _byConv.clear();
     _seen.clear();
     _cursor = 0;
+    _syncPageCursor = 0;
+    _syncPageNumber = 0;
+    _syncRecoveryActive = false;
+    _syncRequestedWhileActive = false;
     _cursorUid = null;
     // [SYNC-CURSOR-1] Drop the per-conversation position map too, so it reloads
     // scoped to the next account (the persisted per-account file is left intact).
@@ -228,9 +242,17 @@ class SyncHub {
   /// ids we've already seen, so calling this repeatedly is cheap and safe.
   void forceResync() {
     if (_ch == null) { ensureConnected(); return; } // socket down → reconnect (which sends hello)
+    if (_syncRecoveryActive) {
+      _syncRequestedWhileActive = true;
+      return;
+    }
     try {
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A
+      _syncPageCursor = _cursor;
+      _syncPageNumber = 0;
+      _syncRecoveryActive = true;
       _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server)
+      _armSyncRecoveryTimeout();
     } catch (_) {
       ensureConnected();
     }
@@ -243,9 +265,17 @@ class SyncHub {
   void syncFromPush() {
     _syncTrigger = 'push';
     if (_ch == null) { ensureConnected(); return; }
+    if (_syncRecoveryActive) {
+      _syncRequestedWhileActive = true;
+      return;
+    }
     try {
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch;
+      _syncPageCursor = _cursor;
+      _syncPageNumber = 0;
+      _syncRecoveryActive = true;
       _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server)
+      _armSyncRecoveryTimeout();
     } catch (_) { ensureConnected(); }
   }
 
@@ -388,6 +418,9 @@ class SyncHub {
         _convSeqUid = _myUid;
       }
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A sync_catchup base
+      _syncPageCursor = _cursor;
+      _syncPageNumber = 0;
+      _syncRecoveryActive = true;
       // [AVA-SYNC-SKIP] Ask the server to short-circuit an EMPTY catch-up: a socket
       // flap under Android doze fires ~15x/user/day and 97.6% of resume/reconnect
       // catch-ups return 0 messages. `skip:true` invites the InboxDO to answer with a
@@ -400,6 +433,7 @@ class SyncHub {
       // old worker ignores the extra field and returns a normal 'sync'. Kill switch:
       // RemoteConfig.syncSkipEnabled (default true) — false → always request a full sync.
       _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq, if (_skipEligible) 'skip': true}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server) // request backlog since cursor
+      _armSyncRecoveryTimeout();
       _pingTimer?.cancel();
       _pingsUnanswered = 0;
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
@@ -442,8 +476,13 @@ class SyncHub {
   void _onClosed([String reason = 'closed', String? err]) {
     _sub?.cancel(); _sub = null;
     _pingTimer?.cancel(); _pingTimer = null;
+    _syncRecoveryTimer?.cancel(); _syncRecoveryTimer = null;
     try { _ch?.sink.close(); } catch (_) {}
     _ch = null;
+    // A reconnect starts again from the last contiguous persisted sync cursor.
+    // Never carry a half-finished page chain onto a new socket.
+    _syncRecoveryActive = false;
+    _syncRequestedWhileActive = false;
     // [NET-COORD-1] Report the socket-down signal to the ConnectivityCoordinator
     // so it can distinguish RECOVERING from a flap (DEGRADED) and gate drains.
     try { ConnectivityCoordinator.I.reportSocketDown(); } catch (_) {}
@@ -534,6 +573,8 @@ class SyncHub {
       case 'pong':
         break;
       case 'sync_skip':
+        _syncRecoveryTimer?.cancel();
+        _syncRecoveryTimer = null;
         // [AVA-SYNC-SKIP] The InboxDO confirmed our persisted cursor is already at the
         // server head, so it skipped the full catch-up replay (no message scan, no
         // DO-SQLite payload build). There is nothing to ingest — do NOT touch _cursor,
@@ -544,9 +585,17 @@ class SyncHub {
           'trigger': _syncTrigger,
           'cursor': _cursor,
         });
-        _syncTrigger = 'login';
+        _syncRecoveryActive = false;
+        if (_syncRequestedWhileActive) {
+          _syncRequestedWhileActive = false;
+          scheduleMicrotask(forceResync);
+        } else {
+          _syncTrigger = 'login';
+        }
         break;
       case 'sync':
+        _syncRecoveryTimer?.cancel();
+        _syncRecoveryTimer = null;
         // Apply MY read high-water marks FIRST, before any message is replayed,
         // so a full re-sync (cursor=0 on every launch) doesn't recount already-
         // read messages as unread. Restores read state on a fresh/2nd device.
@@ -621,14 +670,49 @@ class SyncHub {
         // P13-A sync_catchup: one row per (re)connect cursor sync.
         {
           final msgs = (m['messages'] as List? ?? const []).length;
+          final hasMore = m['has_more'] == true;
+          final nextCursor = (m['next_cursor'] as num?)?.toInt() ?? _syncPageCursor;
           if (msgs > 0) _maybeEmitTtfm();
           Analytics.capture('sync_catchup', {
             'messages': msgs,
             'ms': _syncStartedAt > 0 ? DateTime.now().millisecondsSinceEpoch - _syncStartedAt : 0,
             'cursor_gap': msgs,
             'trigger': _syncTrigger,
+            'page': _syncPageNumber,
+            'has_more': hasMore,
           });
-          _syncTrigger = 'login'; // reset; the next cycle re-labels itself
+          if (hasMore && nextCursor > _syncPageCursor) {
+            _syncPageCursor = nextCursor;
+            _syncPageNumber++;
+            Analytics.capture('sync_pagination_requested', {
+              'page': _syncPageNumber,
+              'cursor': nextCursor,
+              'global_cursor': _cursor,
+            });
+            // Schedule after this frame is fully consumed. Use the page cursor,
+            // never the possibly-newer live/global cursor (see field comment).
+            scheduleMicrotask(() {
+              if (_ch != null && _wantConnected) {
+                _send({'type': 'hello', 'cursor': nextCursor, 'cc': _convSeq});
+                _armSyncRecoveryTimeout();
+              }
+            });
+          } else {
+            if (hasMore) {
+              Analytics.capture('sync_pagination_stalled', {
+                'page': _syncPageNumber,
+                'next_cursor': nextCursor,
+                'page_cursor': _syncPageCursor,
+              });
+            }
+            _syncRecoveryActive = false;
+            if (_syncRequestedWhileActive) {
+              _syncRequestedWhileActive = false;
+              scheduleMicrotask(forceResync);
+            } else {
+              _syncTrigger = 'login'; // reset only after the final page
+            }
+          }
         }
         break;
       case 'msg':
@@ -850,7 +934,14 @@ class SyncHub {
 
   void _ingestMsg(Map<String, dynamic> r, {bool fromSync = false}) {
     final id = (r['id'] as num?)?.toInt() ?? 0;
-    if (id > _cursor) { _cursor = id; _scheduleCursorPersist(); }
+    // While bounded recovery pages are in flight, only those ordered pages may
+    // advance the durable cursor. A live message can have a much higher id; if it
+    // moved the persisted cursor here and the socket died before page 2, the next
+    // launch would resume after the gap and permanently hide those older rows.
+    if (id > _cursor && (fromSync || !_syncRecoveryActive)) {
+      _cursor = id;
+      _scheduleCursorPersist();
+    }
     final conv = (r['conv'] ?? '').toString();
     // [SYNC-CURSOR-1] Phase 1 (dark): record the per-conversation position from the
     // server's conv_seq stamp. Unused until the switch-over; keeps the map warm so it
@@ -1270,6 +1361,24 @@ class SyncHub {
     _cursorPersistTimer?.cancel();
     _cursorPersistTimer = Timer(const Duration(seconds: 2),
         () => DiskCache.write(_kCursorKey, _cursor.toString()));
+  }
+
+  /// A healthy WebSocket can still lose one application frame during a mobile
+  /// network handover. Do not leave a cold-history page chain wedged until the
+  /// broader zombie watchdog fires: reconnect from the last contiguous cursor.
+  void _armSyncRecoveryTimeout() {
+    _syncRecoveryTimer?.cancel();
+    _syncRecoveryTimer = Timer(const Duration(seconds: 20), () {
+      if (!_syncRecoveryActive || _ch == null || !_wantConnected) return;
+      Analytics.capture('sync_page_timeout', {
+        'page': _syncPageNumber,
+        'page_cursor': _syncPageCursor,
+        'global_cursor': _cursor,
+        'trigger': _syncTrigger,
+      });
+      _syncTrigger = 'sync_timeout';
+      _onClosed('sync_timeout');
+    });
   }
 
   /// [SYNC-CURSOR-1] Persist the per-conversation position map (debounced, one small

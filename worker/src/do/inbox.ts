@@ -890,17 +890,27 @@ export class InboxDO {
     } catch { return []; }
   }
 
-  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[]; safety_flags: unknown[]; thread_clears: unknown[] } {
+  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[]; safety_flags: unknown[]; thread_clears: unknown[]; has_more: boolean; next_cursor: number } {
     // conv_seq (Phase 0 stamp) and conv_meta.seq are added as ADDITIVE fields so a
     // Phase-1-aware client can learn each conversation's per-stream position from the
     // ordinary snapshot; older clients simply ignore the extra columns. No behaviour
     // change to the legacy global-cursor path. [MSG-DELETE-1] `mid` (canonical global
     // id) is also selected so the client can apply the thread-clear cursor locally.
-    const messages = this.sql.exec(
+    // Read one sentinel row beyond the response cap. Older clients ignore the
+    // additive pagination fields; current clients continue from next_cursor until
+    // has_more=false. Returning the page's own cursor is important: a live append
+    // can advance a client's global high-water while cold recovery is in flight,
+    // and using that live high-water for page 2 would silently skip the gap.
+    const page = this.sql.exec(
       `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq, mid
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
-      cursor, SYNC_LIMIT,
+      cursor, SYNC_LIMIT + 1,
     ).toArray();
+    const hasMore = page.length > SYNC_LIMIT;
+    const messages = hasMore ? page.slice(0, SYNC_LIMIT) : page;
+    const nextCursor = messages.length
+      ? Number((messages[messages.length - 1] as { id?: number }).id ?? cursor)
+      : cursor;
     const receipts = this.sql.exec(`SELECT conv, peer, delivered_id, read_id FROM receipts`).toArray();
     const convs = this.sql.exec(`SELECT conv, last_id, unread, peer, seq FROM conv_meta`).toArray();
     // OWNER read high-water per conv — lets a fresh client restore its unread
@@ -925,7 +935,11 @@ export class InboxDO {
         `SELECT msg_id, conv, category, severity, dismissed FROM safety_flags ORDER BY ts DESC LIMIT 500`,
       ).toArray();
     } catch { /* table may predate this migration on an old DO */ }
-    return { type: "sync", messages, receipts, convs, reads, calls, safety_flags, thread_clears: this.threadClearsSnapshot() };
+    return {
+      type: "sync", messages, receipts, convs, reads, calls, safety_flags,
+      thread_clears: this.threadClearsSnapshot(), has_more: hasMore,
+      next_cursor: nextCursor,
+    };
   }
 
   // Owner marks a conversation read up to `read_ts` (unix seconds). Monotonic —
