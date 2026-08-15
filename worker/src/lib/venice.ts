@@ -170,7 +170,12 @@ async function venicePost(env: VeniceEnv, path: string, body: unknown, timeoutMs
   });
   const j = (await r.json().catch(() => ({}))) as any;
   if (!r.ok) {
-    const msg = String(j?.error ?? j?.message ?? "unknown").slice(0, 300);
+    // Venice returns field-level validation failures in `details`. Preserve a
+    // bounded copy so production telemetry identifies the rejected field
+    // instead of collapsing every provider 400 into "Invalid parameters".
+    const summary = String(j?.error ?? j?.message ?? "unknown");
+    const details = j?.details == null ? "" : ` ${JSON.stringify(j.details)}`;
+    const msg = `${summary}${details}`.slice(0, 500);
     const err: any = new Error(`venice ${r.status}: ${msg}`);
     err.status = r.status;
     err.venice = j;
@@ -319,7 +324,10 @@ export async function veniceRetrieveVideo(
 }
 
 // ── Music (queue + poll) ─────────────────────────────────────────────────────
-// minimax-music-v26 accepts the requested duration in 60–210 second bands.
+// AvaTOK accepts a requested duration in 60–210 second bands. The duration is
+// retained in our job metadata, but it is only sent to Venice models whose
+// live queue schema supports duration_seconds. MiniMax Music 2.6 is priced per
+// generation and rejects that duration-tier field.
 export const VENICE_MUSIC_MIN_SECONDS = 60;
 export const VENICE_MUSIC_MAX_SECONDS = 210;
 export const VENICE_MUSIC_DEFAULT_SECONDS = 60;
@@ -330,7 +338,7 @@ export function clampMusicSeconds(requested: number | undefined): number {
 }
 
 export interface VeniceMusicOptions {
-  /** Requested duration for minimax-music-v26, clamped to 60–210 seconds. */
+  /** Requested duration; sent only to duration-capable Venice music models. */
   durationSeconds?: number;
   /** Approved vocal lyrics sent separately from the musical-direction prompt. */
   lyricsPrompt?: string;
@@ -347,11 +355,13 @@ export async function veniceQueueMusic(
 ): Promise<{ queueId: string }> {
   const body: any = { model, prompt };
   if (opts.lyricsPrompt) body.lyrics_prompt = opts.lyricsPrompt;
-  // [VENICE-API-SHAPE-1 2026-08-14] Live schema: the field is
-  // `duration_seconds` — `duration` is REJECTED ("Unrecognized key"). Verified
-  // with a real queued job; /audio/quote accepts { model, duration_seconds }
-  // (no prompt) and priced 60s at $0.03 as catalogued.
-  if (model === "minimax-music-v26") body.duration_seconds = clampMusicSeconds(opts.durationSeconds);
+  // Venice exposes duration_seconds only for duration-tiered music models.
+  // MiniMax Music 2.6 is a fixed per-generation model and returns HTTP 400 when
+  // this field is present. Keep this allowlist explicit so a new default model
+  // cannot inherit an unsupported provider parameter.
+  if (model === "ace-step-15" || model === "elevenlabs-music") {
+    body.duration_seconds = clampMusicSeconds(opts.durationSeconds);
+  }
   const j = await venicePost(env, "/audio/queue", body, 30000);
   const queueId = String(j?.queue_id ?? j?.id ?? "");
   if (!queueId) throw new Error("venice music: no queue id in response");

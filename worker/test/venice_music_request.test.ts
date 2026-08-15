@@ -25,11 +25,10 @@ describe("Venice music queue request", () => {
       model: "minimax-music-v26",
       prompt: "Upbeat electronic dance track with a warm vocal",
       lyrics_prompt: "We dance until the morning light",
-      duration_seconds: 60,
     });
   });
 
-  it("keeps instrumental requests lyric-free and preserves model duration rules", async () => {
+  it("keeps fixed-generation MiniMax instrumental requests lyric and duration free", async () => {
     let requestBody: BodyInit | null | undefined;
     vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
       requestBody = init?.body;
@@ -47,6 +46,28 @@ describe("Venice music queue request", () => {
 
     expect(JSON.parse(String(requestBody))).toEqual({
       model: "minimax-music-v26",
+      prompt: "Instrumental piano and strings",
+    });
+  });
+
+  it("sends duration only to a duration-capable music model", async () => {
+    let requestBody: BodyInit | null | undefined;
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = init?.body;
+      return new Response(JSON.stringify({ queue_id: "music-3" }), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    await veniceQueueMusic(
+      { VENICE_API_KEY: "test-key" },
+      "ace-step-15",
+      "Instrumental piano and strings",
+      { durationSeconds: 120 },
+    );
+
+    expect(JSON.parse(String(requestBody))).toEqual({
+      model: "ace-step-15",
       duration_seconds: 120,
       prompt: "Instrumental piano and strings",
     });

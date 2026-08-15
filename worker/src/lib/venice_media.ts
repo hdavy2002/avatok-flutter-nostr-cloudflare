@@ -281,7 +281,8 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   const route = veniceRoute("music", a.tier);
   const capability = "media_music_generate";
   // minimax-music-v26 is the single production music route. Keep the agreed
-  // duration in the request and job row so the player and share card agree.
+  // duration in AvaTOK's job metadata; the provider's fixed-generation queue
+  // schema does not accept duration_seconds.
   const durationSeconds = clampMusicSeconds(a.durationSeconds);
   // Use the approved lyrics as the source of truth for public promotional copy;
   // the style brief alone produced generic titles that did not match the song.
@@ -331,7 +332,8 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     emitReason(true, null);
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
-    await failVeniceMediaJob(env, { jobId, errorCode: "provider_unavailable", reason: "submit_failed" });
+    const errorCode = classifyVeniceError(e);
+    await failVeniceMediaJob(env, { jobId, errorCode, reason: "submit_failed" });
     void track(env, a.uid, "ava_music_error", "avaai", { stage: "submit", model: route.model, provider: "venice", error: msg, job_id: jobId });
     emitReason(false, msg);
     return { ok: false, message: "I couldn't start that track right now — please try again." };
