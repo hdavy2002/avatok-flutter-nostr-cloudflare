@@ -1362,9 +1362,10 @@ class _CallScreenState extends State<CallScreen> {
         phase == 'no-answer' ||
         phase == 'network-error';
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    // Five secondary controls now occupy two rows above the isolated hang-up.
-    // Reserve their real footprint so the avatar/status content scrolls above
-    // the controls instead of being centred underneath them on short phones.
+    // Once connected, secondary controls occupy three rows. Reserve their real
+    // footprint so the avatar/status content scrolls above the controls instead
+    // of being centred underneath them on short phones. Before connection, the
+    // compact End-only panel gets its own much smaller reservation below.
     // [CALL-UI-GRID-2026-08-05] Was 222 for the old 3+2 circles + isolated
     // hang-up. The labelled 2x3 panel is taller: 14 card margin + 18 pad +
     // 2x(64 circle + 6 + ~15 label) + 18 row gap + 18 pad ≈ 238.
@@ -1377,19 +1378,19 @@ class _CallScreenState extends State<CallScreen> {
     // [CALL-UI-GRID-2] This used to be `callRecordingEnabled ? 350 : 250`,
     // because row 3 held Record and nothing else. Row 3 now also holds Hold,
     // which is UNCONDITIONAL (it is not a recording feature and has no flag),
-    // so the third row always renders and the reservation is always 350. With
+    // so the third row always renders after connection and needs 350px. With
     // the recording flag off, Record's third collapses to SizedBox.shrink()
     // INSIDE a row that still occupies its full height — a shorter reservation
     // would put the panel back over the avatar.
     //
-    // [CALL-UI-COLLAPSE-1] This constant is NOT touched by the collapsible
-    // panel. It is read in exactly one place — the `if (light)` audio subtree
-    // below, as scroll padding / minHeight so the hero avatar cannot scroll
-    // under the panel — and the audio panel never collapses. On video the
-    // panel is a plain bottom-anchored overlay over a Positioned.fill video
-    // surface, so it reserves nothing and collapsing it hands the full frame
-    // back with no layout arithmetic at all.
-    const controlPanelHeight = 350.0;
+    // [CALL-UI-COLLAPSE-1] This value is not affected by collapsing video
+    // controls. It is read in exactly one place — the `if (light)` audio
+    // subtree below, as scroll padding / minHeight so the hero avatar cannot
+    // scroll under the panel. On video the panel is a bottom overlay.
+    // Before media is connected there is nothing useful to mute, hold, record,
+    // translate, add, or send DTMF to. Keep the status unobscured and surface
+    // only the one action that matters during ringing: ending the attempt.
+    final controlPanelHeight = connected ? 350.0 : 116.0;
     // [CALL-UI-COLLAPSE-1] Collapsed ONLY ever on video. Deriving it here
     // rather than reading `_panelCollapsed` raw is what makes the camera-off
     // edge case safe: the instant `showVideo` goes false the audio layout
@@ -2098,7 +2099,8 @@ class _CallScreenState extends State<CallScreen> {
                 borderRadius: BorderRadius.circular(AD.rSheet),
                 border: Border.all(color: AD.borderCard, width: 1),
               ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
+              child: connected
+                  ? Column(mainAxisSize: MainAxisSize.min, children: [
                 Row(children: [
                   Expanded(
                     child: _CallTile(
@@ -2289,7 +2291,24 @@ class _CallScreenState extends State<CallScreen> {
                         : const SizedBox.shrink(),
                   ),
                 ]),
-              ]),
+              ])
+                  : SizedBox(
+                      height: 82,
+                      child: Center(
+                        child: SizedBox(
+                          width: 108,
+                          child: _CallTile(
+                            icon: PhosphorIcons.phoneDisconnect(
+                                PhosphorIconsStyle.fill),
+                            label: 'End call',
+                            onTap: _hangup,
+                            bg: AD.destructiveBg,
+                            border: AD.destructiveBg,
+                            ink: AD.destructiveInk,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
