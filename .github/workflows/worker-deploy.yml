@@ -55,7 +55,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ALLOW_PROD: ${{ inputs.environment == 'prod' && '1' || '0' }}
         run: |
-          scripts/d1_apply_alters.py worker/migrations/2026-08-15-venice-song-cards.sql --binding DB_MEDIA
+          python3 scripts/d1_apply_alters.py worker/migrations/2026-08-15-venice-song-cards.sql --binding DB_MEDIA
           scripts/cf.sh worker d1 execute DB_MEDIA --remote --command "CREATE UNIQUE INDEX IF NOT EXISTS idx_venice_media_jobs_share_token ON venice_media_jobs(share_token) WHERE share_token IS NOT NULL;"
 
       - name: Enable Venice media
