@@ -95,7 +95,8 @@ class AW {
 class AWText {
   AWText._();
 
-  static const String family = ADText.family;
+  // Null intentionally inherits the platform-native UI font from ADText.
+  static const String? family = ADText.family;
 
   /// Delegates to [ADText] so family and defaults have ONE source; the wallet
   /// only overrides size, weight, tracking and leading.

@@ -30,8 +30,8 @@ import 'avatok_dark.dart' show AD;
 ///   elastic, no overshoot, no glowing halos, no infinite decorative loops.
 /// * Colour is near-black + white + grey + ONE accent + red for errors.
 ///   Colour must MEAN something (unread, error, live). It is not decoration.
-/// * Type comes from `ADText`, which is already reweighted (400 body,
-///   500/600 emphasis, 700 titles, never 800/900).
+/// * Type comes from `ADText`: platform-native face, 400 body, 500 emphasis,
+///   700 titles, never 800/900.
 class Msg {
   Msg._();
 
@@ -144,6 +144,8 @@ class Msg {
   // white, or grey — and comes from AD.
   /// The single brand accent. Unread, active tab, send button, FAB.
   static const Color accent = AD.primaryBadge;
+  /// Stable dark chat input surface, aligned with the incoming-bubble family.
+  static const Color input = Color(0xFF202C33);
   /// Errors and destructive actions ONLY.
   static const Color error = AD.danger;
   /// Live/online presence.

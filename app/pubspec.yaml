@@ -312,10 +312,10 @@ flutter:
         # Before this, the LIGHTEST weight the app could physically render was
         # SemiBold, so every word in the product — body copy, message previews,
         # timestamps, hints — came out bold and nothing could be emphasised.
-        # The design contract keeps Nunito (Inter is forbidden); the fix is to
-        # use Nunito properly, not to swap it. These two files are static
-        # instances cut from the canonical Google Fonts Nunito[wght] variable
-        # font, so they are the same design as the 600-900 files beside them.
+        # UI-WHATSAPP-STABLE-1 now uses each platform's native UI font. Nunito
+        # remains bundled for the AvaTOK wordmark and for easy visual rollback;
+        # these files are static instances cut from the canonical Google Fonts
+        # Nunito[wght] variable font.
         # NOTE: newly bundled fonts need a FULL REBUILD — hot reload will not
         # pick them up, and the app will silently fall back to the 600 weight.
         - asset: assets/fonts/Nunito-Regular.ttf

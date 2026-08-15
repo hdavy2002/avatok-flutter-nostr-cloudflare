@@ -7,11 +7,12 @@ import 'messenger_theme.dart';
 /// bubble kind (text, image, video, audio/voice note, file, link preview,
 /// youtube, sticker, poll, location, contact card, Ava).
 ///
-/// Owner decision 2026-07-17:
-///   * The thread canvas is WHITE ([kChatCanvas]) for 1:1 and group threads.
-///   * Every bubble sits inside a PALE fill that is easy on the eyes.
-///   * In a group, each participant gets their OWN pale colour so you can tell
-///     at a glance who is speaking.
+/// Stable chat visual direction (UI-WHATSAPP-STABLE-1):
+///   * Threads use a dark canvas with compact, low-noise bubbles.
+///   * Incoming messages use one neutral slate; outgoing messages use muted
+///     WhatsApp green.
+///   * Group identity comes from the sender label/avatar, never rainbow bubble
+///     fills. This makes a busy conversation calmer and easier to scan.
 ///
 /// Why this file exists: before it, `AD.bubbleInBg` / `AD.bubbleInInk` /
 /// `AD.bubbleInMeta` were referenced *literally* at ~10 sites inside
@@ -22,7 +23,7 @@ import 'messenger_theme.dart';
 /// down; never re-derive colours from `onRight` inside a card.
 @immutable
 class BubbleTheme {
-  /// Bubble fill. Always pale.
+  /// Bubble fill.
   final Color bg;
 
   /// Body text / primary icon colour. Guaranteed >= 4.5:1 against [bg].
@@ -34,8 +35,8 @@ class BubbleTheme {
   /// Play button, waveform active, progress accents.
   final Color play;
 
-  /// Hairline border. Needed because pale bubbles on a white canvas would
-  /// otherwise have no edge at all.
+  /// Internal separator and small-control border colour. Normal text bubbles
+  /// deliberately do not draw an outer border.
   final Color border;
 
   /// Corner rounding — tail on the correct side.
@@ -92,66 +93,45 @@ const BorderRadius kBubbleRadiusIn = BorderRadius.only(
   bottomRight: Radius.circular(Msg.rMd),
 );
 
-/// My own bubbles — pale green, in every thread type.
+/// My own bubbles — WhatsApp dark-mode inspired muted green.
 const BubbleTheme kBubbleMine = BubbleTheme(
-  bg: Color(0xFFDCF3E2),
-  ink: Color(0xFF15301F),
-  meta: Color(0xFF4E7A5D),
-  play: Color(0xFF3E8E5A),
-  border: Color(0xFFBFE3CA),
+  bg: Color(0xFF005C4B),
+  ink: Color(0xFFE9EDEF),
+  meta: Color(0xFFA6D6C9),
+  play: Color(0xFFD9FDD3),
+  border: Color(0xFF1A7462),
   radius: kBubbleRadiusOut,
 );
 
-/// Incoming bubbles in a 1:1 thread, and the neutral fallback anywhere.
+/// Incoming bubbles in every human thread: a single quiet slate, including
+/// groups. Sender labels and avatars carry identity instead of colourful fills.
 const BubbleTheme kBubbleTheirs = BubbleTheme(
-  bg: Color(0xFFF1EFFA),
-  ink: Color(0xFF241F3A),
-  meta: Color(0xFF6E699A),
-  play: Color(0xFF6A63B8),
-  border: Color(0xFFDDD8F0),
+  bg: Color(0xFF202C33),
+  ink: Color(0xFFE9EDEF),
+  meta: Color(0xFFAEBAC1),
+  play: Color(0xFF53BDEB),
+  border: Color(0xFF3B4A54),
   radius: kBubbleRadiusIn,
 );
 
-/// Ava (the assistant) — distinct from any human, never drawn from the palette.
+/// Ava remains identifiable, but uses a restrained blue-slate rather than a
+/// pastel card so it belongs to the same stable chat system.
 const BubbleTheme kBubbleAva = BubbleTheme(
-  bg: Color(0xFFEFF4FB),
-  ink: Color(0xFF17263C),
-  meta: Color(0xFF5F7492),
-  play: Color(0xFF3D6FA8),
-  border: Color(0xFFD6E3F2),
+  bg: Color(0xFF243542),
+  ink: Color(0xFFE9EDEF),
+  meta: Color(0xFFB6C7D5),
+  play: Color(0xFF7CC4FF),
+  border: Color(0xFF405767),
   radius: kBubbleRadiusIn,
 );
 
-/// Per-sender pale palette for GROUP threads — 12 entries so a realistic group
-/// rarely collides. Ordered so adjacent entries are visually distinct (a
-/// hash lands anywhere, but neighbours in a small group often differ by 1).
-///
-/// Every entry is hand-checked for >= 4.5:1 ink-on-bg and >= 3:1 meta-on-bg.
+/// Compatibility palette for group sender resolution. All entries intentionally
+/// resolve to the same neutral incoming treatment; identity is provided by the
+/// sender header and avatar, not a rainbow of card backgrounds.
 const List<BubbleTheme> kGroupSenderPalette = [
-  // lilac
-  BubbleTheme(bg: Color(0xFFF1EFFA), ink: Color(0xFF241F3A), meta: Color(0xFF6E699A), play: Color(0xFF6A63B8), border: Color(0xFFDDD8F0), radius: kBubbleRadiusIn),
-  // peach
-  BubbleTheme(bg: Color(0xFFFDEEE3), ink: Color(0xFF3B2415), meta: Color(0xFF8A6046), play: Color(0xFFC07A4E), border: Color(0xFFF3DAC6), radius: kBubbleRadiusIn),
-  // mint
-  BubbleTheme(bg: Color(0xFFE6F5EC), ink: Color(0xFF16311F), meta: Color(0xFF4F7A5F), play: Color(0xFF4E9A6E), border: Color(0xFFCCE7D8), radius: kBubbleRadiusIn),
-  // sky
-  BubbleTheme(bg: Color(0xFFE8F1FB), ink: Color(0xFF152A40), meta: Color(0xFF4E7091), play: Color(0xFF5583B0), border: Color(0xFFCEE1F3), radius: kBubbleRadiusIn),
-  // rose
-  BubbleTheme(bg: Color(0xFFFCEBF1), ink: Color(0xFF3A1A26), meta: Color(0xFF8B5670), play: Color(0xFFB76A85), border: Color(0xFFF2D3DF), radius: kBubbleRadiusIn),
-  // butter
-  BubbleTheme(bg: Color(0xFFFBF3DC), ink: Color(0xFF352A0E), meta: Color(0xFF7C6830), play: Color(0xFFA98B34), border: Color(0xFFEEE1BC), radius: kBubbleRadiusIn),
-  // aqua
-  BubbleTheme(bg: Color(0xFFE4F4F4), ink: Color(0xFF12302F), meta: Color(0xFF477877), play: Color(0xFF3F918F), border: Color(0xFFC8E6E5), radius: kBubbleRadiusIn),
-  // terra
-  BubbleTheme(bg: Color(0xFFFAECE7), ink: Color(0xFF3B1F17), meta: Color(0xFF8A5645), play: Color(0xFFB2664F), border: Color(0xFFEFD5CC), radius: kBubbleRadiusIn),
-  // sage
-  BubbleTheme(bg: Color(0xFFEDF3E6), ink: Color(0xFF232E17), meta: Color(0xFF61764C), play: Color(0xFF6E8B4E), border: Color(0xFFD8E4C9), radius: kBubbleRadiusIn),
-  // periwinkle
-  BubbleTheme(bg: Color(0xFFEBEDFB), ink: Color(0xFF1C2140), meta: Color(0xFF5C639A), play: Color(0xFF5A63B8), border: Color(0xFFD3D7F1), radius: kBubbleRadiusIn),
-  // clay
-  BubbleTheme(bg: Color(0xFFF7EFE6), ink: Color(0xFF33261A), meta: Color(0xFF7A634B), play: Color(0xFF9B7A53), border: Color(0xFFE8DACA), radius: kBubbleRadiusIn),
-  // teal-grey
-  BubbleTheme(bg: Color(0xFFEAF0F1), ink: Color(0xFF1B2A2D), meta: Color(0xFF556C71), play: Color(0xFF4C767D), border: Color(0xFFD2E0E2), radius: kBubbleRadiusIn),
+  kBubbleTheirs, kBubbleTheirs, kBubbleTheirs, kBubbleTheirs,
+  kBubbleTheirs, kBubbleTheirs, kBubbleTheirs, kBubbleTheirs,
+  kBubbleTheirs, kBubbleTheirs, kBubbleTheirs, kBubbleTheirs,
 ];
 
 /// Stable index for [senderKey] into [kGroupSenderPalette].
@@ -194,7 +174,6 @@ BubbleTheme resolveBubbleTheme({
   return kGroupSenderPalette[groupSenderPaletteIndex(key)];
 }
 
-/// Sender-name header colour inside a group bubble — a saturated sibling of the
-/// bubble's own [BubbleTheme.play], so the name matches the bubble it sits in.
-Color groupSenderNameColor(String senderKey) =>
-    kGroupSenderPalette[groupSenderPaletteIndex(senderKey)].play;
+/// Sender-name header colour inside a group bubble. The uniform accent prevents
+/// the old rainbow-card effect while keeping names easy to spot.
+Color groupSenderNameColor(String _) => kBubbleTheirs.play;

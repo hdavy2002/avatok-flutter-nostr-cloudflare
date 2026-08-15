@@ -8,10 +8,8 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
 
   // Lime circular send button — ink border, hard shadow (the screen's one
   // lime primary action).
-  // [CHAT-UI-COMPOSER-1] Legacy composer's mic<->send morph — same
-  // AnimatedSwitcher cross-fade+scale as the rich input bar's `_greenButton`.
-  // Every call site benefits; sites that always pass the same icon (plain
-  // "send") simply see no transition since the ValueKey never changes.
+  // [CHAT-UI-COMPOSER-1] The legacy composer also swaps mic/send instantly;
+  // geometry and surrounding controls remain fixed.
   Widget _sendCircle(IconData icon, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(width: 44, height: 44,
@@ -92,13 +90,6 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
     );
   }
 
-  // [AVA-GRP-UI] Full-width ORANGE rule that caps the composer, visually
-  // separating the input area (hint row + field) from the bubble list above it
-  // (owner request). Uses the app orange accent `AD.unreadAccent` (0xFFF2A65A);
-  // sits at the very top of the composer band so it spans the whole screen width.
-  Widget _composerTopDivider() =>
-      Container(width: double.infinity, height: 2.5, color: AD.unreadAccent);
-
   Widget _inputBar() {
     // Input band: paper-2 with ink top border; field = ink-bordered pill.
     const bandDeco = BoxDecoration(
@@ -118,7 +109,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         focusNode: _composerFocus,
         hasText: _hasText,
         hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
-        fieldColor: _avaMode ? AD.micIdleBg : AD.inputField,
+        fieldColor: Msg.input,
         onSend: _send,
         onAttach: _attach,
         onCamera: () => _pickImage(ImageSource.camera),
@@ -128,18 +119,15 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         onSticker: _sendStickerAsset,
         onMention: _openMentionPicker,
         topSlot: Column(mainAxisSize: MainAxisSize.min, children: [
-          _composerTopDivider(),
           if (_replyTo != null || _editing != null) _replyBanner(),
           if (_sttActive) _listeningBanner(),
           if (_showComposePreview) _composePreviewBar(),
-          _composerTools(),
         ]),
       );
     }
     return Container(
       decoration: bandDeco,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _composerTopDivider(),
         if (_replyTo != null || _editing != null) _replyBanner(),
         if (_sttActive) _listeningBanner(),
         if (_showComposePreview) _composePreviewBar(),

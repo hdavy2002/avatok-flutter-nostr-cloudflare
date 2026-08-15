@@ -20,13 +20,12 @@ import 'ui/messenger_theme.dart';
 // regardless of the OS light/dark setting; a "light" fallback in the global
 // ThemeData is what produced the cream flashes this theme now fixes.
 
-/// [UI-NOMOTION-1 2026-08-06] A `PageTransitionsBuilder` that does nothing.
+/// A quiet Android route transition: a short fade without scale or overshoot.
 ///
-/// `buildTransitions` returns the child untouched, so a push/pop is an instant
-/// cut with no scale, no fade and no slide. Used for Android in
-/// [AvaTheme.light] — see the note there for why iOS keeps Cupertino.
-class _NoPageTransition extends PageTransitionsBuilder {
-  const _NoPageTransition();
+/// The interval completes the visual phase in roughly 180ms of Material's
+/// standard route timeline, while retaining the platform's normal back stack.
+class _StableFadePageTransition extends PageTransitionsBuilder {
+  const _StableFadePageTransition();
 
   @override
   Widget buildTransitions<T>(
@@ -35,8 +34,14 @@ class _NoPageTransition extends PageTransitionsBuilder {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
     Widget child,
-  ) =>
-      child;
+  ) => FadeTransition(
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: const Interval(0, 0.6, curve: Curves.easeOutCubic),
+          reverseCurve: const Interval(0.4, 1, curve: Curves.easeInCubic),
+        ),
+        child: child,
+      );
 }
 
 class AvaTheme {
@@ -68,29 +73,13 @@ class AvaTheme {
       ),
       scaffoldBackgroundColor: AD.bg,
       canvasColor: AD.bg,
-      fontFamily: ADText.family,
-      // [UI-NOMOTION-1 2026-08-06] Android pushes are a HARD CUT.
-      //
-      // Android was on `ZoomPageTransitionsBuilder` — Material 3's zoom, which
-      // scales the incoming route up from ~0.85 with a cross-fade while scaling
-      // the outgoing one. That is the "bouncy, jittery, then it settles" the
-      // owner reported on opening a chat thread: the whole screen was literally
-      // growing into place over ~300ms, and every staged data load landing
-      // during that window (cached messages, receipts, wallpaper) repainted
-      // mid-zoom. Owner decision: no animation, no effects.
-      //
-      // iOS/macOS KEEP `CupertinoPageTransitionsBuilder` on purpose. Its slide
-      // is inseparable from the interactive back-swipe gesture — replacing it
-      // with a no-op would silently remove edge-swipe-to-go-back, which is a
-      // behaviour loss, not a visual one. AvaTOK ships Android today, so the
-      // platform the owner sees is a hard cut either way.
-      //
-      // Supersedes [AVA-FLASH-1] (2026-07-17), which fixed a WHITE FLASH during
-      // this same transition by pinning its fill to `AD.bg`. With no transition
-      // there is no fill to pin, so that flash cannot return here — but do NOT
-      // reintroduce a zoom without also reinstating `backgroundColor: AD.bg`.
+      // Leave the family unset so Flutter uses the platform's native UI face:
+      // Roboto on Android and SF on Apple platforms.
+      // Android uses a brief, non-scaling fade. This restores continuity after
+      // the old hard cut without reintroducing Material's zoom/settling effect.
+      // iOS/macOS retain Cupertino so interactive edge-swipe back still works.
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: _NoPageTransition(),
+        TargetPlatform.android: _StableFadePageTransition(),
         TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
       }),
@@ -98,7 +87,6 @@ class AvaTheme {
 
     final textTheme = base.textTheme
         .apply(
-          fontFamily: ADText.family,
           bodyColor: AD.textPrimary,
           displayColor: AD.textPrimary,
         )
@@ -245,10 +233,10 @@ class AvaTheme {
     );
   }
 
-  /// Brand wordmark — Nunito 700 (the only display weight in the system).
+  /// The AvaTOK wordmark is the one branded exception to native UI type.
   static TextStyle wordmark(double size, {Color color = AD.textPrimary}) =>
       TextStyle(
-          fontFamily: ADText.family,
+          fontFamily: 'Nunito',
           fontWeight: FontWeight.w700,
           fontSize: size,
           letterSpacing: -0.02 * size,

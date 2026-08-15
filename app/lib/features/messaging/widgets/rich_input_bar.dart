@@ -70,7 +70,7 @@ class RichInputBar extends StatefulWidget {
     required this.onSticker,
     this.onMention,
     this.hintText = 'Message',
-    this.fieldColor = AD.inputField,
+    this.fieldColor = Msg.input,
     this.topSlot,
   });
 
@@ -177,10 +177,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
-    const bandDeco = BoxDecoration(
-      color: AD.headerFooter,
-      border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
-    );
+    const bandDeco = BoxDecoration(color: AD.headerFooter);
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         decoration: bandDeco,
@@ -211,13 +208,13 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.newline,
                         style: const TextStyle(fontFamily: ADText.family,
-                            fontWeight: FontWeight.w600, fontSize: 15, color: AD.textOnInput),
+                            fontWeight: FontWeight.w400, fontSize: 15, color: AD.textPrimary),
                         cursorColor: AD.iconSearch,
                         decoration: InputDecoration(
                           hintText: widget.hintText,
                           hintStyle: const TextStyle(fontFamily: ADText.family,
-                              fontSize: 15, color: AD.placeholderOnWhite,
-                              fontWeight: FontWeight.w600),
+                              fontSize: 15, color: AD.textTertiary,
+                              fontWeight: FontWeight.w400),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding:
@@ -225,7 +222,8 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                         ),
                       ),
                     ),
-                    // ── Controls, in reach order: emoji · @ · clip · camera · mic
+                    // Fixed in-pill controls. The primary action lives in a
+                    // separate fixed-width slot, so typing never reflows this row.
                     _barIcon(
                       icon: _panelOpen && _tab == PickerTab.emoji
                           ? PhosphorIcons.keyboard(PhosphorIconsStyle.regular)
@@ -247,63 +245,46 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                       tooltip: 'Attach a file',
                       onTap: widget.onAttach,
                     ),
-                    // Camera and mic step aside once there is text: send has taken
-                    // over the right-hand slot, and dropping two icons is what
-                    // keeps the field readable on a narrow phone.
-                    if (!widget.hasText) ...[
-                      _barIcon(
-                        icon: PhosphorIcons.camera(PhosphorIconsStyle.regular),
-                        color: AD.iconCameraOnWhite,
-                        tooltip: 'Take a photo',
-                        onTap: widget.onCamera,
-                      ),
-                      _barIcon(
-                        icon: PhosphorIcons.microphone(PhosphorIconsStyle.regular),
-                        color: AD.micIdleInk,
-                        tooltip: 'Record a voice note',
-                        onTap: widget.onMic,
-                      ),
-                    ],
+                    _barIcon(
+                      icon: PhosphorIcons.camera(PhosphorIconsStyle.regular),
+                      color: AD.iconCameraOnWhite,
+                      tooltip: 'Take a photo',
+                      onTap: widget.onCamera,
+                    ),
                   ]),
                 ),
               ),
-              // Green send circle — only while there is something to send.
-              AnimatedSize(
-                duration: Msg.fast,
-                curve: Msg.curve,
-                child: widget.hasText
-                    ? Padding(
-                        padding: const EdgeInsets.only(left: Msg.s2),
-                        child: _greenButton(),
-                      )
-                    : const SizedBox(height: 46),
+              // Always reserve the same action slot. Only the icon/action changes.
+              Padding(
+                padding: const EdgeInsets.only(left: Msg.s2),
+                child: SizedBox(
+                  width: 46,
+                  height: 46,
+                  child: widget.hasText ? _sendButton() : _micButton(),
+                ),
               ),
             ]),
           ),
         ]),
       ),
-      // Panel occupies the OS-keyboard slot when open.
-      AnimatedSize(
-        duration: Msg.base,
-        curve: Msg.curve,
-        child: _panelOpen
-            ? RichPickerPanel(
-                height: _panelHeight,
-                initialTab: _tab,
-                onTabChanged: (t) => setState(() => _tab = t),
-                onEmoji: _insertEmoji,
-                onBackspace: _backspaceEmoji,
-                onGif: (g) {
-                  widget.onGif(g);
-                  _closePanel();
-                },
-                onSticker: (s) {
-                  widget.onSticker(s);
-                  _closePanel();
-                },
-              )
-            : const SizedBox.shrink(),
-      ),
+      // Panel replaces the keyboard directly; its height must not animate the
+      // composer or message viewport.
+      if (_panelOpen)
+        RichPickerPanel(
+          height: _panelHeight,
+          initialTab: _tab,
+          onTabChanged: (t) => setState(() => _tab = t),
+          onEmoji: _insertEmoji,
+          onBackspace: _backspaceEmoji,
+          onGif: (g) {
+            widget.onGif(g);
+            _closePanel();
+          },
+          onSticker: (s) {
+            widget.onSticker(s);
+            _closePanel();
+          },
+        ),
     ]);
   }
 
@@ -329,9 +310,8 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
         ),
       );
 
-  /// Send-only now that the mic lives inside the pill. Kept as a circle in
-  /// `AD.sendActiveBg` so the one primary action on the screen is unchanged.
-  Widget _greenButton() => GestureDetector(
+  /// The fixed action slot uses a stable circle; only its purpose changes.
+  Widget _sendButton() => GestureDetector(
         onTap: widget.onSend,
         child: Container(
           width: 46,
@@ -343,6 +323,22 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
           child: Center(
             child: Icon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
                 color: AD.sendActiveInk, size: 22),
+          ),
+        ),
+      );
+
+  Widget _micButton() => GestureDetector(
+        onTap: widget.onMic,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: const BoxDecoration(
+            color: AD.sendActiveBg,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Icon(PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+                color: AD.sendActiveInk, size: 21),
           ),
         ),
       );

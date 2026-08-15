@@ -52,7 +52,7 @@ class LiveTheme {
   // headline — it sat at w700, the same weight as the headline it explains, so
   // nothing on the stage could read as the heading.
   static const TextStyle subStyle = TextStyle(
-    fontFamily: 'Nunito',
+    fontFamily: ADText.family,
     fontWeight: FontWeight.w400,
     fontSize: 14,
     height: 1.45,
@@ -60,7 +60,7 @@ class LiveTheme {
   );
 
   static const TextStyle kickerOnCardStyle = TextStyle(
-    fontFamily: 'Nunito',
+    fontFamily: ADText.family,
     fontWeight: FontWeight.w600,
     fontSize: 11,
     letterSpacing: 0.66,
@@ -71,7 +71,7 @@ class LiveTheme {
   // the stage, so it keeps the heaviest weight the scale allows — but 800/900
   // are gone from the app.
   static const TextStyle phraseStyle = TextStyle(
-    fontFamily: 'Nunito',
+    fontFamily: ADText.family,
     fontWeight: FontWeight.w700,
     fontSize: 21,
     height: 1.35,
@@ -79,7 +79,7 @@ class LiveTheme {
   );
 
   static const TextStyle checkRowStyle = TextStyle(
-    fontFamily: 'Nunito',
+    fontFamily: ADText.family,
     fontWeight: FontWeight.w600,
     fontSize: 14,
     color: paper,
@@ -92,7 +92,7 @@ class LiveTheme {
     return RichText(
       text: TextSpan(
         style: const TextStyle(
-          fontFamily: 'Nunito',
+          fontFamily: ADText.family,
           fontWeight: FontWeight.w600,
           fontSize: 24,
           letterSpacing: -0.5,
@@ -113,7 +113,7 @@ class LiveTheme {
                 ),
                 child: Text(markWord,
                     style: TextStyle(
-                      fontFamily: 'Nunito',
+                      fontFamily: ADText.family,
                       fontWeight: FontWeight.w600,
                       fontSize: 24,
                       letterSpacing: -0.5,
@@ -143,7 +143,7 @@ class LiveTheme {
         ),
         child: Text(label,
             style: const TextStyle(
-              fontFamily: 'Nunito',
+              fontFamily: ADText.family,
               fontWeight: FontWeight.w600,
               fontSize: 13,
               color: paper,
@@ -187,7 +187,7 @@ class LiveTheme {
           // already pass sentence case and it now renders as written.
           Text(label,
               style: TextStyle(
-                fontFamily: 'Nunito',
+                fontFamily: ADText.family,
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
                 letterSpacing: 0.2,
@@ -223,7 +223,7 @@ class LiveTheme {
               ],
               Text(label,
                   style: const TextStyle(
-                    fontFamily: 'Nunito',
+                    fontFamily: ADText.family,
                     fontWeight: FontWeight.w700,
                     fontSize: 18,
                     color: paper,

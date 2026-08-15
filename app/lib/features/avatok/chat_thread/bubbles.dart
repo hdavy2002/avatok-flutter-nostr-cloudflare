@@ -285,7 +285,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
                       // media) instead of floating inside a 14px gutter.
                       : (m.extra?['preview'] is Map)
                           ? const EdgeInsets.fromLTRB(4, 4, 4, 6)
-                          : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      : const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               // Ava email-card and GenUI/A2UI bubbles need more room (the design
               // uses ~92%); everything else stays at the standard [UI-BUBBLE-1] 78%
               // (symmetric for incoming & outgoing — text sizes to content up to this).
@@ -299,15 +299,11 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
                               m.extra?['preview'] is Map)
                           ? 0.92
                           : 0.78)),
-              // [AVAGRP-BUBBLE-1] Pale fill from the ONE resolved `t`: mine =
-              // pale green, Ava (or my message TO Ava) = pale blue, a 1:1 peer =
-              // pale lilac, and in GROUPS each sender gets their own stable pale
-              // tint (keyed on `senderPub`, never the display name) so you can
-              // tell at a glance who said what. A hairline `t.border` gives pale
-              // bubbles an edge against the white canvas.
+              // [UI-WHATSAPP-STABLE-1] Use a solid, low-noise dark fill. Normal
+              // bubbles intentionally have no decorative outer border; sender
+              // labels and avatars, not rainbow cards, identify group members.
               decoration: BoxDecoration(
                 color: t.bg,
-                border: Border.all(color: t.border, width: 1),
                 boxShadow: const [],
                 borderRadius: t.radius,
               ),

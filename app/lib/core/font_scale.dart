@@ -4,8 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// App-wide font-size preference (Settings → Display & fonts).
 ///
 /// A single device-level multiplier (NOT account-scoped — it's a display
-/// preference) applied on top of the app's base text bump and the OS accessibility
-/// setting, at the [MaterialApp] root. 1.0 = default; range 0.85–1.6.
+/// preference) applied on top of the OS accessibility setting at the
+/// [MaterialApp] root. 1.0 = default; range 0.85–1.6.
 class FontScale {
   static const _key = 'app_font_scale_v1';
   static const _ss = FlutterSecureStorage();
@@ -39,7 +39,7 @@ class FontScale {
   }
 }
 
-/// Pins a subtree's text to the OS + base app scale, REMOVING the user's
+/// Pins a subtree's text to the OS scale, REMOVING the user's
 /// Display-&-fonts slider multiplier ([FontScale.scale]). The root applies the
 /// slider app-wide (so chat/message/contact/menu body text grows); wrapping the
 /// big page titles + headings in this keeps them a fixed size while everything
@@ -54,7 +54,7 @@ class NoUserFontScale extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final user = FontScale.scale.value;           // the slider multiplier
-    final cur = mq.textScaler.scale(1.0);         // OS × base × user (root-applied)
+    final cur = mq.textScaler.scale(1.0);         // OS × user (root-applied)
     final pinned = user <= 0 ? cur : cur / user;  // divide the user factor back out
     return MediaQuery(
       data: mq.copyWith(textScaler: TextScaler.linear(pinned)),

@@ -8,7 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 /// `design/black-mobile/AvaTOK App Dark v2.dc.html`). This is the dark-black
 /// redesign language — near-black surfaces, hairline borders, soft (blurred)
 /// elevation, pale accent cards, multicolor glyphs, colored Chats/Groups/Calls
-/// tabs, and Nunito everywhere (weights 400/600/700/800/900).
+/// tabs, and platform-native UI typography.
 ///
 /// Every re-skinned screen should pull colors, radii, spacing, type and avatar
 /// families from here so the whole app stays consistent as it migrates off the
@@ -103,8 +103,8 @@ class AD {
   // ----------------------------------------------------------------- buttons
   static const primaryBadge = Color(0xFFE8833A);
   static const newGroup = Color(0xFF2FA98C);
-  static const sendActiveBg = Color(0xFFCDEBD3);
-  static const sendActiveInk = Color(0xFF1C3324);
+  static const sendActiveBg = Color(0xFF00A884);
+  static const sendActiveInk = Color(0xFFFFFFFF);
   static const micIdleBg = Color(0xFFE4DDF7);
   static const micIdleInk = Color(0xFF5B3FB8);
   static const destructiveBg = Color(0xFFC0533F);
@@ -266,31 +266,27 @@ class AvatarFamily {
   const AvatarFamily({required this.chipBg, required this.chipInk, required this.solid});
 }
 
-/// Nunito type scale for the dark v2 system.
+/// Native-platform type scale for the dark v2 system.
 ///
-/// [UI-MSG-TYPE-1] 2026-08-05 — REWEIGHTED. Nunito stays (the design contract
-/// mandates it and forbids Inter); what changed is how it is used.
+/// [UI-WHATSAPP-STABLE-1] The UI deliberately leaves [TextStyle.fontFamily]
+/// unset so Flutter selects the system face (Roboto on Android, SF on Apple
+/// platforms). This keeps dense chat text familiar and stable instead of using
+/// a rounded display face for every control.
 ///
-/// Until Regular (400) and Medium (500) were bundled, the lightest weight the
-/// app could render was SemiBold, and this scale asked for w800 on top of that
-/// — so contact name, message preview and timestamp were all effectively the
-/// same weight and nothing on screen could be emphasised. Hierarchy now comes
-/// from CONTRAST: light body against a heavier name, not everything shouting.
-///
-/// The rules, from the owner's messenger spec:
+/// Hierarchy comes from contrast and a small Regular/Medium weight step, not
+/// from bold text throughout the conversation:
 ///   body          → 400
 ///   secondary     → 400/500, muted colour
-///   contact names → 600
-///   screen titles → 600/700
+///   contact names → 500
+///   screen titles → 700
 ///   timestamps    → 400, small and muted
 ///
-/// **w800 and w900 are no longer used anywhere in this scale.** Do not
-/// reintroduce them; if something needs more emphasis, use size or colour.
-/// Sizes are whole numbers only — the old half-pixel values (13.5/12.5/10.5/
-/// 9.5) were eyeball-tuning, not a scale.
+/// Sizes are whole numbers only — the old half-pixel values were eyeball-
+/// tuning, not a stable scale.
 class ADText {
   ADText._();
-  static const String family = 'Nunito';
+  /// Null intentionally inherits Flutter's platform-native default font.
+  static const String? family = null;
 
   static TextStyle _s(double size, FontWeight w, Color c,
           {double? spacing, double height = 1.2}) =>
@@ -300,12 +296,12 @@ class ADText {
   /// App wordmark / screen title — 22 / 700. The heaviest weight in the app.
   static TextStyle appTitle({Color c = AD.textPrimary}) =>
       _s(22, FontWeight.w700, c, spacing: -0.01 * 22, height: 1.05);
-  /// Thread name in header — 16 / 600.
+  /// Thread name in header — 16 / 500.
   static TextStyle threadName({Color c = AD.textPrimary}) =>
-      _s(16, FontWeight.w600, c);
-  /// Chat-row contact name — 15 / 600.
+      _s(16, FontWeight.w500, c);
+  /// Chat-row contact name — 15 / 500.
   static TextStyle rowName({Color c = AD.textPrimary}) =>
-      _s(15, FontWeight.w600, c);
+      _s(15, FontWeight.w500, c);
   /// Chat bubble body — 15 / 400. Body copy is Regular, full stop.
   static TextStyle bubbleBody({Color c = AD.textPrimary}) =>
       _s(15, FontWeight.w400, c, height: 1.35);
@@ -313,19 +309,19 @@ class ADText {
   /// size and colour, which is what makes the name read as the heading.
   static TextStyle preview({Color c = AD.textSecondary}) =>
       _s(14, FontWeight.w400, c);
-  /// Colored tab label — 13 / 600.
+  /// Colored tab label — 13 / 500.
   static TextStyle tabLabel({Color c = AD.textPrimary}) =>
-      _s(13, FontWeight.w600, c);
-  /// Bottom-nav label (active) — 11 / 600.
+      _s(13, FontWeight.w500, c);
+  /// Bottom-nav label (active) — 11 / 500.
   static TextStyle navLabelPrimary({Color c = AD.textPrimary}) =>
-      _s(11, FontWeight.w600, c);
+      _s(11, FontWeight.w500, c);
   /// Bottom-nav label (inactive) — 11 / 500.
   static TextStyle navLabel({Color c = AD.textTertiary}) =>
       _s(11, FontWeight.w500, c);
-  /// Section header (Pinned / Messages) — 11 / 600, lightly tracked.
+  /// Section header (Pinned / Messages) — 11 / 500, lightly tracked.
   /// Sentence case at the call site; the caps were part of the shouting.
   static TextStyle sectionLabel({Color c = AD.textTertiary}) =>
-      _s(11, FontWeight.w600, c, spacing: 0.06 * 11);
+      _s(11, FontWeight.w500, c, spacing: 0.06 * 11);
   /// Timestamp — 12 / 400, muted.
   static TextStyle timestamp({Color c = AD.textTertiary}) =>
       _s(12, FontWeight.w400, c);
@@ -341,7 +337,7 @@ class ADText {
 // Dark v2 component recipes — the dark counterparts of the shared Zine* widgets.
 // Use these inside AvaTOK screens instead of ZineButton/ZineCard/etc. so the
 // dark re-skin is self-contained (the light Zine widgets stay untouched for the
-// apps that haven't migrated yet). Soft/flat elevation, hairline borders, Nunito.
+// apps that haven't migrated yet). Soft/flat elevation and hairline borders.
 // =============================================================================
 
 enum AdButtonVariant { primary, teal, danger, ghost }

@@ -359,9 +359,9 @@ class AvaTalkApp extends StatelessWidget {
       navigatorObservers: [Analytics.observer], // auto $screen on every route
       debugShowCheckedModeBanner: false,
       theme: AvaTheme.light,
-      // Text scaling = OS accessibility setting × the app's base bump (~22%) ×
-      // the user's own Display & fonts choice (FontScale). Listens live so the
-      // whole app re-scales the instant the user moves the slider.
+      // Text scaling = OS accessibility setting × the user's own Display &
+      // fonts choice (FontScale). Listens live so the whole app re-scales the
+      // instant the user moves the slider.
       //
       // RESPUI-1 (2026-07-04): the resulting factor is clamped app-wide to
       // 0.85–1.3 — the previous 0.9–2.8 range let headers/buttons/inputs blow
@@ -373,21 +373,13 @@ class AvaTalkApp extends StatelessWidget {
       builder: (context, child) {
         final mq = MediaQuery.of(context);
         final sys = mq.textScaler.scale(1.0);
-        // RESPUI-SMALL-1 (2026-07-13): the base bump + ceiling now ADAPT to
-        // device width. A flat 1.22x base with a 1.3x ceiling inflated the
-        // whole UI on very small phones (reported: a ~4.5" device where
-        // "everything looks big" and the app didn't fit). Screens >=360dp are
-        // UNCHANGED (1.22x base, 1.3x ceiling — exactly as before), so typical
-        // phones/tablets see zero difference. Below 360dp we taper the base
-        // bump toward 1.0 and lower the ceiling so text (the biggest driver of
-        // the "too big" look) shrinks and more content fits, composing with the
-        // existing ZineBreakpoints padding/type ramps.
+        // UI-WHATSAPP-STABLE-1: do not enlarge every screen by default. The
+        // prior 1.22x base multiplier made otherwise compact type feel oversized
+        // and reduced layout headroom. OS accessibility and the in-app Display
+        // & fonts preference still apply, with the established width-based safe
+        // ceilings preventing controls from being squeezed off small screens.
         final double w = mq.size.width;
-        final double baseBump = w >= 360
-            ? 1.22
-            : w >= 320
-                ? 1.08
-                : 1.0;
+        const double baseBump = 1.0;
         final double ceil = w >= 360
             ? 1.30
             : w >= 320
