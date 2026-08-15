@@ -459,7 +459,7 @@ function jobTags(input: ReserveAiJobInput, extra: Record<string, unknown>): Reco
   };
 }
 
-type CostSource = "provider" | "catalog" | "unknown" | "free" | "n/a";
+type CostSource = "provider" | "catalog" | "fixed" | "unknown" | "free" | "n/a";
 
 interface LedgerRowInput {
   opId: string; uid: string; capability: string; modality: string;
@@ -662,6 +662,10 @@ export interface SettleAiJobInput {
   usage: UsageUnits;
   /** Prefer this straight from the provider's own usage.cost (OpenRouter), in micro-USD, over the catalog estimate. */
   providerCostUsdMicro?: number;
+  /** Fixed retail tariff already reserved for this operation. Unlike
+   * provider-cost settlement, this is an exact product price and therefore
+   * bypasses provider-cost markup/catalog lookup. */
+  flatChargeTokens?: number;
   email?: string | null;
 }
 
@@ -676,7 +680,10 @@ export interface SettleAiJobResult {
   debt_micro_usd_after: number;
   /** [AI-WALLET-SPENDABLE-2 / §66] Platform loss for THIS settlement — never hidden user debt, never consumes a future top-up. */
   unrecovered_micro_usd: number;
-  /** [§65] Where the charged amount came from: 'provider' (ground truth), 'catalog' (estimate), 'unknown' (neither — charged 0, AI_PRICE_UNKNOWN alerted), 'free' (a FREE_CAPABILITIES job), or 'n/a' (unmetered). */
+  /** [§65] Where the charged amount came from: 'provider' (ground truth),
+   * 'catalog' (estimate), 'fixed' (an explicit product tariff), 'unknown'
+   * (neither — charged 0, AI_PRICE_UNKNOWN alerted), 'free' (a
+   * FREE_CAPABILITIES job), or 'n/a' (unmetered). */
   cost_source: CostSource;
   error?: string;
 }
@@ -732,9 +739,14 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
   // NEITHER a provider cost NOR a catalog entry exists do we fail the
   // *billing* (never the *answer*, never the availability).
   const model = input.modelActual || input.modelRequested;
+  const fixedChargeTokens = Number.isFinite(input.flatChargeTokens) && (input.flatChargeTokens as number) > 0
+    ? Math.max(1, Math.trunc(input.flatChargeTokens as number))
+    : null;
   const hasProviderCost = Number.isFinite(input.providerCostUsdMicro) && (input.providerCostUsdMicro as number) >= 0;
   const hasCatalogEntry = Object.prototype.hasOwnProperty.call(AI_PRICE_CATALOG, String(model || "").trim());
-  const costSource: CostSource = hasProviderCost ? "provider" : hasCatalogEntry ? "catalog" : "unknown";
+  const costSource: CostSource = fixedChargeTokens != null
+    ? "fixed"
+    : hasProviderCost ? "provider" : hasCatalogEntry ? "catalog" : "unknown";
 
   if (costSource === "unknown") {
     // Never bill from AI_DEFAULT_RATE, and never fail the user's
@@ -766,7 +778,9 @@ export async function settleAiJob(env: Env, reservation: ReserveAiJobResult, inp
     };
   }
 
-  const settle = settleTokens(model, input.usage, input.providerCostUsdMicro);
+  const settle = fixedChargeTokens == null
+    ? settleTokens(model, input.usage, input.providerCostUsdMicro)
+    : { providerCostMicroUsd: 0, userChargeMicroUsd: fixedChargeTokens * TOKEN_MICRO_USD, tokens: fixedChargeTokens };
   const providerCostMicroUsd = settle.providerCostMicroUsd;
   const userChargeMicroUsdAmount = settle.userChargeMicroUsd;
 

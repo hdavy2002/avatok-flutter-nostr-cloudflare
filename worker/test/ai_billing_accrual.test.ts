@@ -321,6 +321,45 @@ describe("settleAiJob → WalletDO settle_ai_cost — actual_cost_micro_usd MUST
   });
 });
 
+describe("fixed retail AI tariffs", () => {
+  it("settles exactly the requested whole-token tariff without catalog lookup or markup", async () => {
+    let sentActualCostMicroUsd: number | undefined;
+    const fakeEnv = {
+      WALLET_DO: {
+        idFromName: () => ({}),
+        get: () => ({
+          fetch: async (_url: string, init: { body: string }) => {
+            const body = JSON.parse(init.body);
+            sentActualCostMicroUsd = body.actual_cost_micro_usd;
+            return new Response(JSON.stringify({
+              ok: true, charged_tokens: 1,
+              debt_micro_usd_before: 0, debt_micro_usd_after: 0,
+              unrecovered_micro_usd: 0,
+            }), { status: 200 });
+          },
+        }),
+      },
+      DB_WALLET: { prepare: () => { throw new Error("ledger not stubbed"); } },
+      TOKENS: { get: () => null, put: () => undefined },
+    } as unknown as Env;
+
+    const result = await settleAiJob(
+      fakeEnv,
+      { ok: true, metered: true, reserved_tokens: 1, ref: "aijob:song-cover:1" },
+      {
+        opId: "song-cover:1", uid: "u1", capability: "media_song_cover_generate",
+        modality: "image", modelRequested: "uncatalogued-fixed-product",
+        modelActual: "uncatalogued-fixed-product", usage: { images: 1 },
+        flatChargeTokens: 1,
+      },
+    );
+
+    expect(sentActualCostMicroUsd).toBe(TOKEN_MICRO_USD);
+    expect(result.charged_tokens).toBe(1);
+    expect(result.cost_source).toBe("fixed");
+  });
+});
+
 describe("safety capabilities remain unmetered too (pre-existing guarantee, unaffected by this change)", () => {
   it("reserveAiJob short-circuits for a safety capability with no wallet touch", async () => {
     const env = throwingEnv();
