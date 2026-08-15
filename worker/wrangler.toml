@@ -115,6 +115,9 @@ PLAY_PACKAGE_ID = "ai.avatok.avatok_call"
 #   cc-sending APK is installed. Set "0" (or unset) to disable.
 SYNC_OPS_V2 = "1"
 SYNC_CONV_CURSOR_V2 = "1"
+# P8 chat durability: keep a batched per-user R2 archive for backfill and
+# cross-device recovery. Staging explicitly remains dark in its own vars.
+CHAT_ARCHIVE_V2 = "1"
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
@@ -632,6 +635,7 @@ pattern = "api-staging.avatok.ai"
 custom_domain = true
 
 [env.staging.vars]
+CHAT_ARCHIVE_V2 = "0"
 TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
 # [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
 ENVIRONMENT_NAME = "staging"
