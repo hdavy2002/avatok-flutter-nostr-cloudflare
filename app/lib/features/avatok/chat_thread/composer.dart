@@ -108,7 +108,9 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         controller: _ctrl,
         focusNode: _composerFocus,
         hasText: _hasText,
-        hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
+        hintText: _avaMode
+            ? 'Ask Ava privately…'
+            : (_avaPublicMode ? 'Message · Ava can join' : 'Message'),
         fieldColor: Msg.input,
         onSend: _send,
         onAttach: _attach,
@@ -118,6 +120,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         onGif: _sendGif,
         onSticker: _sendStickerAsset,
         onMention: _openMentionPicker,
+        modeControls: _avaAudienceControls(),
         topSlot: Column(mainAxisSize: MainAxisSize.min, children: [
           if (_replyTo != null || _editing != null) _replyBanner(),
           if (_sttActive) _listeningBanner(),
@@ -330,37 +333,118 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         ]),
       );
 
-  /// Ava-mode toggle chip — sits at the front of the quick-tools row. Flip ON
-  /// to talk privately to Ava without typing @ava; flip back to message the
-  /// person. Fills lilac + sparkle-fill when ON.
-  Widget _avaModeChip() {
-    return Tooltip(
-        message: _avaMode
-            ? 'Talking to Ava (tap to message ${widget.chat.name})'
-            : 'Talk privately to Ava',
-        child: GestureDetector(
-          onTap: () {
-            setState(() => _avaMode = !_avaMode);
-            _composerFocus.requestFocus();
-          },
-          child: Container(
-            width: 48, height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _avaMode ? AD.iconVideo : AD.card,
-              shape: BoxShape.circle,
-              border: Border.all(color: AD.borderControl, width: 1),
-              boxShadow: const [],
+  String get _avaAudienceModeKey =>
+      'composer_ava_audience_v1_${_snapKey ?? widget.chat.seed}';
+
+  Future<void> _loadAvaAudienceMode() async {
+    final stored = await readScoped(_aiPrefs, _avaAudienceModeKey);
+    if (!mounted) return;
+    setState(() {
+      _avaMode = stored == 'private';
+      // Public is the default for a conversation that has never stored a choice.
+      _avaPublicMode = stored == null || stored == 'public';
+    });
+  }
+
+  Future<void> _persistAvaAudienceMode(String mode) async {
+    try {
+      await _aiPrefs.write(
+        key: scopedKey(_avaAudienceModeKey),
+        value: mode,
+      );
+    } catch (_) {
+      // Preference persistence must never interrupt typing or sending.
+    }
+  }
+
+  void _setAvaAudienceMode(String requested) {
+    final isActive = requested == 'private' ? _avaMode : _avaPublicMode;
+    final next = isActive ? 'off' : requested;
+    setState(() {
+      _avaMode = next == 'private';
+      _avaPublicMode = next == 'public';
+    });
+    unawaited(_persistAvaAudienceMode(next));
+    Analytics.capture('composer_ava_mode_changed', {
+      'mode': next,
+      'conv_kind': _isGroup ? 'group' : 'direct',
+    });
+    HapticFeedback.selectionClick();
+    _composerFocus.requestFocus();
+  }
+
+  Widget _avaAudienceControls() => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _avaAudienceButton(
+            label: '@ava',
+            active: _avaMode,
+            activeColor: MentionTextController.mentionBlue,
+            tooltip: 'Private Ava · only you see the reply',
+            onTap: () => _setAvaAudienceMode('private'),
+          ),
+          const SizedBox(width: Msg.s1),
+          _avaAudienceButton(
+            label: '#ava',
+            active: _avaPublicMode,
+            activeColor: MentionTextController.shareGreen,
+            tooltip: 'Public Ava · everyone sees the reply',
+            onTap: () => _setAvaAudienceMode('public'),
+          ),
+        ],
+      );
+
+  Widget _avaAudienceButton({
+    required String label,
+    required bool active,
+    required Color activeColor,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) =>
+      Tooltip(
+        message: tooltip,
+        child: Semantics(
+          button: true,
+          selected: active,
+          label: '$label ${active ? 'on' : 'off'}',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Container(
+              height: 36,
+              constraints: const BoxConstraints(minWidth: 62),
+              padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
+              decoration: BoxDecoration(
+                color: active
+                    ? activeColor.withValues(alpha: 0.18)
+                    : AD.card,
+                borderRadius: BorderRadius.circular(Msg.rMd),
+                border: Border.all(
+                  color: active ? activeColor : AD.borderControl,
+                  width: active ? 2 : 1,
+                ),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                  label,
+                  style: ADText.tabLabel(
+                    c: active ? activeColor : AD.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: Msg.s1),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: active ? activeColor : AD.textTertiary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ]),
             ),
-            child: PhosphorIcon(
-                PhosphorIcons.sparkle(
-                    _avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
-                size: 23,
-                color: _avaMode ? AD.iconSearch : AD.textPrimary),
           ),
         ),
       );
-  }
 
   /// Consolidated "Help me write better" control — replaces the separate Fix
   /// grammar / Rewrite / Reply ideas chips. Tapping opens a menu of writing
@@ -901,32 +985,13 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
   // ---- [CHAT-MENTIONS-1] The "@" picker (owner request 2026-08-04) ----------
   //
   // Typing `@` still opens the inline `_mentionBar()` autocomplete above; this is
-  // the DELIBERATE path — tap "@" in the composer and choose from a list, so you
-  // never have to know a name's spelling or that `@ava` / `#ava` exist at all.
-  //
-  // Order is fixed by the owner and is NOT alphabetical: Ava first, because the
-  // two Ava entries are the ones people forget, and because "private" vs
-  // "public" is the one choice here with a consequence — a private ask is never
-  // sent to the room, a public one is. People come second.
+  // the DELIBERATE path — tap "@" in the composer and choose a CHAT MEMBER.
+  // Ava private/public are dedicated persistent buttons above the input and are
+  // intentionally absent here, so this sheet has one unambiguous purpose.
 
   /// Everything that can be mentioned in this thread, already in display order.
   List<_MentionOption> _mentionOptions() {
-    final out = <_MentionOption>[
-      const _MentionOption(
-        token: '@ava',
-        label: 'Ava',
-        trailing: 'Private',
-        subtitle: 'Only you see the reply — never sent to the chat',
-        kind: 'ava_private',
-      ),
-      const _MentionOption(
-        token: '#ava',
-        label: 'Ava',
-        trailing: 'Public',
-        subtitle: 'Ava answers in the chat, everyone sees it',
-        kind: 'ava_public',
-      ),
-    ];
+    final out = <_MentionOption>[];
 
     if (_isGroup) {
       final myUid = _meId?.uid;

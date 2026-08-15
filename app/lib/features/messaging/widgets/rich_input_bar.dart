@@ -1,13 +1,9 @@
 // WhatsApp-parity chat input bar + emoji/GIF/sticker panel (STREAM E).
 //
-// Layout — [CHAT-MENTIONS-1] 2026-08-04 (owner request). Everything now lives
-// INSIDE one wide pill, all controls right-aligned, and the hint line that used
-// to sit above the bar is gone:
-//   [ expanding text field  😊 @ 📎 📷 🎤 ]
-// and, only once there is text, a green send circle slides in outside it:
-//   [ expanding text field  😊 @ 📎 ]  ( ▶ )
-// The camera and mic hide while typing because send takes over that job — this
-// is why the bar can carry five controls without crowding the text.
+// Layout — [AVA-COMPOSER-MODES-1] 2026-08-15. Secondary controls live on a
+// fixed toolbar ABOVE the input so the text field stays wide and visually calm:
+//   [ @ava  #ava                    😊 @ 📎 📷 ]
+//   [ expanding text field                         ] ( 🎤 / ▶ )
 //
 // The previous layout put the emoji picker OUTSIDE on the left and kept a
 // permanent green mic circle on the right; both moved in to make the bar read as
@@ -56,6 +52,9 @@ class RichInputBar extends StatefulWidget {
   // Optional slot for banners that sit ABOVE the row (reply preview, listening).
   final Widget? topSlot;
 
+  /// Dedicated host-owned controls shown at the left of the upper toolbar.
+  final Widget? modeControls;
+
   const RichInputBar({
     super.key,
     required this.controller,
@@ -72,6 +71,7 @@ class RichInputBar extends StatefulWidget {
     this.hintText = 'Message',
     this.fieldColor = Msg.input,
     this.topSlot,
+    this.modeControls,
   });
 
   @override
@@ -184,20 +184,53 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (widget.topSlot != null) widget.topSlot!,
           Padding(
-            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
+            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s1, Msg.s3, 0),
+            child: Row(children: [
+              if (widget.modeControls != null) widget.modeControls!,
+              const Spacer(),
+              _barIcon(
+                icon: _panelOpen && _tab == PickerTab.emoji
+                    ? PhosphorIcons.keyboard(PhosphorIconsStyle.regular)
+                    : PhosphorIcons.smiley(PhosphorIconsStyle.regular),
+                color: AD.iconEmoji,
+                tooltip: 'Emoji, GIFs & stickers',
+                onTap: _toggleEmoji,
+              ),
+              if (widget.onMention != null)
+                _barIcon(
+                  icon: PhosphorIcons.at(PhosphorIconsStyle.regular),
+                  color: MentionTextController.mentionBlue,
+                  tooltip: 'Mention a chat member',
+                  onTap: widget.onMention!,
+                ),
+              _barIcon(
+                icon: PhosphorIcons.paperclip(PhosphorIconsStyle.regular),
+                color: AD.iconClipOnWhite,
+                tooltip: 'Attach a file',
+                onTap: widget.onAttach,
+              ),
+              _barIcon(
+                icon: PhosphorIcons.camera(PhosphorIconsStyle.regular),
+                color: AD.iconCameraOnWhite,
+                tooltip: 'Take a photo',
+                onTap: widget.onCamera,
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s1, Msg.s3, Msg.s2),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              // ONE wide pill holding the field and every control, right-aligned.
+              // A stable, uncluttered text pill. All secondary actions now live
+              // in the toolbar above and never steal horizontal typing space.
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.only(left: Msg.s4, right: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
                   decoration: BoxDecoration(
                     color: widget.fieldColor,
                     borderRadius: Msg.brLg,
                     border: Border.all(color: AD.borderControl, width: 1),
                   ),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Expanded(
-                      child: TextField(
+                  child: TextField(
                         controller: widget.controller,
                         focusNode: widget.focusNode,
                         onChanged: widget.onChanged,
@@ -221,37 +254,6 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                               const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
-                    ),
-                    // Fixed in-pill controls. The primary action lives in a
-                    // separate fixed-width slot, so typing never reflows this row.
-                    _barIcon(
-                      icon: _panelOpen && _tab == PickerTab.emoji
-                          ? PhosphorIcons.keyboard(PhosphorIconsStyle.regular)
-                          : PhosphorIcons.smiley(PhosphorIconsStyle.regular),
-                      color: AD.iconEmoji,
-                      tooltip: 'Emoji, GIFs & stickers',
-                      onTap: _toggleEmoji,
-                    ),
-                    if (widget.onMention != null)
-                      _barIcon(
-                        icon: PhosphorIcons.at(PhosphorIconsStyle.regular),
-                        color: MentionTextController.mentionBlue,
-                        tooltip: 'Mention someone',
-                        onTap: widget.onMention!,
-                      ),
-                    _barIcon(
-                      icon: PhosphorIcons.paperclip(PhosphorIconsStyle.regular),
-                      color: AD.iconClipOnWhite,
-                      tooltip: 'Attach a file',
-                      onTap: widget.onAttach,
-                    ),
-                    _barIcon(
-                      icon: PhosphorIcons.camera(PhosphorIconsStyle.regular),
-                      color: AD.iconCameraOnWhite,
-                      tooltip: 'Take a photo',
-                      onTap: widget.onCamera,
-                    ),
-                  ]),
                 ),
               ),
               // Always reserve the same action slot. Only the icon/action changes.
@@ -288,7 +290,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
     ]);
   }
 
-  /// One in-pill control. Deliberately NOT an `IconButton`: that ships a 48dp
+  /// One toolbar control. Deliberately NOT an `IconButton`: that ships a 48dp
   /// minimum square each, and five of those would eat most of a 360dp screen and
   /// squeeze the text field down to a couple of words.
   Widget _barIcon({

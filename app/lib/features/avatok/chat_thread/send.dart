@@ -189,17 +189,17 @@ extension _ChatThreadSend on _ChatThreadScreenState {
     final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
 
     // ----- Ava routing (fresh sends only, never edits) -----
-    // `@ava` (or Ava-mode) = a PRIVATE personal call: the question is NOT sent to
-    // the peer (so it's instant — no "waiting to reach phone") and the reply comes
-    // back privately. `#ava` = SHARED: falls through to a normal send so the peer
-    // sees the question, and Ava replies in the thread for both.
+    // `@ava` / private mode = a personal call that is NOT sent to the peer.
+    // `#ava` / public mode = shared: falls through to the normal send so the peer
+    // sees clean human text while Ava also replies in the thread for both.
     if (_editing == null && onSummonAva != null) {
       final lower = t.toLowerCase();
       final shared = lower.contains(_avaShareWord);
       final atAva = lower.contains(_avaWakeWord);
       final avaModePrivate = _avaMode && !shared && !atAva;
+      final avaModePublic = _avaPublicMode && !shared && !atAva;
       final privateAva = (atAva && !shared) || avaModePrivate;
-      if (privateAva || shared) {
+      if (privateAva || shared || avaModePublic) {
         // [WALLET-GET-STATE-1] 2026-07-25, owner decision (Root-Cause Report
         // §10/§12c): Ava-in-chat TEXT (@ava private / #ava shared) is FREE for
         // everyone — never metered, never paywalled. The premium gate that used
@@ -209,10 +209,12 @@ extension _ChatThreadSend on _ChatThreadScreenState {
         // left to gate. Attachments remain metered, but server-side
         // (worker/src/routes/ava_gemini.ts) — a 402 there is authoritative and
         // speaks for itself; this path never blocks on it.
-        // Ava-mode plain text carries no marker → prefix so AvaInvoke parses it
-        // as a private @ava call.
+        // Mode-driven plain text carries no marker, so prefix only the Ava copy.
+        // The human chat still receives the clean text in public mode below.
         // ignore: unawaited_futures
-        onSummonAva!(avaModePrivate ? '$_avaWakeWord $t' : t);
+        onSummonAva!(avaModePrivate
+            ? '$_avaWakeWord $t'
+            : (avaModePublic ? '$_avaShareWord $t' : t));
         if (privateAva) {
           _ragAddLine('You', t);
           _composerFocus.requestFocus();

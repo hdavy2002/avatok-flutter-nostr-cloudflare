@@ -626,6 +626,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     // whose `_msgs.clear()` is suppressed by `_snapRestored`).
     _snapOpenedMs = DateTime.now().millisecondsSinceEpoch;
     final snapCount = _restoreSnapshot();
+    // Account + conversation scoped. Defaults to public Ava mode, then restores
+    // the user's explicit private/public/off choice without blocking first paint.
+    unawaited(_loadAvaAudienceMode());
     // Read ONCE, here: the async fallback below can populate the cache before
     // the post-frame callback runs, which would report every cold open as warm.
     final warmId = IdentityStore.cached;
@@ -1043,10 +1046,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   StreamSubscription<AiMediaJobUpdate>? _aiJobsSub;
 
 
-  /// Composer "Ava mode": when ON, every message you send is a PRIVATE @ava call
-  /// (no need to type @ava) — handy for quietly drafting a reply with Ava, then
-  /// flipping back to message the person. Toggled by the ✦ button in the composer.
+  /// Dedicated, mutually-exclusive composer audience modes. Public is the
+  /// product default; private stays selected until the user switches or turns
+  /// it off. Both are scoped per account and conversation.
   bool _avaMode = false;
+  bool _avaPublicMode = true;
 
   /// `_ragLive` gates incoming messages so reopening a chat doesn't re-index
   /// already-seen history. [ONEBRAIN-B3-APP] The former per-member RAG BATCH
