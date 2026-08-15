@@ -14,9 +14,11 @@ import '../../core/library_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../avatok/media.dart';
 import 'lib_thumbs.dart';
 import 'private_ingest.dart';
 import 'voicemail_tile.dart';
+import 'library_media_viewer.dart';
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title + optional tag.
@@ -1004,15 +1006,11 @@ class _FolderViewState extends State<_FolderView> {
       );
 
   Future<void> _open(LibraryItem m) async {
-    if (m.isPrivate || m.displayUrl.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Private file — open it from the original chat')));
-      return;
-    }
-    // Images open in an in-app pinch-to-zoom viewer (no more bouncing out to the
-    // browser). Everything else (video / pdf / doc / audio) still hands off to the
-    // OS, which has the right native viewer for that type.
-    if (LibThumbs.isImage(m)) {
+    // Every library item is playable from the library, including private E2E
+    // media. The old branch rejected private rows before attempting the
+    // available enc_blob/local-cache path, making the library useless for the
+    // user's own music and videos.
+    if (LibThumbs.isImage(m) && !m.isPrivate && m.displayUrl.isNotEmpty) {
       Analytics.capture('library_image_opened', {
         'id': m.id,
         'mime': m.mime,
@@ -1032,8 +1030,22 @@ class _FolderViewState extends State<_FolderView> {
       ));
       return;
     }
-    final uri = Uri.parse(m.displayUrl);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (LibThumbs.isVideo(m) || m.category == 'audio' || m.mime.startsWith('audio/')) {
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => LibraryMediaViewer(item: m)));
+      return;
+    }
+    if (m.displayUrl.isNotEmpty && !m.isPrivate) {
+      final uri = Uri.parse(m.displayUrl);
+      if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    try {
+      await MediaService.downloadLibraryItem(m);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File is ready to use')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open this file')));
+    }
   }
 
   Future<void> _itemMenu(LibraryItem m) async {

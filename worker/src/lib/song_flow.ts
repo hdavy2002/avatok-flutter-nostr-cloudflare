@@ -23,7 +23,7 @@ export const SONG_BRIEF_QUESTION =
 export const SONG_CONTEXT_QUESTION =
   "Before I draft the lyrics, what language should I use, and would you like a male, female, or group voice? You can also pick a voice character such as warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike. I’ll keep refining the brief with you until you say it’s ready.";
 
-function hasSongProductionContext(text: string): boolean {
+export function hasSongProductionContext(text: string): boolean {
   const t = stripAvaWakeWordForIntent(text).toLowerCase();
   const hasLanguage = /\b(?:english|hindi|spanish|french|german|tamil|telugu|bengali|marathi|punjabi|urdu|portuguese|language)\b/.test(t);
   const hasVoice = /\b(?:male|female|woman|man|group|choir|duet|voice|singer|singing)\b/.test(t);

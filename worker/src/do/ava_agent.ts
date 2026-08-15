@@ -81,6 +81,7 @@ import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type 
 import {
   SONG_BRIEF_QUESTION, SONG_CONTEXT_QUESTION, completeSongFlow, isSongApproval, isSongFlowState,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongLyrics,
+  hasSongProductionContext,
   type SongFlowState,
 } from "../lib/song_flow";
 
@@ -2222,6 +2223,13 @@ export class AvaAgentDO {
             },
             onMusic: async (prompt, durationSeconds, lyrics) => {
               const draft = await this.state.storage.get<any>(songDraftKey);
+              // A model/tool turn must never bypass the deterministic song
+              // interview. The old tool lane could call generate_music with
+              // no approved lyrics, which is exactly how a bare "make a
+              // reggae song" request skipped language/voice/review.
+              if (!lyrics && (!draft?.approved || !draft?.lyrics)) {
+                return "Before I make the track, let’s choose the genre and mood, instruments, language, voice (male, female, or group), and voice character. I’ll draft lyrics for your approval first.";
+              }
               if (lyrics && (!draft?.approved || String(draft.lyrics).trim() !== String(lyrics).trim())) {
                 return "Please approve the latest lyrics first — say ‘yes, make it’ when they are ready.";
               }
@@ -2238,6 +2246,11 @@ export class AvaAgentDO {
             // several times per turn/conversation while the user fine-tunes;
             // only the eventual generate_music call is remembered above).
             onDraftLyrics: async (theme, durationSeconds) => {
+              const active = await this.state.storage.get<unknown>(flowKey);
+              if (!isSongFlowState(active) || active.phase !== "awaiting_brief" ||
+                  !hasSongProductionContext(active.brief ?? "")) {
+                return SONG_BRIEF_QUESTION;
+              }
               const r = await runVeniceDraftLyrics(this.env, { uid, theme, durationSeconds });
               if (r.lyrics) {
                 const reviewing: SongFlowState = withSongLyrics({

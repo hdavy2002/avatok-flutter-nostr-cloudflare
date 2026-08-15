@@ -1091,6 +1091,24 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// repaints identically from a single query.
   void _saveProjection(List<Contact> contacts, List<Group> groups,
       Map<String, ({String text, int ts, bool me})> previews, Map<String, Set<String>> flags) {
+    // A transient vault/scope failure must never turn into destructive cache
+    // replacement. Messages are the durable source of truth; a blank contact
+    // read is not proof that the user has no conversations. Resurrection below
+    // will repair the contact projection once the vault is available.
+    if (contacts.isEmpty && groups.isEmpty) {
+      unawaited(Db.I.distinctDmConvs().then((convs) {
+        if (convs.isNotEmpty) {
+          Analytics.capture('chat_projection_preserved', {'reason': 'empty_contacts_with_messages', 'convs': convs.length});
+          return;
+        }
+        return Db.I.chatsOnce().then((existing) {
+          if (existing.isNotEmpty) {
+            Analytics.capture('chat_projection_preserved', {'reason': 'empty_authoritative_stores', 'rows': existing.length});
+          }
+        });
+      }).catchError((_) {}));
+      return;
+    }
     List<String> flagsFor(String k) => [for (final f in flags.keys) if (flags[f]!.contains(k)) f];
     final rows = <({String convKey, int ts, String json})>[];
     for (final g in groups) {
@@ -1149,18 +1167,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // still said "nothing is deleted". Hydrating first closes that race.
       final hydrated = await _contactsStore.ensureHydrated();
       if (!hydrated) {
-        // [ISSUE-CONTACT-RESURRECT-1] ABORT rather than guess. An un-hydrated
-        // tombstone map is empty-because-unknown, not empty-because-nothing-is-
-        // deleted, so proceeding would resurrect every deleted contact and then
-        // _syncUp them the moment connectivity returns. The trade is asymmetric:
-        // skipping costs a thread not appearing until the next launch (self-
-        // healing, invisible); running costs permanent cross-device data loss.
-        Analytics.capture('threads_resurrect_skipped_unhydrated',
+        // Do not write contacts until the vault/tombstones are hydrated, but do
+        // not hide durable conversations either. Paint ephemeral placeholders
+        // from the local message DB; a later successful hydration replaces them
+        // with real profiles and applies the user's delete/hide decisions.
+        Analytics.capture('threads_resurrect_unhydrated_ephemeral',
             {'convs_scanned': convs.length});
-        return;
       }
       final myUid = _id?.uid ?? '';
       final known = {for (final c in await _contactsStore.load()) c.uid};
+      final ephemeral = <Contact>[];
       var restored = 0;
       var blocked = 0;
       for (final conv in convs) {
@@ -1170,15 +1186,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         // Re-read the tombstones per candidate — cheap (a DiskCache read) and
         // correct even if the vault lands mid-loop. Never hoist this out.
         final deleted = await _contactsStore.deletedContacts();
-        if (deleted.containsKey(uid)) { blocked++; continue; }
+        if (hydrated && deleted.containsKey(uid)) { blocked++; continue; }
         Contact? c;
         try { c = await Directory.resolve(uid); } catch (_) {}
-        // [ISSUE-CONTACT-SEMANTICS-1] Peer no longer resolvable (deleted/test
-        // account) → SKIP. The old placeholder behaviour flooded the list with
-        // "Unknown user" rows (2026-07-10 report) — worthless threads nobody
-        // can reply to.
-        if (c == null) continue;
+        // A directory miss is not proof that the conversation is disposable:
+        // outages, auth races, and a deleted/renamed profile all look like a
+        // null here. Keep the durable thread visible with a neutral label;
+        // the next directory refresh can enrich it without losing history.
+        c ??= Contact(uid: uid, name: 'AvaTOK contact');
+        if (c.name.isEmpty) c = c.copyWith(name: 'AvaTOK contact');
         try {
+          if (!hydrated) {
+            ephemeral.add(c);
+            continue;
+          }
           // [ISSUE-CONTACT-RESURRECT-1] MUST be addIfNotDeleted, never add().
           // add() is the *explicit user add* path: it clears the tombstone and
           // pushes a tombstone-free blob to the vault, which is exactly how the
@@ -1190,6 +1211,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           known.add(uid);
           restored++;
         } catch (_) {/* best-effort per peer */}
+      }
+      if (ephemeral.isNotEmpty && mounted) {
+        final merged = [..._contacts, ...ephemeral.where((c) => !_contacts.any((x) => x.uid == c.uid))];
+        if (merged.length != _contacts.length) setState(() => _contacts = merged);
       }
       if (restored > 0 || blocked > 0) {
         Analytics.capture('threads_resurrected', {

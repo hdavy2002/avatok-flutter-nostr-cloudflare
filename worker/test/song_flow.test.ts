@@ -5,6 +5,7 @@ import {
   isSongCreationRequest,
   isSongApproval,
   isSongRevisionIntent,
+  hasSongProductionContext,
   nextSongFlow,
   parseSongDurationSeconds,
   stripAvaWakeWordForIntent,
@@ -12,6 +13,15 @@ import {
 } from "../src/lib/song_flow";
 
 describe("deterministic song flow", () => {
+  it("requires the complete production context before drafting", () => {
+    const asked = nextSongFlow(null, "create a reggae song for me");
+    expect(asked).toMatchObject({ kind: "ask_brief", flow: { phase: "awaiting_brief" } });
+    if (asked.kind !== "ask_brief") throw new Error("expected ask_brief");
+    const stillAsking = nextSongFlow(asked.flow, "reggae, English, female voice");
+    expect(stillAsking).toMatchObject({ kind: "draft", flow: { phase: "awaiting_brief" } });
+    expect(hasSongProductionContext("reggae, English, female voice")).toBe(true);
+    expect(hasSongProductionContext("reggae, English")).toBe(false);
+  });
   it("strips only a leading Ava marker for intent", () => {
     expect(stripAvaWakeWordForIntent("@ava make me a song")).toBe("make me a song");
     expect(stripAvaWakeWordForIntent("#ava make me a song")).toBe("make me a song");

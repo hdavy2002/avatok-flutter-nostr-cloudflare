@@ -402,6 +402,56 @@ class MediaService {
     }
   }
 
+  /// Reads an AvaLibrary item through the same local-first media path as chat.
+  /// Library entries used to be treated as metadata only, which made every
+  /// private audio/video tile refuse playback even when it had the encrypted
+  /// key material needed to open it.
+  static Future<Uint8List> downloadLibraryItem(LibraryItem item) async {
+    if (item.key.isEmpty) throw MediaUploadException('file has no storage key');
+    final cached = await _cacheRead(item.key);
+    if (cached != null) return cached;
+
+    // Public files and server-readable private digital files have a usable
+    // display URL. Private E2E files must be rebuilt from enc_blob below.
+    final url = item.displayUrl;
+    final isPresigned = url.contains('X-Amz-Signature') || url.contains('x-amz-signature');
+    if (!item.isPrivate || isPresigned) {
+      if (url.isEmpty) throw MediaUploadException('file has no readable URL');
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 60));
+      if (res.statusCode != 200 || res.bodyBytes.isEmpty) {
+        throw MediaUploadException('file download failed (${res.statusCode})');
+      }
+      final bytes = Uint8List.fromList(res.bodyBytes);
+      await _cacheWrite(item.key, bytes);
+      return bytes;
+    }
+
+    final blob = item.encBlob ?? '';
+    if (blob.isEmpty) throw MediaUploadException('private file has no decryption material');
+    final keyMat = await AccountKey.I.ensureHex();
+    if (keyMat == null || keyMat.isEmpty) throw MediaUploadException('account key unavailable');
+    final clear = await Vault.decrypt(blob, keyMat);
+    if (clear == null || clear.isEmpty) throw MediaUploadException('private file key unavailable');
+    final j = jsonDecode(clear) as Map<String, dynamic>;
+    final kind = item.category == 'video' || item.mime.startsWith('video/')
+        ? MediaKind.video
+        : item.category == 'audio' || item.mime.startsWith('audio/')
+            ? MediaKind.audio
+            : item.category == 'image' || item.mime.startsWith('image/')
+                ? MediaKind.image
+                : MediaKind.file;
+    return downloadAndDecrypt(ChatMedia(
+      kind: kind,
+      id: item.key,
+      keyB64: (j['k'] ?? '').toString(),
+      nonceB64: (j['n'] ?? '').toString(),
+      macB64: (j['mac'] ?? '').toString(),
+      contentType: item.mime,
+      name: item.name,
+      size: item.size,
+    ));
+  }
+
   /// Records a RECEIVED DM attachment into the recipient's AvaLibrary so it shows
   /// up cross-device, scoped to their account. The per-blob AES key is encrypted
   /// to the recipient via the Vault (key derived from THEIR Nostr key) before it
