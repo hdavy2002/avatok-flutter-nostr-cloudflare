@@ -652,6 +652,42 @@ bool _callerSessionTerminal(String s) =>
 final Map<String, int> _terminalCallAt = <String, int>{};
 const int _kTerminalCallTtlMs = 90 * 1000;
 
+// [CALL-ONE-LANE-1 2026-08-15] A foreground Dart isolate and the FCM
+// background isolate do not share heap state. Without a device-level marker,
+// a late copy of the same invite can recreate the native ring after Accept:
+// the main isolate has already closed CallKit, while the background isolate
+// still believes the call is new. This is deliberately a short-lived,
+// device-level accept lease, not call history or account state.
+const String _kAcceptedIncomingCallGlobal = 'avatok_accepted_incoming_call_v1';
+const int _kAcceptedIncomingCallTtlMs = 5 * 60 * 1000;
+
+Future<void> _markIncomingCallAcceptedDurably(String callId) async {
+  if (callId.isEmpty) return;
+  try {
+    await DiskCache.writeGlobal(_kAcceptedIncomingCallGlobal, jsonEncode({
+      'call_id': callId,
+      'at_ms': DateTime.now().millisecondsSinceEpoch,
+    }));
+  } catch (_) {/* the in-memory gate remains the fast-path authority */}
+}
+
+Future<bool> _wasIncomingCallAcceptedDurably(String callId) async {
+  if (callId.isEmpty) return false;
+  try {
+    final raw = await DiskCache.readGlobal(_kAcceptedIncomingCallGlobal);
+    if (raw == null || raw.isEmpty) return false;
+    final value = jsonDecode(raw);
+    if (value is! Map) return false;
+    final acceptedId = (value['call_id'] ?? '').toString();
+    final atMs = int.tryParse((value['at_ms'] ?? '').toString());
+    if (acceptedId != callId || atMs == null) return false;
+    return DateTime.now().millisecondsSinceEpoch - atMs <
+        _kAcceptedIncomingCallTtlMs;
+  } catch (_) {
+    return false;
+  }
+}
+
 void _noteTerminalCall(String callId) {
   if (callId.isEmpty) return;
   final now = DateTime.now().millisecondsSinceEpoch;
@@ -985,6 +1021,19 @@ Future<void> applyRingTransition(
     gIncomingRingingFrom = null;
     gIncomingRingingCallId = null;
   }
+
+  // A terminal transition closes the short device-level accept lease too.
+  // This prevents a later, legitimate call from being mistaken for the call
+  // that was just answered while retaining protection against late duplicates.
+  try {
+    final raw = await DiskCache.readGlobal(_kAcceptedIncomingCallGlobal);
+    if (raw != null && raw.isNotEmpty) {
+      final value = jsonDecode(raw);
+      if (value is Map && (value['call_id'] ?? '').toString() == callId) {
+        await DiskCache.writeGlobal(_kAcceptedIncomingCallGlobal, '');
+      }
+    }
+  } catch (_) {/* durable cleanup is best-effort */}
 
   // [CALL-STALE-TAP-1 2026-08-03] Drop any native tap still queued for this
   // call. MainActivity holds an un-drained tap in a companion object for the
@@ -2077,6 +2126,24 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   }
   final ringCallId = (d['callId'] ?? '').toString();
   final ringCaller = (d['fromPub'] ?? d['from'] ?? '').toString();
+  // All incoming transports converge here. A late FCM delivery from the
+  // background isolate must not resurrect the ring after the user accepted
+  // the same call on the foreground isolate.
+  if (await _wasIncomingCallAcceptedDurably(ringCallId)) {
+    Analytics.capture('call_ghost_ring_suppressed', {
+      'call_id': ringCallId,
+      'route': route,
+      'reason': 'accepted_lease',
+    });
+    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    await _track(CallEvents.callIncomingShown, {
+      'call_id': ringCallId,
+      'route': route,
+      'shown': false,
+      'skip_reason': 'accepted_lease',
+    });
+    return;
+  }
   // `_showIncoming` is a TOP-LEVEL function, not a member of PushService, so a
   // private static of that class has to be named through it — exactly as the
   // `PushService._signalStatus` call on the next line already does. Unqualified,
@@ -4382,6 +4449,11 @@ class PushService {
         }
       }
     }
+
+    // Accept is user intent: publish the device-level lease before removing
+    // every ring surface. The awaited write closes the foreground/background
+    // isolate gap that caused the ghost ring in production.
+    await _markIncomingCallAcceptedDurably(callId);
 
     // Accept is user intent: remove every ring surface NOW, before the network
     // authority round-trip. flutter_callkit_incoming implements endCall() for
