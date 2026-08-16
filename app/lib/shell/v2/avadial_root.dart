@@ -1619,6 +1619,7 @@ class _LogsTabState extends State<_LogsTab> {
               entryId: e.id,
               reason: e.outcome,
               peerUid: e.seed,
+              entryTs: e.ts, // [CALL-FAILURE-SHOWN-HISTORICAL-1]
             );
           }
           void openMenu() => _openMenu(e);

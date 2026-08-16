@@ -220,6 +220,7 @@ class _CallsScreenState extends State<CallsScreen> {
         entryId: c.id,
         reason: c.outcome,
         peerUid: c.seed,
+        entryTs: c.ts, // [CALL-FAILURE-SHOWN-HISTORICAL-1]
       );
     }
     final dirColor = switch (c.dir) {

@@ -387,10 +387,21 @@ class CallFailureTelemetry {
     String entryId = '',
     String reason = '',
     String peerUid = '',
+    // [CALL-FAILURE-SHOWN-HISTORICAL-1] Epoch SECONDS the underlying call
+    // started (CallEntry.ts). Log rows re-emit on every app run, so a
+    // `no_answer` from last week reappears in telemetry looking exactly like a
+    // live failure — on 2026-08-16 that cost an audit a detour into "failed
+    // calls" that were one old missed call being re-shown. `entry_age_ms` +
+    // `historical` make the replay self-evident without changing what is
+    // emitted or when.
+    int entryTs = 0,
   }) {
     final dedup = '$surface:${callId.isNotEmpty ? callId : entryId}:${message.key}';
     if (_seen.contains(dedup)) return;
     if (_seen.length < _kCap) _seen.add(dedup);
+    final ageMs = entryTs > 0
+        ? DateTime.now().millisecondsSinceEpoch - entryTs * 1000
+        : -1;
     try {
       Analytics.capture('call_failure_shown', {
         'call_id': callId,
@@ -401,6 +412,11 @@ class CallFailureTelemetry {
         'message_key': message.key,
         'surface': surface,
         'peer_uid': peerUid,
+        // -1 = unknown (live call screen, or a legacy row without a timestamp).
+        'entry_age_ms': ageMs,
+        // True when the failure being shown happened over an hour ago — a
+        // history replay, never this session's call.
+        'historical': ageMs > 3600 * 1000,
       });
     } catch (_) {/* telemetry must never break a call surface */}
   }
