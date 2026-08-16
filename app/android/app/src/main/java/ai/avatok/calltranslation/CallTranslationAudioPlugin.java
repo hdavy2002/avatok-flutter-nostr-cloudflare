@@ -390,9 +390,20 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         authToken = token;
         this.targetLanguage = targetLanguage;
         resetTelemetry();
-        startSenderThread();
-        startGuardThread();
-        connectSocket(null, targetLanguage);
+        // [CALL-TRANSLATE-WSURL-1] A synchronous throw below used to escape the
+        // method-call handler UNANSWERED-BY-US: the engine replied a bare
+        // 'error' with no detail, and pendingPrepare stayed populated for the
+        // cleanup path to double-reply (the 12:28 crash). Any throw is now a
+        // coded, single, detailed failure.
+        try {
+            startSenderThread();
+            startGuardThread();
+            connectSocket(null, targetLanguage);
+        } catch (Exception e) {
+            failPrepare("socket_setup_failed", errorCategory(e));
+            stopInternal(true);
+            return;
+        }
 
         // D-7: the timeout is scoped to THIS prepare. A second prepare inside 15 s — a discarded
         // warm-up followed by the real start is exactly that shape — used to be killed by the
@@ -455,7 +466,16 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         // D-4: never orphan a previous pending socket by overwriting the field — that leaked a
         // live socket and left the abandon bookkeeping inconsistent.
         abandonPendingSocket("superseded");
-        HttpUrl socketUrl = HttpUrl.get(WS_URL).newBuilder()
+        // [CALL-TRANSLATE-WSURL-1 2026-08-16] HttpUrl.get() accepts ONLY
+        // http/https and threw IllegalArgumentException on the wss:// scheme —
+        // synchronously, out of prepare(), unanswered. This socket had NEVER
+        // connected from the app: every start died here in ~11ms (funnel
+        // native_code:"error", empty detail), and the pendingPrepare left
+        // un-taken by the throw is what the cleanup double-replied for the
+        // 2026-08-16 12:28 both-phones crash. OkHttp upgrades an https URL to a
+        // WebSocket itself, so the scheme swap is the documented usage;
+        // addQueryParameter still URL-encodes the token.
+        HttpUrl socketUrl = HttpUrl.get(WS_URL.replaceFirst("^wss://", "https://")).newBuilder()
                 .addQueryParameter("access_token", authToken)
                 .build();
         Request request = new Request.Builder()
