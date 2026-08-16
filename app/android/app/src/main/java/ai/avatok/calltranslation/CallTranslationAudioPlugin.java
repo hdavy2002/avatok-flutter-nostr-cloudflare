@@ -580,9 +580,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
                 if (socketLanguage != null) targetLanguage = socketLanguage;
                 if (pendingSocket == webSocket) pendingSocket = null;
                 prepared = true;
-                MethodChannel.Result result = pendingPrepare;
-                pendingPrepare = null;
-                if (result != null) main.post(() -> result.success(true));
+                // [CALL-TRANSLATE-CRASH-1] Atomic take + crash-proof reply.
+                MethodChannel.Result result = takePendingPrepare();
+                if (result != null) safeReply(() -> result.success(true));
                 if (previous != null && previous != webSocket) previous.close(1000, "resumed");
                 emit("ready", null);
                 if (previous != null && previous != webSocket && languageChanged) {
@@ -1088,10 +1088,40 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         }
     }
 
-    private void failPrepare(String code, String message) {
+    /**
+     * [CALL-TRANSLATE-CRASH-1 2026-08-16] Atomic hand-off of the stored prepare
+     * reply. `pendingPrepare` used to be read-then-nulled from TWO threads with
+     * no lock — the OkHttp reader thread (setupComplete success) and whichever
+     * thread called {@link #failPrepare} — so both could grab the SAME
+     * MethodChannel.Result and reply to it twice. The second reply throws
+     * java.lang.IllegalStateException("Reply already submitted"), which is an
+     * uncaught FATAL on Android: the first time translation ever started
+     * end-to-end in production (2026-08-16 12:28 UTC), it crashed BOTH phones
+     * ~9ms after session_created. One synchronized taker means exactly one
+     * winner; the safeReply guard below makes any residual double reply a no-op
+     * instead of a process death.
+     */
+    private synchronized MethodChannel.Result takePendingPrepare() {
         MethodChannel.Result result = pendingPrepare;
         pendingPrepare = null;
-        if (result != null) main.post(() -> result.error(code, message == null ? code : message, null));
+        return result;
+    }
+
+    /** Reply on the main thread; never let a duplicate reply kill the process. */
+    private void safeReply(Runnable reply) {
+        main.post(() -> {
+            try {
+                reply.run();
+            } catch (IllegalStateException ignored) {
+                // Reply already submitted — the other racer won. Losing this
+                // reply is harmless; crashing the call was not.
+            }
+        });
+    }
+
+    private void failPrepare(String code, String message) {
+        MethodChannel.Result result = takePendingPrepare();
+        if (result != null) safeReply(() -> result.error(code, message == null ? code : message, null));
     }
 
     private void emit(String type, String value) {

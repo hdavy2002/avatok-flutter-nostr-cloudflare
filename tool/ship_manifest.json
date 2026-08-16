@@ -1443,5 +1443,22 @@
         "note": "Type-level only; success is npx tsc --noEmit exiting 0 (verified 2026-08-16)."
       }
     ]
+  },
+  "CALL-TRANSLATE-CRASH-1": {
+    "description": "First-ever successful translation start (2026-08-16 12:28 UTC, post APIVER-3 + new key) fatally crashed BOTH phones ~9ms after session_created: java.lang.IllegalStateException 'Reply already submitted'. pendingPrepare in CallTranslationAudioPlugin was read-then-nulled unsynchronized from the OkHttp reader thread (setupComplete success) and failPrepare callers (incl. stopInternal invoked by a second prepare) — both could reply to the same MethodChannel.Result. Fixed with synchronized takePendingPrepare() plus safeReply() that swallows a residual duplicate instead of dying.",
+    "flags": [],
+    "min_devices_on_build": 2,
+    "shipped": "pending",
+    "two_sided": true,
+    "success": [
+      {
+        "event": "call_translation_state",
+        "property": "reason",
+        "equals": "session_created",
+        "min_events": 2,
+        "where": {},
+        "note": "Both phones on the new build: translation tap reaches session_created with ZERO fatal $exception 'Reply already submitted' in the following minute, and the call stays alive (no call_peer_away within 30s of session_created). Ultimate success = audible translated audio + call_translation funnel reaching active."
+      }
+    ]
   }
 }
