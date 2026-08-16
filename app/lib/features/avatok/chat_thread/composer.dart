@@ -381,6 +381,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
             active: _avaMode,
             activeColor: MentionTextController.mentionBlue,
             tooltip: 'Private Ava · only you see the reply',
+            modeLabel: 'Private Mode',
             onTap: () => _setAvaAudienceMode('private'),
           ),
           const SizedBox(width: Msg.s1),
@@ -389,6 +390,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
             active: _avaPublicMode,
             activeColor: MentionTextController.shareGreen,
             tooltip: 'Public Ava · everyone sees the reply',
+            modeLabel: 'Public Mode',
             onTap: () => _setAvaAudienceMode('public'),
           ),
         ],
@@ -399,6 +401,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
     required bool active,
     required Color activeColor,
     required String tooltip,
+    required String modeLabel,
     required VoidCallback onTap,
   }) =>
       Tooltip(
@@ -406,7 +409,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         child: Semantics(
           button: true,
           selected: active,
-          label: '$label ${active ? 'on' : 'off'}',
+          label: '$label ${active ? '$modeLabel on' : 'off'}',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onTap,
@@ -440,6 +443,19 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
                     shape: BoxShape.circle,
                   ),
                 ),
+                // Owner request (2026-08-16): the active chip must SAY what it
+                // means — a tiny "Public Mode" / "Private Mode" tag on the
+                // coloured chip, so nobody has to remember the @/# convention.
+                if (active) ...[
+                  const SizedBox(width: Msg.s1),
+                  Text(
+                    modeLabel,
+                    style: ADText.tabLabel(c: activeColor).copyWith(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ]),
             ),
           ),
