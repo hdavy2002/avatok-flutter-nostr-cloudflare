@@ -3,6 +3,7 @@ import {
   clampSongDurationSeconds,
   classifySongRequest,
   isSongApproval,
+  isSongDraftIntent,
   isSongProductionContextReady,
   isSongRevisionIntent,
   nextSongFlow,
@@ -44,9 +45,30 @@ describe("AI-led song flow guardrails", () => {
 
   it("lets server validation—not model prose—decide when the vocal brief is ready", () => {
     expect(isSongProductionContextReady(completeVocal, "vocal")).toBe(true);
-    expect(isSongProductionContextReady({ ...completeVocal, instruments: [] }, "vocal")).toBe(false);
-    expect(isSongProductionContextReady({ ...completeVocal, voiceStyle: undefined }, "vocal")).toBe(false);
+    expect(isSongProductionContextReady({ ...completeVocal, instruments: [] }, "vocal")).toBe(true);
+    expect(isSongProductionContextReady({ ...completeVocal, vocalArrangement: undefined, voiceStyle: undefined }, "vocal")).toBe(true);
+    expect(isSongProductionContextReady({ ...completeVocal, mood: undefined }, "vocal")).toBe(false);
     expect(isSongProductionContextReady({ ...completeVocal, language: undefined }, "instrumental")).toBe(true);
+  });
+
+  it("moves a ready interview straight into drafting when the person says to proceed", () => {
+    const hindiRock = {
+      ...completeVocal,
+      theme: "freedom and change", genre: "Hindi rock", mood: "uplifting and energetic",
+      language: "Hindi", durationSeconds: 180,
+      instruments: undefined, vocalArrangement: undefined, voiceStyle: undefined,
+    };
+    const waiting = {
+      phase: "awaiting_brief" as const, kind: "vocal" as const,
+      context: hindiRock,
+      conversation: "A three-minute uplifting Hindi rock anthem about freedom",
+      durationSeconds: 180,
+    };
+    expect(isSongDraftIntent("go ahead and draft")).toBe(true);
+    expect(isSongDraftIntent("please write the lyrics")).toBe(true);
+    expect(nextSongFlow(waiting, "go ahead and draft")).toMatchObject({
+      kind: "draft", flow: { phase: "awaiting_brief", brief: expect.stringContaining("Hindi rock") },
+    });
   });
 
   it("stores AI-extracted choices and assembles the actual model brief", () => {

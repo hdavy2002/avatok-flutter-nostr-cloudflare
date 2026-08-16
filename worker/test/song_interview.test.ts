@@ -34,6 +34,7 @@ describe("AI song interview", () => {
     expect(SONG_INTERVIEW_SYSTEM).toContain("Ask at most ONE focused follow-up question");
     expect(SONG_INTERVIEW_SYSTEM).toContain("never a checklist to recite");
     expect(SONG_INTERVIEW_SYSTEM).toContain("Do not repeatedly ask something already answered");
+    expect(SONG_INTERVIEW_SYSTEM).toContain("permission to make sensible producer choices");
   });
 
   it("lets the model release a stale song flow when the user changes topic", () => {

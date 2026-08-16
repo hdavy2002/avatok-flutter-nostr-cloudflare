@@ -43,13 +43,14 @@ function hasText(value: unknown): boolean {
 
 export function isSongProductionContextReady(context: SongProductionContext | undefined, kind: SongRequestKind): boolean {
   if (!context) return false;
+  // A song brief is ready once its creative direction is unambiguous. Instrument
+  // selection, singer arrangement and voice character improve the production
+  // prompt, but they are producer choices rather than reasons to trap a person
+  // in an interview after they have already said to proceed.
   const musicalCore = hasText(context.theme) && hasText(context.genre) && hasText(context.mood)
-    && Array.isArray(context.instruments) && context.instruments.some(hasText)
     && Number.isFinite(context.durationSeconds) && Number(context.durationSeconds) >= 60;
   if (!musicalCore) return false;
-  return kind === "instrumental" || (
-    hasText(context.language) && hasText(context.vocalArrangement) && hasText(context.voiceStyle)
-  );
+  return kind === "instrumental" || hasText(context.language);
 }
 
 export function songProductionBrief(context: SongProductionContext, kind: SongRequestKind): string {
@@ -57,10 +58,10 @@ export function songProductionBrief(context: SongProductionContext, kind: SongRe
     `Theme / intent: ${context.theme ?? ""}`,
     `Genre: ${context.genre ?? ""}`,
     `Mood / energy: ${context.mood ?? ""}`,
-    `Instruments: ${(context.instruments ?? []).join(", ")}`,
+    context.instruments?.some(hasText) ? `Instruments: ${context.instruments.join(", ")}` : "",
     kind === "vocal" ? `Language: ${context.language ?? ""}` : "No lyrics or vocals.",
-    kind === "vocal" ? `Vocal arrangement: ${context.vocalArrangement ?? ""}` : "",
-    kind === "vocal" ? `Voice character: ${context.voiceStyle ?? ""}` : "",
+    kind === "vocal" && context.vocalArrangement ? `Vocal arrangement: ${context.vocalArrangement}` : "",
+    kind === "vocal" && context.voiceStyle ? `Voice character: ${context.voiceStyle}` : "",
     context.intendedUse ? `Intended use: ${context.intendedUse}` : "",
     `Length: ${context.durationSeconds ?? 60} seconds`,
   ].filter(Boolean).join("\n");
@@ -120,6 +121,13 @@ export function parseSongDurationSeconds(text: string): number | undefined {
 export function isSongApproval(text: string): boolean {
   const t = stripAvaWakeWordForIntent(text).toLowerCase().replace(/[.!?]+$/, "").trim();
   return /^(?:yes(?:,?\s+(?:make|generate|create)\s+it)?|approved|go ahead|make it|generate it|create it|looks good|perfect)$/.test(t);
+}
+
+/** Explicit request to move from a gathered brief into lyric drafting. */
+export function isSongDraftIntent(text: string): boolean {
+  const t = stripAvaWakeWordForIntent(text).toLowerCase().replace(/[.!?]+$/, "").trim();
+  return /^(?:go ahead|proceed|continue)(?:\s+and\s+(?:start\s+)?(?:draft|write|create)(?:\s+(?:it|the\s+lyrics?|the\s+song|lyrics?|song))?)?$/.test(t)
+    || /^(?:(?:yes|okay|ok|sure)[, ]+)?(?:please\s+|now\s+)?(?:start\s+)?(?:draft|write|create)\s+(?:it|the\s+lyrics?|the\s+song|lyrics?|song)$/.test(t);
 }
 
 /** A request to alter a reviewed lyric draft, rather than approve it. */
@@ -187,6 +195,18 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
   if (flow.phase === "awaiting_brief") {
     const brief = stripAvaWakeWordForIntent(text);
     if (!brief) return { kind: "ask_brief", flow };
+    const kind = flow.kind ?? "vocal";
+    if (isSongProductionContextReady(flow.context, kind) &&
+        (isSongApproval(text) || isSongDraftIntent(text))) {
+      return {
+        kind: kind === "instrumental" ? "generate" : "draft",
+        flow: {
+          ...flow,
+          brief: flow.brief ?? songProductionBrief(flow.context!, kind),
+          phase: kind === "instrumental" ? "generating" : "awaiting_brief",
+        },
+      };
+    }
     const priorConversation = flow.conversation ?? flow.brief;
     const conversation = [priorConversation, brief].filter(Boolean).join("\n\n");
     // AI owns interpretation and the conversational response. This transition
