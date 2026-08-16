@@ -14,7 +14,6 @@ export interface Env {
   DYNW_TEST_SECRET?: string;
   AI_MEDIA_INPUT_KEY?: string;
   VENICE_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
   JWT_SECRET?: string;
   // [DYNW-FLOWS-1] Cloudflare Workflows binding for the DARK PARALLEL account-
   // deletion cascade (worker/src/workflows/deletion.ts). The LIVE path is still

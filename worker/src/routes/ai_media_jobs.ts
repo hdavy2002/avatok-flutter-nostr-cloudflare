@@ -290,12 +290,13 @@ export async function aiMediaSongShareAsset(
     "etag": object.httpEtag,
   });
   let status = 200;
-  if (object.range && "offset" in object.range && "length" in object.range) {
+  // `in` checks don't narrow R2Range's optional numbers — read then test.
+  const rangeStart = object.range && "offset" in object.range ? object.range.offset : undefined;
+  const rangeLength = object.range && "length" in object.range ? object.range.length : undefined;
+  if (rangeStart !== undefined && rangeLength !== undefined) {
     status = 206;
-    const start = object.range.offset;
-    const length = object.range.length;
-    headers.set("content-length", String(length));
-    headers.set("content-range", `bytes ${start}-${start + length - 1}/${object.size}`);
+    headers.set("content-length", String(rangeLength));
+    headers.set("content-range", `bytes ${rangeStart}-${rangeStart + rangeLength - 1}/${object.size}`);
   } else {
     headers.set("content-length", String(object.size));
   }
@@ -341,7 +342,10 @@ export async function aiMediaVideoShareAsset(req: Request, env: Env, token: stri
   if (!object) return new Response("Not found", { status: 404 });
   const headers = new Headers({ "content-type": row.mime_type || (asset === "thumbnail" ? "image/png" : "video/mp4"), "cache-control": asset === "thumbnail" ? "public, max-age=31536000, immutable" : "public, max-age=300", "content-disposition": "inline", "x-content-type-options": "nosniff", "etag": object.httpEtag });
   if (asset === "video") headers.set("accept-ranges", "bytes");
-  if (asset === "video" && object.range && "offset" in object.range && "length" in object.range) { headers.set("content-length", String(object.range.length)); headers.set("content-range", `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`); return new Response(object.body, { status: 206, headers }); }
+  // `in` checks don't narrow R2Range's optional numbers — read then test.
+  const vStart = object.range && "offset" in object.range ? object.range.offset : undefined;
+  const vLength = object.range && "length" in object.range ? object.range.length : undefined;
+  if (asset === "video" && vStart !== undefined && vLength !== undefined) { headers.set("content-length", String(vLength)); headers.set("content-range", `bytes ${vStart}-${vStart + vLength - 1}/${object.size}`); return new Response(object.body, { status: 206, headers }); }
   headers.set("content-length", String(object.size));
   return new Response(object.body, { headers });
 }
