@@ -50,6 +50,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
             ts: now, special: 'ava'));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
       });
+      _clearAvaWorking(); // [AVA-WORKING-DOTS-1] on-device answer landed
       _jump();
     });
   }
@@ -110,6 +111,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
             ts: now, special: 'ava', evId: evId));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
       });
+      _clearAvaWorking(); // [AVA-WORKING-DOTS-1] streaming bubble replaces the dots
       _jump();
     });
   }
@@ -154,21 +156,54 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   }
 
 
-  /// Show a transient on-device "Ava is thinking…" chip. Scheduled after the
-  /// current frame so it lands below the user's own @ava message; it collapses
-  /// automatically once the answer bubble arrives (the 'ava_status' transient
-  /// rule keeps only the most-recent chip) or when [_bindLocalAva] clears it.
-  void _showLocalAvaThinking() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      _mutMsgs(() {
-        _msgs.add(_Msg(_seq++, false, 'Ava is thinking…', _fmtTime(nowS),
-            ts: nowS, special: 'ava_status'));
-      });
-      _jump();
+  /// [AVA-WORKING-DOTS-1] Show the animated "Ava is working…" indicator (the
+  /// synthetic bottom list item — see `_avaWorkingBubble`). Re-arming with a new
+  /// label just updates the text; every call resets the 60s failsafe so a
+  /// server turn that dies without a reply/'end' chip can never leave the dots
+  /// bouncing forever (a stuck spinner is worse than none).
+  void _showAvaWorking(String label) {
+    if (!mounted) return;
+    _avaWorkingTimeout?.cancel();
+    _avaWorkingTimeout = Timer(const Duration(seconds: 60), () {
+      if (mounted && _avaWorking != null) setState(() => _avaWorking = null);
     });
+    setState(() => _avaWorking = label.trim().isEmpty ? 'Ava is working…' : label.trim());
   }
+
+  /// [AVA-WORKING-DOTS-1] Hide the indicator. Called from every terminal edge:
+  /// the durable Ava reply (inbound.dart), the persisted 'ava_status'
+  /// phase:'end' chip (inbound.dart), the first live stream frame
+  /// ([_bindAvaStream]), the on-device answer ([_bindLocalAva]), and the 60s
+  /// timeout above. Idempotent and cheap when already hidden.
+  void _clearAvaWorking() {
+    _avaWorkingTimeout?.cancel();
+    _avaWorkingTimeout = null;
+    if (mounted && _avaWorking != null) setState(() => _avaWorking = null);
+  }
+
+  /// [AVA-WORKING-DOTS-1] Reconcile the indicator with a wire 'ava_status'
+  /// chip (persisted envelope, from _onDm/_onGroupMsg). phase:'end' always
+  /// clears (over-clearing beats a stuck spinner). A 'start' chip adopts the
+  /// server's label — but only when the chip is FRESH (≤90s old): history
+  /// replay / reconnect backfill re-delivers old 'start' rows, and honouring
+  /// one would raise a phantom "working" indicator with no turn in flight.
+  void _reconcileAvaWorking(Map<String, dynamic>? extra, int tsSec) {
+    final phase = (extra?['phase'] ?? '').toString();
+    if (phase == 'end') {
+      _clearAvaWorking();
+      return;
+    }
+    final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (tsSec > 0 && (nowS - tsSec) > 90) return;
+    _showAvaWorking((extra?['label'] ?? '').toString());
+  }
+
+  /// Show the on-device "Ava is thinking…" indicator. [AVA-WORKING-DOTS-1]:
+  /// this used to append a transient `special:'ava_status'` MESSAGE ROW, which
+  /// the visible-list collapse could silently drop (see the `_avaWorking` field
+  /// comment in chat_thread.dart) — it now drives the same state-driven
+  /// indicator as the server path.
+  void _showLocalAvaThinking() => _showAvaWorking('Ava is thinking…');
 
 
   void _send() {
@@ -215,6 +250,13 @@ extension _ChatThreadSend on _ChatThreadScreenState {
         onSummonAva!(avaModePrivate
             ? '$_avaWakeWord $t'
             : (avaModePublic ? '$_avaShareWord $t' : t));
+        // [AVA-WORKING-DOTS-1] Optimistic: the dots appear the moment an
+        // ava-directed message is dispatched (well inside the ~1s budget),
+        // instead of waiting on the server's ava_status chip — which the old
+        // message-row pipeline dropped anyway. The persisted 'start' chip
+        // reconciles the label when it arrives (inbound.dart); the reply /
+        // 'end' chip / 60s timeout clears it.
+        _showAvaWorking('Ava is working…');
         if (privateAva) {
           _ragAddLine('You', t);
           _composerFocus.requestFocus();

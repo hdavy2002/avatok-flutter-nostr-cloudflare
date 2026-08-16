@@ -772,37 +772,37 @@ extension _ChatThreadSpecial on _ChatThreadScreenState {
   // `bubble_theme.dart`, keyed on the STABLE uid and carrying a matched
   // ink/meta/play/border set for every tint. See `_bubble` / `_bubbleTheme`.
 
-  /// The inline "Ava is working…" chip row (kind 'ava_status'). Not a normal
-  /// bubble — a subtle lilac pill with a tiny spinner. Generic: any phase that
-  /// posts an 'ava_status' frame gets this with no extra UI work.
-  Widget _avaStatusChip(_Msg m) {
-    final label = (m.extra?['label'] ?? m.text).toString();
-    // Image generation is represented exclusively by its durable `ai_job`
-    // card. The legacy start chip is emitted before a job id exists and can
-    // arrive after the job lifecycle envelope, so rendering it creates a small
-    // placeholder beside (or before) the full-size job card. Keep receiving it
-    // for old-server compatibility, but make it non-visual on current clients.
-    final isImage = (m.extra?['source'] ?? '').toString() == 'image' ||
-        label.toLowerCase().contains('generating an image');
-    if (isImage) return const SizedBox.shrink();
+  /// [AVA-WORKING-DOTS-1] The inline "Ava is working…" indicator — Ava's
+  /// sparkle, the turn label, and three bouncing dots (reuses the existing
+  /// `_TypingDots` looper: one AnimationController, 60fps-cheap). Rendered as a
+  /// STATE-DRIVEN synthetic bottom list item (`_avaWorking` in chat_thread.dart),
+  /// never as a message row — the old `_avaStatusChip` message-row rendering is
+  /// gone because the ts-sort/collapse pipeline silently dropped it during the
+  /// exact window it existed to cover (see the `_avaWorking` field comment).
+  Widget _avaWorkingBubble(String label) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AD.bubbleInBg,
           borderRadius: BorderRadius.circular(Msg.rSm),
           border: Border.all(color: AD.bubbleInInk, width: 1),
-          boxShadow: const [],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(width: 12, height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.6, color: AD.bubbleInInk)),
+          Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+              size: 14, color: AD.bubbleInInk),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(label.isEmpty ? 'Ava is working…' : label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ADText.bubbleBody(c: AD.bubbleInInk)
+                    .copyWith(fontStyle: FontStyle.italic)),
+          ),
           const SizedBox(width: 8),
-          Text(label.isEmpty ? 'Ava is working…' : label,
-              style: ADText.bubbleBody(c: AD.bubbleInInk)
-                  .copyWith(fontStyle: FontStyle.italic)),
+          const _TypingDots(color: AD.bubbleInInk),
         ]),
       ),
     );

@@ -129,13 +129,16 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
     // sender-name header, no bubble tail, and must never fall into any of the
     // special/hidden/media logic below.
     if (m.system) return _systemBubble(m);
-    // Ava "working…" chip (kind 'ava_status') — inline, not a bubble. A 'phase:end'
-    // frame is the CLOSE signal (e.g. image done/failed) — it must collapse the
-    // chip, not render as a stuck "generating…" placeholder.
-    if (m.special == 'ava_status') {
-      if ((m.extra?['phase'] ?? '').toString() == 'end') return const SizedBox.shrink();
-      return _avaStatusChip(m);
-    }
+    // [AVA-WORKING-DOTS-1] 'ava_status' rows are now ALWAYS non-visual. The
+    // "Ava is working…" indicator is state-driven (`_avaWorking` +
+    // `_avaWorkingBubble`, fed by inbound.dart/send.dart), because rendering it
+    // as a message row was the bug: the visible-list collapse only showed an
+    // 'ava_status' row when it sorted strictly last, and second-granularity
+    // server-vs-device timestamps + an unstable sort routinely put the chip
+    // at-or-before the user's own just-sent bubble — dropping it for the whole
+    // turn. The rows still land in `_msgs` (frozen wire contract; harmless) —
+    // they just never paint.
+    if (m.special == 'ava_status') return const SizedBox.shrink();
     // [AVA-MEDIA-JOB-2] A durable image/doc/audio job placeholder — keyed only
     // by `job_id` (extra['job_id']), never swept by the legacy `ava_status`
     // cleanup (see `_isJobStatusChip`). Reads LIVE state from the repository

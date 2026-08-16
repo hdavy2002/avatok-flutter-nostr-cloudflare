@@ -111,6 +111,17 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     if (_deletedIds.contains(m.rumorId)) {
       text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
     }
+    // [AVA-WORKING-DOTS-1] Drive the state-driven "Ava is working…" indicator
+    // from the wire: the persisted 'ava_status' chip reconciles it (start →
+    // adopt the server label, end → clear), and any Ava reply clears it. The
+    // chip ROW added below stays for the frozen wire contract but no longer
+    // paints (bubbles.dart) — the old row rendering is what the ts-sort
+    // collapse silently dropped.
+    if (special == 'ava_status') {
+      _reconcileAvaWorking(extra, m.createdAt);
+    } else if (special == 'ava' || special == 'ava_private') {
+      _clearAvaWorking();
+    }
     final isMediaJobEnvelope = (special == 'ava' || special == 'ava_private') &&
         extra?['meta'] is Map &&
         ((extra!['meta'] as Map)['job_id']?.toString().isNotEmpty ?? false) &&
@@ -351,6 +362,17 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     // never the original body, even though the cached/replayed envelope still has it.
     if (_deletedIds.contains(m.rumorId)) {
       text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
+    }
+    // [AVA-WORKING-DOTS-1] Same indicator wiring as _onGroupMsg (see the note
+    // there). `seed` (history replay) never touches it — only live frames may
+    // raise or clear the dots; `_reconcileAvaWorking`'s 90s freshness guard
+    // additionally protects against a reconnect backfill of old 'start' chips.
+    if (!seed) {
+      if (special == 'ava_status') {
+        _reconcileAvaWorking(extra, m.createdAt);
+      } else if (special == 'ava' || special == 'ava_private') {
+        _clearAvaWorking();
+      }
     }
     final isMediaJobEnvelope = (special == 'ava' || special == 'ava_private') &&
         extra?['meta'] is Map &&

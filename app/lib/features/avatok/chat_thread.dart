@@ -370,6 +370,32 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   int _peerReadTs = 0;
   Timer? _typingClear;
   Timer? _myTypingOff;
+  // [AVA-WORKING-DOTS-1] The in-flight "Ava is working…" indicator. State-driven
+  // (a synthetic bottom list item, like `_peerTyping`), NOT a `_Msg` row.
+  //
+  // ROOT CAUSE of "nothing shows while Ava works" (owner report 2026-08-17):
+  // the old chip was a persisted `ava_status` MESSAGE ROW, and the visible-list
+  // collapse rule (see `visible` memo below) only renders an `ava_status` row
+  // when it is the STRICTLY-NEWEST message after `_msgs.sort(ts)`. `ts` is
+  // second-granularity, the chip's ts comes from the SERVER clock while the
+  // user's optimistic bubble carries the DEVICE clock, and Dart's List.sort is
+  // not stable — so whenever the chip landed in the same second as (or, with
+  // any clock skew, an earlier second than) the user's own just-sent message,
+  // it sorted at-or-before that bubble, failed the "last index" test, and was
+  // silently dropped from `visible` for the entire turn. The transient
+  // WS broadcast that was meant to be the real-time path (inbox /ava_status →
+  // type:'ava_status' frame) is ALSO dropped: SyncHub._onFrame has no case for
+  // it (see sync_hub.dart's switch — ava_stream is routed, ava_status is not).
+  // Net effect: during a 5–30s song/agent turn the user saw nothing at all.
+  //
+  // The fix: show this indicator OPTIMISTICALLY the moment an @ava/#ava message
+  // is sent, reconcile the label from the persisted `ava_status` start chip
+  // when it arrives, and clear it on the Ava reply / phase:'end' / stream
+  // start / a 60s timeout — so it can never depend on sort order and can never
+  // stick forever. `ava_status` message rows themselves no longer render
+  // (bubbles.dart) — this indicator owns the visual.
+  String? _avaWorking;        // non-null label = indicator visible
+  Timer? _avaWorkingTimeout;  // 60s failsafe — a stuck spinner is worse than none
   // Phase 5: live clock — refreshes relative timestamps + day separators so
   // "Today" rolls to "Yesterday" and "last seen" stays current without a reload.
   Timer? _clockTimer;
@@ -992,6 +1018,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _presence?.dispose();
     _typingClear?.cancel();
     _myTypingOff?.cancel();
+    _avaWorkingTimeout?.cancel(); // [AVA-WORKING-DOTS-1]
     _onlineClear?.cancel();
     _confTimer?.cancel();
     _pruneTimer?.cancel();
@@ -1336,6 +1363,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // trailing-item cases are mutually exclusive).
                 final showTyping = _peerTyping && !searching;
                 final typingCount = showTyping ? 1 : 0;
+                // [AVA-WORKING-DOTS-1] Ava turn in flight → animated indicator
+                // as the visually-newest synthetic item. State-driven, so it is
+                // immune to the ts-sort/collapse pipeline that silently dropped
+                // the old persisted chip (see the `_avaWorking` field comment).
+                final showAvaWorking = _avaWorking != null && !searching;
+                final avaWorkingCount = showAvaWorking ? 1 : 0;
                 // [CHAT-UI-TELEMETRY-1] A genuinely empty, non-searching thread
                 // (no messages, nothing left to page in from the archive) used to
                 // render a blank white canvas — indistinguishable from "still
@@ -1346,7 +1379,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // instead of the empty-state nudge — without this the FIRST
                 // message of a new conversation could start with the peer typing
                 // and the thread would show "no messages yet" while it happened.
-                if (visible.isEmpty && !searching && !showArchiveHeader && !_archiveLoading && !showTyping) {
+                if (visible.isEmpty && !searching && !showArchiveHeader && !_archiveLoading && !showTyping && !showAvaWorking) {
                   return _emptyThreadState();
                 }
                 // [AVA-CHAT-INSTANT] Keep the list laid out but invisible + inert
@@ -1371,7 +1404,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                   // message) and bottom:8 still sits below the visually-bottom
                   // item (typing bubble / newest message), exactly as before.
                   padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-                  itemCount: visible.length + headerCount + footerCount + typingCount,
+                  itemCount: visible.length + headerCount + footerCount + typingCount + avaWorkingCount,
                   itemBuilder: (c, i) {
                     // [CHAT-UI-REVERSE-1] Trailing synthetic items (typing
                     // bubble / AI search footer) used to be appended AFTER the
@@ -1379,8 +1412,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // non-reversed list. With reverse:true the visual bottom is
                     // index 0, so they move there. They're mutually exclusive
                     // (never both showing at once), so trailingCount is 0 or 1.
-                    final trailingCount = footerCount + typingCount;
-                    if (trailingCount == 1 && i == 0) {
+                    // [AVA-WORKING-DOTS-1] The Ava-working indicator joins the
+                    // trailing synthetic items and takes the bottom-most slot
+                    // (index 0); the typing bubble / AI footer (still mutually
+                    // exclusive with each other) sit just above it when both
+                    // kinds are showing at once.
+                    final trailingCount = footerCount + typingCount + avaWorkingCount;
+                    if (i < trailingCount) {
+                      if (showAvaWorking && i == 0) return _avaWorkingBubble(_avaWorking!);
                       return showAiFooter ? _aiSearchFooter() : _typingBubble();
                     }
                     // msgSlot: 0 = newest message row, increasing toward the
