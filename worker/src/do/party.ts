@@ -23,6 +23,7 @@
 // agent_status, neg_stream, deal_ready, viewer, listing_update, conf_presence,
 // ava_stream, badge.
 import type { Env } from "../types";
+import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { Mp3Encoder } from "@breezystack/lamejs";
 
 interface SockMeta { uid: string; room: string; since: number; events: number }
@@ -164,7 +165,6 @@ export class PartyDO {
     const styleHint = persona && persona.trim() ? ` Speak in this style/accent: ${persona.trim()}.` : "";
     const script = `TTS this marketplace negotiation between two agents, natural and businesslike.${speakIn}${styleHint}\n` +
       transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${key}`;
     const body = {
       contents: [{ parts: [{ text: script }] }],
       generationConfig: { responseModalities: ["AUDIO"], speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
@@ -174,10 +174,16 @@ export class PartyDO {
       ] } } },
     };
     try {
-      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
-      const raw = await res.text();
-      if (!res.ok) { console.error(`[party-tts] ${res.status}: ${raw.slice(0, 160)}`); return null; }
-      let j: any = null; try { j = JSON.parse(raw); } catch { /* */ }
+      // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch with ?key=;
+      // now routed through generateContentVia (falls back to the Developer API
+      // automatically). `key` is pinned via opts.apiKey — RECEPTIONIST_GEMINI_API_KEY
+      // when set, kept on the Developer API so its spend stays separable.
+      const r = await generateContentVia(
+        this.env as any, "gemini-2.5-flash-preview-tts", body, "generateContent",
+        { apiKey: key, timeoutMs: 90000 },
+      );
+      if (!r.ok) { console.error(`[party-tts] ${r.status}: ${JSON.stringify(r.out).slice(0, 160)}`); return null; }
+      const j: any = r.out;
       const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (typeof data !== "string") { console.error(`[party-tts] no audio finishReason=${j?.candidates?.[0]?.finishReason}`); return null; }
       const bin = atob(data);

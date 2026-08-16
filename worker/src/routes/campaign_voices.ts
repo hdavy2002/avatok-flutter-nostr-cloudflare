@@ -27,6 +27,7 @@
 //   GET /api/campaigns/voices/preview?voice=  short cached sample (gate + requireUser)
 import type { Env } from "../types";
 import { json } from "../util";
+import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { isFail, requireUser } from "../authz";
 import { readConfig } from "./config";
 import { track } from "../hooks";
@@ -145,7 +146,6 @@ function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
 async function renderPreviewWav(env: Env, voiceId: string): Promise<Uint8Array | null> {
   const key = (env as any).RECEPTIONIST_GEMINI_API_KEY || (env as any).GEMINI_API_KEY;
   if (!key) return null;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${PREVIEW_TTS_MODEL}:generateContent?key=${key}`;
   const body = {
     contents: [{ parts: [{ text: PREVIEW_SCRIPT }] }],
     generationConfig: {
@@ -154,12 +154,13 @@ async function renderPreviewWav(env: Env, voiceId: string): Promise<Uint8Array |
     },
   };
   try {
-    const res = await fetch(url, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) return null;
-    const j: any = await res.json().catch(() => null);
+    // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch with ?key=; now
+    // routed through generateContentVia (falls back to the Developer API
+    // automatically). `key` is pinned via opts.apiKey — RECEPTIONIST_GEMINI_API_KEY
+    // when set, kept on the Developer API so its spend stays separable.
+    const r = await generateContentVia(env, PREVIEW_TTS_MODEL, body, "generateContent", { apiKey: key, timeoutMs: 20000 });
+    if (!r.ok) return null;
+    const j: any = r.out;
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (typeof data !== "string") return null;
     return pcmToWav(b64ToBytes(data));

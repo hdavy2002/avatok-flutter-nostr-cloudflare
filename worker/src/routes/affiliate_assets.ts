@@ -15,6 +15,7 @@
 // errors are NEVER forwarded to the client.
 import type { Env } from "../types";
 import { json } from "../util";
+import { generateContentVia, vertexConfigured } from "../lib/vertex"; // [VERTEX-1]
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { rateLimit } from "../money";
@@ -88,21 +89,16 @@ function buildPrompt(p: { title: string; price: number; creator: string; app: st
 
 /** One Gemini generateContent call → PNG bytes (inlineData base64). */
 async function generateImage(env: Env, prompt: string, aspect: string): Promise<Uint8Array> {
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${ASSET_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY! },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseModalities: ["IMAGE"],
-          imageConfig: { aspectRatio: aspect },
-        },
-      }),
+  // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch; now routed
+  // through generateContentVia (falls back to the Developer API automatically).
+  const r = await generateContentVia(env, ASSET_MODEL, {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ["IMAGE"],
+      imageConfig: { aspectRatio: aspect },
     },
-  );
-  const j = (await r.json().catch(() => ({}))) as any;
+  });
+  const j = r.out || {};
   if (!r.ok) throw new Error(`gemini ${r.status}: ${String(j?.error?.message ?? "unknown").slice(0, 200)}`);
   const parts = j?.candidates?.[0]?.content?.parts ?? [];
   const inline = parts.find((p: any) => p?.inlineData?.data)?.inlineData;
@@ -125,7 +121,8 @@ export async function affiliateAssetsGenerate(req: Request, env: Env, linkId: st
   if (cfg.affiliateAssetKitEnabled !== true) {
     return json({ error: "marketing-asset kit disabled", flag: "affiliateAssetKitEnabled" }, 503);
   }
-  if (!env.GEMINI_API_KEY) return json({ error: "asset kit unavailable", reason: "GEMINI_API_KEY unset" }, 503);
+  // [VERTEX-1] Vertex being configured is now also a valid path (was GEMINI_API_KEY-only).
+  if (!env.GEMINI_API_KEY && !vertexConfigured(env as any)) return json({ error: "asset kit unavailable", reason: "GEMINI_API_KEY unset" }, 503);
   const link = await ownedLink(env, ctx.uid, linkId);
   if (!link) return json({ error: "not found" }, 404);
 

@@ -18,6 +18,7 @@ import { exploreSearch } from "./listings";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { moderate } from "../lib/moderation";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
+import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { readConfig } from "./config"; // P5: agentDailyCap
 import { getAgentSettings, type AgentSettings } from "./agent_settings"; // MKT-LANG: buyer/seller lang, floor, tone, guardrails
 import { contactFor } from "../lib/identity"; // MKT-LANG-5: stamp email on translation telemetry
@@ -102,7 +103,6 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
   const spoken = lines.length > 6 ? [...lines.slice(0, 5), lines[lines.length - 1]] : lines;
   const script = `TTS this short marketplace negotiation between two agents, natural and businesslike.${styleHint}\n` +
     spoken.join("\n");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${key}`;
   const body = {
     contents: [{ parts: [{ text: script }] }],
     generationConfig: {
@@ -118,9 +118,13 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
     // ~10-15s, comfortably inside the Worker's background budget. (60s was worse:
     // the long render outlived the budget and the whole job was reaped → no
     // completion event, no audio at all.)
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
-    if (!res.ok) return null;
-    const j: any = await res.json().catch(() => null);
+    // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch with ?key=; now
+    // routed through generateContentVia (falls back to the Developer API
+    // automatically). `key` is pinned via opts.apiKey — RECEPTIONIST_GEMINI_API_KEY
+    // when set, kept on the Developer API so its spend stays separable.
+    const r = await generateContentVia(env, TTS_MODEL, body, "generateContent", { apiKey: key, timeoutMs: 25000 });
+    if (!r.ok) return null;
+    const j: any = r.out;
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (typeof data !== "string") return null;
     return pcmToWav(b64ToBytes(data));

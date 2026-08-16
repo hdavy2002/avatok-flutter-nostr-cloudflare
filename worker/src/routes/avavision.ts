@@ -33,6 +33,7 @@
 //   POST /api/avavision/snapshot                             "Analyze my form" deep frame (NEW, only new media path)
 import type { Env } from "../types";
 import { json } from "../util";
+import { generateContentVia, vertexConfigured } from "../lib/vertex"; // [VERTEX-1] snapshot only — Live/ephemeral-token code below is untouched
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { walletOp } from "./wallet";
@@ -1151,7 +1152,8 @@ export async function avavisionSnapshot(req: Request, env: Env): Promise<Respons
     return json({ error: "SNAPSHOT_CAP_REACHED", snapshot_calls: used, free_snapshots_per_session: cap }, 429);
   }
 
-  if (!env.GEMINI_API_KEY) return json({ error: "snapshot unavailable: GEMINI_API_KEY unset" }, 502);
+  // [VERTEX-1] Vertex being configured is now also a valid path (was GEMINI_API_KEY-only).
+  if (!env.GEMINI_API_KEY && !vertexConfigured(env as any)) return json({ error: "snapshot unavailable: GEMINI_API_KEY unset" }, 502);
   const model = (env as any).AVAVISION_SNAPSHOT_MODEL || DEFAULT_SNAPSHOT_MODEL;
   const tmpl = findTemplate(a.template_id);
   const subject = tmpl?.tracked_subject || "the subject in view";
@@ -1163,28 +1165,24 @@ export async function avavisionSnapshot(req: Request, env: Env): Promise<Respons
     `Use code execution to draw clear annotations (lines/angles/markers) on the frame highlighting what to fix, and return the annotated image.`,
     `Then give: (1) a single integer score 0–100 for the technique on the line "SCORE: <n>", and (2) a short 1–3 sentence breakdown of the most important correction.`,
   ].join(" ");
-  let r: Response;
+  // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch; routed through
+  // generateContentVia now (falls back to the Developer API automatically). The
+  // live/ephemeral-token code elsewhere in this file is untouched.
+  let j: any;
   try {
-    r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: b64 } }] }],
-          tools: [{ codeExecution: {} }],
-          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-        }),
-      },
-    );
+    const r = await generateContentVia(env, model, {
+      contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: b64 } }] }],
+      tools: [{ codeExecution: {} }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    });
+    j = r.out;
+    if (!r.ok) {
+      metric(env, "avavision_snapshot_failed", [1, r.status], [model]);
+      return json({ error: `snapshot model error (${r.status}): ${String(j?.error?.message ?? "unknown").slice(0, 160)}` }, 502);
+    }
   } catch (e) {
     metric(env, "avavision_snapshot_failed", [1, 0], [model]);
     return json({ error: `snapshot model error: ${String(e).slice(0, 160)}` }, 502);
-  }
-  const j = (await r.json().catch(() => ({}))) as any;
-  if (!r.ok) {
-    metric(env, "avavision_snapshot_failed", [1, r.status], [model]);
-    return json({ error: `snapshot model error (${r.status}): ${String(j?.error?.message ?? "unknown").slice(0, 160)}` }, 502);
   }
   const parts: any[] = j?.candidates?.[0]?.content?.parts ?? [];
   const annotated = parts.find((p) => p?.inlineData?.data)?.inlineData?.data ?? null;

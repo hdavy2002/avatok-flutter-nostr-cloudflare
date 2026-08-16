@@ -18,6 +18,7 @@ import { track, trackUser, trackUserContact, trackException } from "../hooks";
 import { readPresenceRead, type PresenceReadResult, type PresenceState } from "../lib/presence";
 import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
+import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS, ringLifetimeMs } from "../lib/call_delivery_contract";
@@ -2288,17 +2289,20 @@ function parseNameVerdict(txt: string): { plausible: boolean; reason: string } |
   } catch { return null; }
 }
 
-// Google Generative Language direct (x-goog-api-key). null on ANY failure.
-async function geminiDirectVet(key: string, prompt: string): Promise<{ plausible: boolean; reason: string } | null> {
+// [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch keyed by x-goog-api-key;
+// now routed through generateContentVia. `opts.apiKey`, when passed, pins the
+// Developer API (used for the RECEPTIONIST_GEMINI_API_KEY branch below so that
+// spend stays separable) — otherwise Vertex is tried first with an automatic
+// fallback to env.GEMINI_API_KEY. null on ANY failure.
+async function geminiDirectVet(env: Env, prompt: string, opts?: { apiKey?: string }): Promise<{ plausible: boolean; reason: string } | null> {
   try {
-    const r = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
-      { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 80 } }) },
+    const r = await generateContentVia(
+      env as any, "gemini-2.5-flash-lite",
+      { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 80 } },
+      "generateContent", opts,
     );
     if (!r.ok) return null;
-    const j = (await r.json()) as any;
-    return parseNameVerdict(String(j?.candidates?.[0]?.content?.parts?.[0]?.text ?? ""));
+    return parseNameVerdict(String(r.out?.candidates?.[0]?.content?.parts?.[0]?.text ?? ""));
   } catch { return null; }
 }
 
@@ -2339,10 +2343,17 @@ async function vetRealName(env: Env, first: string, last: string): Promise<{ ok:
   // Gemini Live uses) → OpenRouter (Gemini). First provider that answers wins.
   // FAIL OPEN only if EVERY provider is unreachable — never block a real user on an
   // AI outage / depleted key; `unavailable:true` still logs profile_vet_error.
-  const keys = [(env as any).GEMINI_API_KEY, (env as any).RECEPTIONIST_GEMINI_API_KEY]
-    .filter((k, i, a): k is string => !!k && a.indexOf(k) === i);
-  for (const key of keys) {
-    const out = await geminiDirectVet(key, prompt);
+  // [VERTEX-1] Primary key: no apiKey pin, so geminiDirectVet tries Vertex first
+  // and falls back to env.GEMINI_API_KEY internally. Receptionist key: pinned to
+  // the Developer API so its spend stays separable (RECEPTIONIST_GEMINI_API_KEY rule).
+  const primaryKey = (env as any).GEMINI_API_KEY as string | undefined;
+  const receptionistKey = (env as any).RECEPTIONIST_GEMINI_API_KEY as string | undefined;
+  if (primaryKey) {
+    const out = await geminiDirectVet(env, prompt);
+    if (out) return { ok: true, plausible: out.plausible, reason: out.reason };
+  }
+  if (receptionistKey && receptionistKey !== primaryKey) {
+    const out = await geminiDirectVet(env, prompt, { apiKey: receptionistKey });
     if (out) return { ok: true, plausible: out.plausible, reason: out.reason };
   }
   const orOut = await openrouterVet(env, prompt);

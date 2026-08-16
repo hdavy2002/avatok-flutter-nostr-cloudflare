@@ -23,6 +23,7 @@ import { redisGetJson, redisSetJson } from "./redis";
 import { signThumbUrl } from "./genui_thumb_sign";
 import { avaReason } from "./ava_reason"; // One Brain B1: unified reasoning gateway
 import { sha256Hex } from "../util"; // One Brain B1: KV cache key = hash(planning input)
+import { vertexConfigured } from "./vertex"; // [VERTEX-1]
 
 // Hard ceiling on how many records we put into ONE card. The trim layer already
 // caps the data, but the builder bounds it again so a huge list can NEVER blow up
@@ -271,8 +272,11 @@ async function llmJson(env: Env, sys: string, usr: string): Promise<{ text: stri
   // fetch. The gateway soft-fails (returns "") and does not surface the HTTP status,
   // so we report 200 on success / 0 on empty|failure — exactly how the already-
   // migrated Opus branch above reports its outcome.
+  // [VERTEX-1] The actual call already goes through the migrated google adapter
+  // (avaReason -> generateContentVia), so this guard must not short-circuit when
+  // only Vertex (no Developer API key) is configured.
   const key = env.GEMINI_API_KEY ?? "";
-  if (!key) return { text: "", provider: "none", model: "", ms: 0, ok: false, status: 0 };
+  if (!key && !vertexConfigured(env as any)) return { text: "", provider: "none", model: "", ms: 0, ok: false, status: 0 };
   const g0 = Date.now();
   try {
     const text = await avaReason(env, {

@@ -84,6 +84,15 @@ POSTHOG_PROJECT_ID = "139917"
 # AvaVision Agentic-Vision snapshot model ("Analyze my form", code execution on).
 # Phase 0 PRICING.md §3 verified the exact id; preview may roll to GA gemini-3-flash.
 AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
+# [VERTEX-1] 2026-08-17 — REST Gemini calls go to Vertex (aiplatform.googleapis.com)
+# instead of the AI-Studio Developer API, for India-scale quota. Auth reuses the
+# GOOGLE_TTS_SA_JSON service account (ava-tts@avatok-avaglobal), which needs the
+# Vertex AI User role on this project. KILL SWITCH: blank VERTEX_PROJECT and
+# redeploy → every call falls back to the Developer API, byte-for-byte.
+# "global" is the highest-capacity Gemini endpoint; a region is only for residency.
+# NOTE: the Live/WebSocket lanes are NOT affected by this — see lib/vertex.ts.
+VERTEX_PROJECT = "avatok-avaglobal"
+VERTEX_LOCATION = "global"
 WALLET_TOPUP_ENABLED = "1"   # TEST MODE 2026-06-18 (sk_test) — set LIVE Stripe keys before real money-in
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 # Public Stripe publishable key (NOT a secret) — returned to the app for the in-app
@@ -671,6 +680,11 @@ AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"
 POSTHOG_PROJECT_ID = "139917"
 AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model (PRICING.md §3)
+# [VERTEX-1] staging is INTENTIONALLY left on the Developer API: the ava-tts service
+# account and its Vertex role live in avatok-avaglobal (a prod project), and pointing
+# staging at a prod project would put throwaway traffic on the production quota this
+# change exists to protect. Set VERTEX_PROJECT = "avatok-staging" here only after
+# that project has its own service account + Vertex AI User role.
 WALLET_TOPUP_ENABLED = "1"   # staging: test-mode Stripe ON (2026-06-10)
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"  # public; must match sk_test mode

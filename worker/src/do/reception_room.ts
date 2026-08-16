@@ -18,6 +18,7 @@
 // MUST be verified against a live session on first deploy (cannot be unit-tested
 // here). All paths are guarded; failures finalize gracefully with a text message.
 import type { Env } from "../types";
+import { generateContentVia } from "../lib/vertex"; // [VERTEX-1] post-call summary only — the Live WS path is untouched
 import { trackUserContact, trackException, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
@@ -1525,18 +1526,17 @@ export class ReceptionRoom {
     const key = this.receptKey();
     if (!transcript || !key) return null;
     const model = "gemini-2.5-flash";
-    // Direct to Gemini (no AI Gateway hop) — same rationale as the live socket.
-    const sysUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const headers: Record<string, string> = { "content-type": "application/json", "x-goog-api-key": key };
     const prompt = `From this phone-message transcript, return STRICT JSON {"caller_name":string|null,"reason":string,"callback":string|null,"urgency":"low"|"normal"|"high"}. Transcript:\n${transcript.slice(0, 4000)}`;
-    const r = await fetch(sysUrl, {
-      method: "POST", headers,
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-      }),
-    });
-    const j = (await r.json().catch(() => ({}))) as any;
+    // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch; routed through
+    // generateContentVia now. `key` (receptKey()) is pinned via opts.apiKey — this
+    // is the receptionist-scoped key when set, kept on the Developer API so its
+    // spend stays separable (RECEPTIONIST_GEMINI_API_KEY rule). The Live SOCKET
+    // path elsewhere in this file is untouched.
+    const r = await generateContentVia(this.env, model, {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+    }, "generateContent", { apiKey: key });
+    const j = r.out || {};
     // Account for the summary call's token spend (added into ava_recept_cost).
     try {
       const um = j?.usageMetadata;

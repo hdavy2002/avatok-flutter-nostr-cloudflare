@@ -90,6 +90,17 @@ export default tseslint.config(
     rules: { "no-restricted-syntax": "off" },
   },
   {
+    // [VERTEX-1] lib/vertex.ts is the Google TRANSPORT layer beneath the gateway:
+    // it is the one module that names both aiplatform.googleapis.com and (for the
+    // fallback path) generativelanguage.googleapis.com. It is not a bypass — the
+    // google adapter calls INTO it, so every Gemini call still goes through
+    // avaReason. Keeping the ban on everywhere else is what stops the ~48 provider
+    // bypasses regrowing; this single exemption is the seam that let the Vertex
+    // move be one file instead of fifteen.
+    files: ["src/lib/vertex.ts"],
+    rules: { "no-restricted-syntax": "off" },
+  },
+  {
     // §10.3 — lib/guardian/ is the safety store's writer + reader: it may INSERT into
     // guardian_events AND import guardianContext. The AI-provider bans still apply.
     files: ["src/lib/guardian/**/*.ts"],

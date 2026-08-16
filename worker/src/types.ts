@@ -399,6 +399,16 @@ export interface Env {
   GOOGLE_TTS_SA_JSON?: string;
   RECEPT_CF_GOOGLE_VOICE?: string;   // override the hi-IN Google voice (default hi-IN-Wavenet-E)
 
+  // [VERTEX-1] Vertex AI (aiplatform.googleapis.com) as the transport for the REST
+  // Gemini calls — the surface with production quota for an India-scale user base.
+  // Auth REUSES GOOGLE_TTS_SA_JSON above (its cloud-platform scope already covers
+  // aiplatform), so there is NO new secret. Both are required for Vertex to engage:
+  // unset VERTEX_PROJECT and every call falls back to generativelanguage.googleapis.com
+  // exactly as before — that is the kill switch. See lib/vertex.ts for what is
+  // deliberately NOT migrated (all Live/WebSocket lanes, File Search stores).
+  VERTEX_PROJECT?: string;
+  VERTEX_LOCATION?: string;          // default "global"; a region only for data residency
+
   // GenUI global template cache (Upstash Redis REST). URL is a [var]; TOKEN is a
   // secret. Absent → cache no-ops (compose every time; nothing breaks).
   UPSTASH_REDIS_REST_URL?: string;

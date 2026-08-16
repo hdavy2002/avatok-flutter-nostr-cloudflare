@@ -14,7 +14,7 @@
 // failure so the caller transparently falls back to the legacy Deepgram path (an
 // outage never silences Ava; unset GOOGLE_TTS_SA_JSON to disable, no redeploy).
 
-interface ServiceAccount { client_email: string; private_key: string; token_uri?: string; }
+export interface ServiceAccount { client_email: string; private_key: string; token_uri?: string; }
 
 // ── base64url / PEM helpers ──────────────────────────────────────────────────
 function b64url(bytes: Uint8Array): string {
@@ -31,7 +31,12 @@ function pemToPkcs8(pem: string): ArrayBuffer {
 
 // ── access-token cache (in-isolate) ──────────────────────────────────────────
 const _tokenCache = new Map<string, { token: string; exp: number }>();
-async function accessTokenFor(sa: ServiceAccount): Promise<string> {
+// EXPORTED for [VERTEX-1]: lib/vertex.ts mints its Vertex bearer from the SAME
+// service-account JSON and the SAME in-isolate cache. The scope is already
+// cloud-platform, which covers aiplatform.googleapis.com — so switching the AI
+// calls to Vertex adds NO new secret. Do not duplicate this JWT code elsewhere;
+// a second cache would double the token-endpoint round trips per isolate.
+export async function accessTokenFor(sa: ServiceAccount): Promise<string> {
   const cached = _tokenCache.get(sa.client_email);
   const now = Math.floor(Date.now() / 1000);
   if (cached && cached.exp - 60 > now) return cached.token;
