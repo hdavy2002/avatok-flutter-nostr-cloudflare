@@ -1,5 +1,5 @@
 import type { SongFlowState, SongProductionContext, SongRequestKind } from "./song_flow";
-import { clampSongDurationSeconds, parseSongDurationSeconds, stripAvaWakeWordForIntent } from "./song_flow";
+import { clampSongDurationSeconds } from "./song_flow";
 
 export const SONG_INTERVIEW_SYSTEM = `You are Ava, a warm, perceptive music producer having a real conversation with a person who wants to create a song.
 
@@ -8,6 +8,7 @@ Your job is to understand their intent over multiple turns, remember every choic
 For a vocal song, eventually understand: theme or purpose, genre, mood/energy, instruments, lyric language, vocal arrangement (male/female/duet/group/etc.), voice character, and duration. For an instrumental, understand: theme/purpose/use, genre, mood/energy, instruments, and duration. These are internal goals, never a checklist to recite.
 
 Conversation rules:
+- First decide whether the latest message is continuing this song discussion. If the person clearly changes topic or asks for another kind of work (for example a video, image, email, or unrelated question), set action to "switch". Do not force the new request into the song.
 - Respond naturally to what the person just said. Acknowledge, react, or briefly explain a musical tradeoff when useful.
 - Ask at most ONE focused follow-up question per turn.
 - Suggestions must be tailored to the actual song. Do not reuse generic examples.
@@ -17,9 +18,9 @@ Conversation rules:
 - If enough context is present, do not ask another question. Briefly confirm the creative direction and say the lyrics will be drafted next (or the instrumental will be created next).
 
 Return ONLY valid JSON with this shape:
-{"reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null}}
+{"action":"continue","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null}}
 
-The context must contain the best current understanding after this turn, preserving prior values unless the person changed them.`;
+The action value must be either "continue" or "switch". For action "continue", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
 
 function cleanText(value: unknown, max = 240): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -54,6 +55,7 @@ function mergeContext(previous: SongProductionContext | undefined, raw: Record<s
 }
 
 export interface SongInterviewTurn {
+  action: "continue" | "switch";
   reply: string;
   context: SongProductionContext;
 }
@@ -65,12 +67,13 @@ export function parseSongInterviewTurn(rawText: string, previous?: SongProductio
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("song interview returned no JSON object");
   const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+  const action = parsed.action === "switch" ? "switch" : "continue";
   const reply = cleanText(parsed.reply, 700);
   const contextRaw = parsed.context && typeof parsed.context === "object"
     ? parsed.context as Record<string, unknown>
     : {};
-  if (!reply) throw new Error("song interview returned an empty reply");
-  return { reply, context: mergeContext(previous, contextRaw) };
+  if (action === "continue" && !reply) throw new Error("song interview returned an empty reply");
+  return { action, reply: reply ?? "", context: mergeContext(previous, contextRaw) };
 }
 
 export function songInterviewUserPayload(flow: SongFlowState, latestUserText: string): string {
@@ -82,45 +85,4 @@ export function songInterviewUserPayload(flow: SongFlowState, latestUserText: st
     latestUserMessage: String(latestUserText || "").slice(0, 2000),
     userConversationSoFar: String(flow.conversation ?? flow.brief ?? "").slice(-6000),
   });
-}
-
-/** Recover conversational progress when the interview provider returns bad JSON. */
-export function recoverSongInterviewTurn(flow: SongFlowState, latestUserText: string): SongInterviewTurn {
-  const latest = stripAvaWakeWordForIntent(latestUserText);
-  const source = [flow.conversation, flow.brief, latest].filter(Boolean).join("\n");
-  const previous = flow.context;
-  const genre = previous?.genre ?? (
-    /\bhindi\s+rock\b/i.test(source) ? "Hindi rock" :
-    /\b(reggae|dancehall|hip[- ]?hop|pop|jazz|folk|metal|rock)\b/i.exec(source)?.[1]
-  );
-  const language = previous?.language ?? (/\bhindi\b/i.test(source) ? "Hindi" : undefined);
-  const durationSeconds = previous?.durationSeconds ?? parseSongDurationSeconds(source);
-  const mood = previous?.mood ?? (
-    /\b(uplifting|freedom|change|hope|happy|sad|romantic|energetic|peaceful|dark|rebellious)\b/i.test(latest)
-      ? latest.slice(0, 160) : undefined
-  );
-  const theme = previous?.theme ?? (
-    /\b(?:about|for|on)\s+([^,.\n]+)/i.exec(source)?.[1]?.trim() ||
-    (mood && /\b(freedom|change|love|hope|rebellion|confidence)\b/i.test(latest) ? latest.slice(0, 160) : undefined)
-  );
-  const instruments = previous?.instruments?.length ? previous.instruments : (
-    /\b(rock|metal)\b/i.test(source) ? ["electric guitar", "bass", "live drums"] : undefined
-  );
-  const vocalArrangement = previous?.vocalArrangement ?? (
-    /\b(duet|two voices|male and female)\b/i.test(latest) ? "duet" :
-    /\b(solo male|male voice|male vocal)\b/i.test(latest) ? "solo male vocal" :
-    /\b(solo female|female voice|female vocal)\b/i.test(latest) ? "solo female vocal" : undefined
-  );
-  const voiceStyle = previous?.voiceStyle ?? /\b(deep|gritty|raspy|soulful|bright|youthful|powerful|soft)\b/i.exec(latest)?.[1];
-  const context: SongProductionContext = {
-    theme, genre, mood, instruments, language, vocalArrangement, voiceStyle,
-    durationSeconds, intendedUse: previous?.intendedUse,
-  };
-  const subject = theme || mood || "that direction";
-  const reply = !vocalArrangement
-    ? `That gives the song a ${subject} heart. Should the Hindi rock vocal be a solo male voice, solo female voice, or duet?`
-    : !voiceStyle
-      ? "Nice — the vocal shape is clear. Should the singer feel bright and youthful, soulful, gritty, or powerful?"
-      : "I have the musical direction now. I’ll turn this into a focused song brief and draft the lyrics next.";
-  return { reply, context };
 }

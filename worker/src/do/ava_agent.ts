@@ -84,7 +84,7 @@ import {
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
 } from "../lib/song_flow";
-import { parseSongInterviewTurn, recoverSongInterviewTurn, songInterviewUserPayload, SONG_INTERVIEW_SYSTEM } from "../lib/song_interview";
+import { parseSongInterviewTurn, songInterviewUserPayload, SONG_INTERVIEW_SYSTEM } from "../lib/song_interview";
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
 //   chat  — answer directly in conversation
@@ -1168,6 +1168,14 @@ export class AvaAgentDO {
         };
       }
     }
+    // A stale song interview must never capture an explicit request for a
+    // different media type. This is a routing guard only; it writes no canned
+    // response. The normal Ava/video/image lane still interprets the request.
+    if (songFlow?.phase === "awaiting_brief" && !classifySongRequest(userText) &&
+        (looksLikeVideoRequest(userText) || looksLikeImageRequest(userText))) {
+      await this.state.storage.delete(flowKey);
+      songFlow = null;
+    }
     let songAction = nextSongFlow(songFlow, userText);
 
     const statusId = crypto.randomUUID();
@@ -1290,6 +1298,7 @@ export class AvaAgentDO {
         if (!chipR.ok) throw chipR.error;
 
         if (songAction.kind === "ask_brief") {
+          const activeInterviewFlow = songAction.flow;
           let interviewModel: { text: string; model: string; provider: string; latencyMs: number } | null = null;
           try {
             interviewModel = await this.callThreadModel(
@@ -1298,42 +1307,46 @@ export class AvaAgentDO {
               songInterviewUserPayload(songAction.flow, userText),
             );
             const interview = parseSongInterviewTurn(interviewModel.text, songAction.flow.context);
-            const interviewedFlow = withSongInterview(songAction.flow, interview.context, interview.reply);
-            const songKind = interviewedFlow.kind ?? "vocal";
-            const ready = isSongProductionContextReady(interview.context, songKind);
-            if (ready) {
-              await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
-              songAction = songKind === "instrumental"
-                ? { kind: "generate", flow: { ...interviewedFlow, phase: "generating" } }
-                : { kind: "draft", flow: interviewedFlow };
-            } else {
-              await this.state.storage.put(flowKey, interviewedFlow);
-              await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
-              await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
+            if (interview.action === "switch") {
+              await this.state.storage.delete(flowKey);
+              songAction = { kind: "none", flow: null };
               await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
-                conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "ai_interview_reply",
+                conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "topic_switched",
                 interview_model: interviewModel.model, interview_provider: interviewModel.provider,
-                interview_latency_ms: interviewModel.latencyMs,
               }).catch(() => {});
-              return { ok: true, status_id: statusId };
+            } else {
+              const interviewedFlow = withSongInterview(songAction.flow, interview.context, interview.reply);
+              const songKind = interviewedFlow.kind ?? "vocal";
+              const ready = isSongProductionContextReady(interview.context, songKind);
+              if (ready) {
+                await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
+                songAction = songKind === "instrumental"
+                  ? { kind: "generate", flow: { ...interviewedFlow, phase: "generating" } }
+                  : { kind: "draft", flow: interviewedFlow };
+              } else {
+                await this.state.storage.put(flowKey, interviewedFlow);
+                await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
+                await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+                  conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "ai_interview_reply",
+                  interview_model: interviewModel.model, interview_provider: interviewModel.provider,
+                  interview_latency_ms: interviewModel.latencyMs,
+                }).catch(() => {});
+                return { ok: true, status_id: statusId };
+              }
             }
           } catch (e) {
             void trackException(this.env, e, {
               uid, route: "ava_agent.song_interview", handled: true,
-              extra: { conv_kind: convKind, music_mode: songAction.flow.kind ?? "vocal" },
+              extra: { conv_kind: convKind, music_mode: activeInterviewFlow.kind ?? "vocal" },
             });
-            const recovered = recoverSongInterviewTurn(songAction.flow, userText);
-            const recoveredFlow = withSongInterview(songAction.flow, recovered.context, recovered.reply);
-            await this.state.storage.put(flowKey, recoveredFlow);
-            await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
-            await this.postAva({
-              conv, uid, private: priv, source: "music",
-              text: recovered.reply,
-            });
+            // Preserve the interview, but do not invent or repeat a canned
+            // answer. Ava's normal conversation lane handles this turn.
+            await this.state.storage.put(flowKey, activeInterviewFlow);
+            songAction = { kind: "none", flow: activeInterviewFlow };
             await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
               conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "ai_interview_failed",
             }).catch(() => {});
-            return { ok: false, status_id: statusId, error: "song_interview_failed" };
           }
         }
 
@@ -1367,6 +1380,7 @@ export class AvaAgentDO {
           return { ok: drafted.ok, status_id: statusId, ...(!drafted.ok ? { error: "lyrics_draft_failed" } : {}) };
         }
 
+        if (songAction.kind === "generate") {
         const reviewing: SongFlowState = { ...songAction.flow, phase: "reviewing" };
         // Keep the durable state retryable until the provider confirms a queued
         // job. If the DO is interrupted mid-call, the next approval can retry.
@@ -1406,6 +1420,7 @@ export class AvaAgentDO {
           duration_seconds: songAction.flow.durationSeconds ?? 60, job_id: music.job_id ?? null,
         }).catch(() => {});
         return { ok: music.ok, status_id: statusId, ...(!music.ok ? { error: "music_start_failed" } : {}) };
+        }
       }
 
       const [chipR, winR, premiumR] = await Promise.all([chipP, windowP, premiumP]);
