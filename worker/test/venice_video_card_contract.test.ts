@@ -27,6 +27,7 @@ describe("Venice video rich-card contract", () => {
     expect(routes).toContain('id="close-video"');
     expect(routes).toContain('root.classList.add("video-open")');
     expect(routes).toContain("v.videoHeight>v.videoWidth");
+    expect(routes).toContain('if(!v.paused)open()');
     expect(routes).toContain("script-src 'nonce-${nonce}'");
     expect(routes).toContain("?v=${version}");
     expect(routes).toContain("await env.DIGITAL.head(row.key)");
