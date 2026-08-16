@@ -1283,11 +1283,16 @@ export class AvaAgentDO {
       if (accepted) return accepted;
     } catch (e) { fail("venice", veniceModel, attempt, e); }
 
-    if (recovered) {
-      recordAttempt(recovered.provider, recovered.model, recovered.attempt, true, "natural_discussion_recovery");
+    // `recovered` is only ever assigned inside the `accept` closure, which TS
+    // control-flow analysis does not track — a direct read here is narrowed to
+    // its initializer `null` and property access collapses to `never`. Reading
+    // through a function boundary resets the narrowing. Runtime unchanged.
+    const rec = ((): { turn: T; model: string; provider: string; attempt: number } | null => recovered)();
+    if (rec) {
+      recordAttempt(rec.provider, rec.model, rec.attempt, true, "natural_discussion_recovery");
       return {
-        turn: recovered.turn, model: recovered.model, provider: recovered.provider,
-        latencyMs: Date.now() - startedAt, fallbackUsed: recovered.attempt > 1,
+        turn: rec.turn, model: rec.model, provider: rec.provider,
+        latencyMs: Date.now() - startedAt, fallbackUsed: rec.attempt > 1,
         recoveredDiscussion: true, primaryFailure: failures[0] ?? null,
       };
     }
