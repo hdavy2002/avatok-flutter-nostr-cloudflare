@@ -809,6 +809,23 @@ class CallSession {
   bool _sfuAborted = false;
   bool _sfuDecider = false;
   bool _sfuReconnectInFlight = false;
+  // [CALL-PREJOIN-1 2026-08-16] P2 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md.
+  // The CALLER'S pre-joined-and-publishing SFU transport, started while the
+  // callee's phone is still ringing (`_maybeStartCallerPrejoin`). Non-null
+  // only between the moment the publish is kicked off and the moment it is
+  // either adopted by `_startSfuMedia` (transferred to `_sfu`, cleared here)
+  // or discarded (`_discardPrejoinedSfu`, on RTK/P2P election, `sfu-abort`,
+  // or the call ending while still ringing). Never touched by the callee path
+  // or by `reconnect()`.
+  CallSfuTransport? _prejoinedSfu;
+  /// The in-flight (or already-completed) `connectPublish()` call on
+  /// [_prejoinedSfu] — `null` on success, a failed [CallSfuResult] otherwise.
+  /// `_startSfuMedia` awaits this before adopting, in case accept happens
+  /// before the ring-time publish has actually finished.
+  Future<CallSfuResult?>? _prejoinPublishFuture;
+  /// Guards [_maybeStartCallerPrejoin] to at most one attempt per call —
+  /// idempotent against being reachable from more than one signalling frame.
+  bool _prejoinStarted = false;
   // [CALL-RTK-3] Cloudflare RealtimeKit media leg. Deliberately a SEPARATE set
   // of flags from the `_sfu*` ones above rather than a reinterpretation of
   // them: the two transports must be able to abort independently, and reusing
@@ -5781,6 +5798,11 @@ class CallSession {
   }
 
   Future<void> _startP2pOffer() async {
+    // [CALL-PREJOIN-1 2026-08-16] A caller pre-join PC must never survive
+    // into the P2P path — `_pc != null` below would otherwise silently no-op
+    // this method forever, since `_newPC`'s side effect already set `_pc` to
+    // the prejoin's (SFU) connection. See [_discardPrejoinedSfu].
+    await _discardPrejoinedSfu('p2p_selected');
     if (_ended || _connected || _pc != null || _remoteId == null) return;
     final pc = await _newPC();
     final offer = _tuned(await pc.createOffer());
@@ -5815,6 +5837,10 @@ class CallSession {
   /// or wedged join self-aborts to P2P instead of stranding the call.
   Future<void> _startRtkMedia() async {
     if (_ended || _connected || _rtkStarting || _rtkActive || _rtkAborted) return;
+    // [CALL-PREJOIN-1 2026-08-16] The election landed on RealtimeKit, not the
+    // raw SFU — the caller's ring-time pre-join seat (if any) is now dead
+    // weight. See [_discardPrejoinedSfu].
+    await _discardPrejoinedSfu('rtk_selected');
     _connectWatchdogFast?.cancel();
     _connectWatchdogFast = null;
     _rtkStarting = true;
@@ -6022,34 +6048,13 @@ class CallSession {
     await _fallbackFromRtk();
   }
 
-  Future<void> _startSfuMedia() async {
-    if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted) return;
-    final stream = _stream;
-    if (stream == null) return;
-    _connectWatchdogFast?.cancel();
-    _connectWatchdogFast = null;
-    _sfuStarting = true;
-    if (config.video && !RemoteConfig.callSfuAudioOnly) {
-      remoteVideoActive.value = false;
-      remoteVideoStatus.value = 'waiting';
-    }
-    _stage('sfu_begin'); // [CALL-DEADAIR-1]
-    // [CALL-PREWARM-1 2026-08-16] Adopt a pre-warmed join (ICE fetch +
-    // `/callsfu/join` seat), if one was started at ring time by
-    // `CallPrewarm.start` (see push_service.dart's incoming-call handler).
-    // `adopt` itself enforces the flag, the 60s freshness window and the
-    // exactly-once contract, and NEVER throws — if it returns null this is
-    // byte-for-byte today's cold-start behaviour. Deliberately not called
-    // from `reconnect()` — a network-recovery join must always be current,
-    // never a stale pre-ring seat.
-    CallPrewarmedData? prewarmed;
-    if (RemoteConfig.callPrewarmOnRingV1) {
-      try {
-        prewarmed = await CallPrewarm.instance.adopt(config.room);
-      } catch (_) {/* prewarm must never affect call setup */}
-    }
-    final prewarmedIce = prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
-    final transport = CallSfuTransport(
+  /// [CALL-PREJOIN-1 2026-08-16] Construct a fresh SFU transport wired to this
+  /// session's `_newPC`, telemetry callbacks and RED/parallel-boot flags.
+  /// Factored out of `_startSfuMedia` so the CALLER's ring-time pre-join
+  /// (`_maybeStartCallerPrejoin`) and the normal cold-start path build the
+  /// transport through the exact same construction and can never drift.
+  CallSfuTransport _buildSfuTransport() {
+    return CallSfuTransport(
       room: room,
       createPeerConnection: (iceServers) => _newPC(sfuIce: iceServers),
       configurePeerConnection: (pc) async {
@@ -6088,10 +6093,175 @@ class CallSession {
       },
       overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
     );
+  }
+
+  /// [CALL-PREJOIN-1 2026-08-16] P2 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md.
+  /// The CALLER already consented (they placed the call) — join the SFU and
+  /// PUBLISH audio while the callee's phone is still ringing, so the callee's
+  /// first pull finds a live track immediately at accept instead of both
+  /// sides waiting on each other (measured 2-4s on 2026-08-16). Pre-join
+  /// runs for BOTH audio and video calls, but only the AUDIO track is
+  /// published during the ring — a video call's camera track publishes AFTER
+  /// accept, exactly like today's mid-call camera-on upgrade
+  /// (`_enableSfuVideo` / `CallSfuTransport.publishVideo`).
+  ///
+  /// Fire-and-forget by design: a slow or failed pre-join must never delay or
+  /// affect the ring UI or ringback. `_startSfuMedia` adopts the seat when the
+  /// peer-join election actually lands on SFU; every other outcome (RTK, P2P,
+  /// `sfu-abort`, hangup while ringing) discards it via
+  /// [_discardPrejoinedSfu] — see that method for why disposal must run
+  /// BEFORE the P2P/RTK path builds anything of its own.
+  ///
+  /// Hooked from the `'welcome'` handler, the instant OUR OWN room socket is
+  /// confirmed open with nobody else in the room yet (i.e. we are genuinely
+  /// ringing). If the callee is already present at that point the normal
+  /// election below runs immediately and pre-joining would just be a second,
+  /// redundant seat — so this deliberately only fires on the empty-room path.
+  void _maybeStartCallerPrejoin() {
+    if (_prejoinStarted) return;
+    if (_ended || _connected) return;
+    if (!config.outgoing) return;
+    if (!RemoteConfig.callSfuV1 || !RemoteConfig.callerPrejoinOnRingV1) return;
+    final stream = _stream;
+    if (stream == null) return;
+    if (_prejoinedSfu != null || _sfu != null || _sfuStarting || _sfuActive) return;
+    _prejoinStarted = true;
+    final callId = config.room;
+    final swStart = DateTime.now().millisecondsSinceEpoch;
+    try {
+      Analytics.capture('call_prejoin_started', {'call_id': callId});
+    } catch (_) {/* telemetry must never affect the ring path */}
+    final transport = _buildSfuTransport();
+    _prejoinedSfu = transport;
+    final future = transport.connectPublish(
+      localStream: stream,
+      fallbackIceServers: _ice,
+      // Audio only during the ring — see the doc comment above.
+      video: false,
+    );
+    _prejoinPublishFuture = future;
+    future.then((failure) {
+      // Superseded by an adopt/discard while this was mid-flight — whichever
+      // site did that already owns this transport's teardown; touching it
+      // again here would be a double-dispose or a resurrected seat.
+      if (!identical(_prejoinedSfu, transport)) return;
+      if (failure != null) {
+        try {
+          Analytics.capture('call_prejoin_failed', {
+            'call_id': callId,
+            'detail': failure.detail ?? failure.failure?.name ?? 'unknown',
+          });
+        } catch (_) {/* telemetry must never affect the ring path */}
+        return;
+      }
+      try {
+        Analytics.capture('call_prejoin_published', {
+          'call_id': callId,
+          'ms': DateTime.now().millisecondsSinceEpoch - swStart,
+        });
+      } catch (_) {/* telemetry must never affect the ring path */}
+    }).catchError((Object e) {
+      try {
+        Analytics.capture('call_prejoin_failed', {'call_id': callId, 'detail': e.toString()});
+      } catch (_) {/* telemetry must never affect the ring path */}
+    });
+  }
+
+  /// [CALL-PREJOIN-1 2026-08-16] Tear down an un-adopted caller pre-join —
+  /// decline/timeout is not this side's concern (that's `CallPrewarm`, the
+  /// CALLEE's half); this fires when the election landed on something other
+  /// than SFU, or the call ended while still ringing. Safe to call any number
+  /// of times: the second and later calls see `_prejoinedSfu == null` and
+  /// no-op.
+  ///
+  /// MUST run before `_startP2pOffer()` builds its own `RTCPeerConnection`
+  /// and before `case 'offer':` reuses `_pc` — `_newPC()` assigns `_pc` as a
+  /// side effect the instant the prejoin's peer connection is created (see
+  /// `_newPC`'s tail), so a live prejoin PC left in `_pc` makes
+  /// `_startP2pOffer`'s own `_pc != null` guard silently no-op forever, and
+  /// would otherwise hand a P2P offer's `setRemoteDescription` to the SFU's
+  /// peer connection. `_retirePc` is the same detach-then-close primitive
+  /// `_startSfuMedia`'s own cold-path failure branch already uses.
+  Future<void> _discardPrejoinedSfu(String reason) async {
+    final t = _prejoinedSfu;
+    if (t == null) return;
+    _prejoinedSfu = null;
+    _prejoinPublishFuture = null;
+    try {
+      Analytics.capture('call_prejoin_discarded', {'call_id': config.room, 'reason': reason});
+    } catch (_) {/* telemetry must never affect call setup */}
+    await _retirePc(_pc);
+    await _safeAwait(() => t.dispose());
+  }
+
+  Future<void> _startSfuMedia() async {
+    if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted) return;
+    final stream = _stream;
+    if (stream == null) return;
+    _connectWatchdogFast?.cancel();
+    _connectWatchdogFast = null;
+    _sfuStarting = true;
+    if (config.video && !RemoteConfig.callSfuAudioOnly) {
+      remoteVideoActive.value = false;
+      remoteVideoStatus.value = 'waiting';
+    }
+    _stage('sfu_begin'); // [CALL-DEADAIR-1]
+    // [CALL-PREJOIN-1 2026-08-16] Adopt OUR OWN ring-time pre-join, if one is
+    // in flight/ready — awaits `_prejoinPublishFuture` in case accept beat the
+    // publish to finish. A failed publish is discarded here and this falls
+    // through to the normal cold path below, so a failed prejoin is never
+    // visible to the callee.
+    CallSfuTransport? adoptedPrejoin;
+    if (_prejoinedSfu != null) {
+      final pre = _prejoinedSfu!;
+      CallSfuResult? publishFailure;
+      try {
+        publishFailure = await (_prejoinPublishFuture ?? Future<CallSfuResult?>.value(null));
+      } catch (e) {
+        publishFailure = CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
+      }
+      // Only claim ownership if nothing else raced us to it while awaiting.
+      if (identical(_prejoinedSfu, pre)) {
+        _prejoinedSfu = null;
+        _prejoinPublishFuture = null;
+        if (publishFailure == null) {
+          adoptedPrejoin = pre;
+          Analytics.capture('call_prejoin_adopted', {'call_id': config.room});
+        } else {
+          Analytics.capture('call_prejoin_discarded', {
+            'call_id': config.room,
+            'reason': 'publish_failed',
+          });
+          await _safeAwait(() => pre.dispose());
+        }
+      }
+    }
+    // [CALL-PREWARM-1 2026-08-16] Adopt a pre-warmed join (ICE fetch +
+    // `/callsfu/join` seat), if one was started at ring time by
+    // `CallPrewarm.start` (see push_service.dart's incoming-call handler).
+    // `adopt` itself enforces the flag, the 60s freshness window and the
+    // exactly-once contract, and NEVER throws — if it returns null this is
+    // byte-for-byte today's cold-start behaviour. Deliberately not called
+    // from `reconnect()` — a network-recovery join must always be current,
+    // never a stale pre-ring seat. Mutually exclusive with the caller
+    // pre-join above by construction: `CallPrewarm` is armed only from the
+    // CALLEE's incoming-push handler, never on an outgoing call.
+    CallPrewarmedData? prewarmed;
+    if (adoptedPrejoin == null && RemoteConfig.callPrewarmOnRingV1) {
+      try {
+        prewarmed = await CallPrewarm.instance.adopt(config.room);
+      } catch (_) {/* prewarm must never affect call setup */}
+    }
+    final prewarmedIce = prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
+    final transport = adoptedPrejoin ?? _buildSfuTransport();
     _sfu = transport;
     CallSfuResult result;
     try {
-      result = await transport.connect(
+      result = adoptedPrejoin != null
+          ? await transport.connectPull(
+              video: config.video && !RemoteConfig.callSfuAudioOnly,
+            )
+          : await transport.connect(
         localStream: stream,
         // [CALL-PREWARM-1] Prefer the ICE servers the prewarm fetch already
         // brought back — they are at least as fresh as `_ice` and mean this
@@ -6148,6 +6318,30 @@ class CallSession {
               : 'peer_video_unavailable',
           'path': 'sfu',
         });
+      }
+      // [CALL-PREJOIN-1 2026-08-16] The prejoin only ever published AUDIO
+      // (see `_maybeStartCallerPrejoin`) — publish our own camera track now
+      // for a video call, exactly like today's mid-call camera-on upgrade
+      // (`_enableSfuVideo` → `CallSfuTransport.publishVideo`), just triggered
+      // by adoption instead of a user tap. `_stream` already carries the
+      // video track for an outgoing video call (acquired in `_bootMedia`).
+      if (adoptedPrejoin != null && config.video && !RemoteConfig.callSfuAudioOnly) {
+        final cam = stream.getVideoTracks();
+        if (cam.isNotEmpty) {
+          final ok = await transport.publishVideo(cam.first, stream);
+          if (ok) {
+            if (_remoteId != null) _send({'type': 'sfu-video', 'to': _remoteId});
+            Analytics.capture('call_sfu_video_upgraded', {
+              'call_id': config.room,
+              'via': 'prejoin_adopt',
+            });
+          } else {
+            Analytics.capture('call_sfu_video_publish_failed', {
+              'call_id': config.room,
+              'via': 'prejoin_adopt',
+            });
+          }
+        }
       }
       // [CALL-SFU-REPULL-1] Drain a peer re-pull that arrived while we were
       // still setting up. `_sfuPeerRepullPending` is set whenever `sfu-rejoined`
@@ -6622,6 +6816,15 @@ class CallSession {
               await _startP2pOffer();
             }
           }
+        } else {
+          // [CALL-PREJOIN-1 2026-08-16] Nobody else in the room yet — our own
+          // socket is confirmed open and we are genuinely ringing (not racing
+          // an already-arrived callee, which the `peers.isNotEmpty` branch
+          // above already handles). This is the caller's cue to pre-join and
+          // publish audio to the SFU while the callee's phone is still
+          // ringing, per Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2.
+          // No-op unless outgoing + both flags are on; never throws.
+          _maybeStartCallerPrejoin();
         }
         // [CALLREC-PEER-1] We now know the peer id (fresh join OR our own
         // reconnect). Re-announce unconditionally: on a reconnect this is the
@@ -6758,6 +6961,10 @@ class CallSession {
           // [CALL-PCRETIRE-1] Detach before closing — see [_retirePc].
           await _retirePc(_pc);
         }
+        // [CALL-PREJOIN-1 2026-08-16] Covers the case the caller pre-joined
+        // but never got as far as `case 'sfu-start':` adopting it (the peer
+        // aborted SFU immediately). No-ops if it was already adopted/consumed.
+        await _discardPrejoinedSfu('sfu_aborted');
         if (_sfuDecider && !_ended && !_connected) await _startP2pOffer();
         break;
       case 'sfu-video':
@@ -6816,6 +7023,14 @@ class CallSession {
           });
           break;
         }
+        // [CALL-PREJOIN-1 2026-08-16] A genuine P2P offer means the peer
+        // elected P2P — any caller pre-join seat is now dead weight, and
+        // critically `_pc` may still be the PREJOIN's (SFU) connection here
+        // (the `_sfuActive || _sfuStarting` guard above does not see it: the
+        // pre-join never sets those). Without this, `_pc ?? await _newPC()`
+        // below would hand this P2P offer's `setRemoteDescription` to the
+        // SFU peer connection. See [_discardPrejoinedSfu].
+        await _discardPrejoinedSfu('p2p_offer_received');
         final sigState = _pc?.signalingState;
         final collision = sigState != null &&
             sigState != RTCSignalingState.RTCSignalingStateStable &&
@@ -9346,6 +9561,11 @@ class CallSession {
     _migrationDeadlineTimer?.cancel(); // [CALL-REL-6]
     await _safeAwait(() => _activeMigration?.newPc?.close());
     _activeMigration = null;
+    // [CALL-PREJOIN-1 2026-08-16] Covers hangup-while-ringing (caller cancels
+    // before the callee ever accepts) — the one teardown path none of the
+    // election-site discards above can reach. No-ops if already
+    // adopted/discarded.
+    await _discardPrejoinedSfu('call_ended');
     await _safeAwait(() => _sfu?.dispose());
     _sfu = null;
     _sfuActive = false;

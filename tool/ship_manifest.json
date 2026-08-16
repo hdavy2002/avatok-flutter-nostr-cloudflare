@@ -1421,6 +1421,34 @@
    }
   ]
  },
+ "CALL-PREJOIN-1": {
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2 — the CALLER joins the SFU and publishes its audio track DURING THE RING (from the 'welcome' handler, the moment its own room socket is confirmed open with nobody else present yet), gated behind callSfuV1 && callerPrejoinOnRingV1. CallSfuTransport.connect() is split into connectPublish()/connectPull() so the publish half can run at ring time and the pull half only once a peer seat exists; CallSession._startSfuMedia() adopts the pre-joined transport when the peer-join election lands on SFU (case 'sfu-start'), and discards it (closes the local PC + the SFU seat) on every other outcome: RTK election, a genuine P2P offer, sfu-abort, or hangup while still ringing. Video (for a video call) publishes AFTER accept via the existing mid-call camera-on path (CallSfuTransport.publishVideo) — only audio is live during the ring. Callee-side code is unchanged; its existing pull now finds a live track on the first attempt instead of racing the caller's own post-accept publish.",
+  "flags": [
+   "callSfuV1",
+   "callerPrejoinOnRingV1"
+  ],
+  "min_devices_on_build": 2,
+  "shipped": "pending",
+  "two_sided": true,
+  "success": [
+   {
+    "event": "call_prejoin_published",
+    "property": "call_id",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "The CALLER must actually finish publishing to the SFU before accept — this event's presence is the proof the ring-time publish completed, not merely that a prejoin attempt started (call_prejoin_started fires unconditionally and proves nothing by itself)."
+   },
+   {
+    "event": "call_first_audio_ms",
+    "property": "stage_sfu_pull_audio",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "Query BOTH the caller's and the callee's call_first_audio_ms for the SAME call_id and compute stage_sfu_pull_audio - stage_sfu_publish on each. Plan target: < 700ms (mutual wait gone) on both sides of the SAME call, not just one leg. Read the actual millisecond values (CLAUDE.md ship-gate rule 3) — do not stop at confirming the stages are present. On the caller's own timeline stage_sfu_publish should read as a small number measured from call_started (it happened during the ring), not ~10s in, which is the other half of the proof this shipped."
+   }
+  ]
+ },
  "CALL-TRANSLATE-APIVER-3": {
   "description": "Live-probed the v1beta auth_tokens endpoint (schema validation precedes key validation, so probeable with any key): the docs' liveConnectConstraints field does not exist on the wire on v1alpha OR v1beta \u2014 the AuthToken proto field is bidiGenerateContentSetup with generationConfig inside, mirroring the WS setup frame. Mint body rewritten to the probed shape.",
   "flags": [],

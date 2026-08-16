@@ -212,6 +212,31 @@ class CallSfuTransport {
   /// exactly which previous audio sections it just superseded and mute them.
   final Set<String> _pulledAudioMids = <String>{};
 
+  /// [CALL-PREJOIN-1 2026-08-16] State held between [connectPublish] and
+  /// [connectPull] so the two can run at different times (the caller
+  /// publishes during the ring; the pull happens only once a peer seat
+  /// exists). `true` once a publish attempt has completed successfully —
+  /// [connectPull] refuses to run without it, and [dispose]/[reconnect]
+  /// clear it so a stale publish can never be pulled twice.
+  bool _publishDone = false;
+
+  /// Whether the SFU room allows video AT ALL (server-side, from `/join`) —
+  /// independent of whether THIS phone chose to publish a video track in
+  /// [connectPublish]. [connectPull] needs this to decide whether pulling the
+  /// peer's video is even worth attempting.
+  bool _joinVideoAllowed = false;
+
+  /// `join.relayDegraded`, carried from [connectPublish] into the
+  /// [CallSfuResult] that [connectPull] eventually returns.
+  bool _joinRelayDegraded = false;
+
+  /// [CALL-DEADAIR-1] The overlapped peer-seat poll, started as early as
+  /// possible inside [connectPublish] (see [overlapPeerWait]) and consumed by
+  /// [connectPull]. Split out of the old single-method `connect()` so the
+  /// caller pre-join can start this poll during the ring, well before
+  /// [connectPull] ever runs.
+  Future<CallSfuPeer?>? _pendingEarlyPeer;
+
   /// Track names are ours to choose. Namespacing by session id keeps them unique
   /// across a reconnect that mints a new session, so a peer that is briefly
   /// holding a stale seat cannot pull a name that now means something else.
@@ -246,6 +271,16 @@ class CallSfuTransport {
   /// to fall back to P2P, and an exception crossing the call-setup path is a
   /// dropped call. `video` is a request — the server may refuse it when
   /// `callSfuAudioOnly` is on, and the returned result is still a success.
+  ///
+  /// [CALL-PREJOIN-1 2026-08-16] Exactly `connectPublish` then `connectPull`,
+  /// composed — see those two for the actual work. Split out so a caller can
+  /// run the publish half during the ring and the pull half only once a peer
+  /// seat exists (`CallSession._maybeStartCallerPrejoin` /
+  /// `_startSfuMedia`'s adoption of it). Every existing caller of `connect()`
+  /// gets byte-for-byte the same behaviour as before the split, INCLUDING the
+  /// `overlapPeerWait` early-peer optimization: the poll still starts inside
+  /// the publish phase, before the offer/publish round trip, exactly as it did
+  /// in the single-method version.
   Future<CallSfuResult> connect({
     required MediaStream localStream,
     required List<Map<String, dynamic>> fallbackIceServers,
@@ -260,7 +295,39 @@ class CallSfuTransport {
     /// pre-ring seat).
     CallSfuJoinResult? prewarmedJoin,
   }) async {
+    final publishFailure = await connectPublish(
+      localStream: localStream,
+      fallbackIceServers: fallbackIceServers,
+      video: video,
+      prewarmedJoin: prewarmedJoin,
+    );
+    if (publishFailure != null) return publishFailure;
+    return connectPull(video: video);
+  }
+
+  /// [CALL-PREJOIN-1 2026-08-16] The PUBLISH half of `connect()`: join (or
+  /// adopt [prewarmedJoin]), build the peer connection, add tracks, offer and
+  /// publish. Returns `null` on success — the connection state (PC, session
+  /// id, the overlapped peer-seat poll) is held on this object for a later
+  /// [connectPull] — or a failed [CallSfuResult] on any error, in which case
+  /// there is nothing to pull and the caller must not call [connectPull].
+  ///
+  /// `video` here controls whether OUR OWN video track is included in this
+  /// publish. The caller pre-join always passes `false` — only audio is
+  /// published during the ring; a video call's camera track is added later,
+  /// after accept, exactly like today's mid-call camera-on
+  /// (`CallSession._enableSfuVideo` → `publishVideo`). [connectPull]'s own
+  /// `video` argument is independent and controls whether the PEER's video is
+  /// pulled, which is unrelated to what we chose to publish.
+  Future<CallSfuResult?> connectPublish({
+    required MediaStream localStream,
+    required List<Map<String, dynamic>> fallbackIceServers,
+    required bool video,
+    CallSfuJoinResult? prewarmedJoin,
+  }) async {
     _peerPollAbort = false; // [CALL-DEADAIR-1] fresh attempt (reconnect reuses this object)
+    _publishDone = false;
+    _pendingEarlyPeer = null;
     try {
       final join = (prewarmedJoin != null && prewarmedJoin.sessionId.isNotEmpty)
           ? prewarmedJoin
@@ -269,6 +336,8 @@ class CallSfuTransport {
         return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
       }
       _sessionId = join.sessionId;
+      _joinVideoAllowed = join.videoAllowed;
+      _joinRelayDegraded = join.relayDegraded;
       onStage?.call('sfu_join');
       if (join.relayDegraded) {
         // Loud on purpose. On the P2P path the identical condition was dropped
@@ -290,6 +359,7 @@ class CallSfuTransport {
       // available before this phone has generated its publish offer.
       final Future<CallSfuPeer?>? earlyPeer =
           overlapPeerWait ? _awaitPeerAudio(_peerWaitOverlapped) : null;
+      _pendingEarlyPeer = earlyPeer;
 
       // [CALL-SFU-NULLPC-1 2026-08-14] Hold the PC in a LOCAL for the whole
       // connect. `_pc` is nulled by a concurrent dispose()/_closePc() (a
@@ -364,11 +434,45 @@ class CallSfuTransport {
         _peerPollAbort = true; // [CALL-DEADAIR-1]
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_after_publish');
       }
+      _publishDone = true;
+      return null;
+    } on CallSfuException catch (e) {
+      await _closePc();
+      return CallSfuResult.failed(
+        e.unavailable ? SfuFailure.unavailable : SfuFailure.joinFailed,
+        detail: e.error,
+      );
+    } catch (e) {
+      await _closePc();
+      return CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
+    }
+  }
 
+  /// [CALL-PREJOIN-1 2026-08-16] The PULL half of `connect()`: wait for the
+  /// peer's seat, pull their audio (load-bearing), then their video
+  /// (best-effort), and start the heartbeat. Requires a successful prior
+  /// [connectPublish] on this object — calling this without one returns a
+  /// failed result rather than throwing, since a caller mistake here must
+  /// fall back to P2P exactly like any other SFU failure.
+  ///
+  /// `video`: whether to pull the PEER's video, independent of what THIS side
+  /// published. Combined with the join's server-side `videoAllowed` (recorded
+  /// by [connectPublish]) exactly as the old single-method `connect()` did.
+  Future<CallSfuResult> connectPull({required bool video, Duration? peerWait}) async {
+    final pc = _pc;
+    final sid = _sessionId;
+    if (!_publishDone || pc == null || sid == null) {
+      return CallSfuResult.failed(SfuFailure.unknown, detail: 'connectPull_without_publish');
+    }
+    try {
+      final wantVideo = video && _joinVideoAllowed;
       // Wait for the peer's seat. Not an error until the window expires.
       // [CALL-DEADAIR-1] When overlapped, this has been running since just after
-      // the peer connection was built and is frequently already resolved.
-      final peer = await (earlyPeer ?? _awaitPeerAudio(_peerWait));
+      // the peer connection was built (inside `connectPublish`) and is
+      // frequently already resolved by the time `connectPull` runs.
+      final earlyPeer = _pendingEarlyPeer;
+      _pendingEarlyPeer = null;
+      final peer = await (earlyPeer ?? _awaitPeerAudio(peerWait ?? _peerWait));
       if (peer == null) {
         return CallSfuResult.failed(SfuFailure.peerNeverPublished);
       }
@@ -395,17 +499,11 @@ class CallSfuTransport {
       onStage?.call('sfu_ready');
       return CallSfuResult.ok(
         pc,
-        sessionId: join.sessionId,
-        relayDegraded: join.relayDegraded,
+        sessionId: sid,
+        relayDegraded: _joinRelayDegraded,
         videoRequested: wantVideo,
         peerVideoAvailable: peerVideoAvailable,
         videoConnected: videoConnected,
-      );
-    } on CallSfuException catch (e) {
-      await _closePc();
-      return CallSfuResult.failed(
-        e.unavailable ? SfuFailure.unavailable : SfuFailure.joinFailed,
-        detail: e.error,
       );
     } catch (e) {
       await _closePc();
@@ -636,6 +734,8 @@ class CallSfuTransport {
     _openMids.clear();
     _pulledAudioMids.clear(); // [CALL-SFU-DUPAUDIO-1]
     _sessionId = null;
+    _publishDone = false; // [CALL-PREJOIN-1]
+    _pendingEarlyPeer = null; // [CALL-PREJOIN-1]
     // The peer connection itself belongs to CallSession once handed over — it
     // closes it in its own teardown, in its own order. Closing it here too would
     // race that.
