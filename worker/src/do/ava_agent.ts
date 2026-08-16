@@ -44,6 +44,7 @@ import {
   orStreamStep, // [AVA-STREAM-PLAIN-1 / WS-5] the tested SSE parser, shared with the tool lane
 } from "../lib/composio"; // AvaApps + unified agentic loop
 import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
+import { avaReason } from "../lib/ava_reason";
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
 import { runVeniceVideo, runVeniceMusic, runVeniceDraftLyrics } from "../lib/venice_media"; // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] in-thread video/music/lyrics gen, same async-job shape as runAvaImage
@@ -176,6 +177,16 @@ interface VideoInterviewCallResult {
   model: string;
   provider: string;
   fallbackUsed: boolean;
+}
+
+interface StructuredInterviewCallResult<T> {
+  turn: T;
+  model: string;
+  provider: string;
+  latencyMs: number;
+  fallbackUsed: boolean;
+  recoveredDiscussion: boolean;
+  primaryFailure: string | null;
 }
 
 // Belt-and-suspenders: strip any reasoning a model might emit so raw
@@ -1171,83 +1182,133 @@ export class AvaAgentDO {
   }
 
   /**
-   * Song conversation must not depend on one provider returning perfect JSON.
-   * The normal thread gateway already tries primary OpenRouter, alternate
-   * OpenRouter, and direct Gemini; Venice Gemini is an independent structured
-   * fallback. A non-JSON conversational model reply remains useful, but is
-   * restricted to discussion so malformed output cannot execute production.
+   * Media interviews need a larger, JSON-constrained generation contract than
+   * ordinary 300-token chat. Every rung is independently parsed before it is
+   * accepted; an HTTP 200 with empty or malformed content is a failed attempt,
+   * not a successful provider call. Natural prose can still be recovered as a
+   * discussion, but can never trigger production actions.
    */
+  private async callStructuredMediaInterview<T>(args: {
+    uid: string;
+    capability: "song_interview" | "video_interview";
+    system: string;
+    payload: string;
+    veniceModel: string;
+    parse: (text: string) => T;
+    recover: (text: string) => T | null;
+  }): Promise<StructuredInterviewCallResult<T>> {
+    const startedAt = Date.now();
+    const failures: string[] = [];
+    let recovered: { turn: T; model: string; provider: string; attempt: number } | null = null;
+    const maxTokens = 900;
+    const timeoutMs = 30_000;
+
+    const recordAttempt = (provider: string, model: string, attempt: number, ok: boolean, error: string | null) => {
+      void track(this.env, args.uid, "ava_media_interview_attempt", "avaai", {
+        capability: args.capability,
+        provider, model, attempt, ok,
+        fallback_used: attempt > 1,
+        latency_ms: Date.now() - startedAt,
+        error: error?.slice(0, 160) ?? null,
+      });
+    };
+
+    const accept = (text: string, provider: string, model: string, attempt: number): StructuredInterviewCallResult<T> | null => {
+      const clean = stripReasoning(text);
+      if (!clean) throw new Error("empty_response");
+      const conversational = args.recover(clean);
+      if (conversational) recovered = { turn: conversational, model, provider, attempt };
+      const turn = args.parse(clean);
+      recordAttempt(provider, model, attempt, true, null);
+      return {
+        turn, model, provider, latencyMs: Date.now() - startedAt,
+        fallbackUsed: attempt > 1, recoveredDiscussion: false,
+        primaryFailure: failures[0] ?? null,
+      };
+    };
+
+    const fail = (provider: string, model: string, attempt: number, error: unknown) => {
+      const detail = String((error as any)?.message ?? error ?? "unknown_failure")
+        .replace(/\s+/g, " ").slice(0, 160);
+      failures.push(`${provider}:${model}:${detail}`);
+      recordAttempt(provider, model, attempt, false, detail);
+    };
+
+    const key = String((this.env as any).OPENROUTER_API_KEY ?? "").trim();
+    const openRouterModels = [this.threadModel(), this.threadAltModel()]
+      .filter((model, index, all) => !!model && all.indexOf(model) === index);
+    let attempt = 0;
+    if (key) {
+      for (const model of openRouterModels) {
+        attempt++;
+        try {
+          const req: ReasonReq = {
+            role: "media_producer", capability: args.capability, trigger: "ava_media_interview",
+            system: args.system, user: args.payload, maxTokens, temperature: 0.45,
+            timeoutMs, json: true, aiOptions: { reasoning: { enabled: false } }, uid: args.uid,
+          };
+          const out = await openrouterAdapter.run(this.env as any, {
+            model, req,
+            body: { applyDefaults: true, allowRaw: false, allowJson: true, allowAiOptions: true },
+            title: `AvaTOK ${args.capability}`,
+          });
+          const accepted = accept(out.text, "openrouter", model, attempt);
+          if (accepted) return accepted;
+        } catch (e) { fail("openrouter", model, attempt, e); }
+      }
+    } else {
+      failures.push("openrouter:no_key");
+    }
+
+    attempt++;
+    try {
+      const text = await avaReason(this.env, {
+        role: "media_producer", capability: args.capability, trigger: "ava_media_interview",
+        feature: "gemini_direct", system: args.system, user: args.payload,
+        maxTokens, temperature: 0.45, timeoutMs, json: true,
+        geminiThinkingOff: true, uid: args.uid,
+      });
+      const accepted = accept(text, "google_direct", "gemini-direct-ladder", attempt);
+      if (accepted) return accepted;
+    } catch (e) { fail("google_direct", "gemini-direct-ladder", attempt, e); }
+
+    attempt++;
+    const veniceModel = String((this.env as any).AVA_MEDIA_INTERVIEW_VENICE_MODEL ?? "").trim() || args.veniceModel;
+    try {
+      const out = await veniceChatComplete(this.env, veniceModel, [
+        { role: "system", content: args.system },
+        { role: "user", content: args.payload },
+      ], { maxTokens, temperature: 0.45, timeoutMs });
+      const accepted = accept(out.text, "venice", veniceModel, attempt);
+      if (accepted) return accepted;
+    } catch (e) { fail("venice", veniceModel, attempt, e); }
+
+    if (recovered) {
+      recordAttempt(recovered.provider, recovered.model, recovered.attempt, true, "natural_discussion_recovery");
+      return {
+        turn: recovered.turn, model: recovered.model, provider: recovered.provider,
+        latencyMs: Date.now() - startedAt, fallbackUsed: recovered.attempt > 1,
+        recoveredDiscussion: true, primaryFailure: failures[0] ?? null,
+      };
+    }
+    throw new Error(`${args.capability}_models_exhausted:${failures.join("|").slice(0, 420)}`);
+  }
+
   private async callSongInterview(
     uid: string,
     flow: SongFlowState,
     latestUserText: string,
     serverValidationFeedback?: string,
   ): Promise<SongInterviewCallResult> {
-    const startedAt = Date.now();
     const mediaTier = await veniceTier(this.env, uid);
     const audioModels = mediaModelCatalog(await readConfig(this.env), mediaTier).audio;
     const payload = songInterviewUserPayload(flow, latestUserText, serverValidationFeedback, audioModels);
-    let primaryText = "";
-    let primaryFailure: string | null = null;
-    try {
-      const primary = await this.callThreadModel(uid, SONG_INTERVIEW_SYSTEM, payload);
-      primaryText = primary.text;
-      return {
-        turn: parseSongInterviewTurn(primary.text, flow.context, audioModels),
-        model: primary.model,
-        provider: primary.provider,
-        latencyMs: Date.now() - startedAt,
-        fallbackUsed: false,
-        recoveredDiscussion: false,
-        primaryFailure: null,
-      };
-    } catch (e) {
-      const message = String((e as any)?.message ?? e);
-      primaryFailure = !primaryText.trim()
-        ? "empty_or_provider_failure"
-        : message.includes("no JSON") ? "invalid_json_shape"
-        : message.includes("empty reply") ? "empty_reply"
-        : e instanceof SyntaxError ? "invalid_json"
-        : "invalid_structured_reply";
-    }
-
-    let fallbackText = "";
-    try {
-      const fallback = await veniceChatComplete(
-        this.env,
-        SONG_INTERVIEW_FALLBACK_MODEL,
-        [
-          { role: "system", content: SONG_INTERVIEW_SYSTEM },
-          { role: "user", content: payload },
-        ],
-        { maxTokens: 520, temperature: 0.45, timeoutMs: 20_000 },
-      );
-      fallbackText = fallback.text;
-      return {
-        turn: parseSongInterviewTurn(fallback.text, flow.context, audioModels),
-        model: SONG_INTERVIEW_FALLBACK_MODEL,
-        provider: "venice",
-        latencyMs: Date.now() - startedAt,
-        fallbackUsed: true,
-        recoveredDiscussion: false,
-        primaryFailure,
-      };
-    } catch { /* recover a natural AI reply below, or fail closed */ }
-
-    const recovered = recoverSongInterviewDiscussion(fallbackText, flow.context)
-      ?? recoverSongInterviewDiscussion(primaryText, flow.context);
-    if (recovered) {
-      return {
-        turn: recovered,
-        model: fallbackText.trim() ? SONG_INTERVIEW_FALLBACK_MODEL : "thread-failover",
-        provider: fallbackText.trim() ? "venice" : "thread_gateway",
-        latencyMs: Date.now() - startedAt,
-        fallbackUsed: true,
-        recoveredDiscussion: true,
-        primaryFailure,
-      };
-    }
-    throw new Error(`song_interview_models_exhausted:${primaryFailure ?? "unknown"}`);
+    return this.callStructuredMediaInterview({
+      uid, capability: "song_interview", system: SONG_INTERVIEW_SYSTEM, payload,
+      veniceModel: SONG_INTERVIEW_FALLBACK_MODEL,
+      parse: (text) => parseSongInterviewTurn(text, flow.context, audioModels),
+      recover: (text) => recoverSongInterviewDiscussion(text, flow.context),
+    });
   }
 
   private async callVideoInterview(
@@ -1258,30 +1319,16 @@ export class AvaAgentDO {
     serverValidationFeedback?: string,
   ): Promise<VideoInterviewCallResult> {
     const payload = videoInterviewPayload(flow, latestUserText, models, serverValidationFeedback);
-    let primaryText = "";
-    try {
-      const primary = await this.callThreadModel(uid, VIDEO_INTERVIEW_SYSTEM, payload);
-      primaryText = primary.text;
-      return {
-        turn: parseVideoInterviewTurn(primary.text, flow.context, models),
-        model: primary.model, provider: primary.provider, fallbackUsed: false,
-      };
-    } catch { /* use an independent structured provider below */ }
-    let fallbackText = "";
-    try {
-      const fallback = await veniceChatComplete(this.env, VIDEO_INTERVIEW_FALLBACK_MODEL, [
-        { role: "system", content: VIDEO_INTERVIEW_SYSTEM }, { role: "user", content: payload },
-      ], { maxTokens: 600, temperature: 0.45, timeoutMs: 20_000 });
-      fallbackText = fallback.text;
-      return {
-        turn: parseVideoInterviewTurn(fallback.text, flow.context, models),
-        model: VIDEO_INTERVIEW_FALLBACK_MODEL, provider: "venice", fallbackUsed: true,
-      };
-    } catch { /* recover conversation-only text, never execute malformed output */ }
-    const recovered = recoverVideoDiscussion(fallbackText, flow.context)
-      ?? recoverVideoDiscussion(primaryText, flow.context);
-    if (recovered) return { turn: recovered, model: "video-interview-recovery", provider: "recovery", fallbackUsed: true };
-    throw new Error("video_interview_models_exhausted");
+    const result = await this.callStructuredMediaInterview({
+      uid, capability: "video_interview", system: VIDEO_INTERVIEW_SYSTEM, payload,
+      veniceModel: VIDEO_INTERVIEW_FALLBACK_MODEL,
+      parse: (text) => parseVideoInterviewTurn(text, flow.context, models),
+      recover: (text) => recoverVideoDiscussion(text, flow.context),
+    });
+    return {
+      turn: result.turn, model: result.model, provider: result.provider,
+      fallbackUsed: result.fallbackUsed,
+    };
   }
 
   // ---- the turn ---------------------------------------------------------------

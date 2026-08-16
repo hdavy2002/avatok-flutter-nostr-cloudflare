@@ -265,9 +265,17 @@ export function cfText(out: any): string {
   return String(out?.response ?? out?.result?.response ?? "").trim();
 }
 
-/** OpenRouter text extraction (choices[0].message.content). */
+/** OpenRouter text extraction. OpenAI-compatible providers may return content as
+ * either one string or an array of typed text parts. Treat both as first-class;
+ * silently converting the array shape to "" makes a healthy provider look down. */
 export function orText(out: any): string {
-  return String(out?.choices?.[0]?.message?.content ?? "").trim();
+  const content = out?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part: any) => typeof part === "string" ? part : String(part?.text ?? ""))
+    .join("")
+    .trim();
 }
 
 /** Best-effort {prompt,completion} token counts from either provider shape. */

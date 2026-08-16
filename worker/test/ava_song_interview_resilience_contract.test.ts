@@ -2,13 +2,20 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Ava song interview resilience contract", () => {
-  it("uses an independent AI failover before any recovery response", () => {
+  it("uses one structured multi-provider contract for song and video", () => {
     const agent = readFileSync("src/do/ava_agent.ts", "utf8");
+    expect(agent).toContain("private async callStructuredMediaInterview<T>");
     expect(agent).toContain("private async callSongInterview(");
+    expect(agent).toContain("private async callVideoInterview(");
+    expect(agent).toContain('capability: "song_interview"');
+    expect(agent).toContain('capability: "video_interview"');
+    expect(agent).toContain("maxTokens = 900");
+    expect(agent).toContain("json: true");
+    expect(agent).toContain('throw new Error("empty_response")');
+    expect(agent).toContain('feature: "gemini_direct"');
     expect(agent).toContain("SONG_INTERVIEW_FALLBACK_MODEL");
     expect(agent).toContain("await veniceChatComplete(");
-    expect(agent).toContain("recoverSongInterviewDiscussion(fallbackText");
-    expect(agent).toContain("recoverSongInterviewDiscussion(primaryText");
+    expect(agent).toContain('"ava_media_interview_attempt"');
   });
 
   it("never drops an exhausted song interview into the generic tool lane", () => {

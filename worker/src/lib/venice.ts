@@ -435,7 +435,12 @@ export async function veniceChatComplete(
   if (opts.temperature != null) body.temperature = opts.temperature;
   const j = await venicePost(env, "/chat/completions", body, opts.timeoutMs ?? 30000);
   const content = j?.choices?.[0]?.message?.content;
-  const text = typeof content === "string" ? content.trim() : "";
+  const text = typeof content === "string"
+    ? content.trim()
+    : Array.isArray(content)
+      ? content.map((part: any) => typeof part === "string" ? part : String(part?.text ?? "")).join("").trim()
+      : "";
+  if (!text) throw new Error("venice chat returned empty content");
   const usage = j?.usage ?? {};
   return {
     text,
