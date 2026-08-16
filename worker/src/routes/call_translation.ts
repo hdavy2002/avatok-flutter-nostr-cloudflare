@@ -260,6 +260,29 @@ export function mintRetryable(status: number): boolean {
   return status === 0 || status === 408 || status >= 500;
 }
 
+/**
+ * [CALL-TRANSLATE-OBS-4] Extract Google's bounded machine identifiers from an
+ * error body, and NOTHING else. `status`/`reason` are UPPER_SNAKE enums;
+ * `field` is a path into OUR OWN request (safe to emit). The free-text
+ * `error.message` is deliberately never returned — provider text can carry
+ * request-derived data. Pure and exported so the contract test pins it.
+ */
+export function mintErrorIdentifiers(errorBody: unknown): { status: string; reason: string; field: string } {
+  const boundedEnum = (v: unknown): string => {
+    const s = String(v ?? "");
+    return /^[A-Z][A-Z0-9_]{0,39}$/.test(s) ? s : "";
+  };
+  const err = (errorBody as { error?: { status?: unknown; details?: unknown } } | null)?.error;
+  const details: Array<{ reason?: unknown; fieldViolations?: Array<{ field?: unknown }> }> =
+    Array.isArray(err?.details) ? err.details as never[] : [];
+  const reason = details.map((d) => boundedEnum(d?.reason)).find((r) => r !== "") ?? "";
+  const field = details
+    .flatMap((d) => (Array.isArray(d?.fieldViolations) ? d.fieldViolations : []))
+    .map((v) => String(v?.field ?? "").slice(0, 120))
+    .find((f) => f !== "") ?? "";
+  return { status: boundedEnum(err?.status), reason, field };
+}
+
 type MintCtx = { uid: string; sessionId: string; callRef: string; purpose: MintPurpose };
 
 async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{ token: string; expiresAt: number } | null> {
@@ -329,20 +352,24 @@ async function mintToken(env: Env, targetLang: string, mctx: MintCtx): Promise<{
     return null;
   }
   if (!response.ok) {
-    // Read the failure only to extract Google's bounded machine status (for
-    // example INVALID_ARGUMENT). Never emit the provider message/body: it can
-    // drift into request-derived data. This makes the next 400 diagnosable
-    // without weakening the no-provider-body telemetry rule.
-    const errorBody = await response.json().catch(() => ({})) as {
-      error?: { status?: unknown };
-    };
-    const rawProviderStatus = String(errorBody.error?.status ?? "");
-    const providerStatus = /^[A-Z][A-Z0-9_]{0,39}$/.test(rawProviderStatus)
-      ? rawProviderStatus
-      : "";
+    // Read the failure only to extract Google's bounded machine identifiers.
+    // Never emit the provider message/body: it can drift into request-derived
+    // data. This makes the next 400 diagnosable without weakening the
+    // no-provider-body telemetry rule.
+    //
+    // [CALL-TRANSLATE-OBS-4] `status` alone does NOT diagnose a 400: Google
+    // returns INVALID_ARGUMENT both for a broken request contract AND for a bad
+    // API key. The disambiguators live in `error.details[]`: an ErrorInfo
+    // `reason` (e.g. API_KEY_INVALID) and/or a BadRequest `fieldViolations[]`
+    // whose `field` names the offending path IN OUR OWN REQUEST (ours, so safe
+    // to emit). The 2026-08-16 prod 400 was undiagnosable for lack of exactly
+    // these two fields.
+    const errorBody = await response.json().catch(() => ({}));
+    const ids = mintErrorIdentifiers(errorBody);
     await track(env, mctx.uid, "call_translation_mint", APP, {
       ...base, ok: false, http_status: response.status,
-      failure_class: mintFailureClass(response.status), provider_status: providerStatus,
+      failure_class: mintFailureClass(response.status),
+      provider_status: ids.status, provider_reason: ids.reason, provider_field: ids.field,
       attempts, duration_ms: Date.now() - startedAt,
     });
     return null;

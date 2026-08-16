@@ -14,7 +14,7 @@ import {
   CALL_TRANSLATION_LANGS, CALL_TRANSLATION_MIN_START, CALL_TRANSLATION_RATE, CALL_TRANSLATION_MODEL,
   CALL_TRANSLATION_API_VERSION, CALL_TRANSLATION_AUTH_TOKEN_URL, callTranslationAuthTokenBody,
   CALL_TRANSLATION_SOURCE_BRIDGE_ENABLED, mintFailureClass, stopEndReason, stopReasonOrDefault,
-  mintRetryable, CALL_TRANSLATION_MINT_TIMEOUT_MS, CALL_TRANSLATION_MINT_MAX_ATTEMPTS,
+  mintRetryable, mintErrorIdentifiers, CALL_TRANSLATION_MINT_TIMEOUT_MS, CALL_TRANSLATION_MINT_MAX_ATTEMPTS,
   STOP_BODY_TIMEOUT_MS,
   callTranslationStart, callTranslationActivate, callTranslationRenew, callTranslationStop,
 } from "../src/routes/call_translation";
@@ -70,6 +70,40 @@ describe("[CALL-TRANSLATE-1] contract", () => {
     });
     expect(JSON.stringify(body)).not.toContain("bidiGenerateContentSetup");
     expect(CALL_TRANSLATION_AUTH_TOKEN_URL).not.toContain("v1alpha");
+  });
+
+  it("[CALL-TRANSLATE-OBS-4] extracts only bounded machine identifiers from a mint error", () => {
+    // The shape Google actually returns for a bad API key: INVALID_ARGUMENT +
+    // ErrorInfo reason. Without `reason`, a key problem is indistinguishable
+    // from a contract problem — the exact blindness of the 2026-08-16 400.
+    expect(mintErrorIdentifiers({
+      error: {
+        code: 400, message: "API key not valid. Please pass a valid API key.",
+        status: "INVALID_ARGUMENT",
+        details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "API_KEY_INVALID" }],
+      },
+    })).toEqual({ status: "INVALID_ARGUMENT", reason: "API_KEY_INVALID", field: "" });
+
+    // The contract-violation shape: BadRequest fieldViolations naming a path in
+    // OUR request. The field is ours, so it is safe to emit; the free-text
+    // description is provider text and must never come back.
+    const ids = mintErrorIdentifiers({
+      error: {
+        status: "INVALID_ARGUMENT",
+        details: [{
+          "@type": "type.googleapis.com/google.rpc.BadRequest",
+          fieldViolations: [{ field: "live_connect_constraints.config.translation_config", description: "secret-ish text" }],
+        }],
+      },
+    });
+    expect(ids).toEqual({ status: "INVALID_ARGUMENT", reason: "", field: "live_connect_constraints.config.translation_config" });
+    expect(JSON.stringify(ids)).not.toContain("secret-ish");
+
+    // Hostile/malformed bodies degrade to empty strings, never throw, and
+    // free-text can never masquerade as an enum.
+    expect(mintErrorIdentifiers(null)).toEqual({ status: "", reason: "", field: "" });
+    expect(mintErrorIdentifiers({ error: { status: "not an enum!", details: "nope" } }))
+      .toEqual({ status: "", reason: "", field: "" });
   });
 
   it("bounds the provider watchdog and retries only transient failures", () => {
@@ -190,7 +224,9 @@ class FakeDb {
         .slice(0, Number(a[2]))
         .map((r) => ({ ...r }));
     }
-    if (sql.startsWith("SELECT id FROM translation_call_sessions")) {
+    // [CALL-TRANSLATE-WATCHDOG-1] duplicate-session probe (`SELECT id,status …`)
+    // and the insert-conflict winner lookup (`SELECT id …`) share this shape.
+    if (sql.startsWith("SELECT id,status FROM translation_call_sessions") || sql.startsWith("SELECT id FROM translation_call_sessions")) {
       return [...this.rows.values()]
         .filter((r) => r.payer_uid === a[0] && r.call_ref === a[1] && ["pending", "activating", "active"].includes(r.status))
         .slice(0, 1).map((r) => ({ ...r }));
