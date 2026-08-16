@@ -361,10 +361,25 @@ class NativeVoiceAudio {
   /// Returns a stream of events; each event is a map with 'state' = 'held' or 'resumed'.
   /// When a cellular call comes in, state='held'; when it ends, state='resumed'.
   /// The app mutes mic and shows "On hold" banner when held, unmutes when resumed.
+  ///
+  /// [CALL-TELEPHONY-STREAM-1] ONE cached platform subscription, shared by every
+  /// listener — the same pattern as [_mic] above and `CallRecorderNative.events()`.
+  /// This getter used to build a fresh `receiveBroadcastStream()` per access, and
+  /// two components subscribe during every call (CallSession's cellular-hold
+  /// handler and CallTranslationController's constructor). Two Dart streams on
+  /// one channel name meant the second `listen` silently REPLACED the first —
+  /// CallSession stopped receiving held/resumed events whenever the translation
+  /// controller existed — and the second `cancel` at hangup threw the
+  /// "No active stream to cancel" PlatformException seen on both devices after
+  /// every call. `asBroadcastStream()` keeps the platform subscription alive for
+  /// the app's lifetime; event flow is still gated natively by
+  /// start/stopTelephonyMonitoring, so an idle sink costs nothing.
+  static Stream<Map<String, dynamic>>? _telephonyStream;
   Stream<Map<String, dynamic>> get telephonyEventStream =>
-      EventChannel('avatok/voice_audio/telephony')
+      _telephonyStream ??= EventChannel('avatok/voice_audio/telephony')
           .receiveBroadcastStream()
-          .map((e) => Map<String, dynamic>.from(e as Map));
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .asBroadcastStream();
 
   /// CALLFIX-23: Start listening for cellular call interruption.
   /// Call this at the start of a call; stop when the call ends.
