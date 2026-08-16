@@ -21,6 +21,7 @@ import '../core/ava_log.dart';
 import '../core/badge_service.dart';
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
+import '../core/calls/call_prewarm.dart' show CallPrewarm; // [CALL-PREWARM-1]
 import '../core/calls/call_room_id.dart' show CallRoomId; // [CALL-DEDUP-TTL-1]
 import '../core/calls/ring_delivery_contract.dart';
 import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
@@ -1007,6 +1008,15 @@ Future<void> applyRingTransition(
   // Order matters only in that the durable marker goes FIRST: an accept racing
   // this teardown must find the terminal marker even if a later step throws.
   _noteTerminalCall(callId);
+
+  // [CALL-PREWARM-1 2026-08-16] This function only runs for a ring that ended
+  // WITHOUT being accepted (`_terminalCallStatus` gates entry above) — decline,
+  // caller cancel, timeout, missed. Tear down any pre-warmed SFU seat for this
+  // call; `discard` itself is a no-op if nothing was ever warmed. Fire-and-
+  // forget and exception-proof by construction.
+  try {
+    unawaited(CallPrewarm.instance.discard(callId, status));
+  } catch (_) {/* teardown must never affect the ring reducer */}
 
   // Every step is independently guarded — one failing surface must never
   // prevent the others from being torn down. That was another way the old
@@ -2521,6 +2531,19 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     'latency_ms': DateTime.now().difference(swShown).inMilliseconds,
     'trace_id': (d['trace_id'] ?? '').toString(),
   });
+  // [CALL-PREWARM-1 2026-08-16] Right after the ring surface is confirmed
+  // shown (i.e. accept is now reachable), start warming this callee's media
+  // path — ICE credentials + an SFU seat — so accept only has to publish +
+  // pull. 1:1 only: group rings use the separate conference join, not
+  // `/api/callsfu/:room/join`. Fire-and-forget and exception-proof by
+  // construction — `CallPrewarm.start` itself never throws and is a no-op
+  // while `callPrewarmOnRingV1` is off, but this call must never be able to
+  // affect the ring path even if that ever changes.
+  if (!isGroupRing) {
+    try {
+      CallPrewarm.instance.start(ringCallId);
+    } catch (_) {/* prewarm must never affect the ring path */}
+  }
   // A receipt means a user-visible ring surface was successfully raised—not
   // merely that a transport callback ran. Centralizing it here prevents WS,
   // foreground FCM and background FCM from reporting different semantics.

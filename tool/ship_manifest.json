@@ -1391,6 +1391,36 @@
    }
   ]
  },
+ "CALL-PREWARM-1": {
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P1 — the callee pre-warms its media path (ICE fetch + /api/callsfu/:room/join seat) the moment the incoming-call push lands, gated behind callPrewarmOnRingV1. CallSession._startSfuMedia() now adopts the pre-warmed join instead of doing the ICE+seat round trip cold, so accept only has to publish + pull. Discarded (seat closed) on decline/cancel/timeout/missed and when older than 60s.",
+  "flags": [
+   "callSfuV1",
+   "callPrewarmOnRingV1"
+  ],
+  "min_devices_on_build": 2,
+  "shipped": "pending",
+  "two_sided": true,
+  "success": [
+   {
+    "event": "call_prewarm_adopted",
+    "property": "had_join",
+    "equals": true,
+    "min_events": 1,
+    "where": {},
+    "note": "The callee's accept must actually adopt a live pre-warmed seat, not just find an entry — had_join:false means the /join round trip never finished in time and the accept path fell back to cold-start behaviour."
+   },
+   {
+    "event": "call_first_audio_ms",
+    "property": "stage_first_audio_bytes",
+    "equals": "",
+    "min_events": 1,
+    "where": {
+     "network": "wifi"
+    },
+    "note": "Callee stage_first_audio_bytes on wifi must be < 4500ms. Read the actual number, do not just confirm the event exists (CLAUDE.md ship-gate rule 3). Note the plan's own P1 target (Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md) is a tighter <2500ms accept→first_audio on wifi — 4500ms is the ship-gate floor for this manifest entry, not the aspiration."
+   }
+  ]
+ },
  "CALL-TRANSLATE-APIVER-3": {
   "description": "Live-probed the v1beta auth_tokens endpoint (schema validation precedes key validation, so probeable with any key): the docs' liveConnectConstraints field does not exist on the wire on v1alpha OR v1beta \u2014 the AuthToken proto field is bidiGenerateContentSetup with generationConfig inside, mirroring the WS setup frame. Mint body rewritten to the probed shape.",
   "flags": [],

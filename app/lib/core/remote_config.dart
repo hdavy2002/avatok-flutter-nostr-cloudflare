@@ -149,6 +149,22 @@ class RemoteConfig {
   static bool get callSfuV1 => _b('callSfuV1', false);
   static bool get callSfuAudioOnly => _b('callSfuAudioOnly', false);
 
+  /// [CALL-PREWARM-1 2026-08-16] P1 of
+  /// `Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md`. When true, the callee
+  /// begins warming its media path (ICE credentials + SFU seat join) the
+  /// moment the incoming-call push lands, so accept only has to publish +
+  /// pull instead of building the whole stack cold. Gates
+  /// `CallPrewarm.instance.start()` — a no-op while false.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS) in
+  /// the same change, per the fake-flag rule.
+  static bool get callPrewarmOnRingV1 => _b('callPrewarmOnRingV1', false);
+
+  /// [CALL-PREWARM-1] P2 of the same plan — caller pre-joins and publishes to
+  /// the SFU at ring start. Declared now; not yet read by any client code
+  /// (ships as its own change).
+  static bool get callerPrejoinOnRingV1 => _b('callerPrejoinOnRingV1', false);
+
   /// [CALL-RTK-3] Cloudflare RealtimeKit media transport
   /// (`Specs/CALL-REALTIMEKIT-MIGRATION.md` §3.3).
   ///

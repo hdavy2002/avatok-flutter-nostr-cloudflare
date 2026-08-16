@@ -78,6 +78,27 @@ export interface PlatformConfig {
    */
   callSfuAudioOnly: boolean;
   /**
+   * [CALL-PREWARM-1 2026-08-16] P1 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md.
+   * Callee pre-warms its media path (ICE fetch + SFU seat join) the moment the
+   * incoming-call PUSH lands, seconds before the ring UI is even shown — not on
+   * accept. Accept then only publishes + pulls, instead of building the whole
+   * stack from a cold start. Mic stays disabled until accept (privacy: nothing is
+   * captured pre-accept); decline/timeout/cancel tears the seat down via the
+   * existing /api/callsfu/:room/close route. Ships FALSE: no client build
+   * implements the seam yet. Boolean → NOT in numericKeys.
+   * Client mirror: RemoteConfig.callPrewarmOnRingV1.
+   */
+  callPrewarmOnRingV1: boolean;
+  /**
+   * [CALL-PREWARM-1] P2 of the same plan — caller pre-joins and PUBLISHES audio
+   * to the SFU at ring start (before the callee accepts), so the callee's first
+   * pull finds the track immediately instead of both sides waiting on each
+   * other. Declared alongside `callPrewarmOnRingV1` now; no client code reads it
+   * yet — P2 ships as its own change. Ships FALSE. Boolean → NOT in numericKeys.
+   * Client mirror: RemoteConfig.callerPrejoinOnRingV1.
+   */
+  callerPrejoinOnRingV1: boolean;
+  /**
    * [CALL-RTK-2 2026-08-08] 1:1 media via a Cloudflare RealtimeKit meeting join.
    *
    * See Specs/CALL-REALTIMEKIT-MIGRATION.md. RealtimeKit runs on the SAME
@@ -1345,6 +1366,11 @@ const DEFAULTS: PlatformConfig = {
   // flipping this back to false is a full, instant rollback with no rebuild.
   callSfuV1: false,
   callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
+  // [CALL-PREWARM-1 2026-08-16] Instant-pickup plan P1/P2. Both ship FALSE: no
+  // client build implements the pre-warm seam yet. Flipping either back to
+  // false is a full, instant rollback with no rebuild.
+  callPrewarmOnRingV1: false,
+  callerPrejoinOnRingV1: false,
   // [CALL-RTK-2 2026-08-08] RealtimeKit migration, Phase 0. Both ship FALSE:
   // the worker route exists and the secrets may be set, but no user reaches it
   // until a client build implements the seam and a two-phone test passes.

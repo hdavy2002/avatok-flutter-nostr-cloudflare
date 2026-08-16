@@ -250,10 +250,21 @@ class CallSfuTransport {
     required MediaStream localStream,
     required List<Map<String, dynamic>> fallbackIceServers,
     required bool video,
+    /// [CALL-PREWARM-1 2026-08-16] A `/join` result obtained BEFORE `connect()`
+    /// was called (during the ring, via `CallPrewarm`). When non-null and
+    /// carries a non-empty `sessionId`, this is used in place of the normal
+    /// `CallSfuApi.join(room)` round trip and `sfu_join` is staged immediately
+    /// — accept then only has to publish + pull. Left null on every path that
+    /// is not the fresh callee connect (in particular [reconnect] never passes
+    /// this: a network-recovery join must always be current, never a stale
+    /// pre-ring seat).
+    CallSfuJoinResult? prewarmedJoin,
   }) async {
     _peerPollAbort = false; // [CALL-DEADAIR-1] fresh attempt (reconnect reuses this object)
     try {
-      final join = await CallSfuApi.join(room);
+      final join = (prewarmedJoin != null && prewarmedJoin.sessionId.isNotEmpty)
+          ? prewarmedJoin
+          : await CallSfuApi.join(room);
       if (join.sessionId.isEmpty) {
         return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
       }

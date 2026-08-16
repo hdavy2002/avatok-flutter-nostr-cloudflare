@@ -28,6 +28,7 @@ import '../receptionist_api.dart';
 import '../receptionist_call.dart';
 import '../remote_config.dart';
 import 'call_audio_controller.dart';
+import 'call_prewarm.dart'; // [CALL-PREWARM-1]
 import '../ringback_player.dart';
 import '../voice/native_voice_audio.dart';
 import '../../push/push_service.dart';
@@ -6033,6 +6034,21 @@ class CallSession {
       remoteVideoStatus.value = 'waiting';
     }
     _stage('sfu_begin'); // [CALL-DEADAIR-1]
+    // [CALL-PREWARM-1 2026-08-16] Adopt a pre-warmed join (ICE fetch +
+    // `/callsfu/join` seat), if one was started at ring time by
+    // `CallPrewarm.start` (see push_service.dart's incoming-call handler).
+    // `adopt` itself enforces the flag, the 60s freshness window and the
+    // exactly-once contract, and NEVER throws — if it returns null this is
+    // byte-for-byte today's cold-start behaviour. Deliberately not called
+    // from `reconnect()` — a network-recovery join must always be current,
+    // never a stale pre-ring seat.
+    CallPrewarmedData? prewarmed;
+    if (RemoteConfig.callPrewarmOnRingV1) {
+      try {
+        prewarmed = await CallPrewarm.instance.adopt(config.room);
+      } catch (_) {/* prewarm must never affect call setup */}
+    }
+    final prewarmedIce = prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
     final transport = CallSfuTransport(
       room: room,
       createPeerConnection: (iceServers) => _newPC(sfuIce: iceServers),
@@ -6077,8 +6093,14 @@ class CallSession {
     try {
       result = await transport.connect(
         localStream: stream,
-        fallbackIceServers: _ice,
+        // [CALL-PREWARM-1] Prefer the ICE servers the prewarm fetch already
+        // brought back — they are at least as fresh as `_ice` and mean this
+        // call never blocks on the ICE round trip that `_fetchIce()` would
+        // otherwise still be doing. Falls back to `_ice` exactly as before
+        // when there was nothing to adopt.
+        fallbackIceServers: prewarmedIce.isNotEmpty ? prewarmedIce : _ice,
         video: config.video && !RemoteConfig.callSfuAudioOnly,
+        prewarmedJoin: prewarmed?.join,
       );
     } catch (e, st) {
       // The transport normally converts failures into CallSfuResult, but a
