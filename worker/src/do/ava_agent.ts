@@ -1201,7 +1201,13 @@ export class AvaAgentDO {
     const failures: string[] = [];
     let recovered: { turn: T; model: string; provider: string; attempt: number } | null = null;
     const maxTokens = 900;
-    const timeoutMs = 30_000;
+    // [AVA-INTERVIEW-FAST-1] Was 30s. With up to four providers in the ladder,
+    // one slow provider made a single chat turn feel dead for a minute
+    // (observed in production: 30s deepseek timeout + 32s fallback = a 62s
+    // reply while two people watched the thread). 12s is ample for a healthy
+    // provider on a 900-token JSON turn; a provider that needs longer is
+    // exactly the one worth failing over from.
+    const timeoutMs = 12_000;
 
     const recordAttempt = (provider: string, model: string, attempt: number, ok: boolean, error: string | null) => {
       void track(this.env, args.uid, "ava_media_interview_attempt", "avaai", {

@@ -159,11 +159,20 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
   // continuation, revision, approval, hesitation, and topic change.
   if (requestKind && (!flow || flow.phase === "completed")) {
     const brief = stripAvaWakeWordForIntent(text);
+    // [SONG-MEMORY-1] A new create-request right after a completed song is
+    // almost always about THAT song ("create lyrics that cover 3 min" after a
+    // too-short result). Starting from a blank state made Ava re-ask theme and
+    // genre she had learned one minute earlier — seen in production and read
+    // by the owner as Ava "forgetting". Seed the new lifecycle with the
+    // completed song's creative context; the interview model decides whether
+    // to treat it as a revision or (via its restart action) sever it.
+    const carried = flow?.phase === "completed" && flow.context ? flow.context : undefined;
     return {
       kind: "ask_brief",
       flow: {
         phase: "awaiting_brief", kind: requestKind, brief, conversation: brief,
-        durationSeconds: parseSongDurationSeconds(brief) ?? 60,
+        durationSeconds: parseSongDurationSeconds(brief) ?? carried?.durationSeconds ?? 60,
+        ...(carried ? { context: carried, lastInterviewReply: flow?.lastInterviewReply } : {}),
       },
     };
   }

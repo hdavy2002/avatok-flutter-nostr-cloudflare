@@ -98,7 +98,16 @@ export async function craftSongCardMetadata(
   lyrics: string,
 ): Promise<{ title: string; description: string }> {
   const instrumental = !String(lyrics || '').trim();
-  const fallbackSource = String(stylePrompt || '').replace(/\s+/g, ' ').trim();
+  // [SONG-CARD-TITLE-1] The style prompt is often the structured production
+  // brief ("Theme / intent: …\nGenre: …"). When the AI title call fails, the
+  // old fallback took the brief's first words verbatim, shipping literal
+  // "Theme / intent: freedom from poli…" titles onto real song cards. Extract
+  // the CONTENT of the theme line (or the first line) and drop every label.
+  const briefTheme = String(stylePrompt || '')
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:theme|intent|goal|purpose)(?:\s*\/\s*(?:theme|intent|goal|purpose))?\s*[:\-–]\s*/i, "").trim())
+    .find((line) => !!line && !/^(?:genre|mood|energy|instruments|language|vocal|voice|intended use|audio model|length)\b\s*[:\-–]/i.test(line)) || "";
+  const fallbackSource = (briefTheme || String(stylePrompt || '')).replace(/\s+/g, ' ').trim();
   const fallbackWords = fallbackSource
     .replace(/^(?:please\s+)?(?:make|create|generate|compose)\s+(?:me\s+)?/i, '')
     .split(/\s+/).filter(Boolean).slice(0, 6).join(' ');
@@ -114,21 +123,26 @@ export async function craftSongCardMetadata(
   const source = [String(stylePrompt || "").trim(), String(lyrics || "").trim()]
     .filter(Boolean).join("\n\n").slice(0, 6000);
   if (!source) return fallback;
-  try {
-    const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-      { role: "system", content: instrumental
-        ? "Create promotional share-card metadata for an instrumental track. Study the musical brief closely and infer its real genre, instruments, mood, energy, setting, and listener intent. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, appealing and accurate). Do not invent lyrics or singers. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis."
-        : "Create promotional share-card metadata for an original song. Study the approved lyrics closely and infer the song's real theme, emotion, imagery, and audience; use the musical brief as secondary context. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, appealing and accurate). Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis." },
-      { role: "user", content: source },
-    ], { maxTokens: 180, temperature: 0.45, timeoutMs: CRAFT_TIMEOUT_MS });
-    const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");
-    const parsed = JSON.parse(raw) as { title?: unknown; description?: unknown };
-    const title = String(parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
-    const description = String(parsed.description ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
-    return title && description ? { title, description } : fallback;
-  } catch {
-    return fallback;
+  // The description doubles as the ONLY creative brief the album-cover image
+  // model ever sees (the prompt/lyrics are never persisted), so it must name
+  // the song's actual genre, language/culture, mood and central imagery.
+  const sys = instrumental
+    ? "Create promotional share-card metadata for an instrumental track. Study the musical brief closely and infer its real genre, instruments, mood, energy, setting, and listener intent. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 60-220 characters) that explicitly names the genre, mood, cultural setting and central imagery so an artist could paint the right cover from it alone. Do not invent lyrics or singers. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis."
+    : "Create promotional share-card metadata for an original song. Study the approved lyrics closely and infer the song's real theme, emotion, imagery, language and audience; use the musical brief as secondary context. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific — in the same language as the lyrics when natural) and description (one or two sentences, 60-220 characters) that explicitly names the genre, language, mood and the song's central imagery so an artist could paint the right cover from it alone. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis.";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
+        { role: "system", content: sys },
+        { role: "user", content: source },
+      ], { maxTokens: 220, temperature: 0.45, timeoutMs: CRAFT_TIMEOUT_MS });
+      const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");
+      const parsed = JSON.parse(raw) as { title?: unknown; description?: unknown };
+      const title = String(parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+      const description = String(parsed.description ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+      if (title && description) return { title, description };
+    } catch { /* retry once, then fall back */ }
   }
+  return fallback;
 }
 
 /**
@@ -146,19 +160,36 @@ export async function draftLyrics(env: Env, theme: string, durationSeconds?: num
   const sys =
     "You are a songwriter. Write ORIGINAL song lyrics for the theme given by the user, sized for a track " +
     `roughly ${dur} seconds long (about ${targetWords} words of sung lyric content at a natural singing pace). ` +
+    "The duration is a hard requirement: the lyrics must contain enough sung content to fill the WHOLE track, " +
+    "so write the COMPLETE song — every verse, chorus, bridge and outro in full. Never stop mid-line or " +
+    "mid-section, and never summarise a section instead of writing it. " +
+    "If the theme names or implies a language (for example Hindi), write the lyrics in that language. " +
     "Structure it with clear labelled sections, e.g. [Verse 1] / [Chorus] / [Verse 2] / [Chorus] / [Outro] — use " +
     "fewer, shorter sections for a short track (~60s: one verse plus one chorus is plenty) and more for a longer " +
-    "one. Keep language clean and radio-safe (no slurs, no explicit sexual or drug content). " +
+    "one. Do not include timestamps in the section labels. " +
+    "Keep language clean and radio-safe (no slurs, no explicit sexual or drug content). " +
     "Output ONLY the lyrics with section labels — no preamble, no explanation, no commentary before or after.";
-  try {
-    const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-      { role: "system", content: sys },
-      { role: "user", content: t },
-    ], { maxTokens: 700, temperature: 0.85, timeoutMs: CRAFT_TIMEOUT_MS });
-    const text = (r.text || "").trim();
-    if (!text) throw new Error("empty lyrics response");
-    return text;
-  } catch (error) {
-    throw error instanceof Error ? error : new Error(String(error));
+  // [SONG-LEN-1] The music provider has no duration parameter — the finished
+  // track is only as long as the lyrics it is given. The old fixed 700-token
+  // cap silently truncated non-Latin scripts (Devanagari ≈ 2-4 tokens per
+  // character), which is exactly how a "3 minute song" came out 24 seconds
+  // long: the lyrics were cut mid-word and the model sang what was left.
+  // Scale the budget with the requested duration, with generous headroom for
+  // dense scripts.
+  const maxTokens = Math.min(3600, Math.max(900, Math.round(dur * 14)));
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
+        { role: "system", content: sys },
+        { role: "user", content: t },
+      ], { maxTokens, temperature: 0.85, timeoutMs: CRAFT_TIMEOUT_MS });
+      const text = (r.text || "").trim();
+      if (!text) throw new Error("empty lyrics response");
+      return text;
+    } catch (error) {
+      lastError = error;
+    }
   }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }

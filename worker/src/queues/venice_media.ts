@@ -202,9 +202,14 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
     const description = job.song_description || (isVideo
       ? "A cinematic scene with a distinct subject, setting, movement, and atmosphere."
       : "A focused original track shaped by the requested sound and mood.");
+    // [SONG-COVER-MATCH-1] The cover must come from THIS song's own brief.
+    // An earlier version of this prompt named one example genre (Caribbean
+    // reggae) and the image model latched onto it — a Hindi rock anthem about
+    // freedom shipped with a tropical beach cover. Never name a genre or
+    // culture the description itself does not.
     const prompt = isVideo
       ? `Full-frame cinematic thumbnail image for a short video titled "${title}". ${description} Show one clear representative moment, edge-to-edge composition, no borders, no text, no letters, no logos, no watermark.`
-      : `Square album cover artwork for a song titled "${title}". Study this song's description as the creative brief: ${description} Translate its genre, rhythm, cultural setting, instruments, emotional tone, and lyrical imagery into a vivid, specific scene. If it suggests Caribbean reggae, dancehall, or island funk, use unmistakable warm Caribbean color, movement, tropical texture, and a lively street or beach atmosphere rather than a generic music graphic. Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
+      : `Square album cover artwork for a song titled "${title}". The creative brief for this exact song is: ${description} Depict ONLY what that brief implies — its genre, language and cultural setting, emotional tone, and central imagery. Ground every visual choice in the brief; do not substitute a different culture, climate, or music scene, and avoid generic music graphics. Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
     const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
     if (!promptVerdict.safe) throw new Error("cover_prompt_blocked");
     const seedWords = new Uint32Array(1);
