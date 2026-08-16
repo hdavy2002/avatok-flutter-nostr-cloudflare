@@ -162,7 +162,9 @@ String _friendlyError(AiMediaJob job) {
     'provider_submission_stalled' => 'The video request got stuck before the provider accepted it. Please retry.',
     'provider_auth' => 'The video service is not configured correctly yet.',
     'provider_capacity' => 'The video service is busy or out of capacity. Please try again shortly.',
-    'provider_invalid_request' => "That video request isn't supported by the current video model.",
+    // Media-neutral: this card renders image, video AND music jobs — a failed
+    // song was showing "video request" copy (owner report 2026-08-16).
+    'provider_invalid_request' => "The AI model couldn't accept that request. Please try again.",
     'provider_unavailable' => 'The AI service is unavailable right now.',
     'unsupported_format' => "This file type isn't supported for this action.",
     'input_too_large' => 'This file is too large for this action.',
