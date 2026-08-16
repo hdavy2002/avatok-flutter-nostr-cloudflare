@@ -239,24 +239,27 @@ export async function aiMediaSongSharePage(req: Request, env: Env, token: string
   const title = songHtml(job.song_title || "Untitled track");
   const description = songHtml(job.song_description || "A focused original track shaped by the requested sound and mood.");
   const canonical = `${origin}/s/song/${token}`;
-  const cover = job.cover_media_id
-    ? `${origin}/cdn-cgi/image/format=avif,quality=60,width=1200,fit=cover/s/song/${token}/cover`
-    : "";
+  // Social crawlers do not consistently execute Image Transform URLs wrapped
+  // around a Worker route. The direct, cacheable asset is reliably fetchable
+  // by WhatsApp, Facebook, Telegram, and X.
+  const cover = job.cover_media_id ? `${canonical}/cover` : "";
   const audio = `${canonical}/audio`;
   const coverMeta = cover
-    ? `<meta property="og:image" content="${cover}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${cover}">`
+    ? `<meta property="og:image" content="${cover}"><meta property="og:image:secure_url" content="${cover}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${cover}">`
     : `<meta name="twitter:card" content="summary">`;
   const coverBody = cover
     ? `<img class="cover" src="${cover}" alt="${title} cover art" width="1200" height="1200">`
     : `<div class="cover fallback" aria-label="Song cover">♪</div>`;
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} · AvaTOK</title><meta name="description" content="${description}">
-<link rel="canonical" href="${canonical}"><meta property="og:type" content="music.song"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${coverMeta}<meta property="og:audio" content="${audio}">
+<link rel="canonical" href="${canonical}"><meta property="og:type" content="music.song"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${coverMeta}<meta property="og:image:width" content="1200"><meta property="og:image:height" content="1200"><meta property="og:image:type" content="image/png"><meta property="og:audio" content="${audio}"><meta property="og:audio:type" content="audio/mpeg">
 <style>body{margin:0;padding:16px;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;box-sizing:border-box;display:grid;place-items:center}.card{width:min(92vw,560px);max-height:calc(100vh - 32px);overflow:auto;background:#18242b;border:1px solid #34434b;border-radius:24px;box-shadow:0 24px 70px #0008}.cover{display:block;width:100%;max-height:52vh;aspect-ratio:1;object-fit:contain;background:#10181d}.fallback{display:grid;place-items:center;font-size:120px;background:linear-gradient(135deg,#193b4c,#19a974)}.copy{padding:22px}.eyebrow{display:inline-block;color:#55d696;font-size:12px;letter-spacing:.08em;font-weight:700;text-decoration:none;margin-bottom:7px}.title{font-size:28px;line-height:1.15;margin:0 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0 0 18px}audio{display:block;width:100%;accent-color:#35ce35}.shares{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.shares a{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-weight:800;text-decoration:none;background:#25363d;color:#fff}</style></head><body><main class="card">${coverBody}<section class="copy"><a class="eyebrow" href="https://avatok.ai">Made with AvaTOK app</a><h1 class="title">${title}</h1><p class="desc">${description}</p><audio controls preload="metadata" src="${audio}">Your browser cannot play this song.</audio><div class="shares" aria-label="Share this song"><a href="https://wa.me/?text=${encodeURIComponent(`${title} — ${canonical}`)}" aria-label="WhatsApp">WA</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonical)}" aria-label="LinkedIn">in</a><a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonical)}" aria-label="Facebook">f</a><a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(canonical)}" aria-label="X">𝕏</a><a href="mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${description}\n${canonical}`)}" aria-label="Email">✉</a></div></section></main></body></html>`;
   return new Response(body, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "public, max-age=3600, s-maxage=86400",
+      // Keep the first cover-less response from being cached for a day while
+      // the asynchronous artwork sidecar finishes.
+      "cache-control": "public, max-age=300, s-maxage=300",
       "content-security-policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
     },

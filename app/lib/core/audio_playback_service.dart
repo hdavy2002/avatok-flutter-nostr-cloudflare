@@ -232,9 +232,21 @@ class AudioPlaybackService with WidgetsBindingObserver {
     // restart it from 0:00.
     if (_loadedTrackId == track.trackId && _state.value != null) {
       try {
-        if (startAt != null) await _player.seek(startAt);
+        final current = _state.value!;
+        final atEnd = current.completed ||
+            (current.duration != null && current.position >= current.duration!);
+        final resumeAt = startAt ?? (atEnd ? Duration.zero : null);
+        if (resumeAt != null) await _player.seek(resumeAt);
+        if (atEnd && startAt == null) {
+          _positions.remove(track.trackId);
+          await _persistPositions();
+        }
         await _player.resume();
-        _state.value = _state.value!.copyWith(playing: true, completed: false);
+        _state.value = current.copyWith(
+          playing: true,
+          completed: false,
+          position: resumeAt ?? current.position,
+        );
         Analytics.capture('audio_playback_resume', {
           'track_id': track.trackId,
           'origin_route': track.originRoute ?? '',

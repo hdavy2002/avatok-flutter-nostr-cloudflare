@@ -1670,7 +1670,7 @@ class _AiMusicJobPreview extends StatelessWidget {
     final label = job.label.trim();
     if (label.isNotEmpty &&
         !RegExp(
-          r'^(generating|ava is creating|song ready|your (song|track))',
+          r'^(generating|ava is creating|song ready|your (song|track)|theme\s*/\s*intent\s*:)',
           caseSensitive: false,
         ).hasMatch(label)) {
       return label;
