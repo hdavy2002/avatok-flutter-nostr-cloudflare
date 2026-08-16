@@ -34,6 +34,11 @@ import { getGroupState, setGroupState, getMemberPrefs, setMemberPrefs, type Grou
 // [AVA-TOGGLE-DM-1] WS-17 — the 1:1 equivalent of the group state above.
 import { getDmState, setDmState, effectiveDmMode, type DmAvaMode } from "../lib/ava_group_policy";
 import { postAvaMessage } from "./ava_thread"; // I1 disclosure notice — same fan-out AvaAgentDO already uses for a group Ava turn
+// [AVA-AMBIENT-1] Ambient Ava — emoji reactions + occasional one-line comments
+// on members' messages (owner decision 2026-08-17). Import cycle with this
+// file (ava_ambient uses postAvaReaction below) is benign: both sides only
+// touch each other's exports at request time, never during module init.
+import { ambientScan } from "../lib/ava_ambient";
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -828,6 +833,17 @@ export async function sendMsg(req: Request, env: Env, execCtx?: ExecutionContext
   // response but no longer at the mercy of the runtime reaping an unattached
   // promise. `payload` is the exact fanned-out object; `mem` the member list.
   bg(execCtx, env, "delegate_scan", delegateScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid }));
+  // [AVA-AMBIENT-1] Ambient Ava — same detached pattern as the two scans around
+  // it: rides ctx.waitUntil, self-gates on `avaAmbientEnabled` + KV rate limits
+  // inside, and can only ever cost a missed reaction, never a slowed or failed
+  // send. Skipped for delete-for-everyone controls (not a human message).
+  if (!delTarget) {
+    bg(execCtx, env, "ambient_scan", ambientScan(env, {
+      conv,
+      message: { kind, body: text, client_id: clientId, sender: ctx.uid, created_at: created },
+      members: mem, senderUid: ctx.uid,
+    }, execCtx));
+  }
   // Deep (slow) guardian lane. Runs detached AFTER fan-out. Pass the sender's origin
   // geo/network for telemetry, and (G3) the fast-lane verdict so the deep lane never
   // double-warns for a category the inline fast lane already surfaced.

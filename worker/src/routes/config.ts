@@ -1278,6 +1278,20 @@ export interface PlatformConfig {
   avaAmbientCooldownS: number;
   // [AVA-AMBIENT-2] Max unprompted Ava posts per conversation per UTC day.
   avaAmbientDailyCapPerConv: number;
+  // [AVA-AMBIENT-1 2026-08-17] "Ambient Ava" — Ava drops emoji reactions on
+  // members' messages and occasionally leaves a short supportive/funny comment
+  // in ANY chat (owner decision 2026-08-17: expressive by default). DISTINCT
+  // from `avaAmbientAiEnabled` above, which gates the still-dark WS-18b
+  // DM-companion gatekeeper lane; THIS key gates lib/ava_ambient.ts (tapped
+  // from sendMsg). Default TRUE — this IS the kill switch. Boolean → NOT in
+  // numericKeys.
+  avaAmbientEnabled: boolean;
+  // [AVA-AMBIENT-1] Max ambient COMMENTS per conversation per rolling hour.
+  // (Reactions are capped separately in code at ~1 per 3 messages; comments
+  // additionally need ≥10 member messages since the last one.) NUMERIC → it
+  // MUST also appear in `numericKeys` below or
+  // `flags.sh set avaAmbientCommentsPerHour=2` 400s `bad type`.
+  avaAmbientCommentsPerHour: number;
   // WS-19d. Flat per-action pricing (imageCostTokens / searchCostTokens / …)
   // instead of the live metered per-token billing. SHIPS DARK and MUST NOT be
   // switched on by a default change: flipping it REPLACES the billing path that
@@ -1810,6 +1824,8 @@ const DEFAULTS: PlatformConfig = {
   avaAmbientAiEnabled: false,         // WS-18b — flip deliberately; kill switch for unprompted AI posts
   avaAmbientCooldownS: 1800,          // [AVA-AMBIENT-2] 30 min between unprompted posts per conv
   avaAmbientDailyCapPerConv: 8,       // [AVA-AMBIENT-2] hard daily cap per conv
+  avaAmbientEnabled: true,            // [AVA-AMBIENT-1] Ambient Ava reactions+comments — ships ON (kill switch)
+  avaAmbientCommentsPerHour: 3,       // [AVA-AMBIENT-1] comment cap per conv per rolling hour
   avaFlatPricingEnabled: false,       // WS-19d dark — replaces LIVE metered billing
   avaMessageSearchEnabled: false,     // WS-19 dark
   // WS-14 voice style enum: 0=en, 1=hi, 2=hinglish. Default 2 = Hinglish Gen-Z.
@@ -1951,6 +1967,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "paWatchdogMs",
     // [AVA-AMBIENT-2] DM companion ambient lane knobs.
     "avaAmbientCooldownS", "avaAmbientDailyCapPerConv",
+    // [AVA-AMBIENT-1] Ambient Ava comment cap.
+    "avaAmbientCommentsPerHour",
     "usdInrRate", "receptMarginAlertPaise", "upiPayoutMinCoins", "upiPayoutReservationTtlHours", "upiVpaCooldownHours",
     // [AVABRAIN-FLAGS-1] media_memory caps + export cap + companion knobs.
     "mediaMemoryMaxSec", "mediaMemoryMaxBytes", "mediaMemoryFrameBudget", "mediaMemoryDailyPerUser",
