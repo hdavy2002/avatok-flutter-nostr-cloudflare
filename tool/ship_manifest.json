@@ -1335,5 +1335,60 @@
         "note": "Type-level fix; success is `npx tsc --noEmit` exiting 0 (verified locally 2026-08-16) and no new 5xx on /api/ai/jobs asset serving."
       }
     ]
+  },
+  "CALL-TELEPHONY-STREAM-1": {
+    "description": "telephonyEventStream built a fresh receiveBroadcastStream per access; CallSession and CallTranslationController each subscribed per call, so the second listen replaced the first at the engine (CallSession stopped seeing cellular held/resumed events whenever translation controller existed) and the extra cancel at hangup threw PlatformException 'No active stream to cancel' on both devices after every call. Now one cached shared broadcast stream (same pattern as _mic / CallRecorderNative.events()).",
+    "flags": [],
+    "min_devices_on_build": 2,
+    "shipped": "pending",
+    "two_sided": true,
+    "success": [
+      {
+        "event": "$exception",
+        "property": "$exception_message",
+        "equals": "",
+        "min_events": 0,
+        "where": {},
+        "note": "Success = ZERO $exception events containing 'No active stream to cancel' from devices on the new build after a completed call (they currently fire 1 per device per call, so absence over several calls is a real signal). Companion: call_cellular_held still fires when a GSM call interrupts."
+      }
+    ]
+  },
+  "CALL-FAILURE-SHOWN-HISTORICAL-1": {
+    "description": "call_failure_shown from log rows re-emits historical failures on every app run and is indistinguishable from a live failure (cost the 2026-08-16 audit a detour). Log-row emissions now carry entry_age_ms and historical:true when the underlying call is >1h old.",
+    "flags": [],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_failure_shown",
+        "property": "historical",
+        "equals": true,
+        "min_events": 1,
+        "where": {
+          "surface": "log_row"
+        },
+        "note": "First call-log open on the new build with an old failed call in history must emit historical:true with a plausible entry_age_ms."
+      }
+    ]
+  },
+  "CALL-SFU-LAT-1": {
+    "description": "Accept-to-audio was ~9s; client stages showed the seconds inside worker SFU routes (join 1.6s, publish 2.0s, pull chain 3.5s on wifi). /join now mints the Realtime session and TURN credentials in parallel; /pull runs its two DO reads (ownership + peer seat) in parallel; publish/pull/renegotiate now emit elapsed_ms/sfu_ms phase timings so the residual cost is attributable.",
+    "flags": [
+      "callSfuV1"
+    ],
+    "min_devices_on_build": 2,
+    "shipped": "pending",
+    "two_sided": true,
+    "success": [
+      {
+        "event": "call_sfu_joined",
+        "property": "sfu_ms",
+        "equals": "",
+        "min_events": 1,
+        "where": {},
+        "note": "Next SFU call must emit call_sfu_joined with sfu_ms/seat_ms present and elapsed_ms lower than the ~1600ms observed 2026-08-16; call_sfu_pulled must carry elapsed_ms/sfu_ms. Client stage_first_audio_bytes on wifi should drop measurably (<8000ms from start)."
+      }
+    ]
   }
 }

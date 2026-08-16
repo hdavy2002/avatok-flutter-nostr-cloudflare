@@ -167,7 +167,17 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
   if (g instanceof Response) return g;
   const startedAt = Date.now();
 
-  const s = await sfu(env, "/sessions/new", { method: "POST" });
+  // [CALL-SFU-LAT-1] The Realtime session mint and the TURN credential mint are
+  // independent network calls; running them serially put the full ICE-mint
+  // latency inside every join. The 2026-08-16 audited call spent ~1.6s in
+  // /join alone (client stage sfu_begin→sfu_join) — this and the phase timings
+  // below are that finding turned into code.
+  const sfuStart = Date.now();
+  const [s, ice] = await Promise.all([
+    sfu(env, "/sessions/new", { method: "POST" }),
+    mintIceServersWithStatus(env, ICE_TTL_S),
+  ]);
+  const sfuMs = Date.now() - sfuStart;
   const sessionId = typeof s.data.sessionId === "string" ? s.data.sessionId : "";
   if (!s.ok || !sessionId) {
     trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
@@ -176,12 +186,11 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
     return json({ error: "sfu_session_failed", status: s.status }, 502);
   }
 
-  const ice = await mintIceServersWithStatus(env, ICE_TTL_S);
-
   // Register the seat BEFORE returning. If this fails the client holds a session
   // the peer can never discover, which presents as a connected call with silence
   // — the worst possible failure shape. Better to fail the join and let the
   // client fall back to P2P while it still can.
+  const seatStart = Date.now();
   const seatRes = await roomFetch(env, room, "/sfu-seat", {
     method: "POST",
     body: JSON.stringify({ callId: room, uid: g.uid, sessionId }),
@@ -200,6 +209,11 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
     relay_available: !ice.relayDegraded,
     relay_degraded: ice.relayDegraded,
     elapsed_ms: Date.now() - startedAt,
+    // [CALL-SFU-LAT-1] Phase timings: sfu_ms covers the parallel Realtime
+    // session + ICE mint (the max of the two), seat_ms the DO write. The
+    // difference to elapsed_ms is guard overhead (auth + email + config).
+    sfu_ms: sfuMs,
+    seat_ms: Date.now() - seatStart,
   });
 
   return json({
@@ -223,6 +237,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
  * somebody else's session. Same shape as the group path.
  */
 export async function callSfuPublish(req: Request, env: Env, room: string): Promise<Response> {
+  const startedAt = Date.now(); // [CALL-SFU-LAT-1]
   const g = await guard(req, env);
   if (g instanceof Response) return g;
 
@@ -254,10 +269,12 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
     tracks.push({ location: "local", mid, trackName });
   }
 
+  const sfuStart = Date.now(); // [CALL-SFU-LAT-1]
   const r = await sfu(env, `/sessions/${sessionId}/tracks/new`, {
     method: "POST",
     body: JSON.stringify({ sessionDescription: { type: "offer", sdp: offerSdp }, tracks }),
   });
+  const sfuMs = Date.now() - sfuStart;
   if (!r.ok) {
     trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
       call_id: room, stage: "publish", status: r.status,
@@ -290,6 +307,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
   trackUser(env, g.uid, g.email, "call_sfu_published", APP, {
     call_id: room, session_id: sessionId, track_count: tracks.length,
     has_video: Boolean(names.videoTrack),
+    elapsed_ms: Date.now() - startedAt, sfu_ms: sfuMs, // [CALL-SFU-LAT-1]
   });
 
   return json({ ok: true, answer: r.data.sessionDescription, tracks: r.data.tracks });
@@ -338,6 +356,7 @@ export async function callSfuHeartbeat(req: Request, env: Env, room: string): Pr
  * this module could get wrong.
  */
 export async function callSfuPull(req: Request, env: Env, room: string): Promise<Response> {
+  const startedAt = Date.now(); // [CALL-SFU-LAT-1]
   const g = await guard(req, env);
   if (g instanceof Response) return g;
 
@@ -345,12 +364,18 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
   const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
   const kind = b.kind === "video" ? "video" : "audio";
   if (!sessionId) return json({ error: "session_required" }, 400);
-  if (!(await ownsSession(env, room, g.uid, sessionId))) {
-    return json({ error: "session_not_owned" }, 403);
-  }
   if (kind === "video" && !g.video) return json({ error: "video_not_allowed", reason: "audio_only" }, 409);
 
-  const peerRes = await roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
+  // [CALL-SFU-LAT-1] Ownership check and peer-seat read are two READS of the
+  // same DO; running them serially charged every pull two DO round trips. Both
+  // results are still enforced before anything is sent to the SFU, so the
+  // authorization semantics are unchanged — the peer read is merely discarded
+  // when ownership fails.
+  const [owns, peerRes] = await Promise.all([
+    ownsSession(env, room, g.uid, sessionId),
+    roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`),
+  ]);
+  if (!owns) return json({ error: "session_not_owned" }, 403);
   const peer = (await peerRes.json().catch(() => ({}))) as { seat?: { session_id?: string; audio_track?: string | null; video_track?: string | null } | null };
   const seat = peer.seat;
   if (!seat?.session_id) return json({ error: "peer_not_published", retry: true }, 409);
@@ -358,6 +383,7 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
   const trackName = kind === "video" ? seat.video_track : seat.audio_track;
   if (!trackName) return json({ error: "peer_track_not_published", retry: true, kind }, 409);
 
+  const sfuStart = Date.now(); // [CALL-SFU-LAT-1]
   const r = await sfu(env, `/sessions/${sessionId}/tracks/new`, {
     method: "POST",
     body: JSON.stringify({ tracks: [{ location: "remote", sessionId: seat.session_id, trackName }] }),
@@ -369,7 +395,10 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
     return json({ error: "pull_failed", status: r.status }, 502);
   }
 
-  trackUser(env, g.uid, g.email, "call_sfu_pulled", APP, { call_id: room, session_id: sessionId, kind });
+  trackUser(env, g.uid, g.email, "call_sfu_pulled", APP, {
+    call_id: room, session_id: sessionId, kind,
+    elapsed_ms: Date.now() - startedAt, sfu_ms: Date.now() - sfuStart, // [CALL-SFU-LAT-1]
+  });
 
   return json({
     ok: true,
@@ -393,6 +422,7 @@ export async function callSfuRenegotiate(req: Request, env: Env, room: string): 
     return json({ error: "session_not_owned" }, 403);
   }
 
+  const sfuStart = Date.now(); // [CALL-SFU-LAT-1]
   const r = await sfu(env, `/sessions/${sessionId}/renegotiate`, {
     method: "PUT",
     body: JSON.stringify({ sessionDescription: { type: "answer", sdp: answerSdp } }),
@@ -403,6 +433,9 @@ export async function callSfuRenegotiate(req: Request, env: Env, room: string): 
     });
     return json({ error: "renegotiate_failed", status: r.status }, 502);
   }
+  trackUser(env, g.uid, g.email, "call_sfu_renegotiated", APP, {
+    call_id: room, session_id: sessionId, sfu_ms: Date.now() - sfuStart, // [CALL-SFU-LAT-1]
+  });
   return json({ ok: true });
 }
 
