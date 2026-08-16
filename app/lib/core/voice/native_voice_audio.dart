@@ -149,6 +149,14 @@ class NativeVoiceAudio {
 
   bool _handlerSet = false;
 
+  // [CALL-ACCEPT-FRAME-1] Dedupe key for the last `acceptToFirstFrame` event
+  // actually forwarded to Analytics. MainActivity resends the same (ms, cold)
+  // payload once after 3s as a delivery safety net (see
+  // AvaVoiceAudioPlugin.emitAcceptToFirstFrame) — this stops the retry from
+  // being double-counted as two separate accepts.
+  int? _lastAcceptFrameMs;
+  bool? _lastAcceptFrameCold;
+
   void _ensureHandler() {
     if (_handlerSet) return;
     _handlerSet = true;
@@ -186,6 +194,22 @@ class NativeVoiceAudio {
               // full focus loss, matching pre-CALL-REL-2 behavior (the only
               // signal Dart ever saw was onAudioFocusLost).
               onAudioFocusLost?.call();
+            }
+          } else if (name == 'acceptToFirstFrame') {
+            // [CALL-ACCEPT-FRAME-1] Native accept→first-frame span (see
+            // MainActivity's "Connecting…" continuity overlay). Fire-and-
+            // forget telemetry only — no app-logic callback needed here.
+            final ms = (args['ms'] as num?)?.toInt();
+            final cold = args['cold'] == true;
+            if (ms != null &&
+                ms >= 0 &&
+                (ms != _lastAcceptFrameMs || cold != _lastAcceptFrameCold)) {
+              _lastAcceptFrameMs = ms;
+              _lastAcceptFrameCold = cold;
+              Analytics.capture('call_accept_first_frame_ms', {
+                'ms': ms,
+                'cold': cold,
+              });
             }
           } else {
             onEvent?.call(args);

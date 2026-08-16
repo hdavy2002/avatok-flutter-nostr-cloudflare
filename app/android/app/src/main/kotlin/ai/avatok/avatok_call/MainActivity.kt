@@ -1,8 +1,17 @@
 package ai.avatok.avatok_call
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.Gravity
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import com.hiennv.flutter_callkit_incoming.CallkitConstants
 import com.hiennv.flutter_callkit_incoming.FlutterCallkitIncomingPlugin
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -19,12 +28,179 @@ class MainActivity : FlutterFragmentActivity() {
     private val incomingTapChannelName = "avatok/incoming_call_tap"
     private var incomingTapChannel: MethodChannel? = null
 
+    // [CALL-ACCEPT-FRAME-1] Native "Connecting…" continuity overlay + tap→
+    // first-frame telemetry. See Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md §P3.
+    private var connectingOverlay: android.view.View? = null
+    private var flutterUiDisplayed = false
+    private val overlayHandler = Handler(Looper.getMainLooper())
+    private var overlayFailsafe: Runnable? = null
+
     companion object {
         private var pendingIncomingTap: Map<String, Any?>? = null
+
+        // [CALL-ACCEPT-FRAME-1] elapsedRealtime() at the moment a native ACCEPT
+        // launch/relaunch was detected. Companion (not instance) purely to match
+        // the existing pendingIncomingTap pattern above; there is at most one
+        // MainActivity instance alive at a time. Volatile: read/written from the
+        // main thread only in practice, but this mirrors AvaVoiceAudioPlugin's
+        // activeInstance convention for cross-file statics.
+        @Volatile
+        private var acceptTapAtElapsedMs: Long = 0L
+    }
+
+    /// [CALL-ACCEPT-FRAME-1] True when this launch/relaunch's Intent is
+    /// flutter_callkit_incoming's native ACCEPT relay.
+    ///
+    /// TransparentActivity.onCreate (plugin source, locked to 2.5.8 by
+    /// scripts/patch_callkit_native_decline.py) does two things when the user
+    /// taps Accept — the API 34+ CallStyle "Answer" swipe, the pre-34 custom
+    /// notification's accept button, and the heads-up notification action all
+    /// go through the SAME getAcceptPendingIntent, so this is not a guess about
+    /// one surface: (1) broadcasts CallkitConstants.ACTION_CALL_ACCEPT to
+    /// CallkitIncomingBroadcastReceiver (fires CallkitNotificationService +
+    /// the EventChannel Dart already listens to via push_service.dart's
+    /// Event.actionCallAccept, IF an engine is alive to receive it), and
+    /// (2) calls AppUtils.getAppIntent(context, action = ACTION_CALL_ACCEPT,
+    /// data = ...), which clones the launcher intent for MainActivity and sets
+    /// that action + the same EXTRA_CALLKIT_CALL_DATA bundle used elsewhere in
+    /// this file. That second intent is what reaches onCreate/onNewIntent here,
+    /// cold or warm, so checking `intent.action` is a durable native-side signal
+    /// rather than a heuristic — no flutter_callkit_incoming upgrade can change
+    /// it without the decline-guard patch script above already failing loudly.
+    private fun isNativeAcceptLaunch(intent: Intent?): Boolean =
+        intent?.action == CallkitConstants.ACTION_CALL_ACCEPT
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // [CALL-ACCEPT-FRAME-1] Capture t0 before super.onCreate() inflates
+        // anything, so the span includes engine attach + first frame, not just
+        // whatever we do here. A fresh instance is always "cold" — a warm accept
+        // (engine/activity already up) can only ever reach onNewIntent below,
+        // never a fresh onCreate.
+        if (isNativeAcceptLaunch(intent)) {
+            acceptTapAtElapsedMs = SystemClock.elapsedRealtime()
+        }
+        super.onCreate(savedInstanceState)
+        // Added AFTER super.onCreate() so the FlutterFragment's view (added by
+        // the fragment transaction super.onCreate() commits) is already a child
+        // of android.R.id.content — our overlay is added last, i.e. on top.
+        if (acceptTapAtElapsedMs != 0L && !flutterUiDisplayed) {
+            showConnectingOverlay()
+        }
+    }
+
+    /// [CALL-ACCEPT-FRAME-1] Full-screen native continuity surface: solid dark
+    /// background + centered "Connecting…" / "AvaTOK" labels, added as the
+    /// TOPMOST child of the activity's content view. Plain View with no click
+    /// listener and not focusable — it does not consume touches (they fall
+    /// through to whatever is beneath) or steal key focus, so it cannot block
+    /// the back button from dismissing the activity underneath it.
+    private fun showConnectingOverlay() {
+        if (connectingOverlay != null) return
+        val root = window.decorView.findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        val label = TextView(this).apply {
+            text = "Connecting…"
+            setTextColor(0xFFE8EDEF.toInt())
+            textSize = 26f
+            gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
+        val brand = TextView(this).apply {
+            text = "AvaTOK"
+            setTextColor(0x99E8EDEF.toInt())
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(
+                label,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                brand,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (8 * resources.displayMetrics.density).toInt() }
+            )
+        }
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(0xFF0E1113.toInt())
+            isClickable = false
+            isFocusable = false
+            addView(
+                column,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
+        }
+        root.addView(
+            overlay,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        connectingOverlay = overlay
+
+        // Failsafe: a wedged/crashed engine must never trap the user behind
+        // this overlay. 6s is generously above the ~2s "cold" success bar in
+        // the ship manifest.
+        val failsafe = Runnable { removeConnectingOverlay() }
+        overlayFailsafe = failsafe
+        overlayHandler.postDelayed(failsafe, 6000L)
+    }
+
+    /// [CALL-ACCEPT-FRAME-1] 150ms fade-out, then detach. No-op if already
+    /// removed (both onFlutterUiDisplayed and the failsafe timer call this).
+    private fun removeConnectingOverlay() {
+        val overlay = connectingOverlay ?: return
+        connectingOverlay = null
+        overlay.animate().alpha(0f).setDuration(150L).withEndAction {
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }.start()
+    }
+
+    /// [CALL-ACCEPT-FRAME-1] One-shot: computes the accept→first-frame span and
+    /// forwards it to Dart. `cold=true` from onFlutterUiDisplayed (the overlay
+    /// path — the engine genuinely had to boot); `cold=false` from onNewIntent
+    /// when the engine/activity were already up (see below) so first-frame has
+    /// already fired for this activity instance and never will again.
+    private fun reportAcceptToFirstFrame(cold: Boolean) {
+        val startedAt = acceptTapAtElapsedMs
+        if (startedAt == 0L) return
+        acceptTapAtElapsedMs = 0L
+        val ms = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+        ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin.emitAcceptToFirstFrame(ms, cold)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // [CALL-ACCEPT-FRAME-1] FlutterFragmentActivity has no onFlutterUiDisplayed
+        // override point of its own — unlike plain FlutterActivity, it does NOT
+        // implement FlutterActivityAndFragmentDelegate.Host; it delegates entirely
+        // to an internal FlutterFragment, which owns that callback. The engine's
+        // FlutterRenderer is the lower-level, stable source of the same signal and
+        // is reachable from here regardless of which Activity base class is in use.
+        // `addIsDisplayingFlutterUiListener` also fires immediately if the engine
+        // is (surprisingly) already displaying UI by the time this registers, so a
+        // late registration can never miss the moment.
+        flutterEngine.renderer.addIsDisplayingFlutterUiListener(
+            object : io.flutter.embedding.engine.renderer.FlutterUiDisplayListener {
+                override fun onFlutterUiDisplayed() {
+                    flutterUiDisplayed = true
+                    overlayFailsafe?.let { overlayHandler.removeCallbacks(it) }
+                    overlayFailsafe = null
+                    removeConnectingOverlay()
+                    reportAcceptToFirstFrame(cold = true)
+                }
+
+                override fun onFlutterUiNoLongerDisplayed() {}
+            }
+        )
         // AvaVision live-session native bridge (camera + on-device vision).
         flutterEngine.plugins.add(ai.avatok.avavision.AvaVisionPlugin())
         // Full-duplex voice-call audio engine with platform echo cancellation
@@ -132,6 +308,22 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        // [CALL-ACCEPT-FRAME-1] A native Accept can also redeliver here — the
+        // engine/activity were already running (singleTop) when the user
+        // accepted. If Flutter's first frame already happened in THIS activity
+        // instance, onFlutterUiDisplayed will never fire again, so report
+        // "warm" (cold=false) right away instead of waiting for a callback that
+        // isn't coming. Otherwise (activity exists but hasn't painted yet — a
+        // narrow window) fall back to the same overlay + onFlutterUiDisplayed
+        // path onCreate uses.
+        if (isNativeAcceptLaunch(intent)) {
+            acceptTapAtElapsedMs = SystemClock.elapsedRealtime()
+            if (flutterUiDisplayed) {
+                reportAcceptToFirstFrame(cold = false)
+            } else {
+                showConnectingOverlay()
+            }
+        }
         super.onNewIntent(intent)
         // CALL-BG-B3: app already running (singleTop) — a fresh tap on the ongoing-call
         // notification delivers here instead of onCreate. Forward immediately since the

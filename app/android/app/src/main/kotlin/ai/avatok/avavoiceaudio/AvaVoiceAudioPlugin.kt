@@ -88,6 +88,31 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         fun notifyNotificationTap(callId: String) {
             activeInstance?.emit("onNotificationTapReturnToCall", mapOf("callId" to callId))
         }
+
+        /// [CALL-ACCEPT-FRAME-1] Called by MainActivity once the native accept→
+        /// first-frame span is known — either from onFlutterUiDisplayed (cold:
+        /// the overlay was shown) or immediately from onNewIntent for a "warm"
+        /// accept where the engine/activity were already up (cold=false).
+        ///
+        /// `emit()` posts via `methodChannel?.invokeMethod`, which is silently
+        /// dropped if Dart has not yet called `setMethodCallHandler` on this
+        /// channel — and `onFlutterUiDisplayed` typically fires on the app's own
+        /// boot/splash screen, well before any call code has touched
+        /// `NativeVoiceAudio.instance` and lazily registered its handler (see
+        /// `_ensureHandler()` in native_voice_audio.dart). Rather than add new
+        /// Dart-side pull plumbing (mirroring the existing pendingIncomingTap
+        /// getPending/pull pattern would work too, but is more moving parts for
+        /// one telemetry value), resend the SAME payload once after 3s — by then
+        /// some early-boot path has almost certainly registered the handler.
+        /// Dart dedupes on the exact (ms, cold) pair, so a genuine double
+        /// delivery is not double-counted.
+        fun emitAcceptToFirstFrame(ms: Long, cold: Boolean) {
+            val payload = mapOf<String, Any?>("ms" to ms, "cold" to cold)
+            activeInstance?.emit("acceptToFirstFrame", payload)
+            Handler(Looper.getMainLooper()).postDelayed({
+                activeInstance?.emit("acceptToFirstFrame", payload)
+            }, 3000L)
+        }
     }
 
     private var methodChannel: MethodChannel? = null

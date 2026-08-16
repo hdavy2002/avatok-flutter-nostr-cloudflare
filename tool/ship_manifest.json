@@ -1636,5 +1636,22 @@
     "note": "A second group member's public #ava turn during an active session emits this route event; the owner-side ava_song_flow events for the same window show the shared conversation continuing rather than a parallel one starting."
    }
   ]
+ },
+ "CALL-ACCEPT-FRAME-1": {
+  "description": "P3 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md: kill the blank screen between accepting an incoming call and the Flutter call UI appearing. MainActivity.kt detects a native Accept launch (flutter_callkit_incoming's TransparentActivity relaunches MainActivity with action=CallkitConstants.ACTION_CALL_ACCEPT, cold or warm) and, if Flutter's first frame has not painted yet, shows a full-screen native 'Connecting…'/'AvaTOK' overlay (dark bg 0xFF0E1113) removed with a 150ms fade in onFlutterUiDisplayed() or a 6s failsafe. The same detection captures SystemClock.elapsedRealtime() at accept and reports the accept-to-first-frame span to Dart via the existing avatok/voice_audio channel (AvaVoiceAudioPlugin.emitAcceptToFirstFrame -> event 'acceptToFirstFrame', resent once after 3s in case Dart's handler was not yet registered, deduped in native_voice_audio.dart on the (ms, cold) pair). Client-only; no worker change, no new flag — the overlay is unconditional (a native no-op improvement that cannot regress an already-warm accept).",
+  "shipped": "pending",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "call_accept_first_frame_ms",
+    "property": "ms",
+    "lt": 2000,
+    "min_events": 1,
+    "note": "Presence alone is not enough — this asserts the VALUE. ms is the native accept-tap-to-first-Flutter-frame span; the ship-gate success bar is <800ms warm / <2000ms cold (cold=true/false is a separate property on the same event, not asserted here since a single slow cold boot on a low-end device is not itself a regression). Absence of this event entirely on the new build means MainActivity's detection or the method-channel forward broke — check `cold` on the events that DO arrive to tell a slow engine from a broken instrument. The blank-screen fix itself (the 'Connecting…' overlay) has no telemetry signature of its own and must be verified VISUALLY on a real accept — a two-phone real-call check per the ship-gate rules, not just this number."
+   }
+  ],
+  "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/avatok_call/MainActivity.kt: isNativeAcceptLaunch/onCreate/onNewIntent/onFlutterUiDisplayed/showConnectingOverlay/reportAcceptToFirstFrame; app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt: emitAcceptToFirstFrame; app/lib/core/voice/native_voice_audio.dart: _ensureHandler 'acceptToFirstFrame' branch -> Analytics.capture('call_accept_first_frame_ms', {ms, cold})"
  }
 }
