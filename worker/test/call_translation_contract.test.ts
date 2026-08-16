@@ -53,13 +53,17 @@ describe("[CALL-TRANSLATE-1] contract", () => {
       "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
     );
 
+    // [CALL-TRANSLATE-APIVER-3] Wire shape probed live 2026-08-16: the docs'
+    // `liveConnectConstraints` is an SDK alias that the endpoint REJECTS
+    // (Unknown name). The proto field is `bidiGenerateContentSetup` and its
+    // inner message uses `generationConfig`, mirroring the WS setup frame.
     const body = callTranslationAuthTokenBody("es", Date.parse("2026-08-15T08:30:00Z"));
     expect(body).toEqual({
       uses: 1,
       expireTime: "2026-08-15T08:30:00.000Z",
-      liveConnectConstraints: {
+      bidiGenerateContentSetup: {
         model: "models/gemini-3.5-live-translate-preview",
-        config: {
+        generationConfig: {
           responseModalities: ["AUDIO"],
           translationConfig: {
             targetLanguageCode: "es",
@@ -68,7 +72,7 @@ describe("[CALL-TRANSLATE-1] contract", () => {
         },
       },
     });
-    expect(JSON.stringify(body)).not.toContain("bidiGenerateContentSetup");
+    expect(JSON.stringify(body)).not.toContain("liveConnectConstraints");
     expect(CALL_TRANSLATION_AUTH_TOKEN_URL).not.toContain("v1alpha");
   });
 

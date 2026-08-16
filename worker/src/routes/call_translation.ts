@@ -213,22 +213,35 @@ async function chargeMinute(env: Env, s: CallSession, minute: number): Promise<b
 export type MintPurpose = "start" | "warm_up" | "switch" | "refresh";
 
 /**
- * [CALL-TRANSLATE-APIVER-2] Exact REST shape from the model-specific Live
- * Translate guide. Keep this pure/exported so a contract test catches drift
- * before another provider change turns every Translate tap into a 502.
+ * [CALL-TRANSLATE-APIVER-3] The WIRE shape, probed against the live endpoint on
+ * 2026-08-16 — NOT the shape in Google's REST docs. The docs' example field
+ * `liveConnectConstraints` does not exist on either v1alpha or v1beta
+ * (`Unknown name "liveConnectConstraints" at 'auth_token'`); it is an SDK-level
+ * name that `@google/genai` rewrites before sending. The AuthToken proto's real
+ * field is `bidiGenerateContentSetup`, whose inner message is the SAME
+ * BidiGenerateContentSetup the WebSocket setup frame uses: `model` +
+ * `generationConfig` (NOT `config` — also probed, also rejected).
  *
- * `liveConnectConstraints.config` is intentionally minimal. Live Translate is
- * an audio-restricted model and the official constrained-token example includes
- * only response modalities plus translationConfig. Session resumption remains a
- * client setup concern; it must not make the token mint itself invalid.
+ * Endpoint schema validation runs BEFORE API-key validation, so these shapes
+ * were verified without a live key:
+ *   liveConnectConstraints        -> 400 Unknown name (the 2026-08-15/16 outage)
+ *   bidiGenerateContentSetup+config          -> 400 Unknown name "config"
+ *   bidiGenerateContentSetup+generationConfig -> passes schema (key check next)
+ *
+ * `generationConfig` is intentionally minimal and must stay semantically
+ * identical to the Android bridge's WS setup frame
+ * (CallTranslationAudioPlugin.java) — token constraints and socket setup MUST
+ * match or the provider rejects the session. Transcriptions are deliberately
+ * absent on BOTH sides. Session resumption remains a client setup concern.
+ * Keep this pure/exported so the contract test catches drift.
  */
 export function callTranslationAuthTokenBody(targetLang: string, expiresAt: number) {
   return {
     uses: 1,
     expireTime: new Date(expiresAt).toISOString(),
-    liveConnectConstraints: {
+    bidiGenerateContentSetup: {
       model: `models/${CALL_TRANSLATION_MODEL}`,
-      config: {
+      generationConfig: {
         responseModalities: ["AUDIO"],
         translationConfig: {
           targetLanguageCode: targetLang,
