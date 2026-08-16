@@ -18,13 +18,16 @@ export interface VideoFlowState {
   conversation?: string;
   context?: VideoProductionContext;
   lastInterviewReply?: string;
+  /** [AVA-MULTITOOL-1] Epoch ms of the last storage write; drives idle expiry. */
+  updatedAt?: number;
 }
 
 export function videoFlowKey(conv: string): string { return `video_flow:${conv}`; }
 export function isVideoFlowState(v: unknown): v is VideoFlowState {
   if (!v || typeof v !== "object") return false;
   const f = v as VideoFlowState;
-  return ["discovering", "generating", "completed"].includes(f.phase);
+  return ["discovering", "generating", "completed"].includes(f.phase)
+    && (f.updatedAt == null || (typeof f.updatedAt === "number" && Number.isFinite(f.updatedAt)));
 }
 export function nextVideoFlow(flow: VideoFlowState | null, text: string): VideoFlowState | null {
   const clean = String(text || "").trim();

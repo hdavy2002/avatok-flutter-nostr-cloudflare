@@ -30,6 +30,7 @@
 
 import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
+import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import type { MessageScope } from "../lib/ava_kinds";
 import {
   runGated, webSearchAllowed, aiRunOpts, type AiTier,
@@ -82,6 +83,7 @@ import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type 
 import {
   completeSongFlow, isSongFlowState, isSongProductionContextReady,
   classifySongRequest,
+  isMediaFlowExpired, preferMostRecentLane, stampFlowUpdated,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
 } from "../lib/song_flow";
@@ -951,18 +953,12 @@ export class AvaAgentDO {
       generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
     };
     if (search) body.tools = [{ googleSearch: {} }];
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`gemini ${res.status}: ${detail.slice(0, 200)}`);
+    // [VERTEX-1] BYO user key -> pins Developer API inside generateContentVia (falls back automatically only within that lane).
+    const r = await generateContentVia(this.env, model, body, "generateContent", { apiKey: key });
+    if (!r.ok) {
+      throw new Error(`gemini ${r.status}: ${JSON.stringify(r.out).slice(0, 200)}`);
     }
-    const out: any = await res.json().catch(() => ({}));
-    return this.extractText(out);
+    return this.extractText(r.out);
   }
 
   // BYO RAG backend: query the user's own File Search store (their files + chat
@@ -975,17 +971,12 @@ export class AvaAgentDO {
       tools: [{ file_search: { file_search_store_names: [store] } }],
       generationConfig: { maxOutputTokens: 800, temperature: 0.4 },
     };
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(BYO_RAG_MODEL)}:generateContent`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`filesearch ${res.status}: ${detail.slice(0, 200)}`);
+    // [VERTEX-1] BYO user key -> pins Developer API inside generateContentVia (falls back automatically only within that lane).
+    const r = await generateContentVia(this.env, BYO_RAG_MODEL, body, "generateContent", { apiKey: key });
+    if (!r.ok) {
+      throw new Error(`filesearch ${r.status}: ${JSON.stringify(r.out).slice(0, 200)}`);
     }
-    return this.extractText(await res.json().catch(() => ({})));
+    return this.extractText(r.out);
   }
 
   // Pull answer text from a Gemini response, dropping Gemma/Flash "thought" parts.
@@ -1365,14 +1356,28 @@ export class AvaAgentDO {
 
     const songDraftKey = `song_draft:${conv}`;
     const flowKey = songFlowKey(conv);
+    const activeVideoFlowKey = videoFlowKey(conv);
+    const nowMs = Date.now();
     const storedFlow = await this.state.storage.get<unknown>(flowKey);
     let songFlow: SongFlowState | null = isSongFlowState(storedFlow) ? storedFlow : null;
+    // [AVA-MULTITOOL-1] A media flow idle for 2h+ — or a legacy flow with no
+    // updatedAt stamp, whose age is unknowable — must not keep pre-empting the
+    // general tool brain days later: an active "discovering" video flow swallows
+    // EVERY subsequent message, and an awaiting_brief/reviewing song flow does
+    // the same for its lane. Expired ⇒ delete and proceed exactly as if null.
+    if (songFlow && isMediaFlowExpired(songFlow.updatedAt, nowMs)) {
+      await this.state.storage.delete(flowKey);
+      songFlow = null;
+    }
     // Upgrade an in-progress pre-fix lyric draft in place. Load the state for
     // every reply and let the interview model understand what the person means;
     // continuation never depends on a magic approval phrase.
     if (!songFlow) {
       const legacyDraft = await this.state.storage.get<any>(songDraftKey);
-      if (legacyDraft?.lyrics) {
+      // [AVA-MULTITOOL-1] The same idle expiry applies here — an old draft must
+      // not resurrect a song conversation the expiry above already ended.
+      if (legacyDraft?.lyrics && !isMediaFlowExpired(
+        Number(legacyDraft.updated_at ?? legacyDraft.approved_at) || undefined, nowMs)) {
         songFlow = {
           phase: "reviewing",
           brief: String(legacyDraft.theme ?? "Song from the approved lyrics"),
@@ -1381,11 +1386,30 @@ export class AvaAgentDO {
         };
       }
     }
-    let songAction = nextSongFlow(songFlow, userText);
-    const activeVideoFlowKey = videoFlowKey(conv);
     const storedVideoFlow = await this.state.storage.get<unknown>(activeVideoFlowKey);
-    const videoFlow = isVideoFlowState(storedVideoFlow) ? storedVideoFlow : null;
-    let pendingVideoFlow = nextVideoFlow(videoFlow, userText);
+    let videoFlow = isVideoFlowState(storedVideoFlow) ? storedVideoFlow : null;
+    if (videoFlow && isMediaFlowExpired(videoFlow.updatedAt, nowMs)) {
+      await this.state.storage.delete(activeVideoFlowKey);
+      videoFlow = null;
+    }
+    // [AVA-MULTITOOL-1] Both lanes active at once should be impossible, but
+    // nothing ever enforced it, and because the video section of this function
+    // runs first, an active "discovering" video flow silently won every turn
+    // regardless of which conversation the person was actually continuing. Give
+    // the turn to the most recently touched lane and SKIP the other — skip, not
+    // delete: the loser keeps its state for when its own conversation resumes.
+    const songLaneActive = !!songFlow && songFlow.phase !== "completed";
+    const videoLaneActive = !!videoFlow && videoFlow.phase === "discovering";
+    let skipSongLane = false;
+    let skipVideoLane = false;
+    if (songLaneActive && videoLaneActive) {
+      if (preferMostRecentLane(songFlow?.updatedAt, videoFlow?.updatedAt) === "song") skipVideoLane = true;
+      else skipSongLane = true;
+    }
+    let songAction = skipSongLane
+      ? { kind: "none" as const, flow: songFlow }
+      : nextSongFlow(songFlow, userText);
+    let pendingVideoFlow = skipVideoLane ? null : nextVideoFlow(videoFlow, userText);
 
     // [AVA-GROUP-SESSION-1] A guest speaker may only feed an ACTIVE song/video
     // conversation on this (owner's) agent. No active flow → the session
@@ -1567,7 +1591,7 @@ export class AvaAgentDO {
             current = { ...current, context: turn.context, lastInterviewReply: turn.reply };
           }
           if (turn.action !== "generate") {
-            await this.state.storage.put(activeVideoFlowKey, current);
+            await this.state.storage.put(activeVideoFlowKey, stampFlowUpdated(current));
             await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
             await this.postAva({ conv, uid, text: turn.reply, private: priv, source: "video" });
             await trackUserContact(this.env, uid, email, phone, "ava_video_flow", "avaai", {
@@ -1578,7 +1602,7 @@ export class AvaAgentDO {
           }
 
           await this.postAva({ conv, uid, text: turn.reply, private: priv, source: "video" });
-          await this.state.storage.put(activeVideoFlowKey, { ...current, phase: "generating" });
+          await this.state.storage.put(activeVideoFlowKey, stampFlowUpdated({ ...current, phase: "generating" }));
           let sourceImageUrl: string | undefined;
           if (turn.context.sourceMode === "image") {
             const last = await this.getLastMedia(conv);
@@ -1601,10 +1625,10 @@ export class AvaAgentDO {
                 uid, current, userText, catalog,
                 "The person selected image-to-video but no usable image is attached or available in this conversation. Explain that naturally and ask one focused question about attaching an image or switching to text-to-video. Choose discuss.",
               );
-              await this.state.storage.put(activeVideoFlowKey, {
+              await this.state.storage.put(activeVideoFlowKey, stampFlowUpdated({
                 ...current, phase: "discovering", context: correction.turn.context,
                 lastInterviewReply: correction.turn.reply,
-              });
+              }));
               await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
               await this.postAva({ conv, uid, text: correction.turn.reply, private: priv, source: "video" });
               return { ok: true, status_id: statusId };
@@ -1621,10 +1645,10 @@ export class AvaAgentDO {
             video = { ok: false, message: "I couldn't start that video right now — please try again." };
           }
           if (video.ok && video.job_id) {
-            await this.state.storage.put(activeVideoFlowKey, { ...current, phase: "completed" });
+            await this.state.storage.put(activeVideoFlowKey, stampFlowUpdated({ ...current, phase: "completed" }));
             await this.rememberLastMedia(conv, "video", video.job_id, videoPrompt(turn.context));
           } else {
-            await this.state.storage.put(activeVideoFlowKey, { ...current, phase: "discovering" });
+            await this.state.storage.put(activeVideoFlowKey, stampFlowUpdated({ ...current, phase: "discovering" }));
             await this.postAva({ conv, uid, text: video.message, private: priv, source: "video" });
           }
           await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
@@ -1679,7 +1703,7 @@ export class AvaAgentDO {
                   durationSeconds: interview.context.durationSeconds ?? 60,
                 };
                 const restarted = withSongInterview(restartedBase, interview.context, interview.reply);
-                await this.state.storage.put(flowKey, restarted);
+                await this.state.storage.put(flowKey, stampFlowUpdated(restarted));
                 await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
                 await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
                 await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
@@ -1737,7 +1761,7 @@ export class AvaAgentDO {
                     durationSeconds: interview.context.durationSeconds ?? 60,
                   };
                   const restarted = withSongInterview(restartedBase, interview.context, interview.reply);
-                  await this.state.storage.put(flowKey, restarted);
+                  await this.state.storage.put(flowKey, stampFlowUpdated(restarted));
                   await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
                   await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
                   await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
@@ -1774,7 +1798,7 @@ export class AvaAgentDO {
                   songAction = { kind: "draft", flow: { ...interviewedFlow, phase: "awaiting_brief", brief: revisionBrief } };
                 }
               } else {
-                await this.state.storage.put(flowKey, interviewedFlow);
+                await this.state.storage.put(flowKey, stampFlowUpdated(interviewedFlow));
                 await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
                 await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
                 await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
@@ -1798,7 +1822,7 @@ export class AvaAgentDO {
             // Falling through to the generic tool loop produced the unrelated
             // "Ava unavailable" bubble seen in production and could also let a
             // tool call bypass the song lifecycle.
-            await this.state.storage.put(flowKey, activeInterviewFlow);
+            await this.state.storage.put(flowKey, stampFlowUpdated(activeInterviewFlow));
             await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
             await this.postAva({
               conv, uid, private: priv, source: "music",
@@ -1814,7 +1838,7 @@ export class AvaAgentDO {
         }
 
         if (songAction.kind === "draft") {
-          await this.state.storage.put(flowKey, songAction.flow);
+          await this.state.storage.put(flowKey, stampFlowUpdated(songAction.flow));
           const drafted = await runVeniceDraftLyrics(this.env, {
             uid,
             theme: songAction.flow.brief ?? stripAvaWakeWordForIntent(userText),
@@ -1822,7 +1846,7 @@ export class AvaAgentDO {
           });
           if (drafted.ok && drafted.lyrics) {
             const reviewing = withSongLyrics(songAction.flow, drafted.lyrics);
-            await this.state.storage.put(flowKey, reviewing);
+            await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
             await this.state.storage.put(songDraftKey, {
               theme: reviewing.brief, durationSeconds: reviewing.durationSeconds,
               lyrics: reviewing.lyrics, approved: false, updated_at: Date.now(),
@@ -1847,7 +1871,7 @@ export class AvaAgentDO {
         const reviewing: SongFlowState = { ...songAction.flow, phase: "reviewing" };
         // Keep the durable state retryable until the provider confirms a queued
         // job. If the DO is interrupted mid-call, the next approval can retry.
-        await this.state.storage.put(flowKey, reviewing);
+        await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
         const mediaTier = await veniceTier(this.env, uid);
         let music: Awaited<ReturnType<typeof runVeniceMusic>>;
         try {
@@ -1867,14 +1891,14 @@ export class AvaAgentDO {
           music = { ok: false, message: "I couldn't start that track right now — please try again." };
         }
         if (music.ok && music.job_id) {
-          await this.state.storage.put(flowKey, completeSongFlow(songAction.flow));
+          await this.state.storage.put(flowKey, stampFlowUpdated(completeSongFlow(songAction.flow)));
           await this.state.storage.put(songDraftKey, {
             theme: songAction.flow.brief, durationSeconds: songAction.flow.durationSeconds,
             lyrics: songAction.flow.lyrics, approved: true, kind: songAction.flow.kind ?? "vocal", approved_at: Date.now(),
           });
           await this.rememberLastMedia(conv, "music", music.job_id, songAction.flow.brief ?? "Approved song");
         } else {
-          await this.state.storage.put(flowKey, reviewing);
+          await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
           await this.postAva({ conv, uid, text: music.message, private: priv, source: "music" });
         }
         await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
@@ -2795,7 +2819,7 @@ export class AvaAgentDO {
                   theme: reviewing.brief, durationSeconds: reviewing.durationSeconds,
                   lyrics: r.lyrics, approved: false, updated_at: Date.now(),
                 });
-                await this.state.storage.put(flowKey, reviewing);
+                await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
               }
               return r.lyrics ?? r.message;
             },

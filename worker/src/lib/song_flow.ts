@@ -17,6 +17,8 @@ export interface SongFlowState {
   brief?: string;
   durationSeconds?: number;
   lyrics?: string;
+  /** [AVA-MULTITOOL-1] Epoch ms of the last storage write; drives idle expiry. */
+  updatedAt?: number;
 }
 
 export interface SongProductionContext {
@@ -133,7 +135,45 @@ export function isSongFlowState(value: unknown): value is SongFlowState {
     && (flow.lastInterviewReply == null || typeof flow.lastInterviewReply === "string")
     && (flow.brief == null || typeof flow.brief === "string")
     && (flow.durationSeconds == null || (typeof flow.durationSeconds === "number" && Number.isFinite(flow.durationSeconds)))
-    && (flow.lyrics == null || typeof flow.lyrics === "string");
+    && (flow.lyrics == null || typeof flow.lyrics === "string")
+    && (flow.updatedAt == null || (typeof flow.updatedAt === "number" && Number.isFinite(flow.updatedAt)));
+}
+
+// ---------------------------------------------------------------------------
+// [AVA-MULTITOOL-1] Media-lane arbitration helpers (shared by song AND video).
+// Pure functions so the expiry/preference decisions are unit-testable without
+// a Durable Object. AvaAgentDO owns the storage reads/writes/deletes.
+// ---------------------------------------------------------------------------
+
+/** A song/video flow untouched for this long no longer claims new turns. */
+export const MEDIA_FLOW_IDLE_EXPIRY_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * True when a stored flow is too stale to keep pre-empting the general tool
+ * brain. A legacy flow with NO stamp predates the expiry mechanism entirely —
+ * its age is unknowable and it may be days old, so it is treated as expired.
+ */
+export function isMediaFlowExpired(updatedAt: number | undefined, now: number): boolean {
+  if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt)) return true;
+  return now - updatedAt > MEDIA_FLOW_IDLE_EXPIRY_MS;
+}
+
+/** Stamps a flow with its write time so the next load can age it. */
+export function stampFlowUpdated<T extends { updatedAt?: number }>(flow: T, now: number = Date.now()): T {
+  return { ...flow, updatedAt: now };
+}
+
+/**
+ * When BOTH a song flow and a video flow are somehow active for the same
+ * conversation, only the most recently touched one may claim the turn.
+ * Ties (including two legacy unstamped flows) keep the pre-existing lane
+ * order, where the video section of turn() runs first.
+ */
+export function preferMostRecentLane(
+  songUpdatedAt: number | undefined,
+  videoUpdatedAt: number | undefined,
+): "song" | "video" {
+  return (songUpdatedAt ?? 0) > (videoUpdatedAt ?? 0) ? "song" : "video";
 }
 
 /** Records a freshly generated lyric draft as awaiting explicit user approval. */
