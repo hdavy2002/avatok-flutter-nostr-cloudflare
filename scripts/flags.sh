@@ -140,6 +140,12 @@ for m in re.finditer(r'(\w+)\s*:\s*(true|false|-?[0-9][0-9_]*(?:\.[0-9]+)?)', bo
     else:
         v = v.replace('_', '')
         out[k] = float(v) if '.' in v else int(v)
+# [SONG-LEN-2] String-valued flags (veniceLongMusicModel, biometricConsentVersion)
+# were invisible to this extractor, so `flags.sh set` rejected them as unknown.
+for m in re.finditer(r'(\w+)\s*:\s*"([^"\n]*)"\s*,', body):
+    k, v = m.group(1), m.group(2)
+    if k not in out:
+        out[k] = v
 print(json.dumps(out))
 PY
   echo "$out"
