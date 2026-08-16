@@ -24,16 +24,21 @@ their media path DURING THE RING, and accept only unmutes.
 
 ## The plan (three phases, each independently shippable + flagged)
 
-### P1 — Callee pre-warm during ring  (`callPrewarmOnRingV1`, default false)
-While the incoming screen is ringing (user deciding), pre-run: renderers,
-getUserMedia (mic ONLY — camera stays off until accept for privacy), ICE
-fetch, audio session begin, room WS connect, and `/callsfu/join`. Accept
-then only: publish + pull. Decline/timeout tears the pre-warm down and
-closes the seat (`/callsfu/close`) — the seat lease is the backstop.
+### P1 — Callee pre-warm from FCM arrival  (`callPrewarmOnRingV1`, default false)
+Owner refinement (2026-08-16): the trigger is the INCOMING-CALL PUSH, not
+the ring UI — the FCM data message lands 1–3s before the user can react,
+and that window is free. On push: warm/attach the engine, `_fetchIce`,
+room WS connect, `/callsfu/join` (seat claimed), renderers, audio session
+begin. ONE hard Android constraint: `getUserMedia` from the BACKGROUND
+hangs forever on Android 12+ ([CALL-MEDIA-TIMEOUT-1] measured this), so
+the mic acquisition waits for the incoming-call screen reaching the
+foreground (FSI shown) — still seconds before accept. Accept then only:
+publish + pull. Decline/timeout/cancel tears the pre-warm down and closes
+the seat (`/callsfu/close`) — the seat lease is the backstop.
 Privacy rule: the mic TRACK stays disabled (`track.enabled=false`) until
-accept; capture without consent never leaves the device (nothing is
-published pre-accept, and publish happens only post-accept anyway).
-Expected: accept→voice ≈ 1.5–2s.
+accept; nothing is captured-and-sent pre-accept (publish itself only
+happens post-accept).
+Expected: accept→voice ≈ 1.5–2s; with P2, sub-1s.
 
 ### P2 — Caller pre-join + publish during ring  (`callerPrejoinOnRingV1`)
 The caller already consented (they placed the call). At ring start the
