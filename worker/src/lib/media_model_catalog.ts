@@ -44,11 +44,26 @@ export function mediaModelCatalog(cfg: PlatformConfig, tier: VeniceTier): {
         price: { kind: "flat" as const, tokens: cfg.veniceVideoTokens, unit: "per clip" },
       }]),
     ],
-    audio: [{
-      id: music.model, provider: "Venice", media: "audio", label: "MiniMax Music 2.6",
-      supports: ["vocal song", "instrumental", "custom lyrics"],
-      durationsSeconds: { min: 60, max: 210 },
-      price: { kind: "flat", tokens: cfg.veniceMusicTokens, unit: "per track" },
-    }],
+    audio: [
+      {
+        id: music.model, provider: "Venice", media: "audio", label: "MiniMax Music 2.6",
+        supports: ["vocal song", "instrumental", "custom lyrics"],
+        // [SONG-LEN-2] MiniMax rejects lyrics_prompt >= 1000 chars (live 400,
+        // 2026-08-16), which caps a vocal at roughly 60-90 seconds. Advertise
+        // what it can actually deliver so Ava never promises a 3-minute song
+        // this model cannot sing.
+        durationsSeconds: { min: 60, max: 90 },
+        price: { kind: "flat", tokens: cfg.veniceMusicTokens, unit: "per track" },
+      },
+      ...(String((cfg as any).veniceLongMusicModel ?? "").trim()
+        ? [{
+            id: String((cfg as any).veniceLongMusicModel).trim(), provider: "Venice", media: "audio" as const,
+            label: "Long-form music (2-3.5 min)",
+            supports: ["vocal song", "instrumental", "custom lyrics", "long songs"],
+            durationsSeconds: { min: 60, max: 210 },
+            price: { kind: "flat" as const, tokens: cfg.veniceMusicTokens, unit: "per track" },
+          }]
+        : []),
+    ],
   };
 }

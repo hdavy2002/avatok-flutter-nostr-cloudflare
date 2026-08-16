@@ -150,18 +150,28 @@ export async function craftSongCardMetadata(
  * `durationSeconds` long (defaults to 60s). Throws on provider/empty output so
  * the caller can retain the brief and ask the user to retry safely.
  */
-export async function draftLyrics(env: Env, theme: string, durationSeconds?: number): Promise<string> {
+export async function draftLyrics(env: Env, theme: string, durationSeconds?: number, maxChars?: number): Promise<string> {
   const t = String(theme ?? "").trim();
   if (!t) return t;
   const dur = Number.isFinite(durationSeconds as number) && (durationSeconds as number) > 0
     ? Math.round(durationSeconds as number)
     : 60;
   const targetWords = Math.max(40, Math.round((dur / 60) * WORDS_PER_MINUTE_SUNG));
+  // [SONG-LEN-2] When the singing model has a hard lyric-length limit (MiniMax:
+  // lyrics_prompt < 1000 chars), the DRAFT must respect it — otherwise the
+  // person approves lyrics the singer will never be given in full.
+  const charCap = Number.isFinite(maxChars as number) && (maxChars as number) > 0
+    ? Math.round(maxChars as number)
+    : undefined;
   const sys =
     "You are a songwriter. Write ORIGINAL song lyrics for the theme given by the user, sized for a track " +
     `roughly ${dur} seconds long (about ${targetWords} words of sung lyric content at a natural singing pace). ` +
-    "The duration is a hard requirement: the lyrics must contain enough sung content to fill the WHOLE track, " +
-    "so write the COMPLETE song — every verse, chorus, bridge and outro in full. Never stop mid-line or " +
+    (charCap
+      ? `HARD LIMIT: the entire lyric including section labels must be UNDER ${charCap} characters — the music ` +
+        "engine rejects anything longer. Compose a complete, self-contained song within that limit. "
+      : "The duration is a hard requirement: the lyrics must contain enough sung content to fill the WHOLE track, " +
+        "so write the COMPLETE song — every verse, chorus, bridge and outro in full. ") +
+    "Never stop mid-line or " +
     "mid-section, and never summarise a section instead of writing it. " +
     "If the theme names or implies a language (for example Hindi), write the lyrics in that language. " +
     "Structure it with clear labelled sections, e.g. [Verse 1] / [Chorus] / [Verse 2] / [Chorus] / [Outro] — use " +

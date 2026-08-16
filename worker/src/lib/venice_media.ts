@@ -313,10 +313,27 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
 
   const route = veniceRoute("music", a.tier);
   const capability = "media_music_generate";
-  // minimax-music-v26 is the single production music route. Keep the agreed
-  // duration in AvaTOK's job metadata; the provider's fixed-generation queue
-  // schema does not accept duration_seconds.
   const durationSeconds = clampMusicSeconds(a.durationSeconds);
+  // [SONG-LEN-2] MiniMax Music 2.6 has no duration parameter AND rejects
+  // lyrics_prompt >= 1000 chars (live 400, 2026-08-16), so it can only sing
+  // roughly 60-90 seconds. Requests longer than 90s route to the configured
+  // duration-capable Venice model when one is enabled; otherwise they stay on
+  // MiniMax with the lyrics trimmed to fit — a shorter song beats a failed one.
+  const longModel = String((cfg as any).veniceLongMusicModel ?? "").trim();
+  const model = durationSeconds > 90 && longModel ? longModel : route.model;
+  const isMiniMax = model === route.model && route.model.startsWith("minimax");
+  let submitLyrics = lyrics;
+  if (isMiniMax && submitLyrics.length > 950) {
+    // Trim at the last section label or line break under the cap so MiniMax
+    // sings complete sections, never a mid-word fragment.
+    const head = submitLyrics.slice(0, 950);
+    const cutAt = Math.max(head.lastIndexOf("\n["), head.lastIndexOf("\n\n"));
+    submitLyrics = (cutAt > 400 ? head.slice(0, cutAt) : head).trim();
+    void track(env, a.uid, "ava_music_lyrics_trimmed", "avaai", {
+      chars_before: lyrics.length, chars_after: submitLyrics.length, model,
+      requested_duration_seconds: durationSeconds,
+    });
+  }
   // Use the approved lyrics as the source of truth for public promotional copy;
   // the style brief alone produced generic titles that did not match the song.
   const card = await craftSongCardMetadata(env, stylePrompt, lyrics);
@@ -325,14 +342,14 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     void track(env, a.uid, "ava_reason_call", "avaai", {
       role: "ava_music", capability, trigger: "music_generate",
       opportunity: null, feature: "ava_music", verb: "hear", provider: "venice",
-      model: route.model, primary_model: null, ok, fallback_used: false, cache_hit: false,
+      model, primary_model: null, ok, fallback_used: false, cache_hit: false,
       latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
     });
   };
 
   const created = await createVeniceMediaJob(env, {
     ownerUid: a.uid, convId: a.conv, kind: "venice_music_generate",
-    capability, model: route.model, isPrivate: a.private, tier: a.tier,
+    capability, model, isPrivate: a.private, tier: a.tier,
     hasSourceImage: false, durationSeconds,
     label: "Generating your track…", deadlineMs: Date.now() + MUSIC_DEADLINE_MS, email,
     songTitle: card.title, songDescription: card.description,
@@ -342,7 +359,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   });
   if (!created.ok) {
     void track(env, a.uid, "ava_music_error", "avaai", {
-      stage: "job_create", model: route.model, provider: "venice", error: created.error,
+      stage: "job_create", model, provider: "venice", error: created.error,
     });
     emitReason(false, created.error);
     if (created.error === "AI_INSUFFICIENT_TOKENS") {
@@ -356,9 +373,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   try {
     // Venice's audio queue accepts musical direction in `prompt` and approved
     // lyrics in `lyrics_prompt`; neither field repeats the other.
-    const { queueId } = await veniceQueueMusic(env as any, route.model, stylePrompt, {
+    const { queueId } = await veniceQueueMusic(env as any, model, stylePrompt, {
       durationSeconds,
-      lyricsPrompt: lyrics || undefined,
+      lyricsPrompt: submitLyrics || undefined,
     });
     await attachVeniceQueueId(env, jobId, queueId);
     await enqueueVeniceMediaPoll(env, jobId, "venice_music_generate", INITIAL_POLL_DELAY_S);
@@ -367,7 +384,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
     const errorCode = classifyVeniceError(e);
     await failVeniceMediaJob(env, { jobId, errorCode, reason: "submit_failed" });
-    void track(env, a.uid, "ava_music_error", "avaai", { stage: "submit", model: route.model, provider: "venice", error: msg, job_id: jobId });
+    void track(env, a.uid, "ava_music_error", "avaai", { stage: "submit", model, provider: "venice", error: msg, job_id: jobId });
     emitReason(false, msg);
     return { ok: false, message: "I couldn't start that track right now — please try again." };
   }
@@ -436,12 +453,18 @@ export async function runVeniceDraftLyrics(env: Env, a: RunVeniceDraftLyricsArgs
   }
 
   const durationSeconds = clampMusicSeconds(a.durationSeconds);
+  // [SONG-LEN-2] Draft to the limit of the model that will actually sing:
+  // MiniMax caps lyrics_prompt under 1000 chars, so without a duration-capable
+  // long-song model configured, the draft itself must fit — approving lyrics
+  // the singer cannot be given in full is how a "3-minute song" came out 24s.
+  const longMusicModel = String((cfg as any).veniceLongMusicModel ?? "").trim();
+  const lyricsCharCap = durationSeconds > 90 && longMusicModel ? undefined : 940;
   const t0 = Date.now();
   let lyrics = "";
   let ok = true;
   let error: string | null = null;
   try {
-    lyrics = await draftLyrics(env, theme, durationSeconds);
+    lyrics = await draftLyrics(env, theme, durationSeconds, lyricsCharCap);
   } catch (e: any) {
     ok = false;
     error = String(e?.message ?? e ?? "unknown").slice(0, 300);

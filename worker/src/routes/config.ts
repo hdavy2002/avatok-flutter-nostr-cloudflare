@@ -1328,6 +1328,16 @@ export interface PlatformConfig {
   // is explicitly flipped true in KV. Boolean → NOT in numericKeys.
   veniceUncensoredChatEnabled: boolean;
 
+  // [SONG-LEN-2 2026-08-17] Venice music model for LONG song requests
+  // (> 90 seconds). MiniMax Music 2.6 rejects lyrics_prompt >= 1000 chars
+  // (verified live 2026-08-16: "lyrics_prompt must be less than 1000
+  // characters"), which physically caps it at roughly a 60-90 second vocal.
+  // When this is set to a duration-capable Venice model ("ace-step-15" or
+  // "elevenlabs-music" — the only two lib/venice.ts sends duration_seconds
+  // to), longer requests route there with full lyrics. Empty string = off:
+  // long requests stay on MiniMax with lyrics trimmed to fit. String key.
+  veniceLongMusicModel: string;
+
   // [AVA-GROUP-SESSION-1 2026-08-16] Shared group media sessions: while a
   // public (#ava) song/video conversation is active in a GROUP thread, other
   // members' public #ava turns join the initiator's conversation (initiator's
@@ -1823,6 +1833,9 @@ const DEFAULTS: PlatformConfig = {
   // [AVA-GROUP-SESSION-1 2026-08-16] shared group song/video sessions — live by
   // owner decision the same day; flip false in KV to kill instantly.
   groupSharedMediaSessionEnabled: true,
+  // [SONG-LEN-2 2026-08-17] off until a duration-capable model is live-tested;
+  // set to "ace-step-15" or "elevenlabs-music" in KV to enable 2-3.5 min songs.
+  veniceLongMusicModel: "",
 };
 
 /**
