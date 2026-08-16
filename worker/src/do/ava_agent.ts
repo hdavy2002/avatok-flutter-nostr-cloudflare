@@ -84,7 +84,7 @@ import {
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
 } from "../lib/song_flow";
-import { parseSongInterviewTurn, songInterviewUserPayload, SONG_INTERVIEW_SYSTEM } from "../lib/song_interview";
+import { parseSongInterviewTurn, recoverSongInterviewTurn, songInterviewUserPayload, SONG_INTERVIEW_SYSTEM } from "../lib/song_interview";
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
 //   chat  — answer directly in conversation
@@ -1322,11 +1322,13 @@ export class AvaAgentDO {
               uid, route: "ava_agent.song_interview", handled: true,
               extra: { conv_kind: convKind, music_mode: songAction.flow.kind ?? "vocal" },
             });
-            await this.state.storage.put(flowKey, songAction.flow);
+            const recovered = recoverSongInterviewTurn(songAction.flow, userText);
+            const recoveredFlow = withSongInterview(songAction.flow, recovered.context, recovered.reply);
+            await this.state.storage.put(flowKey, recoveredFlow);
             await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
             await this.postAva({
               conv, uid, private: priv, source: "music",
-              text: "I want to stay with your idea, but I missed that last part. Tell me again in your own words?",
+              text: recovered.reply,
             });
             await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
               conv_kind: convKind, private: priv, phase: "awaiting_brief", outcome: "ai_interview_failed",

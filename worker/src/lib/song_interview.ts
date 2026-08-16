@@ -1,5 +1,5 @@
 import type { SongFlowState, SongProductionContext, SongRequestKind } from "./song_flow";
-import { clampSongDurationSeconds } from "./song_flow";
+import { clampSongDurationSeconds, parseSongDurationSeconds, stripAvaWakeWordForIntent } from "./song_flow";
 
 export const SONG_INTERVIEW_SYSTEM = `You are Ava, a warm, perceptive music producer having a real conversation with a person who wants to create a song.
 
@@ -82,4 +82,45 @@ export function songInterviewUserPayload(flow: SongFlowState, latestUserText: st
     latestUserMessage: String(latestUserText || "").slice(0, 2000),
     userConversationSoFar: String(flow.conversation ?? flow.brief ?? "").slice(-6000),
   });
+}
+
+/** Recover conversational progress when the interview provider returns bad JSON. */
+export function recoverSongInterviewTurn(flow: SongFlowState, latestUserText: string): SongInterviewTurn {
+  const latest = stripAvaWakeWordForIntent(latestUserText);
+  const source = [flow.conversation, flow.brief, latest].filter(Boolean).join("\n");
+  const previous = flow.context;
+  const genre = previous?.genre ?? (
+    /\bhindi\s+rock\b/i.test(source) ? "Hindi rock" :
+    /\b(reggae|dancehall|hip[- ]?hop|pop|jazz|folk|metal|rock)\b/i.exec(source)?.[1]
+  );
+  const language = previous?.language ?? (/\bhindi\b/i.test(source) ? "Hindi" : undefined);
+  const durationSeconds = previous?.durationSeconds ?? parseSongDurationSeconds(source);
+  const mood = previous?.mood ?? (
+    /\b(uplifting|freedom|change|hope|happy|sad|romantic|energetic|peaceful|dark|rebellious)\b/i.test(latest)
+      ? latest.slice(0, 160) : undefined
+  );
+  const theme = previous?.theme ?? (
+    /\b(?:about|for|on)\s+([^,.\n]+)/i.exec(source)?.[1]?.trim() ||
+    (mood && /\b(freedom|change|love|hope|rebellion|confidence)\b/i.test(latest) ? latest.slice(0, 160) : undefined)
+  );
+  const instruments = previous?.instruments?.length ? previous.instruments : (
+    /\b(rock|metal)\b/i.test(source) ? ["electric guitar", "bass", "live drums"] : undefined
+  );
+  const vocalArrangement = previous?.vocalArrangement ?? (
+    /\b(duet|two voices|male and female)\b/i.test(latest) ? "duet" :
+    /\b(solo male|male voice|male vocal)\b/i.test(latest) ? "solo male vocal" :
+    /\b(solo female|female voice|female vocal)\b/i.test(latest) ? "solo female vocal" : undefined
+  );
+  const voiceStyle = previous?.voiceStyle ?? /\b(deep|gritty|raspy|soulful|bright|youthful|powerful|soft)\b/i.exec(latest)?.[1];
+  const context: SongProductionContext = {
+    theme, genre, mood, instruments, language, vocalArrangement, voiceStyle,
+    durationSeconds, intendedUse: previous?.intendedUse,
+  };
+  const subject = theme || mood || "that direction";
+  const reply = !vocalArrangement
+    ? `That gives the song a ${subject} heart. Should the Hindi rock vocal be a solo male voice, solo female voice, or duet?`
+    : !voiceStyle
+      ? "Nice — the vocal shape is clear. Should the singer feel bright and youthful, soulful, gritty, or powerful?"
+      : "I have the musical direction now. I’ll turn this into a focused song brief and draft the lyrics next.";
+  return { reply, context };
 }
