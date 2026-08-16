@@ -61,10 +61,25 @@ class CallForegroundService : Service() {
             return START_NOT_STICKY
         }
 
+        // [CALL-FGS-GHOST-1 2026-08-16] A null intent means Android is
+        // resurrecting a STICKY service after our process died (seen live when
+        // the translation-start crash killed the app mid-call): there is no
+        // call to resume — the engine and media died with the process — but the
+        // restart used to post an "Unknown · 00:20 · tap to return to the call"
+        // notification pointing at nothing, and it could not be dismissed
+        // except via Hang up. A call FGS only makes sense when started by a
+        // live call with extras; refuse the ghost.
+        if (intent == null) {
+            isRunning = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // Normal start: begin or resume the service.
-        callId = intent?.getStringExtra("callId") ?: ""
-        peerName = intent?.getStringExtra("peerName") ?: "Unknown"
-        isVideo = intent?.getBooleanExtra("isVideo", false) ?: false
+        callId = intent.getStringExtra("callId") ?: ""
+        peerName = intent.getStringExtra("peerName") ?: "Unknown"
+        isVideo = intent.getBooleanExtra("isVideo", false)
         if (startTimeMs == 0L) startTimeMs = System.currentTimeMillis()
         isRunning = true
 

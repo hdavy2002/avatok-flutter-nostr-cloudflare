@@ -1460,5 +1460,22 @@
         "note": "Both phones on the new build: translation tap reaches session_created with ZERO fatal $exception 'Reply already submitted' in the following minute, and the call stays alive (no call_peer_away within 30s of session_created). Ultimate success = audible translated audio + call_translation funnel reaching active."
       }
     ]
+  },
+  "CALL-FGS-GHOST-1": {
+    "description": "After the translation crash killed the app mid-call, Android resurrected the STICKY CallForegroundService with a null intent: an 'Unknown - 00:20 - tap to return to the call' notification for a call that no longer exists, undismissable except via Hang up. Null-intent restarts now stop the service immediately.",
+    "flags": [],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_fgs_stopped",
+        "property": "reason",
+        "equals": "",
+        "min_events": 0,
+        "where": {},
+        "note": "Behavioral: after any future app death mid-call on the new build, no orphaned 'Unknown' ongoing-call notification appears. Verified by absence in the next crash instance."
+      }
+    ]
   }
 }
