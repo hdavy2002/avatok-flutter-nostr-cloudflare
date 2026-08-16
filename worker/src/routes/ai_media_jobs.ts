@@ -18,7 +18,8 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
-import { emailFor } from "../lib/identity";
+import { contactFor, emailFor } from "../lib/identity";
+import { trackUserContact } from "../hooks";
 import {
   createAiMediaJob, getAiMediaJob, cancelAiMediaJob, listAiMediaJobs, failAiMediaJob,
   type AiMediaJobKind, type AiMediaJobStatus,
@@ -89,7 +90,11 @@ async function videoThumbnailShareable(env: Env, job: VeniceMediaJobRecord): Pro
     const row = await env.DB_MEDIA.prepare(
       "SELECT key, mime_type, storage FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1",
     ).bind(job.cover_media_id, job.owner_uid).first<{ key: string; mime_type: string; storage: string }>();
-    return !!row && row.storage === "digital" && String(row.mime_type || "").toLowerCase().startsWith("image/") && !!row.key;
+    if (!row || row.storage !== "digital" || !String(row.mime_type || "").toLowerCase().startsWith("image/") || !row.key) return false;
+    // A media row can become visible a fraction before its R2 upload. Do not
+    // publish a crawler URL during that gap: WhatsApp may cache the first 404
+    // long after the object arrives.
+    return !!(await env.DIGITAL.head(row.key));
   } catch { return false; }
 }
 
@@ -214,7 +219,18 @@ export async function aiMediaJobVideoShare(req: Request, env: Env, jobId: string
     job = await getVeniceMediaJob(env, job.job_id);
   }
   if (!job?.share_token) return json({ error: "share_unavailable" }, 503);
-  return json({ ok: true, url: `${new URL(req.url).origin}/s/video/${job.share_token}` });
+  // WhatsApp holds link-preview failures far longer than our HTML cache. Give
+  // every published revision a stable URL of its own so a thumbnail that was
+  // not ready during an earlier crawl can be fetched again without minting a
+  // second public token or exposing private identifiers.
+  const version = Math.max(1, Math.trunc(Number(job.updated_at || job.completed_at || Date.now())));
+  const contact = await contactFor(env, ctxUser.uid);
+  await trackUserContact(env, ctxUser.uid, contact.email, contact.phone, "ai_video_share_link_created", "avaai", {
+    media_kind: "video",
+    share_version: version,
+    thumbnail_ready: true,
+  });
+  return json({ ok: true, url: `${new URL(req.url).origin}/s/video/${job.share_token}?v=${version}` });
 }
 
 function songHtml(value: string): string {
@@ -314,25 +330,32 @@ async function sharedVideo(env: Env, token: string): Promise<VeniceMediaJobRecor
 export async function aiMediaVideoSharePage(req: Request, env: Env, token: string): Promise<Response> {
   const job = await sharedVideo(env, token);
   if (!job?.artifact_media_id || !job.cover_media_id) return new Response("Video not found", { status: 404 });
-  const origin = new URL(req.url).origin;
-  const canonical = `${origin}/s/video/${token}`;
+  const requestUrl = new URL(req.url);
+  const origin = requestUrl.origin;
+  const baseUrl = `${origin}/s/video/${token}`;
+  const requestedVersion = String(requestUrl.searchParams.get("v") || "").trim();
+  const version = /^\d{1,20}$/.test(requestedVersion) ? requestedVersion : "";
+  const canonical = version ? `${baseUrl}?v=${version}` : baseUrl;
   const rawTitle = String(job.song_title || "").trim();
   const rawDescription = String(job.song_description || "").trim();
   const title = songHtml(!rawTitle || rawTitle === "AvaTOK video" ? "Cinematic moment" : rawTitle);
   const description = songHtml(!rawDescription || rawDescription === "A short video created with AvaTOK AI."
     ? "A cinematic scene with its own setting, movement, and atmosphere."
     : rawDescription);
-  const thumbnail = `${canonical}/thumbnail`;
+  const thumbnail = `${baseUrl}/thumbnail`;
   // Social previews need a small landscape card. The original AI cover is a
   // 1024px PNG (often >2 MB); WhatsApp fetched the tag but omitted that image.
   // Cloudflare's same-zone transform keeps this immutable, public and ~50 KB.
-  const socialThumbnail = `${origin}/cdn-cgi/image/format=jpeg,quality=78,width=1200,height=630,fit=cover/${thumbnail}`;
-  const video = `${canonical}/video`;
+  const socialThumbnailBase = `${origin}/cdn-cgi/image/format=jpeg,quality=78,width=1200,height=630,fit=cover/${thumbnail}`;
+  const socialThumbnail = version ? `${socialThumbnailBase}?v=${version}` : socialThumbnailBase;
+  const video = `${baseUrl}/video`;
+  const nonce = crypto.randomUUID().replaceAll("-", "");
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} · AvaTOK</title><meta name="description" content="${description}"><link rel="canonical" href="${canonical}">
-<meta property="og:type" content="video.other"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:image" content="${socialThumbnail}"><meta property="og:image:secure_url" content="${socialThumbnail}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/jpeg"><meta property="og:video" content="${video}"><meta property="og:video:secure_url" content="${video}"><meta property="og:video:type" content="video/mp4"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${socialThumbnail}">
-<style>body{margin:0;padding:16px;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;box-sizing:border-box;display:grid;place-items:center}.card{width:min(92vw,560px);max-height:calc(100vh - 32px);overflow:auto;background:#18242b;border:1px solid #34434b;border-radius:24px;box-shadow:0 24px 70px #0008}.video{display:block;width:100%;max-height:58vh;aspect-ratio:16/9;object-fit:contain;background:#000}.copy{padding:22px}.eyebrow{display:inline-block;color:#55d696;font-size:12px;letter-spacing:.08em;font-weight:700;text-decoration:none;margin-bottom:7px}.title{font-size:28px;line-height:1.15;margin:0 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0}.shares{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.shares a{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-weight:800;text-decoration:none;background:#25363d;color:#fff}@media(max-width:700px){body{padding:0;display:block;min-height:100dvh;background:#000}.card{width:100%;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;overflow:hidden;display:flex;flex-direction:column}.video{flex:1 1 auto;min-height:0;max-height:none;aspect-ratio:auto;object-fit:contain}.copy{flex:0 0 auto;padding:14px 18px 16px;max-height:36dvh;overflow:auto}.eyebrow{margin-bottom:4px}.title{font-size:22px;margin-bottom:5px}.desc{font-size:14px;line-height:1.35}.shares{margin-top:11px}.shares a{width:36px;height:36px}}</style></head><body><main class="card"><video class="video" controls playsinline preload="metadata" poster="${thumbnail}" src="${video}">Your browser cannot play this video.</video><section class="copy"><a class="eyebrow" href="https://avatok.ai">Made with AvaTOK app</a><h1 class="title">${title}</h1><p class="desc">${description}</p><div class="shares" aria-label="Share this video"><a href="https://wa.me/?text=${encodeURIComponent(`${title} — ${canonical}`)}" aria-label="WhatsApp">WA</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonical)}" aria-label="LinkedIn">in</a><a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonical)}" aria-label="Facebook">f</a><a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(canonical)}" aria-label="X">𝕏</a><a href="mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${description}\n${canonical}`)}" aria-label="Email">✉</a></div></section></main></body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300, s-maxage=300", "content-security-policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'", "x-content-type-options": "nosniff" } });
+<meta property="og:type" content="video.other"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:image" content="${socialThumbnail}"><meta property="og:image:secure_url" content="${socialThumbnail}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/jpeg"><meta property="og:image:alt" content="${title}"><meta property="og:video" content="${video}"><meta property="og:video:secure_url" content="${video}"><meta property="og:video:type" content="video/mp4"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${socialThumbnail}"><meta name="twitter:image:alt" content="${title}">
+<style>body{margin:0;padding:16px;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;box-sizing:border-box;display:grid;place-items:center}.card{width:min(92vw,560px);max-height:calc(100vh - 32px);overflow:auto;background:#18242b;border:1px solid #34434b;border-radius:24px;box-shadow:0 24px 70px #0008}.video{display:block;width:100%;max-height:58vh;aspect-ratio:16/9;object-fit:contain;background:#000}.close-video{display:none;border:1px solid #ffffff80;background:#000b;color:#fff;width:44px;height:44px;border-radius:50%;font:700 30px/1 system-ui;align-items:center;justify-content:center;cursor:pointer}.copy{padding:22px}.eyebrow{display:inline-block;color:#55d696;font-size:12px;letter-spacing:.08em;font-weight:700;text-decoration:none;margin-bottom:7px}.title{font-size:28px;line-height:1.15;margin:0 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0}.shares{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.shares a{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-weight:800;text-decoration:none;background:#25363d;color:#fff}@media(max-width:700px){body{padding:0;display:block;min-height:100dvh;background:#000}.card{width:100%;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;overflow:hidden;display:flex;flex-direction:column}.video{flex:1 1 auto;min-height:0;max-height:none;aspect-ratio:auto;object-fit:contain}.copy{flex:0 0 auto;padding:14px 18px 16px;max-height:36dvh;overflow:auto}.eyebrow{margin-bottom:4px}.title{font-size:22px;margin-bottom:5px}.desc{font-size:14px;line-height:1.35}.shares{margin-top:11px}.shares a{width:36px;height:36px}html.video-open,html.video-open body{width:100%;height:100%;overflow:hidden}html.video-open .card{position:fixed;inset:0;z-index:20;width:100%;height:100dvh;background:#000}html.video-open .video{position:absolute;inset:0;z-index:21;width:100%;height:100%;max-height:none;object-fit:contain}html.video-open .copy{display:none}html.video-open .close-video{display:flex;position:fixed;z-index:22;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right))}}</style></head><body><main class="card"><video id="shared-video" class="video" controls playsinline preload="metadata" poster="${thumbnail}" src="${video}">Your browser cannot play this video.</video><button id="close-video" class="close-video" type="button" aria-label="Close full-screen video">&times;</button><section class="copy"><a class="eyebrow" href="https://avatok.ai">Made with AvaTOK app</a><h1 class="title">${title}</h1><p class="desc">${description}</p><div class="shares" aria-label="Share this video"><a href="https://wa.me/?text=${encodeURIComponent(`${title} — ${canonical}`)}" aria-label="WhatsApp">WA</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonical)}" aria-label="LinkedIn">in</a><a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonical)}" aria-label="Facebook">f</a><a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(canonical)}" aria-label="X">𝕏</a><a href="mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${description}\n${canonical}`)}" aria-label="Email">✉</a></div></section></main><script nonce="${nonce}">(()=>{const v=document.getElementById("shared-video"),x=document.getElementById("close-video"),root=document.documentElement;let portrait=false;const sync=()=>{portrait=v.videoHeight>v.videoWidth};const mobile=()=>matchMedia("(max-width:700px)").matches;const open=()=>{sync();if(mobile()&&portrait)root.classList.add("video-open")};const close=()=>{v.pause();root.classList.remove("video-open")};v.addEventListener("loadedmetadata",sync);v.addEventListener("play",open);v.addEventListener("click",open);x.addEventListener("click",close);document.addEventListener("keydown",e=>{if(e.key==="Escape")close()})})();</script></body></html>`;
+  const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300, s-maxage=300", "content-security-policy": `default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; base-uri 'none'; frame-ancestors 'none'`, "x-content-type-options": "nosniff" };
+  return new Response(req.method === "HEAD" ? null : html, { headers });
 }
 
 export async function aiMediaVideoShareAsset(req: Request, env: Env, token: string, asset: "thumbnail" | "video"): Promise<Response> {
@@ -347,9 +370,9 @@ export async function aiMediaVideoShareAsset(req: Request, env: Env, token: stri
   // `in` checks don't narrow R2Range's optional numbers — read then test.
   const vStart = object.range && "offset" in object.range ? object.range.offset : undefined;
   const vLength = object.range && "length" in object.range ? object.range.length : undefined;
-  if (asset === "video" && vStart !== undefined && vLength !== undefined) { headers.set("content-length", String(vLength)); headers.set("content-range", `bytes ${vStart}-${vStart + vLength - 1}/${object.size}`); return new Response(object.body, { status: 206, headers }); }
+  if (asset === "video" && vStart !== undefined && vLength !== undefined) { headers.set("content-length", String(vLength)); headers.set("content-range", `bytes ${vStart}-${vStart + vLength - 1}/${object.size}`); return new Response(req.method === "HEAD" ? null : object.body, { status: 206, headers }); }
   headers.set("content-length", String(object.size));
-  return new Response(object.body, { headers });
+  return new Response(req.method === "HEAD" ? null : object.body, { headers });
 }
 
 // POST /api/ai/jobs/:job_id/cancel
