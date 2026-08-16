@@ -1477,5 +1477,24 @@
         "note": "Behavioral: after any future app death mid-call on the new build, no orphaned 'Unknown' ongoing-call notification appears. Verified by absence in the next crash instance."
       }
     ]
+  },
+  "CALL-TRANSLATE-PREPFAIL-OBS-1": {
+    "description": "On the crash-fix build (10558) translation start no longer crashes but fails cleanly ~11ms after session_created on both phones ('Live translation is not ready on this device yet'), while a direct sandbox replication of the full chain (mint -> constrained WS -> setupComplete -> audio accepted) proves Google-side works. The native PlatformException code naming the racer was swallowed by catch(_). Dart now records native_code+native_detail on the prepare_failed funnel event; the plugin attaches adapter probe tokens (lastAdapterResolveFailure/lastAdapterSource) as error details on failPrepare and the immediate playback-unavailable exit.",
+    "flags": [],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_translation_funnel",
+        "property": "native_code",
+        "equals": "",
+        "min_events": 1,
+        "where": {
+          "reason": "prepare_failed"
+        },
+        "note": "Next failed Translate tap on the new build must carry a non-empty native_code (stopped/provider_failed/setup_failed/webrtc_playback_unavailable/...) and native_detail with the adapter token — that string IS the diagnosis. If the tap instead succeeds, funnel provider_ready ok:true is the win."
+      }
+    ]
   }
 }

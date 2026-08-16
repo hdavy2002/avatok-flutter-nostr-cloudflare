@@ -773,7 +773,17 @@ class CallTranslationController with WidgetsBindingObserver {
     try {
       // Gemini setupComplete is required before the backend may charge minute 1.
       await bridge.prepare(token: token, targetLanguage: lang);
-    } catch (_) {
+    } catch (e) {
+      // [CALL-TRANSLATE-PREPFAIL-OBS-1 2026-08-16] The native error CODE was
+      // swallowed here (`catch (_)`), so the 13:29 UTC prepare_failed-in-11ms
+      // on both phones was undiagnosable: five distinct native failure exits
+      // all collapsed into one dialog. Codes are our own bounded constants
+      // (webrtc_playback_unavailable, stopped, provider_failed, setup_failed,
+      // provider_timeout, error); details carry the adapter probe token. Never
+      // provider text.
+      final code = e is PlatformException ? e.code : e.runtimeType.toString();
+      final nativeDetail =
+          e is PlatformException ? (e.details?.toString() ?? '') : '';
       if (warm && _warmGeneration != warmGeneration) {
         // A real `prepare` superseded ours mid-flight — the plugin errored OUR
         // future, not theirs. Release only our row; calling bridge.stop() here
@@ -787,7 +797,12 @@ class CallTranslationController with WidgetsBindingObserver {
       }
       await _stopUnbilledPending();
       if (!warm) {
-        _funnel('provider_ready', ok: false, reason: 'prepare_failed');
+        _funnel('provider_ready', ok: false, reason: 'prepare_failed', extra: {
+          'native_code': code.length > 60 ? code.substring(0, 60) : code,
+          'native_detail': nativeDetail.length > 120
+              ? nativeDetail.substring(0, 120)
+              : nativeDetail,
+        });
         _enterFailed(CallTranslationFailure.sourceUnavailable, 'prepare_failed');
       }
       return 'source_capture_unavailable';

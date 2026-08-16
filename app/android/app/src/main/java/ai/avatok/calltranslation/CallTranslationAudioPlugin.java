@@ -376,7 +376,9 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         stopInternal(false);
         if (playbackAdapter == null) playbackAdapter = resolvePlaybackAdapter(true);
         if (playbackAdapter == null) {
-            result.error("webrtc_playback_unavailable", "Decoded WebRTC playback callback unavailable", null);
+            // [CALL-TRANSLATE-PREPFAIL-OBS-1] Which of the five resolver exits
+            // fired rides along, so this stops collapsing into one dialog.
+            result.error("webrtc_playback_unavailable", "Decoded WebRTC playback callback unavailable", prepareFailureDetail());
             return;
         }
         if (!attached) {
@@ -1119,9 +1121,17 @@ public final class CallTranslationAudioPlugin implements FlutterPlugin,
         });
     }
 
+    /**
+     * [CALL-TRANSLATE-PREPFAIL-OBS-1] Bounded diagnostic detail for a prepare
+     * error: our own probe tokens only, never provider-derived text.
+     */
+    private String prepareFailureDetail() {
+        return "adapter=" + lastAdapterResolveFailure + ";source=" + lastAdapterSource;
+    }
+
     private void failPrepare(String code, String message) {
         MethodChannel.Result result = takePendingPrepare();
-        if (result != null) safeReply(() -> result.error(code, message == null ? code : message, null));
+        if (result != null) safeReply(() -> result.error(code, message == null ? code : message, prepareFailureDetail()));
     }
 
     private void emit(String type, String value) {
