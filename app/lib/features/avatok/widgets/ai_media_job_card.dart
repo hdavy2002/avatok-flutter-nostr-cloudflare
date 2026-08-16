@@ -462,11 +462,11 @@ class _ReadyCard extends StatelessWidget {
           : rawDescription;
       return Container(
         width: width,
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(top: 12, bottom: 8),
         decoration: BoxDecoration(
-          color: AD.mediaPlaceholderBg,
+          color: const Color(0xFF12181C),
           borderRadius: BorderRadius.circular(AD.rListCard),
-          border: Border.all(color: AD.borderHairline),
+          border: Border.all(color: Colors.white54, width: 0.8),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -485,7 +485,7 @@ class _ReadyCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.black,
+                        color: Colors.white,
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                       ),
@@ -496,7 +496,7 @@ class _ReadyCard extends StatelessWidget {
                       tooltip: 'Share video',
                       onPressed: onShare,
                       icon: const Icon(Icons.ios_share_rounded),
-                      color: AD.textSecondary,
+                      color: Colors.white70,
                     ),
                 ]),
                 const SizedBox(height: 6),
@@ -505,7 +505,7 @@ class _ReadyCard extends StatelessWidget {
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.black87,
+                    color: Colors.white70,
                     fontSize: 13,
                     height: 1.35,
                   ),
@@ -513,7 +513,7 @@ class _ReadyCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 const Text(
                   'Made on AvaTOK AI',
-                  style: TextStyle(color: Colors.black54, fontSize: 10),
+                  style: TextStyle(color: Colors.white54, fontSize: 10),
                 ),
               ],
             ),
