@@ -31,6 +31,10 @@ def parse_value(raw, key, defaults):
                 return float(raw)
             except ValueError:
                 sys.exit(f"{key} expects a number, got {raw!r}")
+    # [SONG-LEN-2] string-valued flags (veniceLongMusicModel, ...) — the
+    # worker's getConfig merges any string override over a string default.
+    if isinstance(defaults[key], str):
+        return raw
     if raw in ("true", "false"):
         return raw == "true"
     sys.exit(f"{key} expects true|false, got {raw!r}")
