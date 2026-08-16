@@ -11,7 +11,7 @@ describe("AI song interview", () => {
       {"reply":"Heavy bass will give that happy reggae duet a strong center. Should the voices feel youthful and bright or warmer and soulful?","context":{"theme":"Gen Z confidence","genre":null,"mood":"happy","instruments":["heavy bass"],"language":null,"vocalArrangement":"duet","voiceStyle":null,"durationSeconds":null,"intendedUse":null}}
     \`\`\``, { genre: "reggae", language: "English" });
     expect(turn.reply).toContain("Heavy bass");
-    expect(turn.action).toBe("continue");
+    expect(turn.action).toBe("discuss");
     expect(turn.context).toMatchObject({
       theme: "Gen Z confidence", genre: "reggae", mood: "happy",
       instruments: ["heavy bass"], language: "English", vocalArrangement: "duet",
@@ -28,13 +28,27 @@ describe("AI song interview", () => {
     expect(payload.previousAvaReply).toContain("should I choose");
     expect(payload.latestUserMessage).toBe("you choose");
     expect(payload.savedContext.genre).toBe("reggae");
+    expect(payload.currentPhase).toBe("awaiting_brief");
   });
 
   it("forbids checklist-style output in the AI instruction", () => {
     expect(SONG_INTERVIEW_SYSTEM).toContain("Ask at most ONE focused follow-up question");
     expect(SONG_INTERVIEW_SYSTEM).toContain("never a checklist to recite");
     expect(SONG_INTERVIEW_SYSTEM).toContain("Do not repeatedly ask something already answered");
-    expect(SONG_INTERVIEW_SYSTEM).toContain("permission to make sensible producer choices");
+    expect(SONG_INTERVIEW_SYSTEM).toContain("Never decide from a literal keyword");
+    expect(SONG_INTERVIEW_SYSTEM).toContain('Choose action "draft"');
+    expect(SONG_INTERVIEW_SYSTEM).toContain('Choose action "generate"');
+  });
+
+  it("accepts semantic next-step decisions from the model", () => {
+    const drafted = parseSongInterviewTurn(
+      '{"action":"draft","reply":"I understand the direction. I’ll shape the lyrics around that feeling.","context":{"theme":"freedom and change","genre":"Hindi rock","mood":"uplifting","language":"Hindi","durationSeconds":180}}',
+    );
+    const generated = parseSongInterviewTurn(
+      '{"action":"generate","reply":"That is the emotional center. I’m turning these lyrics into the finished track.","context":{}}',
+    );
+    expect(drafted.action).toBe("draft");
+    expect(generated.action).toBe("generate");
   });
 
   it("lets the model release a stale song flow when the user changes topic", () => {

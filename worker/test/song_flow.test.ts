@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampSongDurationSeconds,
   classifySongRequest,
-  isSongApproval,
-  isSongDraftIntent,
   isSongProductionContextReady,
-  isSongRevisionIntent,
   nextSongFlow,
   parseSongDurationSeconds,
   songProductionBrief,
@@ -51,7 +48,7 @@ describe("AI-led song flow guardrails", () => {
     expect(isSongProductionContextReady({ ...completeVocal, language: undefined }, "instrumental")).toBe(true);
   });
 
-  it("moves a ready interview straight into drafting when the person says to proceed", () => {
+  it("sends every active conversation turn back to AI instead of matching command words", () => {
     const hindiRock = {
       ...completeVocal,
       theme: "freedom and change", genre: "Hindi rock", mood: "uplifting and energetic",
@@ -64,10 +61,11 @@ describe("AI-led song flow guardrails", () => {
       conversation: "A three-minute uplifting Hindi rock anthem about freedom",
       durationSeconds: 180,
     };
-    expect(isSongDraftIntent("go ahead and draft")).toBe(true);
-    expect(isSongDraftIntent("please write the lyrics")).toBe(true);
     expect(nextSongFlow(waiting, "go ahead and draft")).toMatchObject({
-      kind: "draft", flow: { phase: "awaiting_brief", brief: expect.stringContaining("Hindi rock") },
+      kind: "ask_brief", flow: { phase: "awaiting_brief", conversation: expect.stringContaining("go ahead and draft") },
+    });
+    expect(nextSongFlow(waiting, "I trust where you're taking this")).toMatchObject({
+      kind: "ask_brief", flow: { phase: "awaiting_brief", conversation: expect.stringContaining("I trust where") },
     });
   });
 
@@ -82,28 +80,20 @@ describe("AI-led song flow guardrails", () => {
     expect(songProductionBrief(completeVocal, "vocal")).toContain("male and female duet");
   });
 
-  it("keeps approval strict and preserves AI context through lyric revisions", () => {
+  it("lets AI interpret approvals, revisions, and new directions during lyric review", () => {
     const reviewing = withSongLyrics({
       phase: "awaiting_brief", kind: "vocal", context: completeVocal,
       conversation: "make a reggae song about Gen Z", brief: songProductionBrief(completeVocal, "vocal"),
       durationSeconds: 120,
     }, "[Verse]\nA new day\n[Chorus]\nWe rise");
-    expect(isSongApproval("yes, make it")).toBe(true);
-    expect(isSongApproval("I think yes, make it eventually")).toBe(false);
-    expect(isSongRevisionIntent("make the chorus more playful")).toBe(true);
-    expect(nextSongFlow(reviewing, "yes, make it")).toMatchObject({ kind: "generate", flow: { phase: "generating" } });
-    expect(nextSongFlow(reviewing, "make the chorus more playful")).toMatchObject({
-      kind: "draft", flow: { phase: "awaiting_brief", context: completeVocal },
+    expect(nextSongFlow(reviewing, "these lyrics feel like us—let's hear the song")).toMatchObject({
+      kind: "ask_brief", flow: { phase: "reviewing", context: completeVocal },
     });
-  });
-
-  it("restarts an abandoned draft when a fresh song is requested", () => {
-    const reviewing = withSongLyrics({
-      phase: "awaiting_brief", kind: "vocal", context: completeVocal,
-      brief: songProductionBrief(completeVocal, "vocal"), durationSeconds: 120,
-    }, "Old lyrics");
+    expect(nextSongFlow(reviewing, "make the chorus more playful")).toMatchObject({
+      kind: "ask_brief", flow: { phase: "reviewing", context: completeVocal },
+    });
     expect(nextSongFlow(reviewing, "make another song about Anguilla")).toMatchObject({
-      kind: "ask_brief", flow: { phase: "awaiting_brief", kind: "vocal", conversation: expect.stringContaining("Anguilla") },
+      kind: "ask_brief", flow: { phase: "reviewing", conversation: expect.stringContaining("Anguilla") },
     });
   });
 

@@ -117,27 +117,6 @@ export function parseSongDurationSeconds(text: string): number | undefined {
   return undefined;
 }
 
-/** Exact approval replies only; phrases that merely mention approval do not qualify. */
-export function isSongApproval(text: string): boolean {
-  const t = stripAvaWakeWordForIntent(text).toLowerCase().replace(/[.!?]+$/, "").trim();
-  return /^(?:yes(?:,?\s+(?:make|generate|create)\s+it)?|approved|go ahead|make it|generate it|create it|looks good|perfect)$/.test(t);
-}
-
-/** Explicit request to move from a gathered brief into lyric drafting. */
-export function isSongDraftIntent(text: string): boolean {
-  const t = stripAvaWakeWordForIntent(text).toLowerCase().replace(/[.!?]+$/, "").trim();
-  return /^(?:go ahead|proceed|continue)(?:\s+and\s+(?:start\s+)?(?:draft|write|create)(?:\s+(?:it|the\s+lyrics?|the\s+song|lyrics?|song))?)?$/.test(t)
-    || /^(?:(?:yes|okay|ok|sure)[, ]+)?(?:please\s+|now\s+)?(?:start\s+)?(?:draft|write|create)\s+(?:it|the\s+lyrics?|the\s+song|lyrics?|song)$/.test(t);
-}
-
-/** A request to alter a reviewed lyric draft, rather than approve it. */
-export function isSongRevisionIntent(text: string): boolean {
-  const t = stripAvaWakeWordForIntent(text).toLowerCase();
-  return /^(?:please\s+)?(?:change|revise|rewrite|edit|adjust|tweak|redo)\b/.test(t)
-    || /\b(?:make|change)\s+(?:the\s+)?(?:lyrics?|song|chorus|verse|ending)\b/.test(t)
-    || /\b(?:different|another)\s+(?:chorus|verse|ending|style|genre|mood)\b/.test(t);
-}
-
 export function songFlowKey(conv: string): string {
   return `song_flow:${conv}`;
 }
@@ -173,10 +152,10 @@ export function completeSongFlow(flow: SongFlowState): SongFlowState {
  */
 export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlowAction {
   const requestKind = classifySongRequest(text);
-  // A fresh creation request replaces an abandoned older brief/draft. Revision
-  // language stays attached to the current draft instead of restarting it.
-  if (requestKind && (!flow || flow.phase === "completed" ||
-      (flow.phase === "reviewing" && !isSongRevisionIntent(text)))) {
+  // Only start a new lifecycle when no active conversation exists (or the last
+  // one completed). Once active, the model—not this classifier—interprets every
+  // continuation, revision, approval, hesitation, and topic change.
+  if (requestKind && (!flow || flow.phase === "completed")) {
     const brief = stripAvaWakeWordForIntent(text);
     return {
       kind: "ask_brief",
@@ -192,21 +171,9 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
       : { kind: "none", flow: null };
   }
 
-  if (flow.phase === "awaiting_brief") {
+  if (flow.phase === "awaiting_brief" || flow.phase === "reviewing") {
     const brief = stripAvaWakeWordForIntent(text);
     if (!brief) return { kind: "ask_brief", flow };
-    const kind = flow.kind ?? "vocal";
-    if (isSongProductionContextReady(flow.context, kind) &&
-        (isSongApproval(text) || isSongDraftIntent(text))) {
-      return {
-        kind: kind === "instrumental" ? "generate" : "draft",
-        flow: {
-          ...flow,
-          brief: flow.brief ?? songProductionBrief(flow.context!, kind),
-          phase: kind === "instrumental" ? "generating" : "awaiting_brief",
-        },
-      };
-    }
     const priorConversation = flow.conversation ?? flow.brief;
     const conversation = [priorConversation, brief].filter(Boolean).join("\n\n");
     // AI owns interpretation and the conversational response. This transition
@@ -215,28 +182,10 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
     return {
       kind: "ask_brief",
       flow: {
-        ...flow, phase: "awaiting_brief", conversation,
+        ...flow, conversation,
         durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60,
       },
     };
-  }
-
-  if (flow.phase === "reviewing") {
-    if (flow.kind !== "instrumental" && isSongApproval(text) && flow.lyrics) return { kind: "generate", flow: { ...flow, phase: "generating" } };
-    if (isSongRevisionIntent(text)) {
-      const revision = stripAvaWakeWordForIntent(text);
-      return {
-        kind: "draft",
-        flow: {
-          phase: "awaiting_brief",
-          kind: flow.kind ?? "vocal",
-          conversation: [flow.conversation ?? flow.brief, revision].filter(Boolean).join("\n\n"),
-          context: flow.context,
-          brief: [flow.brief, revision].filter(Boolean).join("\n\n"),
-          durationSeconds: parseSongDurationSeconds(revision) ?? flow.durationSeconds ?? 60,
-        },
-      };
-    }
   }
 
   return { kind: "none", flow };

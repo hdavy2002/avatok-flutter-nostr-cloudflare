@@ -9,19 +9,23 @@ For a vocal song, the essential direction is: theme or purpose, genre, mood/ener
 
 Conversation rules:
 - First decide whether the latest message is continuing this song discussion. If the person clearly changes topic or asks for another kind of work (for example a video, image, email, or unrelated question), set action to "switch". Do not force the new request into the song.
+- Infer what the person means from the full conversation, current phase, prior Ava reply, and saved creative direction. Never decide from a literal keyword or require a command phrase.
 - Respond naturally to what the person just said. Acknowledge, react, or briefly explain a musical tradeoff when useful.
 - Ask at most ONE focused follow-up question per turn.
 - Suggestions must be tailored to the actual song. Do not reuse generic examples.
 - Never dump a list of missing fields, mention required fields, say "I still need", or sound like a form.
 - Do not repeatedly ask something already answered. If an answer is ambiguous, clarify it conversationally.
-- Do not invent a user preference unless they explicitly ask Ava to choose; when they do, make a sensible producer choice and record it.
-- Treat natural production instructions such as "go ahead", "draft it", or "you choose and start" as permission to make sensible producer choices for any optional details. Do not ask another question merely to fill an optional detail.
-- If enough context is present, do not ask another question. Briefly confirm the creative direction and say the lyrics will be drafted next (or the instrumental will be created next).
+- Do not invent a user preference unless the conversation gives Ava permission to choose; when it does, make sensible producer choices and record them.
+- Choose action "discuss" when the person wants to keep shaping the idea or one essential creative decision is genuinely unclear.
+- Choose action "draft" when the person means that Ava should now write or rewrite vocal lyrics. A revision may be expressed in ordinary conversational language.
+- Choose action "generate" when the person means that Ava should create an instrumental, or accepts the currently reviewed vocal lyrics and wants the finished song created.
+- Choose action "switch" when the person has moved to a different topic or kind of work.
+- The reply must match the action. Never promise to draft or generate while returning "discuss".
 
 Return ONLY valid JSON with this shape:
-{"action":"continue","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null}}
+{"action":"discuss","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null}}
 
-The action value must be either "continue" or "switch". For action "continue", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
+The action value must be "discuss", "draft", "generate", or "switch". For every action except "switch", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. Choose "draft" only when the essential vocal direction is known. Choose "generate" for a vocal song only when the current lyrics are under review and the person has accepted them. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
 
 function cleanText(value: unknown, max = 240): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -56,7 +60,7 @@ function mergeContext(previous: SongProductionContext | undefined, raw: Record<s
 }
 
 export interface SongInterviewTurn {
-  action: "continue" | "switch";
+  action: "discuss" | "draft" | "generate" | "switch";
   reply: string;
   context: SongProductionContext;
 }
@@ -68,22 +72,31 @@ export function parseSongInterviewTurn(rawText: string, previous?: SongProductio
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("song interview returned no JSON object");
   const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  const action = parsed.action === "switch" ? "switch" : "continue";
+  const action = ["draft", "generate", "switch"].includes(String(parsed.action))
+    ? parsed.action as SongInterviewTurn["action"]
+    : "discuss";
   const reply = cleanText(parsed.reply, 700);
   const contextRaw = parsed.context && typeof parsed.context === "object"
     ? parsed.context as Record<string, unknown>
     : {};
-  if (action === "continue" && !reply) throw new Error("song interview returned an empty reply");
+  if (action !== "switch" && !reply) throw new Error("song interview returned an empty reply");
   return { action, reply: reply ?? "", context: mergeContext(previous, contextRaw) };
 }
 
-export function songInterviewUserPayload(flow: SongFlowState, latestUserText: string): string {
+export function songInterviewUserPayload(
+  flow: SongFlowState,
+  latestUserText: string,
+  serverValidationFeedback?: string,
+): string {
   const kind: SongRequestKind = flow.kind ?? "vocal";
   return JSON.stringify({
     songType: kind,
+    currentPhase: flow.phase,
     savedContext: flow.context ?? {},
+    currentLyrics: flow.lyrics ? String(flow.lyrics).slice(-6000) : null,
     previousAvaReply: flow.lastInterviewReply ?? null,
     latestUserMessage: String(latestUserText || "").slice(0, 2000),
     userConversationSoFar: String(flow.conversation ?? flow.brief ?? "").slice(-6000),
+    serverValidationFeedback: serverValidationFeedback ?? null,
   });
 }
