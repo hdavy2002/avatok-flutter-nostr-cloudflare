@@ -1392,7 +1392,7 @@
   ]
  },
  "CALL-PREWARM-1": {
-  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P1 — the callee pre-warms its media path (ICE fetch + /api/callsfu/:room/join seat) the moment the incoming-call push lands, gated behind callPrewarmOnRingV1. CallSession._startSfuMedia() now adopts the pre-warmed join instead of doing the ICE+seat round trip cold, so accept only has to publish + pull. Discarded (seat closed) on decline/cancel/timeout/missed and when older than 60s.",
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P1 \u2014 the callee pre-warms its media path (ICE fetch + /api/callsfu/:room/join seat) the moment the incoming-call push lands, gated behind callPrewarmOnRingV1. CallSession._startSfuMedia() now adopts the pre-warmed join instead of doing the ICE+seat round trip cold, so accept only has to publish + pull. Discarded (seat closed) on decline/cancel/timeout/missed and when older than 60s.",
   "flags": [
    "callSfuV1",
    "callPrewarmOnRingV1"
@@ -1407,7 +1407,7 @@
     "equals": true,
     "min_events": 1,
     "where": {},
-    "note": "The callee's accept must actually adopt a live pre-warmed seat, not just find an entry — had_join:false means the /join round trip never finished in time and the accept path fell back to cold-start behaviour."
+    "note": "The callee's accept must actually adopt a live pre-warmed seat, not just find an entry \u2014 had_join:false means the /join round trip never finished in time and the accept path fell back to cold-start behaviour."
    },
    {
     "event": "call_first_audio_ms",
@@ -1417,12 +1417,12 @@
     "where": {
      "network": "wifi"
     },
-    "note": "Callee stage_first_audio_bytes on wifi must be < 4500ms. Read the actual number, do not just confirm the event exists (CLAUDE.md ship-gate rule 3). Note the plan's own P1 target (Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md) is a tighter <2500ms accept→first_audio on wifi — 4500ms is the ship-gate floor for this manifest entry, not the aspiration."
+    "note": "Callee stage_first_audio_bytes on wifi must be < 4500ms. Read the actual number, do not just confirm the event exists (CLAUDE.md ship-gate rule 3). Note the plan's own P1 target (Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md) is a tighter <2500ms accept\u2192first_audio on wifi \u2014 4500ms is the ship-gate floor for this manifest entry, not the aspiration."
    }
   ]
  },
  "CALL-PREJOIN-1": {
-  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2 — the CALLER joins the SFU and publishes its audio track DURING THE RING (from the 'welcome' handler, the moment its own room socket is confirmed open with nobody else present yet), gated behind callSfuV1 && callerPrejoinOnRingV1. CallSfuTransport.connect() is split into connectPublish()/connectPull() so the publish half can run at ring time and the pull half only once a peer seat exists; CallSession._startSfuMedia() adopts the pre-joined transport when the peer-join election lands on SFU (case 'sfu-start'), and discards it (closes the local PC + the SFU seat) on every other outcome: RTK election, a genuine P2P offer, sfu-abort, or hangup while still ringing. Video (for a video call) publishes AFTER accept via the existing mid-call camera-on path (CallSfuTransport.publishVideo) — only audio is live during the ring. Callee-side code is unchanged; its existing pull now finds a live track on the first attempt instead of racing the caller's own post-accept publish.",
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2 \u2014 the CALLER joins the SFU and publishes its audio track DURING THE RING (from the 'welcome' handler, the moment its own room socket is confirmed open with nobody else present yet), gated behind callSfuV1 && callerPrejoinOnRingV1. CallSfuTransport.connect() is split into connectPublish()/connectPull() so the publish half can run at ring time and the pull half only once a peer seat exists; CallSession._startSfuMedia() adopts the pre-joined transport when the peer-join election lands on SFU (case 'sfu-start'), and discards it (closes the local PC + the SFU seat) on every other outcome: RTK election, a genuine P2P offer, sfu-abort, or hangup while still ringing. Video (for a video call) publishes AFTER accept via the existing mid-call camera-on path (CallSfuTransport.publishVideo) \u2014 only audio is live during the ring. Callee-side code is unchanged; its existing pull now finds a live track on the first attempt instead of racing the caller's own post-accept publish.",
   "flags": [
    "callSfuV1",
    "callerPrejoinOnRingV1"
@@ -1437,7 +1437,7 @@
     "equals": "",
     "min_events": 1,
     "where": {},
-    "note": "The CALLER must actually finish publishing to the SFU before accept — this event's presence is the proof the ring-time publish completed, not merely that a prejoin attempt started (call_prejoin_started fires unconditionally and proves nothing by itself)."
+    "note": "The CALLER must actually finish publishing to the SFU before accept \u2014 this event's presence is the proof the ring-time publish completed, not merely that a prejoin attempt started (call_prejoin_started fires unconditionally and proves nothing by itself)."
    },
    {
     "event": "call_first_audio_ms",
@@ -1445,7 +1445,7 @@
     "equals": "",
     "min_events": 1,
     "where": {},
-    "note": "Query BOTH the caller's and the callee's call_first_audio_ms for the SAME call_id and compute stage_sfu_pull_audio - stage_sfu_publish on each. Plan target: < 700ms (mutual wait gone) on both sides of the SAME call, not just one leg. Read the actual millisecond values (CLAUDE.md ship-gate rule 3) — do not stop at confirming the stages are present. On the caller's own timeline stage_sfu_publish should read as a small number measured from call_started (it happened during the ring), not ~10s in, which is the other half of the proof this shipped."
+    "note": "Query BOTH the caller's and the callee's call_first_audio_ms for the SAME call_id and compute stage_sfu_pull_audio - stage_sfu_publish on each. Plan target: < 700ms (mutual wait gone) on both sides of the SAME call, not just one leg. Read the actual millisecond values (CLAUDE.md ship-gate rule 3) \u2014 do not stop at confirming the stages are present. On the caller's own timeline stage_sfu_publish should read as a small number measured from call_started (it happened during the ring), not ~10s in, which is the other half of the proof this shipped."
    }
   ]
  },
@@ -1638,7 +1638,7 @@
   ]
  },
  "CALL-ACCEPT-FRAME-1": {
-  "description": "P3 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md: kill the blank screen between accepting an incoming call and the Flutter call UI appearing. MainActivity.kt detects a native Accept launch (flutter_callkit_incoming's TransparentActivity relaunches MainActivity with action=CallkitConstants.ACTION_CALL_ACCEPT, cold or warm) and, if Flutter's first frame has not painted yet, shows a full-screen native 'Connecting…'/'AvaTOK' overlay (dark bg 0xFF0E1113) removed with a 150ms fade in onFlutterUiDisplayed() or a 6s failsafe. The same detection captures SystemClock.elapsedRealtime() at accept and reports the accept-to-first-frame span to Dart via the existing avatok/voice_audio channel (AvaVoiceAudioPlugin.emitAcceptToFirstFrame -> event 'acceptToFirstFrame', resent once after 3s in case Dart's handler was not yet registered, deduped in native_voice_audio.dart on the (ms, cold) pair). Client-only; no worker change, no new flag — the overlay is unconditional (a native no-op improvement that cannot regress an already-warm accept).",
+  "description": "P3 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md: kill the blank screen between accepting an incoming call and the Flutter call UI appearing. MainActivity.kt detects a native Accept launch (flutter_callkit_incoming's TransparentActivity relaunches MainActivity with action=CallkitConstants.ACTION_CALL_ACCEPT, cold or warm) and, if Flutter's first frame has not painted yet, shows a full-screen native 'Connecting\u2026'/'AvaTOK' overlay (dark bg 0xFF0E1113) removed with a 150ms fade in onFlutterUiDisplayed() or a 6s failsafe. The same detection captures SystemClock.elapsedRealtime() at accept and reports the accept-to-first-frame span to Dart via the existing avatok/voice_audio channel (AvaVoiceAudioPlugin.emitAcceptToFirstFrame -> event 'acceptToFirstFrame', resent once after 3s in case Dart's handler was not yet registered, deduped in native_voice_audio.dart on the (ms, cold) pair). Client-only; no worker change, no new flag \u2014 the overlay is unconditional (a native no-op improvement that cannot regress an already-warm accept).",
   "shipped": "pending",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -1649,9 +1649,30 @@
     "property": "ms",
     "lt": 2000,
     "min_events": 1,
-    "note": "Presence alone is not enough — this asserts the VALUE. ms is the native accept-tap-to-first-Flutter-frame span; the ship-gate success bar is <800ms warm / <2000ms cold (cold=true/false is a separate property on the same event, not asserted here since a single slow cold boot on a low-end device is not itself a regression). Absence of this event entirely on the new build means MainActivity's detection or the method-channel forward broke — check `cold` on the events that DO arrive to tell a slow engine from a broken instrument. The blank-screen fix itself (the 'Connecting…' overlay) has no telemetry signature of its own and must be verified VISUALLY on a real accept — a two-phone real-call check per the ship-gate rules, not just this number."
+    "note": "Presence alone is not enough \u2014 this asserts the VALUE. ms is the native accept-tap-to-first-Flutter-frame span; the ship-gate success bar is <800ms warm / <2000ms cold (cold=true/false is a separate property on the same event, not asserted here since a single slow cold boot on a low-end device is not itself a regression). Absence of this event entirely on the new build means MainActivity's detection or the method-channel forward broke \u2014 check `cold` on the events that DO arrive to tell a slow engine from a broken instrument. The blank-screen fix itself (the 'Connecting\u2026' overlay) has no telemetry signature of its own and must be verified VISUALLY on a real accept \u2014 a two-phone real-call check per the ship-gate rules, not just this number."
    }
   ],
   "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/avatok_call/MainActivity.kt: isNativeAcceptLaunch/onCreate/onNewIntent/onFlutterUiDisplayed/showConnectingOverlay/reportAcceptToFirstFrame; app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt: emitAcceptToFirstFrame; app/lib/core/voice/native_voice_audio.dart: _ensureHandler 'acceptToFirstFrame' branch -> Analytics.capture('call_accept_first_frame_ms', {ms, cold})"
+ },
+ "SONG-LEN-2": {
+  "description": "MiniMax music rejects lyrics_prompt >= 1000 chars (live 400 2026-08-16 22:08 IST), so full-length lyric drafts from SONG-LEN-1 made every long song fail at submit. Drafts now fit the singer's cap when no long model is configured; submission trims at a section boundary as a last resort (ava_music_lyrics_trimmed); catalog advertises MiniMax honestly as 60-90s; veniceLongMusicModel flag (default off) routes >90s requests to a duration-capable Venice model. Client: failed-card copy made media-neutral.",
+  "flags": [
+   "veniceLongMusicModel"
+  ],
+  "min_devices_on_build": 1,
+  "shipped": "pending",
+  "two_sided": false,
+  "success": [
+   {
+    "event": "venice_media_job_completed",
+    "property": "status",
+    "equals": "succeeded",
+    "min_events": 1,
+    "where": {
+     "kind": "venice_music_generate"
+    },
+    "note": "Next vocal song generates end to end with zero ava_music_error lyrics_prompt rejections; venice_lyrics_drafted chars stays under 1000 when the long model is off."
+   }
+  ]
  }
 }
