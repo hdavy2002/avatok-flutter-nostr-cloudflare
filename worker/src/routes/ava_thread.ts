@@ -16,7 +16,26 @@ import { json } from "../util";
 import { requireUser, isFail, dmConvId } from "../authz";
 import { getStoreName } from "../lib/ava_rag";
 import { track, trackUser } from "../hooks";
-import { emailFor } from "../lib/identity";
+import { emailFor, nameFor } from "../lib/identity";
+// [AVA-GROUP-SESSION-1] shared group song/video sessions — see lib/ava_group_session.ts
+import { readConfig } from "./config";
+import { classifySongRequest } from "../lib/song_flow";
+import { looksLikeVideoRequest } from "../lib/composio";
+import {
+  readGroupMediaSession, writeGroupMediaSession, touchGroupMediaSession, clearGroupMediaSession,
+  type GroupMediaSession,
+} from "../lib/ava_group_session";
+
+async function isConvMember(env: Env, conv: string, uid: string): Promise<boolean> {
+  try {
+    const row = await env.DB_META
+      .prepare("SELECT 1 AS ok FROM conversation_members WHERE conv_id = ?1 AND uid = ?2 LIMIT 1")
+      .bind(conv, uid).first<{ ok: number }>();
+    return !!row;
+  } catch {
+    return false;
+  }
+}
 
 function agentOf(env: Env, uid: string) {
   return env.AVA_AGENT.get(env.AVA_AGENT.idFromName(uid));
@@ -121,18 +140,71 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
   let store = String(b.store ?? "").trim();
   if (!store && byoKey) store = (await getStoreName(env, ctx.uid).catch(() => null)) || "";
 
-  // Forward to the caller's per-user agent DO. The DO posts the working chip,
+  // [AVA-GROUP-SESSION-1] In a GROUP thread with an active shared media
+  // session, another member's PUBLIC #ava turn is routed to the INITIATOR'S
+  // AvaAgentDO (their conversation, their wallet) with the speaker attached.
+  // Private @ava turns never join the shared session. Membership is verified
+  // before any cross-user forward, and the guest's BYO key/store are dropped —
+  // the owner's tier governs the shared conversation.
+  let targetUid = ctx.uid;
+  let speaker: { uid: string; name: string | null } | null = null;
+  let activeSession: GroupMediaSession | null = null;
+  if (!priv && conv.startsWith("g_")) {
+    try {
+      const cfg = await readConfig(env);
+      if (cfg.groupSharedMediaSessionEnabled === true) {
+        activeSession = await readGroupMediaSession(env, conv);
+        if (activeSession && activeSession.owner_uid !== ctx.uid) {
+          if (await isConvMember(env, conv, ctx.uid)) {
+            targetUid = activeSession.owner_uid;
+            speaker = { uid: ctx.uid, name: await nameFor(env, ctx.uid).catch(() => null) };
+          }
+        } else if (!activeSession && (classifySongRequest(text) || looksLikeVideoRequest(text))) {
+          await writeGroupMediaSession(env, conv, ctx.uid);
+        } else if (activeSession) {
+          await touchGroupMediaSession(env, conv, activeSession);
+        }
+        if (speaker && activeSession) await touchGroupMediaSession(env, conv, activeSession);
+        if (speaker) {
+          execCtx.waitUntil(emailP.then((email) => trackRouteTurn(env, ctx.uid, email, "ava_group_media_session", {
+            ...routeProps, status: 202, duration_ms: Date.now() - t0,
+          })));
+        }
+      }
+    } catch { /* session routing is best-effort — fall back to the caller's own agent */ }
+  }
+
+  // Forward to the target agent DO. The DO posts the working chip,
   // runs the loop, and fans the answer out via InboxDO — so this returns fast.
   execCtx.waitUntil(emailP.then((email) => trackRouteTurn(env, ctx.uid, email, "ava_thread_route_accepted", {
     ...routeProps, status: 202, duration_ms: Date.now() - t0,
   })));
   let out: any = { ok: true };
   try {
-    const res = await agentOf(env, ctx.uid).fetch("https://ava-agent/turn", {
+    const body = speaker
+      ? { conv, uid: targetUid, text, private: false, key: "", store: "", speaker }
+      : { conv, uid: ctx.uid, text, private: priv, key: byoKey, store };
+    const res = await agentOf(env, targetUid).fetch("https://ava-agent/turn", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conv, uid: ctx.uid, text, private: priv, key: byoKey, store }),
+      body: JSON.stringify(body),
     });
     out = await res.json();
+    // The owner's agent had no active song/video conversation (or the guest
+    // changed topic): hand the turn back to the guest's OWN agent so their
+    // question gets a normal personal answer on their own account.
+    if (speaker && out?.deferred_to_speaker) {
+      if (out.reason === "no_active_flow") {
+        await clearGroupMediaSession(env, conv).catch(() => {});
+        if (classifySongRequest(text) || looksLikeVideoRequest(text)) {
+          await writeGroupMediaSession(env, conv, ctx.uid).catch(() => {});
+        }
+      }
+      const res2 = await agentOf(env, ctx.uid).fetch("https://ava-agent/turn", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ conv, uid: ctx.uid, text, private: priv, key: byoKey, store }),
+      });
+      out = await res2.json();
+    }
     const ok = res.ok && out?.ok !== false;
     execCtx.waitUntil(emailP.then((email) => trackRouteTurn(env, ctx.uid, email, "ava_thread_route_dispatch_result", {
       ...routeProps, status: res.status, duration_ms: Date.now() - t0, do_ok: ok,

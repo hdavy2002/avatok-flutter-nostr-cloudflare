@@ -1306,6 +1306,14 @@ export interface PlatformConfig {
   // the plain @ava chat lane keeps using the Gemma/Gemini ladder until this
   // is explicitly flipped true in KV. Boolean → NOT in numericKeys.
   veniceUncensoredChatEnabled: boolean;
+
+  // [AVA-GROUP-SESSION-1 2026-08-16] Shared group media sessions: while a
+  // public (#ava) song/video conversation is active in a GROUP thread, other
+  // members' public #ava turns join the initiator's conversation (initiator's
+  // AvaAgentDO + wallet) instead of spawning their own parallel Ava. Only the
+  // initiator can approve the paid generate step (owner decision 2026-08-16).
+  // Kill switch — boolean → NOT in numericKeys.
+  groupSharedMediaSessionEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -1786,6 +1794,9 @@ const DEFAULTS: PlatformConfig = {
   // [VENICE-CHAT-1 2026-08-14] ships dark; flip true in KV to let paid-tier
   // opted-in accounts route @ava chat to Venice Uncensored 1.2.
   veniceUncensoredChatEnabled: false,
+  // [AVA-GROUP-SESSION-1 2026-08-16] shared group song/video sessions — live by
+  // owner decision the same day; flip false in KV to kill instantly.
+  groupSharedMediaSessionEnabled: true,
 };
 
 /**

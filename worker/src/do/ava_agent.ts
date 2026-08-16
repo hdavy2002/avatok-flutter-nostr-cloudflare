@@ -1343,14 +1343,25 @@ export class AvaAgentDO {
   }
 
   // ---- the turn ---------------------------------------------------------------
-  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string }): Promise<any> {
+  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string; speaker?: { uid?: string; name?: string | null } }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
-    const userText = String(b.text || "").trim();
+    const rawUserText = String(b.text || "").trim();
     const priv = !!b.private;
     const byoKey = String(b.key || "").trim();
     const store = String(b.store || "").trim();
-    if (!conv || !uid || !userText) return { ok: false, error: "conv, uid, text required" };
+    if (!conv || !uid || !rawUserText) return { ok: false, error: "conv, uid, text required" };
+    // [AVA-GROUP-SESSION-1] A turn forwarded from another group member during a
+    // shared media session. `uid` stays the session OWNER (state + wallet);
+    // `speaker` is who actually typed. Speaker turns exist only to feed the
+    // active song/video conversation — anything else defers back to the
+    // speaker's own agent via the route (see routes/ava_thread.ts).
+    const speaker = b.speaker && typeof b.speaker === "object" && String(b.speaker.uid || "").trim()
+      ? { uid: String(b.speaker.uid).trim(), name: b.speaker.name ? String(b.speaker.name).slice(0, 60) : null }
+      : null;
+    const userText = speaker
+      ? `${speaker.name || "A group member"} (group member, not the session owner) says: ${rawUserText}`
+      : rawUserText;
 
     const songDraftKey = `song_draft:${conv}`;
     const flowKey = songFlowKey(conv);
@@ -1375,6 +1386,18 @@ export class AvaAgentDO {
     const storedVideoFlow = await this.state.storage.get<unknown>(activeVideoFlowKey);
     const videoFlow = isVideoFlowState(storedVideoFlow) ? storedVideoFlow : null;
     let pendingVideoFlow = nextVideoFlow(videoFlow, userText);
+
+    // [AVA-GROUP-SESSION-1] A guest speaker may only feed an ACTIVE song/video
+    // conversation on this (owner's) agent. No active flow → the session
+    // pointer is stale; tell the route to run this turn on the speaker's own
+    // agent instead. Returned before any chip/spend so nothing is half-posted.
+    if (speaker) {
+      const songActive = !!songFlow && songFlow.phase !== "completed";
+      const videoActive = !!videoFlow && videoFlow.phase === "discovering";
+      if (!songActive && !videoActive) {
+        return { ok: true, deferred_to_speaker: true, reason: "no_active_flow" };
+      }
+    }
 
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
@@ -1497,6 +1520,24 @@ export class AvaAgentDO {
         const catalog = mediaModelCatalog(await readConfig(this.env), mediaTier).video;
         let interview = await this.callVideoInterview(uid, pendingVideoFlow, userText, catalog);
         let turn = interview.turn;
+        // [AVA-GROUP-SESSION-1] A guest changing topic must not destroy the
+        // owner's video conversation — hand the turn back to the guest's own
+        // agent and leave the flow untouched.
+        if (speaker && turn.action === "switch") {
+          await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+          return { ok: true, status_id: statusId, deferred_to_speaker: true, reason: "topic_switch" };
+        }
+        // [AVA-GROUP-SESSION-1] Only the initiator may approve the paid
+        // generate step (owner decision 2026-08-16). A guest's go-ahead gets
+        // acknowledged, then Ava asks the initiator for the final yes.
+        if (speaker && turn.action === "generate") {
+          interview = await this.callVideoInterview(
+            uid, { ...pendingVideoFlow, context: turn.context, lastInterviewReply: turn.reply }, userText, catalog,
+            "The go-ahead came from a group member, not the person who started this video and pays for it. Keep every saved choice, choose discuss, acknowledge the member naturally, and ask the initiator for the final confirmation to generate.",
+          );
+          turn = interview.turn;
+          if (turn.action === "generate" || turn.action === "switch") turn = { ...turn, action: "discuss" };
+        }
         if (turn.action === "switch") {
           await this.state.storage.delete(activeVideoFlowKey);
           pendingVideoFlow = null;
@@ -1614,6 +1655,12 @@ export class AvaAgentDO {
               userText,
             );
             let interview = interviewModel.turn;
+            // [AVA-GROUP-SESSION-1] A guest changing topic must not destroy
+            // the owner's song conversation — defer to the guest's own agent.
+            if (speaker && interview.action === "switch") {
+              await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+              return { ok: true, status_id: statusId, deferred_to_speaker: true, reason: "topic_switch" };
+            }
             if (interview.action === "switch") {
               await this.state.storage.delete(flowKey);
               songAction = { kind: "none", flow: null };
@@ -1646,6 +1693,22 @@ export class AvaAgentDO {
               let interviewedFlow = withSongInterview(songAction.flow, interview.context, interview.reply);
               let songKind = interviewedFlow.kind ?? "vocal";
               let ready = isSongProductionContextReady(interview.context, songKind);
+              // [AVA-GROUP-SESSION-1] Only the initiator may approve the paid
+              // generate step. A guest's go-ahead is acknowledged, then Ava
+              // asks the initiator by name for the final yes.
+              if (speaker && interview.action === "generate") {
+                interviewModel = await this.callSongInterview(
+                  uid, interviewedFlow, userText,
+                  "The go-ahead came from a group member, not the person who started this song and pays for it. Keep every saved choice and the current lyrics, choose discuss, acknowledge the member naturally, and ask the initiator for the final confirmation to create the track.",
+                );
+                interview = interviewModel.turn;
+                if (interview.action !== "discuss" && interview.action !== "draft") {
+                  interview = { ...interview, action: "discuss" };
+                }
+                interviewedFlow = withSongInterview(interviewedFlow, interview.context, interview.reply);
+                songKind = interviewedFlow.kind ?? "vocal";
+                ready = isSongProductionContextReady(interview.context, songKind);
+              }
               const canExecute = () => interview.action === "discuss"
                 || (interview.action === "draft" && songKind === "vocal" &&
                   (ready || (activeInterviewFlow.phase === "reviewing" && !!interviewedFlow.brief)))
@@ -1691,6 +1754,10 @@ export class AvaAgentDO {
                 ready = isSongProductionContextReady(interview.context, songKind);
               }
 
+              if (speaker && interview.action === "switch") {
+                await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                return { ok: true, status_id: statusId, deferred_to_speaker: true, reason: "topic_switch" };
+              }
               if (interview.action === "switch") {
                 await this.state.storage.delete(flowKey);
                 songAction = { kind: "none", flow: null };
@@ -1817,6 +1884,15 @@ export class AvaAgentDO {
         }).catch(() => {});
         return { ok: music.ok, status_id: statusId, ...(!music.ok ? { error: "music_start_failed" } : {}) };
         }
+      }
+
+      // [AVA-GROUP-SESSION-1] A guest turn that reaches the general lane (for
+      // example while a song is mid-generation) must never run — and bill — on
+      // the owner's account. Defer without clearing the session.
+      if (speaker) {
+        const chipGuardR = await chipP;
+        if (chipGuardR.ok) await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+        return { ok: true, status_id: statusId, deferred_to_speaker: true, reason: "not_media_turn" };
       }
 
       const [chipR, winR, premiumR] = await Promise.all([chipP, windowP, premiumP]);
