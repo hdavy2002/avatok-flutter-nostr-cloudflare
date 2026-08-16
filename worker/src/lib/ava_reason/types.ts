@@ -187,6 +187,12 @@ export interface ReasonCallEvent {
   tokens_in: number | null;
   tokens_out: number | null;
   error: string | null;
+  // [VERTEX-1] Which Google surface actually served the call: "vertex" |"devapi",
+  // or null for non-Google providers. This is the SHIP-GATE success value — the
+  // Vertex move is only proven when real prod events carry transport="vertex".
+  // "ava_reason_call events are flowing" would NOT be evidence: the fallback in
+  // lib/vertex.ts means a completely failed switch still emits healthy events.
+  transport: string | null;
 }
 
 /**

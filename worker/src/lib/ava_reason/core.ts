@@ -54,7 +54,8 @@ function killSwitchBlocked(env: ReasonEnv, _req: ReasonReq): string | null {
 function mkEvent(
   req: ReasonReq, provider: Step["provider"], model: string,
   info: { ok: boolean; fallback_used: boolean; cache_hit: boolean; latency_ms: number;
-    tokens_in: number | null; tokens_out: number | null; error: string | null; primary_model?: string | null },
+    tokens_in: number | null; tokens_out: number | null; error: string | null; primary_model?: string | null;
+    transport?: string | null },
 ): ReasonCallEvent {
   return {
     role: req.role, capability: req.capability, trigger: req.trigger,
@@ -65,6 +66,9 @@ function mkEvent(
     ok: info.ok, fallback_used: info.fallback_used, cache_hit: info.cache_hit,
     latency_ms: info.latency_ms, tokens_in: info.tokens_in, tokens_out: info.tokens_out,
     error: info.error,
+    // [VERTEX-1] The google adapter stamps `_via` onto its raw response; every
+    // other provider leaves it undefined and reports null.
+    transport: info.transport ?? null,
   };
 }
 
@@ -136,6 +140,7 @@ export async function runReason(env: ReasonEnv, req: ReasonReq, host: ReasonHost
       ok: true, fallback_used: fb, cache_hit: false, latency_ms: latency,
       tokens_in: out.tokensIn ?? null, tokens_out: out.tokensOut ?? null, error: null,
       primary_model: fb ? p.primary.model : null,
+      transport: (out.raw as any)?._via ?? null, // [VERTEX-1] "vertex" | "devapi"
     }));
     return (async () => {
       if (req.bumpSpend && host.bumpSpend) { try { await host.bumpSpend(env, latency); } catch { /* best-effort */ } }

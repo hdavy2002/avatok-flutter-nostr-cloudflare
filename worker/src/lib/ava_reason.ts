@@ -39,6 +39,8 @@ function eventProps(ev: ReasonCallEvent): Record<string, unknown> {
     feature: ev.feature, verb: ev.verb, provider: ev.provider,
     cache_hit: ev.cache_hit, tokens_in: ev.tokens_in, tokens_out: ev.tokens_out,
     primary_model: ev.primary_model, error: ev.error,
+    // [VERTEX-1] "vertex" | "devapi" | null — the ship-gate success value.
+    transport: ev.transport,
   };
 }
 
