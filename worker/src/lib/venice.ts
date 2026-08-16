@@ -80,6 +80,28 @@ const VIDEO_CIRCUIT_LIMIT = 3;
 const VIDEO_CIRCUIT_COOLDOWN_MS = 60_000;
 const VIDEO_MODEL_CACHE_KEY = "watchdog:venice:video:models";
 
+// Keep the configured LTX routes admissible even when Venice returns a partial
+// or differently-shaped catalog response. The queue endpoint remains the final
+// authority, and its real error is still recorded by the submit watchdog.
+const KNOWN_VIDEO_MODELS = new Set([
+  "ltx-2-v2-3-fast-text-to-video",
+  "ltx-2-v2-3-fast-image-to-video",
+  "ltx-2-fast-text-to-video",
+  "ltx-2-fast-image-to-video",
+]);
+
+function videoModelId(row: any): string {
+  return String(
+    row?.id
+      ?? row?.model
+      ?? row?.model_id
+      ?? row?.modelId
+      ?? row?.model_spec?.id
+      ?? row?.model_spec?.model_id
+      ?? "",
+  ).trim();
+}
+
 type VideoCircuitState = { failures: number; opened_at?: number };
 
 async function readVideoCircuit(env: VeniceEnv & { TOKENS?: KVNamespace }): Promise<VideoCircuitState> {
@@ -129,7 +151,7 @@ export async function veniceVideoPreflight(
       try { await env.TOKENS?.put(VIDEO_MODEL_CACHE_KEY, JSON.stringify(models), { expirationTtl: 60 }); } catch { /* cache is optional */ }
     }
     const rows = Array.isArray(models) ? models : Array.isArray(models?.data) ? models.data : Array.isArray(models?.models) ? models.models : [];
-    const available = rows.map((row: any) => String(row?.id ?? row?.model ?? row ?? ""));
+    const available = rows.map(videoModelId).filter(Boolean);
     if (available.length > 0 && !available.includes(model)) {
       // Venice rotates its video catalog. Prefer the configured model, but do
       // not make a catalog rename take the entire video lane offline. Select a
@@ -141,6 +163,9 @@ export async function veniceVideoPreflight(
         ? /image-to-video|reference-to-video/i.test(id)
         : /text-to-video/i.test(id));
       if (fallback) return { ok: true, model: fallback };
+      // A filtered/partial catalog must not take down a known-good route. The
+      // queue call below is deliberately retained as the final validation.
+      if (KNOWN_VIDEO_MODELS.has(model)) return { ok: true, model };
       await recordVeniceVideoProviderFailure(env);
       return { ok: false, code: "provider_invalid_request" };
     }
