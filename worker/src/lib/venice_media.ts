@@ -29,7 +29,7 @@ import { moderate } from "./moderation";
 import {
   veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
   VENICE_VIDEO_MIN_SECONDS, VENICE_VIDEO_MAX_SECONDS, VENICE_VIDEO_DEFAULT_RESOLUTION,
-  type VeniceIntent, type VeniceTier, classifyVeniceError,
+  type VeniceIntent, type VeniceTier, type VeniceVideoResolution, classifyVeniceError,
   veniceVideoPreflight, recordVeniceVideoProviderFailure, recordVeniceVideoProviderSuccess,
 } from "./venice";
 import {
@@ -67,6 +67,8 @@ export interface RunVeniceVideoArgs {
   sourceImageUrl?: string;
   /** Users may request any whole-second video from 8 through 15 seconds. */
   durationSeconds?: number;
+  resolution?: VeniceVideoResolution;
+  aspectRatio?: "9:16" | "16:9";
   private: boolean;
   /** [VENICE-TIER-1] Caller-supplied — do/ava_agent.ts's onVideo closure
    *  resolves this via lib/venice_tier.ts's veniceTier(env, uid) before
@@ -176,7 +178,12 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
     // routes/ava_image.ts's generateImageVenice() call site, not a new pattern.
     ({ queueId } = await veniceQueueVideo(
       env as any, providerModel, prompt,
-      { duration: durationStr, ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}) },
+      {
+        duration: durationStr,
+        resolution: a.resolution,
+        aspectRatio: a.aspectRatio,
+        ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}),
+      },
     ));
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
@@ -216,7 +223,8 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl, model: providerModel,
-    duration_seconds: durationNum, resolution: VENICE_VIDEO_DEFAULT_RESOLUTION, prompt_crafted: prompt !== rawPrompt,
+    duration_seconds: durationNum, resolution: a.resolution ?? VENICE_VIDEO_DEFAULT_RESOLUTION,
+    aspect_ratio: a.aspectRatio ?? "9:16", prompt_crafted: prompt !== rawPrompt,
   });
   await postAvaMessage(env, {
     ownerUid: a.uid, conv: a.conv,

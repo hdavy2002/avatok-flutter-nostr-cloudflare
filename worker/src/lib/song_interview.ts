@@ -13,6 +13,7 @@ Conversation rules:
 - Respond naturally to what the person just said. Acknowledge, react, or briefly explain a musical tradeoff when useful.
 - Ask at most ONE focused follow-up question per turn.
 - Suggestions must be tailored to the actual song. Do not reuse generic examples.
+- Treat availableModels as the current source of truth. When model choice, supported length, capabilities or price becomes relevant, explain only those live options naturally; never invent or hardcode a provider capability or price.
 - Never dump a list of missing fields, mention required fields, say "I still need", or sound like a form.
 - Do not repeatedly ask something already answered. If an answer is ambiguous, clarify it conversationally.
 - Do not invent a user preference unless the conversation gives Ava permission to choose; when it does, make sensible producer choices and record them.
@@ -24,7 +25,7 @@ Conversation rules:
 - The reply must match the action. Never promise to draft or generate while returning "discuss".
 
 Return ONLY valid JSON with this shape:
-{"action":"discuss","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null}}
+{"action":"discuss","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null,"modelId":string|null}}
 
 The action value must be "discuss", "draft", "generate", "restart", or "switch". For every action except "switch", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. For "restart", context must instead describe only the new song. Choose "draft" only when the essential vocal direction is known. Choose "generate" for a vocal song only when the current lyrics are under review and the person has accepted them. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
 
@@ -44,11 +45,13 @@ function cleanInstruments(value: unknown): string[] | undefined {
   return cleaned.length ? cleaned : undefined;
 }
 
-function mergeContext(previous: SongProductionContext | undefined, raw: Record<string, unknown>): SongProductionContext {
+function mergeContext(previous: SongProductionContext | undefined, raw: Record<string, unknown>, availableModels: unknown[] = []): SongProductionContext {
   const durationRaw = Number(raw.durationSeconds);
   const durationSeconds = Number.isFinite(durationRaw) && durationRaw > 0
     ? clampSongDurationSeconds(durationRaw)
     : previous?.durationSeconds;
+  const requestedModel = cleanText(raw.modelId, 160);
+  const allowedIds = availableModels.map((m) => m && typeof m === "object" ? cleanText((m as Record<string, unknown>).id, 160) : undefined).filter(Boolean);
   return {
     theme: cleanText(raw.theme) ?? previous?.theme,
     genre: cleanText(raw.genre, 120) ?? previous?.genre,
@@ -59,6 +62,7 @@ function mergeContext(previous: SongProductionContext | undefined, raw: Record<s
     voiceStyle: cleanText(raw.voiceStyle, 160) ?? previous?.voiceStyle,
     durationSeconds,
     intendedUse: cleanText(raw.intendedUse, 160) ?? previous?.intendedUse,
+    modelId: requestedModel && allowedIds.includes(requestedModel) ? requestedModel : previous?.modelId,
   };
 }
 
@@ -69,7 +73,7 @@ export interface SongInterviewTurn {
 }
 
 /** Parse and sanitize an AI interview turn. Server code, not model prose, validates readiness. */
-export function parseSongInterviewTurn(rawText: string, previous?: SongProductionContext): SongInterviewTurn {
+export function parseSongInterviewTurn(rawText: string, previous?: SongProductionContext, availableModels: unknown[] = []): SongInterviewTurn {
   const raw = String(rawText || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
@@ -88,7 +92,7 @@ export function parseSongInterviewTurn(rawText: string, previous?: SongProductio
     reply: reply ?? "",
     // A semantic restart deliberately severs stale creative choices. Every
     // other action keeps the normal merge behavior for shorthand follow-ups.
-    context: mergeContext(action === "restart" ? undefined : previous, contextRaw),
+    context: mergeContext(action === "restart" ? undefined : previous, contextRaw, availableModels),
   };
 }
 
@@ -122,6 +126,7 @@ export function songInterviewUserPayload(
   flow: SongFlowState,
   latestUserText: string,
   serverValidationFeedback?: string,
+  availableModels?: unknown[],
 ): string {
   const kind: SongRequestKind = flow.kind ?? "vocal";
   return JSON.stringify({
@@ -133,5 +138,6 @@ export function songInterviewUserPayload(
     latestUserMessage: String(latestUserText || "").slice(0, 2000),
     userConversationSoFar: String(flow.conversation ?? flow.brief ?? "").slice(-6000),
     serverValidationFeedback: serverValidationFeedback ?? null,
+    availableModels: availableModels ?? [],
   });
 }

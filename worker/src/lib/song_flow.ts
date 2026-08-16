@@ -29,6 +29,7 @@ export interface SongProductionContext {
   voiceStyle?: string;
   durationSeconds?: number;
   intendedUse?: string;
+  modelId?: string;
 }
 
 export type SongFlowAction =
@@ -63,6 +64,7 @@ export function songProductionBrief(context: SongProductionContext, kind: SongRe
     kind === "vocal" && context.vocalArrangement ? `Vocal arrangement: ${context.vocalArrangement}` : "",
     kind === "vocal" && context.voiceStyle ? `Voice character: ${context.voiceStyle}` : "",
     context.intendedUse ? `Intended use: ${context.intendedUse}` : "",
+    context.modelId ? `Audio model: ${context.modelId}` : "",
     `Length: ${context.durationSeconds ?? 60} seconds`,
   ].filter(Boolean).join("\n");
 }

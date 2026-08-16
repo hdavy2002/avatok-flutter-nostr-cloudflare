@@ -89,6 +89,15 @@ import {
   songInterviewUserPayload, SONG_INTERVIEW_FALLBACK_MODEL, SONG_INTERVIEW_SYSTEM,
   type SongInterviewTurn,
 } from "../lib/song_interview";
+import { mediaModelCatalog, type MediaModelChoice } from "../lib/media_model_catalog";
+import {
+  isVideoContextReady, isVideoFlowState, nextVideoFlow, videoFlowKey, videoPrompt,
+  type VideoFlowState,
+} from "../lib/video_flow";
+import {
+  parseVideoInterviewTurn, recoverVideoDiscussion, videoInterviewPayload,
+  VIDEO_INTERVIEW_FALLBACK_MODEL, VIDEO_INTERVIEW_SYSTEM, type VideoInterviewTurn,
+} from "../lib/video_interview";
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
 //   chat  — answer directly in conversation
@@ -161,6 +170,12 @@ interface SongInterviewCallResult {
   fallbackUsed: boolean;
   recoveredDiscussion: boolean;
   primaryFailure: string | null;
+}
+interface VideoInterviewCallResult {
+  turn: VideoInterviewTurn;
+  model: string;
+  provider: string;
+  fallbackUsed: boolean;
 }
 
 // Belt-and-suspenders: strip any reasoning a model might emit so raw
@@ -1169,14 +1184,16 @@ export class AvaAgentDO {
     serverValidationFeedback?: string,
   ): Promise<SongInterviewCallResult> {
     const startedAt = Date.now();
-    const payload = songInterviewUserPayload(flow, latestUserText, serverValidationFeedback);
+    const mediaTier = await veniceTier(this.env, uid);
+    const audioModels = mediaModelCatalog(await readConfig(this.env), mediaTier).audio;
+    const payload = songInterviewUserPayload(flow, latestUserText, serverValidationFeedback, audioModels);
     let primaryText = "";
     let primaryFailure: string | null = null;
     try {
       const primary = await this.callThreadModel(uid, SONG_INTERVIEW_SYSTEM, payload);
       primaryText = primary.text;
       return {
-        turn: parseSongInterviewTurn(primary.text, flow.context),
+        turn: parseSongInterviewTurn(primary.text, flow.context, audioModels),
         model: primary.model,
         provider: primary.provider,
         latencyMs: Date.now() - startedAt,
@@ -1207,7 +1224,7 @@ export class AvaAgentDO {
       );
       fallbackText = fallback.text;
       return {
-        turn: parseSongInterviewTurn(fallback.text, flow.context),
+        turn: parseSongInterviewTurn(fallback.text, flow.context, audioModels),
         model: SONG_INTERVIEW_FALLBACK_MODEL,
         provider: "venice",
         latencyMs: Date.now() - startedAt,
@@ -1231,6 +1248,40 @@ export class AvaAgentDO {
       };
     }
     throw new Error(`song_interview_models_exhausted:${primaryFailure ?? "unknown"}`);
+  }
+
+  private async callVideoInterview(
+    uid: string,
+    flow: VideoFlowState,
+    latestUserText: string,
+    models: MediaModelChoice[],
+    serverValidationFeedback?: string,
+  ): Promise<VideoInterviewCallResult> {
+    const payload = videoInterviewPayload(flow, latestUserText, models, serverValidationFeedback);
+    let primaryText = "";
+    try {
+      const primary = await this.callThreadModel(uid, VIDEO_INTERVIEW_SYSTEM, payload);
+      primaryText = primary.text;
+      return {
+        turn: parseVideoInterviewTurn(primary.text, flow.context, models),
+        model: primary.model, provider: primary.provider, fallbackUsed: false,
+      };
+    } catch { /* use an independent structured provider below */ }
+    let fallbackText = "";
+    try {
+      const fallback = await veniceChatComplete(this.env, VIDEO_INTERVIEW_FALLBACK_MODEL, [
+        { role: "system", content: VIDEO_INTERVIEW_SYSTEM }, { role: "user", content: payload },
+      ], { maxTokens: 600, temperature: 0.45, timeoutMs: 20_000 });
+      fallbackText = fallback.text;
+      return {
+        turn: parseVideoInterviewTurn(fallback.text, flow.context, models),
+        model: VIDEO_INTERVIEW_FALLBACK_MODEL, provider: "venice", fallbackUsed: true,
+      };
+    } catch { /* recover conversation-only text, never execute malformed output */ }
+    const recovered = recoverVideoDiscussion(fallbackText, flow.context)
+      ?? recoverVideoDiscussion(primaryText, flow.context);
+    if (recovered) return { turn: recovered, model: "video-interview-recovery", provider: "recovery", fallbackUsed: true };
+    throw new Error("video_interview_models_exhausted");
   }
 
   // ---- the turn ---------------------------------------------------------------
@@ -1262,6 +1313,10 @@ export class AvaAgentDO {
       }
     }
     let songAction = nextSongFlow(songFlow, userText);
+    const activeVideoFlowKey = videoFlowKey(conv);
+    const storedVideoFlow = await this.state.storage.get<unknown>(activeVideoFlowKey);
+    const videoFlow = isVideoFlowState(storedVideoFlow) ? storedVideoFlow : null;
+    let pendingVideoFlow = nextVideoFlow(videoFlow, userText);
 
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
@@ -1374,6 +1429,115 @@ export class AvaAgentDO {
     }).catch(() => {});
 
     try {
+      // Video creation is an AI-led producer conversation. Server code keeps
+      // state, validates the live capability catalog, and executes only an
+      // explicit structured generate decision; no continuation keyword script.
+      if (pendingVideoFlow) {
+        const chipR = await chipP;
+        if (!chipR.ok) throw chipR.error;
+        const mediaTier = await veniceTier(this.env, uid);
+        const catalog = mediaModelCatalog(await readConfig(this.env), mediaTier).video;
+        let interview = await this.callVideoInterview(uid, pendingVideoFlow, userText, catalog);
+        let turn = interview.turn;
+        if (turn.action === "switch") {
+          await this.state.storage.delete(activeVideoFlowKey);
+          pendingVideoFlow = null;
+        } else {
+          let current: VideoFlowState = {
+            ...pendingVideoFlow,
+            context: turn.context,
+            lastInterviewReply: turn.reply,
+          };
+          if (turn.action === "restart") current = { ...current, phase: "discovering" };
+          const selected = catalog.find((m) => m.id === turn.context.modelId);
+          const durations = Array.isArray(selected?.durationsSeconds) ? selected.durationsSeconds : [];
+          const catalogValid = !!selected
+            && durations.includes(Number(turn.context.durationSeconds))
+            && !!turn.context.resolution && !!selected.resolutions?.includes(turn.context.resolution)
+            && !!turn.context.aspectRatio && !!selected.aspectRatios?.includes(turn.context.aspectRatio)
+            && (turn.context.sourceMode === "image"
+              ? selected.supports.includes("animate an existing image")
+              : selected.supports.includes("text-to-video"));
+          if (turn.action === "generate" && (!isVideoContextReady(turn.context) || !catalogValid)) {
+            interview = await this.callVideoInterview(
+              uid, current, userText, catalog,
+              "Generation cannot run because a selected value is missing or unsupported by the current catalog. Continue naturally, explain the relevant available choices and ask one focused question.",
+            );
+            turn = interview.turn;
+            if (turn.action === "generate") turn = { ...turn, action: "discuss" };
+            current = { ...current, context: turn.context, lastInterviewReply: turn.reply };
+          }
+          if (turn.action !== "generate") {
+            await this.state.storage.put(activeVideoFlowKey, current);
+            await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+            await this.postAva({ conv, uid, text: turn.reply, private: priv, source: "video" });
+            await trackUserContact(this.env, uid, email, phone, "ava_video_flow", "avaai", {
+              turn_id: statusId, conv_kind: convKind, outcome: turn.action === "restart" ? "restarted" : "ai_conversation_reply",
+              interview_model: interview.model, interview_provider: interview.provider, interview_fallback: interview.fallbackUsed,
+            }).catch(() => {});
+            return { ok: true, status_id: statusId };
+          }
+
+          await this.postAva({ conv, uid, text: turn.reply, private: priv, source: "video" });
+          await this.state.storage.put(activeVideoFlowKey, { ...current, phase: "generating" });
+          let sourceImageUrl: string | undefined;
+          if (turn.context.sourceMode === "image") {
+            const last = await this.getLastMedia(conv);
+            if (last.image?.job_id) {
+              const prior = await getAiMediaJob(this.env, last.image.job_id, uid).catch(() => null);
+              if (prior?.ok && prior.job.artifact_url) sourceImageUrl = prior.job.artifact_url;
+            }
+            if (!sourceImageUrl && last.lastUserImageRef?.id) {
+              sourceImageUrl = (await this.resolvePublicImageRef(last.lastUserImageRef.id)) ?? undefined;
+            }
+            if (!sourceImageUrl) {
+              const windowResult = await windowP;
+              const attachment = windowResult.ok
+                ? [...windowResult.value.attachments].reverse().find((a) => a.mine && (a.kind === "image" || /^image\//.test(a.mime || "")))
+                : undefined;
+              if (attachment?.key) sourceImageUrl = (await this.resolvePublicImageRef(attachment.key)) ?? undefined;
+            }
+            if (!sourceImageUrl) {
+              const correction = await this.callVideoInterview(
+                uid, current, userText, catalog,
+                "The person selected image-to-video but no usable image is attached or available in this conversation. Explain that naturally and ask one focused question about attaching an image or switching to text-to-video. Choose discuss.",
+              );
+              await this.state.storage.put(activeVideoFlowKey, {
+                ...current, phase: "discovering", context: correction.turn.context,
+                lastInterviewReply: correction.turn.reply,
+              });
+              await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+              await this.postAva({ conv, uid, text: correction.turn.reply, private: priv, source: "video" });
+              return { ok: true, status_id: statusId };
+            }
+          }
+          let video: Awaited<ReturnType<typeof runVeniceVideo>>;
+          try {
+            video = await runVeniceVideo(this.env, {
+              uid, conv, private: priv, tier: mediaTier, sourceImageUrl,
+              prompt: videoPrompt(turn.context), durationSeconds: turn.context.durationSeconds,
+              resolution: turn.context.resolution, aspectRatio: turn.context.aspectRatio,
+            });
+          } catch {
+            video = { ok: false, message: "I couldn't start that video right now — please try again." };
+          }
+          if (video.ok && video.job_id) {
+            await this.state.storage.put(activeVideoFlowKey, { ...current, phase: "completed" });
+            await this.rememberLastMedia(conv, "video", video.job_id, videoPrompt(turn.context));
+          } else {
+            await this.state.storage.put(activeVideoFlowKey, { ...current, phase: "discovering" });
+            await this.postAva({ conv, uid, text: video.message, private: priv, source: "video" });
+          }
+          await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+          await trackUserContact(this.env, uid, email, phone, "ava_video_flow", "avaai", {
+            turn_id: statusId, conv_kind: convKind, outcome: video.ok ? "job_started" : "failed",
+            model: turn.context.modelId, duration_seconds: turn.context.durationSeconds,
+            resolution: turn.context.resolution, aspect_ratio: turn.context.aspectRatio, job_id: video.job_id ?? null,
+          }).catch(() => {});
+          return { ok: video.ok, status_id: statusId, ...(!video.ok ? { error: "video_start_failed" } : {}) };
+        }
+      }
+
       // Song creation has a deterministic persisted lifecycle, while the brief
       // itself is a real AI conversation. AI interprets free-form answers and
       // writes each reply; server validation alone decides when the gathered

@@ -32,6 +32,13 @@ describe("AI song interview", () => {
     expect(payload.currentPhase).toBe("awaiting_brief");
   });
 
+  it("passes the live audio model catalog instead of scripted model claims", () => {
+    const model = { id: "audio-one", price: { kind: "flat", tokens: 10, unit: "per track" } };
+    const payload = JSON.parse(songInterviewUserPayload({ phase: "awaiting_brief" }, "what can it do?", undefined, [model]));
+    expect(payload.availableModels).toEqual([model]);
+    expect(SONG_INTERVIEW_SYSTEM).toContain("availableModels as the current source of truth");
+  });
+
   it("forbids checklist-style output in the AI instruction", () => {
     expect(SONG_INTERVIEW_SYSTEM).toContain("Ask at most ONE focused follow-up question");
     expect(SONG_INTERVIEW_SYSTEM).toContain("never a checklist to recite");
