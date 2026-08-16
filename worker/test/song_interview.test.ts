@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseSongInterviewTurn,
+  recoverSongInterviewDiscussion,
   songInterviewUserPayload,
   SONG_INTERVIEW_SYSTEM,
 } from "../src/lib/song_interview";
@@ -59,5 +60,30 @@ describe("AI song interview", () => {
     expect(switched.action).toBe("switch");
     expect(switched.reply).toBe("");
     expect(switched.context.genre).toBe("Hindi rock");
+  });
+
+  it("lets AI semantically restart a different song without stale context", () => {
+    const restarted = parseSongInterviewTurn(
+      '{"action":"restart","reply":"Hindi rock gives freedom a strong lift. Should it feel defiant or hopeful?","context":{"theme":"freedom","genre":"Hindi rock","language":"Hindi","durationSeconds":180}}',
+      { theme: "Gen Z beach party", genre: "Caribbean reggae", mood: "funky" },
+    );
+    expect(restarted.action).toBe("restart");
+    expect(restarted.context).toMatchObject({
+      theme: "freedom", genre: "Hindi rock", language: "Hindi", durationSeconds: 180,
+    });
+    expect(restarted.context.mood).toBeUndefined();
+  });
+
+  it("keeps a natural AI reply when only its JSON protocol is malformed", () => {
+    const recovered = recoverSongInterviewDiscussion(
+      "Hindi rock can make freedom feel both personal and anthemic. Should the energy be hopeful or rebellious?",
+      { theme: "freedom", genre: "Hindi rock" },
+    );
+    expect(recovered).toMatchObject({
+      action: "discuss",
+      context: { theme: "freedom", genre: "Hindi rock" },
+    });
+    expect(recovered?.reply).toContain("hopeful or rebellious");
+    expect(recoverSongInterviewDiscussion('{"broken": true')).toBeNull();
   });
 });

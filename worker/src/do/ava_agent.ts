@@ -84,7 +84,11 @@ import {
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
 } from "../lib/song_flow";
-import { parseSongInterviewTurn, songInterviewUserPayload, SONG_INTERVIEW_SYSTEM } from "../lib/song_interview";
+import {
+  parseSongInterviewTurn, recoverSongInterviewDiscussion, songInterviewRecoveryReply,
+  songInterviewUserPayload, SONG_INTERVIEW_FALLBACK_MODEL, SONG_INTERVIEW_SYSTEM,
+  type SongInterviewTurn,
+} from "../lib/song_interview";
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
 //   chat  — answer directly in conversation
@@ -147,6 +151,16 @@ interface Attachment {
   mime: string;
   caption: string;
   key: string;
+}
+
+interface SongInterviewCallResult {
+  turn: SongInterviewTurn;
+  model: string;
+  provider: string;
+  latencyMs: number;
+  fallbackUsed: boolean;
+  recoveredDiscussion: boolean;
+  primaryFailure: string | null;
 }
 
 // Belt-and-suspenders: strip any reasoning a model might emit so raw
@@ -1141,6 +1155,84 @@ export class AvaAgentDO {
     };
   }
 
+  /**
+   * Song conversation must not depend on one provider returning perfect JSON.
+   * The normal thread gateway already tries primary OpenRouter, alternate
+   * OpenRouter, and direct Gemini; Venice Gemini is an independent structured
+   * fallback. A non-JSON conversational model reply remains useful, but is
+   * restricted to discussion so malformed output cannot execute production.
+   */
+  private async callSongInterview(
+    uid: string,
+    flow: SongFlowState,
+    latestUserText: string,
+    serverValidationFeedback?: string,
+  ): Promise<SongInterviewCallResult> {
+    const startedAt = Date.now();
+    const payload = songInterviewUserPayload(flow, latestUserText, serverValidationFeedback);
+    let primaryText = "";
+    let primaryFailure: string | null = null;
+    try {
+      const primary = await this.callThreadModel(uid, SONG_INTERVIEW_SYSTEM, payload);
+      primaryText = primary.text;
+      return {
+        turn: parseSongInterviewTurn(primary.text, flow.context),
+        model: primary.model,
+        provider: primary.provider,
+        latencyMs: Date.now() - startedAt,
+        fallbackUsed: false,
+        recoveredDiscussion: false,
+        primaryFailure: null,
+      };
+    } catch (e) {
+      const message = String((e as any)?.message ?? e);
+      primaryFailure = !primaryText.trim()
+        ? "empty_or_provider_failure"
+        : message.includes("no JSON") ? "invalid_json_shape"
+        : message.includes("empty reply") ? "empty_reply"
+        : e instanceof SyntaxError ? "invalid_json"
+        : "invalid_structured_reply";
+    }
+
+    let fallbackText = "";
+    try {
+      const fallback = await veniceChatComplete(
+        this.env,
+        SONG_INTERVIEW_FALLBACK_MODEL,
+        [
+          { role: "system", content: SONG_INTERVIEW_SYSTEM },
+          { role: "user", content: payload },
+        ],
+        { maxTokens: 520, temperature: 0.45, timeoutMs: 20_000 },
+      );
+      fallbackText = fallback.text;
+      return {
+        turn: parseSongInterviewTurn(fallback.text, flow.context),
+        model: SONG_INTERVIEW_FALLBACK_MODEL,
+        provider: "venice",
+        latencyMs: Date.now() - startedAt,
+        fallbackUsed: true,
+        recoveredDiscussion: false,
+        primaryFailure,
+      };
+    } catch { /* recover a natural AI reply below, or fail closed */ }
+
+    const recovered = recoverSongInterviewDiscussion(fallbackText, flow.context)
+      ?? recoverSongInterviewDiscussion(primaryText, flow.context);
+    if (recovered) {
+      return {
+        turn: recovered,
+        model: fallbackText.trim() ? SONG_INTERVIEW_FALLBACK_MODEL : "thread-failover",
+        provider: fallbackText.trim() ? "venice" : "thread_gateway",
+        latencyMs: Date.now() - startedAt,
+        fallbackUsed: true,
+        recoveredDiscussion: true,
+        primaryFailure,
+      };
+    }
+    throw new Error(`song_interview_models_exhausted:${primaryFailure ?? "unknown"}`);
+  }
+
   // ---- the turn ---------------------------------------------------------------
   private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string }): Promise<any> {
     const conv = String(b.conv || "");
@@ -1278,7 +1370,7 @@ export class AvaAgentDO {
     const email = contactR.ok ? contactR.value.email : null;
     const phone = contactR.ok ? contactR.value.phone : null;
     await trackUserContact(this.env, uid, email, phone, "ava_thread_turn", "avaai", {
-      conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
+      turn_id: statusId, conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
     }).catch(() => {});
 
     try {
@@ -1292,22 +1384,43 @@ export class AvaAgentDO {
 
         if (songAction.kind === "ask_brief") {
           const activeInterviewFlow = songAction.flow;
-          let interviewModel: { text: string; model: string; provider: string; latencyMs: number } | null = null;
+          let interviewModel: SongInterviewCallResult | null = null;
           try {
-            interviewModel = await this.callThreadModel(
+            interviewModel = await this.callSongInterview(
               uid,
-              SONG_INTERVIEW_SYSTEM,
-              songInterviewUserPayload(songAction.flow, userText),
+              songAction.flow,
+              userText,
             );
-            let interview = parseSongInterviewTurn(interviewModel.text, songAction.flow.context);
+            let interview = interviewModel.turn;
             if (interview.action === "switch") {
               await this.state.storage.delete(flowKey);
               songAction = { kind: "none", flow: null };
               await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
-                conv_kind: convKind, private: priv, phase: activeInterviewFlow.phase, outcome: "topic_switched",
+                turn_id: statusId, conv_kind: convKind, private: priv, phase: activeInterviewFlow.phase, outcome: "topic_switched",
                 interview_model: interviewModel.model, interview_provider: interviewModel.provider,
+                interview_fallback: interviewModel.fallbackUsed,
+                recovered_discussion: interviewModel.recoveredDiscussion,
               }).catch(() => {});
             } else {
+              if (interview.action === "restart") {
+                const restartedBase: SongFlowState = {
+                  phase: "awaiting_brief",
+                  kind: classifySongRequest(userText) ?? activeInterviewFlow.kind ?? "vocal",
+                  conversation: stripAvaWakeWordForIntent(userText),
+                  durationSeconds: interview.context.durationSeconds ?? 60,
+                };
+                const restarted = withSongInterview(restartedBase, interview.context, interview.reply);
+                await this.state.storage.put(flowKey, restarted);
+                await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
+                await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+                  turn_id: statusId, conv_kind: convKind, private: priv, phase: restarted.phase, outcome: "ai_conversation_restarted",
+                  interview_model: interviewModel.model, interview_provider: interviewModel.provider,
+                  interview_latency_ms: interviewModel.latencyMs, interview_fallback: interviewModel.fallbackUsed,
+                  recovered_discussion: interviewModel.recoveredDiscussion,
+                }).catch(() => {});
+                return { ok: true, status_id: statusId };
+              }
               let interviewedFlow = withSongInterview(songAction.flow, interview.context, interview.reply);
               let songKind = interviewedFlow.kind ?? "vocal";
               let ready = isSongProductionContextReady(interview.context, songKind);
@@ -1324,16 +1437,33 @@ export class AvaAgentDO {
               // the actual state instead of replacing its answer with canned copy.
               if (!canExecute()) {
                 const rejectedAction = interview.action;
-                interviewModel = await this.callThreadModel(
+                interviewModel = await this.callSongInterview(
                   uid,
-                  SONG_INTERVIEW_SYSTEM,
-                  songInterviewUserPayload(
-                    interviewedFlow,
-                    userText,
-                    `The proposed ${rejectedAction} action cannot run from the current saved song state. Re-evaluate the person's meaning. Either complete the essential context from the conversation, choose discuss and ask one natural question, or choose switch. Do not promise an action the state cannot execute.`,
-                  ),
+                  interviewedFlow,
+                  userText,
+                  `The proposed ${rejectedAction} action cannot run from the current saved song state. Re-evaluate the person's meaning. Either complete the essential context from the conversation, choose discuss and ask one natural question, choose restart for a different song, or choose switch. Do not promise an action the state cannot execute.`,
                 );
-                interview = parseSongInterviewTurn(interviewModel.text, interviewedFlow.context);
+                interview = interviewModel.turn;
+                if (interview.action === "restart") {
+                  const restartedBase: SongFlowState = {
+                    phase: "awaiting_brief",
+                    kind: classifySongRequest(userText) ?? activeInterviewFlow.kind ?? "vocal",
+                    conversation: stripAvaWakeWordForIntent(userText),
+                    durationSeconds: interview.context.durationSeconds ?? 60,
+                  };
+                  const restarted = withSongInterview(restartedBase, interview.context, interview.reply);
+                  await this.state.storage.put(flowKey, restarted);
+                  await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                  await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
+                  await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+                    turn_id: statusId, conv_kind: convKind, private: priv, phase: restarted.phase,
+                    outcome: "ai_conversation_restarted_after_validation",
+                    interview_model: interviewModel.model, interview_provider: interviewModel.provider,
+                    interview_latency_ms: interviewModel.latencyMs, interview_fallback: interviewModel.fallbackUsed,
+                    recovered_discussion: interviewModel.recoveredDiscussion,
+                  }).catch(() => {});
+                  return { ok: true, status_id: statusId };
+                }
                 interviewedFlow = withSongInterview(interviewedFlow, interview.context, interview.reply);
                 songKind = interviewedFlow.kind ?? "vocal";
                 ready = isSongProductionContextReady(interview.context, songKind);
@@ -1359,26 +1489,38 @@ export class AvaAgentDO {
                 await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
                 await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
                 await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
-                  conv_kind: convKind, private: priv, phase: interviewedFlow.phase, outcome: "ai_conversation_reply",
+                  turn_id: statusId, conv_kind: convKind, private: priv, phase: interviewedFlow.phase, outcome: "ai_conversation_reply",
                   interview_action: interview.action,
                   interview_model: interviewModel.model, interview_provider: interviewModel.provider,
                   interview_latency_ms: interviewModel.latencyMs,
+                  interview_fallback: interviewModel.fallbackUsed,
+                  recovered_discussion: interviewModel.recoveredDiscussion,
+                  primary_failure: interviewModel.primaryFailure,
                 }).catch(() => {});
                 return { ok: true, status_id: statusId };
               }
             }
           } catch (e) {
-            void trackException(this.env, e, {
+            await trackException(this.env, e, {
               uid, route: "ava_agent.song_interview", handled: true,
-              extra: { conv_kind: convKind, music_mode: activeInterviewFlow.kind ?? "vocal" },
-            });
-            // Preserve the interview, but do not invent or repeat a canned
-            // answer. Ava's normal conversation lane handles this turn.
-            await this.state.storage.put(flowKey, activeInterviewFlow);
-            songAction = { kind: "none", flow: activeInterviewFlow };
-            await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
-              conv_kind: convKind, private: priv, phase: activeInterviewFlow.phase, outcome: "ai_interview_failed",
+              extra: { turn_id: statusId, conv_kind: convKind, music_mode: activeInterviewFlow.kind ?? "vocal" },
             }).catch(() => {});
+            // Preserve the semantic song state and terminate this route here.
+            // Falling through to the generic tool loop produced the unrelated
+            // "Ava unavailable" bubble seen in production and could also let a
+            // tool call bypass the song lifecycle.
+            await this.state.storage.put(flowKey, activeInterviewFlow);
+            await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+            await this.postAva({
+              conv, uid, private: priv, source: "music",
+              text: songInterviewRecoveryReply(),
+            });
+            await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+              turn_id: statusId, conv_kind: convKind, private: priv, phase: activeInterviewFlow.phase,
+              outcome: "ai_interview_models_exhausted",
+              failure_code: String((e as any)?.message ?? e).split(":")[0].slice(0, 80),
+            }).catch(() => {});
+            return { ok: false, status_id: statusId, error: "song_interview_models_exhausted" };
           }
         }
 
@@ -1406,7 +1548,7 @@ export class AvaAgentDO {
             await this.postAva({ conv, uid, text: drafted.message, private: priv, source: "music" });
           }
           await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
-            conv_kind: convKind, private: priv, phase: "draft", outcome: drafted.ok ? "lyrics_posted" : "failed",
+            turn_id: statusId, conv_kind: convKind, private: priv, phase: "draft", outcome: drafted.ok ? "lyrics_posted" : "failed",
             duration_seconds: songAction.flow.durationSeconds ?? 60,
           }).catch(() => {});
           return { ok: drafted.ok, status_id: statusId, ...(!drafted.ok ? { error: "lyrics_draft_failed" } : {}) };
@@ -1429,10 +1571,10 @@ export class AvaAgentDO {
             private: priv, tier: mediaTier,
           });
         } catch (e) {
-          void trackException(this.env, e, {
+          await trackException(this.env, e, {
             uid, route: "ava_agent.song_generate", handled: true,
-            extra: { conv_kind: convKind, music_mode: songAction.flow.kind ?? "vocal" },
-          });
+            extra: { turn_id: statusId, conv_kind: convKind, music_mode: songAction.flow.kind ?? "vocal" },
+          }).catch(() => {});
           music = { ok: false, message: "I couldn't start that track right now — please try again." };
         }
         if (music.ok && music.job_id) {
@@ -1448,7 +1590,7 @@ export class AvaAgentDO {
         }
         await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
         await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
-          conv_kind: convKind, private: priv, phase: "generate", outcome: music.ok ? "job_started" : "failed",
+          turn_id: statusId, conv_kind: convKind, private: priv, phase: "generate", outcome: music.ok ? "job_started" : "failed",
           duration_seconds: songAction.flow.durationSeconds ?? 60, job_id: music.job_id ?? null,
         }).catch(() => {});
         return { ok: music.ok, status_id: statusId, ...(!music.ok ? { error: "music_start_failed" } : {}) };

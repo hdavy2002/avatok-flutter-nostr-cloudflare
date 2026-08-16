@@ -19,13 +19,16 @@ Conversation rules:
 - Choose action "discuss" when the person wants to keep shaping the idea or one essential creative decision is genuinely unclear.
 - Choose action "draft" when the person means that Ava should now write or rewrite vocal lyrics. A revision may be expressed in ordinary conversational language.
 - Choose action "generate" when the person means that Ava should create an instrumental, or accepts the currently reviewed vocal lyrics and wants the finished song created.
+- Choose action "restart" when the person is clearly starting a different song idea rather than revising the active one. Build context only from the new idea; do not carry creative choices from the older song into it.
 - Choose action "switch" when the person has moved to a different topic or kind of work.
 - The reply must match the action. Never promise to draft or generate while returning "discuss".
 
 Return ONLY valid JSON with this shape:
 {"action":"discuss","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null}}
 
-The action value must be "discuss", "draft", "generate", or "switch". For every action except "switch", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. Choose "draft" only when the essential vocal direction is known. Choose "generate" for a vocal song only when the current lyrics are under review and the person has accepted them. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
+The action value must be "discuss", "draft", "generate", "restart", or "switch". For every action except "switch", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. For "restart", context must instead describe only the new song. Choose "draft" only when the essential vocal direction is known. Choose "generate" for a vocal song only when the current lyrics are under review and the person has accepted them. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
+
+export const SONG_INTERVIEW_FALLBACK_MODEL = "gemini-3-7-flash";
 
 function cleanText(value: unknown, max = 240): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -60,7 +63,7 @@ function mergeContext(previous: SongProductionContext | undefined, raw: Record<s
 }
 
 export interface SongInterviewTurn {
-  action: "discuss" | "draft" | "generate" | "switch";
+  action: "discuss" | "draft" | "generate" | "restart" | "switch";
   reply: string;
   context: SongProductionContext;
 }
@@ -72,7 +75,7 @@ export function parseSongInterviewTurn(rawText: string, previous?: SongProductio
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("song interview returned no JSON object");
   const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  const action = ["draft", "generate", "switch"].includes(String(parsed.action))
+  const action = ["draft", "generate", "restart", "switch"].includes(String(parsed.action))
     ? parsed.action as SongInterviewTurn["action"]
     : "discuss";
   const reply = cleanText(parsed.reply, 700);
@@ -80,7 +83,39 @@ export function parseSongInterviewTurn(rawText: string, previous?: SongProductio
     ? parsed.context as Record<string, unknown>
     : {};
   if (action !== "switch" && !reply) throw new Error("song interview returned an empty reply");
-  return { action, reply: reply ?? "", context: mergeContext(previous, contextRaw) };
+  return {
+    action,
+    reply: reply ?? "",
+    // A semantic restart deliberately severs stale creative choices. Every
+    // other action keeps the normal merge behavior for shorthand follow-ups.
+    context: mergeContext(action === "restart" ? undefined : previous, contextRaw),
+  };
+}
+
+/**
+ * Keep a conversational AI reply when a provider ignores the JSON contract.
+ * It may discuss only: without structured output, the server cannot safely
+ * draft, generate, switch topics, or replace saved production context.
+ */
+export function recoverSongInterviewDiscussion(
+  rawText: string,
+  previous?: SongProductionContext,
+): SongInterviewTurn | null {
+  const raw = String(rawText || "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  // Never expose broken JSON or model-protocol fragments in the chat.
+  if (!raw || raw.includes("{") || raw.includes("}")) return null;
+  const reply = cleanText(raw, 700);
+  return reply ? { action: "discuss", reply, context: previous ?? {} } : null;
+}
+
+/** Last resort after every independent model path has failed. */
+export function songInterviewRecoveryReply(): string {
+  return "I kept your song direction, but the producer pass did not return a usable reply. Send your next thought and I’ll continue from the same point.";
 }
 
 export function songInterviewUserPayload(

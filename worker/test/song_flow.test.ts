@@ -26,6 +26,7 @@ const completeVocal: SongProductionContext = {
 describe("AI-led song flow guardrails", () => {
   it("classifies vocal and instrumental creation without writing the conversation", () => {
     expect(classifySongRequest("make a reggae song for me")).toBe("vocal");
+    expect(classifySongRequest("let's create a hindi rock song on freedom")).toBe("vocal");
     expect(classifySongRequest("make an instrumental reggae beat")).toBe("instrumental");
     expect(classifySongRequest("I listened to a reggae song")).toBeNull();
   });
