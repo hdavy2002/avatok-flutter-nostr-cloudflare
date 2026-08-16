@@ -1390,5 +1390,58 @@
         "note": "Next SFU call must emit call_sfu_joined with sfu_ms/seat_ms present and elapsed_ms lower than the ~1600ms observed 2026-08-16; call_sfu_pulled must carry elapsed_ms/sfu_ms. Client stage_first_audio_bytes on wifi should drop measurably (<8000ms from start)."
       }
     ]
+  },
+  "CALL-TRANSLATE-APIVER-3": {
+    "description": "Live-probed the v1beta auth_tokens endpoint (schema validation precedes key validation, so probeable with any key): the docs' liveConnectConstraints field does not exist on the wire on v1alpha OR v1beta — the AuthToken proto field is bidiGenerateContentSetup with generationConfig inside, mirroring the WS setup frame. Mint body rewritten to the probed shape.",
+    "flags": [],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_translation_mint",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "where": {},
+        "note": "Next Translate tap must produce call_translation_mint ok:true (token minted). If it instead 400s with provider_reason API_KEY_INVALID, the prod GEMINI_API_KEY needs replacing (the local secrets copy is already proven invalid)."
+      }
+    ]
+  },
+  "CALL-SFU-TELEM-AWAIT-1": {
+    "description": "No worker-side call_sfu_* event (joined/error/blocked/published/pulled) ever reached PostHog in 30 days — all 12 trackUser emits in routes/call_sfu.ts were unawaited and workerd dropped them at response return (same class as TELEMETRY-AWAIT-1). All now awaited.",
+    "flags": [
+      "callSfuV1"
+    ],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_sfu_joined",
+        "property": "sfu_ms",
+        "equals": "",
+        "min_events": 2,
+        "where": {},
+        "note": "Next SFU call must land call_sfu_joined (one per side) carrying sfu_ms/seat_ms/elapsed_ms — the CALL-SFU-LAT-1 success assertion now becomes checkable at all."
+      }
+    ]
+  },
+  "WORKER-TSC-GREEN-2": {
+    "description": "Worker tsc red again at HEAD: closure-assigned `recovered` in do/ava_agent.ts narrowed to never at its read site ([AVA-MEDIA-INTERVIEW-2] code). Re-widened via a function-boundary read; runtime unchanged.",
+    "flags": [],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_translation_mint",
+        "property": "ok",
+        "equals": true,
+        "min_events": 0,
+        "where": {},
+        "note": "Type-level only; success is npx tsc --noEmit exiting 0 (verified 2026-08-16)."
+      }
+    ]
   }
 }

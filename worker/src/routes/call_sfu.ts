@@ -135,7 +135,7 @@ async function guard(req: Request, env: Env): Promise<Guard | Response> {
   const email = await emailFor(env, uid).catch(() => null);
 
   if (!cfg.callSfuV1) {
-    trackUser(env, uid, email, "call_sfu_blocked", APP, { reason: "flag_off" });
+    await trackUser(env, uid, email, "call_sfu_blocked", APP, { reason: "flag_off" });
     return json({ error: "sfu_unavailable", reason: "flag_off" }, 503);
   }
   if (!sfuConfigured(env)) {
@@ -143,7 +143,7 @@ async function guard(req: Request, env: Env): Promise<Guard | Response> {
     // misconfigured environment and a working one would otherwise be
     // indistinguishable from the client, which is precisely how the TURN
     // "relay_degraded" blind spot happened on the P2P path.
-    trackUser(env, uid, email, "call_sfu_blocked", APP, { reason: "unconfigured" });
+    await trackUser(env, uid, email, "call_sfu_blocked", APP, { reason: "unconfigured" });
     return json({ error: "sfu_unavailable", reason: "unconfigured" }, 503);
   }
   return { uid, email, video: !cfg.callSfuAudioOnly };
@@ -180,7 +180,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
   const sfuMs = Date.now() - sfuStart;
   const sessionId = typeof s.data.sessionId === "string" ? s.data.sessionId : "";
   if (!s.ok || !sessionId) {
-    trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
       call_id: room, stage: "session_new", status: s.status,
     });
     return json({ error: "sfu_session_failed", status: s.status }, 502);
@@ -196,13 +196,13 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
     body: JSON.stringify({ callId: room, uid: g.uid, sessionId }),
   });
   if (!seatRes.ok) {
-    trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
       call_id: room, stage: "seat_register", status: seatRes.status,
     });
     return json({ error: "sfu_seat_failed", status: seatRes.status }, seatRes.status === 403 ? 403 : 502);
   }
 
-  trackUser(env, g.uid, g.email, "call_sfu_joined", APP, {
+  await trackUser(env, g.uid, g.email, "call_sfu_joined", APP, {
     call_id: room,
     session_id: sessionId,
     video_allowed: g.video,
@@ -276,7 +276,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
   });
   const sfuMs = Date.now() - sfuStart;
   if (!r.ok) {
-    trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
       call_id: room, stage: "publish", status: r.status,
     });
     return json({ error: "publish_failed", status: r.status }, 502);
@@ -304,7 +304,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
     body: JSON.stringify({ callId: room, uid: g.uid, sessionId, ...names }),
   }).catch(() => undefined);
 
-  trackUser(env, g.uid, g.email, "call_sfu_published", APP, {
+  await trackUser(env, g.uid, g.email, "call_sfu_published", APP, {
     call_id: room, session_id: sessionId, track_count: tracks.length,
     has_video: Boolean(names.videoTrack),
     elapsed_ms: Date.now() - startedAt, sfu_ms: sfuMs, // [CALL-SFU-LAT-1]
@@ -389,13 +389,13 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
     body: JSON.stringify({ tracks: [{ location: "remote", sessionId: seat.session_id, trackName }] }),
   });
   if (!r.ok) {
-    trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
       call_id: room, stage: "pull", status: r.status, kind,
     });
     return json({ error: "pull_failed", status: r.status }, 502);
   }
 
-  trackUser(env, g.uid, g.email, "call_sfu_pulled", APP, {
+  await trackUser(env, g.uid, g.email, "call_sfu_pulled", APP, {
     call_id: room, session_id: sessionId, kind,
     elapsed_ms: Date.now() - startedAt, sfu_ms: Date.now() - sfuStart, // [CALL-SFU-LAT-1]
   });
@@ -428,12 +428,12 @@ export async function callSfuRenegotiate(req: Request, env: Env, room: string): 
     body: JSON.stringify({ sessionDescription: { type: "answer", sdp: answerSdp } }),
   });
   if (!r.ok) {
-    trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
       call_id: room, stage: "renegotiate", status: r.status,
     });
     return json({ error: "renegotiate_failed", status: r.status }, 502);
   }
-  trackUser(env, g.uid, g.email, "call_sfu_renegotiated", APP, {
+  await trackUser(env, g.uid, g.email, "call_sfu_renegotiated", APP, {
     call_id: room, session_id: sessionId, sfu_ms: Date.now() - sfuStart, // [CALL-SFU-LAT-1]
   });
   return json({ ok: true });
@@ -479,6 +479,6 @@ export async function callSfuClose(req: Request, env: Env, room: string): Promis
     body: JSON.stringify({ uid: g.uid }),
   }).catch(() => undefined);
 
-  trackUser(env, g.uid, g.email, "call_sfu_closed", APP, { call_id: room, session_id: sessionId, mid_count: mids.length });
+  await trackUser(env, g.uid, g.email, "call_sfu_closed", APP, { call_id: room, session_id: sessionId, mid_count: mids.length });
   return json({ ok: true });
 }
