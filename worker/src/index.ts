@@ -751,8 +751,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       { const m = p.match(/^\/api\/ai\/jobs\/([A-Za-z0-9_-]{1,128})$/); if (m && req.method === "GET") return await aiMediaJobsGet(req, env, m[1]); }
       { const m = p.match(/^\/s\/song\/([A-Za-z0-9_-]{10,128})$/); if (m && req.method === "GET") return await aiMediaSongSharePage(req, env, m[1]); }
       { const m = p.match(/^\/s\/song\/([A-Za-z0-9_-]{10,128})\/(cover|audio)$/); if (m && req.method === "GET") return await aiMediaSongShareAsset(req, env, m[1], m[2] as "cover" | "audio"); }
-      { const m = p.match(/^\/s\/video\/([A-Za-z0-9_-]{32,128})$/); if (m && req.method === "GET") return await aiMediaVideoSharePage(req, env, m[1]); }
-      { const m = p.match(/^\/s\/video\/([A-Za-z0-9_-]{32,128})\/(thumbnail|video)$/); if (m && req.method === "GET") return await aiMediaVideoShareAsset(req, env, m[1], m[2] as "thumbnail" | "video"); }
+      { const m = p.match(/^\/s\/video\/([A-Za-z0-9_-]{10,128})$/); if (m && req.method === "GET") return await aiMediaVideoSharePage(req, env, m[1]); }
+      { const m = p.match(/^\/s\/video\/([A-Za-z0-9_-]{10,128})\/(thumbnail|video)$/); if (m && req.method === "GET") return await aiMediaVideoShareAsset(req, env, m[1], m[2] as "thumbnail" | "video"); }
       // [AVABRAIN-COMPANION-2] group Companion mode + effective policy + draft approval (routes/ava_group.ts)
       if (p === "/api/ava/group/mode" && req.method === "GET") return await avaGroupModeGet(req, env);
       if (p === "/api/ava/group/mode" && req.method === "POST") return await avaGroupModePost(req, env);

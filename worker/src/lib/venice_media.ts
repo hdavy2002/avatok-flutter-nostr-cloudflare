@@ -111,7 +111,9 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   // video model. Fails soft internally (see media_prompt.ts) — `prompt` is
   // always at least `rawPrompt` on any craft failure.
   const prompt = await craftVideoPrompt(env, rawPrompt, durationNum);
-  const card = await craftVideoCardMetadata(env, rawPrompt);
+  // Derive the public card and thumbnail concept from the rich visual scene,
+  // not from a conversational request such as "make me a video".
+  const card = await craftVideoCardMetadata(env, prompt);
 
   // ── PROMPT GATE (mandatory, before any reservation/provider call) ────────
   // Gates the prompt actually sent to Venice (the crafted version), which is

@@ -63,12 +63,24 @@ export async function craftVideoPrompt(env: Env, userAsk: string, durationSecond
 
 /** Safe, persisted share-card copy. The source prompt is never persisted. */
 export async function craftVideoCardMetadata(env: Env, userAsk: string): Promise<{ title: string; description: string }> {
-  const fallback = { title: "AvaTOK video", description: "A short video created with AvaTOK AI." };
   const ask = String(userAsk ?? "").trim();
+  const fallbackSource = ask.replace(/\s+/g, " ").trim();
+  const fallbackWords = fallbackSource
+    .replace(/^(?:please\s+)?(?:make|create|generate|show|film)\s+(?:me\s+)?(?:a\s+)?(?:short\s+)?(?:video\s+)?(?:of|about|on)?\s*/i, "")
+    .split(/\s+/).filter(Boolean).slice(0, 7).join(" ");
+  const fallbackTitle = fallbackWords
+    ? fallbackWords.charAt(0).toUpperCase() + fallbackWords.slice(1)
+    : "Cinematic moment";
+  const fallback = {
+    title: fallbackTitle.slice(0, 80),
+    description: fallbackSource
+      ? `A cinematic scene shaped around ${fallbackWords || fallbackSource}, with its own setting, movement, and atmosphere.`.slice(0, 160)
+      : "A cinematic scene with a distinct subject, setting, movement, and atmosphere.",
+  };
   if (!ask) return fallback;
   try {
     const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-      { role: "system", content: "Create share-card metadata for the user's video request. Return ONLY valid JSON with two string fields: title (5-80 characters, concise and specific) and description (one or two sentences, 40-160 characters). Do not use markdown, emojis, or unsupported claims." },
+      { role: "system", content: "Create promotional share-card metadata for the actual visual scene described by the user. Study the subject and action, location or culture, lighting, camera language, mood, color, and overall vibe. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, vivid and accurate). Avoid generic phrases such as 'AI video' or 'short video'. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis." },
       { role: "user", content: ask },
     ], { maxTokens: 180, temperature: 0.35, timeoutMs: CRAFT_TIMEOUT_MS });
     const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");

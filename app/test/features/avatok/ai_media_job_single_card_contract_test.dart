@@ -54,12 +54,20 @@ void main() {
     expect(card, contains('final previewSize = constraints.maxWidth.isFinite'));
   });
 
-  test('video cards use the generated thumbnail and share metadata', () {
+  test('video cards play and seek inline with generated share metadata', () {
     final card = File('lib/features/avatok/widgets/ai_media_job_card.dart').readAsStringSync();
     final media = File('lib/features/avatok/chat_thread/media.dart').readAsStringSync();
     expect(card, contains("job.kind == AiMediaJobKind.videoGenerate"));
     expect(card, contains("Made on AvaTOK AI"));
+    expect(card, contains('job.videoTitle'));
+    expect(card, contains('job.videoDescription'));
     expect(media, contains('createVideoShareLink'));
     expect(media, contains('job.thumbnailUrl'));
+    expect(media, contains('_AiVideoJobPreview('));
+    expect(media, contains('VideoProgressIndicator('));
+    expect(media, contains('allowScrubbing: true'));
+    expect(media, contains("'generated_video_inline_play'"));
+    expect(media, contains('succeeded && !isVideo'));
+    expect(media, contains("if (m.contains('mp4')) return 'mp4';"));
   });
 }

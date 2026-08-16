@@ -373,7 +373,8 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     if (m.contains('plain')) return 'txt';
     if (m.contains('png')) return 'png';
     if (m.contains('jpeg') || m.contains('jpg')) return 'jpg';
-    if (m.contains('mp4') || m.contains('m4a') || m.contains('aac')) return 'm4a';
+    if (m.contains('mp4')) return 'mp4';
+    if (m.contains('m4a') || m.contains('aac')) return 'm4a';
     if (m.contains('mpeg')) return 'mp3';
     if (m.contains('wav')) return 'wav';
     return 'bin';
@@ -465,7 +466,19 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       if (fresh == null) { _toast("Couldn't load — try again in a moment."); return; }
       final shareUrl = await AiMediaJobRepository.I.createVideoShareLink(fresh.jobId);
       if (shareUrl != null) {
-        await Share.share('${fresh.videoTitle ?? 'AvaTOK video'}\n${fresh.videoDescription ?? 'A short video created with AvaTOK AI.'}\n$shareUrl', subject: fresh.videoTitle ?? 'AvaTOK video');
+        final rawTitle = (fresh.videoTitle ?? '').trim();
+        final rawDescription = (fresh.videoDescription ?? '').trim();
+        final title = rawTitle.isEmpty || rawTitle == 'AvaTOK video'
+            ? 'Cinematic moment'
+            : rawTitle;
+        final description = rawDescription.isEmpty ||
+                rawDescription == 'A short video created with AvaTOK AI.'
+            ? 'A cinematic scene with its own setting, movement, and atmosphere.'
+            : rawDescription;
+        await Share.share(
+          '$title\n$description\n$shareUrl',
+          subject: title,
+        );
         return;
       }
     }
@@ -656,10 +669,11 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       thumbnailWidget: (isImage && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
           ? CachedImage(artifactUrl, width: double.infinity,
               cacheKey: job.artifactMediaId, transformUrl: false)
-          : (isVideo && succeeded && job.thumbnailUrl != null && job.thumbnailUrl!.isNotEmpty)
-              ? CachedImage(job.thumbnailUrl!, width: double.infinity, cacheKey: job.coverMediaId, transformUrl: false)
-              : (isVideo && succeeded && artifactUrl != null && artifactUrl.isNotEmpty)
-                  ? _AiVideoJobPreview(url: artifactUrl, width: 240)
+          : (isVideo && succeeded)
+              ? _AiVideoJobPreview(
+                  job: job,
+                  resolveUrl: () => _freshArtifactUrl(job),
+                )
               : (isMusic && succeeded)
                   ? _AiMusicJobPreview(
                       job: job,
@@ -667,7 +681,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
                       onShare: () => _shareJobArtifact(job),
                     )
           : null,
-      onTapOpen: succeeded ? () => _openJobArtifact(job) : null,
+      // Generated video owns its tap gesture and player controls inline. Do not
+      // route it through `_openJobArtifact`, which is the document/OS opener.
+      onTapOpen: succeeded && !isVideo ? () => _openJobArtifact(job) : null,
       onDownload: succeeded ? () => _downloadJobArtifact(job) : null,
       onShare: succeeded ? () => _shareJobArtifact(job) : null,
       onSaveToLibrary: succeeded ? () => _saveJobArtifactToDrive(job) : null,
@@ -1602,12 +1618,12 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
 
 }
 
-/// Lightweight inline preview for a completed Venice video. The signed URL is
-/// intentionally supplied by the live job record and is never persisted here.
+/// Inline generated-video player. Playback starts only after a tap, resolving a
+/// fresh signed URL at that moment; the expiring URL is never persisted.
 class _AiVideoJobPreview extends StatefulWidget {
-  const _AiVideoJobPreview({required this.url, required this.width});
-  final String url;
-  final double width;
+  const _AiVideoJobPreview({required this.job, required this.resolveUrl});
+  final AiMediaJob job;
+  final Future<String?> Function() resolveUrl;
 
   @override
   State<_AiVideoJobPreview> createState() => _AiVideoJobPreviewState();
@@ -1615,22 +1631,58 @@ class _AiVideoJobPreview extends StatefulWidget {
 
 class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
   VideoPlayerController? _controller;
+  bool _starting = false;
+  bool _failed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _init();
+  static String _time(Duration value) {
+    final total = value.inSeconds;
+    return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
   }
 
-  Future<void> _init() async {
-    final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+  Future<void> _toggle() async {
+    final current = _controller;
+    if (current != null && current.value.isInitialized) {
+      current.value.isPlaying ? await current.pause() : await current.play();
+      return;
+    }
+    if (_starting) return;
+    setState(() {
+      _starting = true;
+      _failed = false;
+    });
+    VideoPlayerController? candidate;
     try {
-      await c.initialize();
-      c.setLooping(true);
-      if (!mounted) { await c.dispose(); return; }
-      setState(() => _controller = c);
-    } catch (_) {
-      await c.dispose();
+      final url = await widget.resolveUrl();
+      if (url == null || url.isEmpty) throw StateError('missing_video_url');
+      candidate = VideoPlayerController.networkUrl(Uri.parse(url));
+      await candidate.initialize();
+      await candidate.setLooping(false);
+      await candidate.play();
+      if (!mounted) {
+        await candidate.dispose();
+        return;
+      }
+      setState(() {
+        _controller = candidate;
+        _starting = false;
+      });
+      Analytics.capture('chat_video_play_inline', {
+        'kind': widget.job.kind.wire,
+        'job_id': widget.job.jobId,
+      });
+    } catch (e, st) {
+      await candidate?.dispose();
+      if (mounted) {
+        setState(() {
+          _starting = false;
+          _failed = true;
+        });
+      }
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true, extra: {
+        'stage': 'generated_video_inline_play',
+        'kind': widget.job.kind.wire,
+        'job_id': widget.job.jobId,
+      });
     }
   }
 
@@ -1640,15 +1692,102 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
   @override
   Widget build(BuildContext context) {
     final c = _controller;
-    return Container(
-      width: widget.width, height: widget.width,
-      color: Colors.black,
-      child: c != null && c.value.isInitialized
-          ? Stack(alignment: Alignment.center, children: [
-              Center(child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c))),
-              const Icon(Icons.play_circle_fill, color: Colors.white, size: 52),
-            ])
-          : const Center(child: CircularProgressIndicator(color: Colors.white)),
+    final posterUrl = widget.job.thumbnailUrl;
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Container(
+        color: Colors.black,
+        child: Stack(alignment: Alignment.center, children: [
+          if (c != null && c.value.isInitialized)
+            Center(
+              child: AspectRatio(
+                aspectRatio:
+                    c.value.aspectRatio == 0 ? 16 / 9 : c.value.aspectRatio,
+                child: VideoPlayer(c),
+              ),
+            )
+          else if (posterUrl != null && posterUrl.isNotEmpty)
+            Positioned.fill(
+              child: CachedImage(
+                posterUrl,
+                width: double.infinity,
+                cacheKey: widget.job.coverMediaId,
+                transformUrl: false,
+                fit: BoxFit.cover,
+              ),
+            )
+          else
+            const Positioned.fill(child: ColoredBox(color: Colors.black)),
+          if (c == null || !c.value.isInitialized)
+            IconButton.filled(
+              tooltip: 'Play video',
+              onPressed: _starting ? null : () => unawaited(_toggle()),
+              icon: _starting
+                  ? const SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(
+                      _failed ? Icons.refresh_rounded : Icons.play_arrow_rounded,
+                      size: 34,
+                    ),
+              color: Colors.white,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black.withValues(alpha: 0.72),
+                minimumSize: const Size(64, 64),
+              ),
+            ),
+          if (c != null && c.value.isInitialized)
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 8,
+              child: ValueListenableBuilder<VideoPlayerValue>(
+                valueListenable: c,
+                builder: (context, value, _) => Container(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(children: [
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: value.isPlaying ? 'Pause video' : 'Play video',
+                      onPressed: () => unawaited(_toggle()),
+                      icon: Icon(
+                        value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Expanded(
+                      child: VideoProgressIndicator(
+                        c,
+                        allowScrubbing: true,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        colors: VideoProgressColors(
+                          playedColor: AD.bubbleOutPlay,
+                          bufferedColor: Colors.white38,
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_time(value.position)} / ${_time(value.duration)}',
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+        ]),
+      ),
     );
   }
 }

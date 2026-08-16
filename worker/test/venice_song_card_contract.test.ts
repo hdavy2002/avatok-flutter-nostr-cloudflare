@@ -51,7 +51,7 @@ describe("Venice song rich-card contract", () => {
     expect(routes).toContain("export async function aiMediaJobSongShare");
     expect(routes).toContain('if (!job.share_token)');
     expect(routes).toContain('property="og:image"');
-    expect(routes).toContain("cdn-cgi/image/format=avif,quality=60");
+    expect(routes).toContain('const cover = job.cover_media_id ? `${canonical}/cover`');
     expect(routes).toContain("Made with AvaTOK app");
     expect(routes).not.toContain("store-badge");
     expect(routes).not.toContain("Made on <strong>AvaTOK App</strong>");

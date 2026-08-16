@@ -451,21 +451,83 @@ class _ReadyCard extends StatelessWidget {
     final menu = _menuItems();
 
     if (job.kind == AiMediaJobKind.videoGenerate && _hasVisual) {
+      final rawTitle = (job.videoTitle ?? '').trim();
+      final rawDescription = (job.videoDescription ?? '').trim();
+      final videoTitle = rawTitle.isEmpty || rawTitle == 'AvaTOK video'
+          ? 'Cinematic moment'
+          : rawTitle;
+      final videoDescription = rawDescription.isEmpty ||
+              rawDescription == 'A short video created with AvaTOK AI.'
+          ? 'A cinematic scene with its own setting, movement, and atmosphere.'
+          : rawDescription;
       return Container(
-        width: width, margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(AD.rListCard)),
+        width: width,
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: AD.mediaPlaceholderBg,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderHairline),
+        ),
         clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          GestureDetector(onTap: onTapOpen, child: thumbnailWidget ?? Image.memory(thumbnailBytes!, fit: BoxFit.cover)),
-          Container(color: Colors.black, padding: const EdgeInsets.fromLTRB(16, 14, 16, 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(job.videoTitle ?? 'AvaTOK video', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(job.videoDescription ?? 'A short video created with AvaTOK AI.', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black, fontSize: 13, height: 1.35)),
-            const SizedBox(height: 8),
-            const Text('Made on AvaTOK AI', style: TextStyle(color: Colors.black, fontSize: 10)),
-          ])),
-          if (menu.isNotEmpty) Align(alignment: Alignment.centerRight, child: PopupMenuButton<String>(onSelected: _onMenuSelected, itemBuilder: (_) => menu)),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+          thumbnailWidget ?? Image.memory(thumbnailBytes!, fit: BoxFit.cover),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(
+                      videoTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (onShare != null)
+                    IconButton(
+                      tooltip: 'Share video',
+                      onPressed: onShare,
+                      icon: const Icon(Icons.ios_share_rounded),
+                      color: AD.textSecondary,
+                    ),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  videoDescription,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Made on AvaTOK AI',
+                  style: TextStyle(color: Colors.black54, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          if (menu.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: PopupMenuButton<String>(
+                onSelected: _onMenuSelected,
+                itemBuilder: (_) => menu,
+              ),
+            ),
+        ],
+        ),
       );
     }
 

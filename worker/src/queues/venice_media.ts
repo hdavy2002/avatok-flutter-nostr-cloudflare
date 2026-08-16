@@ -197,9 +197,12 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
   }
 
   try {
-    const title = job.song_title || "Untitled track";
-    const description = job.song_description || "A focused original track shaped by the requested sound and mood.";
-    const prompt = job.kind === "venice_video_generate"
+    const isVideo = job.kind === "venice_video_generate";
+    const title = job.song_title || (isVideo ? "Cinematic moment" : "Untitled track");
+    const description = job.song_description || (isVideo
+      ? "A cinematic scene with a distinct subject, setting, movement, and atmosphere."
+      : "A focused original track shaped by the requested sound and mood.");
+    const prompt = isVideo
       ? `Full-frame cinematic thumbnail image for a short video titled "${title}". ${description} Show one clear representative moment, edge-to-edge composition, no borders, no text, no letters, no logos, no watermark.`
       : `Square album cover artwork for a song titled "${title}". Study this song's description as the creative brief: ${description} Translate its genre, rhythm, cultural setting, instruments, emotional tone, and lyrical imagery into a vivid, specific scene. If it suggests Caribbean reggae, dancehall, or island funk, use unmistakable warm Caribbean color, movement, tropical texture, and a lively street or beach atmosphere rather than a generic music graphic. Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
     const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
