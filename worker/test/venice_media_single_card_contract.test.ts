@@ -21,7 +21,7 @@ describe("Venice media single-card envelopes", () => {
 
   it("keeps provider failures classified and video sharing OG-complete", () => {
     expect(venice).toContain("classifyVeniceError");
-    expect(venice).toContain('VENICE_VIDEO_DEFAULT_RESOLUTION = "720p"');
+    expect(venice).toContain('VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p"');
     expect(routes).toContain("aiMediaJobVideoShare");
     expect(routes).toContain("cdn-cgi/image/format=avif");
     expect(routes).toContain('cache-control: asset === "thumbnail" ? "public, max-age=31536000, immutable"');
@@ -33,7 +33,7 @@ describe("Venice media single-card envelopes", () => {
     expect(venice).toContain("ltx-2-v2-3-fast-text-to-video");
     expect(venice).toContain("ltx-2-v2-3-fast-image-to-video");
     expect(venice).toContain("VENICE_VIDEO_MAX_SECONDS = 15");
-    expect(venice).toContain("same-intent model from the live catalog");
+    expect(venice).toContain("Never substitute an arbitrary same-intent model");
     expect(venice).toContain("VIDEO_CIRCUIT_LIMIT = 3");
     expect(recovery).toContain("listVeniceVideoThumbnailJobsForRecovery");
     expect(recovery).toContain("venice_media_watchdog_scan");

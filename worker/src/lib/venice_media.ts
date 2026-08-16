@@ -28,7 +28,7 @@ import { readConfig } from "../routes/config";
 import { moderate } from "./moderation";
 import {
   veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
-  VENICE_VIDEO_MIN_SECONDS, VENICE_VIDEO_MAX_SECONDS,
+  VENICE_VIDEO_MIN_SECONDS, VENICE_VIDEO_MAX_SECONDS, VENICE_VIDEO_DEFAULT_RESOLUTION,
   type VeniceIntent, type VeniceTier, classifyVeniceError,
   veniceVideoPreflight, recordVeniceVideoProviderFailure, recordVeniceVideoProviderSuccess,
 } from "./venice";
@@ -167,17 +167,15 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   }
   const jobId = created.job.job_id;
 
+  let queueId: string;
   try {
     // env as any: VENICE_API_KEY is not (yet) declared on the shared Env
     // interface (worker/src/types.ts) — matches the existing cast at
     // routes/ava_image.ts's generateImageVenice() call site, not a new pattern.
-    const { queueId } = await veniceQueueVideo(
+    ({ queueId } = await veniceQueueVideo(
       env as any, providerModel, prompt,
       { duration: durationStr, ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}) },
-    );
-    await attachVeniceQueueId(env, jobId, queueId);
-    await enqueueVeniceMediaPoll(env, jobId, "venice_video_generate", INITIAL_POLL_DELAY_S);
-    emitReason(true, null);
+    ));
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
     const errorCode = classifyVeniceError(e);
@@ -189,9 +187,34 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   }
   await recordVeniceVideoProviderSuccess(env as any);
 
+  // Provider acceptance and our own durable handoff are different failure
+  // domains. Do not trip Venice's circuit breaker or mislabel telemetry when
+  // D1/Queues fail after Venice has already accepted the generation.
+  const attached = await attachVeniceQueueId(env, jobId, queueId);
+  if (!attached) {
+    await failVeniceMediaJob(env, { jobId, errorCode: "pipeline_state_error", reason: "queue_id_attach_failed" });
+    void track(env, a.uid, "ava_video_error", "avaai", {
+      stage: "attach", model: providerModel, provider: "venice", error: "queue_id_attach_failed", job_id: jobId,
+    });
+    emitReason(false, "queue_id_attach_failed");
+    return { ok: false, message: "I couldn't start that video right now — please try again." };
+  }
+  try {
+    await enqueueVeniceMediaPoll(env, jobId, "venice_video_generate", INITIAL_POLL_DELAY_S);
+  } catch (e: any) {
+    const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
+    await failVeniceMediaJob(env, { jobId, errorCode: "pipeline_queue_error", reason: "poll_enqueue_failed" });
+    void track(env, a.uid, "ava_video_error", "avaai", {
+      stage: "enqueue", model: providerModel, provider: "venice", error: msg, job_id: jobId,
+    });
+    emitReason(false, msg);
+    return { ok: false, message: "I couldn't start that video right now — please try again." };
+  }
+  emitReason(true, null);
+
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl, model: providerModel,
-    duration_seconds: durationNum, prompt_crafted: prompt !== rawPrompt,
+    duration_seconds: durationNum, resolution: VENICE_VIDEO_DEFAULT_RESOLUTION, prompt_crafted: prompt !== rawPrompt,
   });
   await postAvaMessage(env, {
     ownerUid: a.uid, conv: a.conv,

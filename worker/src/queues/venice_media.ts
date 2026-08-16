@@ -263,8 +263,9 @@ async function deliverVeniceMedia(env: Env, job: VeniceMediaJobRecord, bytes: Ui
   // response (lib/venice.ts's veniceRetrieveVideo) carries no thumbnail/
   // preview frame to scan cheaply, and this Worker has no primitive to decode
   // a video frame (no ffmpeg/codec access in the Workers runtime). So today's
-  // enforcement for video is PROMPT-GATE + Venice's own provider-side
-  // safe_mode ONLY — reported as a known gap, not silently assumed covered.
+  // enforcement for video is the PROMPT GATE plus the configured SFW model
+  // lane. The queue endpoint rejects safe_mode, so there is no provider flag
+  // to claim as an output backstop — this remains an explicitly known gap.
   // TODO(VENICE-VID-OUTPUT-GATE-1): revisit if Venice ever returns a preview
   // frame, or add an async frame-extract step before a video job is
   // considered final. Music has no comparable visual-NSFW risk, so no output

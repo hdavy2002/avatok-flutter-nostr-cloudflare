@@ -80,16 +80,6 @@ const VIDEO_CIRCUIT_LIMIT = 3;
 const VIDEO_CIRCUIT_COOLDOWN_MS = 60_000;
 const VIDEO_MODEL_CACHE_KEY = "watchdog:venice:video:models";
 
-// Keep the configured LTX routes admissible even when Venice returns a partial
-// or differently-shaped catalog response. The queue endpoint remains the final
-// authority, and its real error is still recorded by the submit watchdog.
-const KNOWN_VIDEO_MODELS = new Set([
-  "ltx-2-v2-3-fast-text-to-video",
-  "ltx-2-v2-3-fast-image-to-video",
-  "ltx-2-fast-text-to-video",
-  "ltx-2-fast-image-to-video",
-]);
-
 function videoModelId(row: any): string {
   return String(
     row?.id
@@ -152,20 +142,12 @@ export async function veniceVideoPreflight(
     }
     const rows = Array.isArray(models) ? models : Array.isArray(models?.data) ? models.data : Array.isArray(models?.models) ? models.models : [];
     const available = rows.map(videoModelId).filter(Boolean);
-    if (available.length > 0 && !available.includes(model)) {
-      // Venice rotates its video catalog. Prefer the configured model, but do
-      // not make a catalog rename take the entire video lane offline. Select a
-      // same-intent model from the live catalog and send that exact ID to the
-      // queue endpoint. A real provider rejection still trips the circuit in
-      // the submit catch below.
-      const wantsImageToVideo = /image-to-video|reference-to-video/i.test(model);
-      const fallback = available.find((id) => wantsImageToVideo
-        ? /image-to-video|reference-to-video/i.test(id)
-        : /text-to-video/i.test(id));
-      if (fallback) return { ok: true, model: fallback };
-      // A filtered/partial catalog must not take down a known-good route. The
-      // queue call below is deliberately retained as the final validation.
-      if (KNOWN_VIDEO_MODELS.has(model)) return { ok: true, model };
+    if (available.length === 0 || !available.includes(model)) {
+      // Never substitute an arbitrary same-intent model here. Video queue
+      // parameters (resolution, duration and reference inputs) are model-
+      // specific; silently swapping models can turn a healthy catalog lookup
+      // into a billed provider 400. Fail before reservation until the route's
+      // request contract has been explicitly verified.
       await recordVeniceVideoProviderFailure(env);
       return { ok: false, code: "provider_invalid_request" };
     }
@@ -253,14 +235,22 @@ export async function veniceGenerateImage(
 export const VENICE_VIDEO_DEFAULT_DURATION = "10s";
 export const VENICE_VIDEO_MIN_SECONDS = 8;
 export const VENICE_VIDEO_MAX_SECONDS = 15;
-// 720p is the common denominator across the live Venice video catalog;
-// requesting 1080p made otherwise valid LTX jobs fail with a provider 400.
-export const VENICE_VIDEO_DEFAULT_RESOLUTION = "720p";
-// [VENICE-VID-DURATION-2] Users may request any whole-second clip from 8–15s.
-export const VENICE_VIDEO_DURATIONS_S = [8, 9, 10, 11, 12, 13, 14, 15] as const;
+// Verified against the live LTX Video 2.3 Fast model card and a production
+// provider validation response on 2026-08-16. 720p is rejected by both the
+// text-to-video and image-to-video routes.
+export const VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p";
+export type VeniceVideoResolution = "1080p" | "1440p" | "2160p";
+// The product accepts requests from 8–15 seconds. Venice's LTX 2.3 queue only
+// accepts even duration tiers, so normalize a requested whole second to the
+// closest supported provider tier before creating the durable job.
+export const VENICE_VIDEO_DURATIONS_S = [6, 8, 10, 12, 14, 16, 18, 20] as const;
 export function nearestVideoDuration(seconds: number | undefined): string {
   if (!Number.isFinite(seconds as number) || (seconds as number) <= 0) return VENICE_VIDEO_DEFAULT_DURATION;
-  return `${Math.round(seconds as number)}s`;
+  const requested = Math.round(seconds as number);
+  const nearest = VENICE_VIDEO_DURATIONS_S.reduce((best, candidate) =>
+    Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best,
+  );
+  return `${nearest}s`;
 }
 
 // [VENICE-API-SHAPE-1 2026-08-14] The LIVE /video/queue schema (verified by a
@@ -274,7 +264,7 @@ export const VENICE_VIDEO_DEFAULT_ASPECT = "9:16";
 
 export interface VeniceVideoOptions {
   duration?: string;
-  resolution?: string;
+  resolution?: VeniceVideoResolution;
   aspectRatio?: "16:9" | "9:16";
   negativePrompt?: string;
   /** https URL or base64 data: URL of the source image (i2v only). */
@@ -284,10 +274,16 @@ export interface VeniceVideoOptions {
 export async function veniceQueueVideo(
   env: VeniceEnv, model: string, prompt: string, opts: VeniceVideoOptions = {},
 ): Promise<{ queueId: string }> {
+  const requestedDurationSeconds = Number.parseInt(String(opts.duration ?? ""), 10);
   const body: any = {
     model,
     prompt,
-    duration: opts.duration || VENICE_VIDEO_DEFAULT_DURATION,
+    // Centralize the provider contract here as a final guard. Callers should
+    // normalize earlier for job metadata, but a future direct caller cannot
+    // accidentally send an unsupported odd-second tier to Venice.
+    duration: opts.duration
+      ? nearestVideoDuration(requestedDurationSeconds)
+      : VENICE_VIDEO_DEFAULT_DURATION,
     resolution: opts.resolution || VENICE_VIDEO_DEFAULT_RESOLUTION,
     aspect_ratio: opts.aspectRatio || VENICE_VIDEO_DEFAULT_ASPECT, // REQUIRED — see header
   };
