@@ -78,7 +78,13 @@ describe("incoming-call delivery contract", () => {
       kind: "call-status", to: "callee", callId: "call-1", status: "cancel",
     }, 1_000);
     expect(ring.ttlSeconds).toBe(20);
-    expect(ring.collapseKey).toBe("call-1");
+    // [CALL-RING-COLLAPSE-1 2026-08-08] The ring payload must carry NO collapse
+    // key. A collapsible message may be dropped outright rather than delivered
+    // late, and background rings were dead for 14 days because of this exact
+    // field. This assertion previously required the removed key, so it had been
+    // failing ever since that deliberate fix — inverted to lock the fix in.
+    expect(ring.collapseKey).toBeUndefined();
+    // Terminal call status stays collapsible: a superseded cancel is safe to drop.
     expect(cancel.collapseKey).toBe("call-status:call-1");
     expect(cancel.ttlSeconds).toBe(60);
     expect(ring.data).not.toHaveProperty("from");
