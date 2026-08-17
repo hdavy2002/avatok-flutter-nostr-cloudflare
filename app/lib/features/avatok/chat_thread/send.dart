@@ -50,7 +50,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
             ts: now, special: 'ava'));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
       });
-      _clearAvaWorking(); // [AVA-WORKING-DOTS-1] on-device answer landed
+      _clearAvaWorking('local_reply'); // [AVA-WORKING-DOTS-1] on-device answer landed
       _jump();
     });
   }
@@ -95,6 +95,13 @@ extension _ChatThreadSend on _ChatThreadScreenState {
       final delta = (m['delta'] ?? '').toString();
       final evId = 'stream_$sid';
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      // [AVA-WORKING-DOTS-2] A CONTENT-FREE frame must neither open a preview
+      // bubble nor retire the indicator. `streamFrame(uid, conv, id, "start",
+      // "")` (ava_agent.ts) carries no text at all, and the old code answered it
+      // by inserting an EMPTY 'ava' bubble and clearing the dots — swapping a
+      // live indicator for an invisible bubble for the rest of the turn. Only
+      // real tokens replace the dots.
+      if (delta.isEmpty) return;
       _mutMsgs(() {
         final i = _msgs.indexWhere((x) => x.evId == evId);
         if (phase == 'end') return; // keep the preview; durable answer replaces it
@@ -111,7 +118,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
             ts: now, special: 'ava', evId: evId));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
       });
-      _clearAvaWorking(); // [AVA-WORKING-DOTS-1] streaming bubble replaces the dots
+      _clearAvaWorking('stream'); // [AVA-WORKING-DOTS-1] streaming bubble replaces the dots
       _jump();
     });
   }
@@ -161,13 +168,35 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   /// label just updates the text; every call resets the 60s failsafe so a
   /// server turn that dies without a reply/'end' chip can never leave the dots
   /// bouncing forever (a stuck spinner is worse than none).
-  void _showAvaWorking(String label) {
+  ///
+  /// [AVA-WORKING-DOTS-2] `trigger` names the edge that raised it — 'send' (the
+  /// optimistic raise the instant an ava-directed message is dispatched),
+  /// 'wire_start' (a server `ava_status` start chip) or 'local' (the on-device
+  /// lane) — and is reported to PostHog alongside a later `ava_working_painted`
+  /// proof-of-paint, because a raise that never reached a frame and a raise
+  /// that was torn down 200ms later look identical to the user.
+  void _showAvaWorking(String label, {required String trigger, String? statusId}) {
     if (!mounted) return;
     _avaWorkingTimeout?.cancel();
     _avaWorkingTimeout = Timer(const Duration(seconds: 60), () {
-      if (mounted && _avaWorking != null) setState(() => _avaWorking = null);
+      if (mounted && _avaWorking != null) _clearAvaWorking('timeout');
     });
-    setState(() => _avaWorking = label.trim().isEmpty ? 'Ava is working…' : label.trim());
+    final wasVisible = _avaWorking != null;
+    Analytics.capture('ava_working_shown', {
+      'trigger': trigger,
+      'conv_kind': _isGroup ? 'group' : 'dm',
+      'rearm': wasVisible,
+    });
+    setState(() {
+      _avaWorking = label.trim().isEmpty ? 'Ava is working…' : label.trim();
+      if (statusId != null && statusId.isNotEmpty) _avaWorkingStatusId = statusId;
+      // A re-arm (the server label replacing the optimistic one) is the SAME
+      // indicator — don't reset the paint proof or restart the stopwatch.
+      if (!wasVisible) {
+        _avaWorkingPainted = false;
+        _avaWorkingShownMs = DateTime.now().millisecondsSinceEpoch;
+      }
+    });
   }
 
   /// [AVA-WORKING-DOTS-1] Hide the indicator. Called from every terminal edge:
@@ -175,10 +204,27 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   /// phase:'end' chip (inbound.dart), the first live stream frame
   /// ([_bindAvaStream]), the on-device answer ([_bindLocalAva]), and the 60s
   /// timeout above. Idempotent and cheap when already hidden.
-  void _clearAvaWorking() {
+  /// [AVA-WORKING-DOTS-2] `reason` is one of 'reply', 'local_reply',
+  /// 'phase_end', 'stream', 'timeout' or 'dispose' and is reported with the
+  /// paint proof + how long the indicator was up, so a premature teardown is
+  /// legible from telemetry instead of needing a device in hand.
+  void _clearAvaWorking(String reason) {
     _avaWorkingTimeout?.cancel();
     _avaWorkingTimeout = null;
-    if (mounted && _avaWorking != null) setState(() => _avaWorking = null);
+    if (!mounted || _avaWorking == null) return;
+    Analytics.capture('ava_working_cleared', {
+      'reason': reason,
+      'conv_kind': _isGroup ? 'group' : 'dm',
+      'painted': _avaWorkingPainted,
+      'visible_ms': _avaWorkingShownMs == 0
+          ? -1
+          : DateTime.now().millisecondsSinceEpoch - _avaWorkingShownMs,
+    });
+    setState(() {
+      _avaWorking = null;
+      _avaWorkingStatusId = null;
+      _avaWorkingPainted = false;
+    });
   }
 
   /// [AVA-WORKING-DOTS-1] Reconcile the indicator with a wire 'ava_status'
@@ -187,15 +233,51 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   /// server's label — but only when the chip is FRESH (≤90s old): history
   /// replay / reconnect backfill re-delivers old 'start' rows, and honouring
   /// one would raise a phantom "working" indicator with no turn in flight.
+  ///
+  /// [AVA-WORKING-DOTS-2] Two corrections, both of which took the dots down in
+  /// the middle of a live turn and left the user staring at nothing:
+  ///
+  ///  1. A chip belonging to a DURABLE JOB is not this turn's chip. It carries
+  ///     `job_id`, or (legacy, `ava_image.ts`) `source:'image'`, it has its own
+  ///     card (`special:'ai_job'`) and its own lifecycle — and a song turn
+  ///     routinely spawns one for the cover art, whose `endChip` fires seconds
+  ///     into a 25s turn. This is the same distinction `_isJobStatusChip`
+  ///     already draws for the message rows; the indicator must draw it too.
+  ///  2. An 'end' must belong to the turn that is actually in flight. The
+  ///     start chip's label is generated by a server-side LLM call
+  ///     (`chipLabelP` in ava_agent.ts) and the chip is only posted once that
+  ///     resolves, so chips can and do arrive out of order / late; a stale
+  ///     'end' from the previous turn would otherwise close the new one.
   void _reconcileAvaWorking(Map<String, dynamic>? extra, int tsSec) {
     final phase = (extra?['phase'] ?? '').toString();
+    final sid = (extra?['status_id'] ?? '').toString();
+    final label = (extra?['label'] ?? '').toString();
+    final jobId = (extra?['job_id'] ?? '').toString();
+    final source = (extra?['source'] ?? '').toString();
+    if (jobId.isNotEmpty ||
+        source == 'image' ||
+        label.toLowerCase().contains('generating an image')) {
+      return; // (1) a durable job's chip — not this turn's indicator
+    }
     if (phase == 'end') {
-      _clearAvaWorking();
+      // (2) only the CURRENT turn may close the indicator; an 'end' carrying a
+      // different status_id is a late/duplicate chip from an earlier turn.
+      if (_avaWorkingStatusId != null &&
+          sid.isNotEmpty &&
+          sid != _avaWorkingStatusId) {
+        return;
+      }
+      _clearAvaWorking('phase_end');
       return;
     }
+    // `created_at` on the persisted chip is MILLISECONDS (`Date.now()` in
+    // ava_agent.ts `postStatus`) while the rest of this screen's timestamps are
+    // seconds — normalise before comparing, so the freshness guard can't
+    // silently invert on units.
+    final ts = tsSec > 100000000000 ? tsSec ~/ 1000 : tsSec;
     final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (tsSec > 0 && (nowS - tsSec) > 90) return;
-    _showAvaWorking((extra?['label'] ?? '').toString());
+    if (ts > 0 && (nowS - ts) > 90) return;
+    _showAvaWorking(label, trigger: 'wire_start', statusId: sid);
   }
 
   /// Show the on-device "Ava is thinking…" indicator. [AVA-WORKING-DOTS-1]:
@@ -203,7 +285,9 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   /// the visible-list collapse could silently drop (see the `_avaWorking` field
   /// comment in chat_thread.dart) — it now drives the same state-driven
   /// indicator as the server path.
-  void _showLocalAvaThinking() => _showAvaWorking('Ava is thinking…');
+  // ignore: unused_element
+  void _showLocalAvaThinking() =>
+      _showAvaWorking('Ava is thinking…', trigger: 'local');
 
 
   void _send() {
@@ -227,14 +311,28 @@ extension _ChatThreadSend on _ChatThreadScreenState {
     // `@ava` / private mode = a personal call that is NOT sent to the peer.
     // `#ava` / public mode = shared: falls through to the normal send so the peer
     // sees clean human text while Ava also replies in the thread for both.
-    if (_editing == null && onSummonAva != null) {
+    if (_editing == null) {
       final lower = t.toLowerCase();
       final shared = lower.contains(_avaShareWord);
       final atAva = lower.contains(_avaWakeWord);
       final avaModePrivate = _avaMode && !shared && !atAva;
       final avaModePublic = _avaPublicMode && !shared && !atAva;
       final privateAva = (atAva && !shared) || avaModePrivate;
-      if (privateAva || shared || avaModePublic) {
+      final avaDirected = privateAva || shared || avaModePublic;
+      // [AVA-WORKING-DOTS-2] Emitted BEFORE the `onSummonAva` null check, and
+      // deliberately outside it: the null-handler case is precisely the one
+      // that would make the optimistic raise below dead code for a whole
+      // composer mode, and it is invisible from the outside (the message still
+      // sends, Ava just never gets summoned). `on_summon_null:true` here IS
+      // the diagnosis; `mode` says which composer audience it happened in.
+      if (avaDirected) {
+        Analytics.capture('ava_working_send_path', {
+          'on_summon_null': onSummonAva == null,
+          'mode': privateAva ? 'private' : (avaModePublic ? 'public' : 'inline'),
+          'conv_kind': _isGroup ? 'group' : 'dm',
+        });
+      }
+      if (avaDirected && onSummonAva != null) {
         // [WALLET-GET-STATE-1] 2026-07-25, owner decision (Root-Cause Report
         // §10/§12c): Ava-in-chat TEXT (@ava private / #ava shared) is FREE for
         // everyone — never metered, never paywalled. The premium gate that used
@@ -256,7 +354,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
         // message-row pipeline dropped anyway. The persisted 'start' chip
         // reconciles the label when it arrives (inbound.dart); the reply /
         // 'end' chip / 60s timeout clears it.
-        _showAvaWorking('Ava is working…');
+        _showAvaWorking('Ava is working…', trigger: 'send');
         if (privateAva) {
           _ragAddLine('You', t);
           _composerFocus.requestFocus();

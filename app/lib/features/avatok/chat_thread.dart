@@ -396,6 +396,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // (bubbles.dart) — this indicator owns the visual.
   String? _avaWorking;        // non-null label = indicator visible
   Timer? _avaWorkingTimeout;  // 60s failsafe — a stuck spinner is worse than none
+  // [AVA-WORKING-DOTS-2] Diagnosis state. "The dots never appeared" and "the
+  // dots appeared and were torn down 200ms later" are indistinguishable to the
+  // user and are completely different bugs, and with no local toolchain the
+  // only way to tell them apart is from the device. `_avaWorkingPainted` flips
+  // true the first frame the bubble actually BUILDS (so a raise that never
+  // reaches the screen is visible in telemetry), `_avaWorkingShownMs` anchors
+  // how long it stayed up, and `_avaWorkingStatusId` correlates the closing
+  // 'ava_status' chip to THIS turn — an 'end' chip from another turn or from a
+  // durable media job must not close it.
+  bool _avaWorkingPainted = false;
+  int _avaWorkingShownMs = 0;
+  String? _avaWorkingStatusId;
   // Phase 5: live clock — refreshes relative timestamps + day separators so
   // "Today" rolls to "Yesterday" and "last seen" stays current without a reload.
   Timer? _clockTimer;
@@ -1019,6 +1031,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
     _typingClear?.cancel();
     _myTypingOff?.cancel();
     _avaWorkingTimeout?.cancel(); // [AVA-WORKING-DOTS-1]
+    // [AVA-WORKING-DOTS-2] Closing the thread mid-turn is a legitimate way for
+    // the indicator to vanish — record it so it can never be mistaken for the
+    // bug (or hide it).
+    if (_avaWorking != null) {
+      Analytics.capture('ava_working_cleared', {
+        'reason': 'dispose',
+        'conv_kind': _isGroup ? 'group' : 'dm',
+        'painted': _avaWorkingPainted,
+        'visible_ms': _avaWorkingShownMs == 0
+            ? -1
+            : DateTime.now().millisecondsSinceEpoch - _avaWorkingShownMs,
+      });
+    }
     _onlineClear?.cancel();
     _confTimer?.cancel();
     _pruneTimer?.cancel();
@@ -1419,7 +1444,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     // kinds are showing at once.
                     final trailingCount = footerCount + typingCount + avaWorkingCount;
                     if (i < trailingCount) {
-                      if (showAvaWorking && i == 0) return _avaWorkingBubble(_avaWorking!);
+                      if (showAvaWorking && i == 0) {
+                        // [AVA-WORKING-DOTS-2] Proof-of-paint, once per raise.
+                        // This is the assertion that separates "the state was
+                        // never set / was cleared before a frame" from "the
+                        // widget built and the user still saw nothing".
+                        if (!_avaWorkingPainted) {
+                          _avaWorkingPainted = true;
+                          Analytics.capture('ava_working_painted', {
+                            'conv_kind': _isGroup ? 'group' : 'dm',
+                            'ms_to_paint': _avaWorkingShownMs == 0
+                                ? -1
+                                : DateTime.now().millisecondsSinceEpoch - _avaWorkingShownMs,
+                            'rows': visible.length,
+                          });
+                        }
+                        return _avaWorkingBubble(_avaWorking!);
+                      }
                       return showAiFooter ? _aiSearchFooter() : _typingBubble();
                     }
                     // msgSlot: 0 = newest message row, increasing toward the
