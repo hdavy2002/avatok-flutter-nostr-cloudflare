@@ -1847,16 +1847,31 @@ export class CallRoom {
           return Response.json({ ok: false, error: "not_a_participant" }, { status: 403 });
         }
         const previous = (await this.loadSfuSeats())[uid];
+        /**
+         * [CALL-VIDEO-FIX-3 2026-08-17] A NEW session id means a NEW peer
+         * connection — Cloudflare defines a session as exactly one connection —
+         * so nothing the old session published still exists.
+         *
+         * The carry-forward below (`previous?.audio_track` etc.) exists so a
+         * seat refresh that omits track names does not erase them. That is
+         * correct WITHIN one session and wrong ACROSS sessions: on a reconnect
+         * or a pre-warm/adopt swap, the peer would read the new `session_id`
+         * paired with the OLD track names and pull a track that no longer
+         * exists — a silent one-way-audio call. Carry forward only within the
+         * same session; a session change starts clean.
+         */
+        const sameSession = previous?.session_id === sessionId;
+        const carry = sameSession ? previous : undefined;
         const seat: SfuSeat = {
           uid,
           session_id: sessionId,
           // Track names are client-chosen and echoed back verbatim to the peer, so
           // they are bounded here rather than trusted. 128 matches the group path's
           // MAX_TRACK_NAME_LEN so both transports agree on the ceiling.
-          audio_track: typeof body.audioTrack === "string" ? body.audioTrack.slice(0, 128) : (previous?.audio_track ?? null),
-          video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : (previous?.video_track ?? null),
-          audio_mid: typeof body.audioMid === "string" ? body.audioMid.slice(0, 16) : (previous?.audio_mid ?? null),
-          video_mid: typeof body.videoMid === "string" ? body.videoMid.slice(0, 16) : (previous?.video_mid ?? null),
+          audio_track: typeof body.audioTrack === "string" ? body.audioTrack.slice(0, 128) : (carry?.audio_track ?? null),
+          video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : (carry?.video_track ?? null),
+          audio_mid: typeof body.audioMid === "string" ? body.audioMid.slice(0, 16) : (carry?.audio_mid ?? null),
+          video_mid: typeof body.videoMid === "string" ? body.videoMid.slice(0, 16) : (carry?.video_mid ?? null),
           updated_at: Date.now(),
         };
         this.sfuSeats = { ...(await this.loadSfuSeats()), [uid]: seat };

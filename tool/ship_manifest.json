@@ -2149,5 +2149,43 @@
     "note": "Server-side elapsed_ms on call_sfu_joined/published/pulled must DROP versus the 2026-08-17 baseline (join 365-1041ms, publish 630-2318ms, pull 646-1284ms) while sfu_ms stays flat - that delta is exactly the telemetry+identity work removed from the response path. At rate 1.0 no event may go missing."
    }
   ]
+ },
+ "CALL-VIDEO-FIX-1": {
+  "description": "Audio->video switch froze the call. Three confirmed causes fixed together (they must ship together; the mid alone is not sufficient): (a) publishVideo sent a HARD-CODED mid '1' which, after remote audio had been pulled, often belonged to the remote audio transceiver - now the real mid is resolved from pc.getTransceivers() by matching sender.track.id, and the upgrade ABORTS rather than guessing if unresolvable; (b) publishVideo ended with unawaited(_pull('video')) launching a second concurrent negotiation - now awaited; (c) nothing serialized negotiations - CallSfuTransport now has a negotiation queue (_serialize) with a 15s per-op timeout covering connectPublish/connectPull/publishVideo/_pull/pullPeerVideo/pullPeerAudio, plus a generation gate (_ownsNegotiation) so a timed-out body cannot clobber _pc/_sessionId of its successor. The initial connect publish keeps mids '0'/'1' deliberately: tracks are added audio-then-video before the first offer with nothing else on the PC, so they are correct by construction.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callSfuV1"
+  ],
+  "success": [
+   {
+    "event": "local_video_published",
+    "property": "call_id",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "Switching a live audio call to video must: not freeze, keep AUDIO uninterrupted, emit local_video_published then remote_video_track_attached then remote_video_first_frame on the peer, and emit NO call_video_upgrade_failed. call_sfu_negotiation shows queued_ms/ran_ms with no overlapping ops."
+   }
+  ]
+ },
+ "CALL-VIDEO-FIX-3": {
+  "description": "CallRoom /sfu-seat carried audio/video track names and mids forward from the PREVIOUS seat even when the session_id changed. A reconnect or prewarm/adopt swap therefore published a new session paired with dead track names, and the peer pulled a track that no longer existed - silent one-way audio. Carry-forward is now scoped to the same session id; a session change starts clean.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callSfuV1"
+  ],
+  "success": [
+   {
+    "event": "call_sfu_pulled",
+    "property": "kind",
+    "equals": "audio",
+    "min_events": 1,
+    "where": {},
+    "note": "After an SFU reconnect (call_sfu_reconnected), the following pull must succeed against the NEW session; no peer_track_not_published 409 storm and no one-way audio."
+   }
+  ]
  }
 }
