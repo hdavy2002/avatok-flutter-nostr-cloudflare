@@ -2016,7 +2016,7 @@
   ]
  },
  "CALL-PREROLL-1": {
-  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md, extending CALL-PREWARM-1/2 — the callee pre-rolls its WHOLE media path during the ring, not just the ICE+seat join: CallPrewarm._preroll acquires the mic (track disabled), builds an isolated peer connection with no session handlers, PUBLISHES (silent) and PULLS the caller's audio (muted, via a passive onTrack cache mirroring CallSession._prejoinEarlyTracks). CallSession._bootMedia peeks the pre-rolled stream (non-consuming) before getUserMedia, audio-only calls only. _startSfuMedia's hasFullPreroll branch (gated on the returned stream being IDENTICAL to the one CallPrewarm.adopt was called with) promotes the connection via the new _promotePrerollPc — installs onTrack/onConnectionState for the first time, unmutes the local track (done earlier, at peek) and each cached remote track, then replays them through the extracted _handleRemoteTrack ladder instead of re-running publish/pull. Gated on callPrerollV1 stacked on top of callPrewarmOnRingV1; either off is byte-identical to CALL-PREWARM-2's already-shipped behaviour.",
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md, extending CALL-PREWARM-1/2 \u2014 the callee pre-rolls its WHOLE media path during the ring, not just the ICE+seat join: CallPrewarm._preroll acquires the mic (track disabled), builds an isolated peer connection with no session handlers, PUBLISHES (silent) and PULLS the caller's audio (muted, via a passive onTrack cache mirroring CallSession._prejoinEarlyTracks). CallSession._bootMedia peeks the pre-rolled stream (non-consuming) before getUserMedia, audio-only calls only. _startSfuMedia's hasFullPreroll branch (gated on the returned stream being IDENTICAL to the one CallPrewarm.adopt was called with) promotes the connection via the new _promotePrerollPc \u2014 installs onTrack/onConnectionState for the first time, unmutes the local track (done earlier, at peek) and each cached remote track, then replays them through the extracted _handleRemoteTrack ladder instead of re-running publish/pull. Gated on callPrerollV1 stacked on top of callPrewarmOnRingV1; either off is byte-identical to CALL-PREWARM-2's already-shipped behaviour.",
   "shipped": "pending",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -2032,7 +2032,7 @@
     "equals": true,
     "min_events": 1,
     "where": {},
-    "note": "The ring-time preroll actually finished BOTH legs before accept. Companion assertion on the SAME event: pulled must also be true (checked separately below) — published alone means the callee could publish but the caller's own ring-time audio was never found."
+    "note": "The ring-time preroll actually finished BOTH legs before accept. Companion assertion on the SAME event: pulled must also be true (checked separately below) \u2014 published alone means the callee could publish but the caller's own ring-time audio was never found."
    },
    {
     "event": "call_preroll_ready",
@@ -2040,7 +2040,7 @@
     "equals": true,
     "min_events": 1,
     "where": {},
-    "note": "The peer's audio was pulled and muted BEFORE accept, during the ring — the whole point of this issue. Both this and the published assertion must be observed from the SAME call_preroll_ready event to mean anything; two different calls each satisfying one half is not evidence the fast path ever ran end to end."
+    "note": "The peer's audio was pulled and muted BEFORE accept, during the ring \u2014 the whole point of this issue. Both this and the published assertion must be observed from the SAME call_preroll_ready event to mean anything; two different calls each satisfying one half is not evidence the fast path ever ran end to end."
    },
    {
     "event": "call_first_audio_ms",
@@ -2050,11 +2050,37 @@
     "where": {
      "outcome": "audio"
     },
-    "note": "The callee's own headline number. Must sit under ~2000ms on wifi once call_preroll_ready(published, pulled) has fired for the same call — CALL-PREWARM-1's baseline was ~1.5-2s; this issue's whole purpose is cutting the remaining publish+pull cost on top of that. `equals: \"\"` is a presence-only placeholder for a numeric field the manifest checker cannot range-check; read the actual value.",
+    "note": "The callee's own headline number. Must sit under ~2000ms on wifi once call_preroll_ready(published, pulled) has fired for the same call \u2014 CALL-PREWARM-1's baseline was ~1.5-2s; this issue's whole purpose is cutting the remaining publish+pull cost on top of that. `equals: \"\"` is a presence-only placeholder for a numeric field the manifest checker cannot range-check; read the actual value.",
     "_verified_at": "app/lib/core/calls/call_session.dart _reportFirstAudio (unchanged by this issue) -> call_first_audio_ms{..., ms_from_connected, outcome}"
    }
   ],
-  "manual_check": "On the callee's device, confirm NOTHING is audible from the earpiece/speaker between the ring starting and the Accept tap — call_preroll_ready proves the pull succeeded, not that the mute held for the whole ring. Also confirm a DECLINED or missed call leaves no mic indicator lit afterward (CallPrewarm.discard/_closeEntry teardown).",
-  "_verified_at": "app/lib/core/calls/call_prewarm.dart (CallPrewarm._preroll, .peek, .adopt, ._closeEntry); app/lib/core/calls/call_session.dart _bootMedia peek-adoption (~line 3262), _startSfuMedia hasFullPreroll branch, _promotePrerollPc, _handleRemoteTrack/_handleConnectionState extraction from _newPC; worker/src/routes/config.ts callPrerollV1 (PlatformConfig + DEFAULTS); app/lib/core/remote_config.dart RemoteConfig.callPrerollV1 — written 2026-08-17, unshipped"
+  "manual_check": "On the callee's device, confirm NOTHING is audible from the earpiece/speaker between the ring starting and the Accept tap \u2014 call_preroll_ready proves the pull succeeded, not that the mute held for the whole ring. Also confirm a DECLINED or missed call leaves no mic indicator lit afterward (CallPrewarm.discard/_closeEntry teardown).",
+  "_verified_at": "app/lib/core/calls/call_prewarm.dart (CallPrewarm._preroll, .peek, .adopt, ._closeEntry); app/lib/core/calls/call_session.dart _bootMedia peek-adoption (~line 3262), _startSfuMedia hasFullPreroll branch, _promotePrerollPc, _handleRemoteTrack/_handleConnectionState extraction from _newPC; worker/src/routes/config.ts callPrerollV1 (PlatformConfig + DEFAULTS); app/lib/core/remote_config.dart RemoteConfig.callPrerollV1 \u2014 written 2026-08-17, unshipped"
+ },
+ "DELETE-UNHIDE-1": {
+  "description": "Owner report 2026-08-17: 'old deleted messages come back when I load the app'. sync_hub's hidden-flag seed recorded BOTH values from the server `hidden` column, and HiddenStore.mergeBulk overwrites unconditionally (unlike its monotonic sibling ReadStateStore.mergeBulk beside it). So every sync copied hidden=0 back over a locally hidden message and un-deleted it \u2014 permanently, because the local flag was then false too and nothing re-posts it. The hide POST is fire-and-forget with no retry and no outbox and is skipped entirely when evId is null, so hides made offline or that failed never reached the server at all. The seed now writes only `true`; un-hiding still works through the explicit Undo and the `hide` push.",
+  "shipped": "2026-08-17",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "no_telemetry": "This removes a write; there is no new event and the correct outcome is the ABSENCE of resurrected messages, which no event can assert. Verified by reading the two stores' merge semantics side by side (chat_state.dart ReadStateStore.mergeBulk is monotonic, HiddenStore.mergeBulk was not) rather than by telemetry. Field check: a message deleted for me, app force-closed and reopened, stays deleted."
+ },
+ "DELETE-CHAT-1": {
+  "description": "'Delete chat' in the thread overflow menu was literally `() => Navigator.pop(context)` \u2014 it closed the sheet and did nothing: no local wipe, no server call, no confirmation. The server's thread-clear machinery (threadClear, the thread_clears table, its /sync snapshot) has been complete for a while and the client had NO half of it \u2014 no store, no sender, no reader. So a 'deleted' chat was never deleted and /api/msg/sync re-materialised the backlog on the next launch. Adds ThreadClearStore (a per-conversation cleared-through cursor in epoch seconds, monotonic), a confirm dialog, an on-screen wipe, ChatPreviewStore.remove so the chat-list subtitle goes too, and render-time filters on the cache-restore and cold-open paths. A CURSOR rather than a row wipe because sync re-inserts rows unconditionally, so a wipe would only hold until the next connection. LOCAL ONLY for now: the server keys its cursor on a canonical message id that is not reachable from this screen, so cross-device clear is deliberately not faked.",
+  "shipped": "2026-08-17",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "chat_thread_cleared",
+    "where": {},
+    "property": "scope",
+    "equals": "local_only",
+    "min_events": 1,
+    "note": "The event firing at all is meaningful here ONLY because the button previously had no code path that could emit anything \u2014 but the property is what proves the handler ran to completion. Two blockers were caught in review before this shipped and both would have made the fix a silent no-op: the cursor was loaded in initState where _convKey is still null, and an extra Navigator.pop closed the thread route so `mounted` was false by the time the user confirmed, skipping the wipe AND this event. scope='local_only' is also the honest marker that this clear does not yet reach the user's other devices.",
+    "_verified_at": "app/lib/features/avatok/chat_thread/menus.dart Delete chat action, 2026-08-17"
+   }
+  ]
  }
 }
