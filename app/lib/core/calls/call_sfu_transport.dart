@@ -641,6 +641,9 @@ class CallSfuTransport {
       }
       final audioTrack = audio.first;
       await pc.addTrack(audioTrack, localStream);
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_adding_audio');
+      }
 
       MediaStreamTrack? videoTrackLocal;
       if (wantVideo) {
@@ -648,13 +651,22 @@ class CallSfuTransport {
         if (cam.isNotEmpty) {
           videoTrackLocal = cam.first;
           await pc.addTrack(videoTrackLocal, localStream);
+          if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+            return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_adding_video');
+          }
         }
       }
 
       await configurePeerConnection?.call(pc);
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_configuring_publish');
+      }
 
       // PUBLISH — we offer, the SFU answers.
       final offer = await pc.createOffer();
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_creating_publish_offer');
+      }
       final tunedOffer = RTCSessionDescription(
         audio_tuning.tuneOpusSdp(offer.sdp, enableRed: enableRed),
         offer.type,
@@ -669,6 +681,9 @@ class CallSfuTransport {
       // guessing a number that may belong to another media section.
       final tracks = <Map<String, dynamic>>[];
       final audioMid = await _midForSender(pc, audioTrack);
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_resolving_audio_mid');
+      }
       if (audioMid == null) {
         _peerPollAbort = true;
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'audio_mid_unresolved');
@@ -676,6 +691,9 @@ class CallSfuTransport {
       tracks.add({'mid': audioMid, 'kind': 'audio', 'trackName': _audioTrackName(join.sessionId)});
       if (videoTrackLocal != null) {
         final videoMid = await _midForSender(pc, videoTrackLocal);
+        if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+          return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_resolving_video_mid');
+        }
         if (videoMid == null) {
           // Audio still publishes; only the camera is dropped from this offer.
           AvaLog.I.log('call', 'initial video mid unresolved — publishing audio only');
@@ -689,7 +707,13 @@ class CallSfuTransport {
           'offer',
         );
       }
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_before_publish_request');
+      }
       final answer = await CallSfuApi.publish(room, join.sessionId, tunedOffer.sdp ?? '', tracks);
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_after_publish_request');
+      }
       if (answer == null || answer['sdp'] == null) {
         _peerPollAbort = true; // [CALL-DEADAIR-1]
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_answer_sdp');
@@ -697,6 +721,9 @@ class CallSfuTransport {
       await pc.setRemoteDescription(
         RTCSessionDescription(answer['sdp'].toString(), 'answer'),
       );
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_after_publish_answer');
+      }
       for (final t in tracks) {
         _openMids.add(t['mid'].toString());
       }
@@ -708,13 +735,13 @@ class CallSfuTransport {
       _publishDone = true;
       return null;
     } on CallSfuException catch (e) {
-      await _closePc();
+      if (_ownsNegotiation(token)) await _closePc();
       return CallSfuResult.failed(
         e.unavailable ? SfuFailure.unavailable : SfuFailure.joinFailed,
         detail: e.error,
       );
     } catch (e) {
-      await _closePc();
+      if (_ownsNegotiation(token)) await _closePc();
       return CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
     }
   }
@@ -763,6 +790,9 @@ class CallSfuTransport {
       final earlyPeer = _pendingEarlyPeer;
       _pendingEarlyPeer = null;
       final peer = await (earlyPeer ?? _awaitPeerAudio(peerWait ?? _peerWait));
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_waiting_for_peer');
+      }
       if (peer == null) {
         return CallSfuResult.failed(SfuFailure.peerNeverPublished);
       }
@@ -787,6 +817,10 @@ class CallSfuTransport {
         videoConnected = await _doPull('video', token);
       }
 
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_before_ready');
+      }
+
       _startHeartbeat();
       onStage?.call('sfu_ready');
       return CallSfuResult.ok(
@@ -798,7 +832,7 @@ class CallSfuTransport {
         videoConnected: videoConnected,
       );
     } catch (e) {
-      await _closePc();
+      if (_ownsNegotiation(token)) await _closePc();
       return CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
     }
   }
@@ -912,6 +946,7 @@ class CallSfuTransport {
       await pc.setLocalDescription(tunedAnswer);
       if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       await CallSfuApi.renegotiate(room, sid, tunedAnswer.sdp ?? '');
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       final newMids = <String>{};
       for (final t in r.tracks) {
         final mid = (t as Map?)?['mid']?.toString();
@@ -935,6 +970,7 @@ class CallSfuTransport {
         if (stale.isNotEmpty) {
           try {
             final transceivers = await pc.getTransceivers();
+            if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
             for (final tr in transceivers) {
               if (!stale.contains(tr.mid)) continue;
               final track = tr.receiver.track;
@@ -1002,7 +1038,9 @@ class CallSfuTransport {
       // the diff and do nothing on the wire until some later renegotiation that
       // this transport, by design, never performs.
       await configurePeerConnection?.call(pc);
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       final offer = await pc.createOffer();
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       final tunedOffer = RTCSessionDescription(
         audio_tuning.tuneOpusSdp(offer.sdp, enableRed: enableRed),
         offer.type,
