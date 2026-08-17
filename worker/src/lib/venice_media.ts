@@ -260,6 +260,73 @@ export interface RunVeniceMusicArgs {
   tier: VeniceTier;
 }
 
+// [SONG-CONTRACT-1 2026-08-17] Per-model provider limits, discovered the hard
+// way one production failure at a time (each was a live Venice 400):
+//   minimax-music-v26 : prompt < 300 chars, lyrics_prompt < 1000 chars, no duration
+//   elevenlabs-music  : NO lyrics support at all ("This model does not support lyrics")
+// Encoding them here means a request is SHAPED to fit before it is sent, instead
+// of being rejected in front of the user. An unknown model gets generous
+// defaults plus the submit-time fallback below as its safety net.
+interface MusicModelLimits {
+  promptMaxChars: number;
+  lyricsMaxChars: number;
+  supportsLyrics: boolean;
+}
+const MUSIC_MODEL_LIMITS: Record<string, MusicModelLimits> = {
+  "minimax-music-v26": { promptMaxChars: 290, lyricsMaxChars: 950, supportsLyrics: true },
+  "elevenlabs-music": { promptMaxChars: 2000, lyricsMaxChars: 0, supportsLyrics: false },
+  "ace-step-15": { promptMaxChars: 1000, lyricsMaxChars: 4000, supportsLyrics: true },
+};
+function musicLimitsFor(model: string): MusicModelLimits {
+  return MUSIC_MODEL_LIMITS[model] ?? { promptMaxChars: 290, lyricsMaxChars: 950, supportsLyrics: true };
+}
+
+/**
+ * Compress the structured production brief into a musical-direction prompt that
+ * fits `maxChars`. The brief is multi-line and labelled ("Theme / intent: …\n
+ * Genre: …"), which blew MiniMax's 300-char ceiling on every real song. Lines
+ * are kept in the order a music model actually benefits from, and the whole
+ * thing is truncated on a word boundary as a final guarantee.
+ */
+export function compactMusicPrompt(brief: string, maxChars: number): string {
+  const raw = String(brief || "").trim();
+  if (raw.length <= maxChars) return raw;
+  const priority = [
+    /^genre\s*:/i, /^mood/i, /^instruments\s*:/i, /^voice character\s*:/i,
+    /^vocal arrangement\s*:/i, /^language\s*:/i, /^theme/i, /^intended use\s*:/i,
+  ];
+  const lines = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+    // Drop lines that describe our plumbing rather than the music.
+    .filter((l) => !/^(?:audio model|length)\s*:/i.test(l));
+  const ranked: string[] = [];
+  for (const rx of priority) {
+    const hit = lines.find((l) => rx.test(l) && !ranked.includes(l));
+    if (hit) ranked.push(hit);
+  }
+  for (const l of lines) if (!ranked.includes(l)) ranked.push(l);
+  let out = "";
+  for (const line of ranked) {
+    const next = out ? `${out}. ${line}` : line;
+    if (next.length > maxChars) break;
+    out = next;
+  }
+  if (!out) {
+    const head = raw.slice(0, maxChars);
+    const cut = head.lastIndexOf(" ");
+    out = (cut > maxChars * 0.5 ? head.slice(0, cut) : head).trim();
+  }
+  return out.slice(0, maxChars).trim();
+}
+
+/** Trim lyrics to a model's cap on a section/line boundary, never mid-word. */
+export function trimLyricsToCap(lyrics: string, maxChars: number): string {
+  const raw = String(lyrics || "");
+  if (raw.length <= maxChars) return raw;
+  const head = raw.slice(0, maxChars);
+  const cutAt = Math.max(head.lastIndexOf("\n["), head.lastIndexOf("\n\n"), head.lastIndexOf("\n"));
+  return (cutAt > maxChars * 0.4 ? head.slice(0, cutAt) : head).trim();
+}
+
 export function songCardMetadata(stylePrompt: string, durationSeconds: number, hasLyrics: boolean): {
   title: string;
   description: string;
@@ -325,20 +392,20 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   // lyrics", live 400 2026-08-17) — routing a vocal there hard-failed the whole
   // request in front of the user. Vocal songs therefore only use the long model
   // when it is known to take lyrics; instrumentals can use any long model.
-  const longModelTakesLyrics = longModel === "ace-step-15";
-  const longModelUsable = !!longModel && (musicMode === "instrumental" || longModelTakesLyrics);
+  const longModelUsable = !!longModel
+    && (musicMode === "instrumental" || musicLimitsFor(longModel).supportsLyrics);
   const model = durationSeconds > 90 && longModelUsable ? longModel : route.model;
-  // Trim only for models with the MiniMax lyric cap; the long models take full lyrics.
-  const needsLyricCap = model.startsWith("minimax");
-  let submitLyrics = lyrics;
-  if (needsLyricCap && submitLyrics.length > 950) {
-    // Trim at the last section label or line break under the cap so MiniMax
-    // sings complete sections, never a mid-word fragment.
-    const head = submitLyrics.slice(0, 950);
-    const cutAt = Math.max(head.lastIndexOf("\n["), head.lastIndexOf("\n\n"));
-    submitLyrics = (cutAt > 400 ? head.slice(0, cutAt) : head).trim();
-    void track(env, a.uid, "ava_music_lyrics_trimmed", "avaai", {
-      chars_before: lyrics.length, chars_after: submitLyrics.length, model,
+  // [SONG-CONTRACT-1] Shape BOTH fields to this model's real ceilings before
+  // sending. A 1-minute song failed live on 2026-08-17 because the structured
+  // brief ("Theme / intent: …\nGenre: …") is well over MiniMax's 300-char
+  // prompt limit — the lyric cap alone was never enough.
+  const limits = musicLimitsFor(model);
+  const submitPrompt = compactMusicPrompt(stylePrompt, limits.promptMaxChars);
+  const submitLyrics = limits.supportsLyrics ? trimLyricsToCap(lyrics, limits.lyricsMaxChars) : "";
+  if (submitPrompt.length < stylePrompt.length || submitLyrics.length < lyrics.length) {
+    void track(env, a.uid, "ava_music_request_shaped", "avaai", {
+      model, prompt_before: stylePrompt.length, prompt_after: submitPrompt.length,
+      lyrics_before: lyrics.length, lyrics_after: submitLyrics.length,
       requested_duration_seconds: durationSeconds,
     });
   }
@@ -389,25 +456,32 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     // lyrics in `lyrics_prompt`; neither field repeats the other.
     let queueId: string;
     try {
-      ({ queueId } = await veniceQueueMusic(env as any, model, stylePrompt, {
+      ({ queueId } = await veniceQueueMusic(env as any, model, submitPrompt, {
         durationSeconds,
         lyricsPrompt: submitLyrics || undefined,
       }));
     } catch (first: any) {
-      if (model === route.model) throw first;
       const firstMsg = String(first?.message ?? first ?? "unknown").slice(0, 300);
+      // Retry on the default per-generation model with ITS limits applied. When
+      // we were already on that model, retry once with deliberately conservative
+      // sizes — a provider that rejects a request for length must never be the
+      // last word to the user.
+      const retryModel = model === route.model ? route.model : route.model;
+      const retryLimits = musicLimitsFor(retryModel);
+      const tighter = model === route.model;
+      const retryPrompt = compactMusicPrompt(
+        stylePrompt, tighter ? Math.min(200, retryLimits.promptMaxChars) : retryLimits.promptMaxChars,
+      );
+      const retryLyrics = retryLimits.supportsLyrics
+        ? trimLyricsToCap(lyrics, tighter ? Math.min(800, retryLimits.lyricsMaxChars) : retryLimits.lyricsMaxChars)
+        : "";
       void track(env, a.uid, "ava_music_model_fallback", "avaai", {
-        from_model: model, to_model: route.model, error: firstMsg,
+        from_model: model, to_model: retryModel, error: firstMsg, tighter,
+        prompt_chars: retryPrompt.length, lyrics_chars: retryLyrics.length,
         requested_duration_seconds: durationSeconds, job_id: jobId,
       });
-      submittedModel = route.model;
-      let retryLyrics = lyrics;
-      if (retryLyrics.length > 950) {
-        const head = retryLyrics.slice(0, 950);
-        const cutAt = Math.max(head.lastIndexOf("\n["), head.lastIndexOf("\n\n"));
-        retryLyrics = (cutAt > 400 ? head.slice(0, cutAt) : head).trim();
-      }
-      ({ queueId } = await veniceQueueMusic(env as any, route.model, stylePrompt, {
+      submittedModel = retryModel;
+      ({ queueId } = await veniceQueueMusic(env as any, retryModel, retryPrompt, {
         durationSeconds,
         lyricsPrompt: retryLyrics || undefined,
       }));
