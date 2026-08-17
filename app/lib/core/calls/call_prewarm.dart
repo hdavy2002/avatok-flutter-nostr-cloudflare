@@ -494,6 +494,11 @@ class CallPrewarm {
       // TRANSPORT/PC built around it are still ours to close.
       if (entry.transport != null) {
         try { await entry.transport!.dispose(); } catch (_) {}
+        // dispose() clears this join's authoritative SFU seat. Never return
+        // that same session id to the normal accept path: doing so caused the
+        // measured `session_not_owned` failure and the 18s recovery in
+        // avatok-1204d417. A fresh join is required after any transport close.
+        join = null;
       }
       if (entry.prerollPc != null) {
         try { await entry.prerollPc!.close(); } catch (_) {}

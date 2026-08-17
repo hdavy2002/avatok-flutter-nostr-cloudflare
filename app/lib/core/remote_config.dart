@@ -176,7 +176,12 @@ class RemoteConfig {
   ///
   /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS) in
   /// the same change, per the fake-flag rule.
-  static bool get callPrerollV1 => _b('callPrerollV1', false);
+  /// [CALL-PREROLL-RETIRE-1 2026-08-18] Permanently retired. Creating either
+  /// local or remote audio while the phone is still ringing can seize Android
+  /// audio focus before Accept, and the original implementation could hand a
+  /// session back after its SFU seat had already been cleared. Keep the server
+  /// key for old-build rollback compatibility, but new builds never execute it.
+  static bool get callPrerollV1 => false;
 
   /// [CALL-RTK-3] Cloudflare RealtimeKit media transport
   /// (`Specs/CALL-REALTIMEKIT-MIGRATION.md` §3.3).

@@ -1469,6 +1469,8 @@ const DEFAULTS: PlatformConfig = {
   // false is a full, instant rollback with no rebuild.
   callPrewarmOnRingV1: false,
   callerPrejoinOnRingV1: false,
+  // [CALL-PREROLL-RETIRE-1] Retired. New clients hard-disable pre-Accept
+  // media acquisition; retain the false key only so older builds stay dark.
   callPrerollV1: false,
   // [CALL-RTK-2 2026-08-08] RealtimeKit migration, Phase 0. Both ship FALSE:
   // the worker route exists and the secrets may be set, but no user reaches it
