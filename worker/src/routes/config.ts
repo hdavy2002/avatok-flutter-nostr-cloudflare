@@ -703,6 +703,32 @@ export interface PlatformConfig {
    *  rejected by putConfig with "unknown key" and can never be flipped, so the
    *  kill switch would not exist. */
   callRoomAuthEnforced: boolean;
+  /** [CALL-NATIVE-ANSWER-1] Interactive native "ring screen" (caller name +
+   *  Accept/Decline) that MainActivity paints the instant the incoming-call
+   *  notification is tapped, while the Flutter engine is still cold-starting.
+   *  Root cause it targets: `_routeToBrandedIncoming` in push_service.dart
+   *  polls `navigatorKey.currentState` every 250ms for up to 10s waiting for
+   *  the Flutter branded screen — production measured 5.61s from
+   *  `call_incoming_shown` to `call_branded_fsi_routed` on 2026-08-17, during
+   *  which the owner could not press Accept.
+   *
+   *  OFF (default) = today's behaviour exactly: MainActivity shows only the
+   *  passive [CALL-ACCEPT-FRAME-1] "Connecting…" overlay (no buttons) and the
+   *  user answers from the Flutter branded screen once it finally paints.
+   *
+   *  Native cannot read RemoteConfig (no engine on a cold notification tap),
+   *  so Dart mirrors the resolved value to
+   *  `<filesDir>/callnative/answer_flags.json` on every config refresh (see
+   *  `RemoteConfig.refresh()`), matching the `nativeInCallUi` /
+   *  `AvaDialPlugin.nativeUiFile` pattern. A missing/unreadable mirror reads
+   *  as OFF.
+   *
+   *  Boolean → NOT in numericKeys. Declared here (interface + DEFAULTS in the
+   *  same change) per the fake-flag rule: a flag config.ts does not declare
+   *  is rejected by putConfig with "unknown key" and can never be flipped, so
+   *  the kill switch would not exist. Client mirror:
+   *  RemoteConfig.callNativeAnswerV1. */
+  callNativeAnswerV1: boolean;
   // BETA PHASE (2026-06-21, owner): open EVERYTHING at premium tier, free for all.
   // When true: isPremiumAI is true for every user (all AI tools unlocked, daily cap
   // bypassed), chargeFeature deducts nothing (no Token metering), and the wallet
@@ -1614,6 +1640,7 @@ const DEFAULTS: PlatformConfig = {
   // [CALL-WS-AUTH-1] OFF = observe-only. Flip ONLY after a build carrying the
   // client `?t=` half is in the field, or every installed app loses calling.
   callRoomAuthEnforced: false,
+  callNativeAnswerV1: false,       // [CALL-NATIVE-ANSWER-1] native ring screen — ships dark
   betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)

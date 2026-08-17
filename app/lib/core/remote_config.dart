@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -789,6 +791,21 @@ class RemoteConfig {
   /// Default OFF: this is the answer path that broke prod testers on 2026-07-14.
   static bool get nativeInCallUi => _b('nativeInCallUi', false);
 
+  /// [CALL-NATIVE-ANSWER-1] Interactive native "ring screen" (caller name +
+  /// Accept/Decline) MainActivity paints the instant the incoming-call
+  /// notification is tapped, while Flutter is still cold-starting — measured
+  /// production gap was 5.61s (`call_incoming_shown` → `call_branded_fsi_routed`,
+  /// call avatok-1204d417, 2026-08-17) during which the owner could not press
+  /// Accept. Mirrors config.ts `callNativeAnswerV1`.
+  ///
+  /// Native has no engine on a cold notification tap and so cannot read this
+  /// class directly — [refresh] mirrors the resolved value to
+  /// `<filesDir>/callnative/answer_flags.json` on every fetch, same disk-mirror
+  /// pattern as [nativeInCallUi]/`AvaDialPlugin.nativeUiFile`. A missing/corrupt
+  /// mirror reads as OFF natively, and this getter itself defaults OFF so a
+  /// config-fetch failure keeps today's passive-overlay-only behaviour.
+  static bool get callNativeAnswerV1 => _b('callNativeAnswerV1', false);
+
   // [PLAY-SCOPE-1 2026-08-05] The `missedCallOverlay` getter is REMOVED — the
   // Truecaller-style missed-call overlay it gated is gone (AvaTOK is
   // AvaTOK-to-AvaTOK calling only). The KV key itself is deliberately KEPT in
@@ -1071,6 +1088,27 @@ class RemoteConfig {
     }
   }
 
+  /// [CALL-NATIVE-ANSWER-1] Android-only, best-effort. `avatok/incoming_call_tap`
+  /// is already registered by MainActivity.configureFlutterEngine for every
+  /// build (the getPending/clearPending pair) — reused here rather than
+  /// standing up a new channel/plugin for one boolean. Older builds without
+  /// the `setCallNativeAnswerV1` handler simply drop the call (caught below),
+  /// which is exactly the fail-closed/OFF outcome we want.
+  static const MethodChannel _callNativeAnswerChannel =
+      MethodChannel('avatok/incoming_call_tap');
+
+  static Future<void> _mirrorCallNativeAnswerV1() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _callNativeAnswerChannel.invokeMethod(
+        'setCallNativeAnswerV1',
+        {'enabled': callNativeAnswerV1},
+      );
+    } catch (e) {
+      AvaLog.I.log('config', 'callNativeAnswerV1 disk mirror failed: $e');
+    }
+  }
+
   static Future<void> refresh() async {
     try {
       final res = await http
@@ -1089,6 +1127,14 @@ class RemoteConfig {
           // PartyKit realtime layer master switch (replaces Ably). Ships dark
           // until the PartyDO is deployed + this flag flipped on server-side.
           PartyHub.I.setEnabled(m['partyEnabled'] == true);
+          // [CALL-NATIVE-ANSWER-1] Mirror the resolved flag to disk for
+          // MainActivity, which has no engine to read this class from on a
+          // cold notification tap. Same disk-mirror pattern as
+          // AvaDialChannel.setNativeInCallEnabled → native_ui.json. Fire-
+          // and-forget: a mirror failure just means the native ring screen
+          // stays off (fail-closed, matches the getter's own default) until
+          // the next successful refresh.
+          unawaited(_mirrorCallNativeAnswerV1());
           // [BOOT-FLASH-1] Bump ONLY when the values actually changed. RootFlow's
           // build listens to this notifier, so an unconditional bump rebuilt the
           // whole widget tree on every 15-minute poll AND on the first fetch after

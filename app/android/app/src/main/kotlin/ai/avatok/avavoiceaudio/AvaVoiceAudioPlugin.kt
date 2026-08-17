@@ -113,6 +113,26 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 activeInstance?.emit("acceptToFirstFrame", payload)
             }, 3000L)
         }
+
+        /// [CALL-NATIVE-ANSWER-1] Called by MainActivity the moment the native
+        /// interactive ring screen (caller name + Accept/Decline) is painted —
+        /// this IS the number that proves the 5.61s
+        /// `call_incoming_shown` → `call_branded_fsi_routed` gap became ~0.1s,
+        /// so it is emitted unconditionally, not just on a cold start.
+        ///
+        /// Same "resend once after 3s" delivery-safety net as
+        /// [emitAcceptToFirstFrame] and for the same reason: the ring screen is
+        /// shown specifically BEFORE the Flutter engine has necessarily
+        /// finished registering this channel's handler, so a live `emit()` can
+        /// be silently dropped on the very launch it is measuring. Dart
+        /// dedupes on the exact (callId, ms) pair.
+        fun emitNativeRingShown(callId: String, ms: Long) {
+            val payload = mapOf<String, Any?>("callId" to callId, "ms" to ms)
+            activeInstance?.emit("nativeRingShown", payload)
+            Handler(Looper.getMainLooper()).postDelayed({
+                activeInstance?.emit("nativeRingShown", payload)
+            }, 3000L)
+        }
     }
 
     private var methodChannel: MethodChannel? = null

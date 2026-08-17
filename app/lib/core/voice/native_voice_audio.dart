@@ -157,6 +157,12 @@ class NativeVoiceAudio {
   int? _lastAcceptFrameMs;
   bool? _lastAcceptFrameCold;
 
+  // [CALL-NATIVE-ANSWER-1] Dedupe key for the last `nativeRingShown` event
+  // forwarded to Analytics — same 3s resend-as-delivery-safety-net pattern as
+  // acceptToFirstFrame above (see AvaVoiceAudioPlugin.emitNativeRingShown).
+  String? _lastNativeRingShownCallId;
+  int? _lastNativeRingShownMs;
+
   void _ensureHandler() {
     if (_handlerSet) return;
     _handlerSet = true;
@@ -209,6 +215,26 @@ class NativeVoiceAudio {
               Analytics.capture('call_accept_first_frame_ms', {
                 'ms': ms,
                 'cold': cold,
+              });
+            }
+          } else if (name == 'nativeRingShown') {
+            // [CALL-NATIVE-ANSWER-1] The number that proves the fix: how long
+            // after the incoming-call intent was received did MainActivity's
+            // interactive native ring screen actually paint. Production
+            // baseline (flag off) is the 5.61s `call_incoming_shown` ->
+            // `call_branded_fsi_routed` gap this feature targets.
+            final callId = (args['callId'] ?? '').toString();
+            final ms = (args['ms'] as num?)?.toInt();
+            if (callId.isNotEmpty &&
+                ms != null &&
+                ms >= 0 &&
+                (callId != _lastNativeRingShownCallId ||
+                    ms != _lastNativeRingShownMs)) {
+              _lastNativeRingShownCallId = callId;
+              _lastNativeRingShownMs = ms;
+              Analytics.capture('call_native_ring_shown', {
+                'call_id': callId,
+                'ms_from_intent': ms,
               });
             }
           } else {

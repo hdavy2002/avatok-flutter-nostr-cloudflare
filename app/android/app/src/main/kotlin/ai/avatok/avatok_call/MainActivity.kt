@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -17,6 +18,8 @@ import com.hiennv.flutter_callkit_incoming.FlutterCallkitIncomingPlugin
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import org.json.JSONObject
 
 // FlutterFragmentActivity (not FlutterActivity) is REQUIRED by flutter_stripe so
 // the native PaymentSheet can attach its own fragments to the host activity.
@@ -35,6 +38,16 @@ class MainActivity : FlutterFragmentActivity() {
     private val overlayHandler = Handler(Looper.getMainLooper())
     private var overlayFailsafe: Runnable? = null
 
+    // [CALL-NATIVE-ANSWER-1] Interactive native ring screen (caller name +
+    // Accept/Decline), shown only while `callNativeAnswerV1` is on AND Flutter
+    // has not yet painted. Instance-scoped like connectingOverlay above — both
+    // surfaces are mutually exclusive (see maybeShowNativeAnswerSurface) so at
+    // most one of the two fields is ever non-null.
+    private var nativeRingScreen: View? = null
+    private var nativeRingFailsafe: Runnable? = null
+    private var nativeRingPayload: Map<String, Any?>? = null
+    private var nativeRingShownAtElapsedMs: Long = 0L
+
     companion object {
         private var pendingIncomingTap: Map<String, Any?>? = null
 
@@ -46,6 +59,55 @@ class MainActivity : FlutterFragmentActivity() {
         // activeInstance convention for cross-file statics.
         @Volatile
         private var acceptTapAtElapsedMs: Long = 0L
+
+        // [CALL-NATIVE-ANSWER-1] A tap on the native ring screen's Accept/Decline
+        // button. Same "companion holds it until Dart drains it" shape as
+        // pendingIncomingTap above — a tap can land before Dart has registered
+        // its handler (the whole point of this feature is that Flutter is still
+        // cold-starting), so it must survive until getPendingRingAction runs.
+        @Volatile
+        private var pendingNativeRingAction: Map<String, Any?>? = null
+
+        // [CALL-NATIVE-ANSWER-1] Disk mirror of the `callNativeAnswerV1` remote
+        // flag. Native has no engine on a cold notification tap and so cannot
+        // read Dart's RemoteConfig — this file is how it learns the flag, same
+        // pattern as AvaDialPlugin.NATIVE_UI_FILE / nativeInCallEnabled().
+        // Written by RemoteConfig.refresh() via the "setCallNativeAnswerV1"
+        // channel method below.
+        private const val NATIVE_ANSWER_DIR = "callnative"
+        private const val NATIVE_ANSWER_FLAG_FILE = "answer_flags.json"
+
+        private fun nativeAnswerFlagFile(context: android.content.Context): File {
+            val dir = File(context.filesDir, NATIVE_ANSWER_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, NATIVE_ANSWER_FLAG_FILE)
+        }
+
+        /// Fail-CLOSED, matching [RemoteConfig.callNativeAnswerV1]'s own OFF
+        /// default: any doubt (no file, corrupt JSON, IO error) => false, and the
+        /// caller falls back to today's passive "Connecting…" overlay.
+        private fun isCallNativeAnswerV1Enabled(context: android.content.Context): Boolean = try {
+            val f = nativeAnswerFlagFile(context)
+            if (!f.exists() || f.length() == 0L) false
+            else JSONObject(f.readText()).optBoolean("call_native_answer_v1", false)
+        } catch (_: Throwable) {
+            false
+        }
+
+        private fun writeNativeAnswerFlag(context: android.content.Context, enabled: Boolean) {
+            try {
+                val obj = JSONObject()
+                    .put("call_native_answer_v1", enabled)
+                    .put("updated", System.currentTimeMillis())
+                val file = nativeAnswerFlagFile(context)
+                val tmp = File(file.parentFile, file.name + ".tmp")
+                tmp.writeText(obj.toString(), Charsets.UTF_8)
+                if (!tmp.renameTo(file)) {
+                    file.writeText(obj.toString(), Charsets.UTF_8)
+                    tmp.delete()
+                }
+            } catch (_: Throwable) { /* best-effort — a write failure just keeps the flag OFF */ }
+        }
     }
 
     /// [CALL-ACCEPT-FRAME-1] True when this launch/relaunch's Intent is
@@ -96,14 +158,40 @@ class MainActivity : FlutterFragmentActivity() {
         // whatever we do here. A fresh instance is always "cold" — a warm accept
         // (engine/activity already up) can only ever reach onNewIntent below,
         // never a fresh onCreate.
+        val launchedAtElapsedMs = SystemClock.elapsedRealtime()
         if (isNativeAcceptLaunch(intent)) {
-            acceptTapAtElapsedMs = SystemClock.elapsedRealtime()
+            acceptTapAtElapsedMs = launchedAtElapsedMs
         }
         super.onCreate(savedInstanceState)
         // Added AFTER super.onCreate() so the FlutterFragment's view (added by
         // the fragment transaction super.onCreate() commits) is already a child
         // of android.R.id.content — our overlay is added last, i.e. on top.
-        if (acceptTapAtElapsedMs != 0L && !flutterUiDisplayed) {
+        maybeShowNativeAnswerSurface(intent, launchedAtElapsedMs)
+    }
+
+    /// [CALL-NATIVE-ANSWER-1] The ONE place that decides which of the two
+    /// native continuity surfaces (if either) to show for a launch/relaunch
+    /// that isNativeAcceptLaunch() already flagged as "the user is trying to
+    /// get into a call". Called from both onCreate and onNewIntent so the
+    /// two entry points can never diverge.
+    ///
+    /// FLAG OFF, or an `ACTION_CALL_ACCEPT` launch, or an unparsable payload:
+    /// falls back to exactly today's behaviour (the passive "Connecting…"
+    /// overlay, gated on acceptTapAtElapsedMs having just been armed by the
+    /// caller) — byte-for-byte, so this function is a strict superset of the
+    /// old inline `if (acceptTapAtElapsedMs != 0L && !flutterUiDisplayed)
+    /// showConnectingOverlay()` checks it replaces.
+    private fun maybeShowNativeAnswerSurface(intent: Intent?, launchedAtElapsedMs: Long) {
+        if (flutterUiDisplayed) return
+        if (intent?.action == INCOMING_TAP_ACTION && isCallNativeAnswerV1Enabled(this)) {
+            val payload = parseIncomingTapExtra(intent)
+            if (payload != null) {
+                nativeRingShownAtElapsedMs = launchedAtElapsedMs
+                showNativeRingScreen(payload)
+                return
+            }
+        }
+        if (acceptTapAtElapsedMs != 0L) {
             showConnectingOverlay()
         }
     }
@@ -184,6 +272,268 @@ class MainActivity : FlutterFragmentActivity() {
         }.start()
     }
 
+    /// [CALL-NATIVE-ANSWER-1] Parses MainActivity's own `avatok.incoming_call_tap`
+    /// launch intent into the SAME shape [forwardNotificationTapIfPresent] has
+    /// always sent to Dart. Factored out so [maybeShowNativeAnswerSurface] can
+    /// read caller name/handle/kind BEFORE the Flutter engine exists to consume
+    /// the payload — [forwardNotificationTapIfPresent] now calls this too
+    /// (below) rather than re-parsing the same bundle a second way.
+    private fun parseIncomingTapExtra(intent: Intent?): Map<String, Any?>? {
+        if (intent?.action != INCOMING_TAP_ACTION) return null
+        @Suppress("DEPRECATION", "UNCHECKED_CAST")
+        val data = intent.getBundleExtra(FlutterCallkitIncomingPlugin.EXTRA_CALLKIT_CALL_DATA)
+        val extra = data?.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA)
+                as? Map<String, Any?> ?: emptyMap()
+        return mapOf<String, Any?>(
+            "callId" to (extra["callId"]
+                ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_ID).orEmpty()),
+            "from" to (extra["from"]
+                ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_HANDLE).orEmpty()),
+            "fromName" to (extra["fromName"]
+                ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER).orEmpty()),
+            "kind" to (extra["kind"] ?: "audio"),
+            "callerAvatarUrl" to (extra["callerAvatarUrl"]
+                ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR).orEmpty()),
+            "callerAvatarVersion" to (extra["callerAvatarVersion"] ?: ""),
+            "roomToken" to (extra["roomToken"] ?: ""),
+        )
+    }
+
+    /// [CALL-NATIVE-ANSWER-1] Full-screen interactive native ring surface:
+    /// caller name/handle + Decline/Accept, painted synchronously in
+    /// onCreate/onNewIntent — before the Flutter engine has attached, let
+    /// alone rendered a frame. This is the fix for the measured 5.61s gap
+    /// between the OS notification appearing (`call_incoming_shown`) and the
+    /// Flutter branded screen finally routing (`call_branded_fsi_routed`):
+    /// `_routeToBrandedIncoming` in push_service.dart polls
+    /// `navigatorKey.currentState` every 250ms for up to 10s waiting for the
+    /// engine to cold-start, and the user cannot press Accept during that wait.
+    ///
+    /// `isClickable = true` here (unlike the passive connectingOverlay) is
+    /// deliberate: this surface is meant to intercept touches — that is its
+    /// entire purpose — not let them fall through to whatever paints beneath.
+    private fun showNativeRingScreen(payload: Map<String, Any?>) {
+        if (nativeRingScreen != null) return
+        if (connectingOverlay != null) return // mutually exclusive continuity surfaces
+        val root = window.decorView.findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        nativeRingPayload = payload
+        val callerName = (payload["fromName"] as? String).orEmpty()
+        val callerHandle = (payload["from"] as? String).orEmpty()
+        val isVideo = (payload["kind"] as? String) == "video"
+        val density = resources.displayMetrics.density
+
+        val nameView = TextView(this).apply {
+            text = callerName.ifBlank { callerHandle.ifBlank { "AvaTOK" } }
+            setTextColor(0xFFE8EDEF.toInt())
+            textSize = 28f
+            gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
+        val subtitleView = TextView(this).apply {
+            text = if (isVideo) "AvaTOK video call" else "AvaTOK voice call"
+            setTextColor(0x99E8EDEF.toInt())
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(
+                nameView,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                subtitleView,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (8 * density).toInt() }
+            )
+        }
+
+        val buttonHeight = (72 * density).toInt()
+        val declineButton = TextView(this).apply {
+            text = "Decline"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setBackgroundColor(0xFFE5484D.toInt())
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onNativeRingDecline() }
+        }
+        val acceptButton = TextView(this).apply {
+            text = "Accept"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setBackgroundColor(0xFF2FAE6B.toInt())
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onNativeRingAccept() }
+        }
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 2f
+            addView(
+                declineButton,
+                LinearLayout.LayoutParams(0, buttonHeight, 1f).apply {
+                    marginEnd = (6 * density).toInt()
+                }
+            )
+            addView(
+                acceptButton,
+                LinearLayout.LayoutParams(0, buttonHeight, 1f).apply {
+                    marginStart = (6 * density).toInt()
+                }
+            )
+        }
+
+        val screen = FrameLayout(this).apply {
+            setBackgroundColor(0xFF0E1113.toInt())
+            isClickable = true
+            isFocusable = true
+            addView(
+                column,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            )
+            addView(
+                buttonRow,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, buttonHeight, Gravity.BOTTOM
+                ).apply {
+                    leftMargin = (24 * density).toInt()
+                    rightMargin = (24 * density).toInt()
+                    bottomMargin = (48 * density).toInt()
+                }
+            )
+        }
+        root.addView(
+            screen,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        nativeRingScreen = screen
+
+        val callId = (payload["callId"] as? String).orEmpty()
+        val msFromIntent = (SystemClock.elapsedRealtime() - nativeRingShownAtElapsedMs).coerceAtLeast(0L)
+        ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin.emitNativeRingShown(callId, msFromIntent)
+
+        // Same failsafe bound as the passive overlay — a wedged/crashed engine
+        // must never trap the user behind an unresponsive screen, interactive
+        // or not.
+        val failsafe = Runnable { removeNativeRingScreen() }
+        nativeRingFailsafe = failsafe
+        overlayHandler.postDelayed(failsafe, 6000L)
+    }
+
+    /// [CALL-NATIVE-ANSWER-1] 150ms fade-out, then detach. No-op if already
+    /// removed. Called on: Accept/Decline tap (immediately, after swapping to
+    /// the passive overlay or handing off to Dart), Flutter's first frame
+    /// (onFlutterUiDisplayed — the branded screen is up), and the 6s failsafe.
+    private fun removeNativeRingScreen() {
+        val screen = nativeRingScreen ?: return
+        nativeRingScreen = null
+        nativeRingFailsafe?.let { overlayHandler.removeCallbacks(it) }
+        nativeRingFailsafe = null
+        screen.animate().alpha(0f).setDuration(150L).withEndAction {
+            (screen.parent as? ViewGroup)?.removeView(screen)
+        }.start()
+    }
+
+    /// [CALL-NATIVE-ANSWER-1] Drop the [pendingIncomingTap] companion entry
+    /// for [callId] the instant the user acts on the native ring screen.
+    ///
+    /// `pendingIncomingTap` was already populated (and one `incomingCallTapped`
+    /// send already silently dropped, since no Dart handler exists yet) by
+    /// [forwardNotificationTapIfPresent] running inside `configureFlutterEngine`
+    /// — which `super.onCreate()` runs BEFORE [maybeShowNativeAnswerSurface]
+    /// decides to show this screen at all. Left alone, that same payload would
+    /// still be sitting there when `PushService._init()` finally calls
+    /// `getPending()` (it runs post-first-frame — see `PushService.ready`) and
+    /// would push a SECOND ring surface (`_routeToBrandedIncoming` ->
+    /// `IncomingBusinessCallScreen`) on top of whatever the accept/decline
+    /// action above already opened or tore down. Clearing synchronously here,
+    /// on the main thread, is always ahead of that later drain — the whole
+    /// point of the native screen is that Flutter has not booted yet.
+    private fun dropPendingIncomingTap(callId: String) {
+        if (callId.isEmpty()) return
+        if ((pendingIncomingTap?.get("callId") as? String) == callId) {
+            pendingIncomingTap = null
+        }
+    }
+
+    /// [CALL-NATIVE-ANSWER-1] Accept tapped on the native ring screen. This
+    /// function does NOT accept the call — it is a surface only. It (1) gives
+    /// instant visual feedback by swapping straight to the existing passive
+    /// "Connecting…" overlay, (2) arms the EXISTING [CALL-ACCEPT-FRAME-1]
+    /// accept→first-frame measurement so this counts the same way a
+    /// notification-surface accept would, and (3) hands the tap to Dart via
+    /// the same pending/getPending shape [forwardNotificationTapIfPresent]
+    /// already uses, so PushService.acceptRingingCall runs exactly once no
+    /// matter which surface the user tapped.
+    private fun onNativeRingAccept() {
+        // Single-shot guard: a rapid double-tap (or a tap landing during the
+        // 150ms fade-out, when the buttons are still technically attached)
+        // must fire this exactly once, matching how every other ring surface
+        // in this app treats accept/decline as one-time intents.
+        val payload = nativeRingPayload ?: return
+        nativeRingPayload = null
+        val callId = (payload["callId"] as? String).orEmpty()
+        val cold = !flutterUiDisplayed
+        val msFromScreenShown =
+            (SystemClock.elapsedRealtime() - nativeRingShownAtElapsedMs).coerceAtLeast(0L)
+        removeNativeRingScreen()
+        dropPendingIncomingTap(callId)
+        acceptTapAtElapsedMs = SystemClock.elapsedRealtime()
+        showConnectingOverlay()
+
+        val action = mapOf<String, Any?>(
+            "action" to "accept",
+            "callId" to callId,
+            "from" to (payload["from"] ?: ""),
+            "fromName" to (payload["fromName"] ?: ""),
+            "kind" to (payload["kind"] ?: "audio"),
+            "msFromScreenShown" to msFromScreenShown,
+            "cold" to cold,
+        )
+        pendingNativeRingAction = action
+        incomingTapChannel?.invokeMethod("nativeRingAction", action)
+    }
+
+    /// [CALL-NATIVE-ANSWER-1] Decline tapped on the native ring screen. Native
+    /// deliberately does NOT replicate [NativeCallDeclineBridge]'s token-scoped
+    /// WorkManager decline path here — that machinery exists for a DIFFERENT
+    /// case (the process already died before flutter_callkit_incoming's own
+    /// decline hook could reach Dart) and duplicating it would be a second,
+    /// divergent way to tell the server "declined". Instead this removes the
+    /// screen and hands off to Dart exactly like accept above; Dart's existing
+    /// `PushService.declineIncomingCall` is the ONE decline path.
+    private fun onNativeRingDecline() {
+        val payload = nativeRingPayload ?: return
+        nativeRingPayload = null
+        val callId = (payload["callId"] as? String).orEmpty()
+        removeNativeRingScreen()
+        dropPendingIncomingTap(callId)
+
+        val action = mapOf<String, Any?>(
+            "action" to "decline",
+            "callId" to callId,
+            "from" to (payload["from"] ?: ""),
+            "fromName" to (payload["fromName"] ?: ""),
+            "kind" to (payload["kind"] ?: "audio"),
+        )
+        pendingNativeRingAction = action
+        incomingTapChannel?.invokeMethod("nativeRingAction", action)
+    }
+
     /// [CALL-ACCEPT-FRAME-1] One-shot: computes the accept→first-frame span and
     /// forwards it to Dart. `cold=true` from onFlutterUiDisplayed (the overlay
     /// path — the engine genuinely had to boot); `cold=false` from onNewIntent
@@ -215,6 +565,10 @@ class MainActivity : FlutterFragmentActivity() {
                     overlayFailsafe?.let { overlayHandler.removeCallbacks(it) }
                     overlayFailsafe = null
                     removeConnectingOverlay()
+                    // [CALL-NATIVE-ANSWER-1] The Flutter branded ring screen (or
+                    // CallScreen, if the user already tapped Accept natively) is
+                    // now up — the native ring screen's job is done.
+                    removeNativeRingScreen()
                     reportAcceptToFirstFrame(cold = true)
                 }
 
@@ -312,7 +666,30 @@ class MainActivity : FlutterFragmentActivity() {
                         if (callId == null || callId == pendingId) {
                             pendingIncomingTap = null
                         }
+                        // [CALL-NATIVE-ANSWER-1] Same staleness hazard applies to a
+                        // native ring-screen tap that hasn't been drained yet.
+                        val pendingActionId = pendingNativeRingAction?.get("callId") as? String
+                        if (callId == null || callId == pendingActionId) {
+                            pendingNativeRingAction = null
+                        }
                         result.success(null)
+                    }
+                    // [CALL-NATIVE-ANSWER-1] Cold-start drain counterpart to
+                    // "getPending" above, for a native ring-screen Accept/Decline
+                    // tap that beat this handler being installed.
+                    "getPendingRingAction" -> {
+                        val pending = pendingNativeRingAction
+                        pendingNativeRingAction = null
+                        result.success(pending)
+                    }
+                    // [CALL-NATIVE-ANSWER-1] RemoteConfig.refresh() mirrors the
+                    // resolved `callNativeAnswerV1` flag here on every fetch —
+                    // native cannot read RemoteConfig directly (no engine on a
+                    // cold notification tap). Fail-closed default lives in
+                    // isCallNativeAnswerV1Enabled(), not here.
+                    "setCallNativeAnswerV1" -> {
+                        writeNativeAnswerFlag(this@MainActivity, call.argument<Boolean>("enabled") == true)
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
@@ -336,12 +713,13 @@ class MainActivity : FlutterFragmentActivity() {
         // isn't coming. Otherwise (activity exists but hasn't painted yet — a
         // narrow window) fall back to the same overlay + onFlutterUiDisplayed
         // path onCreate uses.
+        val launchedAtElapsedMs = SystemClock.elapsedRealtime()
         if (isNativeAcceptLaunch(intent)) {
-            acceptTapAtElapsedMs = SystemClock.elapsedRealtime()
+            acceptTapAtElapsedMs = launchedAtElapsedMs
             if (flutterUiDisplayed) {
                 reportAcceptToFirstFrame(cold = false)
             } else {
-                showConnectingOverlay()
+                maybeShowNativeAnswerSurface(intent, launchedAtElapsedMs)
             }
         }
         super.onNewIntent(intent)
@@ -358,30 +736,13 @@ class MainActivity : FlutterFragmentActivity() {
     /// AvaVoiceAudioPlugin.notifyNotificationTap so CallSession/CallScreen can route
     /// back to the active call instead of landing on the last-open route.
     private fun forwardNotificationTapIfPresent(intent: Intent?) {
-        if (intent?.action == INCOMING_TAP_ACTION) {
-            @Suppress("DEPRECATION", "UNCHECKED_CAST")
-            val data = intent.getBundleExtra(FlutterCallkitIncomingPlugin.EXTRA_CALLKIT_CALL_DATA)
-            val extra = data?.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA)
-                    as? Map<String, Any?> ?: emptyMap()
-            val payload = mapOf<String, Any?>(
-                "callId" to (extra["callId"]
-                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_ID).orEmpty()),
-                "from" to (extra["from"]
-                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_HANDLE).orEmpty()),
-                "fromName" to (extra["fromName"]
-                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER).orEmpty()),
-                "kind" to (extra["kind"] ?: "audio"),
-                "callerAvatarUrl" to (extra["callerAvatarUrl"]
-                    ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR).orEmpty()),
-                "callerAvatarVersion" to (extra["callerAvatarVersion"] ?: ""),
-                // [CALL-REL-R4-3] Carry the CallRoom join credential through the
-                // cold-start tap. A killed app accepting from the lock screen has
-                // no Dart heap and may have no completed secure-storage write
-                // either; this notification bundle is the one thing guaranteed to
-                // have survived, so it is the recovery path for the token the
-                // signalling socket needs. Short-lived and call-scoped.
-                "roomToken" to (extra["roomToken"] ?: ""),
-            )
+        // [CALL-REL-R4-3] parseIncomingTapExtra carries the CallRoom join
+        // credential (roomToken) through the cold-start tap too — a killed app
+        // accepting from the lock screen has no Dart heap and may have no
+        // completed secure-storage write either, so this notification bundle is
+        // the one thing guaranteed to have survived.
+        val payload = parseIncomingTapExtra(intent)
+        if (payload != null) {
             pendingIncomingTap = payload
             incomingTapChannel?.invokeMethod("incomingCallTapped", payload)
         }

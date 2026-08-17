@@ -2753,6 +2753,54 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   Analytics.capture('call_branded_fsi_route_timeout', {'call_id': callId});
 }
 
+/// [CALL-NATIVE-ANSWER-1] A tap on MainActivity's native ring screen — a
+/// SURFACE only, with no accept/decline logic of its own. `args` mirrors the
+/// same {callId, from, fromName, kind} shape [IncomingBusinessCallScreen]
+/// builds for its own Accept/Decline buttons (`_extra`), plus native-only
+/// telemetry fields (`msFromScreenShown`, `cold`) that only make sense for
+/// `action == 'accept'`.
+///
+/// Deliberately routes into the EXISTING [PushService.acceptRingingCall] /
+/// [PushService.declineIncomingCall] paths rather than a new one — the native
+/// screen must never grow its own notion of "accepted"/"declined".
+Future<void> _handleNativeRingAction(Map<String, dynamic> args) async {
+  final callId = (args['callId'] ?? '').toString();
+  if (callId.isEmpty) return;
+  // MainActivity clears its OWN `pendingIncomingTap` companion entry the
+  // instant a native button is tapped (so a later `getPending` drain can't
+  // route a second screen), but the branded route can ALSO be entered from
+  // the independent FCM/WS ring lanes `_routeToBrandedIncoming` documents —
+  // those never go through the tap channel at all, so they know nothing
+  // about this native interaction. Pre-marking the SAME gate
+  // `_routeToBrandedIncoming` itself reserves before pushing a route makes
+  // any such delivery, arriving before or after this call, hit the existing
+  // `call_branded_fsi_duplicate_suppressed` early-return instead of opening
+  // IncomingBusinessCallScreen on top of whatever accept/decline below does.
+  _brandedRouteGate.mark(callId);
+  final extra = <String, dynamic>{
+    'callId': callId,
+    'from': (args['from'] ?? '').toString(),
+    'fromName': (args['fromName'] ?? '').toString(),
+    'kind': (args['kind'] ?? 'audio').toString(),
+  };
+  switch ((args['action'] ?? '').toString()) {
+    case 'accept':
+      Analytics.capture('call_native_answer_accept', {
+        'call_id': callId,
+        'ms_from_screen_shown': args['msFromScreenShown'],
+        'cold': args['cold'] == true,
+      });
+      unawaited(PushService.acceptRingingCall(callId, fallbackExtra: extra));
+      break;
+    case 'decline':
+      Analytics.capture('call_native_answer_decline', {'call_id': callId});
+      unawaited(PushService.declineIncomingCall(extra));
+      break;
+    default:
+      break; // unknown action — no-op, never guess at intent
+  }
+}
+
 // ── [CALL-REL-9] REL-10: callee ring audibility ─────────────────────────────
 // `call_incoming_shown` only proves the incoming-call UI was SHOWN — never
 // that a ring was AUDIBLE. CallKit owns the ringtone; silent/vibrate mode, an
@@ -4184,6 +4232,16 @@ class PushService {
       // so every route opens the same branded Flutter screen.
       const tapChannel = MethodChannel('avatok/incoming_call_tap');
       tapChannel.setMethodCallHandler((call) async {
+        // [CALL-NATIVE-ANSWER-1] A tap on MainActivity's native ring screen
+        // (dark behind callNativeAnswerV1) — the screen itself has no access
+        // to any real accept/decline logic, so it hands the raw intent back
+        // here and this drains into the SAME paths the branded Flutter
+        // screen's own buttons use.
+        if (call.method == 'nativeRingAction' && call.arguments is Map) {
+          await _handleNativeRingAction(
+              Map<String, dynamic>.from(call.arguments as Map));
+          return;
+        }
         if (call.method != 'incomingCallTapped' || call.arguments is! Map) return;
         await _routeToBrandedIncoming(
             Map<String, dynamic>.from(call.arguments as Map));
@@ -4192,6 +4250,14 @@ class PushService {
         final pending =
             await tapChannel.invokeMapMethod<String, dynamic>('getPending');
         if (pending != null) unawaited(_routeToBrandedIncoming(pending));
+      } catch (_) {/* native bridge unavailable on an older build */}
+      try {
+        // [CALL-NATIVE-ANSWER-1] Drain a native ring-screen tap that beat this
+        // handler being installed (cold start). Companion object on the native
+        // side clears it once returned, so this can only ever fire once per tap.
+        final pendingAction = await tapChannel
+            .invokeMapMethod<String, dynamic>('getPendingRingAction');
+        if (pendingAction != null) unawaited(_handleNativeRingAction(pendingAction));
       } catch (_) {/* native bridge unavailable on an older build */}
     }
     // ── Notification-permission ordering contract (AVA-ONBOARD-1) ─────────────

@@ -2226,5 +2226,24 @@
     "note": "call_audible_ready must fire on every answered call with ms_from_connected recorded - that number IS the lie we are measuring (12-16s today). call_audible_timeout must be rare and only on no-stats paths. A silent caller must still reach audible."
    }
   ]
+ },
+ "CALL-NATIVE-ANSWER-1": {
+  "description": "The AvaTOK answer screen took 5.61s to appear after the ring arrived (prod avatok-1204d417: call_incoming_shown 15:06:58.241 -> call_branded_fsi_routed 15:07:03.847), because _routeToBrandedIncoming polls navigatorKey.currentState every 250ms while the Flutter engine cold-starts. MainActivity now paints an INTERACTIVE native ring screen (caller name, Decline/Accept, 72dp targets) synchronously on the avatok.incoming_call_tap launch, before Flutter exists, and swaps to the existing passive Connecting overlay on accept. All real accept/decline logic still ends in the EXISTING Dart paths (PushService.acceptRingingCall / declineIncomingCall) via the same pending/drain idiom as pendingIncomingTap; the native screen is a surface only. Native reads the flag from a disk mirror (filesDir/callnative/answer_flags.json) written by RemoteConfig.refresh, fail-closed to OFF. _brandedRouteGate is marked on native action so the independent FCM/WS ring lane cannot stack a duplicate branded screen.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callNativeAnswerV1"
+  ],
+  "success": [
+   {
+    "event": "call_native_ring_shown",
+    "property": "ms_from_intent",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "call_native_ring_shown must fire with ms_from_intent well under 1000ms (target ~100ms) on an incoming call answered from the notification, versus the 5610ms call_incoming_shown->call_branded_fsi_routed baseline. Accepting from the native screen must produce call_native_answer_accept AND the normal call_started/call_connected ladder with NO duplicate IncomingBusinessCallScreen. Declining must end the ring on both phones."
+   }
+  ]
  }
 }
