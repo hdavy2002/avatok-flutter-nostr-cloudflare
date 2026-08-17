@@ -502,6 +502,18 @@ class RemoteConfig {
   /// 400'd `unknown key` and the `true` fallback below was its permanent value.
   static bool get callAudioOwnerV1 => _b('callAudioOwnerV1', true);
 
+  /// [CALL-AUDIBLE-1 2026-08-17] Honest user-visible "connected" state.
+  /// `_connected` (media path established) and everything it triggers today —
+  /// timers, watchdogs, ringback stop, talk-time start, receptionist abort,
+  /// glare clear — is UNCHANGED by this flag. It only gates a later,
+  /// presentational milestone (`CallSession.audibleReady`) that the UI reads
+  /// to show "Connecting audio…" and hold the call timer until real inbound
+  /// audio is confirmed. Declared in `worker/src/routes/config.ts`
+  /// (PlatformConfig + DEFAULTS, default false — see [CALL-AUDIO-OWNER-1]
+  /// comment above for why an undeclared key is a fake flag). Default false:
+  /// flag-off mirrors `_connected` immediately, so this is a no-op today.
+  static bool get callAudibleStateV1 => _b('callAudibleStateV1', false);
+
   /// [CALL-PRESENCE-1 2026-08-07] Presence-first call routing + the device
   /// heartbeat that feeds it.
   ///

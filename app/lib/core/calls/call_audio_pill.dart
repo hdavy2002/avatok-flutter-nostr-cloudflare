@@ -137,48 +137,67 @@ class _PillBody extends StatelessWidget {
           builder: (context, away, __) {
             final reconnecting =
                 phase == CallPhase.reconnecting || away;
-            return ValueListenableBuilder<int>(
-              valueListenable: session.elapsedSeconds,
-              builder: (context, secs, ___) {
-                final fill = reconnecting ? AD.card : AD.online;
-                final label = reconnecting
-                    ? 'Reconnecting…'
-                    : 'Ongoing call · ${_clock(secs)}';
-                return Material(
-                  color: Colors.transparent,
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 320),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: Msg.s4, vertical: Msg.s2),
-                    decoration: BoxDecoration(
-                      color: fill,
-                      // A genuine status pill — one of the rPill exceptions.
-                      borderRadius: Msg.brPill,
-                      border: Border.all(color: AD.borderControl, width: 1),
-                      boxShadow: Msg.lift,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          reconnecting
-                              ? PhosphorIcons.wifiSlash(PhosphorIconsStyle.regular)
-                              : PhosphorIcons.microphone(PhosphorIconsStyle.regular),
-                          size: 18,
-                          color: AD.textPrimary,
+            return ValueListenableBuilder<bool>(
+              // [CALL-AUDIBLE-1] Flag off: `audibleReady` mirrors `_connected`
+              // immediately, so this listener is a no-op and the pill's
+              // behaviour is byte-for-byte what it was before this issue.
+              valueListenable: session.audibleReady,
+              builder: (context, audible, ____) {
+                return ValueListenableBuilder<int>(
+                  valueListenable: session.elapsedSeconds,
+                  builder: (context, secs, ___) {
+                    // [CALL-AUDIBLE-1] `session.isConnected` (raw `_connected`),
+                    // NOT the coarse `phase` — that also maps the receptionist
+                    // sub-phases to `CallPhase.connected`, and a call routed
+                    // straight to Ava (no live human callee, `_connected`
+                    // never set) must show the ordinary running clock, not get
+                    // stuck on "Connecting audio…" forever.
+                    final connectingAudio = session.isConnected &&
+                        !reconnecting &&
+                        !audible;
+                    final fill = reconnecting ? AD.card : AD.online;
+                    final label = reconnecting
+                        ? 'Reconnecting…'
+                        : (connectingAudio
+                            ? 'Connecting audio…'
+                            : 'Ongoing call · ${_clock(secs)}');
+                    return Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 320),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: Msg.s4, vertical: Msg.s2),
+                        decoration: BoxDecoration(
+                          color: fill,
+                          // A genuine status pill — one of the rPill exceptions.
+                          borderRadius: Msg.brPill,
+                          border: Border.all(color: AD.borderControl, width: 1),
+                          boxShadow: Msg.lift,
                         ),
-                        const SizedBox(width: Msg.s2),
-                        Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ADText.tabLabel(),
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              reconnecting
+                                  ? PhosphorIcons.wifiSlash(PhosphorIconsStyle.regular)
+                                  : PhosphorIcons.microphone(PhosphorIconsStyle.regular),
+                              size: 18,
+                              color: AD.textPrimary,
+                            ),
+                            const SizedBox(width: Msg.s2),
+                            Flexible(
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: ADText.tabLabel(),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 );
               },
             );

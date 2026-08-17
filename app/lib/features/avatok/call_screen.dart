@@ -654,6 +654,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.revision.addListener(_onSessionChanged);
     _session.uiPhase.addListener(_onSessionChanged);
     _session.elapsedSeconds.addListener(_onSessionChanged);
+    _session.audibleReady.addListener(_onSessionChanged); // [CALL-AUDIBLE-1]
     _session.muted.addListener(_onSessionChanged);
     _session.speakerOn.addListener(_onSessionChanged);
     _session.cameraOn.addListener(_onSessionChanged);
@@ -685,6 +686,16 @@ class _CallScreenState extends State<CallScreen> {
     } else {
       _armAgentAutoProbe();
     }
+  }
+
+  /// [CALL-AUDIBLE-1] The label shown where the call timer normally lives:
+  /// the running clock once the call is both connected AND audible, "Connecting
+  /// audio…" while connected but not yet audible (flag on only), otherwise the
+  /// ordinary status line (ringing/declined/etc — unchanged).
+  String _connectedLabel(CallSession s, bool connected, bool audible) {
+    if (connected && audible) return s.clock;
+    if (connected && !audible) return 'Connecting audio…';
+    return s.statusText;
   }
 
   void _onSessionChanged() {
@@ -811,6 +822,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.revision.removeListener(_onSessionChanged);
     _session.uiPhase.removeListener(_onSessionChanged);
     _session.elapsedSeconds.removeListener(_onSessionChanged);
+    _session.audibleReady.removeListener(_onSessionChanged); // [CALL-AUDIBLE-1]
     _session.muted.removeListener(_onSessionChanged);
     _session.speakerOn.removeListener(_onSessionChanged);
     _session.cameraOn.removeListener(_onSessionChanged);
@@ -1350,6 +1362,11 @@ class _CallScreenState extends State<CallScreen> {
     final s = _session;
     final phase = s.uiPhase.value;
     final connected = s.isConnected;
+    // [CALL-AUDIBLE-1] `connected` alone means "media path established" and
+    // can be true 12-16s before real audio arrives. Flag off: identical to
+    // today (`audibleReady` mirrors `_connected`). Flag on: withhold the
+    // "Connected"/timer look until audio is actually confirmed flowing.
+    final audible = !RemoteConfig.callAudibleStateV1 || s.audibleReady.value;
     final video = s.videoActive.value;
     final remoteVideoStatus = s.remoteVideoStatus.value;
     final camOn = s.cameraOn.value;
@@ -1691,7 +1708,7 @@ class _CallScreenState extends State<CallScreen> {
                               // (the audio screen shows it on the sticker under
                               // the avatar), so the subtitle carries it there.
                               showVideo
-                                  ? (connected ? s.clock : s.statusText)
+                                  ? _connectedLabel(s, connected, audible)
                                   : 'End-to-end encrypted',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1953,7 +1970,7 @@ class _CallScreenState extends State<CallScreen> {
                         )
                       else ...[
                         AdSticker(
-                          connected ? s.clock : s.statusText,
+                          _connectedLabel(s, connected, audible),
                           kind: failed ? AdStickerKind.no : AdStickerKind.plain,
                         ),
                         // [CALL-HONEST-FAIL-1] The sentence. The sticker above

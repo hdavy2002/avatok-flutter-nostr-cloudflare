@@ -2187,5 +2187,44 @@
     "note": "After an SFU reconnect (call_sfu_reconnected), the following pull must succeed against the NEW session; no peer_track_not_published 409 storm and no one-way audio."
    }
   ]
+ },
+ "CALL-PREJOIN-2": {
+  "description": "Caller pre-publish now starts on a POSITIVE RING-ACK instead of the socket 'welcome' frame. A ring-ack is the server confirming it enqueued the ring, which it can only do for a call it has already recorded with caller_uid and callee_uid set - exactly the precondition POST /sfu-seat checks. Firing from 'welcome' raced call placement and returned 403 not_a_participant (prod avatok-af94b158). Publishing during the ring means the callee's first pull finds a live track instead of both phones waiting on each other after Accept - the 'connected, meter running, hello? hello?' silence.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callSfuV1",
+   "callerPrejoinOnRingV1"
+  ],
+  "success": [
+   {
+    "event": "call_prejoin_published",
+    "property": "call_id",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "Caller emits call_prejoin_published DURING the ring with no call_sfu_error stage=seat_register. On the same call the callee's stage_sfu_pull_audio minus stage_sfu_publish must shrink (mutual wait gone), and the CALLER's call_connected must still be AFTER the callee's accept (the CALL-PREJOIN-ISOLATE-1 regression must not return)."
+   }
+  ]
+ },
+ "CALL-AUDIBLE-1": {
+  "description": "The UI declared 'connected' 12-16s before inbound audio arrived (owner: 'it says connected, the meter runs, and I keep saying hello'). _connected is load-bearing (ringback stop, talk time, four timer cancels, watchdog+sampler start, receptionist abort, glare clear, onConnectionState gate) so it is deliberately UNCHANGED; a new presentational milestone audibleReady is added instead, driven by the EXISTING first-audio-bytes probe (never audioLevel - a silent caller must still connect). While connected but not audible the UI shows 'Connecting audio...' and hides the call timer, on both the call screen and the minimized pill; the connection haptic moved to this milestone. No-stats paths (RealtimeKit) use trackAdded evidence plus a 4s safety timer so no call can be stuck forever. Flag callAudibleStateV1, default false.",
+  "shipped": "pending",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callAudibleStateV1"
+  ],
+  "success": [
+   {
+    "event": "call_audible_ready",
+    "property": "ms_from_connected",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "call_audible_ready must fire on every answered call with ms_from_connected recorded - that number IS the lie we are measuring (12-16s today). call_audible_timeout must be rare and only on no-stats paths. A silent caller must still reach audible."
+   }
+  ]
  }
 }

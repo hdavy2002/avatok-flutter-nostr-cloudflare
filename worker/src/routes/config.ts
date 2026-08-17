@@ -214,6 +214,26 @@ export interface PlatformConfig {
    */
   callAudioOwnerV1: boolean;
   /**
+   * [CALL-AUDIBLE-1 2026-08-17] Honest user-visible "connected" state.
+   *
+   * `_connected` on the client (media path established — first remote track)
+   * is unchanged and stays load-bearing: it still stops ringback, starts talk
+   * time, cancels the ring/connect/fail/relay timers, starts the media
+   * watchdog + playout sampler, aborts the receptionist pre-warm, clears the
+   * glare globals, and gates `onConnectionState`. NONE of that moves.
+   *
+   * This flag only gates a LATER, purely-presentational milestone
+   * (`CallSession.audibleReady`): the UI shows "Connecting audio…" and hides
+   * the running call timer until real inbound audio is confirmed (reusing the
+   * existing `call_first_audio_ms` probe — never gated on `audioLevel`, so a
+   * silent caller still reaches this state). Production telemetry showed the
+   * UI declaring "Connected" 12-16s before audio actually arrived.
+   *
+   * FALSE (default): `audibleReady` mirrors `_connected` immediately — no UI
+   * change from today. Client mirror: RemoteConfig.callAudibleStateV1.
+   */
+  callAudibleStateV1: boolean;
+  /**
    * [CALL-RING-FASTPATH-1 2026-08-07] Trim the pre-ring critical path of
    * POST /api/call.
    *
@@ -1437,6 +1457,11 @@ const DEFAULTS: PlatformConfig = {
   // key exists and can be flipped. TRUE = today's behaviour; false restores the
   // pre-[CALL-AUDIO-OWNER-1] multi-owner audio session without a rebuild.
   callAudioOwnerV1: true,
+  // [CALL-AUDIBLE-1] OFF: no client build wires `audibleReady` into the UI
+  // yet. Flip true once that build ships to start showing "Connecting
+  // audio…" until real inbound audio is confirmed; false is an instant,
+  // no-rebuild rollback to today's (early) "Connected" label.
+  callAudibleStateV1: false,
   // [CALL-RING-FASTPATH-1] ON: only admission → glare → participants → ring stay
   // on the pre-ring await chain. Flip false in KV to restore the old fully-serial
   // order (3.6-4.8s to call_ws_ring_sent) with no rebuild.
