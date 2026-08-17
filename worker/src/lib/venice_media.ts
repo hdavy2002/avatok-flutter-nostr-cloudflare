@@ -320,10 +320,18 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   // duration-capable Venice model when one is enabled; otherwise they stay on
   // MiniMax with the lyrics trimmed to fit — a shorter song beats a failed one.
   const longModel = String((cfg as any).veniceLongMusicModel ?? "").trim();
-  const model = durationSeconds > 90 && longModel ? longModel : route.model;
-  const isMiniMax = model === route.model && route.model.startsWith("minimax");
+  // [SONG-FALLBACK-1] A long-song model is only usable for a VOCAL song if it
+  // accepts lyrics. elevenlabs-music does not ("This model does not support
+  // lyrics", live 400 2026-08-17) — routing a vocal there hard-failed the whole
+  // request in front of the user. Vocal songs therefore only use the long model
+  // when it is known to take lyrics; instrumentals can use any long model.
+  const longModelTakesLyrics = longModel === "ace-step-15";
+  const longModelUsable = !!longModel && (musicMode === "instrumental" || longModelTakesLyrics);
+  const model = durationSeconds > 90 && longModelUsable ? longModel : route.model;
+  // Trim only for models with the MiniMax lyric cap; the long models take full lyrics.
+  const needsLyricCap = model.startsWith("minimax");
   let submitLyrics = lyrics;
-  if (isMiniMax && submitLyrics.length > 950) {
+  if (needsLyricCap && submitLyrics.length > 950) {
     // Trim at the last section label or line break under the cap so MiniMax
     // sings complete sections, never a mid-word fragment.
     const head = submitLyrics.slice(0, 950);
@@ -370,13 +378,40 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   }
   const jobId = created.job.job_id;
 
+  // [SONG-FALLBACK-1] Submit with an automatic second chance. A provider that
+  // refuses the request (unsupported field, lyric-length cap, model retired)
+  // used to end the whole song in a red error card. Now the default per-
+  // generation model gets one attempt with lyrics trimmed to its cap — a
+  // shorter finished song always beats a failure in front of the user.
+  let submittedModel = model;
   try {
     // Venice's audio queue accepts musical direction in `prompt` and approved
     // lyrics in `lyrics_prompt`; neither field repeats the other.
-    const { queueId } = await veniceQueueMusic(env as any, model, stylePrompt, {
-      durationSeconds,
-      lyricsPrompt: submitLyrics || undefined,
-    });
+    let queueId: string;
+    try {
+      ({ queueId } = await veniceQueueMusic(env as any, model, stylePrompt, {
+        durationSeconds,
+        lyricsPrompt: submitLyrics || undefined,
+      }));
+    } catch (first: any) {
+      if (model === route.model) throw first;
+      const firstMsg = String(first?.message ?? first ?? "unknown").slice(0, 300);
+      void track(env, a.uid, "ava_music_model_fallback", "avaai", {
+        from_model: model, to_model: route.model, error: firstMsg,
+        requested_duration_seconds: durationSeconds, job_id: jobId,
+      });
+      submittedModel = route.model;
+      let retryLyrics = lyrics;
+      if (retryLyrics.length > 950) {
+        const head = retryLyrics.slice(0, 950);
+        const cutAt = Math.max(head.lastIndexOf("\n["), head.lastIndexOf("\n\n"));
+        retryLyrics = (cutAt > 400 ? head.slice(0, cutAt) : head).trim();
+      }
+      ({ queueId } = await veniceQueueMusic(env as any, route.model, stylePrompt, {
+        durationSeconds,
+        lyricsPrompt: retryLyrics || undefined,
+      }));
+    }
     await attachVeniceQueueId(env, jobId, queueId);
     await enqueueVeniceMediaPoll(env, jobId, "venice_music_generate", INITIAL_POLL_DELAY_S);
     emitReason(true, null);
@@ -384,7 +419,7 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
     const errorCode = classifyVeniceError(e);
     await failVeniceMediaJob(env, { jobId, errorCode, reason: "submit_failed" });
-    void track(env, a.uid, "ava_music_error", "avaai", { stage: "submit", model, provider: "venice", error: msg, job_id: jobId });
+    void track(env, a.uid, "ava_music_error", "avaai", { stage: "submit", model: submittedModel, provider: "venice", error: msg, job_id: jobId });
     emitReason(false, msg);
     return { ok: false, message: "I couldn't start that track right now — please try again." };
   }

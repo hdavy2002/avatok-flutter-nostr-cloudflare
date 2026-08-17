@@ -1856,6 +1856,13 @@ export class AvaAgentDO {
               conv, uid, private: priv, source: "music",
               text: drafted.lyrics,
             });
+            // [SONG-APPROVE-ASK-1] The lyrics used to land with no closing
+            // question, so nobody knew Ava was waiting for approval (owner
+            // report 2026-08-17). Always invite the decision explicitly.
+            await this.postAva({
+              conv, uid, private: priv, source: "music",
+              text: "Happy with these lyrics? Say **go ahead** and I'll create the song — or tell me what to change.",
+            });
           } else {
             await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
             await this.postAva({ conv, uid, text: drafted.message, private: priv, source: "music" });
