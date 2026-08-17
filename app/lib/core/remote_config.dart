@@ -697,6 +697,20 @@ class RemoteConfig {
   /// path that matters most. Mirrors config.ts `notifMessagingStyle`.
   static bool get notifMessagingStyle =>
       _b('notifMessagingStyle', true);
+
+  /// [NOTIF-ACTIONS-1 2026-08-17] Put Reply / Mark as read / Mute on message
+  /// notifications, so a message can be answered from the shade without opening
+  /// AvaTOK — and, as a side effect, so Android's on-device Smart Reply offers
+  /// its "Okay / Thanks" chips (it only does so for a MessagingStyle
+  /// notification that carries a RemoteInput reply action).
+  ///
+  /// The reply is posted from a headless isolate via bootstrapBackgroundIsolate,
+  /// so this is also the brake if that path ever misbehaves in the field.
+  /// Default TRUE; false renders the same stacked cards with no buttons.
+  /// Mirrors config.ts `notifQuickActions`.
+  static bool get notifQuickActions =>
+      _b('notifQuickActions', true);
+
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.
   static bool get voicemailBot => _b('voicemailBot', false);

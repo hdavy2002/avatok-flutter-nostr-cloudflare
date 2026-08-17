@@ -19,7 +19,9 @@ import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/avatar_cache.dart'; // [NOTIF-STYLE-1] sender photo for the MessagingStyle Person
+import '../core/background_tasks.dart' show bootstrapBackgroundIsolate; // [NOTIF-ACTIONS-1] headless auth + account scope
 import '../core/badge_service.dart';
+import '../core/chat_state.dart' show ChatFlagsStore, ReadStateStore; // [NOTIF-ACTIONS-1] mute + mark-as-read stores
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
 import '../core/calls/call_prewarm.dart' show CallPrewarm; // [CALL-PREWARM-1]
@@ -176,6 +178,30 @@ const _updatesChannel = AndroidNotificationChannel(
   importance: Importance.defaultImportance,
   playSound: false, enableVibration: false,
 );
+// [NOTIF-ACTIONS-1 2026-08-17] Muted-conversation channel.
+//
+// Per-conversation silencing CANNOT be done with `playSound: false` on the
+// notification: from Android 8 the CHANNEL owns sound, vibration and heads-up
+// behaviour, and a per-notification flag is ignored. So a muted conversation is
+// posted to a second, quiet channel instead. Same content, same bundle, no
+// sound and no heads-up banner — which is exactly WhatsApp's mute semantics
+// (the message still arrives and still counts, it just doesn't shout).
+//
+// Distinct id also means the user can retune "muted" chats separately, and
+// changing it can never reset their overrides on the main Messages channel.
+const AndroidNotificationChannel _msgMutedChannel = AndroidNotificationChannel(
+  'avatok_messages_muted', 'Muted chats',
+  description: 'Messages from conversations you have muted',
+  importance: Importance.low,
+  playSound: false, enableVibration: false,
+);
+
+// [NOTIF-ACTIONS-1] Action ids carried back in NotificationResponse.actionId.
+// The file already had this convention for calls ('callback', 'now_free_call').
+const String _kActReply = 'notif_reply';
+const String _kActRead = 'notif_read';
+const String _kActMute = 'notif_mute';
+
 // Fixed notification id for the app-update banner (distinct from message 8000 /
 // group 8001 / missed-call 8002 / now-free 8003 / branded-incoming 8005 ids).
 const int _kUpdateNotifId = 8006;
@@ -200,15 +226,24 @@ bool _localReady = false;
 Future<void> _ensureLocalInit() async {
   if (_localReady) return;
   try {
-    await _local.initialize(const InitializationSettings(
-      android: AndroidInitializationSettings(_kNotifIcon),
-    ));
+    await _local.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings(_kNotifIcon),
+      ),
+      // [NOTIF-ACTIONS-1] Reply / Mark as read / Mute pressed while the app is
+      // dead. Registering it on BOTH initialize() call sites matters: whichever
+      // isolate happens to have initialised the plugin owns the callback, and if
+      // this one omitted it the actions would work only when the app was already
+      // running — i.e. in exactly the case where the user did not need them.
+      onDidReceiveBackgroundNotificationResponse: notificationActionBackground,
+    );
     final android = _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await android?.createNotificationChannel(_msgChannel);
     await android?.createNotificationChannel(_callsChannel);
     await android?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
     await android?.createNotificationChannel(_updatesChannel); // [AVA-UPDATE-PUSH-1]
+    await android?.createNotificationChannel(_msgMutedChannel); // [NOTIF-ACTIONS-1]
     _localReady = true;
   } catch (_) {/* leave false so the next push retries init */}
 }
@@ -1508,6 +1543,17 @@ Future<_ShadeUpdate?> _buildShadeUpdate({
   required bool isGroup,
   required String groupName,
   required String avatarPath,
+  // [NOTIF-ACTIONS-1] Everything a notification ACTION needs in order to act
+  // without the app. Stored WITH the thread because the action handler runs in a
+  // bare background isolate that has only the notification's payload
+  // ('chat:<conv>') to go on — it cannot re-derive the peer uid or the local
+  // conversation key from the conv id alone.
+  //   peerUid  → the `to` field of POST /api/msg/send for a DM
+  //   convKey  → the LOCAL key ('1:<peerUid>' / 'g:<gid>') that ReadStateStore
+  //              and ChatFlagsStore are keyed on, which is a different namespace
+  //              from the server conv id
+  String peerUid = '',
+  String convKey = '',
 }) async {
   final all = await _readShadeBlob();
   var byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
@@ -1528,7 +1574,21 @@ Future<_ShadeUpdate?> _buildShadeUpdate({
   t['m'] = msgs;
   t['g'] = isGroup;
   if (groupName.isNotEmpty) t['n'] = groupName;
+  if (who.isNotEmpty) t['who'] = who;          // [NOTIF-ACTIONS-1] title when redrawing
+  if (peerUid.isNotEmpty) t['to'] = peerUid;   // [NOTIF-ACTIONS-1]
+  if (convKey.isNotEmpty) t['k'] = convKey;    // [NOTIF-ACTIONS-1]
   t['last'] = ts;
+  // [NOTIF-ACTIONS-1] Is this conversation muted? Read from the SAME store the
+  // in-app Mute switch writes (ChatFlagsStore, account-scoped 'avatok_chatflags'),
+  // so the two cannot disagree. Until now nothing on the push path consulted it
+  // at all — mute was a bell-slash icon in the chat list and literally nothing
+  // else, on either the client or the server.
+  if (convKey.isNotEmpty) {
+    try {
+      final flags = await ChatFlagsStore().load();
+      t['mute'] = (flags['muted'] ?? const <String>{}).contains(convKey);
+    } catch (_) {/* unknown → treat as unmuted, i.e. today's behaviour */}
+  }
   byConv[conv] = t;
   final evicted = <String>[];
   if (byConv.length > _kMaxShadeThreads) {
@@ -1692,6 +1752,357 @@ Future<void> _renderShadeSummary(Map<String, dynamic> byConv) async {
   } catch (_) {/* cosmetic — the per-chat children are already on screen */}
 }
 
+/// [NOTIF-STYLE-1 / NOTIF-ACTIONS-1] Draw (or redraw) ONE conversation's
+/// notification: a MessagingStyle card carrying that chat's unread messages,
+/// bundled under the shared message group, with Reply / Mark as read / Mute.
+///
+/// Extracted from [_showStackedMessageNotif] so the reply action can redraw the
+/// SAME card with the sent message appended — WhatsApp's behaviour — rather
+/// than a near-copy of this logic slowly drifting away from it.
+///
+/// Returns false if there was nothing to draw.
+Future<bool> _renderConvNotification({
+  required String conv,
+  required Map<String, dynamic> byConv,
+  required String fallbackTitle,
+  required int count,
+  required String ticker,
+}) async {
+  final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+  final msgs = ((t['m'] as List?) ?? const <dynamic>[])
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+  if (msgs.isEmpty) return false;
+  final isGroup = t['g'] == true;
+  final groupName = (t['n'] ?? '').toString();
+  final muted = t['mute'] == true;
+
+  // The first positional Person of a MessagingStyle is the DEVICE OWNER — the
+  // "you" that outgoing messages are attributed to. It is not the sender.
+  // Getting this backwards makes Android label every incoming line as the user.
+  const me = Person(name: 'You', key: 'self', important: true);
+  final style = MessagingStyleInformation(
+    me,
+    // Only a GROUP gets a conversation title; on a 1:1 Android already shows
+    // the other person's name and a title would duplicate it.
+    conversationTitle: isGroup && groupName.isNotEmpty ? groupName : null,
+    groupConversation: isGroup,
+    messages: [
+      for (final m in msgs)
+        Message(
+          (m['text'] ?? '').toString(),
+          DateTime.fromMillisecondsSinceEpoch(_asMs(m['ts'])),
+          // A message with NO person is attributed to the style's own person,
+          // i.e. to the user — which is how a reply sent from the shade renders
+          // on the right-hand side of the conversation.
+          (m['self'] == true)
+              ? null
+              : Person(
+                  name: (m['who'] ?? '').toString(),
+                  // A stable key per sender is what lets Android collapse
+                  // consecutive messages from one person under a single photo,
+                  // instead of repeating the avatar on every line.
+                  key: (m['who'] ?? '').toString(),
+                  icon: (m['ava'] ?? '').toString().isEmpty
+                      ? null
+                      : BitmapFilePathAndroidIcon((m['ava']).toString()),
+                ),
+        ),
+    ],
+  );
+
+  // A muted conversation goes to the quiet CHANNEL, not to this channel with
+  // sound turned off — from Android 8 the channel owns sound and heads-up, and
+  // a per-notification flag is ignored.
+  final ch = muted ? _msgMutedChannel : _msgChannel;
+  // [NOTIF-ACTIONS-1] Hydrated here, not just in _showStackedMessageNotif,
+  // because the reply handler redraws through this function from a headless
+  // isolate where nothing has loaded config — the getter would otherwise always
+  // return its compile-time default on that path.
+  try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults apply */}
+  final withActions = RemoteConfig.notifQuickActions;
+  await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+  await _local.show(
+    _msgNotifId(conv), // per-CONVERSATION, not the old shared 8000
+    isGroup && groupName.isNotEmpty ? groupName : fallbackTitle,
+    (msgs.last['text'] ?? '').toString(),
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        ch.id, ch.name,
+        channelDescription: ch.description,
+        icon: _kNotifIcon, // [NOTIF-ICON-1]
+        importance: muted ? Importance.low : Importance.high,
+        priority: muted ? Priority.low : Priority.high,
+        number: count, // launchers read this for the icon badge count
+        ticker: ticker,
+        category: AndroidNotificationCategory.message,
+        groupKey: _kMsgGroupKey, // ← the bundle
+        styleInformation: style,
+        actions: withActions ? _msgActions() : null,
+      ),
+    ),
+    // Carries the conv so the tap opens THIS thread. The old payload was the
+    // bare string 'chat', which is why every tap landed on the app home.
+    payload: 'chat:$conv',
+  );
+  return true;
+}
+
+/// [NOTIF-ACTIONS-1] Reply / Mark as read / Mute.
+List<AndroidNotificationAction> _msgActions() => <AndroidNotificationAction>[
+      AndroidNotificationAction(
+        _kActReply, 'Reply',
+        // WITHOUT THIS THE SUGGESTION PILLS NEVER APPEAR. The "Okay / Thanks"
+        // chips the owner asked for are Android's on-device Smart Reply, and
+        // flutter_local_notifications defaults allowGeneratedReplies to FALSE
+        // (verified in the constructor signature) — the opposite of
+        // NotificationCompat's own default. Smart Reply also requires the
+        // notification to be MessagingStyle and to carry a RemoteInput, both of
+        // which are true here.
+        allowGeneratedReplies: true,
+        // The reply is posted straight from the background isolate; bringing the
+        // app to the foreground would defeat the point of an inline reply.
+        showsUserInterface: false,
+        // Keep the card up while the send is in flight; the handler redraws it
+        // with the sent message appended, or restores it on failure.
+        cancelNotification: false,
+        inputs: const <AndroidNotificationActionInput>[
+          AndroidNotificationActionInput(
+            label: 'Reply',
+            // Our OWN chips, in addition to Smart Reply. Smart Reply is
+            // Android-version and OEM dependent — it is absent on plenty of the
+            // handsets AvaTOK's testers actually use — so these guarantee the
+            // one-tap replies exist everywhere rather than only on a Pixel.
+            choices: <String>['Okay', 'Thanks', '👍'],
+            allowFreeFormInput: true,
+          ),
+        ],
+      ),
+      const AndroidNotificationAction(
+        _kActRead, 'Mark as read',
+        showsUserInterface: false,
+      ),
+      const AndroidNotificationAction(
+        _kActMute, 'Mute',
+        showsUserInterface: false,
+      ),
+    ];
+
+/// [NOTIF-ACTIONS-1 2026-08-17] Entry point for Reply / Mark as read / Mute
+/// tapped while the app is BACKGROUNDED OR DEAD.
+///
+/// Must be a top-level function with `@pragma('vm:entry-point')` — Android spawns
+/// a fresh headless Dart isolate to run it, and without the pragma AOT
+/// tree-shaking removes it, so the action silently does nothing in release and
+/// works fine in debug. The only other entry points in this app are
+/// `firebaseBackgroundHandler` (below) and `avatokBackgroundDispatcher`
+/// (core/background_tasks.dart).
+@pragma('vm:entry-point')
+void notificationActionBackground(NotificationResponse resp) {
+  // runInBackgroundIsolate sets the flag the rest of the codebase checks —
+  // notably BadgeService.recompute, which must not try to open the drift DB
+  // here because it does not exist in this isolate.
+  unawaited(BadgeService.runInBackgroundIsolate(() => _runNotifAction(resp)));
+}
+
+/// Mark a conversation read on the server AND in local read state.
+///
+/// Both halves matter: the POST is what stops a fresh login or a second device
+/// recounting these as unread, and ReadStateStore is what this device's own
+/// unread badge is computed from.
+///
+/// The badge itself is deliberately NOT corrected here. `BadgeService.recompute`
+/// returns early in a background isolate (badge_service.dart) because it needs
+/// the drift DB, and there is no decrement primitive — only bump/clear/peek.
+/// Guessing a number would be worse than being briefly stale, so the honest
+/// count is left to the next foreground recompute.
+Future<void> _markConvRead(String conv, String convKey) async {
+  final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000; // server wants SECONDS
+  try {
+    await ApiAuth.postJson(kMsgReadUrl, {'conv': conv, 'read_ts': sec});
+  } catch (_) {/* best-effort; local state below still moves */}
+  if (convKey.isNotEmpty) {
+    try {
+      await ReadStateStore().setRead(convKey, sec);
+    } catch (_) {/* best-effort */}
+  }
+}
+
+/// [NOTIF-ACTIONS-1] The actual work behind a notification action, in whichever
+/// isolate it was invoked from.
+Future<void> _runNotifAction(NotificationResponse resp) async {
+  final action = resp.actionId ?? '';
+  if (action != _kActReply && action != _kActRead && action != _kActMute) return;
+  final payload = resp.payload ?? '';
+  if (!payload.startsWith('chat:')) return;
+  final conv = payload.substring('chat:'.length);
+  if (conv.isEmpty) return;
+  final input = (resp.input ?? '').trim();
+  try {
+    // A headless isolate has no plugin registrant, no AccountScope and — the one
+    // that actually bites — no `ApiAuth.clerkBearer`. Without it every request
+    // goes out UNAUTHENTICATED and 401s, which would look exactly like "reply is
+    // broken". bootstrapBackgroundIsolate rebuilds precisely that slice and is
+    // already the proven path for the WorkManager jobs. Skipped when we are on
+    // the main isolate and it is all set up already.
+    if ((AccountScope.id ?? '').isEmpty || ApiAuth.clerkBearer == null) {
+      if (!await bootstrapBackgroundIsolate(tag: 'notifaction')) {
+        await _track('notif_action', {'action': action, 'ok': false, 'reason': 'no_account'});
+        return;
+      }
+    }
+    final acct = await _shadeAccountId();
+    if (acct.isEmpty) return;
+    final all = await _readShadeBlob();
+    final byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+    final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+    // Stored when the notification was drawn — the bg isolate cannot re-derive
+    // either of these from the conv id alone.
+    final convKey = (t['k'] ?? '').toString();
+    final peerUid = (t['to'] ?? '').toString();
+    final isGroup = t['g'] == true;
+    await _ensureLocalInit();
+
+    if (action == _kActRead) {
+      await _markConvRead(conv, convKey);
+      await _clearShadeThread(conv);
+      await _track('notif_action', {'action': 'read', 'ok': true, 'had_key': convKey.isNotEmpty});
+      return;
+    }
+
+    if (action == _kActMute) {
+      if (convKey.isEmpty) {
+        await _track('notif_action', {'action': 'mute', 'ok': false, 'reason': 'no_key'});
+        return;
+      }
+      // ChatFlagsStore only exposes a TOGGLE, and this button always says
+      // "Mute" — so toggling blindly would UNMUTE an already-muted chat, which
+      // is the opposite of what the user just pressed.
+      final flags = await ChatFlagsStore().load();
+      if (!(flags['muted'] ?? const <String>{}).contains(convKey)) {
+        await ChatFlagsStore().toggle('muted', convKey);
+      }
+      await _clearShadeThread(conv);
+      await _track('notif_action', {'action': 'mute', 'ok': true, 'muted': true});
+      return;
+    }
+
+    // ── Reply ───────────────────────────────────────────────────────────────
+    if (input.isEmpty) {
+      await _track('notif_action', {'action': 'reply', 'ok': false, 'reason': 'empty'});
+      return;
+    }
+    if (!isGroup && peerUid.isEmpty) {
+      await _track('notif_action', {'action': 'reply', 'ok': false, 'reason': 'no_peer'});
+      return;
+    }
+    // Deliberately a DIRECT post, NOT Outbox.enqueue. The outbox is a singleton
+    // with per-isolate statics over an account-scoped file that the main isolate
+    // holds a stale mirror of — enqueueing from here would risk the main isolate
+    // overwriting the entry on its next persist, i.e. a reply that vanishes. The
+    // in-repo precedent for a direct send is AvaDm.sendControl (sync/dm.dart).
+    // The server is idempotent per client_id ([SRV-MSG-IDEMP-1]), so a retry
+    // cannot double-send.
+    //
+    // The client_id is STAMPED INTO THE SHADE LOG BEFORE the post and reused if
+    // this action runs again for the same text. A freshly-minted id per
+    // invocation would defeat the server's own idempotency: some OEMs deliver a
+    // notification action to the foreground callback as well as the background
+    // isolate, and two different client_ids means the server sees two distinct
+    // messages and the peer gets the reply twice. Keyed on the text too, so a
+    // DIFFERENT reply after a failed one is not swallowed as a duplicate of it.
+    final pendingId = (t['rid'] ?? '').toString();
+    final pendingTxt = (t['rtxt'] ?? '').toString();
+    final clientId = (pendingId.isNotEmpty && pendingTxt == input)
+        ? pendingId
+        : 'notif_${DateTime.now().microsecondsSinceEpoch}';
+    if (clientId != pendingId) {
+      t['rid'] = clientId;
+      t['rtxt'] = input;
+      byConv[conv] = t;
+      all[acct] = byConv;
+      await _persistShade(all);
+    }
+    final res = await ApiAuth.postJson(
+      kMsgSendUrl,
+      {
+        if (isGroup) 'conv': conv else 'to': peerUid,
+        'kind': 'text',
+        // Same envelope the in-app composer builds (chat_thread/send.dart).
+        'body': jsonEncode({'t': 'text', 'body': input}),
+        'client_id': clientId,
+      },
+      timeout: const Duration(seconds: 20),
+    );
+    final ok = res.statusCode >= 200 && res.statusCode < 300;
+    if (ok) {
+      // Send committed — drop the retry stamp so the NEXT reply mints a new id.
+      t.remove('rid');
+      t.remove('rtxt');
+      // Show the sent reply on the card, as WhatsApp does. It cannot come from
+      // the local database — drift is not open in this isolate — so it is
+      // appended to the shade log directly and the card redrawn. `self:true`
+      // makes MessagingStyle attribute it to the user rather than the sender.
+      final msgs = ((t['m'] as List?) ?? const <dynamic>[])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      msgs.add({
+        'id': clientId, 'who': 'You', 'text': input,
+        'ts': DateTime.now().millisecondsSinceEpoch, 'ava': '', 'self': true,
+      });
+      if (msgs.length > _kMaxShadeMsgs) {
+        msgs.removeRange(0, msgs.length - _kMaxShadeMsgs);
+      }
+      t['m'] = msgs;
+      byConv[conv] = t;
+      all[acct] = byConv;
+      await _persistShade(all);
+      await _renderConvNotification(
+        conv: conv, byConv: byConv,
+        fallbackTitle: (t['who'] ?? 'AvaTOK').toString(),
+        count: 0, ticker: 'Reply sent',
+      );
+      // Answering a message is reading it — WhatsApp clears the unread state on
+      // an inline reply too.
+      await _markConvRead(conv, convKey);
+    } else {
+      // THE CARD MUST BE REDRAWN EVEN ON FAILURE. `cancelNotification: false`
+      // keeps the notification up while the send is in flight, and Android shows
+      // an indefinite "sending" spinner on the reply field until the
+      // notification is re-posted. Without this the spinner never stops — and
+      // the most likely failure here is precisely a 401 from a headless isolate
+      // that could not mint a bearer, i.e. the case the user most needs to see.
+      // Redrawing from the unchanged log restores the card with the reply
+      // un-sent, and the retry stamp above means pressing Reply again reuses the
+      // same client_id rather than risking a double-send.
+      await _renderConvNotification(
+        conv: conv, byConv: byConv,
+        fallbackTitle: (t['who'] ?? 'AvaTOK').toString(),
+        count: 0, ticker: 'Reply not sent',
+      );
+    }
+    await _track('notif_action', {
+      'action': 'reply',
+      // `sent` is the ship-gate success value. The action FIRING proves only
+      // that a button was pressed; a 401 from a missing bearer in a headless
+      // isolate is the most likely failure and would still emit the event.
+      'sent': ok,
+      'ok': ok,
+      'status': res.statusCode,
+      'group': isGroup,
+      'chars': input.length,
+    });
+  } catch (e, st) {
+    try {
+      await _track('notif_action_failed', {
+        'action': action,
+        'error': e.toString(),
+        'stack': st.toString().split('\n').take(4).join(' | '),
+      });
+    } catch (_) {/* telemetry must never break an action */}
+  }
+}
+
 /// [NOTIF-STYLE-1] Draw (or update) ONE conversation's notification as an
 /// Android MessagingStyle card, bundled with every other AvaTOK chat under a
 /// shared group, and refresh the "N messages from M chats" summary above them.
@@ -1712,6 +2123,12 @@ Future<bool> _showStackedMessageNotif(
     // in the rulebook is not negotiable: an unscoped write here would leak one
     // family member's message previews into another's shade.
     if (acct.isEmpty) return false;
+    // [NOTIF-ACTIONS-1] The background FCM isolate never sets AccountScope, but
+    // ChatFlagsStore/ReadStateStore are account-SCOPED (cache/<id>/...). Without
+    // this they would silently read the 'guest' scope — which on a shared phone
+    // is both a wrong answer and a cross-account leak. Statics are per-isolate,
+    // so assigning here cannot disturb the main isolate.
+    if ((AccountScope.id ?? '').isEmpty) AccountScope.id = acct;
 
     final mid = (d['mid'] ?? '').toString();
     final isGroup = (d['isGroup'] ?? '').toString() == 'true';
@@ -1731,6 +2148,16 @@ Future<bool> _showStackedMessageNotif(
       acct: acct, conv: conv, mid: mid, who: who,
       text: preview.isEmpty ? 'New message' : preview,
       ts: ts, isGroup: isGroup, groupName: groupName, avatarPath: avatarPath,
+      // [NOTIF-ACTIONS-1] A group's server conv id IS its gid (see
+      // worker/src/routes/messaging.ts, where a group job uses conv: gid), so the
+      // local key is 'g:<conv>'. A DM's local key is keyed on the PEER, which is
+      // the sender of this push.
+      peerUid: (d['fromUid'] ?? '').toString(),
+      convKey: isGroup
+          ? 'g:$conv'
+          : ((d['fromUid'] ?? '').toString().isEmpty
+              ? ''
+              : '1:${(d['fromUid'] ?? '').toString()}'),
     );
     // Duplicate delivery — the shade is already correct. Returning true stops the
     // caller re-drawing anything.
@@ -1740,62 +2167,13 @@ Future<bool> _showStackedMessageNotif(
     }
     final byConv = upd.byConv;
 
-    final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
-    final msgs = ((t['m'] as List?) ?? const <dynamic>[])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-    if (msgs.isEmpty) return false;
-
-    // The first positional Person of a MessagingStyle is the DEVICE OWNER — the
-    // "you" that outgoing messages would be attributed to. It is not the sender.
-    // Getting this backwards makes Android label every incoming line as the user.
-    const me = Person(name: 'You', key: 'self', important: true);
-    final style = MessagingStyleInformation(
-      me,
-      // Only a GROUP gets a conversation title; on a 1:1 Android already shows
-      // the other person's name and a title would duplicate it.
-      conversationTitle: isGroup && groupName.isNotEmpty ? groupName : null,
-      groupConversation: isGroup,
-      messages: [
-        for (final m in msgs)
-          Message(
-            (m['text'] ?? '').toString(),
-            DateTime.fromMillisecondsSinceEpoch(_asMs(m['ts'])),
-            Person(
-              name: (m['who'] ?? '').toString(),
-              // A stable key per sender is what lets Android collapse
-              // consecutive messages from one person under a single photo,
-              // instead of repeating the avatar on every line.
-              key: (m['who'] ?? '').toString(),
-              icon: (m['ava'] ?? '').toString().isEmpty
-                  ? null
-                  : BitmapFilePathAndroidIcon((m['ava']).toString()),
-            ),
-          ),
-      ],
+    // Rendering lives in _renderConvNotification so the reply action can redraw
+    // the SAME card with the sent message appended, instead of a second copy of
+    // this logic drifting away from it.
+    final drawn = await _renderConvNotification(
+      conv: conv, byConv: byConv, fallbackTitle: who, count: count, ticker: 'Message from $who',
     );
-
-    await _local.show(
-      _msgNotifId(conv), // per-CONVERSATION, not the old shared 8000
-      isGroup && groupName.isNotEmpty ? groupName : who,
-      (msgs.last['text'] ?? '').toString(),
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _msgChannel.id, _msgChannel.name,
-          channelDescription: _msgChannel.description,
-          icon: _kNotifIcon, // [NOTIF-ICON-1]
-          importance: Importance.high, priority: Priority.high,
-          number: count, // launchers read this for the icon badge count
-          ticker: 'Message from $who',
-          category: AndroidNotificationCategory.message,
-          groupKey: _kMsgGroupKey, // ← the bundle
-          styleInformation: style,
-        ),
-      ),
-      // Carries the conv so the tap opens THIS thread. The old payload was the
-      // bare string 'chat', which is why every tap landed on the app home.
-      payload: 'chat:$conv',
-    );
+    if (!drawn) return false;
     // Persist ONLY now that the render has actually succeeded — see
     // _buildShadeUpdate's contract. A throw above leaves the log untouched, so
     // the legacy fallback banner is the only thing on screen and the message is
@@ -1822,7 +2200,7 @@ Future<bool> _showStackedMessageNotif(
       'style': 'messaging',
       'grouped': true,
       'is_group': isGroup,
-      'thread_msgs': msgs.length,
+      'thread_msgs': (((byConv[conv] as Map?) ?? const <String, dynamic>{})['m'] as List?)?.length ?? 0,
       'has_avatar': avatarPath.isNotEmpty,
     });
     return true;
@@ -2223,6 +2601,23 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   if (callId.isEmpty) return;
   // Don't surface a screen for a call the caller already cancelled (WS5 guard).
   if (PushService.wasCallTerminated(callId)) return;
+  // [CALL-PREWARM-2 2026-08-17] The SECOND (and, in production, the DOMINANT)
+  // ring lane. `_showIncoming` carries the original [CALL-PREWARM-1] hook, but
+  // it is only one of the ways a ring reaches a screen: the branded incoming
+  // screen is also entered directly from the native tap channel
+  // (`avatok/incoming_call_tap` → MainActivity, warm AND cold-start pending)
+  // without `_showIncoming` running at all. The 2026-08-17 08:25 prod call
+  // proved it — `call_branded_fsi_routed` with NO `call_incoming_received`,
+  // NO `call_incoming_shown`, and therefore not one `call_prewarm_started` in
+  // the entire project history: P1 never executed on a real call.
+  //
+  // Placed BEFORE the duplicate-route gate on purpose. Two lanes converging is
+  // exactly the case where one of them gets suppressed, and the prewarm must
+  // still run; `CallPrewarm.start` is idempotent per callId, so the loser of
+  // the gate race costs nothing.
+  try {
+    CallPrewarm.instance.start(callId);
+  } catch (_) {/* prewarm must never affect the ring path */}
   // Warm/cold native taps plus FCM/WS delivery can converge while the navigator
   // is mounting. Reserve before awaiting so one callId opens exactly one route.
   if (!_brandedRouteGate.tryReserve(callId)) {
@@ -3735,10 +4130,20 @@ class PushService {
       const InitializationSettings(
         android: AndroidInitializationSettings(_kNotifIcon),
       ),
+      // [NOTIF-ACTIONS-1] Same handler for the app-is-dead case.
+      onDidReceiveBackgroundNotificationResponse: notificationActionBackground,
       onDidReceiveNotificationResponse: (resp) {
         // [AVACALL-INUI-2] A tapped / FSI-launched branded incoming-call
         // notification routes to IncomingBusinessCallScreen, not the inbox.
         if (_maybeRouteBrandedIncoming(resp.payload)) return;
+        // [NOTIF-ACTIONS-1] Message actions, when the app IS alive. Handled here
+        // rather than falling through to _onNotifTap, which would treat a Reply
+        // as a body tap and open the thread — throwing the typed text away.
+        final act = resp.actionId ?? '';
+        if (act == _kActReply || act == _kActRead || act == _kActMute) {
+          unawaited(_runNotifAction(resp));
+          return;
+        }
         // CALLFIX-R7: Handle action IDs (e.g., 'callback' on missed-call notification)
         if (resp.actionId == 'callback') {
           _handleMissedCallCallback(resp.payload);
@@ -3770,6 +4175,10 @@ class PushService {
     await androidLocal?.createNotificationChannel(_msgChannel);
     await androidLocal?.createNotificationChannel(_callsChannel);
     await androidLocal?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
+    // [NOTIF-ACTIONS-1] The quiet channel muted conversations post to. Created in
+    // BOTH isolates because whichever one draws a banner first must find it —
+    // posting to a channel that does not exist yet is silently dropped by Android.
+    await androidLocal?.createNotificationChannel(_msgMutedChannel);
     _localReady = true; // main isolate is now initialized → _ensureLocalInit no-ops
     // Ship any telemetry the BACKGROUND isolate parked (incl. bg crashes) now that
     // Analytics is live — so background failures stop being invisible.
