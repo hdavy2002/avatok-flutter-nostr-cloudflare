@@ -29,6 +29,7 @@ import { moderate } from "./moderation";
 import {
   veniceRoute, veniceQueueVideo, veniceQueueMusic, clampMusicSeconds, nearestVideoDuration,
   VENICE_VIDEO_MIN_SECONDS, VENICE_VIDEO_MAX_SECONDS, VENICE_VIDEO_DEFAULT_RESOLUTION,
+  VENICE_VIDEO_DEFAULT_DURATION, capVideoPrompt, normalizeVideoResolution, normalizeVideoAspect,
   type VeniceIntent, type VeniceTier, type VeniceVideoResolution, classifyVeniceError,
   veniceVideoPreflight, recordVeniceVideoProviderFailure, recordVeniceVideoProviderSuccess,
 } from "./venice";
@@ -171,20 +172,77 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
   }
   const jobId = created.job.job_id;
 
+  // [VIDEO-AUDIT-1] Shape the request to the provider's real contract BEFORE
+  // sending it, exactly as the music lane now does ([SONG-CONTRACT-1]): an
+  // out-of-enum resolution is a guaranteed 400 (live 2026-08-16: '720p'), and
+  // an over-long prompt is the same class of latent failure music hit three
+  // times. veniceQueueVideo repeats both guards at the wire for any other
+  // caller; doing it here too keeps telemetry honest about what was sent.
+  const submitResolution = normalizeVideoResolution(a.resolution);
+  const submitAspect = normalizeVideoAspect(a.aspectRatio);
+  const submitPrompt = capVideoPrompt(prompt);
+  if (submitPrompt.length < prompt.length || submitResolution !== a.resolution || submitAspect !== a.aspectRatio) {
+    void track(env, a.uid, "ava_video_request_shaped", "avaai", {
+      model: providerModel, job_id: jobId,
+      prompt_before: prompt.length, prompt_after: submitPrompt.length,
+      resolution_before: a.resolution ?? null, resolution_after: submitResolution,
+      aspect_before: a.aspectRatio ?? null, aspect_after: submitAspect,
+      duration: durationStr,
+    });
+  }
+
   let queueId: string;
+  let submittedResolution = submitResolution;
+  let submittedDuration = durationStr;
   try {
     // env as any: VENICE_API_KEY is not (yet) declared on the shared Env
     // interface (worker/src/types.ts) — matches the existing cast at
     // routes/ava_image.ts's generateImageVenice() call site, not a new pattern.
-    ({ queueId } = await veniceQueueVideo(
-      env as any, providerModel, prompt,
-      {
-        duration: durationStr,
-        resolution: a.resolution,
-        aspectRatio: a.aspectRatio,
-        ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}),
-      },
-    ));
+    try {
+      ({ queueId } = await veniceQueueVideo(
+        env as any, providerModel, submitPrompt,
+        {
+          duration: durationStr,
+          resolution: submitResolution,
+          aspectRatio: submitAspect,
+          ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}),
+        },
+      ));
+    } catch (first: any) {
+      // [VIDEO-AUDIT-1] One conservative second chance, mirroring the music
+      // lane's [SONG-FALLBACK-1]. A provider rejection of the REQUEST (a 400/
+      // 422 on a parameter) used to end the whole video in a red card in front
+      // of the user; a clip at the safe default resolution/length always beats
+      // no clip at all. Only a request-shape rejection is retried — an auth,
+      // capacity or timeout failure would fail identically a second time.
+      const firstMsg = String(first?.message ?? first ?? "unknown").slice(0, 300);
+      const retryable = classifyVeniceError(first) === "provider_invalid_request";
+      const retryResolution = VENICE_VIDEO_DEFAULT_RESOLUTION;
+      const retryDuration = VENICE_VIDEO_DEFAULT_DURATION;
+      const retryPrompt = capVideoPrompt(submitPrompt, 700);
+      const differs = retryResolution !== submitResolution
+        || retryDuration !== durationStr
+        || retryPrompt.length !== submitPrompt.length;
+      // Re-sending a byte-identical request would only buy the same rejection.
+      if (!retryable || !differs) throw first;
+      void track(env, a.uid, "ava_video_submit_fallback", "avaai", {
+        model: providerModel, job_id: jobId, error: firstMsg,
+        resolution_from: submitResolution, resolution_to: retryResolution,
+        duration_from: durationStr, duration_to: retryDuration,
+        prompt_chars: retryPrompt.length,
+      });
+      submittedResolution = retryResolution;
+      submittedDuration = retryDuration;
+      ({ queueId } = await veniceQueueVideo(
+        env as any, providerModel, retryPrompt,
+        {
+          duration: retryDuration,
+          resolution: retryResolution,
+          aspectRatio: submitAspect,
+          ...(a.sourceImageUrl ? { imageUrl: a.sourceImageUrl } : {}),
+        },
+      ));
+    }
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
     const errorCode = classifyVeniceError(e);
@@ -223,8 +281,13 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_video_generate", tier: a.tier, i2v: !!a.sourceImageUrl, model: providerModel,
-    duration_seconds: durationNum, resolution: a.resolution ?? VENICE_VIDEO_DEFAULT_RESOLUTION,
-    aspect_ratio: a.aspectRatio ?? "9:16", prompt_crafted: prompt !== rawPrompt,
+    // [VIDEO-AUDIT-1] Report what was actually ACCEPTED by the provider, not
+    // what the caller asked for — after a submit fallback those differ, and a
+    // telemetry line that reports the ask is how a silent downgrade hides.
+    duration_seconds: parseInt(submittedDuration, 10) || durationNum,
+    resolution: submittedResolution,
+    aspect_ratio: submitAspect, prompt_crafted: prompt !== rawPrompt,
+    submit_fallback: submittedResolution !== submitResolution || submittedDuration !== durationStr,
   });
   await postAvaMessage(env, {
     ownerUid: a.uid, conv: a.conv,
@@ -243,6 +306,8 @@ export async function runVeniceVideo(env: Env, a: RunVeniceVideoArgs): Promise<R
 // ---------------------------------------------------------------------------
 // MUSIC
 // ---------------------------------------------------------------------------
+export type MusicMode = "vocal" | "instrumental" | "engine_written";
+
 export interface RunVeniceMusicArgs {
   uid: string;
   conv: string;
@@ -252,7 +317,9 @@ export interface RunVeniceMusicArgs {
    *  user signed off). Sent to Venice's dedicated `lyrics_prompt` field;
    *  absent for a plain instrumental/music request. */
   lyrics?: string;
-  musicMode?: "vocal" | "instrumental";
+  /** [SONG-QUICK-1] "engine_written" = the quick song: no lyrics are sent at
+   *  all and the music engine writes AND sings its own words from `prompt`. */
+  musicMode?: MusicMode;
   private: boolean;
   /** [VENICE-TIER-1] see RunVeniceVideoArgs.tier doc — resolved via
    *  lib/venice_tier.ts's veniceTier(env, uid) at the do/ava_agent.ts onMusic
@@ -279,6 +346,72 @@ const MUSIC_MODEL_LIMITS: Record<string, MusicModelLimits> = {
 };
 function musicLimitsFor(model: string): MusicModelLimits {
   return MUSIC_MODEL_LIMITS[model] ?? { promptMaxChars: 290, lyricsMaxChars: 950, supportsLyrics: true };
+}
+
+/**
+ * [SONG-QUICK-1] The lyric contract for each mode, as one pure decision.
+ *  - vocal          : lyrics are MANDATORY (Ava drafted them, the person approved).
+ *  - instrumental   : lyrics are FORBIDDEN.
+ *  - engine_written : lyrics are FORBIDDEN HERE TOO, and that is the feature —
+ *                     the engine invents and sings its own words from the brief.
+ *                     Accepting lyrics in this mode would silently reintroduce
+ *                     the approval step this mode exists to remove.
+ */
+export function validateMusicModeRequest(
+  musicMode: MusicMode, lyrics: string,
+): { ok: true } | { ok: false; message: string } {
+  if (musicMode === "vocal" && !lyrics) {
+    return { ok: false, message: "I need approved lyrics before creating a vocal song." };
+  }
+  if (musicMode === "instrumental" && lyrics) {
+    return { ok: false, message: "Instrumental tracks cannot include lyrics." };
+  }
+  if (musicMode === "engine_written" && lyrics) {
+    return { ok: false, message: "A quick song is written by the music engine — it can't take approved lyrics." };
+  }
+  return { ok: true };
+}
+
+export interface MusicModelRouteInput {
+  musicMode: MusicMode;
+  durationSeconds: number;
+  /** The per-generation default from veniceRoute("music", tier). */
+  defaultModel: string;
+  /** cfg.veniceLongMusicModel — "" when no long-song model is enabled. */
+  longModel: string;
+  /** cfg.veniceQuickSongModel — "" falls back to defaultModel. */
+  quickModel: string;
+}
+
+/**
+ * [SONG-QUICK-1] Pick the model that can actually perform this request.
+ *
+ * The quick mode inverts the [SONG-FALLBACK-1] rule above: a model with
+ * supportsLyrics:false is the RIGHT answer here, because no lyrics_prompt is
+ * sent and the engine has to write the words itself. elevenlabs-music is that
+ * model — the same 400 that made it unusable for an approved-lyrics song is
+ * irrelevant when nothing is submitted in that field.
+ */
+export function resolveMusicModel(a: MusicModelRouteInput): string {
+  if (a.musicMode === "engine_written") {
+    return String(a.quickModel || "").trim() || a.defaultModel;
+  }
+  const longModel = String(a.longModel || "").trim();
+  const longModelUsable = !!longModel
+    && (a.musicMode === "instrumental" || musicLimitsFor(longModel).supportsLyrics);
+  return a.durationSeconds > 90 && longModelUsable ? longModel : a.defaultModel;
+}
+
+/**
+ * [SONG-QUICK-1] Which model gets the one automatic second chance after a
+ * provider refusal. An engine-written song must NOT retry on the default
+ * per-generation model when it is already on a purpose-picked quick model:
+ * that model was chosen because it writes its own words, and the fallback
+ * would hand a wordless brief to a model that expects a lyrics_prompt —
+ * turning a quick song into an accidental instrumental.
+ */
+export function musicRetryModel(musicMode: MusicMode, model: string, defaultModel: string): string {
+  return musicMode === "engine_written" ? model : defaultModel;
 }
 
 /**
@@ -353,9 +486,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   if (!stylePrompt) return { ok: false, message: "Tell me what kind of track to create." };
   if (stylePrompt.length > 2000) return { ok: false, message: "That prompt is too long." };
   const lyrics = String(a.lyrics ?? "").trim().slice(0, 4000);
-  const musicMode = a.musicMode ?? (lyrics ? "vocal" : "instrumental");
-  if (musicMode === "vocal" && !lyrics) return { ok: false, message: "I need approved lyrics before creating a vocal song." };
-  if (musicMode === "instrumental" && lyrics) return { ok: false, message: "Instrumental tracks cannot include lyrics." };
+  const musicMode: MusicMode = a.musicMode ?? (lyrics ? "vocal" : "instrumental");
+  const modeCheck = validateMusicModeRequest(musicMode, lyrics);
+  if (!modeCheck.ok) return { ok: false, message: modeCheck.message };
   // [VENICE-SONG-1] Venice receives musical direction and approved lyrics in
   // distinct fields. Keep one combined string only for the mandatory safety
   // gate, so moderation still covers both the style and sung content.
@@ -386,15 +519,18 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   // roughly 60-90 seconds. Requests longer than 90s route to the configured
   // duration-capable Venice model when one is enabled; otherwise they stay on
   // MiniMax with the lyrics trimmed to fit — a shorter song beats a failed one.
-  const longModel = String((cfg as any).veniceLongMusicModel ?? "").trim();
   // [SONG-FALLBACK-1] A long-song model is only usable for a VOCAL song if it
   // accepts lyrics. elevenlabs-music does not ("This model does not support
   // lyrics", live 400 2026-08-17) — routing a vocal there hard-failed the whole
   // request in front of the user. Vocal songs therefore only use the long model
   // when it is known to take lyrics; instrumentals can use any long model.
-  const longModelUsable = !!longModel
-    && (musicMode === "instrumental" || musicLimitsFor(longModel).supportsLyrics);
-  const model = durationSeconds > 90 && longModelUsable ? longModel : route.model;
+  // [SONG-QUICK-1] An engine-written song ignores that ladder entirely and
+  // routes to cfg.veniceQuickSongModel — see resolveMusicModel above.
+  const model = resolveMusicModel({
+    musicMode, durationSeconds, defaultModel: route.model,
+    longModel: String((cfg as any).veniceLongMusicModel ?? ""),
+    quickModel: String((cfg as any).veniceQuickSongModel ?? ""),
+  });
   // [SONG-CONTRACT-1] Shape BOTH fields to this model's real ceilings before
   // sending. A 1-minute song failed live on 2026-08-17 because the structured
   // brief ("Theme / intent: …\nGenre: …") is well over MiniMax's 300-char
@@ -466,9 +602,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
       // we were already on that model, retry once with deliberately conservative
       // sizes — a provider that rejects a request for length must never be the
       // last word to the user.
-      const retryModel = model === route.model ? route.model : route.model;
+      const retryModel = musicRetryModel(musicMode, model, route.model);
       const retryLimits = musicLimitsFor(retryModel);
-      const tighter = model === route.model;
+      const tighter = retryModel === model;
       const retryPrompt = compactMusicPrompt(
         stylePrompt, tighter ? Math.min(200, retryLimits.promptMaxChars) : retryLimits.promptMaxChars,
       );
@@ -501,6 +637,9 @@ export async function runVeniceMusic(env: Env, a: RunVeniceMusicArgs): Promise<R
   void track(env, a.uid, "venice_media_job_submitted", "avaai", {
     job_id: jobId, kind: "venice_music_generate", tier: a.tier, duration_seconds: durationSeconds,
     has_lyrics: !!lyrics,
+    // [SONG-QUICK-1] The distinguishing property: 'engine_written' means the
+    // words were never drafted or approved — the engine invented them.
+    music_mode: musicMode, model: submittedModel, email,
   });
   await postAvaMessage(env, {
     ownerUid: a.uid, conv: a.conv,
