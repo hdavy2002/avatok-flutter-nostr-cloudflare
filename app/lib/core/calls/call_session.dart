@@ -3259,6 +3259,30 @@ class CallSession {
     final cellularCapture = config.video
         ? await (cellFuture ?? _isLikelyCellular())
         : false;
+    // [CALL-PREROLL-1 2026-08-17] The callee may already have a fully
+    // pre-rolled mic stream — acquired, SILENT, during the ring by
+    // `CallPrewarm` (gated on `callPrewarmOnRingV1` + `callPrerollV1`).
+    // `peek` is non-consuming: `CallPrewarm` still owns full teardown of the
+    // seat/transport/stream until `_startSfuMedia`'s `adopt()` call later in
+    // this same boot, so a call that never reaches that point (RTK/P2P
+    // selected, or the call ends mid-boot) is still torn down correctly by
+    // `CallPrewarm` itself, not leaked here. Scoped to AUDIO-ONLY calls on
+    // purpose — the preroll never captures video, so a video call always
+    // falls through to a fresh `getUserMedia` below exactly as before this
+    // flag existed.
+    final prerolledStream =
+        config.video ? null : CallPrewarm.instance.peek(config.room);
+    if (prerolledStream != null) {
+      _stream = prerolledStream;
+      // [CALL-PREROLL-1] CRITICAL: this track was published SILENT during
+      // the ring (privacy rule: nothing is captured-and-sent pre-accept) —
+      // this is the ONE place it is unmuted, at the moment this call is
+      // genuinely being answered. See `_startSfuMedia`'s `hasFullPreroll`
+      // branch for the matching remote-track unmute.
+      for (final t in prerolledStream.getAudioTracks()) {
+        try { t.enabled = true; } catch (_) {/* one bad track must not abort accept */}
+      }
+    } else {
     try {
       var mediaTimedOut = false;
       final mediaFuture = navigator.mediaDevices.getUserMedia({
@@ -3330,6 +3354,7 @@ class CallSession {
       _endWith('ended', reason: 'media-denied');
       return;
     }
+    } // [CALL-PREROLL-1] end of the `prerolledStream == null` cold-getUserMedia branch
     _stage('mic_ready');
     // [CALL-DEADAIR-1] Join the ICE fetch back in. By here it has almost always
     // already resolved (it ran alongside the mic acquisition), so this is a
@@ -4598,196 +4623,9 @@ class CallSession {
         _prejoinEarlyTracks.add(e);
         return;
       }
-      // [CF-CALL-P2P-1] A superseded PC (e.g. a second `_newPC()` from a
-      // relay-fallback or a racing offer/answer) can still have a pending
-      // `onTrack` in flight; never let it clobber the renderer out from under
-      // the CURRENT PC's own stream.
-      if (myPcGen != _pcGeneration) return;
-      // [CALL-PCRETIRE-1 2026-08-06] A call that is OVER must not come back to
-      // life. Without this, a track event still in flight when the call ended
-      // ran the whole connect ladder — `call_connected`, `_connected = true`,
-      // phase `connected`, the media watchdog and the playout sampler all
-      // restarted on a dead session. Prod 2026-08-06 (avatok-8ed2b95f):
-      // `call_connected` landed 333 ms AFTER this client's own `call_ended`.
-      // Any funnel keyed on `call_connected` counts that as a success.
-      if (_ended) return;
-      if (e.streams.isNotEmpty) {
-        remoteRenderer.srcObject = e.streams[0];
-        if (e.track.kind == 'video') {
-          remoteVideoActive.value = true;
-          remoteVideoStatus.value = 'active';
-          if (!_firstRemoteVideoTrackReported) {
-            _firstRemoteVideoTrackReported = true;
-            Analytics.capture('call_first_remote_video_track', {
-              'call_id': config.room,
-              'path': _sfuActive || _sfuStarting
-                  ? 'sfu'
-                  : (_relayForced ? 'relay' : 'direct'),
-            });
-          }
-        }
-        _ringTimeout?.cancel();
-        // [CALL-CONNECT-WATCHDOG-1] Media is flowing — disarm the backstop. This
-        // runs BEFORE `_telemetry.connected()` sets `_connected`, hence cancel
-        // rather than relying on the timer's own `_connected` guard.
-        _connectWatchdog?.cancel();
-        _connectWatchdogFast?.cancel(); // [AVACALL-WATCHDOG-2]
-        _failTimer?.cancel();
-        _relayFallbackTimer?.cancel();
-        _ringback.stop();
-        // [AVA-PREWARM-1] The callee answered for real — a pre-warmed
-        // receptionist session (if any) was never heard and must never
-        // surface (no message, no recording, no summary).
-        if (_prewarmCall != null) {
-          // ignore: unawaited_futures
-          _abortPrewarm('callee_answered');
-        }
-        _telemetry.connected(pc);
-        _telemetry.setMediaPath(
-          _sfuActive || _sfuStarting ? 'sfu' : (_relayForced ? 'relay' : 'direct'),
-        ); // [CALL-REL-4/5]
-        HapticFeedback.mediumImpact();
-        if (gOutgoingCallId == config.room) {
-          gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
-        }
-        _connected = true;
-        // [CALL-LOG-TIME-1] Talk time starts at FIRST REMOTE MEDIA, not at dial:
-        // the ringing seconds are not part of the call's duration. Set once —
-        // this branch is already guarded so it only runs on the first track.
-        if (_connectedAtMs == 0) _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
-        peerAway.value = false;
-        _setPhase('connected');
-        // [CALL-MEDIA-WATCH-1] arm the media-flow watchdog now that we're live.
-        _startMediaWatchdog();
-        // [CALL-REL-4] independent, flag-gated, observe-only playout sampler.
-        _startPlayoutHealthSampler();
-        // [CALL-DEADAIR-1] A remote TRACK is not remote AUDIO. Start measuring
-        // the gap between the two right here, because this is the instant the
-        // user is told the call is live.
-        _stage('first_remote_track');
-        _startFirstAudioProbe();
-      }
+      _handleRemoteTrack(pc, myPcGen, e);
     };
-    pc.onConnectionState = (s) {
-      // [CALL-OBS-1 2026-08-03] THE MISSING RUNG, emitted BEFORE the guard below.
-      //
-      // `call_connected` fires from `onTrack` — first remote media — and it has
-      // not fired once in production since 2026-07-24. That event is not broken;
-      // it is telling the truth, which is that media never establishes. The
-      // problem was that nothing reported anything BETWEEN the accept and that
-      // silence, so "the callee accepted and the call was killed" and "the
-      // callee accepted and ICE never completed" produced identical telemetry:
-      // none.
-      //
-      // The handler that should have covered the gap could not: it returns early
-      // unless `_connected`, and `_connected` is only set in `onTrack` — after
-      // the very thing we are trying to observe. Every transport transition
-      // before first media was therefore dropped on the floor.
-      //
-      // This fires once, on the first transport connect, whatever the call state.
-      // With it the funnel accept → transport → media is finally separable: no
-      // transport event means signalling or ICE; transport but no
-      // `call_connected` means media or tracks.
-      // [CALL-PCRETIRE-1 2026-08-06] A RETIRED connection may not speak for the
-      // session. See [_retirePc]: `_pc` is cleared before a deliberate close, so
-      // `identical` is false for exactly the connections we replaced ourselves —
-      // an SFU reconnect's old PC, a relay-migration cutover's outgoing PC, a
-      // superseded relay-fallback PC. Without this, their `Closed` callback ends
-      // the live call.
-      //
-      // `_ended` is checked HERE rather than below because a call that is over
-      // must stop emitting transport telemetry: prod 2026-08-06 shows
-      // `call_transport_connected` landing 1.16 s AFTER this client's own
-      // `call_ended` (avatok-701e404b) and `call_connected` 333 ms after it
-      // (avatok-8ed2b95f), which corrupts any funnel built on those events. The
-      // `!_connected` half stays below, deliberately: per [CALL-OBS-1] the
-      // transport rung must still fire BEFORE first media, and gating it on
-      // `_connected` is what blinded the accept → transport → media funnel.
-      if (_ended || !identical(pc, _pc)) return;
-      _noteTransportConnected(s);
-      if (!_connected) return;
-      _telemetry.mediaFlowState(
-        state: 'transport_${s.toString().split('.').last.toLowerCase()}',
-        transportState: s.toString(),
-      );
-      if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-        // [CALL-PCRETIRE-1 2026-08-06] The identity guard above cannot see this
-        // one. `CallSfuTransport.connect()` closes its OWN `_pc` on failure
-        // (`_closePc()`), and that is the same object the session already
-        // adopted as `_pc` — because the transport builds it through `_newPC`,
-        // which assigns `_pc` as a side effect. So `identical` is true and the
-        // guard passes, while the call is merely mid-rejoin. Ending here would
-        // reintroduce the exact regression this change exists to remove, one
-        // layer further down. The reconnect ladder owns the outcome instead.
-        if (_sfuStarting || _sfuReconnectInFlight) {
-          _telemetry.mediaFlowState(
-            state: 'transport_closed_during_sfu_setup',
-            transportState: s.toString(),
-          );
-          return;
-        }
-        _telemetry.runtimeError(
-          stage: 'pc_closed',
-          error: StateError('Peer connection closed during an active call'),
-          extra: {'transport_state': s.toString()},
-        );
-        _endWith('ended');
-      } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-                 s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        if (_sfuActive || _sfuStarting) {
-          _telemetry.runtimeError(
-            stage: 'sfu_pc_disconnected',
-            error: StateError('Cloudflare Realtime peer connection disconnected'),
-          );
-          unawaited(_reconnectSfu());
-          return;
-        }
-        final isFailed = s == RTCPeerConnectionState.RTCPeerConnectionStateFailed;
-        if (RemoteConfig.callIceRecoveryV2) {
-          // [CALL-REL-5 / REL-3 fix] Either endpoint may now request recovery
-          // — no longer gated on `_weOffered`. The coordinator's own 30s
-          // deadline (from recovery START, not this handler) owns
-          // termination; the legacy 10s hard-end `_failTimer` below is not
-          // armed on this path.
-          // ignore: unawaited_futures
-          _requestRecovery(RecoveryReason.transportDisconnected);
-          return;
-        }
-        final canRestart = _weOffered && _iceRestarts < 3 && _remoteId != null;
-        if (isFailed && !canRestart) {
-          _telemetry.runtimeError(
-            stage: 'pc_failed_no_restart',
-            error: StateError('Peer connection failed and no ICE restart was available'),
-            extra: {
-              'transport_state': s.toString(),
-              'ice_restarts': _iceRestarts,
-              'remote_present': _remoteId != null,
-            },
-          );
-          _endWith('ended', reason: 'rtc-failed');
-          return;
-        }
-        _tryIceRestart('transport-$s');
-        _failTimer?.cancel();
-        _failTimer = Timer(const Duration(seconds: 10), () {
-          final st = _pc?.connectionState;
-          if (!_ended && _connected &&
-              st != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-            _telemetry.runtimeError(
-              stage: 'pc_reconnect_timeout',
-              error: StateError('Peer connection did not recover within 10 seconds'),
-              extra: {
-                'transport_state': st.toString(),
-                'restart_attempted': true,
-              },
-            );
-            _endWith('ended', reason: isFailed ? 'rtc-failed' : 'rtc-disconnected');
-          }
-        });
-      } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _failTimer?.cancel();
-      }
-    };
+    pc.onConnectionState = (s) => _handleConnectionState(pc, s);
     // [CALL-PREJOIN-ISOLATE-1] Both of these make `pc` the session's live
     // connection; a pre-join is not live until [_startSfuMedia] promotes it.
     if (!isolated) {
@@ -4796,6 +4634,254 @@ class CallSession {
     }
     if (cellPair) unawaited(_applyAudioBitrate(40000));
     return pc;
+  }
+
+  /// [CALL-PREROLL-1 2026-08-17] Extracted verbatim from `_newPC`'s
+  /// `onTrack` closure (same body, same guards) so it can also be invoked
+  /// once per already-received track when a fully pre-rolled CALLEE
+  /// connection (`CallPrewarm`'s `callPrerollV1` extension) is promoted in
+  /// `_startSfuMedia` — that connection was built with no session handlers
+  /// at all while un-promoted, so nothing else will ever call this for the
+  /// audio it already pulled during the ring; it must be driven manually,
+  /// exactly once, at adoption.
+  void _handleRemoteTrack(RTCPeerConnection pc, int myPcGen, RTCTrackEvent e) {
+    // [CF-CALL-P2P-1] A superseded PC (e.g. a second `_newPC()` from a
+    // relay-fallback or a racing offer/answer) can still have a pending
+    // `onTrack` in flight; never let it clobber the renderer out from under
+    // the CURRENT PC's own stream.
+    if (myPcGen != _pcGeneration) return;
+    // [CALL-PCRETIRE-1 2026-08-06] A call that is OVER must not come back to
+    // life. Without this, a track event still in flight when the call ended
+    // ran the whole connect ladder — `call_connected`, `_connected = true`,
+    // phase `connected`, the media watchdog and the playout sampler all
+    // restarted on a dead session. Prod 2026-08-06 (avatok-8ed2b95f):
+    // `call_connected` landed 333 ms AFTER this client's own `call_ended`.
+    // Any funnel keyed on `call_connected` counts that as a success.
+    if (_ended) return;
+    if (e.streams.isNotEmpty) {
+      remoteRenderer.srcObject = e.streams[0];
+      if (e.track.kind == 'video') {
+        remoteVideoActive.value = true;
+        remoteVideoStatus.value = 'active';
+        if (!_firstRemoteVideoTrackReported) {
+          _firstRemoteVideoTrackReported = true;
+          Analytics.capture('call_first_remote_video_track', {
+            'call_id': config.room,
+            'path': _sfuActive || _sfuStarting
+                ? 'sfu'
+                : (_relayForced ? 'relay' : 'direct'),
+          });
+        }
+      }
+      _ringTimeout?.cancel();
+      // [CALL-CONNECT-WATCHDOG-1] Media is flowing — disarm the backstop. This
+      // runs BEFORE `_telemetry.connected()` sets `_connected`, hence cancel
+      // rather than relying on the timer's own `_connected` guard.
+      _connectWatchdog?.cancel();
+      _connectWatchdogFast?.cancel(); // [AVACALL-WATCHDOG-2]
+      _failTimer?.cancel();
+      _relayFallbackTimer?.cancel();
+      _ringback.stop();
+      // [AVA-PREWARM-1] The callee answered for real — a pre-warmed
+      // receptionist session (if any) was never heard and must never
+      // surface (no message, no recording, no summary).
+      if (_prewarmCall != null) {
+        // ignore: unawaited_futures
+        _abortPrewarm('callee_answered');
+      }
+      _telemetry.connected(pc);
+      _telemetry.setMediaPath(
+        _sfuActive || _sfuStarting ? 'sfu' : (_relayForced ? 'relay' : 'direct'),
+      ); // [CALL-REL-4/5]
+      HapticFeedback.mediumImpact();
+      if (gOutgoingCallId == config.room) {
+        gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+      }
+      _connected = true;
+      // [CALL-LOG-TIME-1] Talk time starts at FIRST REMOTE MEDIA, not at dial:
+      // the ringing seconds are not part of the call's duration. Set once —
+      // this branch is already guarded so it only runs on the first track.
+      if (_connectedAtMs == 0) _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
+      peerAway.value = false;
+      _setPhase('connected');
+      // [CALL-MEDIA-WATCH-1] arm the media-flow watchdog now that we're live.
+      _startMediaWatchdog();
+      // [CALL-REL-4] independent, flag-gated, observe-only playout sampler.
+      _startPlayoutHealthSampler();
+      // [CALL-DEADAIR-1] A remote TRACK is not remote AUDIO. Start measuring
+      // the gap between the two right here, because this is the instant the
+      // user is told the call is live.
+      _stage('first_remote_track');
+      _startFirstAudioProbe();
+    }
+  }
+
+  /// [CALL-PREROLL-1 2026-08-17] Extracted verbatim from `_newPC`'s
+  /// `onConnectionState` closure — see [_handleRemoteTrack]'s doc comment for
+  /// why. `pc` is passed explicitly (rather than closing over `_pc`) so the
+  /// SAME guard logic works whether this is the live `_newPC`-built
+  /// connection or a preroll connection being promoted.
+  void _handleConnectionState(RTCPeerConnection pc, RTCPeerConnectionState s) {
+    // [CALL-OBS-1 2026-08-03] THE MISSING RUNG, emitted BEFORE the guard below.
+    //
+    // `call_connected` fires from `onTrack` — first remote media — and it has
+    // not fired once in production since 2026-07-24. That event is not broken;
+    // it is telling the truth, which is that media never establishes. The
+    // problem was that nothing reported anything BETWEEN the accept and that
+    // silence, so "the callee accepted and the call was killed" and "the
+    // callee accepted and ICE never completed" produced identical telemetry:
+    // none.
+    //
+    // The handler that should have covered the gap could not: it returns early
+    // unless `_connected`, and `_connected` is only set in `onTrack` — after
+    // the very thing we are trying to observe. Every transport transition
+    // before first media was therefore dropped on the floor.
+    //
+    // This fires once, on the first transport connect, whatever the call state.
+    // With it the funnel accept → transport → media is finally separable: no
+    // transport event means signalling or ICE; transport but no
+    // `call_connected` means media or tracks.
+    // [CALL-PCRETIRE-1 2026-08-06] A RETIRED connection may not speak for the
+    // session. See [_retirePc]: `_pc` is cleared before a deliberate close, so
+    // `identical` is false for exactly the connections we replaced ourselves —
+    // an SFU reconnect's old PC, a relay-migration cutover's outgoing PC, a
+    // superseded relay-fallback PC. Without this, their `Closed` callback ends
+    // the live call.
+    //
+    // `_ended` is checked HERE rather than below because a call that is over
+    // must stop emitting transport telemetry: prod 2026-08-06 shows
+    // `call_transport_connected` landing 1.16 s AFTER this client's own
+    // `call_ended` (avatok-701e404b) and `call_connected` 333 ms after it
+    // (avatok-8ed2b95f), which corrupts any funnel built on those events. The
+    // `!_connected` half stays below, deliberately: per [CALL-OBS-1] the
+    // transport rung must still fire BEFORE first media, and gating it on
+    // `_connected` is what blinded the accept → transport → media funnel.
+    if (_ended || !identical(pc, _pc)) return;
+    _noteTransportConnected(s);
+    if (!_connected) return;
+    _telemetry.mediaFlowState(
+      state: 'transport_${s.toString().split('.').last.toLowerCase()}',
+      transportState: s.toString(),
+    );
+    if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+      // [CALL-PCRETIRE-1 2026-08-06] The identity guard above cannot see this
+      // one. `CallSfuTransport.connect()` closes its OWN `_pc` on failure
+      // (`_closePc()`), and that is the same object the session already
+      // adopted as `_pc` — because the transport builds it through `_newPC`,
+      // which assigns `_pc` as a side effect. So `identical` is true and the
+      // guard passes, while the call is merely mid-rejoin. Ending here would
+      // reintroduce the exact regression this change exists to remove, one
+      // layer further down. The reconnect ladder owns the outcome instead.
+      if (_sfuStarting || _sfuReconnectInFlight) {
+        _telemetry.mediaFlowState(
+          state: 'transport_closed_during_sfu_setup',
+          transportState: s.toString(),
+        );
+        return;
+      }
+      _telemetry.runtimeError(
+        stage: 'pc_closed',
+        error: StateError('Peer connection closed during an active call'),
+        extra: {'transport_state': s.toString()},
+      );
+      _endWith('ended');
+    } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+               s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+      if (_sfuActive || _sfuStarting) {
+        _telemetry.runtimeError(
+          stage: 'sfu_pc_disconnected',
+          error: StateError('Cloudflare Realtime peer connection disconnected'),
+        );
+        unawaited(_reconnectSfu());
+        return;
+      }
+      final isFailed = s == RTCPeerConnectionState.RTCPeerConnectionStateFailed;
+      if (RemoteConfig.callIceRecoveryV2) {
+        // [CALL-REL-5 / REL-3 fix] Either endpoint may now request recovery
+        // — no longer gated on `_weOffered`. The coordinator's own 30s
+        // deadline (from recovery START, not this handler) owns
+        // termination; the legacy 10s hard-end `_failTimer` below is not
+        // armed on this path.
+        // ignore: unawaited_futures
+        _requestRecovery(RecoveryReason.transportDisconnected);
+        return;
+      }
+      final canRestart = _weOffered && _iceRestarts < 3 && _remoteId != null;
+      if (isFailed && !canRestart) {
+        _telemetry.runtimeError(
+          stage: 'pc_failed_no_restart',
+          error: StateError('Peer connection failed and no ICE restart was available'),
+          extra: {
+            'transport_state': s.toString(),
+            'ice_restarts': _iceRestarts,
+            'remote_present': _remoteId != null,
+          },
+        );
+        _endWith('ended', reason: 'rtc-failed');
+        return;
+      }
+      _tryIceRestart('transport-$s');
+      _failTimer?.cancel();
+      _failTimer = Timer(const Duration(seconds: 10), () {
+        final st = _pc?.connectionState;
+        if (!_ended && _connected &&
+            st != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          _telemetry.runtimeError(
+            stage: 'pc_reconnect_timeout',
+            error: StateError('Peer connection did not recover within 10 seconds'),
+            extra: {
+              'transport_state': st.toString(),
+              'restart_attempted': true,
+            },
+          );
+          _endWith('ended', reason: isFailed ? 'rtc-failed' : 'rtc-disconnected');
+        }
+      });
+    } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+      _failTimer?.cancel();
+    }
+  }
+
+  /// [CALL-PREROLL-1 2026-08-17] Promote a fully pre-rolled CALLEE connection
+  /// (`CallPrewarm`'s `callPrerollV1` extension — mic acquired, isolated PC
+  /// built, published and pulled, all during the ring) to be the session's
+  /// live connection. Mirrors [_promotePrejoinPc] below for the CALLER's
+  /// ring-time pre-join, but this PC was built entirely OUTSIDE any
+  /// `CallSession` — by `CallPrewarm`, before this session even existed, from
+  /// a push handler with no session to hand handlers to — so unlike the
+  /// pre-join it never got `_newPC`'s `onTrack`/`onConnectionState` or a
+  /// generation stamp. Both are installed here, for the first time, right
+  /// before each cached remote-track event (already muted by `CallPrewarm`
+  /// the instant it arrived, so nothing was audible during the ring) is
+  /// unmuted and replayed through [_handleRemoteTrack] — the same connect
+  /// ladder a live `onTrack` would have driven, just run manually because no
+  /// `onTrack` ever fired on this connection to drive it. Called at most once
+  /// per call, from `_startSfuMedia`'s `hasFullPreroll` branch.
+  void _promotePrerollPc(RTCPeerConnection pc, List<RTCTrackEvent> earlyTracks) {
+    final myPcGen = ++_pcGeneration;
+    _resetPlayoutHealthBaselines();
+    _pc = pc;
+    pc.onIceCandidate = (c) {
+      _telemetry.onLocalCandidate(_candTypeOf(c.candidate));
+    };
+    pc.onTrack = (e) async => _handleRemoteTrack(pc, myPcGen, e);
+    pc.onConnectionState = (s) => _handleConnectionState(pc, s);
+    Analytics.capture('call_preroll_adopted', {
+      'call_id': config.room,
+      'early_track_count': earlyTracks.length,
+    });
+    for (final e in earlyTracks) {
+      // [CALL-PREROLL-1] Re-enable the remote track now, at the moment this
+      // call is genuinely being answered — CRITICAL: without this the track
+      // stays muted forever and the callee never hears the caller, since no
+      // future `onTrack` will fire to do it for us.
+      try {
+        e.track.enabled = true;
+      } catch (_) {/* one bad track must not abort the adoption */}
+      try {
+        _handleRemoteTrack(pc, myPcGen, e);
+      } catch (_) {/* one bad replay must not abort the adoption */}
+    }
   }
 
   /// [CALL-PREJOIN-ISOLATE-1 2026-08-17] Make the caller's ring-time pre-join
@@ -6367,29 +6453,67 @@ class CallSession {
     CallPrewarmedData? prewarmed;
     if (adoptedPrejoin == null && RemoteConfig.callPrewarmOnRingV1) {
       try {
-        prewarmed = await CallPrewarm.instance.adopt(config.room);
+        // [CALL-PREROLL-1 2026-08-17] `currentStream` lets `adopt` compare it,
+        // by identity, against whatever `CallPrewarm` itself pre-rolled — the
+        // only way it can safely hand back a fully pre-rolled transport
+        // (publish AND pull already done) without risking a mismatched local
+        // stream. See `CallPrewarm.adopt`'s doc comment.
+        prewarmed = await CallPrewarm.instance.adopt(config.room, currentStream: stream);
       } catch (_) {/* prewarm must never affect call setup */}
     }
     final prewarmedIce = prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
-    final transport = adoptedPrejoin ?? _buildSfuTransport();
+    // [CALL-PREROLL-1] True only when `CallPrewarm` pre-rolled THIS exact
+    // stream all the way through publish+pull during the ring. A video call
+    // never qualifies (the boot sequence never peeks a preroll stream for
+    // one — see `_bootMedia`), and neither does a preroll that lost the race
+    // with an unusually fast accept; both fall straight through to the
+    // join-only or fully-cold paths below exactly as before this change.
+    final hasFullPreroll = adoptedPrejoin == null &&
+        RemoteConfig.callPrerollV1 &&
+        (prewarmed?.hasFullPreroll ?? false);
+    final transport = adoptedPrejoin ??
+        (hasFullPreroll ? prewarmed!.prerollTransport! : _buildSfuTransport());
     _sfu = transport;
     CallSfuResult result;
     try {
-      result = adoptedPrejoin != null
-          ? await transport.connectPull(
-              video: config.video && !RemoteConfig.callSfuAudioOnly,
-            )
-          : await transport.connect(
-        localStream: stream,
-        // [CALL-PREWARM-1] Prefer the ICE servers the prewarm fetch already
-        // brought back — they are at least as fresh as `_ice` and mean this
-        // call never blocks on the ICE round trip that `_fetchIce()` would
-        // otherwise still be doing. Falls back to `_ice` exactly as before
-        // when there was nothing to adopt.
-        fallbackIceServers: prewarmedIce.isNotEmpty ? prewarmedIce : _ice,
-        video: config.video && !RemoteConfig.callSfuAudioOnly,
-        prewarmedJoin: prewarmed?.join,
-      );
+      if (adoptedPrejoin != null) {
+        result = await transport.connectPull(
+          video: config.video && !RemoteConfig.callSfuAudioOnly,
+        );
+      } else if (hasFullPreroll) {
+        // [CALL-PREROLL-1] Publish AND pull already happened during the ring
+        // — re-running either here would be a second, redundant negotiation
+        // on an already-live SFU session. Promote the connection (installs
+        // the handlers it never had while un-promoted, unmutes and replays
+        // its cached remote track through the normal connect ladder — see
+        // `_promotePrerollPc`) and synthesize the same success result
+        // `connectPull` would have returned. The LOCAL mic track was already
+        // unmuted in `_bootMedia` at the moment it adopted this same stream
+        // via `CallPrewarm.instance.peek` — not repeated here, so there is
+        // exactly one place that flips it, not two.
+        final pc = prewarmed!.prerollPc!;
+        _promotePrerollPc(pc, prewarmed.prerollEarlyTracks);
+        result = CallSfuResult.ok(
+          pc,
+          sessionId: transport.sessionId ?? '',
+          relayDegraded: false,
+          videoRequested: false,
+          peerVideoAvailable: false,
+          videoConnected: false,
+        );
+      } else {
+        result = await transport.connect(
+          localStream: stream,
+          // [CALL-PREWARM-1] Prefer the ICE servers the prewarm fetch already
+          // brought back — they are at least as fresh as `_ice` and mean this
+          // call never blocks on the ICE round trip that `_fetchIce()` would
+          // otherwise still be doing. Falls back to `_ice` exactly as before
+          // when there was nothing to adopt.
+          fallbackIceServers: prewarmedIce.isNotEmpty ? prewarmedIce : _ice,
+          video: config.video && !RemoteConfig.callSfuAudioOnly,
+          prewarmedJoin: prewarmed?.join,
+        );
+      }
     } catch (e, st) {
       // The transport normally converts failures into CallSfuResult, but a
       // provider/plugin exception must not strand `_sfuStarting` forever and

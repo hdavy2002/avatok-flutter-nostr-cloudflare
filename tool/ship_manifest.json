@@ -2014,5 +2014,47 @@
     "_verified_at": "app/lib/push/push_service.dart _handleBackgroundMessage notif_clear branch, 2026-08-17"
    }
   ]
+ },
+ "CALL-PREROLL-1": {
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md, extending CALL-PREWARM-1/2 — the callee pre-rolls its WHOLE media path during the ring, not just the ICE+seat join: CallPrewarm._preroll acquires the mic (track disabled), builds an isolated peer connection with no session handlers, PUBLISHES (silent) and PULLS the caller's audio (muted, via a passive onTrack cache mirroring CallSession._prejoinEarlyTracks). CallSession._bootMedia peeks the pre-rolled stream (non-consuming) before getUserMedia, audio-only calls only. _startSfuMedia's hasFullPreroll branch (gated on the returned stream being IDENTICAL to the one CallPrewarm.adopt was called with) promotes the connection via the new _promotePrerollPc — installs onTrack/onConnectionState for the first time, unmutes the local track (done earlier, at peek) and each cached remote track, then replays them through the extracted _handleRemoteTrack ladder instead of re-running publish/pull. Gated on callPrerollV1 stacked on top of callPrewarmOnRingV1; either off is byte-identical to CALL-PREWARM-2's already-shipped behaviour.",
+  "shipped": "pending",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "callSfuV1",
+   "callPrewarmOnRingV1",
+   "callPrerollV1"
+  ],
+  "success": [
+   {
+    "event": "call_preroll_ready",
+    "property": "published",
+    "equals": true,
+    "min_events": 1,
+    "where": {},
+    "note": "The ring-time preroll actually finished BOTH legs before accept. Companion assertion on the SAME event: pulled must also be true (checked separately below) — published alone means the callee could publish but the caller's own ring-time audio was never found."
+   },
+   {
+    "event": "call_preroll_ready",
+    "property": "pulled",
+    "equals": true,
+    "min_events": 1,
+    "where": {},
+    "note": "The peer's audio was pulled and muted BEFORE accept, during the ring — the whole point of this issue. Both this and the published assertion must be observed from the SAME call_preroll_ready event to mean anything; two different calls each satisfying one half is not evidence the fast path ever ran end to end."
+   },
+   {
+    "event": "call_first_audio_ms",
+    "property": "ms_from_connected",
+    "equals": "",
+    "min_events": 1,
+    "where": {
+     "outcome": "audio"
+    },
+    "note": "The callee's own headline number. Must sit under ~2000ms on wifi once call_preroll_ready(published, pulled) has fired for the same call — CALL-PREWARM-1's baseline was ~1.5-2s; this issue's whole purpose is cutting the remaining publish+pull cost on top of that. `equals: \"\"` is a presence-only placeholder for a numeric field the manifest checker cannot range-check; read the actual value.",
+    "_verified_at": "app/lib/core/calls/call_session.dart _reportFirstAudio (unchanged by this issue) -> call_first_audio_ms{..., ms_from_connected, outcome}"
+   }
+  ],
+  "manual_check": "On the callee's device, confirm NOTHING is audible from the earpiece/speaker between the ring starting and the Accept tap — call_preroll_ready proves the pull succeeded, not that the mute held for the whole ring. Also confirm a DECLINED or missed call leaves no mic indicator lit afterward (CallPrewarm.discard/_closeEntry teardown).",
+  "_verified_at": "app/lib/core/calls/call_prewarm.dart (CallPrewarm._preroll, .peek, .adopt, ._closeEntry); app/lib/core/calls/call_session.dart _bootMedia peek-adoption (~line 3262), _startSfuMedia hasFullPreroll branch, _promotePrerollPc, _handleRemoteTrack/_handleConnectionState extraction from _newPC; worker/src/routes/config.ts callPrerollV1 (PlatformConfig + DEFAULTS); app/lib/core/remote_config.dart RemoteConfig.callPrerollV1 — written 2026-08-17, unshipped"
  }
 }
