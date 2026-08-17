@@ -658,6 +658,13 @@ class _CallScreenState extends State<CallScreen> {
     _session.speakerOn.addListener(_onSessionChanged);
     _session.cameraOn.addListener(_onSessionChanged);
     _session.videoActive.addListener(_onSessionChanged);
+    // [CALL-VIDEO-FIX-1 2026-08-17] Transitional "Adding video…" state for
+    // the SFU mid-call camera-on — see `CallSession.videoUpgrading`. Only
+    // wired for rebuilds here; this screen does not yet render a distinct
+    // spinner/label off it, so today it is a no-op beyond keeping the
+    // listener contract consistent with every other video-affecting
+    // notifier on this session.
+    _session.videoUpgrading.addListener(_onSessionChanged);
     _session.remoteVideoStatus.addListener(_onSessionChanged);
     _session.onCellularHold.addListener(_onSessionChanged);
     _maybeFetchNoAnswerRouting(); // pre-seed from widget.initialRouted, if any
@@ -808,6 +815,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.speakerOn.removeListener(_onSessionChanged);
     _session.cameraOn.removeListener(_onSessionChanged);
     _session.videoActive.removeListener(_onSessionChanged);
+    _session.videoUpgrading.removeListener(_onSessionChanged);
     _session.remoteVideoStatus.removeListener(_onSessionChanged);
     _session.onCellularHold.removeListener(_onSessionChanged);
     // Release our view-scoped hooks so a stale closure can't fire into a dead

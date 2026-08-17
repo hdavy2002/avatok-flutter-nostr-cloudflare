@@ -452,6 +452,17 @@ class CallSession {
   final ValueNotifier<bool> speakerOn = ValueNotifier<bool>(true);
   final ValueNotifier<bool> cameraOn = ValueNotifier<bool>(true);
   final ValueNotifier<bool> videoActive = ValueNotifier<bool>(true);
+  /// [CALL-VIDEO-FIX-1 2026-08-17] True while a mid-call camera-on is
+  /// actually in flight on the SFU path (getUserMedia through a confirmed
+  /// publish), false the rest of the time. Exists so the UI has an honest
+  /// "Adding video…" state to show instead of the old behaviour of flipping
+  /// [videoActive]/[cameraOn]/[speakerOn] to true the INSTANT the button was
+  /// tapped, before anything had actually happened — which is what let the
+  /// UI claim video was live while the upgrade was still negotiating, or had
+  /// already failed. Only the SFU path uses this; the P2P upgrade
+  /// (`_restartWithVideo`'s non-SFU branch) is unchanged and still sets the
+  /// flags optimistically, per this fix's scope.
+  final ValueNotifier<bool> videoUpgrading = ValueNotifier<bool>(false);
   /// Remote video is separate from [videoActive], which represents OUR camera.
   /// A call can have local video enabled while the peer's video negotiation or
   /// renderer is unavailable.
@@ -461,6 +472,13 @@ class CallSession {
   /// but remote video could not be established.
   final ValueNotifier<String> remoteVideoStatus =
       ValueNotifier<String>('idle');
+  /// [CALL-VIDEO-FIX-1 2026-08-17] Wall-clock ms when the remote VIDEO track
+  /// last attached, so `remoteRenderer.onFirstFrameRendered` can report
+  /// `ms_from_attach` on `remote_video_first_frame`. Set in
+  /// `_handleRemoteTrack`; not reset on disconnect, so a stray first-frame
+  /// callback after the call ended (if the renderer fires one late) reports
+  /// a stale-but-harmless gap rather than crashing on a null.
+  int? _remoteVideoAttachedAtMs;
   final ValueNotifier<bool> onCellularHold = ValueNotifier<bool>(false);
   /// SEAM for WS-D/C: true while the peer's signaling socket is gone but media
   /// may still be flowing (today: set on 'peer-left', cleared on reconnect /
@@ -3252,6 +3270,22 @@ class CallSession {
       await _fetchIce();
     }
     _stage('renderers_ready');
+    // [CALL-VIDEO-FIX-1 2026-08-17] Truthful "video actually visible" signal.
+    // Set once — `remoteRenderer` is a single field reused for the whole
+    // call (P2P, SFU, migration all repoint its `srcObject`), so one
+    // assignment here covers every later video attach, including a mid-call
+    // SFU upgrade. `onFirstFrameRendered` exists on `RTCVideoRenderer` in
+    // the pinned flutter_webrtc (^0.12.5) — confirmed against the package's
+    // public API surface, not by a local build (no toolchain on this
+    // machine to compile-check it).
+    remoteRenderer.onFirstFrameRendered = () {
+      final attachedAt = _remoteVideoAttachedAtMs;
+      Analytics.capture('remote_video_first_frame', {
+        'call_id': config.room,
+        if (attachedAt != null)
+          'ms_from_attach': DateTime.now().millisecondsSinceEpoch - attachedAt,
+      });
+    };
     // [CF-CALL-P2P-1] Decide the initial capture resolution before opening the
     // camera — cheaper than capturing high-res then downscaling, and the
     // sender-side bitrate cap in [_preferResolutionOnVideo] uses the same
@@ -4663,6 +4697,15 @@ class CallSession {
       if (e.track.kind == 'video') {
         remoteVideoActive.value = true;
         remoteVideoStatus.value = 'active';
+        // [CALL-VIDEO-FIX-1 2026-08-17] Truthful "the peer's video track
+        // object arrived" signal — fires on EVERY video attach (initial
+        // connect AND a later mid-call camera-on / repull), unlike
+        // `call_first_remote_video_track` below which is guarded to once
+        // per call. `remote_video_first_frame` (renderer callback wired in
+        // `_bootMedia`) reports the gap from this timestamp to actual
+        // decoded pixels.
+        _remoteVideoAttachedAtMs = DateTime.now().millisecondsSinceEpoch;
+        Analytics.capture('remote_video_track_attached', {'call_id': config.room});
         if (!_firstRemoteVideoTrackReported) {
           _firstRemoteVideoTrackReported = true;
           Analytics.capture('call_first_remote_video_track', {
@@ -6275,6 +6318,21 @@ class CallSession {
           'count': count,
         });
       },
+      // [CALL-VIDEO-FIX-1 2026-08-17] One completed pass through the
+      // transport's negotiation queue (`_serialize`) — `queued_ms` is time
+      // spent waiting behind a previous negotiation, `ran_ms` is the op's
+      // own duration, `ok` is false on any exception or the 15s per-op
+      // timeout. This is the observable proof the queue exists and is doing
+      // something, not just that the freeze fix compiled.
+      onNegotiation: (op, queuedMs, ranMs, ok) {
+        Analytics.capture('call_sfu_negotiation', {
+          'call_id': config.room,
+          'op': op,
+          'queued_ms': queuedMs,
+          'ran_ms': ranMs,
+          'ok': ok,
+        });
+      },
       overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
     );
   }
@@ -6864,25 +6922,78 @@ class CallSession {
     });
   }
 
+  /// [CALL-VIDEO-FIX-1 2026-08-17] Mid-call camera-on for the SFU path.
+  ///
+  /// Called only from `_restartWithVideo`, which already holds
+  /// [_videoRenegoInFlight] for the duration — this function's only job is
+  /// the media/publish work and reporting the result truthfully.
+  /// [videoUpgrading] is cleared in `finally` so it is never left stuck on
+  /// ANY exit (early return, publish failure, camera timeout, or exception).
+  /// `_video`/`_camOn`/`videoActive`/`cameraOn`/`_speaker`/`speakerOn` are
+  /// only ever set here on the CONFIRMED-success path — nothing sets them
+  /// before `publishVideo` has actually returned `true`, so there is nothing
+  /// to roll back on any failure path: they simply stay at whatever they
+  /// were before this call started.
   Future<void> _enableSfuVideo() async {
-    if (_ended || !_sfuActive || _sfu == null || _stream == null) return;
+    if (_ended || !_sfuActive || _sfu == null || _stream == null) {
+      videoUpgrading.value = false;
+      return;
+    }
+    MediaStreamTrack? track;
     try {
       final cellular = await _isLikelyCellular();
-      final v = await navigator.mediaDevices.getUserMedia({
-        'video': audio_tuning.avaVideoConstraints(cellular: cellular),
-        'audio': false,
-      });
-      final track = v.getVideoTracks().first;
+      MediaStream v;
+      try {
+        // [CALL-VIDEO-FIX-1] 8s timeout, matching the P2P upgrade path's own
+        // getUserMedia idiom in spirit (that one has no explicit timeout but
+        // is bounded by the same camera-acquisition reality) and the
+        // existing accept-path audio getUserMedia timeout elsewhere in this
+        // class. A camera that never resolves — permission dialog stuck,
+        // hardware busy with another app — must not hang this upgrade (and
+        // therefore `_videoRenegoInFlight`) forever.
+        v = await navigator.mediaDevices.getUserMedia({
+          'video': audio_tuning.avaVideoConstraints(cellular: cellular),
+          'audio': false,
+        }).timeout(const Duration(seconds: 8));
+      } catch (e, st) {
+        final timedOut = e is TimeoutException;
+        _telemetry.runtimeError(
+          stage: 'sfu_video_get_user_media_failed',
+          error: e,
+          stack: st,
+          extra: {'timed_out': timedOut},
+        );
+        Analytics.capture('call_video_upgrade_failed', {
+          'call_id': config.room,
+          'reason': timedOut ? 'camera_timeout' : 'camera_failed',
+        });
+        return;
+      }
+      if (_ended || !_sfuActive || _sfu == null || _stream == null) {
+        // Superseded while getUserMedia was pending (call ended, SFU
+        // dropped). Nothing was ever attached to the stream or published —
+        // just release the camera we just opened.
+        for (final t in v.getVideoTracks()) {
+          try { t.stop(); } catch (_) {}
+        }
+        return;
+      }
+      track = v.getVideoTracks().first;
       await _stream!.addTrack(track);
       localRenderer.srcObject = _stream;
       final ok = await _sfu!.publishVideo(track, _stream!);
       if (!ok) {
         track.stop();
         try { await _stream?.removeTrack(track); } catch (_) {}
-        _camOn = false;
-        cameraOn.value = false;
-        videoActive.value = false;
+        track = null;
+        // Nothing was set to true above, so there is nothing to roll back on
+        // `_video`/`_camOn`/`videoActive`/`cameraOn` — they are exactly what
+        // they were before this call started.
         Analytics.capture('call_sfu_video_publish_failed', {'call_id': config.room});
+        Analytics.capture('call_video_upgrade_failed', {
+          'call_id': config.room,
+          'reason': 'sfu_publish_failed',
+        });
         return;
       }
       // NOTE: the sender limits for this new track are applied INSIDE
@@ -6890,12 +7001,30 @@ class CallSession {
       // before its offer is created. Do not re-apply them here.
       _video = true;
       _camOn = true;
+      _speaker = true;
       videoActive.value = true;
       cameraOn.value = true;
+      speakerOn.value = true;
       _send({'type': 'sfu-video', 'to': _remoteId});
-      Analytics.capture('call_sfu_video_upgraded', {'call_id': config.room});
+      // [CALL-VIDEO-FIX-1] Retires the optimistic `call_sfu_video_upgraded`
+      // for this path: this fires only once `publishVideo` has actually
+      // returned `true` — a confirmed publish, not a tap. Remote-side
+      // truthfulness (`remote_video_track_attached` /
+      // `remote_video_first_frame`) lives in `_handleRemoteTrack` and the
+      // renderer's first-frame callback.
+      Analytics.capture('local_video_published', {'call_id': config.room});
     } catch (e, st) {
       _telemetry.runtimeError(stage: 'sfu_video_upgrade_failed', error: e, stack: st);
+      Analytics.capture('call_video_upgrade_failed', {
+        'call_id': config.room,
+        'reason': 'exception',
+      });
+      if (track != null) {
+        try { track.stop(); } catch (_) {}
+        try { await _stream?.removeTrack(track); } catch (_) {}
+      }
+    } finally {
+      videoUpgrading.value = false;
     }
   }
 
@@ -7707,6 +7836,25 @@ class CallSession {
 
   void toggleCamera() {
     if (!_video) {
+      if (_sfuActive) {
+        // [CALL-VIDEO-FIX-1] No optimistic success flags on the SFU path.
+        // This upgrade is a real Cloudflare publish (getUserMedia, then an
+        // offer/answer round trip) that can fail or hang, and setting
+        // videoActive/cameraOn/speakerOn true HERE — before any of that had
+        // happened — was one confirmed cause of "switching to video freezes
+        // the app": the UI claimed video was live while the SFU negotiation
+        // was still in flight or had already failed underneath it.
+        // `videoUpgrading` gives the UI an honest transitional state
+        // instead; `_enableSfuVideo` (via the now-shared
+        // `_videoRenegoInFlight` guard in `_restartWithVideo`) sets the real
+        // flags only once the publish actually succeeds, and rolls
+        // `videoUpgrading` back on any failure/timeout.
+        videoUpgrading.value = true;
+        // ignore: unawaited_futures
+        _restartWithVideo();
+        return;
+      }
+      // P2P path: unchanged — optimistic UI, fire-and-forget renegotiation.
       _video = true; _camOn = true; _speaker = true;
       videoActive.value = true; cameraOn.value = true; speakerOn.value = true;
       // ignore: unawaited_futures
@@ -7725,21 +7873,33 @@ class CallSession {
   /// coordinators already use — [_videoRenegoInFlight] is, in turn, checked by
   /// [_requestRecovery]/[_tryIceRestart]/the relay-threshold trigger so THEY
   /// also defer to an in-flight video upgrade rather than racing it.
+  ///
+  /// [CALL-VIDEO-FIX-1 2026-08-17] The [_videoRenegoInFlight] guard now sits
+  /// ABOVE the `_sfuActive` branch so BOTH paths are covered by it. It
+  /// previously sat below the `if (_sfuActive) { ...; return; }` early exit,
+  /// which meant a rapid double-tap of the camera button on the SFU path hit
+  /// no re-entrancy guard at all — two concurrent `_enableSfuVideo` calls
+  /// could both add a video track and both publish, mutating the one shared
+  /// `RTCPeerConnection` from two call stacks at once.
   Future<void> _restartWithVideo() async {
     if (_ended) return;
-    if (_sfuActive) {
-      await _enableSfuVideo();
-      return;
-    }
     if (_videoRenegoInFlight) {
       _telemetry.runtimeError(
         stage: 'video_upgrade_skipped_concurrent',
         error: StateError('a video-enable renegotiation is already in flight'),
       );
+      // Nothing was started on this call, so clear the transitional flag
+      // `toggleCamera` set before calling in — otherwise a double-tap would
+      // leave the UI stuck showing "Adding video…" forever.
+      if (_sfuActive) videoUpgrading.value = false;
       return;
     }
     _videoRenegoInFlight = true;
     try {
+      if (_sfuActive) {
+        await _enableSfuVideo();
+        return;
+      }
       // Give any in-flight ICE recovery / relay migration a bounded window to
       // finish before we send a competing offer of our own.
       var waitedMs = 0;

@@ -117,6 +117,7 @@ class CallSfuTransport {
     this.onRedNegotiated,
     this.onStage,
     this.onStaleAudioMuted,
+    this.onNegotiation,
     this.overlapPeerWait = true,
   });
 
@@ -186,6 +187,17 @@ class CallSfuTransport {
   /// `Analytics.capture` for the same reason as [onRedNegotiated].
   final void Function(int count)? onStaleAudioMuted;
 
+  /// [CALL-VIDEO-FIX-1 2026-08-17] Reports one completed pass through
+  /// [_serialize]: `op` is the operation name (`connectPublish`,
+  /// `connectPull`, `publishVideo`, `pullPeerVideo`, `pullPeerAudio`),
+  /// `queuedMs` is how long it waited behind a previous negotiation,
+  /// `ranMs` is how long its own body took, and `ok` is false on any
+  /// exception/timeout. A callback rather than a direct `Analytics.capture`
+  /// for the same reason as [onRedNegotiated] — this transport stays free of
+  /// the analytics import. `CallSession` turns this into
+  /// `call_sfu_negotiation`.
+  final void Function(String op, int queuedMs, int ranMs, bool ok)? onNegotiation;
+
   /// [CALL-DEADAIR-1] Run the peer-seat poll CONCURRENTLY with our own publish
   /// instead of strictly after it.
   ///
@@ -245,6 +257,90 @@ class CallSfuTransport {
 
   String? get sessionId => _sessionId;
 
+  /// [CALL-VIDEO-FIX-1 2026-08-17] Serializes every negotiation-touching
+  /// operation against this transport's SINGLE RTCPeerConnection.
+  ///
+  /// Cloudflare's SFU contract makes each publish/pull a full offer/answer
+  /// (or answer/offer) round trip against the only conversation this phone
+  /// has with the SFU. Before this queue, `connectPublish`, `connectPull`,
+  /// `_pull`, `publishVideo`, `pullPeerVideo`, `pullPeerAudio` and
+  /// `reconnect` could all mutate the same `RTCPeerConnection` concurrently —
+  /// e.g. a mid-call camera-on racing a repull from network recovery — which
+  /// is one of two confirmed causes of the video-switch freeze (2026-08-17
+  /// postmortem; the other is [_publishVideoImpl]'s old hard-coded mid).
+  ///
+  /// Every public negotiation entry point below runs its body through
+  /// [_serialize] so at most one is ever mutating [_pc] at a time. A per-op
+  /// [_negotiationTimeout] guarantees a hung op still lets the QUEUE advance
+  /// — later callers get their own failure instead of waiting forever behind
+  /// a wedged network call.
+  ///
+  /// NESTING WARNING — do not call [_serialize] from inside a `body` that is
+  /// itself already executing under [_serialize]. The inner call would await
+  /// [_negotiationChain], which at that moment IS the outer call's own
+  /// not-yet-completed slot — the two would wait on each other forever.
+  /// [_doPull] exists precisely so [_connectPullImpl] and
+  /// [_publishVideoImpl] (both already serialized) can pull without
+  /// re-entering the queue; only the free-standing entry points
+  /// ([pullPeerVideo], [pullPeerAudio]) serialize around it. [connect] and
+  /// [reconnect] are themselves NOT wrapped for the same reason — they
+  /// compose [connectPublish]/[connectPull], which are — so mutual exclusion
+  /// still holds across the pair without nesting.
+  Future<void> _negotiationChain = Future<void>.value();
+
+  static const Duration _negotiationTimeout = Duration(seconds: 15);
+
+  /// [CALL-VIDEO-FIX-2 2026-08-17] Monotonic id of the negotiation currently
+  /// entitled to write shared transport state (`_pc`, `_sessionId`, `_openMids`).
+  ///
+  /// `Future.timeout` does NOT cancel the work it gives up on — a timed-out
+  /// negotiation keeps running, and its late `_pc = pc` / `_sessionId = ...`
+  /// assignment would otherwise land AFTER a newer operation's and silently
+  /// clobber it. That is the same class of defect as the pre-join connection
+  /// that overwrote live call state (`[CALL-PREJOIN-ISOLATE-1]`), so it gets
+  /// the same treatment: each queued body carries the generation it was issued
+  /// under, and [_ownsNegotiation] is the gate every shared write must pass.
+  int _negotiationGeneration = 0;
+
+  /// True while [gen] is still the newest issued negotiation. A superseded or
+  /// timed-out body must read false here and abandon its writes silently.
+  bool _ownsNegotiation(int gen) => gen == _negotiationGeneration && !_disposed;
+
+  Future<T> _serialize<T>(String op, Future<T> Function() body) {
+    final queuedStartMs = DateTime.now().millisecondsSinceEpoch;
+    final completer = Completer<void>();
+    final previous = _negotiationChain;
+    _negotiationChain = completer.future;
+    final gen = ++_negotiationGeneration;
+    return previous.then((_) async {
+      // Superseded while queued: a newer negotiation was issued behind us, so
+      // running this one would race it. Skipping is correct and cheap — the
+      // newer op is doing the same job with fresher inputs.
+      if (gen != _negotiationGeneration) {
+        onNegotiation?.call('$op:superseded', 0, 0, false);
+        completer.complete();
+        return Future<T>.error(
+          StateError('negotiation $op superseded by a newer operation'),
+        );
+      }
+      final queuedMs = DateTime.now().millisecondsSinceEpoch - queuedStartMs;
+      final runStartMs = DateTime.now().millisecondsSinceEpoch;
+      var ok = false;
+      try {
+        final result = await body().timeout(_negotiationTimeout);
+        ok = true;
+        return result;
+      } finally {
+        final ranMs = DateTime.now().millisecondsSinceEpoch - runStartMs;
+        onNegotiation?.call(op, queuedMs, ranMs, ok);
+        // Release the NEXT queued op regardless of how this one finished —
+        // this is what makes a hung/timed-out body bounded rather than a
+        // permanent wedge on every later negotiation.
+        completer.complete();
+      }
+    });
+  }
+
   /// How long to wait for the other phone to register its seat.
   ///
   /// Both phones join concurrently, so finding no peer on the first read is
@@ -281,6 +377,13 @@ class CallSfuTransport {
   /// `overlapPeerWait` early-peer optimization: the poll still starts inside
   /// the publish phase, before the offer/publish round trip, exactly as it did
   /// in the single-method version.
+  ///
+  /// [CALL-VIDEO-FIX-1] NOT itself wrapped in [_serialize], for the same
+  /// reason [reconnect] is not: [connectPublish] awaits to completion
+  /// (including its own queue slot) before [connectPull] is even called, so
+  /// the two already run strictly one after the other with nothing else
+  /// able to interleave — wrapping this method too would just be a nested
+  /// [_serialize] call around calls that are already serialized individually.
   Future<CallSfuResult> connect({
     required MediaStream localStream,
     required List<Map<String, dynamic>> fallbackIceServers,
@@ -325,6 +428,40 @@ class CallSfuTransport {
     required bool video,
     CallSfuJoinResult? prewarmedJoin,
   }) async {
+    try {
+      return await _serialize(
+        'connectPublish',
+        // [CALL-VIDEO-FIX-2] `_negotiationGeneration` is stamped by `_serialize`
+        // BEFORE this closure runs, so reading it here yields the generation
+        // this very operation was issued under.
+        () => _connectPublishImpl(
+          localStream: localStream,
+          fallbackIceServers: fallbackIceServers,
+          video: video,
+          prewarmedJoin: prewarmedJoin,
+          gen: _negotiationGeneration,
+        ),
+      );
+    } on TimeoutException {
+      AvaLog.I.log('call', 'connectPublish timed out in the negotiation queue');
+      await _closePc();
+      return CallSfuResult.failed(SfuFailure.unknown, detail: 'negotiation_timeout');
+    }
+  }
+
+  /// [CALL-VIDEO-FIX-1] The actual publish logic, run under [_serialize] by
+  /// [connectPublish]. See [_serialize]'s doc comment for why this is split
+  /// out — this body must never call [_serialize] itself.
+  Future<CallSfuResult?> _connectPublishImpl({
+    required MediaStream localStream,
+    required List<Map<String, dynamic>> fallbackIceServers,
+    required bool video,
+    CallSfuJoinResult? prewarmedJoin,
+    // [CALL-VIDEO-FIX-2] The generation this body was issued under. Shared
+    // state (`_sessionId`, `_pc`) is only written while it is still current —
+    // a timed-out body keeps running and must not clobber its successor.
+    required int gen,
+  }) async {
     _peerPollAbort = false; // [CALL-DEADAIR-1] fresh attempt (reconnect reuses this object)
     _publishDone = false;
     _pendingEarlyPeer = null;
@@ -334,6 +471,9 @@ class CallSfuTransport {
           : await CallSfuApi.join(room);
       if (join.sessionId.isEmpty) {
         return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
+      }
+      if (!_ownsNegotiation(gen)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_before_session');
       }
       _sessionId = join.sessionId;
       _joinVideoAllowed = join.videoAllowed;
@@ -372,6 +512,12 @@ class CallSfuTransport {
       final pc = await createPeerConnection(
         join.iceServers.isNotEmpty ? join.iceServers : fallbackIceServers,
       );
+      // [CALL-VIDEO-FIX-2] Superseded while the PC was being built: close what
+      // we just made and leave `_pc` alone — the newer negotiation owns it.
+      if (!_ownsNegotiation(gen)) {
+        try { await pc.close(); } catch (_) {/* nothing to salvage */}
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_during_setup');
+      }
       _pc = pc;
       if (_disposed) {
         await pc.close();
@@ -459,6 +605,23 @@ class CallSfuTransport {
   /// published. Combined with the join's server-side `videoAllowed` (recorded
   /// by [connectPublish]) exactly as the old single-method `connect()` did.
   Future<CallSfuResult> connectPull({required bool video, Duration? peerWait}) async {
+    if (!_publishDone || _pc == null || _sessionId == null) {
+      return CallSfuResult.failed(SfuFailure.unknown, detail: 'connectPull_without_publish');
+    }
+    try {
+      return await _serialize('connectPull', () => _connectPullImpl(video: video, peerWait: peerWait));
+    } on TimeoutException {
+      AvaLog.I.log('call', 'connectPull timed out in the negotiation queue');
+      await _closePc();
+      return CallSfuResult.failed(SfuFailure.unknown, detail: 'negotiation_timeout');
+    }
+  }
+
+  /// [CALL-VIDEO-FIX-1] The actual pull logic, run under [_serialize] by
+  /// [connectPull]. Calls [_doPull] directly (never [pullPeerVideo] /
+  /// [pullPeerAudio] / another [_serialize]) — see [_serialize]'s nesting
+  /// warning.
+  Future<CallSfuResult> _connectPullImpl({required bool video, Duration? peerWait}) async {
     final pc = _pc;
     final sid = _sessionId;
     if (!_publishDone || pc == null || sid == null) {
@@ -478,8 +641,10 @@ class CallSfuTransport {
       }
       onStage?.call('sfu_peer_seat');
 
-      // PULL audio — the SFU offers, we answer.
-      final pulledAudio = await _pull('audio');
+      // PULL audio — the SFU offers, we answer. `_doPull`, not `_pull`: this
+      // body is already running under `_serialize` (see that method's
+      // nesting warning).
+      final pulledAudio = await _doPull('audio');
       if (!pulledAudio) {
         return CallSfuResult.failed(SfuFailure.pullFailed, detail: 'audio');
       }
@@ -492,7 +657,7 @@ class CallSfuTransport {
       final peerVideoAvailable = peer.hasVideo;
       var videoConnected = false;
       if (wantVideo && peerVideoAvailable) {
-        videoConnected = await _pull('video');
+        videoConnected = await _doPull('video');
       }
 
       _startHeartbeat();
@@ -514,6 +679,14 @@ class CallSfuTransport {
   /// Rejoin Cloudflare after this phone's network leg changes. The peer's SFU
   /// session is intentionally left alone; only this side mints a new session
   /// and re-publishes its tracks.
+  ///
+  /// [CALL-VIDEO-FIX-1] NOT itself wrapped in [_serialize] — it composes
+  /// [connect] (i.e. [connectPublish] then [connectPull]), both of which
+  /// already are, so wrapping this too would be a nested [_serialize] call
+  /// (see that method's warning) awaiting a slot that only frees once THIS
+  /// call returns: a guaranteed deadlock. Mutual exclusion still holds
+  /// end-to-end because every op it eventually runs goes through the same
+  /// queue individually.
   Future<CallSfuResult> reconnect({
     required MediaStream localStream,
     required List<Map<String, dynamic>> fallbackIceServers,
@@ -553,8 +726,16 @@ class CallSfuTransport {
   }
 
   /// One pull + the answer it requires. Returns false on any failure so the
-  /// caller can decide whether that kind was load-bearing (audio) or not (video).
-  Future<bool> _pull(String kind) async {
+  /// caller can decide whether that kind was load-bearing (audio) or not
+  /// (video).
+  ///
+  /// [CALL-VIDEO-FIX-1] Deliberately UNSERIALIZED — this is the shared
+  /// implementation [_connectPullImpl] and [_publishVideoImpl] call while
+  /// already running under [_serialize]. Do not call [_serialize] from
+  /// inside this method. The two free-standing public pull entry points
+  /// ([pullPeerVideo], [pullPeerAudio]) are what apply the queue for callers
+  /// outside an already-serialized op.
+  Future<bool> _doPull(String kind) async {
     final sid = _sessionId;
     final pc = _pc;
     if (sid == null || pc == null) return false;
@@ -641,7 +822,24 @@ class CallSfuTransport {
   /// re-offer — so it is a SECOND publish of the new mid, followed by a pull of
   /// the peer's video if they have any. Everything else about the call is
   /// untouched; the audio connection is not renegotiated or interrupted.
+  ///
+  /// [CALL-VIDEO-FIX-1] Serialized via [_serialize] — this is a real
+  /// offer/answer round trip against the same `RTCPeerConnection` every other
+  /// negotiation on this transport touches.
   Future<bool> publishVideo(MediaStreamTrack videoTrack, MediaStream stream) async {
+    try {
+      return await _serialize('publishVideo', () => _publishVideoImpl(videoTrack, stream));
+    } on TimeoutException {
+      AvaLog.I.log('call', 'publishVideo timed out in the negotiation queue');
+      return false;
+    }
+  }
+
+  /// [CALL-VIDEO-FIX-1] The actual publish-video logic, run under
+  /// [_serialize] by [publishVideo]. Calls [_doPull] directly at the end
+  /// (never [pullPeerVideo]/another [_serialize]) — see [_serialize]'s
+  /// nesting warning.
+  Future<bool> _publishVideoImpl(MediaStreamTrack videoTrack, MediaStream stream) async {
     final sid = _sessionId;
     final pc = _pc;
     if (sid == null || pc == null) return false;
@@ -670,17 +868,57 @@ class CallSfuTransport {
           'offer_video',
         );
       }
+      // [CALL-VIDEO-FIX-1] REAL mid, not a hard-coded '1'. By the time a
+      // mid-call camera-on publishes, mid '1' has very often already been
+      // claimed by something pulled earlier (most commonly the peer's
+      // audio, added on THIS connection during `connectPull`) — sending a
+      // literal '1' here told Cloudflare to attach the new video track to
+      // whatever m-section already owns that mid, which is how a video
+      // upgrade silently corrupted an unrelated (frequently audio) media
+      // section and froze the call. `setLocalDescription` just ran, so
+      // every transceiver's `mid` is now assigned; find the one whose
+      // SENDER holds `videoTrack` — that is unambiguously the video
+      // m-section this offer just created, regardless of what mid libwebrtc
+      // gave it.
+      String? resolvedMid;
+      try {
+        final transceivers = await pc.getTransceivers();
+        for (final t in transceivers) {
+          if (t.sender.track?.id == videoTrack.id) {
+            resolvedMid = t.mid;
+            break;
+          }
+        }
+      } catch (e) {
+        AvaLog.I.log('call', 'publishVideo mid resolution threw: $e');
+      }
+      if (resolvedMid == null || resolvedMid.isEmpty) {
+        // Never guess. Sending a wrong-but-plausible mid is exactly the bug
+        // this replaces — abort the upgrade instead and let the caller
+        // report a clean failure. Nothing has been sent to the SFU yet, so
+        // there is nothing to unwind server-side; the caller is responsible
+        // for stopping/removing the local track it acquired.
+        AvaLog.I.log('call', 'publishVideo aborted: could not resolve the real mid for the new video track');
+        return false;
+      }
+      if (_disposed || !identical(pc, _pc)) return false;
       final answer = await CallSfuApi.publish(room, sid, tunedOffer.sdp ?? '', [
-        {'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(sid)},
+        {'mid': resolvedMid, 'kind': 'video', 'trackName': _videoTrackName(sid)},
       ]);
       if (answer == null || answer['sdp'] == null) return false;
       if (_disposed || !identical(pc, _pc)) return false;
       await pc.setRemoteDescription(RTCSessionDescription(answer['sdp'].toString(), 'answer'));
       if (_disposed || !identical(pc, _pc)) return false;
-      _openMids.add('1');
-      // The peer may already be sending video; pull it now rather than waiting
-      // for something else to notice.
-      unawaited(_pull('video'));
+      _openMids.add(resolvedMid);
+      // [CALL-VIDEO-FIX-1] Awaited, not `unawaited(...)`. Firing a second,
+      // untracked negotiation the instant this one finishes was the other
+      // confirmed cause of the freeze — two negotiations on the same PC with
+      // nothing stopping them overlapping. This call is `_doPull`, not the
+      // public `pullPeerVideo`, because we are already inside this op's
+      // `_serialize` slot; the peer's video (if any) is pulled before
+      // `publishVideo` reports success, and any later camera-on from the
+      // peer goes through the normal `pullPeerVideo` queue entry instead.
+      await _doPull('video');
       return true;
     } catch (e) {
       AvaLog.I.log('call', 'publishVideo failed: $e');
@@ -689,7 +927,17 @@ class CallSfuTransport {
   }
 
   /// Pull the peer's video when they turn their camera on mid-call.
-  Future<bool> pullPeerVideo() => _pull('video');
+  ///
+  /// [CALL-VIDEO-FIX-1] Serialized — a free-standing entry point, not called
+  /// from inside another [_serialize]d op, so it is safe for it to queue.
+  Future<bool> pullPeerVideo() async {
+    try {
+      return await _serialize('pullPeerVideo', () => _doPull('video'));
+    } on TimeoutException {
+      AvaLog.I.log('call', 'pullPeerVideo timed out in the negotiation queue');
+      return false;
+    }
+  }
 
   /// [CALL-SFU-REPULL-1 2026-08-06] Re-pull the peer's AUDIO after they rejoined
   /// the SFU with a new session id.
@@ -699,7 +947,16 @@ class CallSfuTransport {
   /// SFU does not tell us that — the pull simply goes quiet — so the peer's
   /// `sfu-rejoined` signal is the only trigger there is. Without it a network
   /// recovery that "succeeded" leaves that direction permanently silent.
-  Future<bool> pullPeerAudio() => _pull('audio');
+  ///
+  /// [CALL-VIDEO-FIX-1] Serialized for the same reason as [pullPeerVideo].
+  Future<bool> pullPeerAudio() async {
+    try {
+      return await _serialize('pullPeerAudio', () => _doPull('audio'));
+    } on TimeoutException {
+      AvaLog.I.log('call', 'pullPeerAudio timed out in the negotiation queue');
+      return false;
+    }
+  }
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
@@ -722,6 +979,17 @@ class CallSfuTransport {
   /// Teardown. Clearing the seat matters as much as closing the tracks: a stale
   /// seat leaves the peer pulling a dead session id, which produces silence with
   /// no error on either side.
+  ///
+  /// [CALL-VIDEO-FIX-1] Deliberately NEVER routed through [_serialize] — it
+  /// must be able to run immediately even while a negotiation is queued or
+  /// in flight, or a call end/`reconnect` would sit blocked behind whatever
+  /// is currently occupying the chain (bounded by [_negotiationTimeout], but
+  /// still up to 15s of a call that should have ended instantly). Safety
+  /// against a concurrently-running op is instead the pre-existing
+  /// `_disposed` / `identical(pc, _pc)` guards already threaded through
+  /// [_connectPublishImpl], [_connectPullImpl], [_doPull] and
+  /// [_publishVideoImpl] — every one of them notices a dispose that happened
+  /// underneath it and backs out cleanly instead of touching a closed `pc`.
   Future<void> dispose() async {
     _disposed = true;
     _peerPollAbort = true; // [CALL-DEADAIR-1]
