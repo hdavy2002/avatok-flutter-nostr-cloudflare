@@ -868,6 +868,22 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       ...(msg.senderAvatarVersion ? { senderAvatarVersion: String(msg.senderAvatarVersion) } : {}),
     } };
   }
+  if (msg.kind === "thread_clear") {
+    // [DELETE-CHAT-XDEV-1 2026-08-17] "Delete chat" on ONE of my devices → wake
+    // my others so the clear applies in near-realtime instead of whenever they
+    // next happen to sync.
+    //
+    // worker/src/routes/messaging.ts threadClear has enqueued this kind since
+    // [MSG-DELETE-1], but buildPayload had NO branch for it — so the enqueue
+    // succeeded, produced no payload, and the wake silently never happened. The
+    // authoritative state still travels in the /sync `thread_clears` snapshot;
+    // this only makes it prompt. Silent + data-only: nothing is drawn.
+    return { highPriority: true, data: {
+      type: "thread_clear",
+      ...(msg.conv ? { conv: String(msg.conv) } : {}),
+      ...(msg.cursor_mid ? { cursor_mid: String(msg.cursor_mid) } : {}),
+    } };
+  }
   if (msg.kind === "notif_clear") {
     // [NOTIF-SYNC-1] Silent: no banner, nothing for the user to see. High
     // priority so a sleeping second device takes the stale card down promptly

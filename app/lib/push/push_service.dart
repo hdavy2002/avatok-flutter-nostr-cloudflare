@@ -607,6 +607,13 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
     } else if (type == 'reaction') {
       // [NOTIF-REACT-1] Someone reacted to a message this user wrote.
       await _showReactionNotif(d);
+    } else if (type == 'thread_clear') {
+      // [DELETE-CHAT-XDEV-1] A chat was cleared on another of my devices. Silent:
+      // nothing to draw. The authoritative cursor rides the /sync `thread_clears`
+      // snapshot, so all this wake has to do is make sure that sync happens —
+      // which it will on next foreground. Explicitly a no-op here rather than
+      // falling through to `_showIncoming`, which is for calls.
+      await _bgTrack('thread_clear_push', {'conv': (d['conv'] ?? '').toString()});
     } else if (type == 'notif_clear') {
       // [NOTIF-SYNC-1] This conversation was read on another of MY devices —
       // take its card out of this device's shade and re-count the summary.
@@ -4373,6 +4380,12 @@ class PushService {
         final b = int.tryParse((d['build'] ?? '').toString()) ?? 0;
         Analytics.capture('app_update_push_fg', {'build': b});
         unawaited(UpdateService.onUpdatePush(build: b));
+        return;
+      }
+      // [DELETE-CHAT-XDEV-1] Cleared on another of my devices while this one is
+      // open — sync now so the cursor applies immediately rather than on next launch.
+      if (d['type'] == 'thread_clear') {
+        SyncHub.I.syncFromPush();
         return;
       }
       // [NOTIF-REACT-1] A reaction arriving while the app is foregrounded.

@@ -133,12 +133,16 @@ class DeletedStore {
 /// applied at RENDER time, exactly like the existing `_deletedIds` tombstones, so
 /// re-inserted rows stay invisible no matter how often they come back.
 ///
-/// Keyed by local convKey ('1:<peerUid>' / 'g:<gid>'). The value is a timestamp
-/// in EPOCH SECONDS — matching `_Msg.ts` — and everything at or before it is
-/// hidden. The server's own thread-clear machinery keys on a canonical message
-/// id instead, but no canonical mid is reachable on the client (`_Msg` carries
-/// `evId`, the client id, and no mid), so mirroring this to other devices is a
-/// separate piece of work rather than something to fake here.
+/// Values are timestamps in EPOCH SECONDS — matching `_Msg.ts` — and everything
+/// at or before one is hidden.
+///
+/// [DELETE-CHAT-XDEV-1] Entries are written under BOTH the local convKey
+/// ('1:<peerUid>' / 'g:<gid>') and the SERVER conv id, because the two halves of
+/// this feature speak different namespaces: the thread screen knows the convKey,
+/// while the server's `thread_clears` snapshot and its wake push are keyed by
+/// server conv. Writing both and reading either avoids a lookup table and keeps
+/// tel threads (which have no server conv) working. The cursor is monotonic, so
+/// a duplicate write is harmless.
 ///
 /// Monotonic: a stale value must never move the cursor backward and resurrect a
 /// cleared thread.
@@ -166,6 +170,39 @@ class ThreadClearStore {
   }
 
   Future<int> cursorFor(String convKey) async => (await load())[convKey] ?? 0;
+
+  /// Monotonic bulk merge, for the `thread_clears` snapshot on every `/sync`.
+  Future<void> mergeBulk(Map<String, int> updates) async {
+    if (updates.isEmpty) return;
+    final m = await load();
+    var changed = false;
+    updates.forEach((k, ts) {
+      if (ts > 0 && (m[k] ?? 0) < ts) { m[k] = ts; changed = true; }
+    });
+    if (changed) await DiskCache.write(_key, jsonEncode(m));
+  }
+
+  /// [DELETE-CHAT-XDEV-1] Canonical message id → epoch SECONDS.
+  ///
+  /// `canonicalMsgId` (worker/src/util.ts) is
+  /// `<createdMs zero-padded to 13>.<8 hex>` — zero-padded precisely so the ids
+  /// sort chronologically as plain strings. The millisecond prefix is therefore
+  /// a reliable timestamp, and this store compares in seconds like `_Msg.ts`.
+  static int tsSecFromMid(String mid) {
+    if (mid.length < 13) return 0;
+    final ms = int.tryParse(mid.substring(0, 13)) ?? 0;
+    return ms <= 0 ? 0 : ms ~/ 1000;
+  }
+
+  /// [DELETE-CHAT-XDEV-1] A cursor meaning "everything up to NOW is cleared".
+  ///
+  /// Not a fake message id — the server stores this value as a sortable
+  /// HIGH-WATER MARK and only ever compares it (`MAX(cleared_through_mid, ?)`);
+  /// it never dereferences it to a row. An upper bound for the current
+  /// millisecond is exactly the right thing to send, and `ffffffff` is above
+  /// every real suffix because those are lowercase hex.
+  static String nowCursorMid() =>
+      '${DateTime.now().millisecondsSinceEpoch.toString().padLeft(13, '0')}.ffffffff';
 }
 
 /// Per-conversation last-message preview: a short snippet of the most recent

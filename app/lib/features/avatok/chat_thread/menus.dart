@@ -149,7 +149,7 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
                 backgroundColor: AD.overlaySheet,
                 title: Text('Delete this chat?', style: ADText.rowName()),
                 content: Text(
-                  'Messages in this chat will be removed from this device. '
+                  'Messages in this chat will be removed from all your devices. '
                   'This does not delete them for the other person.',
                   style: ADText.preview(),
                 ),
@@ -162,8 +162,37 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
               ),
             );
             if (ok != true) return;
-            final cut = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            // [DELETE-CHAT-XDEV-1] One cursor, used for both halves, so the
+            // local view and every other device agree on exactly where the
+            // clear line sits.
+            final cursorMid = ThreadClearStore.nowCursorMid();
+            final cut = ThreadClearStore.tsSecFromMid(cursorMid);
             await ThreadClearStore().clearThrough(ck, cut);
+            // Tell the server, so my OTHER devices clear too. The server keeps a
+            // monotonic per-conversation cursor in my own InboxDO, wakes my other
+            // devices with a silent push, and replays the cursor in every /sync —
+            // all of which already existed and had no client calling it.
+            // SELF-SCOPED by construction: it touches only my own InboxDO and
+            // never writes to or pushes at the peer.
+            final srvConv = _serverConvId;
+            if (srvConv != null && srvConv.isNotEmpty) {
+              // Same cursor under the SERVER key too — that is the namespace the
+              // /sync snapshot and the wake push come back in.
+              await ThreadClearStore().clearThrough(srvConv, cut);
+              unawaited(ApiAuth.postJson(kMsgHideUrl, {
+                'clear': true,
+                'conv': srvConv,
+                'cursor_mid': cursorMid,
+                'op_id': const Uuid().v4(),
+              }).then(
+                (res) => Analytics.capture('chat_thread_clear_sent', {
+                  'ok': res.statusCode == 200, 'status': res.statusCode,
+                }),
+                onError: (Object e) => Analytics.capture('chat_thread_clear_sent', {
+                  'ok': false, 'err': e.toString(),
+                }),
+              ));
+            }
             // Also drop the chat-list subtitle, or the row keeps showing the last
             // message of a chat the user just deleted.
             await ChatPreviewStore().remove(ck);
@@ -176,10 +205,16 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
             Analytics.capture('chat_thread_cleared', {
               'group': widget.chat.group,
               'cut_ts': cut,
-              // Honest scope marker: this clear does NOT yet reach the user's
-              // other devices. The server's thread_clear machinery keys on a
-              // canonical message id that is not reachable from this screen.
-              'scope': 'local_only',
+              // Scope marker. 'all_my_devices' when the server accepted the
+              // cursor; 'local_only' for a tel/voicemail thread, which has no
+              // server conv id and therefore nothing to sync.
+              //
+              // KNOWN LIMIT: the cursor is stored in whole SECONDS (matching
+              // _Msg.ts), so a message arriving later in the same wall-clock
+              // second as the delete is hidden too. The server compares the same
+              // cursor at millisecond precision, so the two can disagree inside
+              // that one-second window.
+              'scope': (_serverConvId ?? '').isEmpty ? 'local_only' : 'all_my_devices',
             });
           }, danger: true),
           ]),

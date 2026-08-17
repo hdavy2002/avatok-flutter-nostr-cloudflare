@@ -12,7 +12,7 @@ import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/net/ava_dns.dart';
 import '../core/call_log_store.dart';
-import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
+import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore, ThreadClearStore;
 import '../core/config.dart';
 import '../core/db.dart';
 import '../core/disk_cache.dart';
@@ -643,6 +643,26 @@ class SyncHub {
             if (((r['hidden'] as num?)?.toInt() ?? 0) == 1) hideBulk[cid] = true;
           }
           if (hideBulk.isNotEmpty) HiddenStore().mergeBulk(hideBulk);
+        }
+        {
+          // [DELETE-CHAT-XDEV-1 2026-08-17] Apply "Delete chat" performed on my
+          // OTHER devices.
+          //
+          // The InboxDO has snapshotted `thread_clears` into EVERY /sync response
+          // since [MSG-DELETE-1], with a comment saying the client applies it
+          // locally. No client ever read the field — `grep thread_clear app/lib`
+          // returned nothing at all — so the whole cross-device half of thread
+          // clear was write-only server state. This is the missing reader.
+          final clears = <String, int>{};
+          for (final row in (m['thread_clears'] as List? ?? const [])) {
+            final r = (row as Map);
+            final conv = (r['conv'] ?? '').toString();
+            final mid = (r['cleared_through_mid'] ?? '').toString();
+            if (conv.isEmpty || mid.isEmpty) continue;
+            final ts = ThreadClearStore.tsSecFromMid(mid);
+            if (ts > 0) clears[conv] = ts;
+          }
+          if (clears.isNotEmpty) ThreadClearStore().mergeBulk(clears);
         }
         for (final row in (m['messages'] as List? ?? const [])) {
           // Per-row guard: a single malformed message must not abort the loop and

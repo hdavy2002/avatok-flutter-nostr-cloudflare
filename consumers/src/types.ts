@@ -188,7 +188,12 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction" | "notif_clear";
+  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction" | "notif_clear" | "thread_clear";
+  // [DELETE-CHAT-XDEV-1] kind === "thread_clear": a conversation was cleared
+  // on one of MY devices. Self-addressed, silent, data-only. `cursor_mid` is
+  // the canonical-message-id high-water mark; everything at or below it is
+  // hidden on every device of mine.
+  cursor_mid?: string;
   // [NOTIF-SYNC-1 2026-08-17] kind === "notif_clear": a conversation was read
   // on ONE of my devices; every other device of MINE should take that chat's
   // notification down. Silent + data-only, same lane as "del"/"hide". `to` is

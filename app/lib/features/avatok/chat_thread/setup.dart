@@ -31,7 +31,12 @@ extension _ChatThreadSetup on _ChatThreadScreenState {
     // `_markRead` re-fires on every incoming message, hence the one-shot guard.
     if (!_clearCursorLoaded) {
       _clearCursorLoaded = true;
-      ThreadClearStore().cursorFor(key).then((cut) {
+      ThreadClearStore().load().then((all) {
+        // Either namespace may hold it: the local convKey if this device did the
+        // clearing, or the server conv id if it arrived from another device.
+        final srv = _serverConvId ?? '';
+        final cut = <int>[all[key] ?? 0, srv.isEmpty ? 0 : (all[srv] ?? 0)]
+            .reduce((a, b) => a > b ? a : b);
         if (!mounted || cut <= 0) return;
         _clearedThroughTs = cut;
         _mutMsgs(() => _msgs.removeWhere((m) => m.ts > 0 && m.ts <= cut));
