@@ -23,9 +23,24 @@ describe("Venice media single-card envelopes", () => {
     expect(venice).toContain("classifyVeniceError");
     expect(venice).toContain('VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p"');
     expect(routes).toContain("aiMediaJobVideoShare");
-    expect(routes).toContain("cdn-cgi/image/format=avif");
-    expect(routes).toContain('cache-control: asset === "thumbnail" ? "public, max-age=31536000, immutable"');
-    expect(routes).toContain('Made on <a href="https://avatok.ai">AvaTOK AI</a>');
+    // [SHARE-OG-IMAGE-1 2026-08-17] og:image must be a DIRECT asset URL, not a
+    // /cdn-cgi/image/... transform wrapped around a Worker route: crawlers do
+    // not reliably execute those, and the song card shipped with no preview
+    // image for exactly that reason. The size problem the wrapper solved is
+    // now handled inside the asset route (200 + resized JPEG, never a 206).
+    // This assertion previously required the abandoned wrapper and had been
+    // failing since [VENICE-VIDEO-CARD-1] removed it.
+    expect(routes).not.toContain("cdn-cgi/image/format=avif");
+    expect(routes).toContain('og:image');
+    // Assert the INTENT (immutable long cache for the thumbnail, short for the
+    // video) rather than one exact source formatting — the previous literal
+    // silently went stale when the object key was quoted during a refactor.
+    expect(routes).toMatch(/asset === "thumbnail" \? "public, max-age=31536000, immutable" : "public, max-age=300"/);
+    // Attribution must link back to avatok.ai from the public share pages.
+    // Asserted by intent — the exact wording has been reworded twice and the
+    // old literal ("Made on … AvaTOK AI") had gone stale.
+    expect(routes).toMatch(/href="https:\/\/avatok\.ai"/);
+    expect(routes).toMatch(/AvaTOK/);
   });
 
   it("gates video admission before billing and watches the thumbnail sidecar", () => {
