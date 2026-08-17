@@ -8905,6 +8905,11 @@ class CallSession {
     // both phones waiting on each other after Accept — the "connected, meter
     // running, hello? hello?" silence. Gated by `callerPrejoinOnRingV1`; a
     // no-op when off, and it never throws into the ring path.
+    //
+    // [CALL-PREJOIN-3 2026-08-18] Kept as a BACKSTOP only. The primary trigger
+    // moved to `notePlaceResult` (placement is authoritative and strictly
+    // earlier); `_maybeStartCallerPrejoin` is idempotent via `_prejoinStarted`,
+    // so whichever fires first wins and the other is a no-op.
     if (ok) _maybeStartCallerPrejoin();
     if (_ringAckHandled) return;
     if (ok) {
@@ -9021,6 +9026,16 @@ class CallSession {
       _onRingAck(false);
       return;
     }
+    // [CALL-PREJOIN-3 2026-08-18] START PUBLISHING HERE, not on the FCM
+    // ring-ack. A 200 from /api/call means the backend has RECORDED both
+    // participants — which is the only precondition the SFU seat write checks
+    // (`CallRoom` 403s `not_a_participant` otherwise, the 2026-08-17 failure).
+    // The ring-ack was correct but LATE: it arrives only after push token
+    // fan-out completes, while the WebSocket ring can already have reached an
+    // online callee — who may accept before the ack ever lands, which is
+    // exactly the case where publishing early matters most. Ring-ack keeps
+    // owning reachability and the no-answer window; it no longer gates media.
+    _maybeStartCallerPrejoin();
     // A 200 from /api/call proves placement completed, not that FCM found a
     // live token or that the phone rang. Do not latch `_ringAckHandled`: the
     // consumer's later ok=false must still be able to fast-fail honestly, and
