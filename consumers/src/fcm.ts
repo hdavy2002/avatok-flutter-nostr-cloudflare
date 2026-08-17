@@ -425,6 +425,18 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
           ...(msg.from ? { fromUid: msg.from } : {}),
           ...(msg.fromPhone ? { fromPhone: msg.fromPhone } : {}),
           ...(msg.preview ? { preview: msg.preview } : {}),
+          // [NOTIF-PAYLOAD-1 2026-08-17] MessagingStyle inputs. This re-enqueue
+          // is the ONLY route a large group's push takes, so anything not
+          // forwarded here is silently absent for exactly the conversations that
+          // need it most — a 40-person group is precisely where the shade must
+          // say which group a message came from. The producer sets these on the
+          // "fanout" message (worker/src/routes/messaging.ts bannerExtras).
+          ...(msg.conv ? { conv: msg.conv } : {}),
+          ...(msg.mid ? { mid: msg.mid } : {}),
+          ...(msg.isGroup != null ? { isGroup: msg.isGroup } : {}),
+          ...(msg.groupName ? { groupName: msg.groupName } : {}),
+          ...(msg.senderAvatarUrl ? { senderAvatarUrl: msg.senderAvatarUrl } : {}),
+          ...(msg.senderAvatarVersion ? { senderAvatarVersion: msg.senderAvatarVersion } : {}),
         }, env);
         return { uid, status: "delivered" };
       } catch (e) {
@@ -460,6 +472,13 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
         kind: "fanout", payload: msg.payload, fromName: msg.fromName, preview: msg.preview,
         from: msg.from, fromPhone: msg.fromPhone, recipients: retryableRecipients,
         fanout_id: fid, attempt: attempt + 1,
+        // [NOTIF-PAYLOAD-1] Carry the MessagingStyle inputs across the retry too.
+        // Dropping them here would mean the recipients who needed a RETRY — i.e.
+        // the ones whose delivery was already degraded — are also the only ones
+        // who get a photoless, group-nameless banner. Silent, and impossible to
+        // reproduce on demand.
+        conv: msg.conv, mid: msg.mid, isGroup: msg.isGroup, groupName: msg.groupName,
+        senderAvatarUrl: msg.senderAvatarUrl, senderAvatarVersion: msg.senderAvatarVersion,
       });
       await capturePush(env, "group_fanout_recipient_retry", "server", {
         fanout_id: fid, conv_hash: convHash, retry_count: retryableRecipients.length, attempt,
@@ -824,6 +843,29 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       // `fcm_fg_received` and no `push_shown`. With `conv` the client can
       // suppress the banner ONLY for the exact thread being read.
       ...(msg.conv ? { conv: String(msg.conv) } : {}),
+      // ── [NOTIF-PAYLOAD-1 2026-08-17] MessagingStyle inputs ──────────────────
+      // FCM data values MUST be strings — a boolean or number here is coerced
+      // inconsistently across the Android and iOS SDKs, so `isGroup` travels as
+      // the literal "true"/"false" and the client compares strings. This is the
+      // same contract the call branch already uses for `group`/`seq`/`ts`.
+      //
+      // These are what let the client stop drawing one flat banner under a
+      // single hardcoded id and start drawing a per-chat MessagingStyle stack:
+      //   mid      → de-dup key; FCM is at-least-once and both Dart isolates can
+      //              handle the same push, so without it the same sentence lands
+      //              twice in the expanded thread.
+      //   ts       → orders the messages inside the expanded conversation. It
+      //              existed on PushMsg and was already forwarded on the `call`
+      //              branch, but this branch simply never read it.
+      //   isGroup  → picks the MessagingStyle shape (groupConversation).
+      //   groupName→ renders "AvaGlobal · Satish: …" instead of a bare name.
+      //   senderAvatar* → the Person photo, as URL + version, never bytes.
+      ...(msg.mid ? { mid: String(msg.mid) } : {}),
+      ...(msg.ts ? { ts: String(msg.ts) } : {}),
+      ...(msg.isGroup != null ? { isGroup: msg.isGroup ? "true" : "false" } : {}),
+      ...(msg.groupName ? { groupName: String(msg.groupName).slice(0, 80) } : {}),
+      ...(msg.senderAvatarUrl ? { senderAvatarUrl: String(msg.senderAvatarUrl) } : {}),
+      ...(msg.senderAvatarVersion ? { senderAvatarVersion: String(msg.senderAvatarVersion) } : {}),
     } };
   }
   if (msg.kind === "del") {

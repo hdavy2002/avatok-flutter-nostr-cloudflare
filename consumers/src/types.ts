@@ -260,6 +260,36 @@ export interface PushMsg {
   // kind === "notify": optional short message preview (WhatsApp-style expandable
   // banner). Omitted → content-less banner (sender name only).
   preview?: string;
+  // ── [NOTIF-PAYLOAD-1 2026-08-17] kind === "notify" | "fanout" ──────────────
+  // The inputs an Android MessagingStyle notification needs and this payload has
+  // never carried. Until now a chat push arrived with a name and 140 characters
+  // and nothing else, which is why the client could only draw ONE flat banner
+  // under a single hardcoded notification id: with no message identity it cannot
+  // stack, with no photo it cannot draw a Person, and with no group name a group
+  // message is indistinguishable from a DM in the shade.
+  //
+  // All additive and all optional. Every push is data-only (see sendFcm), so
+  // shipped clients that do not read these keys ignore them — there is no
+  // version skew hazard here, unlike a rename.
+  //
+  // `mid` is the canonical server message id. It is the de-dup key for the
+  // client's shown-message store: FCM is at-least-once and BOTH isolates can
+  // handle the same push, so without it the same sentence appears twice in the
+  // expanded thread.
+  mid?: string;
+  // True when the conversation has more than two members. The client needs this
+  // BEFORE it can pick a MessagingStyle shape (`groupConversation`), and it
+  // cannot infer it from `conv` alone.
+  isGroup?: boolean;
+  // Sender's profile photo, as URL + version — never bytes; FCM data payloads are
+  // size-capped. Deliberately mirrors the proven call-path contract
+  // (`callerAvatarUrl`/`callerAvatarVersion`, [CALL-IDENTITY-SNAPSHOT-1]): the
+  // version is a cache key `avatar:{uid}:{version}` that survives CDN transforms
+  // and query-string churn, so a cold phone paints a cached photo on the first
+  // frame instead of a grey circle. Resolved server-side from the AvaTOK PUBLIC
+  // profile via publicIdentityFor(), never from the identity provider.
+  senderAvatarUrl?: string | null;
+  senderAvatarVersion?: string | null;
   // [AVANOTIF-VM-1] The RECIPIENT's device resolves a display name from its OWN
   // contact book instead of trusting the sender-declared `fromName` (which was
   // the root cause of a raw phone number showing in the shade — see fcm.ts

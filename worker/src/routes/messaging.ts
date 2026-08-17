@@ -15,6 +15,9 @@ import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
 // CLOSED, enforces the 90-day window, and returns 403 identity_required.
 import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_gate";
 import { nameFor } from "../lib/identity";        // resolve inviter display name
+// [NOTIF-PAYLOAD-1] sender photo for the MessagingStyle notification shade —
+// the SAME public-profile source the call path rings with, not a second one.
+import { publicIdentityFor } from "../lib/identity";
 import { readConfig } from "./config";            // groupInvitesEnabled kill switch
 import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
@@ -311,13 +314,82 @@ async function appendTo(env: Env, owner: string, body: Record<string, unknown>):
 // (users.phone_hash is a one-way hash, not reversible to a real number) — only
 // `fromUid` travels here; see the report for why fromPhone is deliberately NOT
 // fabricated from this path.
-async function pushOffline(env: Env, toUid: string, fromUid: string, fromName: string, preview: string): Promise<void> {
+//
+// [NOTIF-PAYLOAD-1 2026-08-17] `extras` carries the MessagingStyle inputs — the
+// sender's photo, the message id, group-ness and the group name. See
+// bannerExtras() below for why it arrives as a PROMISE rather than a value.
+async function pushOffline(
+  env: Env, toUid: string, fromUid: string, fromName: string, preview: string,
+  extras?: Promise<BannerExtras>,
+): Promise<void> {
   try {
+    // Awaiting here is free: every caller either runs this inside bg()/waitUntil
+    // or has already returned its response. The promise is created ONCE per send
+    // and shared by every recipient, so a 40-member group resolves the sender
+    // identity once, not forty times.
+    const x = extras ? await extras.catch(() => ({} as BannerExtras)) : ({} as BannerExtras);
     await env.Q_PUSH.send({
       kind: "notify", to: toUid, from: fromUid, fromName: fromName || "AvaTOK",
       ...(preview ? { preview } : {}),
+      ...x,
     });
   } catch { /* best-effort; never block the send */ }
+}
+
+/** [NOTIF-PAYLOAD-1] The extra fields an Android MessagingStyle notification
+ *  needs, which the push has never carried. Shape mirrors PushMsg's optional
+ *  members so it can be spread straight onto the queue message. */
+type BannerExtras = {
+  conv?: string; mid?: string; isGroup?: boolean; groupName?: string;
+  senderAvatarUrl?: string | null; senderAvatarVersion?: string | null;
+};
+
+/**
+ * [NOTIF-PAYLOAD-1 2026-08-17] Resolve the sender's photo + the conversation's
+ * group identity for the notification shade.
+ *
+ * RETURNS A PROMISE ON PURPOSE, and callers must NOT await it before fan-out.
+ *
+ * This does one KV read (publicIdentityFor is KV-cached, 300 s TTL) and, for
+ * groups only, one D1 read for the title. Both are cheap, but "cheap" on the
+ * SEND path is how /api/msg/send got slow before: [MSG-SEND-TIMEOUT-1] exists
+ * because awaiting the offline FCM push in the sender's request path pushed
+ * slow-network senders past their client timeout (PostHog logged 57
+ * TimeoutExceptions). A notification nicety must never re-introduce that. So the
+ * caller kicks this off, hands the unawaited promise to pushOffline, and only the
+ * detached push path — already outside the response — ever waits on it.
+ *
+ * Fully best-effort: every failure degrades to today's behaviour (a banner with
+ * no photo and no group name), never to a failed or delayed send.
+ */
+function bannerExtras(
+  env: Env, senderUid: string, conv: string, isGroup: boolean, mid: string,
+): Promise<BannerExtras> {
+  return (async () => {
+    const out: BannerExtras = { conv, mid, isGroup };
+    try {
+      // The AvaTOK PUBLIC profile — the card the user actually edits. Same source
+      // the call path uses for the ring photo, deliberately: a caller whose photo
+      // shows on an incoming call and NOT on their message would be an obvious
+      // inconsistency, and re-deriving identity from a second source is how
+      // [CALL-IDENTITY-SNAPSHOT-1] got a Gmail first name into a call screen.
+      const ident = await publicIdentityFor(env, senderUid);
+      if (ident?.avatar_url) {
+        out.senderAvatarUrl = ident.avatar_url;
+        out.senderAvatarVersion = ident.avatar_version;
+      }
+    } catch { /* no photo → the client draws its initials fallback */ }
+    if (isGroup) {
+      try {
+        const g = await env.DB_META
+          .prepare("SELECT title FROM conversations WHERE id=?1")
+          .bind(conv).first<{ title: string | null }>();
+        const t = (g?.title ?? "").trim();
+        if (t) out.groupName = t.slice(0, 80);
+      } catch { /* no title → the client falls back to the sender name alone */ }
+    }
+    return out;
+  })();
 }
 
 /** Sender's display name for push banners. One cheap D1 lookup; falls back to the
@@ -630,6 +702,11 @@ export async function sendMsg(req: Request, env: Env, execCtx?: ExecutionContext
   // wake path on mobile, so these must be populated — not a bare "AvaTOK").
   const fromName = await senderDisplayName(env, ctx.uid);
   const preview = msgPreview(kind, text, mediaRef);
+  // [NOTIF-PAYLOAD-1] Sender photo + group identity for the notification shade.
+  // NOT awaited here — see bannerExtras()'s contract. Kicked off now so it is
+  // already in flight by the time the detached push path wants it, and shared by
+  // every recipient of this one message.
+  const bannerP = bannerExtras(env, ctx.uid, conv, !isDm, mid);
 
   // Phase 1 (ABLY-R2-1): durable R2 archive. Enqueue the moderated message so a
   // consumer writes the body to R2 (BACKUP_R2, chat/<conv>/<mid>.json) + indexes
@@ -715,7 +792,7 @@ export async function sendMsg(req: Request, env: Env, execCtx?: ExecutionContext
         // /api/msg/send TimeoutException x57). [MSG-CTX-WAITUNTIL-1] Still
         // detached from the response, but now riding ctx.waitUntil so the Workers
         // runtime can't kill it mid-flight once the response returns.
-        bg(execCtx, env, "push_offline", pushOffline(env, m, ctx.uid, fromName, preview));
+        bg(execCtx, env, "push_offline", pushOffline(env, m, ctx.uid, fromName, preview, bannerP));
       }
       // STREAM F — auto-responder hook. DM-only (isDm), regular messages only (not a
       // delete-for-everyone control). Fires independent of socket liveness because
@@ -753,9 +830,17 @@ export async function sendMsg(req: Request, env: Env, execCtx?: ExecutionContext
     // fanout_id, so a queue retry can never silently ACK away a lost recipient.
     deliveryPath = "queue";
     const fid = await fanoutId(conv, clientId, ctx.uid);
+    // [NOTIF-PAYLOAD-1] Awaiting the banner promise here is effectively free: it
+    // was kicked off before appendTo() and the guardian scan, so by this point it
+    // has almost always already resolved. It matters most on THIS path — a large
+    // fan-out is by definition a group, and the group name is what turns a shade
+    // row from "Satish Mumbai" into "AvaGlobal · Satish Mumbai". Failure yields
+    // {} and the banner simply renders as it does today.
+    const banner = await bannerP.catch(() => ({} as BannerExtras));
     const sends: Promise<unknown>[] = [];
     for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
       sends.push(env.Q_PUSH.send({
+        ...banner,
         // [AVANOTIF-VM-2] `from: ctx.uid` — see pushOffline above. handleFanout
         // (consumers/src/fcm.ts) already forwards msg.from as data.fromUid on
         // the per-recipient notify it re-enqueues; it just never had a value to
@@ -985,6 +1070,12 @@ export async function forwardMsg(req: Request, env: Env, execCtx?: ExecutionCont
     const payload = { conv: job.conv, sender: ctx.uid, kind, body: text,
       media_ref: mediaRef, client_id: `fwd_${created}_${Math.random().toString(36).slice(2, 8)}`,
       created_at: created, mid };
+    // [NOTIF-PAYLOAD-1] Per JOB, not per send: a forward can target several
+    // conversations at once, so group-ness and the group name differ between
+    // jobs even though the sender's photo does not. `job.recipients.length > 1`
+    // is the group test here — this loop has already reduced each target to its
+    // OTHER members, so a DM job holds exactly one recipient.
+    const bannerP = bannerExtras(env, ctx.uid, job.conv, job.recipients.length > 1, mid);
     // My own log first (anchors my cursor), then each recipient.
     await appendTo(env, ctx.uid, payload);
     totalRecipients += job.recipients.length;
@@ -992,17 +1083,19 @@ export async function forwardMsg(req: Request, env: Env, execCtx?: ExecutionCont
     if (job.recipients.length <= FANOUT_SYNC_MAX) {
       await Promise.all(job.recipients.map(async (m) => {
         const r = await appendTo(env, m, payload);
-        if (!r.live) await pushOffline(env, m, ctx.uid, fromName, preview);
+        if (!r.live) await pushOffline(env, m, ctx.uid, fromName, preview, bannerP);
       }));
     } else {
       // [MSG-FANOUT-DURABLE-1] Same durable-identity contract as sendMsg's large
       // fan-out: one fanout_id per target job, attempt=1, so the consumer can
       // retry only the failed recipients under the same job id.
       const fid = await fanoutId(job.conv, payload.client_id, ctx.uid);
+      // [NOTIF-PAYLOAD-1] Same reasoning as sendMsg's queue path.
+      const banner = await bannerP.catch(() => ({} as BannerExtras));
       const sends: Promise<unknown>[] = [];
       for (let i = 0; i < job.recipients.length; i += FANOUT_QUEUE_CHUNK) {
         // [AVANOTIF-VM-2] from: ctx.uid — same fix as the send() fanout path above.
-        sends.push(env.Q_PUSH.send({ kind: "fanout", payload, fromName, preview, from: ctx.uid,
+        sends.push(env.Q_PUSH.send({ ...banner, kind: "fanout", payload, fromName, preview, from: ctx.uid,
           recipients: job.recipients.slice(i, i + FANOUT_QUEUE_CHUNK), fanout_id: fid, attempt: 1 }));
       }
       await Promise.all(sends);
