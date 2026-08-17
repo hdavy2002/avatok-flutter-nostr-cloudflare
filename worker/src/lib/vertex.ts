@@ -139,16 +139,19 @@ export interface GoogleCallResult {
  * IAM role, model id absent on Vertex, region/quota). The user sees a perfectly
  * healthy response, so this event is the only way that shows up.
  */
-function emitTransport(
+async function emitTransport(
   env: VertexEnv, model: string, method: string,
   via: GoogleVia, status: number, ok: boolean, attemptedVertex: boolean,
-): void {
+): Promise<void> {
   try {
-    // Fire-and-forget: a telemetry failure must never break an AI call. Note the
-    // workerd trap — an unawaited send is cancelled once the response returns, so
-    // callers on an early-return path may still lose this. Acceptable here: these
-    // calls all continue doing work after the fetch resolves.
-    void track(env as any, "", "google_call_transport", "worker", {
+    // AWAITED, not fire-and-forget. The first version used `void track(...)` and
+    // the event never arrived — workerd cancels an unawaited send once the
+    // invocation finishes, which is the documented trap that has already produced
+    // "event not in taxonomy" investigations in this repo. A dropped proof event
+    // is worse than the few ms a queue send costs, because it is indistinguishable
+    // from the migration not working. Still swallowed: telemetry must never break
+    // an AI call.
+    await track(env as any, "", "google_call_transport", "worker", {
       transport: via,
       vertex_configured: vertexConfigured(env),
       vertex_fallback: attemptedVertex && via === "devapi",
@@ -213,7 +216,7 @@ export async function generateContentVia(
           opts.timeoutMs,
         );
         if (r.ok) {
-          emitTransport(env, model, method, "vertex", r.status, true, true);
+          await emitTransport(env, model, method, "vertex", r.status, true, true);
           return { ...r, via: "vertex" };
         }
         // Non-2xx from Vertex (unknown model on this surface, quota, region): fall
@@ -224,7 +227,7 @@ export async function generateContentVia(
 
   const key = opts.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
   if (!key) {
-    emitTransport(env, model, method, "devapi", 401, false, useVertex);
+    await emitTransport(env, model, method, "devapi", 401, false, useVertex);
     return { ok: false, status: 401, out: { error: { message: "google api key missing" } }, via: "devapi" };
   }
   const r = await postJson(
@@ -233,6 +236,6 @@ export async function generateContentVia(
     body,
     opts.timeoutMs,
   );
-  emitTransport(env, model, method, "devapi", r.status, r.ok, useVertex);
+  await emitTransport(env, model, method, "devapi", r.status, r.ok, useVertex);
   return { ...r, via: "devapi" };
 }
