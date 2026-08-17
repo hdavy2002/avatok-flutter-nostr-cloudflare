@@ -119,10 +119,19 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
     // the long render outlived the budget and the whole job was reaped → no
     // completion event, no audio at all.)
     // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch with ?key=; now
-    // routed through generateContentVia (falls back to the Developer API
-    // automatically). `key` is pinned via opts.apiKey — RECEPTIONIST_GEMINI_API_KEY
-    // when set, kept on the Developer API so its spend stays separable.
-    const r = await generateContentVia(env, TTS_MODEL, body, "generateContent", { apiKey: key, timeoutMs: 25000 });
+    // routed through generateContentVia, which falls back to the Developer API
+    // (with `key`) on any Vertex failure.
+    //
+    // NOT PINNED via opts.apiKey — corrected 2026-08-17. The first pass passed
+    // `key` as opts.apiKey "to keep receptionist spend separable", which forced
+    // this call onto the Developer API permanently and silently opted it out of
+    // the whole migration. Two things are wrong with that: `key` is
+    // `RECEPTIONIST_GEMINI_API_KEY || GEMINI_API_KEY`, so with the receptionist key
+    // unset it pinned the GLOBAL key; and the separability it was protecting does
+    // not exist — both AI-Studio keys are service accounts in the SAME project
+    // (avatok-avaglobal), so their spend was never separate. Pin opts.apiKey ONLY
+    // for a genuine BYO user key, which must bill to that user.
+    const r = await generateContentVia(env, TTS_MODEL, body, "generateContent", { timeoutMs: 25000 });
     if (!r.ok) return null;
     const j: any = r.out;
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;

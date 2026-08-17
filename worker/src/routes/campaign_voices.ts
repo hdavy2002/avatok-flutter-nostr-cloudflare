@@ -156,9 +156,14 @@ async function renderPreviewWav(env: Env, voiceId: string): Promise<Uint8Array |
   try {
     // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch with ?key=; now
     // routed through generateContentVia (falls back to the Developer API
-    // automatically). `key` is pinned via opts.apiKey — RECEPTIONIST_GEMINI_API_KEY
-    // when set, kept on the Developer API so its spend stays separable.
-    const r = await generateContentVia(env, PREVIEW_TTS_MODEL, body, "generateContent", { apiKey: key, timeoutMs: 20000 });
+    // automatically, using `key`).
+    //
+    // NOT PINNED via opts.apiKey — corrected 2026-08-17; see the long note in
+    // routes/marketplace.ts. Pinning `key` (which is
+    // `RECEPTIONIST_GEMINI_API_KEY || GEMINI_API_KEY`) forced this permanently onto
+    // the Developer API and opted it out of the migration, to protect a spend
+    // separation that does not exist — both keys bill to avatok-avaglobal.
+    const r = await generateContentVia(env, PREVIEW_TTS_MODEL, body, "generateContent", { timeoutMs: 20000 });
     if (!r.ok) return null;
     const j: any = r.out;
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;

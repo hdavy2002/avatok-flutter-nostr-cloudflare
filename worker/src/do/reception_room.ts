@@ -1528,14 +1528,22 @@ export class ReceptionRoom {
     const model = "gemini-2.5-flash";
     const prompt = `From this phone-message transcript, return STRICT JSON {"caller_name":string|null,"reason":string,"callback":string|null,"urgency":"low"|"normal"|"high"}. Transcript:\n${transcript.slice(0, 4000)}`;
     // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch; routed through
-    // generateContentVia now. `key` (receptKey()) is pinned via opts.apiKey — this
-    // is the receptionist-scoped key when set, kept on the Developer API so its
-    // spend stays separable (RECEPTIONIST_GEMINI_API_KEY rule). The Live SOCKET
-    // path elsewhere in this file is untouched.
+    // generateContentVia now, which falls back to the Developer API (with `key`,
+    // still required above as the fallback credential) on any Vertex failure.
+    //
+    // NOT PINNED via opts.apiKey — corrected 2026-08-17; see the long note in
+    // routes/marketplace.ts. `receptKey()` is
+    // `RECEPTIONIST_GEMINI_API_KEY || GEMINI_API_KEY`, so pinning it forced this
+    // permanently onto the Developer API to protect a spend separation that does
+    // not exist (both keys are service accounts in avatok-avaglobal).
+    //
+    // This is the POST-CALL SUMMARY only. The Live SOCKET that actually holds the
+    // receptionist conversation is elsewhere in this file and is deliberately NOT
+    // migrated — Vertex has no equivalent live model (see lib/vertex.ts).
     const r = await generateContentVia(this.env, model, {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-    }, "generateContent", { apiKey: key });
+    }, "generateContent");
     const j = r.out || {};
     // Account for the summary call's token spend (added into ava_recept_cost).
     try {

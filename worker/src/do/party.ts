@@ -176,11 +176,14 @@ export class PartyDO {
     try {
       // [VERTEX-1] Was a raw generativelanguage.googleapis.com fetch with ?key=;
       // now routed through generateContentVia (falls back to the Developer API
-      // automatically). `key` is pinned via opts.apiKey — RECEPTIONIST_GEMINI_API_KEY
-      // when set, kept on the Developer API so its spend stays separable.
+      // automatically, using `key`).
+      //
+      // NOT PINNED via opts.apiKey — corrected 2026-08-17; see the long note in
+      // routes/marketplace.ts. Pinning `key` forced this permanently onto the
+      // Developer API and opted it out of the migration.
       const r = await generateContentVia(
         this.env as any, "gemini-2.5-flash-preview-tts", body, "generateContent",
-        { apiKey: key, timeoutMs: 90000 },
+        { timeoutMs: 90000 },
       );
       if (!r.ok) { console.error(`[party-tts] ${r.status}: ${JSON.stringify(r.out).slice(0, 160)}`); return null; }
       const j: any = r.out;
