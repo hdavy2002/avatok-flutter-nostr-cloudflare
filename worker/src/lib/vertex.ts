@@ -142,6 +142,7 @@ export interface GoogleCallResult {
 async function emitTransport(
   env: VertexEnv, model: string, method: string,
   via: GoogleVia, status: number, ok: boolean, attemptedVertex: boolean,
+  vertexError?: string | null, vertexStatus?: number | null,
 ): Promise<void> {
   try {
     // AWAITED, not fire-and-forget. The first version used `void track(...)` and
@@ -168,6 +169,9 @@ async function emitTransport(
       ok,
       location: location(env),
       project: env.VERTEX_PROJECT ?? null,
+      // Populated only on a fallback — this is the whole diagnosis.
+      vertex_error: vertexError ?? null,
+      vertex_status: vertexStatus ?? null,
     });
   } catch { /* telemetry is best-effort */ }
 }
@@ -211,9 +215,19 @@ export async function generateContentVia(
 ): Promise<GoogleCallResult> {
   const useVertex = !opts.forceDevApi && !opts.apiKey && vertexConfigured(env);
 
+  // [VERTEX-1] WHY the Vertex attempt failed, carried into the fallback event.
+  // Without this, `transport=devapi vertex_fallback=true` says the switch did not
+  // land but not why, and the only way to tell a 403 (IAM) from a 404 (model id
+  // absent on Vertex) from a token-mint failure is another deploy. Diagnosing a
+  // silent fallback must not cost a 3-deploy round trip.
+  let vFail: string | null = null;
+  let vStatus: number | null = null;
+
   if (useVertex) {
     const token = await vertexToken(env);
-    if (token) {
+    if (!token) {
+      vFail = "token_mint_failed"; // SA JSON unparseable, or the OAuth exchange 4xx'd
+    } else {
       try {
         const r = await postJson(
           vertexUrl(env, model, method),
@@ -227,13 +241,17 @@ export async function generateContentVia(
         }
         // Non-2xx from Vertex (unknown model on this surface, quota, region): fall
         // through to the Developer API rather than surfacing an outage.
-      } catch { /* network/timeout — fall through */ }
+        vStatus = r.status;
+        vFail = String(r.out?.error?.message ?? r.out?.error?.status ?? "http_error").slice(0, 300);
+      } catch (e) {
+        vFail = `exception:${String((e as any)?.message ?? e).slice(0, 200)}`;
+      }
     }
   }
 
   const key = opts.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
   if (!key) {
-    await emitTransport(env, model, method, "devapi", 401, false, useVertex);
+    await emitTransport(env, model, method, "devapi", 401, false, useVertex, vFail, vStatus);
     return { ok: false, status: 401, out: { error: { message: "google api key missing" } }, via: "devapi" };
   }
   const r = await postJson(
@@ -242,6 +260,6 @@ export async function generateContentVia(
     body,
     opts.timeoutMs,
   );
-  await emitTransport(env, model, method, "devapi", r.status, r.ok, useVertex);
+  await emitTransport(env, model, method, "devapi", r.status, r.ok, useVertex, vFail, vStatus);
   return { ...r, via: "devapi" };
 }
