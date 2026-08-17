@@ -19,6 +19,7 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.UUID
 import org.json.JSONObject
 
 // FlutterFragmentActivity (not FlutterActivity) is REQUIRED by flutter_stripe so
@@ -107,6 +108,146 @@ class MainActivity : FlutterFragmentActivity() {
                     tmp.delete()
                 }
             } catch (_: Throwable) { /* best-effort — a write failure just keeps the flag OFF */ }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // [CALL-NATIVE-ANSWER-2 2026-08-18] Durable Accept/Decline.
+        // ─────────────────────────────────────────────────────────────────
+        //
+        // `pendingNativeRingAction` above (the in-memory static) is a fast
+        // path only, and P1: if Android kills the process between the tap
+        // and Dart's `getPendingRingAction` drain, that static is gone and
+        // the user's Accept/Decline is LOST — they tapped and nothing
+        // happens. This mirrors `NATIVE_ANSWER_FLAG_FILE` above (same
+        // `callnative` dir, same tmp-file-then-rename atomic write) but for
+        // the TAPPED ACTION itself, not the flag. DISK is the source of
+        // truth; memory is kept purely so the common case (process alive)
+        // never pays a disk read.
+        private const val NATIVE_ANSWER_ACTION_FILE = "pending_ring_action.json"
+
+        /// How long a persisted tap stays deliverable. Matches a ring
+        /// window with headroom — an accept recovered minutes after the
+        /// user tapped (e.g. the process was killed and only relaunched
+        /// much later by an unrelated tap) must NOT silently join a call
+        /// the user has long since forgotten about.
+        private const val NATIVE_ANSWER_ACTION_TTL_MS = 60_000L
+
+        private fun pendingRingActionFile(context: android.content.Context): File {
+            val dir = File(context.filesDir, NATIVE_ANSWER_DIR)
+            if (!dir.exists()) dir.mkdirs()
+            return File(dir, NATIVE_ANSWER_ACTION_FILE)
+        }
+
+        /// Atomically persists a full action map (already carrying
+        /// `nonce`/`timestampMs`/`expiryMs` — see [recordNativeRingAction])
+        /// to disk. Best-effort: a write failure only costs the
+        /// process-death-survival path; the in-memory fast path still has
+        /// the tap for a live process.
+        private fun persistPendingRingAction(context: android.content.Context, action: Map<String, Any?>) {
+            try {
+                val obj = JSONObject()
+                for ((k, v) in action) {
+                    when (v) {
+                        null -> obj.put(k, JSONObject.NULL)
+                        else -> obj.put(k, v)
+                    }
+                }
+                val file = pendingRingActionFile(context)
+                val tmp = File(file.parentFile, file.name + ".tmp")
+                tmp.writeText(obj.toString(), Charsets.UTF_8)
+                if (!tmp.renameTo(file)) {
+                    file.writeText(obj.toString(), Charsets.UTF_8)
+                    tmp.delete()
+                }
+            } catch (_: Throwable) { /* best-effort — worst case falls back to memory-only */ }
+        }
+
+        /// Reads AND DELETES the persisted action in one call — the whole
+        /// point is that a replayed/duplicate drain (Dart re-invoking
+        /// `getPendingRingAction`, a hot restart, etc.) must return nothing
+        /// the second time. Returns null when absent, empty, or corrupt (a
+        /// corrupt entry is discarded, never redelivered, same as an
+        /// expired one).
+        private fun consumePersistedRingAction(context: android.content.Context): Map<String, Any?>? {
+            val file = pendingRingActionFile(context)
+            return try {
+                if (!file.exists() || file.length() == 0L) return null
+                val text = file.readText(Charsets.UTF_8)
+                file.delete()
+                val obj = JSONObject(text)
+                val map = HashMap<String, Any?>()
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val v = obj.get(k)
+                    map[k] = if (v === JSONObject.NULL) null else v
+                }
+                map
+            } catch (_: Throwable) {
+                try { file.delete() } catch (_: Throwable) {}
+                null
+            }
+        }
+
+        /// Drops the disk copy without necessarily consuming/returning it —
+        /// used by the `clearPending` channel method ([CALL-STALE-TAP-1]'s
+        /// staleness hazard applies to the persisted copy exactly as it did
+        /// to the in-memory one). `callId == null` clears unconditionally.
+        private fun clearPersistedRingActionIfMatches(context: android.content.Context, callId: String?) {
+            try {
+                val file = pendingRingActionFile(context)
+                if (!file.exists()) return
+                if (callId == null) {
+                    file.delete()
+                    return
+                }
+                val obj = JSONObject(file.readText(Charsets.UTF_8))
+                if (obj.optString("callId") == callId) file.delete()
+            } catch (_: Throwable) { /* best-effort */ }
+        }
+
+        /// The ONE drain entry point for `getPendingRingAction`, called from
+        /// [MainActivity] instance methods below. IDEMPOTENT: memory is
+        /// cleared and the disk file deleted in this same call, so a second
+        /// call immediately after returns null. Adds three read-time fields
+        /// on top of whatever was persisted:
+        ///  - `ageMs`: now - timestampMs
+        ///  - `expired`: age past the entry's own expiryMs — Dart must NOT
+        ///    route an expired entry into accept/decline, only log
+        ///    `call_native_answer_expired`.
+        ///  - `restoredFromDisk`: true when the in-memory fast path was
+        ///    empty and this came from disk (i.e. the process died between
+        ///    the tap and this drain) — Dart logs
+        ///    `call_native_answer_restored` for exactly this case.
+        private fun drainPendingRingAction(context: android.content.Context): Map<String, Any?>? {
+            val memory = pendingNativeRingAction
+            pendingNativeRingAction = null
+            val restoredFromDisk = memory == null
+            val raw = memory ?: consumePersistedRingAction(context)
+            // Whether we returned the memory copy or the disk copy, the disk
+            // file for this same tap (if any) must not survive this drain —
+            // otherwise a LATER cold read (this process dies with nothing
+            // pending in memory, then something else drains again) could
+            // resurrect an already-delivered tap.
+            if (!restoredFromDisk) deletePendingRingActionFile(context)
+            if (raw == null) return null
+
+            val timestampMs = (raw["timestampMs"] as? Number)?.toLong() ?: 0L
+            val expiryMs = (raw["expiryMs"] as? Number)?.toLong() ?: NATIVE_ANSWER_ACTION_TTL_MS
+            val ageMs = if (timestampMs > 0L) {
+                (System.currentTimeMillis() - timestampMs).coerceAtLeast(0L)
+            } else 0L
+            val expired = timestampMs > 0L && ageMs > expiryMs
+
+            val out = HashMap<String, Any?>(raw)
+            out["ageMs"] = ageMs
+            out["expired"] = expired
+            out["restoredFromDisk"] = restoredFromDisk
+            return out
+        }
+
+        private fun deletePendingRingActionFile(context: android.content.Context) {
+            try { pendingRingActionFile(context).delete() } catch (_: Throwable) {}
         }
     }
 
@@ -426,18 +567,37 @@ class MainActivity : FlutterFragmentActivity() {
         val msFromIntent = (SystemClock.elapsedRealtime() - nativeRingShownAtElapsedMs).coerceAtLeast(0L)
         ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin.emitNativeRingShown(callId, msFromIntent)
 
-        // Same failsafe bound as the passive overlay — a wedged/crashed engine
-        // must never trap the user behind an unresponsive screen, interactive
-        // or not.
-        val failsafe = Runnable { removeNativeRingScreen() }
+        // [CALL-NATIVE-ANSWER-2 2026-08-18] NOT a 6s blind removal anymore —
+        // that was a P1 defect: it tore down the ONLY interactive surface
+        // the user has while Flutter is still cold-starting, leaving them
+        // staring at nothing if the engine took longer than 6s to paint.
+        // This is a LONG backstop only (45s, roughly a ring window) for a
+        // truly wedged/crashed engine that will NEVER reach
+        // onFlutterUiDisplayed; the two real removal paths are (a) confirmed
+        // Flutter handoff — [onFlutterUiDisplayed] below calls
+        // [removeNativeRingScreen] the moment the branded screen is
+        // painted, however long that takes — and (b) a terminal call state
+        // learned from Dart via the `clearNativeRingScreen` channel method
+        // (e.g. the caller cancelled while this screen was still up).
+        val failsafe = Runnable {
+            android.util.Log.w(
+                "MainActivity",
+                "[CALL-NATIVE-ANSWER-2] native ring screen 45s failsafe fired " +
+                    "for callId=$callId — Flutter never reached first frame and " +
+                    "no terminal call state arrived; removing to avoid trapping the user"
+            )
+            removeNativeRingScreen()
+        }
         nativeRingFailsafe = failsafe
-        overlayHandler.postDelayed(failsafe, 6000L)
+        overlayHandler.postDelayed(failsafe, 45_000L)
     }
 
     /// [CALL-NATIVE-ANSWER-1] 150ms fade-out, then detach. No-op if already
     /// removed. Called on: Accept/Decline tap (immediately, after swapping to
     /// the passive overlay or handing off to Dart), Flutter's first frame
-    /// (onFlutterUiDisplayed — the branded screen is up), and the 6s failsafe.
+    /// (onFlutterUiDisplayed — the branded screen is up), a Dart-reported
+    /// terminal call state ([CALL-NATIVE-ANSWER-2] `clearNativeRingScreen`),
+    /// and the 45s failsafe above.
     private fun removeNativeRingScreen() {
         val screen = nativeRingScreen ?: return
         nativeRingScreen = null
@@ -504,8 +664,7 @@ class MainActivity : FlutterFragmentActivity() {
             "msFromScreenShown" to msFromScreenShown,
             "cold" to cold,
         )
-        pendingNativeRingAction = action
-        incomingTapChannel?.invokeMethod("nativeRingAction", action)
+        recordNativeRingAction(action)
     }
 
     /// [CALL-NATIVE-ANSWER-1] Decline tapped on the native ring screen. Native
@@ -530,8 +689,45 @@ class MainActivity : FlutterFragmentActivity() {
             "fromName" to (payload["fromName"] ?: ""),
             "kind" to (payload["kind"] ?: "audio"),
         )
-        pendingNativeRingAction = action
-        incomingTapChannel?.invokeMethod("nativeRingAction", action)
+        recordNativeRingAction(action)
+    }
+
+    /// [CALL-NATIVE-ANSWER-2] Records a tapped Accept/Decline BOTH in the
+    /// fast in-memory companion (today's path — survives as long as this
+    /// process does) AND atomically on disk (survives the process dying
+    /// between this tap and Dart's `getPendingRingAction` drain — the P1
+    /// defect this issue fixes). Disk is the source of truth; memory is
+    /// purely a fast path for the overwhelmingly common case where the
+    /// process never dies in that window. `nonce` lets Dart de-duplicate a
+    /// re-drain even though native's own drain ([drainPendingRingAction])
+    /// already only delivers this once.
+    private fun recordNativeRingAction(action: Map<String, Any?>) {
+        val nonce = UUID.randomUUID().toString()
+        val timestampMs = System.currentTimeMillis()
+        val fullAction = action + mapOf(
+            "nonce" to nonce,
+            "timestampMs" to timestampMs,
+            "expiryMs" to NATIVE_ANSWER_ACTION_TTL_MS,
+        )
+        pendingNativeRingAction = fullAction
+        persistPendingRingAction(this, fullAction)
+        incomingTapChannel?.invokeMethod("nativeRingAction", fullAction)
+    }
+
+    /// [CALL-NATIVE-ANSWER-2] Dart-initiated removal for a native ring
+    /// screen that is still up because Flutter hasn't painted yet, but the
+    /// call it represents has already reached a terminal state (e.g. the
+    /// caller cancelled). The engine/channel are alive by construction —
+    /// `configureFlutterEngine` (where `getPendingRingAction`/this method
+    /// are wired) always runs before [maybeShowNativeAnswerSurface] can show
+    /// this screen (see `onCreate`'s ordering) — so this is reachable any
+    /// time the screen is up, not just after first frame.
+    private fun clearNativeRingScreen(callId: String?) {
+        val currentId = (nativeRingPayload?.get("callId") as? String)
+        if (callId == null || callId == currentId) {
+            nativeRingPayload = null
+            removeNativeRingScreen()
+        }
     }
 
     /// [CALL-ACCEPT-FRAME-1] One-shot: computes the accept→first-frame span and
@@ -666,21 +862,34 @@ class MainActivity : FlutterFragmentActivity() {
                         if (callId == null || callId == pendingId) {
                             pendingIncomingTap = null
                         }
-                        // [CALL-NATIVE-ANSWER-1] Same staleness hazard applies to a
-                        // native ring-screen tap that hasn't been drained yet.
+                        // [CALL-NATIVE-ANSWER-1/2] Same staleness hazard applies to
+                        // a native ring-screen tap that hasn't been drained yet —
+                        // both the fast in-memory copy AND its disk mirror.
                         val pendingActionId = pendingNativeRingAction?.get("callId") as? String
                         if (callId == null || callId == pendingActionId) {
                             pendingNativeRingAction = null
                         }
+                        clearPersistedRingActionIfMatches(this@MainActivity, callId)
                         result.success(null)
                     }
-                    // [CALL-NATIVE-ANSWER-1] Cold-start drain counterpart to
+                    // [CALL-NATIVE-ANSWER-1/2] Cold-start drain counterpart to
                     // "getPending" above, for a native ring-screen Accept/Decline
-                    // tap that beat this handler being installed.
+                    // tap that beat this handler being installed. Routes through
+                    // [drainPendingRingAction], which is IDEMPOTENT (memory
+                    // cleared + disk file deleted in one call — a replayed drain
+                    // returns null) and DISK-BACKED (survives the process dying
+                    // between the tap and this call, recovering via
+                    // `restoredFromDisk`/`ageMs`/`expired` in the returned map).
                     "getPendingRingAction" -> {
-                        val pending = pendingNativeRingAction
-                        pendingNativeRingAction = null
-                        result.success(pending)
+                        result.success(drainPendingRingAction(this@MainActivity))
+                    }
+                    // [CALL-NATIVE-ANSWER-2] Dart learned the call reached a
+                    // terminal state (e.g. caller cancelled) while the native
+                    // ring screen was still up waiting for Flutter to paint —
+                    // tear it down now rather than waiting on the 45s failsafe.
+                    "clearNativeRingScreen" -> {
+                        clearNativeRingScreen(call.argument<String>("callId"))
+                        result.success(null)
                     }
                     // [CALL-NATIVE-ANSWER-1] RemoteConfig.refresh() mirrors the
                     // resolved `callNativeAnswerV1` flag here on every fetch —

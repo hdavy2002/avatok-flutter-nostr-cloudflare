@@ -835,6 +835,25 @@ void _noteTerminalCall(String callId) {
   if (_terminalCallAt.length > 64) {
     _terminalCallAt.removeWhere((_, ts) => now - ts > _kTerminalCallTtlMs);
   }
+  // [CALL-NATIVE-ANSWER-2] This is the single authoritative point a call
+  // becomes terminal — tell MainActivity's native ring screen too, in case
+  // it is still up waiting for Flutter to paint (the engine/channel are
+  // already alive by the time this runs, so the call always reaches
+  // native). Best-effort: a missing/older native build simply relies on the
+  // 45s failsafe instead, same as before this issue existed.
+  if (Platform.isAndroid) {
+    unawaited(_clearNativeRingScreen(callId));
+  }
+}
+
+/// [CALL-NATIVE-ANSWER-2] Best-effort ask to MainActivity to tear down its
+/// native ring screen for [callId] right now, instead of waiting on its 45s
+/// failsafe. See [_noteTerminalCall].
+Future<void> _clearNativeRingScreen(String callId) async {
+  try {
+    await const MethodChannel('avatok/incoming_call_tap')
+        .invokeMethod('clearNativeRingScreen', {'callId': callId});
+  } catch (_) {/* native bridge unavailable on an older build, or not Android */}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2753,6 +2772,24 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   Analytics.capture('call_branded_fsi_route_timeout', {'call_id': callId});
 }
 
+/// [CALL-NATIVE-ANSWER-2] Nonces of native ring actions already routed into
+/// accept/decline below, so a REPLAYED/duplicate drain (native's own
+/// `getPendingRingAction` is already idempotent — memory cleared + disk file
+/// deleted in the same call — but a Dart-side re-invocation, e.g. around a
+/// hot restart, is defense-in-depth) can never double-accept. Bounded so a
+/// long session can't grow this unboundedly; nonces are one-shot by
+/// construction, so evicting the oldest is safe.
+final Set<String> _handledNativeRingNonces = <String>{};
+const int _kMaxHandledNativeRingNonces = 32;
+
+void _rememberHandledNativeRingNonce(String nonce) {
+  if (nonce.isEmpty) return;
+  _handledNativeRingNonces.add(nonce);
+  if (_handledNativeRingNonces.length > _kMaxHandledNativeRingNonces) {
+    _handledNativeRingNonces.remove(_handledNativeRingNonces.first);
+  }
+}
+
 /// [CALL-NATIVE-ANSWER-1] A tap on MainActivity's native ring screen — a
 /// SURFACE only, with no accept/decline logic of its own. `args` mirrors the
 /// same {callId, from, fromName, kind} shape [IncomingBusinessCallScreen]
@@ -2760,12 +2797,60 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
 /// telemetry fields (`msFromScreenShown`, `cold`) that only make sense for
 /// `action == 'accept'`.
 ///
+/// [CALL-NATIVE-ANSWER-2 2026-08-18] `args` can now arrive two ways: (1) a
+/// LIVE push straight from `onNativeRingAccept`/`onNativeRingDecline` while
+/// this engine is already running — always fresh, carries no
+/// `expired`/`restoredFromDisk` — or (2) a DRAIN via `getPendingRingAction`
+/// (`MainActivity.drainPendingRingAction`), which additionally carries
+/// `nonce`, `ageMs`, `expired` and `restoredFromDisk` because the action may
+/// have survived a process death on disk. Both shapes funnel through here so
+/// there is exactly one place that decides what a native tap means.
+///
 /// Deliberately routes into the EXISTING [PushService.acceptRingingCall] /
 /// [PushService.declineIncomingCall] paths rather than a new one — the native
 /// screen must never grow its own notion of "accepted"/"declined".
 Future<void> _handleNativeRingAction(Map<String, dynamic> args) async {
   final callId = (args['callId'] ?? '').toString();
   if (callId.isEmpty) return;
+  final action = (args['action'] ?? '').toString();
+  final nonce = (args['nonce'] ?? '').toString();
+
+  // [CALL-NATIVE-ANSWER-2] De-dup by nonce BEFORE anything else — a replayed
+  // drain must produce zero side effects, not just skip the accept/decline.
+  if (nonce.isNotEmpty && _handledNativeRingNonces.contains(nonce)) {
+    return;
+  }
+
+  // [CALL-NATIVE-ANSWER-2] A disk-drained entry past its TTL. The user long
+  // since abandoned this tap (or the call itself) — it must be discarded,
+  // never delivered into accept/decline, and reported so the loss is
+  // queryable instead of silent.
+  if (args['expired'] == true) {
+    if (nonce.isNotEmpty) _rememberHandledNativeRingNonce(nonce);
+    final ageMs = args['ageMs'] is num ? (args['ageMs'] as num).toInt() : -1;
+    Analytics.capture('call_native_answer_expired', {
+      'call_id': callId,
+      'action': action,
+      'age_ms': ageMs,
+    });
+    return;
+  }
+
+  // [CALL-NATIVE-ANSWER-2] A tap recovered from disk after the process died
+  // between the user's tap and this drain — the whole point of persisting
+  // it. Report it as its own event distinct from the ordinary accept/decline
+  // telemetry below, so "recovered from a process death" stays queryable.
+  if (args['restoredFromDisk'] == true) {
+    final ageMs = args['ageMs'] is num ? (args['ageMs'] as num).toInt() : -1;
+    Analytics.capture('call_native_answer_restored', {
+      'call_id': callId,
+      'action': action,
+      'age_ms': ageMs,
+    });
+  }
+
+  if (nonce.isNotEmpty) _rememberHandledNativeRingNonce(nonce);
+
   // MainActivity clears its OWN `pendingIncomingTap` companion entry the
   // instant a native button is tapped (so a later `getPending` drain can't
   // route a second screen), but the branded route can ALSO be entered from
@@ -2783,7 +2868,7 @@ Future<void> _handleNativeRingAction(Map<String, dynamic> args) async {
     'fromName': (args['fromName'] ?? '').toString(),
     'kind': (args['kind'] ?? 'audio').toString(),
   };
-  switch ((args['action'] ?? '').toString()) {
+  switch (action) {
     case 'accept':
       Analytics.capture('call_native_answer_accept', {
         'call_id': callId,
