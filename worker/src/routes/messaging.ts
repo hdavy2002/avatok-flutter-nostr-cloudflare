@@ -1709,11 +1709,31 @@ export async function readMsg(req: Request, env: Env): Promise<Response> {
   // harmlessly: by the time this lands its notification is already gone.
   //
   // Best-effort. A failed enqueue costs a stale notification, never a failed read.
-  try {
-    await env.Q_PUSH.send({
-      kind: "notif_clear", to: ctx.uid, conv: String(b.conv),
-    });
-  } catch { /* a stale shade entry is not worth failing a read over */ }
+  //
+  // ⚠️ DISABLED 2026-08-17, SAME DAY IT SHIPPED. Owner reported the app freezing,
+  // crashing and messages taking forever, within hours of this deploy.
+  //
+  // WHY IT WAS WRONG. `_markRead` on the client is not a rare event: it fires on
+  // thread open, on EVERY incoming message and on every Ava stream frame (six
+  // call sites, chat_thread/setup.dart + inbound.dart), debounced to one POST
+  // every 3 s. So an active conversation POSTs /api/msg/read roughly every 3 s —
+  // and this block turned each of those into a HIGH-PRIORITY FCM to the reader's
+  // OWN devices. Reading a chat pushed to yourself, every 3 seconds, waking the
+  // background isolate each time. Worse, no shipped build understands
+  // `notif_clear`, so every one of those wakes fell through the type switch to
+  // `_showIncoming` and did nothing but burn a wake-up.
+  //
+  // THE REAL MISTAKE was not the idea — it is how WhatsApp does it — but
+  // shipping it UNGATED. Every other thing in this notification programme sits
+  // behind a flag that can be flipped without a deploy; this one did not, so the
+  // only way to stop it was another deploy. Anything on a hot path gets a flag.
+  //
+  // Re-enable ONLY with: (a) a `notifReadSync` flag declared in DEFAULTS, (b)
+  // coalescing so an actively-read thread does not re-push every 3 s, and (c) a
+  // build that actually handles the type in the field.
+  // try {
+  //   await env.Q_PUSH.send({ kind: "notif_clear", to: ctx.uid, conv: String(b.conv) });
+  // } catch { /* a stale shade entry is not worth failing a read over */ }
   return json({ ok: true });
 }
 
