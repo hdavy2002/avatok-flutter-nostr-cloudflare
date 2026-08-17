@@ -1102,7 +1102,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// product default; private stays selected until the user switches or turns
   /// it off. Both are scoped per account and conversation.
   bool _avaMode = false;
-  bool _avaPublicMode = true;
+  // [AVA-DEFAULT-OFF-1 2026-08-17, owner request] BOTH @ava and #ava start OFF.
+  //
+  // This initialiser is what the thread renders with BEFORE the stored
+  // preference finishes loading (_loadAvaAudienceMode is async). Leaving it
+  // `true` meant #ava appeared lit for the first frames of every thread even
+  // once the stored default was flipped to off — and a message sent in that
+  // window would genuinely have gone to Ava in front of the peer.
+  bool _avaPublicMode = false;
 
   /// `_ragLive` gates incoming messages so reopening a chat doesn't re-index
   /// already-seen history. [ONEBRAIN-B3-APP] The former per-member RAG BATCH

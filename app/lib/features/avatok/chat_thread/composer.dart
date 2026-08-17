@@ -341,8 +341,17 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
     if (!mounted) return;
     setState(() {
       _avaMode = stored == 'private';
-      // Public is the default for a conversation that has never stored a choice.
-      _avaPublicMode = stored == null || stored == 'public';
+      // [AVA-DEFAULT-OFF-1 2026-08-17, owner request] BOTH OFF by default.
+      //
+      // Public used to be the default for any conversation that had never
+      // stored a choice, so `#ava` came on by itself in every new thread and
+      // switched itself back on after the user turned it off in a thread whose
+      // preference had not been written yet. From the peer's side that reads as
+      // Ava joining a private conversation uninvited.
+      //
+      // `stored == null` (never chosen here) now means OFF, not public. An
+      // explicit 'public' still restores public — a deliberate choice is kept.
+      _avaPublicMode = stored == 'public';
     });
   }
 
