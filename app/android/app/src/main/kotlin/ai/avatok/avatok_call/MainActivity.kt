@@ -67,8 +67,28 @@ class MainActivity : FlutterFragmentActivity() {
     /// cold or warm, so checking `intent.action` is a durable native-side signal
     /// rather than a heuristic — no flutter_callkit_incoming upgrade can change
     /// it without the decline-guard patch script above already failing loudly.
+    ///
+    /// [CALL-ACCEPT-FRAME-2 2026-08-17] ...and that reasoning, while correct
+    /// about ACTION_CALL_ACCEPT, described a lane this app does not normally
+    /// use — which is why `call_accept_first_frame_ms` never fired ONCE in
+    /// production and the continuity overlay never appeared. THIS repo patches
+    /// `getActivityPendingIntent` so the ring's full-screen-intent and body tap
+    /// launch MainActivity with `avatok.incoming_call_tap` (handled at the
+    /// `onNewIntent`/route site further down this file) and the user then taps
+    /// Accept inside the Flutter branded screen — so the blank screen the owner
+    /// reported spans the incoming_call_tap launch, NOT an ACTION_CALL_ACCEPT
+    /// one. Both actions mean the same thing for continuity purposes: "the user
+    /// is trying to get into a call and is about to stare at whatever we draw",
+    /// so both arm the overlay and the tap→first-frame measurement.
     private fun isNativeAcceptLaunch(intent: Intent?): Boolean =
-        intent?.action == CallkitConstants.ACTION_CALL_ACCEPT
+        intent?.action == CallkitConstants.ACTION_CALL_ACCEPT ||
+            intent?.action == INCOMING_TAP_ACTION
+
+    /// [CALL-ACCEPT-FRAME-2] The action this repo's own CallKit patch uses for
+    /// FSI / notification-body taps. Kept as one constant because the string is
+    /// asserted in three places (here, the route handler below, and
+    /// scripts/patch_callkit_native_decline.py's generated intent).
+    private val INCOMING_TAP_ACTION = "avatok.incoming_call_tap"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // [CALL-ACCEPT-FRAME-1] Capture t0 before super.onCreate() inflates
@@ -338,7 +358,7 @@ class MainActivity : FlutterFragmentActivity() {
     /// AvaVoiceAudioPlugin.notifyNotificationTap so CallSession/CallScreen can route
     /// back to the active call instead of landing on the last-open route.
     private fun forwardNotificationTapIfPresent(intent: Intent?) {
-        if (intent?.action == "avatok.incoming_call_tap") {
+        if (intent?.action == INCOMING_TAP_ACTION) {
             @Suppress("DEPRECATION", "UNCHECKED_CAST")
             val data = intent.getBundleExtra(FlutterCallkitIncomingPlugin.EXTRA_CALLKIT_CALL_DATA)
             val extra = data?.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA)
