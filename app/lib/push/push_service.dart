@@ -18,6 +18,7 @@ import '../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
+import '../core/avatar_cache.dart'; // [NOTIF-STYLE-1] sender photo for the MessagingStyle Person
 import '../core/badge_service.dart';
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
@@ -341,11 +342,67 @@ void _onNotifTap(String? payload) {
     unawaited(_openCallRecordingThread(payload.substring('callrec:'.length)));
     return;
   }
+  // [NOTIF-STYLE-1] A tap on one CHILD of the message bundle. Each child is a
+  // single conversation, so it must open THAT conversation — landing on the chat
+  // list would make the whole per-chat stack pointless, since the user would
+  // still have to find the thread by hand.
+  //
+  // The conv id has been in the FCM data since [PUSH-FG-BANNER-1]; it was simply
+  // never put into the notification payload, so `_onNotifTap` had nothing to
+  // route on and every tap fell through to popUntil(isFirst) below.
+  if (payload.startsWith('chat:')) {
+    _clearBadge('chat_notif_tap');
+    final conv = payload.substring('chat:'.length);
+    // Drop this thread from the shade log and take its row down — otherwise the
+    // next message re-expands into messages already read.
+    unawaited(_clearShadeThread(conv));
+    unawaited(_openChatThread(conv));
+    return;
+  }
   // CALLFIX-R7: 'chat' payload opens inbox (main notification tap on missed-call or message).
+  // This is also where a tap on the bundle SUMMARY lands, which is correct: the
+  // summary spans several conversations, so the chat list is the honest
+  // destination for it.
   // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
   _clearBadge('chat_notif_tap');
   navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
+}
+
+/// [NOTIF-STYLE-1] Deep link for a tap on one conversation's message
+/// notification. Same resolution strategy as [_openCallRecordingThread]: the
+/// push carries only the conv id, and `InboxApi.threads()` is cache-backed so
+/// this is usually instant. A miss still leaves the user on the chat list rather
+/// than wherever the app happened to be.
+Future<void> _openChatThread(String conv) async {
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+  nav.popUntil((r) => r.isFirst);
+  if (conv.isEmpty) return;
+  try {
+    final threads = await InboxApi.threads();
+    InboxThread? match;
+    for (final t in threads) {
+      if (t.conv == conv) {
+        match = t;
+        break;
+      }
+    }
+    final found = match;
+    if (found == null) {
+      Analytics.capture('push_notif_open', {'ok': false, 'reason': 'no_thread', 'dest': 'thread'});
+      return;
+    }
+    navigatorKey.currentState?.push(MaterialPageRoute<void>(
+      builder: (_) => InboxThreadScreen(thread: found),
+    ));
+    // [NOTIF-STYLE-1] `dest:'thread'` is the ship-gate success value for the
+    // deep link. The pre-fix behaviour would read dest:'home'.
+    Analytics.capture('push_notif_open', {'ok': true, 'dest': 'thread'});
+  } catch (e, st) {
+    unawaited(Analytics.captureException(e, st,
+        screen: 'push_chat_deeplink', handled: true));
+  }
 }
 
 /// [CALLREC-UX-1] Deep link for a `type: 'call_recording'` notification tap:
@@ -1331,6 +1388,376 @@ Future<void> _updateMissedCallsSummary(String line) async {
   } catch (_) {/* best-effort — grouping is cosmetic, the per-caller banner already shown */}
 }
 
+// ── [NOTIF-STYLE-1 2026-08-17] Per-conversation message stacking ────────────
+//
+// THE BUG THIS EXISTS TO FIX. Every chat message was posted under the single
+// hardcoded notification id 8000. Android treats "same id" as "same
+// notification", so a message from a second person did not stack beside the
+// first — it REPLACED it, in place. The shade could physically never hold more
+// than one AvaTOK chat row, no matter how many people wrote. That is why AvaTOK
+// had no "3 messages from 3 chats" bundle: not a missing feature, an id.
+//
+// The shape below is the one WhatsApp uses and the one the missed-call code in
+// this same file has used correctly since [AVANOTIF-VM-1]:
+//   • one notification per CONVERSATION, on a stable id derived from the conv
+//   • all of them tagged with a shared groupKey, so Android bundles them
+//   • one extra notification carrying setAsGroupSummary, which is the row that
+//     reads "N messages from M chats" and owns the expand chevron
+//   • each child styled with MessagingStyle so it expands on its OWN chevron to
+//     that chat's unread messages, with the sender's photo — the owner's
+//     "expand individual messages without opening the app"
+const String _kMsgGroupKey = 'avatok_messages_group';
+// 8004 was the one free slot in the 8000-8007 fixed block (8000 message,
+// 8001 group invite, 8002 missed-call summary, 8003 now-free, 8005 branded
+// incoming, 8006 update, 8007 call recording).
+const int _kMsgSummaryId = 8004;
+// GLOBAL disk key, keyed by account id INSIDE the blob — same pattern as
+// _kMissedCallsLogKey. It has to be global because the background isolate has no
+// AccountScope loaded, so a scoped key would be unreadable exactly when a push
+// arrives; the account id is resolved by hand in _shadeAccountId() and used as
+// the top-level map key, which keeps the shared-phone isolation the rulebook
+// requires without depending on AccountScope being live.
+const String _kMsgThreadsKey = 'push_msg_threads_v1';
+// Caps. The shade cannot usefully show more than a handful, and this blob is
+// re-read and re-written on every single incoming message, so it must stay small.
+const int _kMaxShadeThreads = 6;
+const int _kMaxShadeMsgs = 8;
+
+/// Stable per-conversation notification id, in 8900..9499.
+///
+/// Deliberately clear of every other id this file uses: 8000-8007 fixed,
+/// 8010 the no-key missed call, and 8100-8899 the per-caller missed-call range
+/// ([_missedCallNotifId]). A collision would mean a chat message silently
+/// overwriting a missed call, which is the same class of bug as the one being
+/// fixed here.
+///
+/// `hashCode` is not stable across app RESTARTS for some Dart types, but it IS
+/// stable for String within a process, and a notification only has to keep its
+/// identity for as long as it is on screen. A restart at worst posts a second
+/// row for the same chat; the store below is cleared on tap, so it self-heals.
+int _msgNotifId(String conv) =>
+    conv.isEmpty ? 8000 : 8900 + (conv.hashCode.abs() % 600);
+
+/// The account these notifications belong to. [AccountScope] is normally null in
+/// the background isolate, so fall back to the device-level active-account key.
+Future<String> _shadeAccountId() async {
+  var id = AccountScope.id ?? '';
+  if (id.isEmpty) id = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
+  return id;
+}
+
+Future<Map<String, dynamic>> _readShadeBlob() async {
+  final raw = await DiskCache.readGlobal(_kMsgThreadsKey);
+  if (raw == null || raw.isEmpty) return <String, dynamic>{};
+  try {
+    return jsonDecode(raw) as Map<String, dynamic>;
+  } catch (_) {
+    return <String, dynamic>{}; // corrupt blob → start fresh, never throw at a push
+  }
+}
+
+int _asMs(Object? v) => (v is num) ? v.toInt() : 0;
+
+/// Append one message to its conversation's shade log.
+///
+/// Returns the account's whole conversation map so the caller can render both the
+/// child and the summary from one read/write, or NULL when this message was a
+/// DUPLICATE and nothing should be re-rendered.
+///
+/// The duplicate check is not defensive padding: FCM is at-least-once, and this
+/// function is reachable from BOTH the background isolate and the foreground
+/// handler, so the same push genuinely can arrive twice. Without `mid` the same
+/// sentence would appear twice inside the expanded conversation, which looks
+/// exactly like a bug in the messaging layer.
+Future<Map<String, dynamic>?> _appendShadeMessage({
+  required String acct,
+  required String conv,
+  required String mid,
+  required String who,
+  required String text,
+  required int ts,
+  required bool isGroup,
+  required String groupName,
+  required String avatarPath,
+}) async {
+  final all = await _readShadeBlob();
+  final byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+  final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+  final msgs = ((t['m'] as List?) ?? const <dynamic>[])
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+  if (mid.isNotEmpty && msgs.any((m) => (m['id'] ?? '').toString() == mid)) {
+    return null; // already in the shade — re-rendering would duplicate the line
+  }
+  msgs.add({'id': mid, 'who': who, 'text': text, 'ts': ts, 'ava': avatarPath});
+  msgs.sort((a, b) => _asMs(a['ts']).compareTo(_asMs(b['ts'])));
+  if (msgs.length > _kMaxShadeMsgs) {
+    msgs.removeRange(0, msgs.length - _kMaxShadeMsgs); // keep the NEWEST
+  }
+  t['m'] = msgs;
+  t['g'] = isGroup;
+  if (groupName.isNotEmpty) t['n'] = groupName;
+  t['last'] = ts;
+  byConv[conv] = t;
+  if (byConv.length > _kMaxShadeThreads) {
+    final keys = byConv.keys.toList()
+      ..sort((a, b) => _asMs((byConv[b] as Map)['last'])
+          .compareTo(_asMs((byConv[a] as Map)['last'])));
+    for (final k in keys.skip(_kMaxShadeThreads)) {
+      byConv.remove(k);
+    }
+  }
+  all[acct] = byConv;
+  await DiskCache.writeGlobal(_kMsgThreadsKey, jsonEncode(all));
+  return byConv;
+}
+
+/// Forget one conversation's shade log and take its notification down. Called
+/// when the user taps into that thread — otherwise the next message would
+/// re-expand into messages the user has already read.
+Future<void> _clearShadeThread(String conv) async {
+  try {
+    final acct = await _shadeAccountId();
+    if (acct.isEmpty || conv.isEmpty) return;
+    final all = await _readShadeBlob();
+    final byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+    byConv.remove(conv);
+    all[acct] = byConv;
+    await DiskCache.writeGlobal(_kMsgThreadsKey, jsonEncode(all));
+    await _ensureLocalInit();
+    await _local.cancel(_msgNotifId(conv));
+    // Android leaves an EMPTY bundle behind if the summary outlives its last
+    // child, so the summary has to be taken down or re-counted every time a
+    // child goes away.
+    await _renderShadeSummary(byConv);
+  } catch (_) {/* cosmetic — never let shade bookkeeping break a tap */}
+}
+
+/// The sender's photo, on disk, for the MessagingStyle `Person`.
+///
+/// Keyed on the server's `senderAvatarVersion` rather than the URL, matching the
+/// call path's `avatar:{uid}:{version}` contract: CDN transforms and query
+/// strings churn while the image does not, so URL-keyed caching re-downloads the
+/// same face forever. Returns '' on any failure and the notification simply
+/// renders without a photo.
+Future<String> _shadeAvatarPath(String url, String version) async {
+  if (url.isEmpty) return '';
+  try {
+    final f = await AvatarCache.getAny(
+      url, 128,
+      cacheKey: version.isEmpty ? null : 'notifava:$version',
+    );
+    return f?.path ?? '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/// (Re)post the bundle summary — the row that reads "3 messages from 3 chats"
+/// and owns the expand chevron in the owner's screenshot.
+///
+/// Only posted at TWO OR MORE conversations. With a single child Android already
+/// shows that child on its own, and a summary over one item renders as a
+/// duplicate row; below the threshold the summary is cancelled instead.
+Future<void> _renderShadeSummary(Map<String, dynamic> byConv) async {
+  try {
+    await _ensureLocalInit();
+    final entries = byConv.entries.toList()
+      ..sort((a, b) => _asMs((b.value as Map)['last'])
+          .compareTo(_asMs((a.value as Map)['last'])));
+    final lines = <String>[];
+    var total = 0;
+    for (final e in entries) {
+      final t = e.value as Map;
+      final msgs = (t['m'] as List?) ?? const [];
+      if (msgs.isEmpty) continue;
+      total += msgs.length;
+      final last = Map<String, dynamic>.from(msgs.last as Map);
+      final gname = (t['n'] ?? '').toString();
+      final who = (last['who'] ?? '').toString();
+      // Group → "AvaGlobal  Satish: yes sounds good". DM → "Satish  yes sounds good".
+      final label = gname.isNotEmpty ? gname : who;
+      final body = gname.isNotEmpty && who.isNotEmpty
+          ? '$who: ${(last['text'] ?? '').toString()}'
+          : (last['text'] ?? '').toString();
+      lines.add('$label  $body');
+    }
+    final chats = lines.length;
+    if (chats < 2) {
+      await _local.cancel(_kMsgSummaryId);
+      return;
+    }
+    final headline = '$total ${total == 1 ? 'message' : 'messages'} '
+        'from $chats ${chats == 1 ? 'chat' : 'chats'}';
+    await _local.show(
+      _kMsgSummaryId,
+      'AvaTOK',
+      headline,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _msgChannel.id, _msgChannel.name,
+          channelDescription: _msgChannel.description,
+          icon: _kNotifIcon, // [NOTIF-ICON-1]
+          importance: Importance.high, priority: Priority.high,
+          groupKey: _kMsgGroupKey,
+          setAsGroupSummary: true,
+          category: AndroidNotificationCategory.message,
+          // The children already alerted. Without this the summary re-rings on
+          // every message in an active group — the same sound twice per message.
+          onlyAlertOnce: true,
+          styleInformation: InboxStyleInformation(
+            lines, contentTitle: headline, summaryText: 'AvaTOK',
+          ),
+        ),
+      ),
+      payload: 'chat',
+    );
+    await _track('push_summary_shown', {
+      'chats': chats,
+      'messages': total,
+      'path': BadgeService.inBackgroundIsolate ? 'background' : 'foreground',
+    });
+  } catch (_) {/* cosmetic — the per-chat children are already on screen */}
+}
+
+/// [NOTIF-STYLE-1] Draw (or update) ONE conversation's notification as an
+/// Android MessagingStyle card, bundled with every other AvaTOK chat under a
+/// shared group, and refresh the "N messages from M chats" summary above them.
+///
+/// Returns true when the shade was updated or the push was a duplicate that
+/// deliberately changed nothing; false when it failed and the caller should fall
+/// back to the legacy single banner.
+Future<bool> _showStackedMessageNotif(
+  Map<String, dynamic> d, {
+  required String conv,
+  required String who,
+  required String preview,
+  required int count,
+}) async {
+  try {
+    final acct = await _shadeAccountId();
+    // No resolvable account = no safe place to file this. The shared-phone rule
+    // in the rulebook is not negotiable: an unscoped write here would leak one
+    // family member's message previews into another's shade.
+    if (acct.isEmpty) return false;
+
+    final mid = (d['mid'] ?? '').toString();
+    final isGroup = (d['isGroup'] ?? '').toString() == 'true';
+    final groupName = (d['groupName'] ?? '').toString();
+    // Server `ts` is milliseconds as a STRING (FCM data values are always
+    // strings). Absent on a pre-[NOTIF-PAYLOAD-1] server → now, which keeps the
+    // ordering sane rather than pinning every message to the epoch.
+    final ts = int.tryParse((d['ts'] ?? '').toString()) ??
+        DateTime.now().millisecondsSinceEpoch;
+    final avatarPath = await _shadeAvatarPath(
+      (d['senderAvatarUrl'] ?? '').toString(),
+      (d['senderAvatarVersion'] ?? '').toString(),
+    );
+
+    final byConv = await _appendShadeMessage(
+      acct: acct, conv: conv, mid: mid, who: who,
+      text: preview.isEmpty ? 'New message' : preview,
+      ts: ts, isGroup: isGroup, groupName: groupName, avatarPath: avatarPath,
+    );
+    // Duplicate delivery — the shade is already correct. Returning true stops the
+    // caller re-drawing anything.
+    if (byConv == null) {
+      await _track('push_shown_duplicate', {'type': 'message', 'had_mid': mid.isNotEmpty});
+      return true;
+    }
+
+    final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+    final msgs = ((t['m'] as List?) ?? const <dynamic>[])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    if (msgs.isEmpty) return false;
+
+    // The first positional Person of a MessagingStyle is the DEVICE OWNER — the
+    // "you" that outgoing messages would be attributed to. It is not the sender.
+    // Getting this backwards makes Android label every incoming line as the user.
+    const me = Person(name: 'You', key: 'self', important: true);
+    final style = MessagingStyleInformation(
+      me,
+      // Only a GROUP gets a conversation title; on a 1:1 Android already shows
+      // the other person's name and a title would duplicate it.
+      conversationTitle: isGroup && groupName.isNotEmpty ? groupName : null,
+      groupConversation: isGroup,
+      messages: [
+        for (final m in msgs)
+          Message(
+            (m['text'] ?? '').toString(),
+            DateTime.fromMillisecondsSinceEpoch(_asMs(m['ts'])),
+            Person(
+              name: (m['who'] ?? '').toString(),
+              // A stable key per sender is what lets Android collapse
+              // consecutive messages from one person under a single photo,
+              // instead of repeating the avatar on every line.
+              key: (m['who'] ?? '').toString(),
+              icon: (m['ava'] ?? '').toString().isEmpty
+                  ? null
+                  : BitmapFilePathAndroidIcon((m['ava']).toString()),
+            ),
+          ),
+      ],
+    );
+
+    await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+    await _local.show(
+      _msgNotifId(conv), // per-CONVERSATION, not the old shared 8000
+      isGroup && groupName.isNotEmpty ? groupName : who,
+      (msgs.last['text'] ?? '').toString(),
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _msgChannel.id, _msgChannel.name,
+          channelDescription: _msgChannel.description,
+          icon: _kNotifIcon, // [NOTIF-ICON-1]
+          importance: Importance.high, priority: Priority.high,
+          number: count, // launchers read this for the icon badge count
+          ticker: 'Message from $who',
+          category: AndroidNotificationCategory.message,
+          groupKey: _kMsgGroupKey, // ← the bundle
+          styleInformation: style,
+        ),
+      ),
+      // Carries the conv so the tap opens THIS thread. The old payload was the
+      // bare string 'chat', which is why every tap landed on the app home.
+      payload: 'chat:$conv',
+    );
+    await _renderShadeSummary(byConv);
+    await _track('push_shown', {
+      'channel': 'messages',
+      'type': 'message',
+      'path': BadgeService.inBackgroundIsolate ? 'background' : 'foreground',
+      'has_preview': preview.isNotEmpty,
+      'icon': _kNotifIcon, // [NOTIF-ICON-1]
+      // [NOTIF-STYLE-1] The success values. `style` distinguishes the new
+      // MessagingStyle render from the legacy BigText one, and `grouped` proves
+      // the notification actually carried a groupKey — the two things that make
+      // the bundle in the owner's screenshot possible. Reading these on a real
+      // build is the ship-gate assertion, not the mere arrival of push_shown.
+      'style': 'messaging',
+      'grouped': true,
+      'is_group': isGroup,
+      'thread_msgs': msgs.length,
+      'has_avatar': avatarPath.isNotEmpty,
+    });
+    return true;
+  } catch (e, st) {
+    // NOT Analytics.captureException: this runs in the background isolate too,
+    // where PostHog does not exist and the call itself can throw — turning a
+    // recoverable render failure into an unhandled one, on the exact path whose
+    // job is to be recoverable. `_track` routes per-isolate to the durable
+    // queue the main isolate ships on next foreground.
+    try {
+      await _track('push_stacked_failed', {
+        'error': e.toString(),
+        'stack': st.toString().split('\n').take(4).join(' | '),
+      });
+    } catch (_) {/* telemetry must never be the thing that breaks a notification */}
+    return false; // caller redraws the legacy banner — never leave the user silent
+  }
+}
+
 /// Local notification for a new (E2E) message. Content-less by design — only the
 /// sender's display name travels; the message body never leaves the devices.
 Future<void> _showMessageNotif(Map<String, dynamic> d) async {
@@ -1381,6 +1808,35 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
   final body = hasPreview
       ? preview
       : (count > 1 ? '$count new messages' : 'New message');
+
+  // ── [NOTIF-STYLE-1] Stacked, per-conversation, MessagingStyle path ─────────
+  //
+  // Preferred whenever the push carries a conversation id. Falls through to the
+  // legacy single-banner code below when it does not — which is exactly the case
+  // for a push minted by a server version older than [NOTIF-PAYLOAD-1], and for
+  // the internal DO producers (voicemail transcripts, auto-replies) that call
+  // the notify lane without a conv. Those must keep working unchanged rather
+  // than silently losing their banner.
+  final conv = (d['conv'] ?? '').toString();
+  if (conv.isNotEmpty) {
+    // RemoteConfig's in-memory map is EMPTY in the background isolate — nothing
+    // hydrates it there — so without this the kill switch would read its
+    // compile-time default on precisely the code path that matters most (a push
+    // arriving while the app is asleep). Cheap, idempotent, and memoised behind
+    // `_hydrated`.
+    try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults apply */}
+    if (RemoteConfig.notifMessagingStyle) {
+      // true  → drawn, or deliberately skipped as a duplicate. Done.
+      // false → the stacked render FAILED. Fall through to the legacy banner
+      //         below, so a bug in the new code degrades to the old behaviour
+      //         instead of to silence. A missed message notification is a much
+      //         worse outcome than an unstyled one.
+      final handled = await _showStackedMessageNotif(
+        d, conv: conv, who: who, preview: preview, count: count,
+      );
+      if (handled) return;
+    }
+  }
   // BigTextStyle = the tap-to-expand long-text layout in the Android shade.
   final styleInfo = hasPreview
       ? BigTextStyleInformation(

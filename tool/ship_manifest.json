@@ -1718,5 +1718,78 @@
         "_verified_at": "app/lib/push/push_service.dart _showMessageNotif -> _track('push_shown', ...), emit site read on 2026-08-17"
       }
     ]
+  },
+  "NOTIF-PAYLOAD-1": {
+    "description": "Server half of Specs/NOTIF-PARITY-PLAN.md phase 1. The chat push carried a sender name and 140 characters and nothing else, so the client could not draw a MessagingStyle notification even if it wanted to: no message id to de-dup on, no sender photo, no group name, no timestamp. Adds mid/ts/isGroup/groupName/senderAvatarUrl/senderAvatarVersion to the notify data block (consumers/src/fcm.ts buildPayload), forwards them through the large-group fanout re-enqueue and its retry (handleFanout), and resolves them producer-side in worker/src/routes/messaging.ts via a new bannerExtras() that reuses publicIdentityFor — the SAME public-profile source the call path rings with. bannerExtras returns an UNAWAITED promise resolved only inside the already-detached push path, so no latency is added to /api/msg/send (see [MSG-SEND-TIMEOUT-1]). Purely additive and data-only; shipped clients ignore unknown keys.",
+    "shipped": "2026-08-17",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [],
+    "success": [
+      {
+        "event": "push_shown",
+        "where": {
+          "type": "message",
+          "style": "messaging"
+        },
+        "property": "has_avatar",
+        "equals": true,
+        "min_events": 1,
+        "note": "has_avatar=true on the RECIPIENT's device is the only proof the whole chain worked end to end: the producer resolved the profile, the consumer forwarded the URL, FCM carried it, and the client downloaded and attached it as the MessagingStyle Person icon. Any weaker assertion (the event arriving, or the keys merely being present in the payload) is satisfied by a push that renders exactly as it does today. Two devices because a push has a sender and a receiver and the property only exists on the receiving end.",
+        "_verified_at": "consumers/src/fcm.ts buildPayload notify branch + worker/src/routes/messaging.ts bannerExtras, both written 2026-08-17"
+      }
+    ]
+  },
+  "NOTIF-FLAGS-1": {
+    "description": "Declares notifMessagingStyle in the PlatformConfig interface AND in DEFAULTS in worker/src/routes/config.ts in the same change, plus the RemoteConfig.notifMessagingStyle client mirror. Default true. Exists as its own id because the repo's fake-flag rule has bitten before (inAppUpdateEnabled): a client-side getter whose key is absent from DEFAULTS compiles, reads fine, and can NEVER be flipped, because putConfig rejects unknown keys with a 400 — so the documented brake on the feature does not exist. push_service.dart calls RemoteConfig.hydrateFromDisk() before reading it, because nothing hydrates config in the background isolate and the getter would otherwise always return its compile-time default on the one path that matters most.",
+    "shipped": "2026-08-17",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "notifMessagingStyle"
+    ],
+    "no_telemetry": "A flag declaration ships no user-visible behaviour of its own; the behaviour it gates is asserted under NOTIF-STYLE-1. Its own proof is not an event but a write: `ALLOW_PROD=1 scripts/flags.sh set notifMessagingStyle=false` must NOT 400, and a cache-busted GET /api/config must then show false. That is the exact check inAppUpdateEnabled failed."
+  },
+  "NOTIF-STYLE-1": {
+    "description": "Client half of phase 1, and the fix for the owner's screenshot. Every chat message was posted under the single hardcoded notification id 8000, so a message from a second person REPLACED the first in place rather than stacking beside it — the shade could physically never hold more than one AvaTOK chat row, which is why there was no 'N messages from N chats' bundle. Replaces it with: a stable per-conversation id (8900..9499, clear of the 8100-8899 missed-call range), MessagingStyle + Person with the sender's photo so each child expands on its OWN chevron, a shared groupKey plus a setAsGroupSummary child carrying the InboxStyle 'N messages from M chats' line, an account-scoped on-disk log of what is currently in the shade (global disk key with the account id as the top-level map key, because the background isolate has no AccountScope), and a payload of 'chat:<conv>' so a tap opens THAT thread instead of the app home. Falls back to the legacy single banner when the push carries no conv or the render throws.",
+    "shipped": "2026-08-17",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "notifMessagingStyle"
+    ],
+    "success": [
+      {
+        "event": "push_shown",
+        "where": {
+          "type": "message"
+        },
+        "property": "style",
+        "equals": "messaging",
+        "min_events": 1,
+        "note": "push_shown already fires today and will keep firing from the legacy path, so its arrival proves nothing — ship-gate rule 3. style='messaging' is emitted ONLY from _showStackedMessageNotif, i.e. only when the MessagingStyle render actually completed. style absent, or a rise in push_stacked_failed, means the new path threw and the app quietly degraded to the old banner — which is a pass on every weaker assertion.",
+        "_verified_at": "app/lib/push/push_service.dart _showStackedMessageNotif, written 2026-08-17"
+      },
+      {
+        "event": "push_summary_shown",
+        "where": {},
+        "property": "chats",
+        "gte": 2,
+        "min_events": 1,
+        "note": "THE assertion for the owner's screenshot. A per-chat notification can render perfectly and still not bundle; only chats>=2 proves two conversations coexisted in the shade at the same moment instead of one overwriting the other, which was the entire bug. This event cannot be produced by the legacy path — it did not exist. Needs a tester messaged by TWO different people while backgrounded, so it is the case a single-device check silently cannot reach.",
+        "_verified_at": "app/lib/push/push_service.dart _renderShadeSummary, written 2026-08-17"
+      },
+      {
+        "event": "push_notif_open",
+        "where": {
+          "ok": true
+        },
+        "property": "dest",
+        "equals": "thread",
+        "min_events": 1,
+        "note": "The deep link. Pre-fix, a tap ran popUntil(isFirst) and landed on the chat list; the conv id was already in the FCM data and simply never reached the notification payload. dest='thread' means a child row opened its own conversation.",
+        "_verified_at": "app/lib/push/push_service.dart _openChatThread, written 2026-08-17"
+      }
+    ]
   }
 }
