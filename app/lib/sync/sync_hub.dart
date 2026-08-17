@@ -614,11 +614,33 @@ class SyncHub {
         {
           // Seed soft-delete flags from the server `hidden` column in ONE write so
           // a fresh device shows my deleted messages as hidden on a cold open.
+          //
+          // [DELETE-UNHIDE-1 2026-08-17] SEED ONLY — never write `false`.
+          //
+          // This loop used to record BOTH values: `hideBulk[cid] = (hidden == 1)`.
+          // Combined with HiddenStore.mergeBulk, which overwrites unconditionally
+          // (unlike its monotonic sibling ReadStateStore.mergeBulk right beside
+          // it), that meant every sync silently UN-DELETED any message the user
+          // had hidden locally whose server row still said hidden=0.
+          //
+          // And that is not a rare corner. The hide POST is fire-and-forget with
+          // no retry and no outbox: it is skipped outright when evId is null, and
+          // a hide made offline or one whose request failed never reaches the
+          // server at all. So the row stays hidden=0 server-side, the next sync
+          // copies that back over the local `true`, and the deleted message
+          // reappears — permanently, because the local flag is now false too and
+          // nothing will ever re-post it. That is the owner's "old deleted
+          // messages come back when I load the app".
+          //
+          // Un-hiding is a deliberate act (Undo, or a `hide` push with
+          // hidden:false from another device) and still works through those
+          // explicit paths. A bulk backfill has no business inferring it.
           final hideBulk = <String, bool>{};
           for (final row in (m['messages'] as List? ?? const [])) {
             final r = (row as Map);
             final cid = (r['client_id'] ?? '').toString();
-            if (cid.isNotEmpty) hideBulk[cid] = ((r['hidden'] as num?)?.toInt() ?? 0) == 1;
+            if (cid.isEmpty) continue;
+            if (((r['hidden'] as num?)?.toInt() ?? 0) == 1) hideBulk[cid] = true;
           }
           if (hideBulk.isNotEmpty) HiddenStore().mergeBulk(hideBulk);
         }
