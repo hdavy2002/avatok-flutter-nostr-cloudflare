@@ -108,6 +108,15 @@ class CallSfuResult {
   bool get connected => pc != null;
 }
 
+/// [CALL-VIDEO-FIX-4 2026-08-18] One negotiation's claim on shared transport
+/// state. Invalidated ONLY by its own timeout or by `dispose()` — never merely
+/// because another operation was queued behind it.
+class _NegotiationToken {
+  _NegotiationToken(this.op);
+  final String op;
+  bool live = true;
+}
+
 class CallSfuTransport {
   CallSfuTransport({
     required this.room,
@@ -290,55 +299,80 @@ class CallSfuTransport {
 
   static const Duration _negotiationTimeout = Duration(seconds: 15);
 
-  /// [CALL-VIDEO-FIX-2 2026-08-17] Monotonic id of the negotiation currently
-  /// entitled to write shared transport state (`_pc`, `_sessionId`, `_openMids`).
+  /// [CALL-VIDEO-FIX-4 2026-08-18] Per-operation ownership token.
   ///
-  /// `Future.timeout` does NOT cancel the work it gives up on — a timed-out
-  /// negotiation keeps running, and its late `_pc = pc` / `_sessionId = ...`
-  /// assignment would otherwise land AFTER a newer operation's and silently
-  /// clobber it. That is the same class of defect as the pre-join connection
-  /// that overwrote live call state (`[CALL-PREJOIN-ISOLATE-1]`), so it gets
-  /// the same treatment: each queued body carries the generation it was issued
-  /// under, and [_ownsNegotiation] is the gate every shared write must pass.
-  int _negotiationGeneration = 0;
+  /// Replaces a monotonic "generation" counter that was wrong in three ways,
+  /// all caught in review:
+  ///   1. It was bumped on ENQUEUE, so merely queueing a *different* operation
+  ///      invalidated an older queued one — and that one then threw an
+  ///      UNCAUGHT `StateError` out of the chain.
+  ///   2. A timeout released the queue but did not invalidate the timed-out
+  ///      work, which kept running and could still write `_pc`/`_sessionId`
+  ///      underneath its replacement — precisely the race the guard existed to
+  ///      prevent.
+  ///   3. The body read the global counter when it started rather than holding
+  ///      its own token, so "am I still current?" was answered by a value
+  ///      anyone could move.
+  ///
+  /// A token is minted per operation, is invalidated ONLY by that operation's
+  /// own timeout or by [dispose], and is what every shared write must check —
+  /// after every `await`, because an await is where a timeout can intervene.
+  final Set<_NegotiationToken> _liveTokens = <_NegotiationToken>{};
 
-  /// True while [gen] is still the newest issued negotiation. A superseded or
-  /// timed-out body must read false here and abandon its writes silently.
-  bool _ownsNegotiation(int gen) => gen == _negotiationGeneration && !_disposed;
+  /// True while [token] may still write shared transport state.
+  bool _ownsNegotiation(_NegotiationToken token) =>
+      token.live && !_disposed && _liveTokens.contains(token);
 
-  Future<T> _serialize<T>(String op, Future<T> Function() body) {
+  /// Strict FIFO: each operation waits for the previous one to FINISH, and a
+  /// queued operation is never cancelled just because another was enqueued
+  /// behind it. Only a timeout (this operation's own) or [dispose] invalidates.
+  Future<T> _serialize<T>(String op, Future<T> Function(_NegotiationToken token) body) {
     final queuedStartMs = DateTime.now().millisecondsSinceEpoch;
     final completer = Completer<void>();
     final previous = _negotiationChain;
     _negotiationChain = completer.future;
-    final gen = ++_negotiationGeneration;
+    final token = _NegotiationToken(op);
+    _liveTokens.add(token);
     return previous.then((_) async {
-      // Superseded while queued: a newer negotiation was issued behind us, so
-      // running this one would race it. Skipping is correct and cheap — the
-      // newer op is doing the same job with fresher inputs.
-      if (gen != _negotiationGeneration) {
-        onNegotiation?.call('$op:superseded', 0, 0, false);
-        completer.complete();
-        return Future<T>.error(
-          StateError('negotiation $op superseded by a newer operation'),
-        );
-      }
       final queuedMs = DateTime.now().millisecondsSinceEpoch - queuedStartMs;
       final runStartMs = DateTime.now().millisecondsSinceEpoch;
       var ok = false;
       try {
-        final result = await body().timeout(_negotiationTimeout);
+        if (_disposed) {
+          token.live = false;
+          throw StateError('transport disposed before $op ran');
+        }
+        final result = await body(token).timeout(
+          _negotiationTimeout,
+          onTimeout: () {
+            // INVALIDATE, then give up. The abandoned body keeps executing —
+            // Dart cannot cancel it — but every shared write it still attempts
+            // is now gated off by `_ownsNegotiation`.
+            token.live = false;
+            throw TimeoutException('negotiation $op exceeded ${_negotiationTimeout.inSeconds}s');
+          },
+        );
         ok = true;
         return result;
       } finally {
         final ranMs = DateTime.now().millisecondsSinceEpoch - runStartMs;
+        token.live = false;
+        _liveTokens.remove(token);
         onNegotiation?.call(op, queuedMs, ranMs, ok);
-        // Release the NEXT queued op regardless of how this one finished —
-        // this is what makes a hung/timed-out body bounded rather than a
-        // permanent wedge on every later negotiation.
+        // Release the NEXT queued op regardless of how this one finished — a
+        // hung body is bounded by the timeout above, never a permanent wedge.
         completer.complete();
       }
     });
+  }
+
+  /// Invalidate every outstanding token. Called from [dispose] so work still in
+  /// flight can never write to a torn-down transport.
+  void _cancelAllNegotiations() {
+    for (final t in _liveTokens) {
+      t.live = false;
+    }
+    _liveTokens.clear();
   }
 
   /// How long to wait for the other phone to register its seat.
@@ -431,15 +465,15 @@ class CallSfuTransport {
     try {
       return await _serialize(
         'connectPublish',
-        // [CALL-VIDEO-FIX-2] `_negotiationGeneration` is stamped by `_serialize`
-        // BEFORE this closure runs, so reading it here yields the generation
-        // this very operation was issued under.
-        () => _connectPublishImpl(
+        // [CALL-VIDEO-FIX-4] `_serialize` mints the token and hands it to this
+        // body, so ownership is a value this operation HOLDS rather than a
+        // global anyone can move.
+        (token) => _connectPublishImpl(
           localStream: localStream,
           fallbackIceServers: fallbackIceServers,
           video: video,
           prewarmedJoin: prewarmedJoin,
-          gen: _negotiationGeneration,
+          token: token,
         ),
       );
     } on TimeoutException {
@@ -460,7 +494,7 @@ class CallSfuTransport {
     // [CALL-VIDEO-FIX-2] The generation this body was issued under. Shared
     // state (`_sessionId`, `_pc`) is only written while it is still current —
     // a timed-out body keeps running and must not clobber its successor.
-    required int gen,
+    required _NegotiationToken token,
   }) async {
     _peerPollAbort = false; // [CALL-DEADAIR-1] fresh attempt (reconnect reuses this object)
     _publishDone = false;
@@ -472,7 +506,7 @@ class CallSfuTransport {
       if (join.sessionId.isEmpty) {
         return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
       }
-      if (!_ownsNegotiation(gen)) {
+      if (!_ownsNegotiation(token)) {
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_before_session');
       }
       _sessionId = join.sessionId;
@@ -514,7 +548,7 @@ class CallSfuTransport {
       );
       // [CALL-VIDEO-FIX-2] Superseded while the PC was being built: close what
       // we just made and leave `_pc` alone — the newer negotiation owns it.
-      if (!_ownsNegotiation(gen)) {
+      if (!_ownsNegotiation(token)) {
         try { await pc.close(); } catch (_) {/* nothing to salvage */}
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_during_setup');
       }
@@ -609,7 +643,7 @@ class CallSfuTransport {
       return CallSfuResult.failed(SfuFailure.unknown, detail: 'connectPull_without_publish');
     }
     try {
-      return await _serialize('connectPull', () => _connectPullImpl(video: video, peerWait: peerWait));
+      return await _serialize('connectPull', (_) => _connectPullImpl(video: video, peerWait: peerWait));
     } on TimeoutException {
       AvaLog.I.log('call', 'connectPull timed out in the negotiation queue');
       await _closePc();
@@ -828,7 +862,7 @@ class CallSfuTransport {
   /// negotiation on this transport touches.
   Future<bool> publishVideo(MediaStreamTrack videoTrack, MediaStream stream) async {
     try {
-      return await _serialize('publishVideo', () => _publishVideoImpl(videoTrack, stream));
+      return await _serialize('publishVideo', (_) => _publishVideoImpl(videoTrack, stream));
     } on TimeoutException {
       AvaLog.I.log('call', 'publishVideo timed out in the negotiation queue');
       return false;
@@ -932,7 +966,7 @@ class CallSfuTransport {
   /// from inside another [_serialize]d op, so it is safe for it to queue.
   Future<bool> pullPeerVideo() async {
     try {
-      return await _serialize('pullPeerVideo', () => _doPull('video'));
+      return await _serialize('pullPeerVideo', (_) => _doPull('video'));
     } on TimeoutException {
       AvaLog.I.log('call', 'pullPeerVideo timed out in the negotiation queue');
       return false;
@@ -951,7 +985,7 @@ class CallSfuTransport {
   /// [CALL-VIDEO-FIX-1] Serialized for the same reason as [pullPeerVideo].
   Future<bool> pullPeerAudio() async {
     try {
-      return await _serialize('pullPeerAudio', () => _doPull('audio'));
+      return await _serialize('pullPeerAudio', (_) => _doPull('audio'));
     } on TimeoutException {
       AvaLog.I.log('call', 'pullPeerAudio timed out in the negotiation queue');
       return false;
@@ -992,6 +1026,10 @@ class CallSfuTransport {
   /// underneath it and backs out cleanly instead of touching a closed `pc`.
   Future<void> dispose() async {
     _disposed = true;
+    // [CALL-VIDEO-FIX-4] Invalidate every in-flight negotiation FIRST. Work
+    // that Dart cannot cancel keeps running, but from here it can no longer
+    // write to a transport that is being torn down.
+    _cancelAllNegotiations();
     _peerPollAbort = true; // [CALL-DEADAIR-1]
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
