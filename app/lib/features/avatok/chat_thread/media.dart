@@ -363,7 +363,13 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 60));
     if (res.statusCode != 200) throw 'http ${res.statusCode}';
     final mime = (res.headers['content-type'] ?? '').split(';').first.trim();
-    return (Uint8List.fromList(res.bodyBytes), mime);
+    // [MEDIA-CARD-SAFE-1] `bodyBytes` is ALREADY a Uint8List. The old
+    // `Uint8List.fromList(...)` made a second full copy of every artifact, so a
+    // 3-minute song or a generated video briefly occupied twice its size in
+    // heap — on the file-share fallback path that copy sits alongside the
+    // original AND the cover, which is the kind of pressure that gets an app
+    // killed by Android rather than throwing a catchable Dart error.
+    return (res.bodyBytes, mime);
   }
 
   String _extForArtifactMime(String mime) {
@@ -461,9 +467,25 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// Same OS share-sheet affordance as Download — a job artifact has no
   /// separate "send elsewhere" mechanic to distinguish the two actions.
   Future<void> _shareJobArtifact(AiMediaJob job) async {
+    // [MEDIA-CARD-SAFE-1] Rule 3 success marker: this event is emitted the
+    // moment the user taps Share, BEFORE any network call, so a share that
+    // never completes is visible as a `share_started` with no matching
+    // `ai_media_job_artifact_share`. Until this existed, a share that died on a
+    // dead network left no trace at all — which is exactly why "sharing a song
+    // crashes the app" could not be told apart from "the phone was offline".
+    Analytics.capture('ai_media_job_share_started', {
+      'kind': job.kind.wire,
+      'job_id': job.jobId,
+      'has_cover': (job.coverUrl ?? '').isNotEmpty,
+      'cover_status': job.coverStatus ?? 'unknown',
+    });
     if (job.kind == AiMediaJobKind.videoGenerate) {
-      final fresh = await AiMediaJobRepository.I.fetch(job.jobId);
-      if (fresh == null) { _toast("Couldn't load — try again in a moment."); return; }
+      // Never abandon the share just because the refresh round-trip failed: the
+      // record we already hold is enough to publish, and `createVideoShareLink`
+      // falls back to a link this session already minted.
+      final fresh = await AiMediaJobRepository.I.fetch(job.jobId) ??
+          AiMediaJobRepository.I.byId(job.jobId) ??
+          job;
       final shareUrl = await AiMediaJobRepository.I.createVideoShareLink(fresh.jobId);
       if (shareUrl != null) {
         final rawTitle = (fresh.videoTitle ?? '').trim();
@@ -487,17 +509,28 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       return;
     }
     try {
-      final fresh = await AiMediaJobRepository.I.fetch(job.jobId);
-      final audioUrl = fresh?.artifactUrl;
-      if (fresh == null || audioUrl == null || audioUrl.isEmpty) {
-        _toast("Couldn't load — try again in a moment.");
-        return;
-      }
+      // Same rule as the video branch: a failed refresh must not cost the user
+      // the share. `fetch` already returns the last-known record rather than
+      // null when the phone is simply offline.
+      final fresh = await AiMediaJobRepository.I.fetch(job.jobId) ??
+          AiMediaJobRepository.I.byId(job.jobId) ??
+          job;
+      final audioUrl = fresh.artifactUrl;
       final title = (fresh.songTitle ?? '').trim().isEmpty ? 'Ava original' : fresh.songTitle!.trim();
       final description = (fresh.songDescription ?? '').trim().isEmpty
           ? 'An original song created with Ava.'
           : fresh.songDescription!.trim();
       final shareUrl = await AiMediaJobRepository.I.createSongShareLink(fresh.jobId);
+      if (shareUrl == null && (audioUrl == null || audioUrl.isEmpty)) {
+        // Nothing to hand the share sheet: no published link and no artifact
+        // URL. Say what is actually wrong instead of "try again in a moment".
+        Analytics.capture('ai_media_job_artifact_share', {
+          'kind': fresh.kind.wire, 'job_id': fresh.jobId, 'ok': false,
+          'error': 'no_link_no_artifact',
+        });
+        if (mounted) _toast("Can't share this song while you're offline.");
+        return;
+      }
       if (shareUrl != null) {
         await Share.share('$title\n$description\n$shareUrl', subject: title);
         Analytics.capture('ai_media_job_artifact_share', {
@@ -508,6 +541,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       }
       // Fail-soft for an older Worker or a temporary share-route outage: send
       // the audio and cover files directly instead of losing Share entirely.
+      // The guard above already proved this is non-empty on this path; the
+      // local re-check is what lets the compiler see it too.
+      if (audioUrl == null || audioUrl.isEmpty) return;
       final (audioBytes, audioMime) = await _fetchArtifactBytes(audioUrl);
       final dir = await getTemporaryDirectory();
       final audio = File('${dir.path}/${_artifactFileName(fresh, audioMime)}');

@@ -103,6 +103,51 @@ extension AiMediaJobStatusWire on AiMediaJobStatus {
 
 int _nowS() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
+/// [MEDIA-CARD-SAFE-1] True for an ordinary connectivity failure (no network,
+/// DNS down, socket/timeout) as opposed to a real defect. Matched by type name
+/// + message so this file does not have to import `dart:io`/`http` just for an
+/// `is` check — the same technique `main.dart::_isTransientNetworkError` uses.
+///
+/// Why this exists: on 2026-08-17 the owner's phone lost its network for ~6
+/// minutes. Every visible media widget independently called [AiMediaJobRepository.fetch],
+/// each one timed out after 10s, and each one was reported to PostHog Error
+/// Tracking as a `$exception` — 203 of them in three days, 30+ inside a single
+/// second, which made "AI media job timeouts" look like the app's main crash
+/// cause while the two ACTUAL process deaths that day carried no Dart exception
+/// at all. Being offline is an expected condition, not a crash: it is logged
+/// and counted, never reported as an exception.
+bool isTransientNetworkFailure(Object error) {
+  final type = error.runtimeType.toString();
+  final msg = error.toString().toLowerCase();
+  const typeMarkers = [
+    'SocketException',
+    'WebSocketException',
+    'WebSocketChannelException',
+    'ClientException',
+    'HandshakeException',
+    'TimeoutException',
+    'HttpException',
+  ];
+  for (final t in typeMarkers) {
+    if (type.contains(t)) return true;
+  }
+  const msgMarkers = [
+    'failed host lookup',
+    'no address associated with hostname',
+    'software caused connection abort',
+    'connection closed',
+    'connection reset',
+    'connection refused',
+    'connection timed out',
+    'network is unreachable',
+    'broken pipe',
+  ];
+  for (final m in msgMarkers) {
+    if (msg.contains(m)) return true;
+  }
+  return false;
+}
+
 int _epoch(dynamic v, {int? fallback}) {
   if (v == null) return fallback ?? _nowS();
   final n = v is num ? v.toInt() : int.tryParse(v.toString());
@@ -548,10 +593,18 @@ class AiMediaJobRepository {
       }
       await _persist(convId);
     } catch (e, st) {
-      await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true, extra: {
-        'stage': 'reconcile',
-      });
-      AvaLog.I.log('ai_media_jobs', 'reconcile failed: $e');
+      // [MEDIA-CARD-SAFE-1] Offline is expected, not a crash — see
+      // [isTransientNetworkFailure].
+      if (isTransientNetworkFailure(e)) {
+        Analytics.capture('ai_media_job_reconcile_offline', {
+          'error': e.runtimeType.toString(),
+        });
+      } else {
+        await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true, extra: {
+          'stage': 'reconcile',
+        });
+      }
+      AvaLog.I.log('ai_media_jobs', 'reconcile failed: ${e.runtimeType}');
     } finally {
       _rearmPolling(convId);
     }
@@ -576,7 +629,36 @@ class AiMediaJobRepository {
   /// Fetch exactly one job by id (`GET /api/ai/jobs/:job_id`) and merge it in.
   /// Used for a targeted refresh (e.g. a push notification names a job_id but
   /// carries no full payload).
-  Future<AiMediaJob?> fetch(String jobId) async {
+  /// [MEDIA-CARD-SAFE-1] In-flight coalescing. Several widgets legitimately want
+  /// the same job at the same instant (every Ava image bubble in the scrollback
+  /// re-mints its presigned URL when its image fails to paint, and a network
+  /// drop fails all of them in the same frame). Before this map, that was N
+  /// independent `GET /api/ai/jobs/:id` requests with N independent 10s
+  /// timeouts; now the first caller does the request and every other caller in
+  /// that window awaits the SAME future.
+  final Map<String, Future<AiMediaJob?>> _inFlightFetch = {};
+
+  /// Epoch ms of the last TRANSIENT (offline) fetch failure per job. While the
+  /// network is down there is nothing to gain from re-asking every few seconds
+  /// from a dozen widgets, so a failed fetch is not retried for this long.
+  final Map<String, int> _fetchCooldownUntilMs = {};
+  static const int _fetchCooldownMs = 15000;
+
+  Future<AiMediaJob?> fetch(String jobId) {
+    final existing = _inFlightFetch[jobId];
+    if (existing != null) return existing;
+    final until = _fetchCooldownUntilMs[jobId] ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch < until) {
+      // Still inside the offline cooldown — hand back whatever we already know
+      // rather than queueing another doomed 10s request.
+      return Future.value(_byId[jobId]);
+    }
+    final future = _fetchInner(jobId);
+    _inFlightFetch[jobId] = future;
+    return future.whenComplete(() => _inFlightFetch.remove(jobId));
+  }
+
+  Future<AiMediaJob?> _fetchInner(String jobId) async {
     try {
       final url = '$kApiBase/ai/jobs/${Uri.encodeComponent(jobId)}';
       final res = await ApiAuth.getSigned(url, timeout: const Duration(seconds: 10));
@@ -587,8 +669,20 @@ class AiMediaJobRepository {
       final job = AiMediaJob.fromJson(j, fallbackConvId: existing?.convId ?? '');
       _apply(job, notify: true);
       await _persist(job.convId);
+      _fetchCooldownUntilMs.remove(jobId);
       return _byId[jobId];
     } catch (e, st) {
+      if (isTransientNetworkFailure(e)) {
+        // Expected offline condition — counted, never reported as a crash.
+        _fetchCooldownUntilMs[jobId] =
+            DateTime.now().millisecondsSinceEpoch + _fetchCooldownMs;
+        Analytics.capture('ai_media_job_fetch_offline', {
+          'stage': 'fetch',
+          'error': e.runtimeType.toString(),
+        });
+        AvaLog.I.log('ai_media_jobs', 'fetch offline: ${e.runtimeType}');
+        return _byId[jobId];
+      }
       await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true, extra: {
         'stage': 'fetch',
       });
@@ -599,6 +693,17 @@ class AiMediaJobRepository {
   /// Explicitly publish a completed generated song and return its opaque
   /// share page URL. The server does not create this token until this method
   /// is called, so private generated audio is not public by default.
+  /// [MEDIA-CARD-SAFE-1] Share links, once minted, are PERMANENT server-side
+  /// (`venice_media_jobs.share_token` is written once and reused — see
+  /// `worker/src/routes/ai_media_jobs.ts::aiMediaJobSongShare`). Remembering
+  /// them for this process means the second Share of the same song needs no
+  /// round-trip at all, and a share attempted while the phone is offline can
+  /// still hand the user the link they already published instead of failing.
+  final Map<String, String> _shareLinks = {};
+
+  /// The already-minted share link for [jobId], if this session has one.
+  String? knownShareLink(String jobId) => _shareLinks[jobId];
+
   Future<String?> createSongShareLink(String jobId) async {
     try {
       final res = await ApiAuth.postJson(
@@ -606,26 +711,39 @@ class AiMediaJobRepository {
         const <String, dynamic>{},
         timeout: const Duration(seconds: 12),
       );
-      if (res.statusCode != 200) return null;
+      if (res.statusCode != 200) return _shareLinks[jobId];
       final decoded = jsonDecode(res.body);
-      if (decoded is! Map) return null;
+      if (decoded is! Map) return _shareLinks[jobId];
       final url = (decoded['url'] ?? '').toString().trim();
-      return url.isEmpty ? null : url;
+      if (url.isEmpty) return _shareLinks[jobId];
+      _shareLinks[jobId] = url;
+      return url;
     } catch (e, st) {
-      await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true,
-          extra: {'stage': 'create_song_share_link'});
-      return null;
+      if (isTransientNetworkFailure(e)) {
+        Analytics.capture('ai_media_job_share_link_offline', {'media_kind': 'song'});
+      } else {
+        await Analytics.captureException(e, st, screen: 'ai_media_jobs', handled: true,
+            extra: {'stage': 'create_song_share_link'});
+      }
+      return _shareLinks[jobId];
     }
   }
 
   Future<String?> createVideoShareLink(String jobId) async {
     try {
       final res = await ApiAuth.postJson('$kApiBase/ai/jobs/${Uri.encodeComponent(jobId)}/video-share', const <String, dynamic>{}, timeout: const Duration(seconds: 12));
-      if (res.statusCode != 200) return null;
+      if (res.statusCode != 200) return _shareLinks[jobId];
       final decoded = jsonDecode(res.body);
       final url = decoded is Map ? (decoded['url'] ?? '').toString().trim() : '';
-      return url.isEmpty ? null : url;
-    } catch (_) { return null; }
+      if (url.isEmpty) return _shareLinks[jobId];
+      _shareLinks[jobId] = url;
+      return url;
+    } catch (e) {
+      if (isTransientNetworkFailure(e)) {
+        Analytics.capture('ai_media_job_share_link_offline', {'media_kind': 'video'});
+      }
+      return _shareLinks[jobId];
+    }
   }
 
   // ── Mutations ────────────────────────────────────────────────────────────

@@ -458,6 +458,13 @@ class _ReadyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = AD.bubbleOutPlay; // green = "done"
     final menu = _menuItems();
+    // [MEDIA-CARD-SAFE-1] Read the optional bytes into a local so the two
+    // preview sites below can be null-checked instead of force-unwrapped.
+    // `_hasVisual` does guarantee one of the two is non-null today, but a
+    // `!` that is only correct because of a getter three lines away is the
+    // exact shape of bug that takes a card down when a job comes back with
+    // partial media (e.g. a song whose cover generation failed).
+    final bytes = thumbnailBytes;
 
     if (job.kind == AiMediaJobKind.videoGenerate && _hasVisual) {
       final rawTitle = (job.videoTitle ?? '').trim();
@@ -481,7 +488,10 @@ class _ReadyCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-          thumbnailWidget ?? Image.memory(thumbnailBytes!, fit: BoxFit.cover),
+          thumbnailWidget ??
+              (bytes == null
+                  ? const SizedBox.shrink()
+                  : Image.memory(bytes, fit: BoxFit.cover)),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             child: Column(
@@ -554,14 +564,16 @@ class _ReadyCard extends StatelessWidget {
             GestureDetector(
               onTap: onTapOpen,
               child: thumbnailWidget ??
-                  Image.memory(thumbnailBytes!, width: width, fit: BoxFit.cover,
+                  (bytes == null
+                      ? const SizedBox.shrink()
+                      : Image.memory(bytes, width: width, fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                             width: width, height: width,
                             color: AD.mediaPlaceholderBg,
                             alignment: Alignment.center,
                             child: PhosphorIcon(PhosphorIcons.imageBroken(PhosphorIconsStyle.bold),
                                 color: AD.mediaPlaceholderLabel, size: 28),
-                          )),
+                          ))),
             ),
             if (menu.isNotEmpty)
               Positioned(

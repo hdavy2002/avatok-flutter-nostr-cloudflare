@@ -927,8 +927,17 @@ class _AvaImageBubbleImageState extends State<_AvaImageBubbleImage> {
     return ageSec > _presignLifetime.inSeconds;
   }
 
+  /// [MEDIA-CARD-SAFE-1] At most ONE re-mint attempt per mount. Before this
+  /// guard, `_onLoadResult(false)` re-armed a fetch on every failed paint, so a
+  /// network drop had every Ava image bubble in the scrollback issuing its own
+  /// `GET /api/ai/jobs/:id` — 30+ concurrent 10s timeouts in a single second,
+  /// each one landing in Error Tracking as a `$exception` (owner report
+  /// 2026-08-17). A dead network is not fixed by asking again immediately.
+  bool _refetchAttempted = false;
+
   Future<void> _refetch() async {
-    if (_refetching || widget.jobId.isEmpty) return;
+    if (_refetching || _refetchAttempted || widget.jobId.isEmpty) return;
+    _refetchAttempted = true;
     _refetching = true;
     try {
       final job = await AiMediaJobRepository.I.fetch(widget.jobId);
