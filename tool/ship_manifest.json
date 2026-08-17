@@ -2130,5 +2130,24 @@
     "_verified_at": "worker/src/routes/messaging.ts threadClear; client caller added 2026-08-17"
    }
   ]
+ },
+ "CALL-STAGE0A-1": {
+  "description": "Stage 0A (server-only): ExecutionContext threaded into all 7 callSfu* handlers + guard(); the 12 awaited trackUser sends moved to ctx.waitUntil via an sfuTrack() wrapper, removing a queue round trip from the response path of join/publish/pull (latency introduced 2026-08-16 by TELEMETRY-AWAIT-1). The telemetry-only emailFor lookup moved OUT of guard() and INTO the deferred work, so no identity read (KV, or Clerk on a cold miss) sits in front of a media operation; emailFor also gains a bounded in-isolate memo (60s TTL, 500 entries). Deterministic PER-CALL sampling (FNV-1a over call_id) at rate 1.0 today, errors never sampled.",
+  "shipped": "pending",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "callSfuV1"
+  ],
+  "success": [
+   {
+    "event": "call_sfu_joined",
+    "property": "elapsed_ms",
+    "equals": "",
+    "min_events": 1,
+    "where": {},
+    "note": "Server-side elapsed_ms on call_sfu_joined/published/pulled must DROP versus the 2026-08-17 baseline (join 365-1041ms, publish 630-2318ms, pull 646-1284ms) while sfu_ms stays flat - that delta is exactly the telemetry+identity work removed from the response path. At rate 1.0 no event may go missing."
+   }
+  ]
  }
 }

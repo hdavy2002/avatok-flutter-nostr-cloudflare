@@ -65,6 +65,64 @@ import { mintIceServersWithStatus } from "./media";
 const APP = "avatok";
 
 /**
+ * [CALL-STAGE0A-1 2026-08-17] Telemetry must never sit on the media path.
+ *
+ * Every event in this module used to be `await`ed before the response returned
+ * — my own change on 2026-08-16, made because workerd was DROPPING unawaited
+ * queue sends ([TELEMETRY-AWAIT-1]). It fixed the drop and silently bought a
+ * queue round trip on the latency of every join / publish / pull, i.e. on the
+ * critical path of answering a call. `ctx.waitUntil` gives both: the send is
+ * guaranteed to complete, and the response does not wait for it.
+ *
+ * SAMPLING. `rate` is deterministic **per call**, never per event: a call is
+ * either fully recorded or fully absent, so a sampled timeline is never a
+ * timeline with holes in it. Errors are never sampled.
+ *
+ * The rate is 1.0 today — the mechanism ships now, the reduction happens when
+ * volume demands it, and the two are deliberately separate changes.
+ *
+ * NOTE for whoever lowers it: once successes are sampled, "the event is missing
+ * therefore the code never ran" stops being a valid inference — that inference
+ * caught three never-executing features this week. Add an unsampled
+ * feature-entry breadcrumb before turning this down.
+ */
+const SFU_SUCCESS_SAMPLE_RATE = 1.0;
+
+function sampledIn(callId: string, rate: number): boolean {
+  if (rate >= 1) return true;
+  if (rate <= 0) return false;
+  // FNV-1a over the call id — stable across isolates, colos and both legs of
+  // the same call, so caller and callee are sampled together or not at all.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < callId.length; i++) {
+    h ^= callId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return (h % 10000) / 10000 < rate;
+}
+
+/** Sampling wrapper around `trackUser`. Errors always pass. */
+async function sfuTrack(
+  env: Env,
+  uid: string,
+  event: string,
+  app: string,
+  props: Record<string, unknown> = {},
+): Promise<void> {
+  const isError = event.endsWith("_error") || event.endsWith("_blocked");
+  const callId = typeof props.call_id === "string" ? props.call_id : "";
+  if (!isError && callId && !sampledIn(callId, SFU_SUCCESS_SAMPLE_RATE)) return;
+  // [CALL-STAGE0A-2 2026-08-17] The email lookup lives HERE, inside the work
+  // `ctx.waitUntil` owns — not in `guard()`. It exists only to enrich
+  // telemetry, so the media path must never wait on it. The in-isolate memo in
+  // lib/identity.ts only accelerates warm hits; a cold hit is a KV read and can
+  // fall through to Clerk, which is precisely the tail latency that must not
+  // sit in front of join/publish/pull.
+  const email = await emailFor(env, uid).catch(() => null);
+  await trackUser(env, uid, email, event, app, props);
+}
+
+/**
  * ICE credential lifetime. 6h matches the group path deliberately: a 1:1 call
  * that outlives its TURN credentials would fail its next reconnect for a reason
  * with no relationship to the network, and 6h is far past any real call.
@@ -125,17 +183,16 @@ async function ownsSession(env: Env, room: string, uid: string, sessionId: strin
  * an event without it cannot be pulled back for a named tester later, and a call
  * bug is usually a conversation between two people — you need both sides.
  */
-type Guard = { uid: string; email: string | null; video: boolean };
+type Guard = { uid: string; video: boolean };
 
-async function guard(req: Request, env: Env): Promise<Guard | Response> {
+async function guard(req: Request, env: Env, ctx: ExecutionContext): Promise<Guard | Response> {
   const cfg = await readConfig(env);
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: (u as { error: string }).error }, (u as { status: number }).status);
   const uid = (u as { uid: string }).uid;
-  const email = await emailFor(env, uid).catch(() => null);
 
   if (!cfg.callSfuV1) {
-    await trackUser(env, uid, email, "call_sfu_blocked", APP, { reason: "flag_off" });
+    ctx.waitUntil(sfuTrack(env, uid, "call_sfu_blocked", APP, { reason: "flag_off" }));
     return json({ error: "sfu_unavailable", reason: "flag_off" }, 503);
   }
   if (!sfuConfigured(env)) {
@@ -143,10 +200,10 @@ async function guard(req: Request, env: Env): Promise<Guard | Response> {
     // misconfigured environment and a working one would otherwise be
     // indistinguishable from the client, which is precisely how the TURN
     // "relay_degraded" blind spot happened on the P2P path.
-    await trackUser(env, uid, email, "call_sfu_blocked", APP, { reason: "unconfigured" });
+    ctx.waitUntil(sfuTrack(env, uid, "call_sfu_blocked", APP, { reason: "unconfigured" }));
     return json({ error: "sfu_unavailable", reason: "unconfigured" }, 503);
   }
-  return { uid, email, video: !cfg.callSfuAudioOnly };
+  return { uid, video: !cfg.callSfuAudioOnly };
 }
 
 /**
@@ -162,8 +219,8 @@ async function guard(req: Request, env: Env): Promise<Guard | Response> {
  * the floor by `ice_cache.dart`, so a TURN outage looked identical to a healthy
  * deployment. Not repeating that here.
  */
-export async function callSfuJoin(req: Request, env: Env, room: string): Promise<Response> {
-  const g = await guard(req, env);
+export async function callSfuJoin(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
   const startedAt = Date.now();
 
@@ -180,9 +237,9 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
   const sfuMs = Date.now() - sfuStart;
   const sessionId = typeof s.data.sessionId === "string" ? s.data.sessionId : "";
   if (!s.ok || !sessionId) {
-    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "session_new", status: s.status,
-    });
+    }));
     return json({ error: "sfu_session_failed", status: s.status }, 502);
   }
 
@@ -196,13 +253,13 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
     body: JSON.stringify({ callId: room, uid: g.uid, sessionId }),
   });
   if (!seatRes.ok) {
-    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "seat_register", status: seatRes.status,
-    });
+    }));
     return json({ error: "sfu_seat_failed", status: seatRes.status }, seatRes.status === 403 ? 403 : 502);
   }
 
-  await trackUser(env, g.uid, g.email, "call_sfu_joined", APP, {
+  ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_joined", APP, {
     call_id: room,
     session_id: sessionId,
     video_allowed: g.video,
@@ -214,7 +271,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
     // difference to elapsed_ms is guard overhead (auth + email + config).
     sfu_ms: sfuMs,
     seat_ms: Date.now() - seatStart,
-  });
+  }));
 
   return json({
     ok: true,
@@ -236,9 +293,9 @@ export async function callSfuJoin(req: Request, env: Env, room: string): Promise
  * client, so a malformed or hostile body cannot turn a publish into a pull of
  * somebody else's session. Same shape as the group path.
  */
-export async function callSfuPublish(req: Request, env: Env, room: string): Promise<Response> {
+export async function callSfuPublish(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
   const startedAt = Date.now(); // [CALL-SFU-LAT-1]
-  const g = await guard(req, env);
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
 
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -276,9 +333,9 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
   });
   const sfuMs = Date.now() - sfuStart;
   if (!r.ok) {
-    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "publish", status: r.status,
-    });
+    }));
     return json({ error: "publish_failed", status: r.status }, 502);
   }
 
@@ -304,11 +361,11 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
     body: JSON.stringify({ callId: room, uid: g.uid, sessionId, ...names }),
   }).catch(() => undefined);
 
-  await trackUser(env, g.uid, g.email, "call_sfu_published", APP, {
+  ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_published", APP, {
     call_id: room, session_id: sessionId, track_count: tracks.length,
     has_video: Boolean(names.videoTrack),
     elapsed_ms: Date.now() - startedAt, sfu_ms: sfuMs, // [CALL-SFU-LAT-1]
-  });
+  }));
 
   return json({ ok: true, answer: r.data.sessionDescription, tracks: r.data.tracks });
 }
@@ -321,8 +378,8 @@ export async function callSfuPublish(req: Request, env: Env, room: string): Prom
  * retries. Returning 404 here would be indistinguishable from a real failure and
  * would push callers into an unnecessary fallback to P2P on every single call.
  */
-export async function callSfuPeer(req: Request, env: Env, room: string): Promise<Response> {
-  const g = await guard(req, env);
+export async function callSfuPeer(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
   const r = await roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
   const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
@@ -330,8 +387,8 @@ export async function callSfuPeer(req: Request, env: Env, room: string): Promise
 }
 
 /** POST /api/callsfu/:room/heartbeat — renew the server-owned SFU lease. */
-export async function callSfuHeartbeat(req: Request, env: Env, room: string): Promise<Response> {
-  const g = await guard(req, env);
+export async function callSfuHeartbeat(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
@@ -355,9 +412,9 @@ export async function callSfuHeartbeat(req: Request, env: Env, room: string): Pr
  * pull any other user's audio by guessing one — the single most dangerous thing
  * this module could get wrong.
  */
-export async function callSfuPull(req: Request, env: Env, room: string): Promise<Response> {
+export async function callSfuPull(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
   const startedAt = Date.now(); // [CALL-SFU-LAT-1]
-  const g = await guard(req, env);
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
 
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -389,16 +446,16 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
     body: JSON.stringify({ tracks: [{ location: "remote", sessionId: seat.session_id, trackName }] }),
   });
   if (!r.ok) {
-    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "pull", status: r.status, kind,
-    });
+    }));
     return json({ error: "pull_failed", status: r.status }, 502);
   }
 
-  await trackUser(env, g.uid, g.email, "call_sfu_pulled", APP, {
+  ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_pulled", APP, {
     call_id: room, session_id: sessionId, kind,
     elapsed_ms: Date.now() - startedAt, sfu_ms: Date.now() - sfuStart, // [CALL-SFU-LAT-1]
-  });
+  }));
 
   return json({
     ok: true,
@@ -409,8 +466,8 @@ export async function callSfuPull(req: Request, env: Env, room: string): Promise
 }
 
 /** PUT /api/callsfu/:room/renegotiate — deliver the client's answer to a pull offer. */
-export async function callSfuRenegotiate(req: Request, env: Env, room: string): Promise<Response> {
-  const g = await guard(req, env);
+export async function callSfuRenegotiate(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
 
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -428,14 +485,14 @@ export async function callSfuRenegotiate(req: Request, env: Env, room: string): 
     body: JSON.stringify({ sessionDescription: { type: "answer", sdp: answerSdp } }),
   });
   if (!r.ok) {
-    await trackUser(env, g.uid, g.email, "call_sfu_error", APP, {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "renegotiate", status: r.status,
-    });
+    }));
     return json({ error: "renegotiate_failed", status: r.status }, 502);
   }
-  await trackUser(env, g.uid, g.email, "call_sfu_renegotiated", APP, {
+  ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_renegotiated", APP, {
     call_id: room, session_id: sessionId, sfu_ms: Date.now() - sfuStart, // [CALL-SFU-LAT-1]
-  });
+  }));
   return json({ ok: true });
 }
 
@@ -447,8 +504,8 @@ export async function callSfuRenegotiate(req: Request, env: Env, room: string): 
  * anywhere — the client thinks it pulled successfully and the server thinks it
  * answered honestly. Best-effort on both, and never fails the call teardown.
  */
-export async function callSfuClose(req: Request, env: Env, room: string): Promise<Response> {
-  const g = await guard(req, env);
+export async function callSfuClose(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
+  const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
 
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -479,6 +536,6 @@ export async function callSfuClose(req: Request, env: Env, room: string): Promis
     body: JSON.stringify({ uid: g.uid }),
   }).catch(() => undefined);
 
-  await trackUser(env, g.uid, g.email, "call_sfu_closed", APP, { call_id: room, session_id: sessionId, mid_count: mids.length });
+  ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_closed", APP, { call_id: room, session_id: sessionId, mid_count: mids.length }));
   return json({ ok: true });
 }

@@ -68,16 +68,57 @@ export async function primaryVerifiedEmailFor(env: Env, uid: string): Promise<st
  * failed, or the user has no email). A cached empty string means "known absent"
  * and short-circuits repeat Clerk calls.
  */
+/**
+ * [CALL-STAGE0A-1 2026-08-17] In-ISOLATE memo in front of the KV cache.
+ *
+ * Every call-media request (`/callsfu/{join,publish,peer,pull,renegotiate,
+ * heartbeat,close}`) resolves the caller's email purely to enrich telemetry.
+ * The KV cache below already prevents a Clerk round trip, but it is still a KV
+ * READ on the critical path of every media operation — roughly four per call
+ * leg, i.e. ~8M reads/min at the 1M-calls/min target, to decorate an analytics
+ * event.
+ *
+ * Bounded on purpose: a Worker isolate is long-lived and shared across many
+ * users, so an unbounded map is a slow memory leak. `MEMO_MAX` caps it and the
+ * oldest insertion is evicted first (Map preserves insertion order). The TTL is
+ * deliberately much shorter than the KV TTL — this is a latency cache, not a
+ * source of truth, and an email that changes should not be pinned for long.
+ *
+ * `null` (known-absent) is memoised too, since that is exactly the repeat
+ * lookup worth short-circuiting.
+ */
+const MEMO_TTL_MS = 60_000;
+const MEMO_MAX = 500;
+const emailMemo = new Map<string, { value: string | null; at: number }>();
+
 export async function emailFor(env: Env, uid: string): Promise<string | null> {
   if (!uid) return null;
+  const now = Date.now();
+  const memo = emailMemo.get(uid);
+  if (memo && now - memo.at < MEMO_TTL_MS) return memo.value;
+  if (memo) emailMemo.delete(uid); // expired — drop before re-inserting
+
   const key = CACHE_PREFIX + uid;
   try {
     const cached = await env.TOKENS.get(key);
-    if (cached !== null) return cached === "" ? null : cached;
+    if (cached !== null) {
+      const value = cached === "" ? null : cached;
+      rememberEmail(uid, value, now);
+      return value;
+    }
   } catch { /* fall through to a live lookup */ }
   const email = await clerkEmail(env, uid);
   try { await env.TOKENS.put(key, email ?? "", { expirationTtl: TTL_SECONDS }); } catch { /* best-effort */ }
+  rememberEmail(uid, email ?? null, now);
   return email;
+}
+
+function rememberEmail(uid: string, value: string | null, at: number): void {
+  if (emailMemo.size >= MEMO_MAX) {
+    const oldest = emailMemo.keys().next();
+    if (!oldest.done) emailMemo.delete(oldest.value);
+  }
+  emailMemo.set(uid, { value, at });
 }
 
 /**

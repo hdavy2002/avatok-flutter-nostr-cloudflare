@@ -490,13 +490,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     const cs = p.match(/^\/api\/callsfu\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|peer|pull|renegotiate|heartbeat|close)$/);
     if (cs) {
       const room = cs[1];
-      if (cs[2] === "join" && req.method === "POST") return await callSfuJoin(req, env, room);
-      if (cs[2] === "publish" && req.method === "POST") return await callSfuPublish(req, env, room);
-      if (cs[2] === "peer" && req.method === "GET") return await callSfuPeer(req, env, room);
-      if (cs[2] === "pull" && req.method === "POST") return await callSfuPull(req, env, room);
-      if (cs[2] === "renegotiate" && req.method === "PUT") return await callSfuRenegotiate(req, env, room);
-      if (cs[2] === "heartbeat" && req.method === "POST") return await callSfuHeartbeat(req, env, room);
-      if (cs[2] === "close" && req.method === "POST") return await callSfuClose(req, env, room);
+      if (cs[2] === "join" && req.method === "POST") return await callSfuJoin(req, env, room, ctx);
+      if (cs[2] === "publish" && req.method === "POST") return await callSfuPublish(req, env, room, ctx);
+      if (cs[2] === "peer" && req.method === "GET") return await callSfuPeer(req, env, room, ctx);
+      if (cs[2] === "pull" && req.method === "POST") return await callSfuPull(req, env, room, ctx);
+      if (cs[2] === "renegotiate" && req.method === "PUT") return await callSfuRenegotiate(req, env, room, ctx);
+      if (cs[2] === "heartbeat" && req.method === "POST") return await callSfuHeartbeat(req, env, room, ctx);
+      if (cs[2] === "close" && req.method === "POST") return await callSfuClose(req, env, room, ctx);
     }
 
     // [CALL-RTK-2 2026-08-08] Cloudflare RealtimeKit media admission
