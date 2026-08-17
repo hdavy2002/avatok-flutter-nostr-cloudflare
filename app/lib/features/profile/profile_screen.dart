@@ -234,10 +234,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile saved')));
     }
-    // Background directory publish — fire-and-forget, retried on the next save.
+    // Background directory publish. STILL fire-and-forget for LATENCY (owner report
+    // 2026-06-27 "saving takes forever" — server vetting runs AI name plausibility
+    // + Rekognition and can take most of the 30s timeout, so Save must not block on
+    // it), but the RESULT is no longer discarded.
+    //
+    // [PROFILE-VET-SILENT-1] (2026-08-17) Until now this call was `unawaited(...)`
+    // with the return value thrown away, so a server REJECTION was invisible: the
+    // user had already been told "Profile saved", the local store already held the
+    // new value, and nothing ever corrected either. Owner hit exactly this — he
+    // set an implausible first name, saw "Profile saved" every time, and reasonably
+    // concluded the AI name gate had stopped working. It had not: the server
+    // rejected each attempt with a real verdict ("This name sounds like it might be
+    // a place or a fictional character…"), and the app swallowed it. The gate was
+    // sound; only the feedback was missing. profile_setup_screen.dart has always
+    // awaited this result and shown the error — the edit screen was the odd one out.
+    //
+    // So: keep the optimistic snackbar, then correct the record when the verdict
+    // arrives — say plainly that the public profile did NOT take the change.
     if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
-      unawaited(Directory.registerProfile(uid: id.uid, name: fullName, firstName: first, lastName: last,
-          email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim(), gender: _gender));
+      unawaited(() async {
+        final r = await Directory.registerProfile(
+            uid: id!.uid, name: fullName, firstName: first, lastName: last,
+            email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue,
+            bio: _bio.text.trim(), gender: _gender);
+        if (r.ok) return;
+        // A rejection the USER can act on (implausible_name / profile_vet_rejected /
+        // profile_incomplete) carries a human message from the server. Anything else
+        // — offline, 5xx, auth — is not the user's fault and must stay silent, or a
+        // flaky network turns into an accusation about their name.
+        final actionable = r.status == 400 &&
+            (r.message != null && r.message!.trim().isNotEmpty);
+        Analytics.capture('profile_publish_verdict', {
+          'ok': false,
+          'status': r.status,
+          'error': r.error ?? '',
+          'field': r.field ?? '',
+          'actionable': actionable,
+        });
+        if (!actionable || !mounted) return;
+        // NOT rolled back locally. The correct previous value is the one the SERVER
+        // still holds, and this screen does not know it — inventing a rollback from
+        // the local store would just overwrite one wrong value with another. Show
+        // the truth instead and let the user retype: `_listed = false` flips the
+        // screen out of the "you're in the directory" state, so the UI stops
+        // claiming a publish that did not happen.
+        setState(() { _listed = false; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text("Not saved to your public profile — ${r.message!}"),
+        ));
+      }());
     }
   }
 
