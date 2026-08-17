@@ -159,9 +159,16 @@ String _friendlyError(AiMediaJob job) {
   final noun = job.kind.displayNoun;
   return switch (job.errorCode) {
     'provider_timeout' => "This took too long and didn't finish.",
-    'provider_submission_stalled' => 'The video request got stuck before the provider accepted it. Please retry.',
-    'provider_auth' => 'The video service is not configured correctly yet.',
-    'provider_capacity' => 'The video service is busy or out of capacity. Please try again shortly.',
+    // Media-neutral, same reason as provider_invalid_request below: this card
+    // renders image, video AND music jobs, so "the video service" was wrong
+    // copy on every failed song and image ([VIDEO-AUDIT-1]).
+    'provider_submission_stalled' =>
+      'Your $noun request got stuck before the AI service accepted it. Please retry.',
+    'provider_auth' => 'The AI service is not configured correctly yet.',
+    'provider_capacity' => 'The AI service is busy or out of capacity. Please try again shortly.',
+    // The artifact was made but our own handoff broke — truthful and retryable.
+    'pipeline_state_error' || 'pipeline_queue_error' =>
+      "Your $noun was started but couldn't be tracked. Please try again.",
     // Media-neutral: this card renders image, video AND music jobs — a failed
     // song was showing "video request" copy (owner report 2026-08-16).
     'provider_invalid_request' => "The AI model couldn't accept that request. Please try again.",

@@ -240,6 +240,21 @@ export const VENICE_VIDEO_MAX_SECONDS = 15;
 // text-to-video and image-to-video routes.
 export const VENICE_VIDEO_DEFAULT_RESOLUTION = "1080p";
 export type VeniceVideoResolution = "1080p" | "1440p" | "2160p";
+// [VIDEO-AUDIT-1 2026-08-17] The provider's own validation error is the source
+// of truth for this list. A live production 400 on 2026-08-16 read:
+//   resolution: "Invalid enum value. Expected '1080p' | '1440p' | '2160p',
+//                received '720p'"
+// A `VeniceVideoResolution` type annotation is erased at runtime, so a value
+// arriving from JSON (the video interview's parsed context), a stale caller, or
+// a future default can still reach Venice unchecked — which is exactly how
+// '720p' got there and dead-ended a real user's video. Normalize at the wire.
+export const VENICE_VIDEO_RESOLUTIONS: readonly VeniceVideoResolution[] = ["1080p", "1440p", "2160p"];
+export function normalizeVideoResolution(value: unknown): VeniceVideoResolution {
+  const v = String(value ?? "").trim().toLowerCase();
+  return (VENICE_VIDEO_RESOLUTIONS as readonly string[]).includes(v)
+    ? (v as VeniceVideoResolution)
+    : VENICE_VIDEO_DEFAULT_RESOLUTION;
+}
 // The product accepts requests from 8–15 seconds. Venice's LTX 2.3 queue only
 // accepts even duration tiers, so normalize a requested whole second to the
 // closest supported provider tier before creating the durable job.
@@ -261,6 +276,32 @@ export function nearestVideoDuration(seconds: number | undefined): string {
 //   - `aspect_ratio` is REQUIRED: '16:9' | '9:16'. Default '9:16' (phones).
 //   - The response field is `queue_id`, not `id`.
 export const VENICE_VIDEO_DEFAULT_ASPECT = "9:16";
+export const VENICE_VIDEO_ASPECTS: readonly string[] = ["9:16", "16:9"];
+export function normalizeVideoAspect(value: unknown): "9:16" | "16:9" {
+  const v = String(value ?? "").trim();
+  return VENICE_VIDEO_ASPECTS.includes(v) ? (v as "9:16" | "16:9") : VENICE_VIDEO_DEFAULT_ASPECT;
+}
+// [VIDEO-AUDIT-1] Venice publishes no prompt ceiling for the LTX video routes,
+// and the music lane taught us what an undocumented ceiling costs: three live
+// 400s in front of real users. craftVideoPrompt (lib/media_prompt.ts) only
+// ASKS the crafting model for "under 90 words" — that is a request, not a
+// guarantee, and when crafting fails soft the caller's raw ask (accepted up to
+// 2000 chars) goes to the provider verbatim. Cap defensively, generously above
+// any prompt this pipeline legitimately produces (~90 words ≈ 600 chars).
+export const VENICE_VIDEO_PROMPT_MAX_CHARS = 1500;
+
+/** Trim a video prompt to `maxChars` on a sentence boundary where possible,
+ *  never mid-word. A shortened prompt still makes a video; an over-long one
+ *  risks a provider rejection the user sees as a red card. */
+export function capVideoPrompt(prompt: string, maxChars = VENICE_VIDEO_PROMPT_MAX_CHARS): string {
+  const raw = String(prompt ?? "").replace(/\s+/g, " ").trim();
+  if (raw.length <= maxChars) return raw;
+  const head = raw.slice(0, maxChars);
+  const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "));
+  if (sentence > maxChars * 0.5) return head.slice(0, sentence + 1).trim();
+  const word = head.lastIndexOf(" ");
+  return (word > maxChars * 0.5 ? head.slice(0, word) : head).trim();
+}
 
 export interface VeniceVideoOptions {
   duration?: string;
@@ -284,9 +325,15 @@ export async function veniceQueueVideo(
     duration: opts.duration
       ? nearestVideoDuration(requestedDurationSeconds)
       : VENICE_VIDEO_DEFAULT_DURATION,
-    resolution: opts.resolution || VENICE_VIDEO_DEFAULT_RESOLUTION,
-    aspect_ratio: opts.aspectRatio || VENICE_VIDEO_DEFAULT_ASPECT, // REQUIRED — see header
+    // [VIDEO-AUDIT-1] Normalized, not merely defaulted: an out-of-enum value
+    // (live: '720p') is a guaranteed provider 400, and the user pays for that
+    // with a failed video rather than a slightly different resolution.
+    resolution: normalizeVideoResolution(opts.resolution),
+    aspect_ratio: normalizeVideoAspect(opts.aspectRatio), // REQUIRED — see header
   };
+  if (typeof body.prompt === "string" && body.prompt.length > VENICE_VIDEO_PROMPT_MAX_CHARS) {
+    body.prompt = capVideoPrompt(body.prompt, VENICE_VIDEO_PROMPT_MAX_CHARS);
+  }
   if (opts.negativePrompt) body.negative_prompt = opts.negativePrompt;
   if (opts.imageUrl) body.image_url = opts.imageUrl;
   const j = await venicePost(env, "/video/queue", body, 30000);

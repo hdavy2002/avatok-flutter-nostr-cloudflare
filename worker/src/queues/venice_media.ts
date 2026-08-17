@@ -190,9 +190,15 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
   });
   if (!reservation.ok) {
     await finishSongCover(env, job.job_id, null).catch(() => {});
-    void track(env, job.owner_uid, "venice_song_cover_failed", "avaai", {
-      job_id: job.job_id, reason: reservation.error || "reserve_failed",
-    });
+    // [VIDEO-AUDIT-1] AWAITED, not `void`. workerd drops an unawaited fetch on
+    // an early-return path, so this event never reached PostHog — which is why
+    // a production video sitting at cover_status='failed' had NO evidence of
+    // why anywhere. For video that failure is user-visible (the share page
+    // 404s without a thumbnail), so the reason must survive the return.
+    await track(env, job.owner_uid, "venice_media_cover_failed", "avaai", {
+      job_id: job.job_id, kind: job.kind, stage: "reserve",
+      reason: reservation.error || "reserve_failed",
+    }).catch(() => {});
     return true;
   }
 
@@ -240,19 +246,27 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
       meta: { job_id: job.job_id, media_job_kind: job.kind },
       client_id: `venice-cover:${job.job_id}`,
     }).catch(() => {});
-    void track(env, job.owner_uid, job.kind === "venice_video_generate" ? "venice_video_thumbnail_completed" : "venice_song_cover_completed", "avaai", {
+    // [VIDEO-AUDIT-1] Awaited for the same reason as the failure paths — the
+    // success event is the only proof a share card can be built at all.
+    await track(env, job.owner_uid, job.kind === "venice_video_generate" ? "venice_video_thumbnail_completed" : "venice_song_cover_completed", "avaai", {
       job_id: job.job_id, cover_media_id: stored.id, charged_tokens: settled.charged_tokens,
-    });
+    }).catch(() => {});
     return true;
   } catch (e) {
     await releaseAiJob(env, reservation, {
       uid: job.owner_uid, opId, capability, reason: "song_cover_failed",
     }).catch(() => {});
     await finishSongCover(env, job.job_id, null).catch(() => {});
-    void trackException(env, e, {
+    // [VIDEO-AUDIT-1] The exception alone was not enough: it carried no reason
+    // field and, being `void`ed on a return path, was dropped by workerd too.
+    await track(env, job.owner_uid, "venice_media_cover_failed", "avaai", {
+      job_id: job.job_id, kind: job.kind, stage: "generate",
+      reason: String((e as any)?.message ?? e ?? "unknown").slice(0, 200),
+    }).catch(() => {});
+    await trackException(env, e, {
       uid: job.owner_uid, route: "queues.venice_media.generateSongCover", handled: true,
-      extra: { job_id: job.job_id },
-    });
+      extra: { job_id: job.job_id, kind: job.kind },
+    }).catch(() => {});
     return true;
   }
 }

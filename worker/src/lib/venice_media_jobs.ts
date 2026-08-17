@@ -52,7 +52,14 @@ export interface VeniceMediaJobRecord {
   is_private: boolean;
   tier: "free" | "paid";
   has_source_image: boolean;
-  music_mode: "vocal" | "instrumental" | null;
+  // [SONG-QUICK-1] Third mode, 'engine_written'. STORAGE DECISION: the column is
+  // a plain `TEXT` with NO CHECK constraint (migrations/2026-08-15-venice-music-
+  // route-guard.sql is a bare `ADD COLUMN music_mode TEXT`), so the new value is
+  // storable as-is — no migration, and the 27-column insert contract asserted by
+  // test/venice_song_card_contract.test.ts is untouched. It is stored as its own
+  // value rather than mapped onto 'vocal' so the recovery watchdog, telemetry and
+  // any later audit can tell an approved-lyrics song from an engine-written one.
+  music_mode: "vocal" | "instrumental" | "engine_written" | null;
   duration_seconds: number | null;
   label: string | null;
   capability: string;
@@ -86,7 +93,8 @@ function rowToRecord(r: any): VeniceMediaJobRecord {
     is_private: Number(r.is_private) === 1,
     tier: r.tier === "paid" ? "paid" : "free",
     has_source_image: Number(r.has_source_image) === 1,
-    music_mode: r.music_mode === "vocal" || r.music_mode === "instrumental" ? r.music_mode : null,
+    music_mode: r.music_mode === "vocal" || r.music_mode === "instrumental" || r.music_mode === "engine_written"
+      ? r.music_mode : null,
     duration_seconds: r.duration_seconds != null ? Number(r.duration_seconds) : null,
     label: r.label ?? null,
     capability: r.capability, model: r.model,
@@ -167,23 +175,53 @@ export async function listVeniceMediaJobsForRecovery(
   }
 }
 
+/** [VIDEO-AUDIT-1] How long after completion a FAILED video thumbnail may still
+ * be re-attempted. Each attempt moves updated_at, so a job naturally ages out
+ * of this window after one or two tries — a bounded retry, not a loop (every
+ * attempt reserves a real Token). */
+const VIDEO_COVER_RETRY_WINDOW_MS = 6 * 60_000;
+
 /** Completed video jobs whose share thumbnail sidecar never reached a terminal
  * state. This is separate from provider polling recovery: the video bytes are
- * already safe, so the watchdog only repairs the share-card sidecar. */
+ * already safe, so the watchdog only repairs the share-card sidecar.
+ *
+ * [VIDEO-AUDIT-1] 'failed' is included, briefly. Without it, one transient
+ * thumbnail failure (a Token reserve blip, a moderation hiccup, an image-model
+ * 500) permanently bricked SHARING that video: aiMediaJobVideoShare returns
+ * 409 video_not_ready forever and /s/video/<token> 404s, because both require
+ * cover_media_id. Production had exactly such a row. */
 export async function listVeniceVideoThumbnailJobsForRecovery(
   env: Env, staleBeforeMs: number, limit = 100,
 ): Promise<VeniceMediaJobRecord[]> {
   try {
     const rows = await env.DB_MEDIA.prepare(
       `SELECT * FROM venice_media_jobs
-       WHERE kind='venice_video_generate' AND status='succeeded'
-         AND cover_status IN ('pending','generating') AND updated_at<?1
+       WHERE kind='venice_video_generate' AND status='succeeded' AND updated_at<?1
+         AND (cover_status IN ('pending','generating')
+              OR (cover_status='failed' AND completed_at IS NOT NULL
+                  AND updated_at <= completed_at + ?3))
        ORDER BY updated_at LIMIT ?2`,
-    ).bind(staleBeforeMs, Math.max(1, Math.min(100, limit))).all<any>();
+    ).bind(staleBeforeMs, Math.max(1, Math.min(100, limit)), VIDEO_COVER_RETRY_WINDOW_MS).all<any>();
     return (rows.results ?? []).map(rowToRecord);
   } catch (e) {
     void trackException(env, e, { route: "venice_media_jobs.listVeniceVideoThumbnailJobsForRecovery", handled: true });
     return [];
+  }
+}
+
+/** [VIDEO-AUDIT-1] Move a failed video thumbnail back to 'pending' so the queue
+ * consumer's claimSongCover() can pick it up again — without this the requeue
+ * is a no-op, because claimSongCover only accepts 'pending' (or a stale
+ * 'generating'). Returns false when another sweep already reopened it. */
+export async function reopenVideoCover(env: Env, jobId: string): Promise<boolean> {
+  try {
+    const res = await env.DB_MEDIA.prepare(
+      "UPDATE venice_media_jobs SET cover_status='pending', updated_at=?2 WHERE job_id=?1 AND kind='venice_video_generate' AND cover_status='failed'",
+    ).bind(jobId, now()).run();
+    return (res.meta?.changes ?? 0) > 0;
+  } catch (e) {
+    void trackException(env, e, { route: "venice_media_jobs.reopenVideoCover", handled: true, extra: { job_id: jobId } });
+    return false;
   }
 }
 
@@ -244,7 +282,7 @@ export interface CreateVeniceMediaJobInput {
   flatPriceTokens?: number | null;
   songTitle?: string | null;
   songDescription?: string | null;
-  musicMode?: "vocal" | "instrumental" | null;
+  musicMode?: "vocal" | "instrumental" | "engine_written" | null;
 }
 
 export type CreateVeniceMediaJobResult =

@@ -6,6 +6,7 @@ import {
   failVeniceMediaJob,
   listVeniceMediaJobsForRecovery,
   listVeniceVideoThumbnailJobsForRecovery,
+  reopenVideoCover,
 } from "../lib/venice_media_jobs";
 import { enqueueVeniceMediaPoll } from "./venice_media";
 import { track, trackException } from "../hooks";
@@ -168,9 +169,13 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
   const thumbnailJobs = await listVeniceVideoThumbnailJobsForRecovery(env, now - VENICE_STALE_MS, BATCH_LIMIT);
   for (const job of thumbnailJobs) {
     try {
+      // [VIDEO-AUDIT-1] A 'failed' cover must be reopened first: claimSongCover
+      // only accepts 'pending'/stale-'generating', so requeueing a failed row
+      // would silently do nothing. Bounded by the retry window in the query.
+      if (job.cover_status === "failed" && !(await reopenVideoCover(env, job.job_id))) continue;
       await env.Q_AI_MEDIA.send({ job_id: job.job_id, kind: job.kind });
       veniceRequeued++;
-      void track(env, job.owner_uid, "venice_video_thumbnail_watchdog_requeued", "avaai", { job_id: job.job_id, kind: job.kind });
+      void track(env, job.owner_uid, "venice_video_thumbnail_watchdog_requeued", "avaai", { job_id: job.job_id, kind: job.kind, cover_status: job.cover_status });
     } catch (e) {
       void trackException(env, e, { uid: job.owner_uid, route: "ai_media_recovery.video_thumbnail", handled: true, extra: { job_id: job.job_id } });
     }
