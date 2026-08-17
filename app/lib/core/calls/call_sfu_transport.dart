@@ -389,6 +389,41 @@ class CallSfuTransport {
   /// reconnect ladder owns recovery from there.
   bool _sessionPoisoned = false;
 
+  /// [CALL-VIDEO-FIX-7 2026-08-18] The mid the SDP actually assigned to the
+  /// transceiver whose sender owns [track] — the single source of truth for
+  /// every publish on this transport, initial and mid-call alike.
+  ///
+  /// Returns null rather than a guess. A wrong-but-plausible mid registers our
+  /// media against someone else's section, which is precisely the defect that
+  /// froze audio→video upgrades in production.
+  Future<String?> _midForSender(RTCPeerConnection pc, MediaStreamTrack track) async {
+    try {
+      final transceivers = await pc.getTransceivers();
+      for (final t in transceivers) {
+        if (t.sender.track?.id == track.id) {
+          final mid = t.mid;
+          return (mid.isEmpty) ? null : mid;
+        }
+      }
+    } catch (e) {
+      AvaLog.I.log('call', 'mid resolution threw: $e');
+    }
+    return null;
+  }
+
+  /// [CALL-VIDEO-FIX-6] Bounded, loggable reason for a negotiation abort. Never
+  /// carries provider text — only our own classification.
+  static String _abortDetail(Object e) {
+    if (e is TimeoutException) return 'negotiation_timeout';
+    if (e is StateError) {
+      final m = e.message;
+      if (m.contains('poisoned')) return 'session_poisoned';
+      if (m.contains('disposed')) return 'transport_disposed';
+      return 'negotiation_aborted';
+    }
+    return 'negotiation_error';
+  }
+
   /// Invalidate every outstanding token. Called from [dispose] so work still in
   /// flight can never write to a torn-down transport.
   void _cancelAllNegotiations() {
@@ -499,10 +534,17 @@ class CallSfuTransport {
           token: token,
         ),
       );
-    } on TimeoutException {
-      AvaLog.I.log('call', 'connectPublish timed out in the negotiation queue');
+    } catch (e) {
+      // [CALL-VIDEO-FIX-6 2026-08-18] `_serialize` aborts with TimeoutException
+      // (this op ran too long) OR StateError (the session was poisoned by an
+      // EARLIER timeout, or the transport was disposed while we were queued).
+      // Catching only TimeoutException let a poisoned-session StateError escape
+      // as an UNCAUGHT exception into the call UI. Every abort is normalised
+      // into a typed failure the session layer already knows how to fall back
+      // from.
+      AvaLog.I.log('call', 'connectPublish aborted: ${_abortDetail(e)}');
       await _closePc();
-      return CallSfuResult.failed(SfuFailure.unknown, detail: 'negotiation_timeout');
+      return CallSfuResult.failed(SfuFailure.unknown, detail: _abortDetail(e));
     }
   }
 
@@ -584,25 +626,28 @@ class CallSfuTransport {
 
       // Hand it over before any track exists, so the caller's onTrack is armed
       // before the pull below can deliver remote media.
-      // Track order defines the mids: audio first is mid '0', video is mid '1'.
-      // The conference controller relies on the same convention. It is an
-      // assumption about flutter_webrtc's addTrack ordering, not a guarantee
-      // from the spec — if remote video ever lands on the wrong renderer, look
-      // here first.
-      final tracks = <Map<String, dynamic>>[];
+      //
+      // [CALL-VIDEO-FIX-7 2026-08-18] Mids are RESOLVED, never assumed. This
+      // used to hard-code audio='0' and video='1' on the grounds that tracks
+      // are added in that order before the first offer — true today, but it is
+      // an assumption about flutter_webrtc's transceiver ordering, not a
+      // guarantee from the spec, and it is the same assumption that made the
+      // mid-call camera upgrade register video against the remote AUDIO
+      // section. Removing the last two literals removes the whole class.
       final audio = localStream.getAudioTracks();
       if (audio.isEmpty) {
         _peerPollAbort = true; // [CALL-DEADAIR-1] stop the overlapped poll
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'no_local_audio_track');
       }
-      await pc.addTrack(audio.first, localStream);
-      tracks.add({'mid': '0', 'kind': 'audio', 'trackName': _audioTrackName(join.sessionId)});
+      final audioTrack = audio.first;
+      await pc.addTrack(audioTrack, localStream);
 
+      MediaStreamTrack? videoTrackLocal;
       if (wantVideo) {
         final cam = localStream.getVideoTracks();
         if (cam.isNotEmpty) {
-          await pc.addTrack(cam.first, localStream);
-          tracks.add({'mid': '1', 'kind': 'video', 'trackName': _videoTrackName(join.sessionId)});
+          videoTrackLocal = cam.first;
+          await pc.addTrack(videoTrackLocal, localStream);
         }
       }
 
@@ -615,6 +660,29 @@ class CallSfuTransport {
         offer.type,
       );
       await pc.setLocalDescription(tunedOffer);
+      if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
+        return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_before_publish');
+      }
+      // [CALL-VIDEO-FIX-7] Mids exist only AFTER setLocalDescription — that is
+      // the moment the SDP assigns them — so this is the earliest honest place
+      // to read them. An unresolvable mid FAILS the publish rather than
+      // guessing a number that may belong to another media section.
+      final tracks = <Map<String, dynamic>>[];
+      final audioMid = await _midForSender(pc, audioTrack);
+      if (audioMid == null) {
+        _peerPollAbort = true;
+        return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'audio_mid_unresolved');
+      }
+      tracks.add({'mid': audioMid, 'kind': 'audio', 'trackName': _audioTrackName(join.sessionId)});
+      if (videoTrackLocal != null) {
+        final videoMid = await _midForSender(pc, videoTrackLocal);
+        if (videoMid == null) {
+          // Audio still publishes; only the camera is dropped from this offer.
+          AvaLog.I.log('call', 'initial video mid unresolved — publishing audio only');
+        } else {
+          tracks.add({'mid': videoMid, 'kind': 'video', 'trackName': _videoTrackName(join.sessionId)});
+        }
+      }
       if (enableRed) {
         onRedNegotiated?.call(
           audio_tuning.sdpHasActiveRed(tunedOffer.sdp),
@@ -667,10 +735,12 @@ class CallSfuTransport {
     }
     try {
       return await _serialize('connectPull', (t) => _connectPullImpl(video: video, peerWait: peerWait, token: t));
-    } on TimeoutException {
-      AvaLog.I.log('call', 'connectPull timed out in the negotiation queue');
+    } catch (e) {
+      // [CALL-VIDEO-FIX-6] Timeout AND poisoned/disposed both normalise to a
+      // typed failure; nothing escapes uncaught into the call UI.
+      AvaLog.I.log('call', 'connectPull aborted: ${_abortDetail(e)}');
       await _closePc();
-      return CallSfuResult.failed(SfuFailure.unknown, detail: 'negotiation_timeout');
+      return CallSfuResult.failed(SfuFailure.unknown, detail: _abortDetail(e));
     }
   }
 
@@ -757,6 +827,24 @@ class CallSfuTransport {
     _sessionId = null;
     _openMids.clear();
     _pulledAudioMids.clear(); // [CALL-SFU-DUPAUDIO-1] fresh PC, no stale sections
+    // [CALL-VIDEO-FIX-6 2026-08-18] Clear the poison — but ONLY here, and only
+    // at this exact point. `_sessionPoisoned` marks a session whose negotiation
+    // state nobody can describe; that is now moot because `dispose()` above has
+    // closed the peer connection and the Cloudflare session, and every token
+    // outstanding at that moment was invalidated by `_cancelAllNegotiations`.
+    // What follows is a VERIFIED fresh join against a new session id.
+    //
+    // Without this reset the transport would stay poisoned forever: `reconnect`
+    // reuses this same object and merely flips `_disposed` back to false, so a
+    // single timeout would have permanently bricked every later recovery on
+    // this call — the network-recovery path being exactly where timeouts are
+    // most likely.
+    //
+    // Late work from the OLD session cannot touch the replacement: its token is
+    // no longer in `_liveTokens` (so `_ownsNegotiation` is false for it), and
+    // every mutation site additionally checks `identical(pc, _pc)` against a
+    // peer connection that no longer exists.
+    _sessionPoisoned = false;
     return connect(
       localStream: localStream,
       fallbackIceServers: fallbackIceServers,
@@ -886,8 +974,10 @@ class CallSfuTransport {
   Future<bool> publishVideo(MediaStreamTrack videoTrack, MediaStream stream) async {
     try {
       return await _serialize('publishVideo', (t) => _publishVideoImpl(videoTrack, stream, t));
-    } on TimeoutException {
-      AvaLog.I.log('call', 'publishVideo timed out in the negotiation queue');
+    } catch (e) {
+      // [CALL-VIDEO-FIX-6] Timeout AND poisoned/disposed both land here; a bare
+      // `on TimeoutException` let a poisoned-session StateError escape uncaught.
+      AvaLog.I.log('call', 'publishVideo aborted: ${_abortDetail(e)}');
       return false;
     }
   }
@@ -937,18 +1027,9 @@ class CallSfuTransport {
       // SENDER holds `videoTrack` — that is unambiguously the video
       // m-section this offer just created, regardless of what mid libwebrtc
       // gave it.
-      String? resolvedMid;
-      try {
-        final transceivers = await pc.getTransceivers();
-        for (final t in transceivers) {
-          if (t.sender.track?.id == videoTrack.id) {
-            resolvedMid = t.mid;
-            break;
-          }
-        }
-      } catch (e) {
-        AvaLog.I.log('call', 'publishVideo mid resolution threw: $e');
-      }
+      // [CALL-VIDEO-FIX-7] Shared resolver — the initial publish uses the same
+      // one, so the two paths cannot drift apart again.
+      final String? resolvedMid = await _midForSender(pc, videoTrack);
       if (resolvedMid == null || resolvedMid.isEmpty) {
         // Never guess. Sending a wrong-but-plausible mid is exactly the bug
         // this replaces — abort the upgrade instead and let the caller
@@ -990,8 +1071,10 @@ class CallSfuTransport {
   Future<bool> pullPeerVideo() async {
     try {
       return await _serialize('pullPeerVideo', (t) => _doPull('video', t));
-    } on TimeoutException {
-      AvaLog.I.log('call', 'pullPeerVideo timed out in the negotiation queue');
+    } catch (e) {
+      // [CALL-VIDEO-FIX-6] Timeout AND poisoned/disposed both land here; a bare
+      // `on TimeoutException` let a poisoned-session StateError escape uncaught.
+      AvaLog.I.log('call', 'pullPeerVideo aborted: ${_abortDetail(e)}');
       return false;
     }
   }
@@ -1009,8 +1092,10 @@ class CallSfuTransport {
   Future<bool> pullPeerAudio() async {
     try {
       return await _serialize('pullPeerAudio', (t) => _doPull('audio', t));
-    } on TimeoutException {
-      AvaLog.I.log('call', 'pullPeerAudio timed out in the negotiation queue');
+    } catch (e) {
+      // [CALL-VIDEO-FIX-6] Timeout AND poisoned/disposed both land here; a bare
+      // `on TimeoutException` let a poisoned-session StateError escape uncaught.
+      AvaLog.I.log('call', 'pullPeerAudio aborted: ${_abortDetail(e)}');
       return false;
     }
   }
