@@ -1869,6 +1869,115 @@ class CallSession {
   /// until removal, which only removes one instance.
   bool _audibleGateArmed = false;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [CALL-AUDIBLE-2 2026-08-18] Real PLAYOUT evidence for the `_pc` path.
+  // ─────────────────────────────────────────────────────────────────────────
+  //
+  // `audioFlowing` (fed by `_pollFirstAudio`'s `bytesReceived` check) proves
+  // packets ARRIVED at the peer connection — not that the decoder emitted a
+  // single sample or that anything left the speaker; decoder + jitter-buffer
+  // delay come after bytes land. This probe polls the SAME `pc.getStats()`
+  // inbound-rtp AUDIO row for `totalSamplesReceived` (falling back to
+  // `jitterBufferEmittedCount` when the former is absent) — a counter that
+  // only increases once the jitter buffer has actually handed samples to the
+  // decoder/output path, which is the closest signal WebRTC exposes to "sound
+  // left the speaker". Two consecutive increasing samples (not one) is the
+  // bar, matching the review requirement — a single non-zero read can be a
+  // stale/cached stats snapshot.
+  //
+  // NEVER gated on `audioLevel`/any voice-activity measure — a silent caller
+  // must still reach [audibleReady]; a flat-zero level is legitimate silence,
+  // not "not audible".
+  Timer? _audiblePlayoutProbe;
+  static const Duration _kAudiblePlayoutProbeInterval = Duration(milliseconds: 200);
+  int? _lastPlayoutSamples;
+  int _audiblePlayoutAttempts = 0;
+
+  /// Tri-state: `null` = not yet determined (no inbound-rtp audio row seen
+  /// yet, or seen but no numeric counter read so far), `true` = this
+  /// platform/browser reports the counter, `false` = confirmed absent (an
+  /// audio row was read and neither `totalSamplesReceived` nor
+  /// `jitterBufferEmittedCount` was a number) — the only state that permits
+  /// [_onAudioFlowingForGate] to fall back to bytes evidence.
+  bool? _playoutCountersSupported;
+
+  /// Bound on how long the pc-path playout probe waits to even determine
+  /// [_playoutCountersSupported] before giving up and allowing the bytes
+  /// fallback anyway (`~3s` at the 200ms interval) — protects against a
+  /// `getStats()` shape this probe doesn't recognise at all (no inbound-rtp
+  /// audio row ever appears) leaving [audibleReady] stuck forever despite
+  /// bytes genuinely flowing.
+  static const int _kAudiblePlayoutMaxAttemptsBeforeFallback = 15;
+
+  void _startAudiblePlayoutProbe() {
+    if (_audiblePlayoutProbe != null) return;
+    _audiblePlayoutAttempts = 0;
+    _audiblePlayoutProbe = Timer.periodic(
+        _kAudiblePlayoutProbeInterval, (_) => _pollAudiblePlayout());
+    unawaited(_pollAudiblePlayout());
+  }
+
+  void _stopAudiblePlayoutProbe() {
+    _audiblePlayoutProbe?.cancel();
+    _audiblePlayoutProbe = null;
+  }
+
+  Future<void> _pollAudiblePlayout() async {
+    if (_ended || audibleReady.value) {
+      _stopAudiblePlayoutProbe();
+      return;
+    }
+    final pc = _pc;
+    if (pc == null) {
+      _stopAudiblePlayoutProbe();
+      return;
+    }
+    _audiblePlayoutAttempts++;
+    var sawAudioRow = false;
+    try {
+      final stats = await pc.getStats();
+      for (final s in stats) {
+        if (s.type != 'inbound-rtp') continue;
+        final v = s.values;
+        final kind = (v['kind'] ?? v['mediaType'])?.toString();
+        if (kind != 'audio') continue;
+        sawAudioRow = true;
+        final samplesRaw = v['totalSamplesReceived'] ?? v['jitterBufferEmittedCount'];
+        if (samplesRaw is num) {
+          _playoutCountersSupported = true;
+          final samples = samplesRaw.toInt();
+          final prev = _lastPlayoutSamples;
+          _lastPlayoutSamples = samples;
+          if (prev != null && samples > prev) {
+            _markAudibleReady(
+                viaTimeout: false, flagOff: false, evidence: 'playout');
+            return;
+          }
+        } else {
+          // An audio row exists but neither counter is present — this
+          // platform genuinely does not report playout counters.
+          _playoutCountersSupported ??= false;
+        }
+        break;
+      }
+    } catch (_) {
+      return; // a stats read can fail mid-renegotiation; the next tick retries
+    }
+    // Bytes are already flowing and this probe has confirmed (or, after a
+    // bound, given up trying to confirm) it cannot supply playout evidence —
+    // let the bytes-fallback path in `_onAudioFlowingForGate` proceed rather
+    // than leaving `audibleReady` stuck forever on a platform this probe
+    // doesn't understand.
+    if (audioFlowing.value &&
+        _playoutCountersSupported == null &&
+        (!sawAudioRow) &&
+        _audiblePlayoutAttempts >= _kAudiblePlayoutMaxAttemptsBeforeFallback) {
+      _playoutCountersSupported = false;
+      _markAudibleReady(
+          viaTimeout: false, flagOff: false, evidence: 'bytes_fallback');
+    }
+  }
+
   /// Call once, right after `_connected = true` (both sites: `onTrack`'s
   /// connected block and `_onRtkConnected`). Idempotent and inert once
   /// [audibleReady] has already flipped or the call has ended.
@@ -1876,39 +1985,67 @@ class CallSession {
     if (_ended) return;
     if (!RemoteConfig.callAudibleStateV1) {
       // Flag off: mirror `_connected` immediately. No new UI behaviour.
-      _markAudibleReady(viaTimeout: false, flagOff: true);
+      _markAudibleReady(viaTimeout: false, flagOff: true, evidence: 'flag_off');
       return;
     }
     if (audibleReady.value || _audibleGateArmed) return;
-    if (audioFlowing.value) {
-      // Bytes were already flowing by the time onTrack/RTK-connect fired
-      // (can happen on a healthy SFU pull) — no need to wait on the listener.
-      _markAudibleReady(viaTimeout: false, flagOff: false);
-      return;
-    }
     _audibleGateArmed = true;
     audioFlowing.addListener(_onAudioFlowingForGate);
     final noStatsPath = _rtkActive || _pc == null;
     if (noStatsPath) {
+      // RealtimeKit (and any future no-`_pc` path): there is no `getStats()`
+      // to poll for playout, so a real remote AUDIO track event
+      // (`audioTrackAdded` → `audioFlowing`, see [_onRtkEvent]) is the
+      // strongest evidence available, with a bounded timeout backstop.
+      if (audioFlowing.value) {
+        _markAudibleReady(
+            viaTimeout: false, flagOff: false, evidence: 'rtk_track');
+        return;
+      }
       _audibleSafetyTimer?.cancel();
       _audibleSafetyTimer = Timer(_kAudibleSafetyTimeout, () {
         if (_ended || audibleReady.value) return;
-        _markAudibleReady(viaTimeout: true, flagOff: false);
+        _markAudibleReady(viaTimeout: true, flagOff: false, evidence: 'timeout');
       });
+    } else {
+      // [CALL-AUDIBLE-2] SFU/P2P `_pc` path: playout evidence is the ground
+      // truth. Bytes (`audioFlowing`) is used only once the playout probe
+      // has confirmed its counters are absent on this platform — see
+      // `_onAudioFlowingForGate` and `_pollAudiblePlayout`.
+      _startAudiblePlayoutProbe();
+      if (audioFlowing.value && _playoutCountersSupported == false) {
+        _markAudibleReady(
+            viaTimeout: false, flagOff: false, evidence: 'bytes_fallback');
+      }
     }
   }
 
   void _onAudioFlowingForGate() {
-    if (audioFlowing.value) {
-      _markAudibleReady(viaTimeout: false, flagOff: false);
+    if (!audioFlowing.value) return;
+    final noStatsPath = _rtkActive || _pc == null;
+    if (noStatsPath) {
+      _markAudibleReady(viaTimeout: false, flagOff: false, evidence: 'rtk_track');
+      return;
+    }
+    // pc path: only accept bytes evidence once the playout probe has
+    // confirmed it cannot supply real playout counters — never as a
+    // shortcut past real evidence that is still in flight.
+    if (_playoutCountersSupported == false) {
+      _markAudibleReady(
+          viaTimeout: false, flagOff: false, evidence: 'bytes_fallback');
     }
   }
 
-  void _markAudibleReady({required bool viaTimeout, required bool flagOff}) {
+  void _markAudibleReady({
+    required bool viaTimeout,
+    required bool flagOff,
+    required String evidence, // 'playout' | 'bytes_fallback' | 'rtk_track' | 'timeout' | 'flag_off'
+  }) {
     if (audibleReady.value) return;
     audibleReady.value = true;
     _audibleSafetyTimer?.cancel();
     _audibleSafetyTimer = null;
+    _stopAudiblePlayoutProbe();
     if (_audibleGateArmed) {
       audioFlowing.removeListener(_onAudioFlowingForGate);
       _audibleGateArmed = false;
@@ -1926,6 +2063,10 @@ class CallSession {
                 : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none'))),
         'outgoing': config.outgoing,
         'video': config.video,
+        // [CALL-AUDIBLE-2] Which signal actually fired, so PostHog can prove
+        // the milestone is playout-backed rather than merely "an event
+        // arrived" (ship-gate rule 3).
+        'evidence': evidence,
       };
       Analytics.capture(viaTimeout ? 'call_audible_timeout' : 'call_audible_ready', props);
     }
@@ -6285,22 +6426,35 @@ class CallSession {
   void _onRtkEvent(RtcSessionEvent e) {
     if (_ended || !_rtkActive) return;
     switch (e) {
-      case RtcSessionEvent.trackAdded:
-        // Remote media is flowing. This is the closest analogue RealtimeKit
-        // has to `pc.onTrack`, and it is the signal we PREFER, because it
-        // carries the same meaning: the other side is actually publishing.
-        _onRtkConnected('remote_track');
+      case RtcSessionEvent.audioTrackAdded:
+        // Remote AUDIO media is flowing. This is the closest analogue
+        // RealtimeKit has to `pc.onTrack`, and it is the signal we PREFER,
+        // because it carries the same meaning: the other side is actually
+        // publishing audio.
+        _onRtkConnected('remote_track_audio');
         // [CALL-RTK-4] First audio, the cheapest honest way. The pc-stats probe
         // (`_startFirstAudioProbe`) cannot run here — it reads
         // `pc.getStats()` and there is no `_pc` on this path — and
         // realtimekit_core 0.1.6 exposes no byte counters, so `bytes_received`
         // stays at its -1 "unknown" sentinel rather than being invented. The
         // timestamp is real: it is the instant the SDK told us the remote's
-        // audio/video went live. Gated by the same flag as the pc probe so the
+        // audio went live. Gated by the same flag as the pc probe so the
         // event's population stays consistent across paths.
         if (RemoteConfig.callFirstAudioProbeV1 && !_firstAudioReported) {
           _reportFirstAudio(bytes: -1, outcome: 'audio');
         }
+        break;
+      case RtcSessionEvent.videoTrackAdded:
+        // [CALL-AUDIBLE-2 2026-08-18] A remote VIDEO track proves the other
+        // side is present/publishing (so `_onRtkConnected` still runs — that
+        // is the same "connected" meaning `remoteJoin` below carries), but it
+        // must NEVER satisfy the AUDIO milestone: no `_reportFirstAudio` call
+        // here. Previously this arm was merged with audioTrackAdded above
+        // (both fired the same generic `trackAdded`), so a video-only update
+        // could flip `audioFlowing`/`audibleReady` on evidence that never
+        // touched an audio decoder. RTK is disabled in production today, so
+        // this was latent, not an observed incident.
+        _onRtkConnected('remote_track_video');
         break;
       case RtcSessionEvent.remoteJoin:
         // Backstop for the case `trackAdded` cannot cover: RealtimeKit's
@@ -10116,6 +10270,8 @@ class CallSession {
     // not leak the listener or the 4s safety timer past teardown.
     _audibleSafetyTimer?.cancel();
     _audibleSafetyTimer = null;
+    // [CALL-AUDIBLE-2] Same for the pc-path playout probe.
+    _stopAudiblePlayoutProbe();
     if (_audibleGateArmed) {
       audioFlowing.removeListener(_onAudioFlowingForGate);
       _audibleGateArmed = false;

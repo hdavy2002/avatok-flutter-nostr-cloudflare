@@ -329,14 +329,25 @@ class _RtkParticipantsListener extends RtkParticipantsEventListener {
 
   @override
   void onAudioUpdate(RtkRemoteParticipant participant, bool isEnabled) {
-    _session._emitTrack(
-        isEnabled ? RtcSessionEvent.trackAdded : RtcSessionEvent.trackRemoved);
+    // [CALL-AUDIBLE-2] Audio-specific so a consumer using this as audible
+    // evidence can never be fed a video track instead (see onVideoUpdate).
+    _session._emitTrack(isEnabled
+        ? RtcSessionEvent.audioTrackAdded
+        : RtcSessionEvent.trackRemoved);
   }
 
   @override
   void onVideoUpdate(RtkRemoteParticipant participant, bool isEnabled) {
-    _session._emitTrack(
-        isEnabled ? RtcSessionEvent.trackAdded : RtcSessionEvent.trackRemoved);
+    // [CALL-AUDIBLE-2 2026-08-18] Previously emitted the SAME generic
+    // `trackAdded` value as onAudioUpdate above, so call_session.dart's
+    // `_onRtkEvent` could not tell "the remote camera turned on" from "the
+    // remote mic turned on" — a video-only update would call
+    // `_reportFirstAudio(outcome: 'audio')` and flip `audioFlowing`/
+    // `audibleReady` on evidence that never touched an audio decoder. RTK
+    // is disabled in production today, so this was latent, not observed.
+    _session._emitTrack(isEnabled
+        ? RtcSessionEvent.videoTrackAdded
+        : RtcSessionEvent.trackRemoved);
   }
 }
 

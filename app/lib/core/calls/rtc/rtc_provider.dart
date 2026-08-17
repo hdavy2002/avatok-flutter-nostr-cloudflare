@@ -63,8 +63,19 @@ enum RtcSessionEvent {
   /// A remote participant left the room.
   remoteLeave,
 
-  /// A remote track (audio or video) was added.
-  trackAdded,
+  /// A remote AUDIO track was added.
+  ///
+  /// [CALL-AUDIBLE-2 2026-08-18] Split out of a single `trackAdded` value
+  /// because a consumer using this signal as evidence that a call is
+  /// AUDIBLE must never accept a remote VIDEO track as proof of that —
+  /// see [RtcSessionEvent.videoTrackAdded]'s doc for the incident this
+  /// fixes. `trackRemoved` is left unsplit: nothing in this codebase
+  /// currently branches on it, so there is no risk of the same mixup.
+  audioTrackAdded,
+
+  /// A remote VIDEO track was added. Carries NO audio-audibility meaning —
+  /// a consumer must not treat this as evidence that anything is audible.
+  videoTrackAdded,
 
   /// A remote track (audio or video) was removed.
   trackRemoved,
@@ -287,10 +298,11 @@ abstract class RtcSession {
 
   /// Remote tracks becoming available/unavailable over this session's
   /// lifetime. The event type on each [RtcSessionEvent] distinguishes
-  /// [RtcSessionEvent.trackAdded] from [RtcSessionEvent.trackRemoved]; the
-  /// concrete provider/track payload itself is intentionally NOT part of
-  /// this abstraction (it stays provider-specific and is exposed by the
-  /// implementing class via its own typed members).
+  /// [RtcSessionEvent.audioTrackAdded] / [RtcSessionEvent.videoTrackAdded]
+  /// from [RtcSessionEvent.trackRemoved]; the concrete provider/track
+  /// payload itself is intentionally NOT part of this abstraction (it stays
+  /// provider-specific and is exposed by the implementing class via its own
+  /// typed members).
   Stream<RtcSessionEvent> get remoteTrackEvents;
 
   /// All lifecycle/quality events for this session (connected, reconnecting,
