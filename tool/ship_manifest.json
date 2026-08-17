@@ -1683,16 +1683,20 @@
     "flags": [],
     "success": [
       {
-        "event": "ava_reason_call",
-        "where": {
-          "feature": "gemini_direct"
-        },
+        "event": "google_call_transport",
         "property": "transport",
         "equals": "vertex",
         "min_events": 1,
-        "note": "PROVES the switch landed. transport is stamped by lib/vertex.ts (_via on the raw response) and threaded through core.mkEvent. If the ava-tts service account lacks the Vertex AI User role, or a model id does not exist on Vertex, the call silently falls back and this property reads 'devapi' — healthy-looking events, zero quota win. That present-but-failing value is the failure mode this assertion exists to catch; asserting merely that ava_reason_call arrives would pass in that case."
+        "note": "THE assertion. Emitted from inside lib/vertex.ts on every Google REST call, so it covers all converted call sites by construction. transport='devapi' with vertex_configured=true means the switch silently did not land (missing IAM role, or a model id that exists on the Developer API but not on Vertex) — the user still gets a healthy answer, which is why the VALUE must be asserted."
+      },
+      {
+        "event": "google_call_transport",
+        "property": "vertex_fallback",
+        "equals": false,
+        "min_events": 1,
+        "note": "Vertex was configured and tried, but the Developer API served the request anyway. Any true here is a silent failure of this issue."
       }
     ],
-    "_verified_at": "worker/src/lib/vertex.ts generateContentVia() returns {via}; worker/src/lib/ava_reason/adapters/google.ts:31 _lastVia -> raw._via on all three return paths; worker/src/lib/ava_reason/core.ts finish() transport: raw._via; worker/src/lib/ava_reason.ts eventProps() transport: ev.transport -> PostHog; worker/wrangler.toml VERTEX_PROJECT='avatok-avaglobal' VERTEX_LOCATION='global'"
+    "_verified_at": "worker/src/lib/vertex.ts emitTransport() on all three exit paths of generateContentVia(); worker/wrangler.toml VERTEX_PROJECT='avatok-avaglobal'. NOTE 2026-08-17: the first success definition asserted ava_reason_call.transport=='vertex' and was WRONG — 14 days of prod showed zero ava_reason_call events with a Google provider (that gateway carries cf_ai/venice/openrouter only), so the check was unobservable and could never go green."
   }
 }

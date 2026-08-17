@@ -43,6 +43,7 @@
 // falls back to the previous behaviour, byte-for-byte.
 
 import { accessTokenFor, type ServiceAccount } from "./google_tts";
+import { track } from "../hooks";
 
 const DEV_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -118,6 +119,50 @@ export interface GoogleCallResult {
   via: GoogleVia;
 }
 
+/**
+ * [VERTEX-1] Emitted on EVERY Google REST call, from inside the transport itself.
+ *
+ * WHY HERE AND NOT AT THE CALL SITES: the first attempt at this shipped with the
+ * ship-gate assertion pointed at `ava_reason_call.transport`, and 14 days of prod
+ * data then showed ZERO ava_reason_call events with a Google provider — that lane
+ * carries Workers-AI, Venice and OpenRouter traffic only. The real Gemini REST
+ * traffic comes from the direct call sites (AvaVision snapshot, GenUI compose/plan,
+ * name vetting, post-call summary, TTS renders, image generation), which sit
+ * OUTSIDE the avaReason gateway and emitted nothing. The success value was
+ * therefore unobservable — a check that could never go green, which is the exact
+ * failure mode tool/check_ship_readiness.py exists to prevent. Emitting from the
+ * transport covers every converted call site by construction, including any added
+ * later, and cannot drift out of sync with them.
+ *
+ * `vertex_fallback=true` is the interesting failure: Vertex was configured and
+ * TRIED, and we silently served the request from the Developer API anyway (missing
+ * IAM role, model id absent on Vertex, region/quota). The user sees a perfectly
+ * healthy response, so this event is the only way that shows up.
+ */
+function emitTransport(
+  env: VertexEnv, model: string, method: string,
+  via: GoogleVia, status: number, ok: boolean, attemptedVertex: boolean,
+): void {
+  try {
+    // Fire-and-forget: a telemetry failure must never break an AI call. Note the
+    // workerd trap — an unawaited send is cancelled once the response returns, so
+    // callers on an early-return path may still lose this. Acceptable here: these
+    // calls all continue doing work after the fetch resolves.
+    void track(env as any, "", "google_call_transport", "worker", {
+      transport: via,
+      vertex_configured: vertexConfigured(env),
+      vertex_fallback: attemptedVertex && via === "devapi",
+      model,
+      vertex_model: vertexModelId(model),
+      method,
+      status,
+      ok,
+      location: location(env),
+      project: env.VERTEX_PROJECT ?? null,
+    });
+  } catch { /* telemetry is best-effort */ }
+}
+
 export interface GoogleCallOpts {
   /** Per-request Gemini key (BYO user key via X-Ava-Gemini-Key, or a feature-scoped
    *  key such as RECEPTIONIST_GEMINI_API_KEY). When present the Developer API is
@@ -167,7 +212,10 @@ export async function generateContentVia(
           body,
           opts.timeoutMs,
         );
-        if (r.ok) return { ...r, via: "vertex" };
+        if (r.ok) {
+          emitTransport(env, model, method, "vertex", r.status, true, true);
+          return { ...r, via: "vertex" };
+        }
         // Non-2xx from Vertex (unknown model on this surface, quota, region): fall
         // through to the Developer API rather than surfacing an outage.
       } catch { /* network/timeout — fall through */ }
@@ -175,12 +223,16 @@ export async function generateContentVia(
   }
 
   const key = opts.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
-  if (!key) return { ok: false, status: 401, out: { error: { message: "google api key missing" } }, via: "devapi" };
+  if (!key) {
+    emitTransport(env, model, method, "devapi", 401, false, useVertex);
+    return { ok: false, status: 401, out: { error: { message: "google api key missing" } }, via: "devapi" };
+  }
   const r = await postJson(
     `${DEV_BASE}/models/${model}:${method}`,
     { "x-goog-api-key": key },
     body,
     opts.timeoutMs,
   );
+  emitTransport(env, model, method, "devapi", r.status, r.ok, useVertex);
   return { ...r, via: "devapi" };
 }
