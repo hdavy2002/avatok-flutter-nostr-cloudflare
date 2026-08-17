@@ -274,15 +274,22 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
       // retryable so the watchdog tries again once the scanner is healthy.
       // The image is never published unscanned — this only chooses between
       // "try later" and "give up forever".
+      // [COVER-SCAN-ADVISORY-1 2026-08-17, owner decision] After the retries
+      // above, a still-unobtainable verdict no longer costs the artwork. This
+      // is the ONE image class where that is a sound trade: the cover is drawn
+      // by an SFW-configured model from a MACHINE-WRITTEN description that has
+      // itself already passed the text gate a few lines above — nothing the
+      // user typed reaches the image model, and no user-typed prompt is
+      // rendered here. A genuine BLOCK verdict (scan ran, said unsafe) is still
+      // honoured below and still discards the image; only "the classifier was
+      // unreachable" now publishes. Every such publish is recorded so the
+      // decision is auditable.
       if (verdict.ok === false) {
-        await releaseAiJob(env, reservation, {
-          uid: job.owner_uid, opId, capability, reason: "cover_scan_unavailable",
-        }).catch(() => {});
-        await track(env, job.owner_uid, "venice_media_cover_deferred", "avaai", {
+        coverBytes = bytes;
+        await track(env, job.owner_uid, "venice_media_cover_unscanned_publish", "avaai", {
           job_id: job.job_id, kind: job.kind, attempt: attemptsUsed, reason: "scan_unavailable",
         }).catch(() => {});
-        await finishSongCover(env, job.job_id, null).catch(() => {});
-        return true;
+        break;
       }
       await track(env, job.owner_uid, "venice_media_cover_retry", "avaai", {
         job_id: job.job_id, kind: job.kind, attempt: attemptsUsed, reason: "output_blocked",

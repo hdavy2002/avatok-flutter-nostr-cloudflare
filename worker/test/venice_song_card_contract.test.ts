@@ -45,9 +45,12 @@ describe("Venice song rich-card contract", () => {
     // cover_settlement_failed. The claim timestamp keeps one attempt idempotent
     // while letting the next attempt bill cleanly.
     expect(queue).toContain('const opId = `song-cover:${job.job_id}:${attemptStamp}`');
-    // A scan that could not RUN must be transient, never a permanent block.
+    // [COVER-SCAN-ADVISORY-1] An unobtainable verdict (classifier unreachable)
+    // must not cost the artwork — it publishes and is recorded. A genuine
+    // BLOCK verdict must STILL discard the image.
     expect(queue).toContain("verdict.ok === false");
-    expect(queue).toContain('reason: "cover_scan_unavailable"');
+    expect(queue).toContain('"venice_media_cover_unscanned_publish"');
+    expect(queue).toContain('throw new Error("cover_output_blocked")');
     expect(queue).toContain("flatPriceTokens: 1");
     expect(queue).toContain("flatChargeTokens: 1");
     expect(queue).toContain("await generateSongCover(env, job)");
