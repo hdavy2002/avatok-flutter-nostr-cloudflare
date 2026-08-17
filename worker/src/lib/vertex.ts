@@ -151,7 +151,13 @@ async function emitTransport(
     // is worse than the few ms a queue send costs, because it is indistinguishable
     // from the migration not working. Still swallowed: telemetry must never break
     // an AI call.
-    await track(env as any, "", "google_call_transport", "worker", {
+    // uid "server", NOT "". The analytics consumer maps `b.uid ?? "anonymous"`,
+    // and `??` does not catch the EMPTY STRING — an empty uid reaches PostHog as
+    // distinct_id:"" and is silently dropped at ingest. The first version passed ""
+    // and produced a perfect no-op: the AI call ran, the queue send resolved, and
+    // the event simply never existed. Any server-only event here needs a
+    // non-empty placeholder uid (wallet.ts uses "server" for the same reason).
+    await track(env as any, "server", "google_call_transport", "worker", {
       transport: via,
       vertex_configured: vertexConfigured(env),
       vertex_fallback: attemptedVertex && via === "devapi",
