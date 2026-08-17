@@ -1353,6 +1353,15 @@ export interface PlatformConfig {
   // long requests stay on MiniMax with lyrics trimmed to fit. String key.
   veniceLongMusicModel: string;
 
+  // [SONG-QUICK-1 2026-08-17] Venice music model for the QUICK SONG mode, where
+  // the ENGINE writes and sings its own words from a descriptive brief (no lyric
+  // draft, no approval step). This deliberately prefers a model that does NOT
+  // take a lyrics_prompt: elevenlabs-music returns a live 400 ("This model does
+  // not support lyrics", verified 2026-08-17) yet sings words it invents from
+  // the prompt — exactly this mode. Empty string = fall back to the default
+  // per-generation music model. STRING key → NOT in numericKeys.
+  veniceQuickSongModel: string;
+
   // [AVA-GROUP-SESSION-1 2026-08-16] Shared group media sessions: while a
   // public (#ava) song/video conversation is active in a GROUP thread, other
   // members' public #ava turns join the initiator's conversation (initiator's
@@ -1854,6 +1863,10 @@ const DEFAULTS: PlatformConfig = {
   // [SONG-LEN-2 2026-08-17] off until a duration-capable model is live-tested;
   // set to "ace-step-15" or "elevenlabs-music" in KV to enable 2-3.5 min songs.
   veniceLongMusicModel: "",
+  // [SONG-QUICK-1 2026-08-17] engine-written quick songs sing on elevenlabs-music,
+  // which writes its own words from the prompt. Set to "" in KV to send quick
+  // songs to the default music model instead.
+  veniceQuickSongModel: "elevenlabs-music",
 };
 
 /**

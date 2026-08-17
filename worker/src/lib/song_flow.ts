@@ -3,7 +3,11 @@
 // safe transition so continuation turns do not depend on model tool selection.
 
 export type SongFlowPhase = "awaiting_brief" | "reviewing" | "generating" | "completed";
-export type SongRequestKind = "vocal" | "instrumental";
+// [SONG-QUICK-1 2026-08-17] "engine_written" is the one-shot QUICK SONG mode:
+// the music engine writes AND sings its own words from a descriptive brief, so
+// there is no lyric draft and no approval step. It is a third first-class mode
+// alongside "vocal" (Ava drafts lyrics, person approves) and "instrumental".
+export type SongRequestKind = "vocal" | "instrumental" | "engine_written";
 
 export interface SongFlowState {
   phase: SongFlowPhase;
@@ -44,8 +48,23 @@ function hasText(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/**
+ * [SONG-QUICK-1] Readiness for the engine-written quick song. The whole point
+ * of the mode is that the person does NOT sit through a producer interview, so
+ * the bar is deliberately the smallest thing that still makes a real song:
+ * something for the song to be ABOUT, and a length. Genre, mood and language
+ * are producer polish the engine invents for itself here — requiring them
+ * would recreate the interview this mode exists to skip.
+ */
+export function isQuickSongContextReady(context: SongProductionContext | undefined): boolean {
+  if (!context) return false;
+  return hasText(context.theme)
+    && Number.isFinite(context.durationSeconds) && Number(context.durationSeconds) >= 60;
+}
+
 export function isSongProductionContextReady(context: SongProductionContext | undefined, kind: SongRequestKind): boolean {
   if (!context) return false;
+  if (kind === "engine_written") return isQuickSongContextReady(context);
   // A song brief is ready once its creative direction is unambiguous. Instrument
   // selection, singer arrangement and voice character improve the production
   // prompt, but they are producer choices rather than reasons to trap a person
@@ -62,9 +81,16 @@ export function songProductionBrief(context: SongProductionContext, kind: SongRe
     `Genre: ${context.genre ?? ""}`,
     `Mood / energy: ${context.mood ?? ""}`,
     context.instruments?.some(hasText) ? `Instruments: ${context.instruments.join(", ")}` : "",
-    kind === "vocal" ? `Language: ${context.language ?? ""}` : "No lyrics or vocals.",
-    kind === "vocal" && context.vocalArrangement ? `Vocal arrangement: ${context.vocalArrangement}` : "",
-    kind === "vocal" && context.voiceStyle ? `Voice character: ${context.voiceStyle}` : "",
+    // [SONG-QUICK-1] The engine-written brief must ASK for sung words, because
+    // no lyrics_prompt is sent with it — the words exist only if this prompt
+    // requests them. An instrumental brief says the opposite, deliberately.
+    kind === "instrumental"
+      ? "No lyrics or vocals."
+      : kind === "engine_written"
+        ? `Write and sing original lyrics for this song${context.language ? ` in ${context.language}` : ""}.`
+        : `Language: ${context.language ?? ""}`,
+    kind !== "instrumental" && context.vocalArrangement ? `Vocal arrangement: ${context.vocalArrangement}` : "",
+    kind !== "instrumental" && context.voiceStyle ? `Voice character: ${context.voiceStyle}` : "",
     context.intendedUse ? `Intended use: ${context.intendedUse}` : "",
     context.modelId ? `Audio model: ${context.modelId}` : "",
     `Length: ${context.durationSeconds ?? 60} seconds`,
@@ -95,9 +121,38 @@ export function stripAvaWakeWordForIntent(text: string): string {
     .trim();
 }
 
+/**
+ * [SONG-QUICK-1] Does this message ask for the ENGINE to write the words?
+ * Pure and deliberately narrow: it must mention music AND carry a "don't make
+ * me write or approve anything" signal. It never authorises spend on its own —
+ * it only chooses which lane the conversation starts in.
+ */
+export function looksLikeQuickSongRequest(text: string): boolean {
+  const t = stripAvaWakeWordForIntent(text).toLowerCase();
+  const music = /\b(?:song|music|track|tune|jingle)\b/.test(t);
+  if (!music) return false;
+  const wantsNoLyricWork =
+    /\b(?:quick|instant|one[\s-]?tap|straight\s?away|right\s?away)\s+(?:song|music|track|tune|jingle)\b/.test(t)
+    || /\bsurprise\s+me\b/.test(t)
+    || /\byou\s+(?:write|do|pick|choose|decide|handle)\s+(?:it|the\s+(?:words|lyrics?|song))\b/.test(t)
+    || /\b(?:write|do)\s+(?:it|the\s+(?:words|lyrics?))\s+(?:yourself|for\s+me)\b/.test(t)
+    || /\b(?:just|simply)\s+(?:make|create|generate|sing|do)\s+it\b/.test(t)
+    || /\b(?:don'?t|do\s+not|no\s+need\s+to)\s+(?:ask|show)\s+me\b/.test(t)
+    || /\bwithout\s+(?:showing|asking|approv\w*|review\w*)\b/.test(t)
+    || /\bno\s+(?:questions|interview|approval|review)\b/.test(t)
+    || /\bskip\s+the\s+(?:lyrics?|questions|interview|approval)\b/.test(t);
+  if (!wantsNoLyricWork) return false;
+  // An explicit "no vocals" ask is an instrumental, never an engine-written song.
+  return !/\b(?:instrumental|no\s+(?:singing|vocals?|lyrics)|without\s+(?:singing|vocals?|lyrics))\b/.test(t);
+}
+
 /** The only media classifier used by the deterministic music route. */
 export function classifySongRequest(text: string): SongRequestKind | null {
   const t = stripAvaWakeWordForIntent(text).toLowerCase();
+  // [SONG-QUICK-1] "surprise me with a song" carries no creation verb, so the
+  // verb gate below would drop it before the lane ever opened. A quick-song
+  // signal is itself a creation request.
+  if (looksLikeQuickSongRequest(text)) return "engine_written";
   const creation = /\b(?:make|create|generate|write|compose|produce|build)\b/.test(t);
   if (!creation) return null;
   const noVocals = /\b(?:instrumental|beat|no\s+(?:singing|vocals?|lyrics)|without\s+(?:singing|vocals?|lyrics))\b/.test(t);
@@ -129,7 +184,7 @@ export function isSongFlowState(value: unknown): value is SongFlowState {
   if (!value || typeof value !== "object") return false;
   const flow = value as SongFlowState;
   return ["awaiting_brief", "reviewing", "generating", "completed"].includes(flow.phase)
-    && (flow.kind == null || flow.kind === "vocal" || flow.kind === "instrumental")
+    && (flow.kind == null || flow.kind === "vocal" || flow.kind === "instrumental" || flow.kind === "engine_written")
     && (flow.conversation == null || typeof flow.conversation === "string")
     && (flow.context == null || typeof flow.context === "object")
     && (flow.lastInterviewReply == null || typeof flow.lastInterviewReply === "string")
@@ -179,6 +234,31 @@ export function preferMostRecentLane(
 /** Records a freshly generated lyric draft as awaiting explicit user approval. */
 export function withSongLyrics(flow: SongFlowState, lyrics: string): SongFlowState {
   return { ...flow, phase: "reviewing", lyrics: String(lyrics), durationSeconds: clampSongDurationSeconds(flow.durationSeconds ?? 60) };
+}
+
+/**
+ * [SONG-QUICK-1] Promote a flow to the engine-written quick song about to be
+ * generated. The brief is REBUILT for this mode rather than reused: a brief
+ * assembled while the flow was still "vocal" says "Language: X" and assumes a
+ * separate lyrics_prompt that quick mode never sends, so the engine would be
+ * asked for a song with no instruction to write any words. Any drafted lyrics
+ * are dropped — in this mode the engine's own words are the song.
+ */
+export function withEngineWrittenSong(flow: SongFlowState, context: SongProductionContext): SongFlowState {
+  const merged: SongProductionContext = { ...(flow.context ?? {}), ...context };
+  const durationSeconds = clampSongDurationSeconds(
+    merged.durationSeconds ?? flow.durationSeconds ?? 60,
+  );
+  const withDuration: SongProductionContext = { ...merged, durationSeconds };
+  return {
+    ...flow,
+    kind: "engine_written",
+    context: withDuration,
+    durationSeconds,
+    lyrics: undefined,
+    brief: songProductionBrief(withDuration, "engine_written"),
+    phase: "generating",
+  };
 }
 
 /** Marks a successfully queued generation as terminal for this draft. */

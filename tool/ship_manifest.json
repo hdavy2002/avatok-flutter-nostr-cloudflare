@@ -1803,5 +1803,73 @@
     "no_telemetry": "Verified directly against production: GET /s/song/08b25d0e32d8/cover returned HTTP 206 + image/png + 2,039,453 bytes before, and HTTP 200 + image/jpeg + 148,441 bytes after the deploy (version 36016c59). Server-rendered OG markup has no client telemetry surface."
    }
   ]
+ },
+ "SONG-QUICK-1": {
+  "description": "Quick song / \"let the engine write it\": a third music mode, engine_written, alongside vocal and instrumental. The person describes a song and the MUSIC ENGINE writes the words and sings them - no AI lyric draft, no approval step. Worker-only. The song interview gains a quick_generate action (lib/song_interview.ts) which do/ava_agent.ts re-validates server-side in canExecute() before any spend (isQuickSongContextReady: a subject + a length >= 60s), and which a group GUEST can never trigger ([AVA-GROUP-SESSION-1]). lib/venice_media.ts routes the mode to cfg.veniceQuickSongModel (default elevenlabs-music, which writes and sings its own words and rejects a lyrics_prompt outright) and sends NO lyrics. music_mode='engine_written' is stored in the existing venice_media_jobs.music_mode TEXT column - no migration, no change to the 27-column insert contract. Wallet path unchanged (flat cfg.veniceMusicTokens reserve/settle).",
+  "shipped": "2026-08-17",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "veniceMediaEnabled",
+   "veniceQuickSongModel"
+  ],
+  "success": [
+   {
+    "event": "venice_media_job_submitted",
+    "where": {
+     "kind": "venice_music_generate"
+    },
+    "property": "music_mode",
+    "in": [
+     "engine_written"
+    ],
+    "min_events": 1,
+    "note": "THE assertion. A submitted music job carrying music_mode='engine_written' is the only proof that the quick lane actually reached the provider: the same event on the old path carries 'vocal' or 'instrumental'. Absence means the interview never chose quick_generate or canExecute() refused it; presence with 'vocal' means the lane was taken but the mode was mapped wrong and the person was charged for the old flow."
+   },
+   {
+    "event": "ava_song_quick_mode",
+    "property": "music_mode",
+    "in": [
+     "engine_written"
+    ],
+    "min_events": 1,
+    "note": "Emitted by do/ava_agent.ts via trackUserContact at the moment the server AUTHORISES the quick step, so it carries the person's email and phone and either side of a group session is retrievable. It fires strictly before the job submit above; ava_song_quick_mode present with venice_media_job_submitted music_mode absent = authorised but the provider submit failed."
+   }
+  ],
+  "_verified_at": "worker/src/lib/venice_media.ts (validateMusicModeRequest / resolveMusicModel / musicRetryModel; track 'venice_media_job_submitted' with music_mode: musicMode); worker/src/do/ava_agent.ts (canExecute() quick_generate branch, withEngineWrittenSong promotion, trackUserContact 'ava_song_quick_mode'); worker/src/lib/song_flow.ts (isQuickSongContextReady, looksLikeQuickSongRequest, withEngineWrittenSong); worker/src/routes/config.ts (veniceQuickSongModel in PlatformConfig + DEFAULTS, NOT in numericKeys); worker/test/song_quick_mode.test.ts"
+ },
+ "VIDEO-AUDIT-1": {
+  "description": "End-to-end audit of the video creation pipeline, applying the music lane's [SONG-CONTRACT-1] lesson before a user hit the same class of bug again. (a) The video request is now SHAPED to the provider's real contract before it is sent: resolution and aspect_ratio are normalised against Venice's own accepted enum (a live 400 on 2026-08-16 read \"Expected '1080p' | '1440p' | '2160p', received '720p'\" - a TypeScript union does not exist at runtime), and the prompt is capped at 1500 chars because craftVideoPrompt only ASKS for 'under 90 words'. (b) A request-shape rejection now gets ONE conservative retry (default resolution + 10s + a tighter prompt) instead of dead-ending the user in a red card. (c) A failed share thumbnail is re-attempted once by the watchdog - before this, one transient cover failure permanently bricked sharing that video (share endpoint 409, /s/video 404). (d) Cover telemetry is AWAITED: workerd was dropping it on the early-return paths, which is why a production video with cover_status='failed' had no evidence anywhere. (e) The video share page's og:image now points at the asset route directly, matching the same-day [SHARE-OG-IMAGE-1] song fix. Client change is error copy only.",
+  "shipped": "2026-08-17",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [
+   "veniceMediaEnabled",
+   "veniceVideoTokens"
+  ],
+  "success": [
+   {
+    "event": "venice_media_job_submitted",
+    "where": {
+     "kind": "venice_video_generate"
+    },
+    "property": "resolution",
+    "in": [
+     "1080p",
+     "1440p",
+     "2160p"
+    ],
+    "min_events": 1,
+    "note": "This property now reports what was ACCEPTED by the provider, not what the caller asked for. Any other value here means a request left the worker outside Venice's enum - exactly the '720p' that failed live on 2026-08-16 - and normalizeVideoResolution is not on the path."
+   },
+   {
+    "event": "venice_video_thumbnail_completed",
+    "property": "cover_media_id",
+    "exists": true,
+    "min_events": 1,
+    "note": "The honest measure of (c) and (d). This event existed in code before this change but had NEVER appeared in PostHog, because `void track()` on a queue-consumer return path is dropped by workerd. Zero of these on a day with a delivered video means either the thumbnail is still failing or the telemetry is still being dropped - and without it, /s/video/<token> 404s and the share button 409s with no explanation."
+   }
+  ],
+  "_verified_at": "worker/src/lib/venice.ts (VENICE_VIDEO_RESOLUTIONS/normalizeVideoResolution/normalizeVideoAspect/capVideoPrompt, applied inside veniceQueueVideo); worker/src/lib/venice_media.ts (runVeniceVideo submit shaping + ava_video_submit_fallback retry); worker/src/lib/venice_media_jobs.ts (listVeniceVideoThumbnailJobsForRecovery failed-cover window, reopenVideoCover); worker/src/queues/ai_media_recovery.ts (reopen before requeue); worker/src/queues/venice_media.ts (awaited venice_media_cover_failed / venice_video_thumbnail_completed); worker/src/routes/ai_media_jobs.ts (og:image direct asset, HEAD parity on the resized thumbnail); worker/test/video_provider_contract.test.ts"
  }
 }

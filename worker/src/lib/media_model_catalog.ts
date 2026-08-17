@@ -64,6 +64,23 @@ export function mediaModelCatalog(cfg: PlatformConfig, tier: VeniceTier): {
             price: { kind: "flat" as const, tokens: cfg.veniceMusicTokens, unit: "per track" },
           }]
         : []),
+      // [SONG-QUICK-1] The engine-written quick song. Advertised separately
+      // because its capability is genuinely different: it writes its OWN words,
+      // so there is nothing to review before it sings. Only listed when it is a
+      // distinct model from the two above, so Ava never offers the same id twice.
+      ...(() => {
+        const quick = String((cfg as any).veniceQuickSongModel ?? "").trim();
+        const taken = [music.model, String((cfg as any).veniceLongMusicModel ?? "").trim()];
+        return quick && !taken.includes(quick)
+          ? [{
+              id: quick, provider: "Venice", media: "audio" as const,
+              label: "Quick song (engine writes the words)",
+              supports: ["engine-written lyrics", "vocal song", "no lyric approval step", "long songs"],
+              durationsSeconds: { min: 60, max: 210 },
+              price: { kind: "flat" as const, tokens: cfg.veniceMusicTokens, unit: "per track" },
+            }]
+          : [];
+      })(),
     ],
   };
 }

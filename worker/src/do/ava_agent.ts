@@ -81,8 +81,8 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 // turn — above all the working chip, which this file used to inline 13 times.
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
 import {
-  completeSongFlow, isSongFlowState, isSongProductionContextReady,
-  classifySongRequest,
+  completeSongFlow, isSongFlowState, isSongProductionContextReady, isQuickSongContextReady,
+  classifySongRequest, withEngineWrittenSong,
   isMediaFlowExpired, preferMostRecentLane, stampFlowUpdated,
   nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
@@ -1720,7 +1720,10 @@ export class AvaAgentDO {
               // [AVA-GROUP-SESSION-1] Only the initiator may approve the paid
               // generate step. A guest's go-ahead is acknowledged, then Ava
               // asks the initiator by name for the final yes.
-              if (speaker && interview.action === "generate") {
+              // [SONG-QUICK-1] quick_generate spends exactly like generate, so
+              // it is bound by the same rule: a guest may steer the song but
+              // may never trigger the paid step.
+              if (speaker && (interview.action === "generate" || interview.action === "quick_generate")) {
                 interviewModel = await this.callSongInterview(
                   uid, interviewedFlow, userText,
                   "The go-ahead came from a group member, not the person who started this song and pays for it. Keep every saved choice and the current lyrics, choose discuss, acknowledge the member naturally, and ask the initiator for the final confirmation to create the track.",
@@ -1733,13 +1736,29 @@ export class AvaAgentDO {
                 songKind = interviewedFlow.kind ?? "vocal";
                 ready = isSongProductionContextReady(interview.context, songKind);
               }
-              const canExecute = () => interview.action === "discuss"
-                || (interview.action === "draft" && songKind === "vocal" &&
-                  (ready || (activeInterviewFlow.phase === "reviewing" && !!interviewedFlow.brief)))
-                || (interview.action === "generate" && (
-                  (songKind === "instrumental" && ready)
-                  || (songKind === "vocal" && activeInterviewFlow.phase === "reviewing" && !!interviewedFlow.lyrics)
-                ));
+              // [SONG-QUICK-1] `ready` is measured against the CURRENT kind, and
+              // the engine-written kind has a deliberately lower bar, so the two
+              // bars are named separately here. A quick song must never be able
+              // to spend on the loose bar while claiming to be a drafted vocal,
+              // and a drafted vocal must never inherit the quick bar.
+              const canExecute = () => {
+                const quickReady = isQuickSongContextReady(interview.context);
+                const draftReady = isSongProductionContextReady(interview.context, "vocal");
+                return interview.action === "discuss"
+                  // Drafting lyrics is free, and an engine-written flow whose
+                  // owner changes their mind ("actually show me the words")
+                  // downgrades to a normal vocal song rather than dead-ending.
+                  || (interview.action === "draft" && songKind !== "instrumental" &&
+                    (draftReady || (activeInterviewFlow.phase === "reviewing" && !!interviewedFlow.brief)))
+                  // SPEND. The engine writes the words, so there is nothing to
+                  // review — but there still must be a subject and a length,
+                  // and an explicit instrumental request can never land here.
+                  || (interview.action === "quick_generate" && songKind !== "instrumental" && quickReady)
+                  || (interview.action === "generate" && (
+                    (songKind === "instrumental" && ready)
+                    || (songKind === "vocal" && activeInterviewFlow.phase === "reviewing" && !!interviewedFlow.lyrics)
+                  ));
+              };
 
               // The model owns conversational intent. The server owns execution
               // safety. If those disagree, ask the model once to reconsider with
@@ -1787,15 +1806,41 @@ export class AvaAgentDO {
                 songAction = { kind: "none", flow: null };
               } else if (!canExecute()) {
                 throw new Error(`song interview returned invalid ${interview.action} transition`);
-              } else if (interview.action === "draft" || interview.action === "generate") {
+              } else if (interview.action === "draft" || interview.action === "generate"
+                || interview.action === "quick_generate") {
                 await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
-                if (interview.action === "generate") {
+                if (interview.action === "quick_generate") {
+                  // [SONG-QUICK-1] The engine writes the words, so the brief is
+                  // rebuilt for that mode and any drafted lyrics are dropped.
+                  const quickFlow = withEngineWrittenSong(interviewedFlow, interview.context);
+                  // Expectation-setting is a PRODUCT REQUIREMENT, not a prompt
+                  // hope. The interview system prompt asks for it in Ava's own
+                  // words too, but a model that forgets must not be able to make
+                  // a person pay for words they were never told they can't see.
+                  await this.postAva({
+                    conv, uid, private: priv, source: "music",
+                    text: "Heads up: in quick mode the music engine writes the words itself, so I can't show them to you before it sings and the exact wording may not be what you pictured. If you'd rather read and approve the lyrics first, say the word and I'll write them for you instead.",
+                  });
+                  await trackUserContact(this.env, uid, email, phone, "ava_song_quick_mode", "avaai", {
+                    turn_id: statusId, conv_kind: convKind, private: priv,
+                    music_mode: "engine_written", duration_seconds: quickFlow.durationSeconds ?? 60,
+                    from_phase: activeInterviewFlow.phase, guest_present: !!speaker,
+                    interview_model: interviewModel.model, interview_provider: interviewModel.provider,
+                  }).catch(() => {});
+                  songAction = { kind: "generate", flow: quickFlow };
+                } else if (interview.action === "generate") {
                   songAction = { kind: "generate", flow: { ...interviewedFlow, phase: "generating" } };
                 } else {
                   const revisionBrief = activeInterviewFlow.phase === "reviewing"
                     ? [interviewedFlow.brief, stripAvaWakeWordForIntent(userText)].filter(Boolean).join("\n\n")
                     : interviewedFlow.brief;
-                  songAction = { kind: "draft", flow: { ...interviewedFlow, phase: "awaiting_brief", brief: revisionBrief } };
+                  songAction = {
+                    kind: "draft",
+                    // Asking for lyrics IS the opposite of quick mode — a flow
+                    // that started engine-written becomes an ordinary vocal song
+                    // the moment its owner asks to see the words.
+                    flow: { ...interviewedFlow, kind: "vocal", phase: "awaiting_brief", brief: revisionBrief },
+                  };
                 }
               } else {
                 await this.state.storage.put(flowKey, stampFlowUpdated(interviewedFlow));
@@ -1880,20 +1925,28 @@ export class AvaAgentDO {
         // job. If the DO is interrupted mid-call, the next approval can retry.
         await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
         const mediaTier = await veniceTier(this.env, uid);
+        // [SONG-QUICK-1] One mapping from the flow's kind to the provider mode,
+        // so the lyrics field and the stored music_mode can never disagree.
+        const flowKind = songAction.flow.kind ?? "vocal";
+        const musicMode = flowKind === "instrumental"
+          ? "instrumental" as const
+          : flowKind === "engine_written" ? "engine_written" as const : "vocal" as const;
         let music: Awaited<ReturnType<typeof runVeniceMusic>>;
         try {
           music = await runVeniceMusic(this.env, {
             uid, conv,
             prompt: songAction.flow.brief ?? "Create a track from the approved musical brief",
             durationSeconds: songAction.flow.durationSeconds,
-            lyrics: songAction.flow.kind === "instrumental" ? undefined : songAction.flow.lyrics,
-            musicMode: songAction.flow.kind === "instrumental" ? "instrumental" : "vocal",
+            // Only an approved-lyrics vocal song submits lyrics. An engine-written
+            // song sends none by design — that is what makes the engine write them.
+            lyrics: musicMode === "vocal" ? songAction.flow.lyrics : undefined,
+            musicMode,
             private: priv, tier: mediaTier,
           });
         } catch (e) {
           await trackException(this.env, e, {
             uid, route: "ava_agent.song_generate", handled: true,
-            extra: { turn_id: statusId, conv_kind: convKind, music_mode: songAction.flow.kind ?? "vocal" },
+            extra: { turn_id: statusId, conv_kind: convKind, music_mode: musicMode },
           }).catch(() => {});
           music = { ok: false, message: "I couldn't start that track right now — please try again." };
         }
@@ -1912,6 +1965,7 @@ export class AvaAgentDO {
         await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
           turn_id: statusId, conv_kind: convKind, private: priv, phase: "generate", outcome: music.ok ? "job_started" : "failed",
           duration_seconds: songAction.flow.durationSeconds ?? 60, job_id: music.job_id ?? null,
+          music_mode: musicMode,
         }).catch(() => {});
         return { ok: music.ok, status_id: statusId, ...(!music.ok ? { error: "music_start_failed" } : {}) };
         }
