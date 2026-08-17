@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/blocking_api.dart';
+import '../../core/calls/call_prewarm.dart'; // [CALL-PREWARM-2]
 import '../../core/chat_state.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -180,6 +181,30 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
   @override
   void initState() {
     super.initState();
+    // [CALL-PREWARM-2 2026-08-17] Start warming this callee's media path the
+    // moment the ring is actually on screen — ICE credentials + the SFU seat —
+    // so Accept only has to publish and pull instead of building the whole
+    // stack cold. `CallSession._startSfuMedia` adopts it exactly once.
+    //
+    // WHY HERE, and not only in push_service. The original [CALL-PREWARM-1]
+    // hook sat in `_showIncoming`, which is ONE of several ring lanes — and
+    // not the one production actually uses. Prod call avatok-a0170dc6
+    // (2026-08-17 08:25) rang via `_routeToBrandedIncoming` straight from the
+    // native tap channel: `call_branded_fsi_routed` with no
+    // `call_incoming_received`, no `call_incoming_shown`, and consequently not
+    // one `call_prewarm_started` in the project's entire history — P1 never
+    // executed on a real call. THIS widget is the convergence point every
+    // branded ring lane (foreground FCM, warm native tap, cold-start pending)
+    // must pass through to show the user an Accept button, which makes it the
+    // honest place to say "a ring is live".
+    //
+    // Fire-and-forget and exception-proof: `CallPrewarm.start` is a no-op
+    // while `callPrewarmOnRingV1` is off, is idempotent per callId (so the
+    // push_service hook firing too costs nothing), and must never be able to
+    // delay or break the ring UI.
+    try {
+      CallPrewarm.instance.start(widget.callId);
+    } catch (_) {/* prewarm must never affect the ring path */}
     // [AVACALL-INUI-1] Auto-dismiss when the CALLER cancels / the call ends while
     // this screen is up. Without this the branded ring lingered as an
     // un-cancellable screen after the caller hung up (a worse problem now that it
