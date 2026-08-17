@@ -2417,6 +2417,10 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   // P11: mandatory + AI-vetted profile (behind profileCompletionGate; dark until
   // launch). Runs while the client shows a hold state. Completeness THEN real-name
   // plausibility. Phone is the ONLY optional field. FAIL CLOSED on model outage.
+  // [PROFILE-HARD-GATE-1] null when the gate did not run (gate off) — in that
+  // case the upsert leaves profile_vetted_at exactly as it was, so turning the
+  // gate off never silently un-approves anyone.
+  let vetVerdict: "passed" | null = null;
   let gateOn = false;
   try { gateOn = (await readConfig(env)).profileCompletionGate === true; } catch { gateOn = false; }
   if (gateOn) {
@@ -2518,6 +2522,20 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
       }
     }
     track(env, ctx.uid, "profile_vet_passed", "profile", {});
+    // [PROFILE-HARD-GATE-1] Reaching here means the profile passed EVERY check:
+    // content moderation (guardWrite, above), completeness, real-name
+    // plausibility, and photo moderation. Stamp the approval so the launch gate
+    // can admit this user WITHOUT re-running any classifier.
+    //
+    // This is what makes the owner's outage rule work: approval is a stored
+    // fact, so an OpenRouter/Gemini outage holds only NEW or CHANGED profiles
+    // and never evicts someone who already passed. Re-checking live would turn
+    // a third-party outage into a total app outage for every user at once.
+    //
+    // Stamped BEFORE the upsert deliberately: the upsert is the write that
+    // persists the values these checks just approved, so the two must land
+    // together. `vetVerdict` is applied inside that same statement below.
+    vetVerdict = "passed";
   }
 
   // [WELCOME-100-1] The upsert below both creates and updates, so detect the
@@ -2529,14 +2547,27 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     .bind(ctx.uid).first<{ one: number }>().catch(() => null);
 
   await db.prepare(
-    `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, gender, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?11,?9,?9)
+    // [PROFILE-HARD-GATE-1] the two vetted columns are in the INSERT list too —
+    // a BRAND-NEW account takes this branch, so omitting them would leave a
+    // just-approved first-time user with profile_vetted_at NULL and bounce them
+    // straight into the gate they had already satisfied.
+    `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, gender, created_at, updated_at, profile_vetted_at, profile_vetted_reason)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?11,?9,?9,?12,?13)
      ON CONFLICT(uid) DO UPDATE SET
        display_name=COALESCE(?2,display_name), first_name=COALESCE(?3,first_name), last_name=COALESCE(?4,last_name),
        avatar_url=COALESCE(?5,avatar_url), email_hash=COALESCE(?6,email_hash),
        phone_hash=COALESCE(?7,phone_hash), birth_year=COALESCE(?8,birth_year),
-       bio=COALESCE(?10,bio), gender=COALESCE(?11,gender), updated_at=?9`,
-  ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender).run();
+       bio=COALESCE(?10,bio), gender=COALESCE(?11,gender), updated_at=?9,
+       -- [PROFILE-HARD-GATE-1] COALESCE(?12, profile_vetted_at) — stamp approval
+       -- only when the gate actually ran AND passed (?12 is the timestamp then,
+       -- NULL otherwise). NULL therefore PRESERVES an existing approval rather
+       -- than clearing it, so a partial publish (the launch publish sends only
+       -- name/email/phone) can never un-approve a user who already passed.
+       profile_vetted_at=COALESCE(?12, profile_vetted_at),
+       profile_vetted_reason=COALESCE(?13, profile_vetted_reason)`,
+  ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender,
+         vetVerdict === "passed" ? now : null,
+         vetVerdict === "passed" ? "vetted" : null).run();
   // [WELCOME-100-1] New account → 100-token welcome bonus (persistent promo
   // bucket; idempotent). Awaited (no executionCtx here) but NEVER blocks signup.
   if (!existedBefore) {
@@ -2567,7 +2598,10 @@ export async function me(req: Request, env: Env): Promise<Response> {
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
   const clerkRaw = clerk.clerkUserId;
   const PROF_COLS =
-    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1";
+    // [PROFILE-HARD-GATE-1] profile_vetted_at rides along so /api/me can tell the
+    // client whether this account is admitted, with no extra query and no
+    // classifier call on the launch path.
+    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token, profile_vetted_at FROM users WHERE uid=?1";
   // [ACCT-RELINK-1] Resolve to the canonical account first (handles a login whose
   // Clerk id previously changed and was already aliased).
   let uid = await resolveCanonicalUid(env, clerkRaw);
@@ -2626,6 +2660,23 @@ export async function me(req: Request, env: Env): Promise<Response> {
     avatok_number: prof.avatok_number ?? null, avatok_number_display: prof.avatok_number_display ?? null,
     phone_discoverable: !!prof.phone_discoverable, email_discoverable: prof.email_discoverable !== 0,
     who_can_add: prof.who_can_add ?? "everyone", share_token: prof.share_token ?? null,
+    // [PROFILE-HARD-GATE-1] The launch gate, decided server-side so the client
+    // cannot be talked out of it and so the rule lives in ONE place.
+    //
+    // `profile_approved` is true when the stored approval exists — a FACT from
+    // the last successful save, never a fresh classifier call. That is the whole
+    // point: during an AI-moderation outage an approved user sails through
+    // (owner decision 2026-08-17), because nothing is recomputed on this path.
+    //
+    // `profile_gate_enforced` mirrors the same profileCompletionGate flag the
+    // save path already obeys, so the flag is the single kill switch for BOTH
+    // halves. Flip it off and the client stops gating immediately, with no
+    // deploy — which matters because a bug here locks people out of the app.
+    // It fails OPEN (`false`) if the config read throws, for the same reason.
+    profile_approved: prof.profile_vetted_at != null,
+    profile_gate_enforced: await (async () => {
+      try { return (await readConfig(env)).profileCompletionGate === true; } catch { return false; }
+    })(),
   });
 }
 
