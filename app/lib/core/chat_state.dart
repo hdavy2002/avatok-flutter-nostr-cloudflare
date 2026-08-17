@@ -118,6 +118,56 @@ class DeletedStore {
   }
 }
 
+/// [DELETE-CHAT-1 2026-08-17] Per-conversation "cleared up to here" cursor.
+///
+/// WHY THIS EXISTS. "Delete chat" in the thread menu was literally
+/// `() => Navigator.pop(context)` — it closed the sheet and did nothing else. No
+/// local wipe, no server call, no confirmation. So a chat the owner "deleted"
+/// was never deleted, and `/api/msg/sync` re-materialised the whole backlog into
+/// the local database on the next launch. That is the "old deleted messages come
+/// back when I load the app" report.
+///
+/// A cursor rather than a row-by-row wipe, deliberately: sync WILL re-insert
+/// those rows (the upsert in sync_hub has no delete check and never has), so
+/// deleting them locally would only work until the next connection. A cursor is
+/// applied at RENDER time, exactly like the existing `_deletedIds` tombstones, so
+/// re-inserted rows stay invisible no matter how often they come back.
+///
+/// Keyed by local convKey ('1:<peerUid>' / 'g:<gid>'). The value is a timestamp
+/// in EPOCH SECONDS — matching `_Msg.ts` — and everything at or before it is
+/// hidden. The server's own thread-clear machinery keys on a canonical message
+/// id instead, but no canonical mid is reachable on the client (`_Msg` carries
+/// `evId`, the client id, and no mid), so mirroring this to other devices is a
+/// separate piece of work rather than something to fake here.
+///
+/// Monotonic: a stale value must never move the cursor backward and resurrect a
+/// cleared thread.
+class ThreadClearStore {
+  static const _key = 'avatok_thread_clears';
+
+  Future<Map<String, int>> load() async {
+    final raw = await DiskCache.read(_key);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return (jsonDecode(raw) as Map)
+          .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Everything in [convKey] at or before [tsSec] is cleared. Never moves back.
+  Future<void> clearThrough(String convKey, int tsSec) async {
+    if (convKey.isEmpty || tsSec <= 0) return;
+    final m = await load();
+    if ((m[convKey] ?? 0) >= tsSec) return;
+    m[convKey] = tsSec;
+    await DiskCache.write(_key, jsonEncode(m));
+  }
+
+  Future<int> cursorFor(String convKey) async => (await load())[convKey] ?? 0;
+}
+
 /// Per-conversation last-message preview: a short snippet of the most recent
 /// line, its timestamp, and whether I sent it. Drives the chat-list subtitle and
 /// recency ordering. Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.
@@ -157,6 +207,22 @@ class ChatPreviewStore {
     j[convKey] = {'t': text, 'ts': ts, 'me': me};
     await DiskCache.write(_key, jsonEncode(j));
   }
+  /// [DELETE-CHAT-1 2026-08-17] Forget one conversation's preview.
+  ///
+  /// This store had `load()` and `record()` and no way to remove anything, so a
+  /// cleared chat kept its old last-message subtitle in the chat list forever —
+  /// the row the owner is actually looking at when he says the deleted chat is
+  /// back. Clearing the thread has to clear its preview too.
+  Future<void> remove(String key) async {
+    final raw = await DiskCache.read(_key);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final j = jsonDecode(raw) as Map;
+      if (j.remove(key) == null) return;
+      await DiskCache.write(_key, jsonEncode(j));
+    } catch (_) {/* a corrupt preview blob is not worth throwing over */}
+  }
+
 }
 
 /// Per-conversation PEER receipt high-water marks for MY messages: the newest

@@ -129,7 +129,59 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
               await ChatFlagsStore().toggle('blocked', _convKey!);
               if (mounted) Navigator.pop(context);
             }, danger: true),
-          _action(ctx, PhosphorIcons.broom(PhosphorIconsStyle.bold), 'Delete chat', () => Navigator.pop(context)),
+          // [DELETE-CHAT-1 2026-08-17] This used to be `() => Navigator.pop(context)`:
+          // the button closed the sheet and did NOTHING. No wipe, no server call,
+          // no confirmation — so a "deleted" chat was simply re-materialised from
+          // the server on the next launch, which is the owner's "old deleted
+          // messages come back" report. It now actually clears the thread.
+          _action(ctx, PhosphorIcons.broom(PhosphorIconsStyle.bold), 'Delete chat', () async {
+            // NO Navigator.pop here — `_action`'s own wrapper already closed the
+            // sheet. A second pop closed the THREAD route, so the confirm dialog
+            // opened on a dying route and `mounted` was false by the time the
+            // user tapped Delete: the cursor was written but the on-screen wipe
+            // and the telemetry were both skipped.
+            final ck = _convKey;
+            if (ck == null || ck.isEmpty) return;
+            // Destructive and (for now) local-only — ask first.
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (dctx) => AlertDialog(
+                backgroundColor: AD.overlaySheet,
+                title: Text('Delete this chat?', style: ADText.rowName()),
+                content: Text(
+                  'Messages in this chat will be removed from this device. '
+                  'This does not delete them for the other person.',
+                  style: ADText.preview(),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(dctx, false),
+                      child: Text('Cancel', style: ADText.rowName())),
+                  TextButton(onPressed: () => Navigator.pop(dctx, true),
+                      child: Text('Delete', style: ADText.rowName(c: AD.danger))),
+                ],
+              ),
+            );
+            if (ok != true) return;
+            final cut = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            await ThreadClearStore().clearThrough(ck, cut);
+            // Also drop the chat-list subtitle, or the row keeps showing the last
+            // message of a chat the user just deleted.
+            await ChatPreviewStore().remove(ck);
+            if (!mounted) return;
+            _clearedThroughTs = cut;
+            // Drop what is on screen now. The cursor is what keeps it gone: sync
+            // re-inserts these rows unconditionally, and the render filters in
+            // persistence.dart / the cold-open pass are what hide them again.
+            _mutMsgs(() => _msgs.removeWhere((m) => m.ts > 0 && m.ts <= cut));
+            Analytics.capture('chat_thread_cleared', {
+              'group': widget.chat.group,
+              'cut_ts': cut,
+              // Honest scope marker: this clear does NOT yet reach the user's
+              // other devices. The server's thread_clear machinery keys on a
+              // canonical message id that is not reachable from this screen.
+              'scope': 'local_only',
+            });
+          }, danger: true),
           ]),
         ),
       ),

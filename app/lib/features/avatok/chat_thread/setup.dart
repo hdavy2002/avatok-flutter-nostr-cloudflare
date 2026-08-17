@@ -19,6 +19,24 @@ extension _ChatThreadSetup on _ChatThreadScreenState {
     // `ActiveThread` is only consulted together with `lifecycleState == resumed`,
     // so a claim left standing while the screen is off cannot silence anything.
     ActiveThread.enter(key);
+    // [DELETE-CHAT-1 2026-08-17] Re-apply "Delete chat" on a cold open.
+    //
+    // Hooked HERE, not in initState, for the same reason ActiveThread.enter is:
+    // `_convKey` is assigned inside _setupDm/_setupGroup/_setupTelThread, which
+    // run AFTER initState. The first version of this read `_convKey` in
+    // initState, where it is always null — so the cursor was never loaded, the
+    // render filter never fired, and the whole fix silently did nothing. That is
+    // precisely the class of bug this repo's ship gate exists to catch.
+    //
+    // `_markRead` re-fires on every incoming message, hence the one-shot guard.
+    if (!_clearCursorLoaded) {
+      _clearCursorLoaded = true;
+      ThreadClearStore().cursorFor(key).then((cut) {
+        if (!mounted || cut <= 0) return;
+        _clearedThroughTs = cut;
+        _mutMsgs(() => _msgs.removeWhere((m) => m.ts > 0 && m.ts <= cut));
+      }, onError: (Object _) {/* a failed read must never block opening a chat */});
+    }
     // [AVAVM-PLAYER-1] Same "single point every thread flavour reaches" logic
     // as the ActiveThread claim above — remember this convKey's Chat so the
     // shell-level mini-player can reopen this exact thread on tap.

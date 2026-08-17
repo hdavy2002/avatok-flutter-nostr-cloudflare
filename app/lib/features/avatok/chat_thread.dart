@@ -455,6 +455,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // the durable [DeletedStore] so a message a peer deleted stays deleted across
   // cold opens — even if my thread was closed when the delete arrived.
   final Set<String> _deletedIds = {};
+  // [DELETE-CHAT-1 2026-08-17] "Delete chat" cursor, epoch SECONDS. Every message
+  // in this thread at or before it is hidden. Applied at RENDER time rather than
+  // by wiping rows, because sync re-inserts rows unconditionally — see
+  // ThreadClearStore's own doc for why a wipe cannot hold.
+  int _clearedThroughTs = 0;
+  // One-shot guard: the cursor is loaded from `_markRead`, which fires on every
+  // incoming message, so it must not re-read the file each time.
+  bool _clearCursorLoaded = false;
   int _disappearSecs = 0; // per-chat disappearing timer (0 = off)
   int _peerDeliveredTs = 0;
   bool _peerOnline = false;

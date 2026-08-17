@@ -127,6 +127,9 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
       // A peer hard-deleted this for everyone (durable tombstone) — collapse the
       // stale cached body/media to the deleted pill before showing it.
       if (ev != null && _deletedIds.contains(ev)) _tombstone(msg);
+      // [DELETE-CHAT-1] Everything at or before the "Delete chat" cursor stays
+      // gone, however many times sync re-inserts it.
+      if (_clearedThroughTs > 0 && msg.ts > 0 && msg.ts <= _clearedThroughTs) continue;
       loaded.add(msg);
     }
     if (loaded.isEmpty || !mounted) {
