@@ -1905,5 +1905,45 @@
         "_verified_at": "app/lib/push/push_service.dart _runNotifAction, written 2026-08-17"
       }
     ]
+  },
+  "CALL-PREJOIN-ISOLATE-1": {
+    "description": "Fixes the CALL-PREJOIN-1 regression proved by prod call avatok-a0170dc6 (2026-08-17): the ring-time pre-join's PeerConnection was built by _newPC, which assigns _pc and installs onTrack as its last acts — so the pre-join became the session's LIVE connection at ring start and a track on it stopped the ringback and declared call_connected 7.3s before the callee accepted (13.802 vs accept 21.070), leaving 13s of connected-looking silence. _newPC gains isolated:false (default preserves all 4 existing callers byte-for-byte); isolated suppresses exactly three things — _pc assignment (which also neutralises onConnectionState, already guarded by identical(pc,_pc)), onTrack (caches to _prejoinEarlyTracks), and _resetPlayoutHealthBaselines. _promotePrejoinPc() at adoption reverses all three and replays cached tracks through the same handler. _discardPrejoinedSfu now retires the PRE-JOIN's pc by identity instead of _pc (retiring _pc would have closed the live call's connection once isolated).",
+    "flags": [
+      "callSfuV1",
+      "callerPrejoinOnRingV1"
+    ],
+    "min_devices_on_build": 2,
+    "shipped": "pending",
+    "two_sided": true,
+    "success": [
+      {
+        "event": "call_connected",
+        "property": "call_id",
+        "equals": "",
+        "min_events": 1,
+        "where": {},
+        "note": "PRIMARY: on a call where the caller has call_prejoin_started, the CALLER's call_connected timestamp must be AFTER the callee's accept (call_command / callee call_started), never before — that ordering IS the regression test. Companion: call_prejoin_promoted present with had_early_track reported; call_prejoin_discarded must NOT be followed by the live call ending."
+      }
+    ]
+  },
+  "CALL-PREWARM-2": {
+    "description": "CALL-PREWARM-1 never executed on a single real call — zero call_prewarm_* events exist in project history. Its hook sat in push_service._showIncoming, but production rings arrive via _routeToBrandedIncoming straight from the native tap channel (prod avatok-a0170dc6: call_branded_fsi_routed with no call_incoming_received/shown). Hook added to IncomingBusinessCallScreen.initState — the convergence point every branded ring lane must pass through to show an Accept button. Idempotent per callId so the existing push_service hook double-firing costs nothing. Key match verified empirically: ring call_id and session call_id are the same string in prod telemetry.",
+    "flags": [
+      "callSfuV1",
+      "callPrewarmOnRingV1"
+    ],
+    "min_devices_on_build": 1,
+    "shipped": "pending",
+    "two_sided": false,
+    "success": [
+      {
+        "event": "call_prewarm_adopted",
+        "property": "had_join",
+        "equals": true,
+        "min_events": 1,
+        "where": {},
+        "note": "The event that has NEVER fired. Next incoming call must produce call_prewarm_started then call_prewarm_adopted had_join:true, and the callee's stage_sfu_join in call_first_audio_ms should collapse toward ~0 (was ~2s after accept)."
+      }
+    ]
   }
 }
