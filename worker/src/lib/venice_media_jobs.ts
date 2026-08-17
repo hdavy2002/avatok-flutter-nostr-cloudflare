@@ -179,7 +179,13 @@ export async function listVeniceMediaJobsForRecovery(
  * be re-attempted. Each attempt moves updated_at, so a job naturally ages out
  * of this window after one or two tries — a bounded retry, not a loop (every
  * attempt reserves a real Token). */
-const VIDEO_COVER_RETRY_WINDOW_MS = 6 * 60_000;
+// [COVER-SCAN-RETRY-1 2026-08-17] Widened 6min -> 45min. The safety classifier
+// fails intermittently and SLOWLY (one production call hung 235s), so a single
+// bad minute could burn the entire old window and leave a song permanently
+// artwork-less — which also blanks its share preview. Each attempt still moves
+// updated_at and costs one Token, so this remains a bounded retry (a handful of
+// tries), not a loop.
+const VIDEO_COVER_RETRY_WINDOW_MS = 45 * 60_000;
 
 /** Completed video jobs whose share thumbnail sidecar never reached a terminal
  * state. This is separate from provider polling recovery: the video bytes are

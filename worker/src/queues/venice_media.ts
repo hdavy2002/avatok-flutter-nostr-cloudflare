@@ -252,7 +252,19 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
       const bin = atob(b64);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const verdict = await moderateGeneratedImage(env, job.owner_uid, bytes);
+      // [COVER-SCAN-RETRY-1 2026-08-17] The safety classifier is FLAKY, not
+      // broken: 13 of 16 production calls returned in ~1.5s, the rest failed
+      // with "3046: Request timeout" / "8004: Internal server error" after
+      // 25-235s (its own 15s timeout is not being honoured). Because the image
+      // is already generated and already paid for, re-scanning is far cheaper
+      // than discarding the cover — so a scan ERROR is retried in place before
+      // we conclude the scanner is unavailable. A real BLOCK verdict is never
+      // retried here; only a failure to obtain a verdict is.
+      let verdict = await moderateGeneratedImage(env, job.owner_uid, bytes);
+      for (let scanTry = 0; scanTry < 2 && verdict.ok === false; scanTry++) {
+        await new Promise((r) => setTimeout(r, 1500 * (scanTry + 1)));
+        verdict = await moderateGeneratedImage(env, job.owner_uid, bytes);
+      }
       if (!verdict.blocked) { coverBytes = bytes; break; }
       // [COVER-RETRY-SAFE-1] A SCAN that could not run is not a safety verdict.
       // moderateGeneratedImage fails CLOSED (blocked:true, ok:false) on any
