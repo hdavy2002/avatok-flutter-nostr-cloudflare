@@ -1694,6 +1694,26 @@ export async function readMsg(req: Request, env: Env): Promise<Response> {
       ).bind(ctx.uid, String(b.conv), Number(b.read_ts) || 0).run();
     } catch { /* best-effort; InboxDO remains the source until cutover */ }
   }
+  // ── [NOTIF-SYNC-1 2026-08-17] Clear the shade on MY OTHER DEVICES ─────────
+  //
+  // Reading a chat on one device must take its notification down everywhere.
+  // Until now it did not: notifications are drawn locally per device, so a
+  // conversation read on the phone stayed sitting in the tablet's shade, and
+  // (since [NOTIF-STYLE-1] gave every chat its own persistent card, where before
+  // one banner was simply overwritten by the next message) it would stay there
+  // indefinitely and keep being counted in the "N messages from M chats" summary.
+  //
+  // Addressed to ctx.uid — MY OWN devices, nobody else's. It is a SILENT
+  // data-only push carrying no banner, exactly like the existing `del` / `hide`
+  // lane this deliberately mirrors. The device that did the reading no-ops
+  // harmlessly: by the time this lands its notification is already gone.
+  //
+  // Best-effort. A failed enqueue costs a stale notification, never a failed read.
+  try {
+    await env.Q_PUSH.send({
+      kind: "notif_clear", to: ctx.uid, conv: String(b.conv),
+    });
+  } catch { /* a stale shade entry is not worth failing a read over */ }
   return json({ ok: true });
 }
 

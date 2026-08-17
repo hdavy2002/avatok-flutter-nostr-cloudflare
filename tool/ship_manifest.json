@@ -1996,5 +1996,23 @@
     "_verified_at": "app/lib/push/push_service.dart _showReactionNotif, written 2026-08-17"
    }
   ]
+ },
+ "NOTIF-SYNC-1": {
+  "description": "Phase 4 (part) of Specs/NOTIF-PARITY-PLAN.md: reading a conversation on one device takes its notification down on the user's OTHER devices. readMsg now enqueues a silent data-only kind:'notif_clear' addressed to ctx.uid \u2014 the reader's own devices, never a peer \u2014 mirroring the existing del/hide silent lane; the client clears that conversation's shade log, cancels its notification and re-counts the bundle summary. This mattered little before NOTIF-STYLE-1, when a single shared banner was simply overwritten by the next message; now that every chat owns a persistent card, a chat read elsewhere would otherwise sit in the other device's shade indefinitely and keep inflating the 'N messages from M chats' line.",
+  "shipped": "2026-08-17",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "notif_cleared_remote",
+    "where": {},
+    "property": "had_conv",
+    "equals": true,
+    "min_events": 1,
+    "note": "had_conv=true means the silent push arrived AND carried a conversation to clear. The event firing with had_conv=false would mean the payload lost the conv id in transit, which clears nothing while looking like a success. Genuinely needs the same account signed in on two devices to observe; min_devices_on_build is 1 because it is not two-SIDED (no second person is involved), but it is untestable on a single handset.",
+    "_verified_at": "app/lib/push/push_service.dart _handleBackgroundMessage notif_clear branch, 2026-08-17"
+   }
+  ]
  }
 }

@@ -188,7 +188,11 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction";
+  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite" | "app_update_broadcast" | "reaction" | "notif_clear";
+  // [NOTIF-SYNC-1 2026-08-17] kind === "notif_clear": a conversation was read
+  // on ONE of my devices; every other device of MINE should take that chat's
+  // notification down. Silent + data-only, same lane as "del"/"hide". `to` is
+  // always the reader themselves, never a peer.
   // [NOTIF-REACT-1 2026-08-17] kind === "reaction": someone put an emoji on a
   // message. Addressed ONLY to the author of the reacted-to message (validated
   // as a conversation member by worker/src/routes/messaging.ts reactMsg), so

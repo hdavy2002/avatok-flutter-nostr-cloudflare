@@ -607,6 +607,12 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
     } else if (type == 'reaction') {
       // [NOTIF-REACT-1] Someone reacted to a message this user wrote.
       await _showReactionNotif(d);
+    } else if (type == 'notif_clear') {
+      // [NOTIF-SYNC-1] This conversation was read on another of MY devices —
+      // take its card out of this device's shade and re-count the summary.
+      // Silent: nothing is drawn, so there is no banner to suppress.
+      await _clearShadeThread((d['conv'] ?? '').toString());
+      await _track('notif_cleared_remote', {'had_conv': (d['conv'] ?? '').toString().isNotEmpty});
     } else if (type == 'group_invite') {
       await _showGroupInviteNotif(d);
     } else if (type == 'call_recording') {

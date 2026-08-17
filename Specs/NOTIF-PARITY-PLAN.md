@@ -8,8 +8,33 @@
 | 0 | `NOTIF-ICON-1`, `NOTIF-PAYLOAD-1`, `NOTIF-FLAGS-1` | committed |
 | 1 | `NOTIF-STYLE-1` | committed |
 | 2 | `NOTIF-ACTIONS-1` | committed + server live, **needs a build** |
-| 3 | reactions | not started |
-| 4 | conversation space, thumbnails, read-sync | not started |
+| 3 | `NOTIF-REACT-1` | committed + server live, **needs a build** |
+| 4 | `NOTIF-SYNC-1` only | committed; rest NOT started — see below |
+
+### Phase 4 — what is done and what is deliberately not
+
+**Done:** `NOTIF-SYNC-1` — a chat read on one device clears its notification on
+the user's other devices.
+
+**Not started, and each for a stated reason rather than for lack of time:**
+
+- **Conversations section (Android 11+) + priority conversations + bubbles.**
+  Needs a long-lived sharing shortcut published per chat via
+  `ShortcutManagerCompat.pushDynamicShortcut`. `flutter_local_notifications`
+  exposes `shortcutId` for *consuming* one but has no way to *publish* one, so
+  this is ~40 lines of Kotlin. With no local toolchain, native code cannot be
+  compile-checked here at all — it deserves its own pass, not a tail-end guess.
+- **Inline photo/video thumbnails.** `MessagingStyle.Message` takes a
+  `dataMimeType` + `dataUri`, but AvaTOK's DM media is encrypted at rest, so the
+  notification path would have to run `MediaService.downloadAndDecrypt` inside
+  the background isolate — where drift is closed and the account scope has to be
+  rebuilt by hand. Real work, not a parameter.
+- **@mentions piercing a muted group.** Needs mention parsing server-side; no
+  mention model exists in the message envelope today.
+- **Hide message content on the lock screen.** Small, but it needs a Settings
+  toggle to be meaningful, and inventing a settings row unprompted is scope the
+  owner did not ask for.
+- **Launcher badge audit.** Read-only investigation; see the badge caveat below.
 
 Not yet done, and both are required before any of this reaches a phone: the
 worker + consumers deploy to production, and an Android build. Neither has been

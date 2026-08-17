@@ -868,6 +868,17 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       ...(msg.senderAvatarVersion ? { senderAvatarVersion: String(msg.senderAvatarVersion) } : {}),
     } };
   }
+  if (msg.kind === "notif_clear") {
+    // [NOTIF-SYNC-1] Silent: no banner, nothing for the user to see. High
+    // priority so a sleeping second device takes the stale card down promptly
+    // rather than whenever it next happens to wake — a notification for a
+    // message you already read is exactly the kind of thing that makes an app
+    // feel broken.
+    return { highPriority: true, data: {
+      type: "notif_clear",
+      ...(msg.conv ? { conv: String(msg.conv) } : {}),
+    } };
+  }
   if (msg.kind === "reaction") {
     // [NOTIF-REACT-1] Someone reacted to a message this recipient WROTE.
     //
