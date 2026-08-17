@@ -256,3 +256,64 @@ code did not run, not that it worked quietly.
    Dart starting?
 4. Anything in §2's negotiation queue that could deadlock or starve under a
    reconnect storm?
+
+---
+
+## 11. REVIEW ROUND 2 — responses (2026-08-18)
+
+### P0 — negotiation queue was not actually safe. **CONFIRMED, FIXED.**
+All three sub-faults were real, verified in the code:
+1. The generation was bumped **on enqueue**, so queuing a *different* operation
+   invalidated an older queued one — which then threw an **uncaught
+   `StateError`** out of the chain.
+2. A timeout released the queue but did **not** invalidate the abandoned work,
+   which kept running and could still write `_pc` / `_sessionId`.
+3. The body read the **global** counter at start instead of holding its own
+   token, so "am I current?" was answered by a value anyone could move.
+
+**Fix `[CALL-VIDEO-FIX-4]`:** replaced the counter with a per-operation
+`_NegotiationToken`. Strict FIFO — each op waits for the previous to FINISH and
+is **never** invalidated merely because something queued behind it. A token is
+invalidated only by (a) its own timeout, via `onTimeout` which sets
+`token.live = false` **before** giving up, or (b) `dispose()`, which now calls
+`_cancelAllNegotiations()` first. `_ownsNegotiation(token)` gates every shared
+write. No uncaught error path remains.
+
+### P1 — pre-join triggered too late. **CONFIRMED, FIXED.**
+The reviewer's sequencing is right: the backend records both participants
+before the WebSocket ring, while the FCM ack only lands after token fan-out —
+so an online callee can accept **before** the ack. **Fix `[CALL-PREJOIN-3]`:**
+the primary trigger moved to `notePlaceResult(reachable: true)` (a 200 from
+`/api/call` = participants recorded = the exact precondition the seat write
+checks). Ring-ack remains as an idempotent backstop and keeps owning
+reachability and the no-answer window.
+
+### Accepted, NOT yet fixed — must be judged before shipping
+- **`onFirstFrameRendered` exists** in the pinned version — uncertainty closed,
+  thank you.
+- **Initial publish still assumes mids `0/1`.** Safe by construction today
+  (tracks added before the first offer, nothing else on the connection) but it
+  is an assumption, not a proof. Should be resolved from transceivers too.
+- **`videoUpgrading` has no visible "Adding video…" UI** — wired, not rendered.
+- **Native accept/decline is still process-memory only.** A process death
+  between the tap and Dart draining it loses the answer; the 6s failsafe can
+  also clear the surface while Flutter is still absent. Needs atomic disk
+  persistence with call id, timestamp, expiry and a one-time nonce.
+- **"First audio" proves RTP arrival, not playout.** Should move to
+  jitter-buffer / `totalSamplesReceived` plus route confirmation. The
+  RealtimeKit `trackAdded` path does not distinguish audio from video (latent —
+  that transport is off).
+- **Fallback/recovery as a latency fault** — the 12–16s call also showed SFU
+  fallback and transport recovery. Pre-join alone will not make it
+  WhatsApp-fast; that needs its own investigation.
+- **Sampling at 1.0 is not viable at target scale** — mechanism is in place;
+  unsampled health counters must land before turning it down.
+- **Wording corrected:** the native surface is installed after
+  `super.onCreate`, i.e. before Flutter's first *frame*, not "before Flutter
+  exists".
+
+### Rollout hazard the reviewer raised — acknowledged
+`callerPrejoinOnRingV1`, `callPrewarmOnRingV1` and `callAudibleStateV1` are
+already ON in production config, so a new build activates them the moment it
+lands. Options: ship with those three flipped OFF and enable one at a time, or
+ship as-is with instant flag rollback. **Owner's call.**
