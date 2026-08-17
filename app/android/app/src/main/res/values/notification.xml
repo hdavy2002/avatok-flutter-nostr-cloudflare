@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- [NOTIF-ICON-1] Tint applied by Android behind the monochrome status-bar
+     glyph (drawable-*/ic_notification.png) and to the small icon shown inside
+     the expanded notification. Android throws away every colour in the icon
+     itself, so this resource is the ONLY way to get brand colour into the
+     shade. Value mirrors AD.primaryBadge (0xFFE8833A) in
+     app/lib/core/ui/avatok_dark.dart — keep the two in sync by hand; the
+     design guard cannot see Android XML. -->
+<resources>
+    <color name="avatok_notification_accent">#E8833A</color>
+</resources>

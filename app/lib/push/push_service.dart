@@ -108,6 +108,27 @@ String? gIncomingRingingFrom; // the peer's uid/seed that is currently ringing
 String? gIncomingRingingCallId; // the callId of the incoming call
 
 final _local = FlutterLocalNotificationsPlugin();
+
+// [NOTIF-ICON-1] The status-bar glyph, for EVERY AvaTOK notification.
+//
+// Android does not render this drawable — it silhouettes it. Every pixel with
+// non-zero alpha is painted flat white (tinted by
+// @color/avatok_notification_accent inside the expanded notification) and all
+// colour information is thrown away. Passing full-colour launcher art therefore
+// yields a solid white BLOB beside the clock, which is exactly what AvaTOK shipped
+// until now: both `AndroidInitializationSettings` calls said '@mipmap/ic_launcher'
+// and NOT ONE `AndroidNotificationDetails` passed an `icon:` at all, so every
+// banner inherited it.
+//
+// `ic_notification` is a purpose-drawn monochrome asset (double ring enclosing a
+// capital A) at five densities. Its SOURCE OF TRUTH is app/android-res/drawable-*/
+// — tool/postcreate.py patch_launcher_icon() copytree's that directory over
+// android/app/src/main/res on EVERY CI build, so editing the res tree alone is a
+// decoy that looks right locally and silently reverts in CI.
+//
+// No leading '@drawable/' and no extension: flutter_local_notifications resolves
+// a bare name against the drawable folder itself.
+const String _kNotifIcon = 'ic_notification';
 // Messages channel. Keep the id 'avatok_messages' UNCHANGED — changing a channel
 // id makes Android drop the old channel and create a fresh one, resetting the
 // user's sound/vibration/importance overrides. playSound + enableVibration are set
@@ -179,7 +200,7 @@ Future<void> _ensureLocalInit() async {
   if (_localReady) return;
   try {
     await _local.initialize(const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings(_kNotifIcon),
     ));
     final android = _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -385,6 +406,7 @@ Future<void> _showCallRecordingNotif(Map<String, dynamic> d) async {
       android: AndroidNotificationDetails(
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
+        icon: _kNotifIcon, // [NOTIF-ICON-1]
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
         number: count,
@@ -413,6 +435,7 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
       android: AndroidNotificationDetails(
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
+        icon: _kNotifIcon, // [NOTIF-ICON-1]
         importance: Importance.high, priority: Priority.high,
         number: count,
         ticker: '$who added you to $group',
@@ -439,6 +462,7 @@ Future<void> _showUpdateNotif(Map<String, dynamic> d) async {
       android: AndroidNotificationDetails(
         _updatesChannel.id, _updatesChannel.name,
         channelDescription: _updatesChannel.description,
+        icon: _kNotifIcon, // [NOTIF-ICON-1]
         importance: Importance.defaultImportance, priority: Priority.defaultPriority,
         category: AndroidNotificationCategory.recommendation,
         onlyAlertOnce: true, // updating the banner for a newer build must not re-alert
@@ -1292,6 +1316,7 @@ Future<void> _updateMissedCallsSummary(String line) async {
         android: AndroidNotificationDetails(
           _callsChannel.id, _callsChannel.name,
           channelDescription: _callsChannel.description,
+          icon: _kNotifIcon, // [NOTIF-ICON-1]
           importance: Importance.high, priority: Priority.high,
           groupKey: _kMissedCallsGroupKey,
           setAsGroupSummary: true,
@@ -1373,6 +1398,7 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
       android: AndroidNotificationDetails(
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
+        icon: _kNotifIcon, // [NOTIF-ICON-1]
         importance: Importance.high, priority: Priority.high,
         number: count, // launchers read this for the icon badge count
         ticker: 'Message from $who',
@@ -1395,6 +1421,13 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     // direct proof that the silent-with-screen-off bug is fixed.
     'path': BadgeService.inBackgroundIsolate ? 'background' : 'foreground',
     'has_preview': (d['preview'] ?? d['body'] ?? '').toString().trim().isNotEmpty,
+    // [NOTIF-ICON-1] Which status-bar glyph this banner was drawn with. The
+    // pre-fix value was the launcher mipmap, which Android silhouettes into a
+    // white blob; `icon:'ic_notification'` on a build is the proof the
+    // monochrome asset actually resolved and shipped. This is a literal echo of
+    // what was passed to AndroidNotificationDetails, NOT a hardcoded 'true' —
+    // if the constant is ever reverted, this property reverts with it.
+    'icon': _kNotifIcon,
   });
 }
 
@@ -1501,6 +1534,7 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   final androidDetails = AndroidNotificationDetails(
     _callsChannel.id, _callsChannel.name,
     channelDescription: _callsChannel.description,
+    icon: _kNotifIcon, // [NOTIF-ICON-1]
     importance: Importance.high, priority: Priority.high,
     number: count,
     ticker: title,
@@ -1556,6 +1590,7 @@ Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
   final androidDetails = AndroidNotificationDetails(
     _callsChannel.id, _callsChannel.name,
     channelDescription: _callsChannel.description,
+    icon: _kNotifIcon, // [NOTIF-ICON-1]
     importance: Importance.high, priority: Priority.high,
     number: count,
     ticker: title,
@@ -3158,7 +3193,7 @@ class PushService {
     });
     await _local.initialize(
       const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings(_kNotifIcon),
       ),
       onDidReceiveNotificationResponse: (resp) {
         // [AVACALL-INUI-2] A tapped / FSI-launched branded incoming-call

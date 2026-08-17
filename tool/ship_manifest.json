@@ -1698,5 +1698,25 @@
       }
     ],
     "_verified_at": "worker/src/lib/vertex.ts emitTransport() on all three exit paths of generateContentVia(); worker/wrangler.toml VERTEX_PROJECT='avatok-avaglobal'. NOTE 2026-08-17: the first success definition asserted ava_reason_call.transport=='vertex' and was WRONG — 14 days of prod showed zero ava_reason_call events with a Google provider (that gateway carries cf_ai/venice/openrouter only), so the check was unobservable and could never go green."
+  },
+  "NOTIF-ICON-1": {
+    "description": "WhatsApp-parity notifications, step 1 of Specs/NOTIF-PARITY-PLAN.md. AvaTOK had NO monochrome status-bar icon: both AndroidInitializationSettings calls in lib/push/push_service.dart passed '@mipmap/ic_launcher' and not one of the seven AndroidNotificationDetails sites passed an `icon:` at all, so every banner inherited full-colour launcher art, which Android silhouettes into a white blob beside the clock. Adds app/android-res/drawable-{m,h,xh,xxh,xxx}dpi/ic_notification.png (double ring enclosing a capital A, white-on-transparent), the accent colour resource app/android-res/values/notification.xml, the two FCM default_notification_* manifest meta-data keys, and a shared `_kNotifIcon` constant wired into both init sites and all seven detail sites. Client + Android resources only; no worker change, no schema change, no new flag. android-res is the source of truth (tool/postcreate.py patch_launcher_icon copytree's it over the res tree on every CI build); the res tree copy is kept in sync.",
+    "shipped": "2026-08-17",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "push_shown",
+        "where": {
+          "type": "message"
+        },
+        "property": "icon",
+        "equals": "ic_notification",
+        "min_events": 1,
+        "note": "The success VALUE, not the arrival of the event. push_shown already fires today and would keep firing with the blob icon, so 'push_shown is flowing' proves nothing here — ship-gate rule 3. The `icon` property is a literal echo of the constant handed to AndroidNotificationDetails, so icon='ic_notification' on the newest $app_build means the monochrome asset resolved at build time and was the glyph actually drawn. Any other value, or an absent property, means the drawable did not survive patch_launcher_icon and the blob is still shipping. One device is enough: a status-bar icon is one-sided, unlike the stacking/reply work in later phases.",
+        "_verified_at": "app/lib/push/push_service.dart _showMessageNotif -> _track('push_shown', ...), emit site read on 2026-08-17"
+      }
+    ]
   }
 }

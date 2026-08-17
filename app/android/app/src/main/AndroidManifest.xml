@@ -344,6 +344,31 @@
             </intent-filter>
         </receiver>
 
+        <!-- [NOTIF-ICON-1] Status-bar notification glyph.
+
+             Android silhouettes the small icon: every pixel with alpha is drawn
+             white, all colour is discarded. Before this, AvaTOK passed
+             @mipmap/ic_launcher, which is the full-colour launcher art, so the
+             silhouette was a solid white BLOB next to the clock. The fix is a
+             purpose-drawn monochrome asset: drawable-*/ic_notification.png
+             (double ring + capital A), sourced from app/android-res/ — see
+             tool/postcreate.py patch_launcher_icon(); editing
+             android/app/src/main/res/drawable-* alone is the decoy that CI
+             overwrites on every build.
+
+             Caveat worth knowing: these two meta-data keys only take effect for
+             pushes that carry an FCM `notification` block, and AvaTOK's server
+             is data-only (consumers/src/fcm.ts sendFcm). The load-bearing change
+             is the `icon:` argument on AndroidNotificationDetails in
+             lib/push/push_service.dart. These are here so that a future
+             notification-payload push cannot silently regress to the blob. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/avatok_notification_accent" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
