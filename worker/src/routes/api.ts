@@ -2395,12 +2395,21 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const db = metaSession(env);
   // Save-time content validation (Nemotron): block an abusive name/bio before it's
   // persisted and shown in the directory.
+  // [PROFILE-MOD-FIELDS-1] (2026-08-17) first/last used to be passed as the field
+  // names "first_name"/"last_name", which are NOT members of ModField. policyFor()
+  // has no case for them, so they fell through to `default` and were judged by the
+  // GENERIC policy — losing the name-specific rules (profanity, political slogans,
+  // and impersonation of staff/official roles like "admin"/"support"/"moderator").
+  // The two `@ts-expect-error`s above them said the quiet part out loud: the
+  // compiler knew these were not valid fields and the errors were suppressed.
+  // They are "name" now, so all three name inputs get the strict name policy.
+  // This can only ever REJECT more, never less, which is the safe direction for a
+  // moderation change. The `name` entry stays because it is first+last combined and
+  // catches an abusive phrase that is split innocuously across the two boxes.
   const blocked = await guardWrite(req, env, ctx.uid, "profile", [
     { text: name, field: "name" },
-    // @ts-expect-error pre-existing: profile-name moderation field not in ModField union — changing it alters policy selection, needs review
-    { text: firstName, field: "first_name" },
-    // @ts-expect-error pre-existing: profile-name moderation field not in ModField union — changing it alters policy selection, needs review
-    { text: lastName, field: "last_name" },
+    { text: firstName, field: "name" },
+    { text: lastName, field: "name" },
     { text: bio, field: "bio" },
   ]);
   if (blocked) return blocked;

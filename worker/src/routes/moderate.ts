@@ -83,7 +83,15 @@ export async function guardWrite(
 ): Promise<Response | null> {
   const bad = await firstUnsafe(env, fields);
   if (!bad) return null;
-  void trackUser(env, uid, await emailFor(env, uid), "moderation_block", app, {
+  // [PROFILE-MOD-FIELDS-1] AWAITED. `void trackUser(...)` is cancelled by workerd
+  // once the response returns, so this event has NEVER reached PostHog —
+  // `moderation_block` is not even in the project taxonomy after 14 days. That is
+  // not "nothing was blocked": it means a block is INVISIBLE, and, worse, that a
+  // classifier silently failing open (moderate() returns safe:true, ok:false when
+  // OpenRouter errors or the key is missing) would look exactly the same as a
+  // clean profile. Moderation you cannot observe is moderation you cannot trust.
+  // A block is rare and already on a rejection path, so awaiting costs nothing.
+  await trackUser(env, uid, await emailFor(env, uid), "moderation_block", app, {
     field: bad.field, categories: bad.result.categories, reason: bad.result.reason,
     engine: bad.result.ms ? "nemotron-3.5-content-safety" : "local",
     server_side: true, ...geoOf(req),
