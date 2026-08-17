@@ -321,7 +321,7 @@ class CallSfuTransport {
 
   /// True while [token] may still write shared transport state.
   bool _ownsNegotiation(_NegotiationToken token) =>
-      token.live && !_disposed && _liveTokens.contains(token);
+      token.live && !_disposed && !_sessionPoisoned && _liveTokens.contains(token);
 
   /// Strict FIFO: each operation waits for the previous one to FINISH, and a
   /// queued operation is never cancelled just because another was enqueued
@@ -342,13 +342,27 @@ class CallSfuTransport {
           token.live = false;
           throw StateError('transport disposed before $op ran');
         }
+        // [CALL-VIDEO-FIX-5] A previous negotiation timed out mid-mutation.
+        // Running anything else against that session would build on a state
+        // nobody can describe; fail fast and let the reconnect ladder rebuild.
+        if (_sessionPoisoned) {
+          token.live = false;
+          throw StateError('sfu session poisoned by an earlier $op timeout');
+        }
         final result = await body(token).timeout(
           _negotiationTimeout,
           onTimeout: () {
             // INVALIDATE, then give up. The abandoned body keeps executing —
             // Dart cannot cancel it — but every shared write it still attempts
-            // is now gated off by `_ownsNegotiation`.
+            // is now gated off by `_ownsNegotiation`, and every network call it
+            // would still make is gated by the same check.
+            //
+            // [CALL-VIDEO-FIX-5] Poison the session too: a half-applied
+            // offer/answer is not a state the next operation can safely extend,
+            // and the poison is set BEFORE the `finally` releases the queue, so
+            // no successor can start against it.
             token.live = false;
+            _sessionPoisoned = true;
             throw TimeoutException('negotiation $op exceeded ${_negotiationTimeout.inSeconds}s');
           },
         );
@@ -365,6 +379,15 @@ class CallSfuTransport {
       }
     });
   }
+
+  /// [CALL-VIDEO-FIX-5 2026-08-18] Set when a negotiation TIMED OUT.
+  ///
+  /// A timed-out body cannot be cancelled, so the SFU session it was halfway
+  /// through mutating (an offer applied but never answered, a renegotiate in
+  /// flight) can no longer be trusted. Every later negotiation fails fast on
+  /// this rather than compounding the damage; the session layer's existing
+  /// reconnect ladder owns recovery from there.
+  bool _sessionPoisoned = false;
 
   /// Invalidate every outstanding token. Called from [dispose] so work still in
   /// flight can never write to a torn-down transport.
@@ -643,7 +666,7 @@ class CallSfuTransport {
       return CallSfuResult.failed(SfuFailure.unknown, detail: 'connectPull_without_publish');
     }
     try {
-      return await _serialize('connectPull', (_) => _connectPullImpl(video: video, peerWait: peerWait));
+      return await _serialize('connectPull', (t) => _connectPullImpl(video: video, peerWait: peerWait, token: t));
     } on TimeoutException {
       AvaLog.I.log('call', 'connectPull timed out in the negotiation queue');
       await _closePc();
@@ -655,7 +678,7 @@ class CallSfuTransport {
   /// [connectPull]. Calls [_doPull] directly (never [pullPeerVideo] /
   /// [pullPeerAudio] / another [_serialize]) — see [_serialize]'s nesting
   /// warning.
-  Future<CallSfuResult> _connectPullImpl({required bool video, Duration? peerWait}) async {
+  Future<CallSfuResult> _connectPullImpl({required bool video, Duration? peerWait, required _NegotiationToken token}) async {
     final pc = _pc;
     final sid = _sessionId;
     if (!_publishDone || pc == null || sid == null) {
@@ -678,7 +701,7 @@ class CallSfuTransport {
       // PULL audio — the SFU offers, we answer. `_doPull`, not `_pull`: this
       // body is already running under `_serialize` (see that method's
       // nesting warning).
-      final pulledAudio = await _doPull('audio');
+      final pulledAudio = await _doPull('audio', token);
       if (!pulledAudio) {
         return CallSfuResult.failed(SfuFailure.pullFailed, detail: 'audio');
       }
@@ -691,7 +714,7 @@ class CallSfuTransport {
       final peerVideoAvailable = peer.hasVideo;
       var videoConnected = false;
       if (wantVideo && peerVideoAvailable) {
-        videoConnected = await _doPull('video');
+        videoConnected = await _doPull('video', token);
       }
 
       _startHeartbeat();
@@ -769,13 +792,13 @@ class CallSfuTransport {
   /// inside this method. The two free-standing public pull entry points
   /// ([pullPeerVideo], [pullPeerAudio]) are what apply the queue for callers
   /// outside an already-serialized op.
-  Future<bool> _doPull(String kind) async {
+  Future<bool> _doPull(String kind, _NegotiationToken token) async {
     final sid = _sessionId;
     final pc = _pc;
     if (sid == null || pc == null) return false;
     try {
       final r = await CallSfuApi.pull(room, sessionId: sid, kind: kind);
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       final sdp = r.offer?['sdp']?.toString();
       if (sdp == null) return false;
       if (!r.renegotiate) {
@@ -784,7 +807,7 @@ class CallSfuTransport {
         return true;
       }
       await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       final answer = await pc.createAnswer();
       // [CALL-MEDIA-540P-1] `enableRed: false` here is deliberate and is NOT an
       // oversight to be "fixed" for symmetry with the two publish sites. This
@@ -799,7 +822,7 @@ class CallSfuTransport {
         answer.type,
       );
       await pc.setLocalDescription(tunedAnswer);
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       await CallSfuApi.renegotiate(room, sid, tunedAnswer.sdp ?? '');
       final newMids = <String>{};
       for (final t in r.tracks) {
@@ -862,7 +885,7 @@ class CallSfuTransport {
   /// negotiation on this transport touches.
   Future<bool> publishVideo(MediaStreamTrack videoTrack, MediaStream stream) async {
     try {
-      return await _serialize('publishVideo', (_) => _publishVideoImpl(videoTrack, stream));
+      return await _serialize('publishVideo', (t) => _publishVideoImpl(videoTrack, stream, t));
     } on TimeoutException {
       AvaLog.I.log('call', 'publishVideo timed out in the negotiation queue');
       return false;
@@ -873,13 +896,13 @@ class CallSfuTransport {
   /// [_serialize] by [publishVideo]. Calls [_doPull] directly at the end
   /// (never [pullPeerVideo]/another [_serialize]) — see [_serialize]'s
   /// nesting warning.
-  Future<bool> _publishVideoImpl(MediaStreamTrack videoTrack, MediaStream stream) async {
+  Future<bool> _publishVideoImpl(MediaStreamTrack videoTrack, MediaStream stream, _NegotiationToken token) async {
     final sid = _sessionId;
     final pc = _pc;
     if (sid == null || pc == null) return false;
     try {
       await pc.addTrack(videoTrack, stream);
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       // [CALL-MEDIA-540P-1] Configure BEFORE the offer, not after. This is the
       // first moment a video sender exists on this connection, so the limits
       // applied during `connect()` never saw it — a camera turned on mid-call
@@ -895,7 +918,7 @@ class CallSfuTransport {
         offer.type,
       );
       await pc.setLocalDescription(tunedOffer);
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       if (enableRed) {
         onRedNegotiated?.call(
           audio_tuning.sdpHasActiveRed(tunedOffer.sdp),
@@ -935,14 +958,14 @@ class CallSfuTransport {
         AvaLog.I.log('call', 'publishVideo aborted: could not resolve the real mid for the new video track');
         return false;
       }
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       final answer = await CallSfuApi.publish(room, sid, tunedOffer.sdp ?? '', [
         {'mid': resolvedMid, 'kind': 'video', 'trackName': _videoTrackName(sid)},
       ]);
       if (answer == null || answer['sdp'] == null) return false;
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       await pc.setRemoteDescription(RTCSessionDescription(answer['sdp'].toString(), 'answer'));
-      if (_disposed || !identical(pc, _pc)) return false;
+      if (_disposed || !identical(pc, _pc) || !_ownsNegotiation(token)) return false;
       _openMids.add(resolvedMid);
       // [CALL-VIDEO-FIX-1] Awaited, not `unawaited(...)`. Firing a second,
       // untracked negotiation the instant this one finishes was the other
@@ -952,7 +975,7 @@ class CallSfuTransport {
       // `_serialize` slot; the peer's video (if any) is pulled before
       // `publishVideo` reports success, and any later camera-on from the
       // peer goes through the normal `pullPeerVideo` queue entry instead.
-      await _doPull('video');
+      await _doPull('video', token);
       return true;
     } catch (e) {
       AvaLog.I.log('call', 'publishVideo failed: $e');
@@ -966,7 +989,7 @@ class CallSfuTransport {
   /// from inside another [_serialize]d op, so it is safe for it to queue.
   Future<bool> pullPeerVideo() async {
     try {
-      return await _serialize('pullPeerVideo', (_) => _doPull('video'));
+      return await _serialize('pullPeerVideo', (t) => _doPull('video', t));
     } on TimeoutException {
       AvaLog.I.log('call', 'pullPeerVideo timed out in the negotiation queue');
       return false;
@@ -985,7 +1008,7 @@ class CallSfuTransport {
   /// [CALL-VIDEO-FIX-1] Serialized for the same reason as [pullPeerVideo].
   Future<bool> pullPeerAudio() async {
     try {
-      return await _serialize('pullPeerAudio', (_) => _doPull('audio'));
+      return await _serialize('pullPeerAudio', (t) => _doPull('audio', t));
     } on TimeoutException {
       AvaLog.I.log('call', 'pullPeerAudio timed out in the negotiation queue');
       return false;
