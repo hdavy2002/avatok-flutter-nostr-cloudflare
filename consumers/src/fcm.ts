@@ -868,6 +868,32 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       ...(msg.senderAvatarVersion ? { senderAvatarVersion: String(msg.senderAvatarVersion) } : {}),
     } };
   }
+  if (msg.kind === "reaction") {
+    // [NOTIF-REACT-1] Someone reacted to a message this recipient WROTE.
+    //
+    // High priority for the same reason a chat message is: normal priority is
+    // batched by Doze, and a reaction that surfaces twenty minutes later reads
+    // as a bug rather than a notification.
+    //
+    // Carries the same MessagingStyle inputs as a normal message
+    // ([NOTIF-PAYLOAD-1]) because the client folds this into the SAME
+    // conversation card rather than posting a competing notification — a
+    // reaction should never push an actual message out of the shade.
+    return { highPriority: true, data: {
+      type: "reaction",
+      emoji: String(msg.emoji ?? "\u2764\ufe0f"),
+      fromName: msg.fromName ?? "Someone",
+      ...(msg.from ? { fromUid: String(msg.from) } : {}),
+      ...(msg.conv ? { conv: String(msg.conv) } : {}),
+      ...(msg.target ? { target: String(msg.target) } : {}),
+      ...(msg.mid ? { mid: String(msg.mid) } : {}),
+      ...(msg.ts ? { ts: String(msg.ts) } : {}),
+      ...(msg.isGroup != null ? { isGroup: msg.isGroup ? "true" : "false" } : {}),
+      ...(msg.groupName ? { groupName: String(msg.groupName).slice(0, 80) } : {}),
+      ...(msg.senderAvatarUrl ? { senderAvatarUrl: String(msg.senderAvatarUrl) } : {}),
+      ...(msg.senderAvatarVersion ? { senderAvatarVersion: String(msg.senderAvatarVersion) } : {}),
+    } };
+  }
   if (msg.kind === "del") {
     // Delete-for-everyone: silent (no banner) but HIGH priority so it punches
     // through Doze and the device redacts the message in realtime. The app reads

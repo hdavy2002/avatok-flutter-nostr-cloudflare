@@ -441,6 +441,45 @@ extension _ChatThreadActions on _ChatThreadScreenState {
       }
       p.send(<String, dynamic>{'t': 'reaction', 'mid': mid, 'emoji': emoji, 'add': adding, 'whoName': _fromNameTag});
     }
+
+    // [NOTIF-REACT-1 2026-08-17] Tell the SERVER about the reaction.
+    //
+    // Until now nothing did. `POST /api/msg/react` has existed for a while and
+    // `kMsgReactUrl` was declared in core/config.dart, but no client ever called
+    // either — grep found the constant referenced in exactly one file, its own
+    // declaration. Reactions rode the PartyKit relay and nothing else, which
+    // means two things were quietly untrue:
+    //   1. reactions were NEVER persisted, so they vanished on reinstall and
+    //      never reached a device that was offline when they happened, and
+    //   2. the server had no idea a reaction had occurred, so there was nothing
+    //      to send a notification FROM — the owner's third screenshot
+    //      ("X reacted 😂 to your message") was unbuildable without this call.
+    //
+    // Fire-and-forget: the bubble has already updated optimistically above and
+    // the party relay has already delivered it live. A failure here costs
+    // durability and the peer's notification, never the tap.
+    final myUid = _meId?.uid ?? '';
+    final ck = _convKey;
+    final serverConv = (ck != null && myUid.isNotEmpty) ? serverConvFromKey(ck, myUid) : null;
+    if (mid != null && serverConv != null && ck != null) {
+      // Who WROTE the message being reacted to — the one person who should be
+      // notified. The server refuses to notify anyone else and drops the push
+      // entirely when it cannot resolve an author, so this must be right rather
+      // than merely present.
+      //   mine            → me; the server sees reactor == author and sends nothing
+      //   group           → senderPub, the sender's stable uid
+      //   1:1 from them   → the peer, which is the tail of the '1:<peerUid>' key
+      final authorUid = m.me
+          ? myUid
+          : (m.senderPub ?? (ck.startsWith('1:') ? ck.substring(2) : ''));
+      unawaited(ApiAuth.postJson(kMsgReactUrl, <String, dynamic>{
+        'conv': serverConv,
+        'target': mid,
+        'emoji': emoji,
+        'op': adding ? 'add' : 'remove',
+        if (authorUid.isNotEmpty) 'target_uid': authorUid,
+      }).then((_) {}, onError: (Object _) {/* durability + notify only */}));
+    }
   }
 
   Future<String?> _openEmojiPicker() {

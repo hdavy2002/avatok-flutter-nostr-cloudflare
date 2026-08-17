@@ -604,6 +604,9 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
   try {
     if (type == 'message') {
       await _showMessageNotif(d);
+    } else if (type == 'reaction') {
+      // [NOTIF-REACT-1] Someone reacted to a message this user wrote.
+      await _showReactionNotif(d);
     } else if (type == 'group_invite') {
       await _showGroupInviteNotif(d);
     } else if (type == 'call_recording') {
@@ -2100,6 +2103,89 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
         'stack': st.toString().split('\n').take(4).join(' | '),
       });
     } catch (_) {/* telemetry must never break an action */}
+  }
+}
+
+/// [NOTIF-REACT-1 2026-08-17] "Dhyani reacted 😂 to your message."
+///
+/// Folded into the reacting conversation's EXISTING MessagingStyle card as one
+/// more line, not posted as its own notification. A reaction is a footnote to a
+/// message; giving it a separate row would let a busy group's reactions push the
+/// actual messages out of the shade, and the owner chose to be notified of every
+/// reaction everywhere (2026-08-17), which makes that failure mode likely rather
+/// than theoretical. Mute (from [NOTIF-ACTIONS-1]) is the escape hatch.
+///
+/// Deliberately does NOT bump the launcher badge: a reaction is not an unread
+/// message, and inflating the count would make the badge lie.
+Future<void> _showReactionNotif(Map<String, dynamic> d) async {
+  try {
+    try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults apply */}
+    if (!RemoteConfig.notifReactions) return;
+    final conv = (d['conv'] ?? '').toString();
+    if (conv.isEmpty) return;
+    final acct = await _shadeAccountId();
+    if (acct.isEmpty) return;
+    if ((AccountScope.id ?? '').isEmpty) AccountScope.id = acct;
+
+    final rawFromUid = (d['fromUid'] ?? '').toString();
+    final rawFromName = (d['fromName'] ?? '').toString();
+    final resolved = await _resolveDisplayName(
+      fromUid: rawFromUid.isEmpty ? null : rawFromUid,
+      fromName: rawFromName.isEmpty ? null : rawFromName,
+      unknownFallback: 'Someone',
+    );
+    final who = resolved.name;
+    final emoji = (d['emoji'] ?? '\u2764\ufe0f').toString();
+    final isGroup = (d['isGroup'] ?? '').toString() == 'true';
+    final groupName = (d['groupName'] ?? '').toString();
+    final ts = int.tryParse((d['ts'] ?? '').toString()) ??
+        DateTime.now().millisecondsSinceEpoch;
+    final avatarPath = await _shadeAvatarPath(
+      (d['senderAvatarUrl'] ?? '').toString(),
+      (d['senderAvatarVersion'] ?? '').toString(),
+    );
+
+    await _ensureLocalInit();
+    final upd = await _buildShadeUpdate(
+      acct: acct, conv: conv,
+      // Dedup key. One person putting the SAME emoji on the SAME message twice
+      // is the at-least-once queue talking, not the user — reacting again in
+      // earnest would be a different emoji, or a remove followed by an add
+      // (and a remove never notifies at all, server-side).
+      mid: 'react:${(d['target'] ?? '').toString()}:$rawFromUid:$emoji',
+      who: who,
+      text: 'Reacted $emoji',
+      ts: ts, isGroup: isGroup, groupName: groupName, avatarPath: avatarPath,
+      peerUid: rawFromUid,
+      convKey: isGroup ? 'g:$conv' : (rawFromUid.isEmpty ? '' : '1:$rawFromUid'),
+    );
+    if (upd == null) return; // already in the shade
+    final drawn = await _renderConvNotification(
+      conv: conv, byConv: upd.byConv, fallbackTitle: who,
+      count: 0, ticker: '$who reacted $emoji',
+    );
+    if (!drawn) return;
+    await _persistShade(upd.all);
+    await _renderShadeSummary(upd.byConv);
+    await _track('push_shown', {
+      'channel': 'messages',
+      // The ship-gate success value: a reaction push that actually RENDERED on
+      // the author's device. `type` distinguishes it from a message.
+      'type': 'reaction',
+      'style': 'messaging',
+      'grouped': true,
+      'is_group': isGroup,
+      'has_avatar': avatarPath.isNotEmpty,
+      'path': BadgeService.inBackgroundIsolate ? 'background' : 'foreground',
+    });
+  } catch (e, st) {
+    try {
+      await _track('push_stacked_failed', {
+        'kind': 'reaction',
+        'error': e.toString(),
+        'stack': st.toString().split('\n').take(4).join(' | '),
+      });
+    } catch (_) {/* never break on telemetry */}
   }
 }
 
@@ -4281,6 +4367,26 @@ class PushService {
         final b = int.tryParse((d['build'] ?? '').toString()) ?? 0;
         Analytics.capture('app_update_push_fg', {'build': b});
         unawaited(UpdateService.onUpdatePush(build: b));
+        return;
+      }
+      // [NOTIF-REACT-1] A reaction arriving while the app is foregrounded.
+      //
+      // NOT subject to the on-this-thread suppression below. If the user is
+      // looking at the thread they can already see the emoji land on the bubble
+      // via the live relay, so the shade card would be redundant — but
+      // _showReactionNotif folds into an EXISTING card rather than raising a
+      // heads-up banner, and suppressing it would mean a reaction received
+      // while the app sits idle on another screen is silently lost. Cheap and
+      // additive either way.
+      if (d['type'] == 'reaction') {
+        unawaited(_showReactionNotif(d));
+        // Sync as well. The push arriving is only weak evidence that the live
+        // relay is healthy — a half-open socket looks exactly the same from
+        // here — so without this the open thread could keep showing the bubble
+        // un-reacted until the next hydrate, even though the reaction is now
+        // durably stored server-side. Every other branch in this handler syncs
+        // for the same reason.
+        SyncHub.I.syncFromPush();
         return;
       }
       if (d['type'] == 'message') {

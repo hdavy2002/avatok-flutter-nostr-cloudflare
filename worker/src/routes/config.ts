@@ -99,6 +99,22 @@ export interface PlatformConfig {
    */
   callerPrejoinOnRingV1: boolean;
   /**
+   * [CALL-PREROLL-1 2026-08-17] Extends `callPrewarmOnRingV1` (P1) so the
+   * CALLEE pre-rolls its WHOLE media path during the ring, not just the ICE
+   * fetch + SFU seat join: acquire the mic (track disabled), build an
+   * isolated peer connection, PUBLISH (silent — local track stays disabled)
+   * and PULL the caller's audio (muted — remote track stays disabled) before
+   * Accept is ever tapped. Accept then only has to flip two `enabled` flags
+   * instead of running publish+pull cold, removing ~2.5-3s more of the
+   * accept->voice gap on top of P1. Requires `callPrewarmOnRingV1` also being
+   * true — this flag alone does nothing (`CallPrewarm` gates the extension on
+   * both). Ships FALSE: no client build implements this seam yet, and
+   * unmuting audio during the ring by accident is a real privacy hazard this
+   * flag guards against being reachable at all. Boolean -> NOT in numericKeys.
+   * Client mirror: RemoteConfig.callPrerollV1.
+   */
+  callPrerollV1: boolean;
+  /**
    * [CALL-RTK-2 2026-08-08] 1:1 media via a Cloudflare RealtimeKit meeting join.
    *
    * See Specs/CALL-REALTIMEKIT-MIGRATION.md. RealtimeKit runs on the SAME
@@ -954,6 +970,7 @@ export interface PlatformConfig {
   suppressOsRingInForeground: boolean; // [ONERING-1] When the app is FOREGROUNDED and the branded ring screen is pushed in-app, skip the native CallKit registration so Android's heads-up banner (its own Accept/Decline) does not stack on top of our screen. Foreground only — locked/backgrounded rings still use CallKit, and it remains the fallback where full-screen intent is denied. Default TRUE; false restores the old double-surface behaviour. Client mirror: RemoteConfig.suppressOsRingInForeground.
   notifMessagingStyle: boolean; // [NOTIF-STYLE-1 2026-08-17] Render incoming chat messages as a per-conversation Android MessagingStyle stack: one notification per chat on a stable per-conv id, all bundled under a shared groupKey with a "N messages from M chats" summary, each child expandable on its own chevron and carrying the sender's photo. Replaces the single hardcoded notification id 8000, under which a message from a second person OVERWROTE the first in place — which is why the shade could never physically hold more than one AvaTOK chat row. Default TRUE; false restores the legacy single BigText banner exactly. Client mirror: RemoteConfig.notifMessagingStyle.
   notifQuickActions: boolean; // [NOTIF-ACTIONS-1 2026-08-17] Attach Reply (RemoteInput, allowGeneratedReplies) / Mark as read / Mute actions to message notifications. Also what makes Android's on-device Smart Reply offer its "Okay/Thanks" chips, since it only does so for a MessagingStyle notification carrying a RemoteInput reply action. The reply is sent from a headless Dart isolate (bootstrapBackgroundIsolate re-establishes the Clerk bearer, without which the POST 401s), so this is the brake if that path misbehaves in the field. Default TRUE; false renders the same stacked cards with no buttons. Client mirror: RemoteConfig.notifQuickActions.
+  notifReactions: boolean; // [NOTIF-REACT-1 2026-08-17] Push "X reacted <emoji> to your message" to the AUTHOR of the reacted-to message. Owner decision 2026-08-17: every reaction, 1:1 and groups, foreground and background, no throttling; Mute (NOTIF-ACTIONS-1) is the escape hatch. Before this, reactions were a TRANSIENT InboxDO frame only - never persisted client-side (the client never called POST /api/msg/react at all, despite kMsgReactUrl existing) and never pushed, so a reaction to a sleeping phone did not exist. Recipient is validated as a conversation member and never the reactor themselves; an unresolvable author means NO push rather than a guess. Default TRUE. Client mirror: RemoteConfig.notifReactions.
   voicemailBot: boolean;      // Phase B: server-side voice-prompt + 25s recording bot in the call room
   paidCalls: boolean;         // Legacy compatibility key; permanently forced false by the free-communication policy.
   voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
@@ -1406,6 +1423,7 @@ const DEFAULTS: PlatformConfig = {
   // false is a full, instant rollback with no rebuild.
   callPrewarmOnRingV1: false,
   callerPrejoinOnRingV1: false,
+  callPrerollV1: false,
   // [CALL-RTK-2 2026-08-08] RealtimeKit migration, Phase 0. Both ship FALSE:
   // the worker route exists and the secrets may be set, but no user reaches it
   // until a client build implements the seam and a two-phone test passes.
@@ -1695,6 +1713,7 @@ const DEFAULTS: PlatformConfig = {
   foregroundRingDetectionV2: true,   // [CALL-REL-R4-B] relaxed front-of-screen test + CallKit fallback if we guessed wrong; false = strict `lifecycle == 'resumed'`
   notifMessagingStyle: true,         // [NOTIF-STYLE-1] per-chat stacked message notifications with sender photos; false = the old single shared banner on id 8000
   notifQuickActions: true,           // [NOTIF-ACTIONS-1] Reply / Mark as read / Mute on message notifications (and the Smart Reply chips that ride on the reply action); false = cards with no buttons
+  notifReactions: true,              // [NOTIF-REACT-1] notify the message author when someone reacts; false = reactions stay silent (still persisted + live)
   voicemailBot: false,
   paidCalls: false,                    // PERMANENT: human 1:1 audio/video calls are free.
   voiceAgent: false,

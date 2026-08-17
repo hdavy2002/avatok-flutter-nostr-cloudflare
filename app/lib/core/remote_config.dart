@@ -165,6 +165,17 @@ class RemoteConfig {
   /// (ships as its own change).
   static bool get callerPrejoinOnRingV1 => _b('callerPrejoinOnRingV1', false);
 
+  /// [CALL-PREROLL-1 2026-08-17] Extends [callPrewarmOnRingV1]: the CALLEE
+  /// pre-rolls its whole media path during the ring — mic (disabled),
+  /// isolated peer connection, silent publish, muted pull — so accept only
+  /// has to flip two `enabled` flags instead of running publish+pull cold.
+  /// `CallPrewarm` requires BOTH this and [callPrewarmOnRingV1] before doing
+  /// any of the extra work; this flag alone is inert.
+  ///
+  /// Declared in `worker/src/routes/config.ts` (PlatformConfig + DEFAULTS) in
+  /// the same change, per the fake-flag rule.
+  static bool get callPrerollV1 => _b('callPrerollV1', false);
+
   /// [CALL-RTK-3] Cloudflare RealtimeKit media transport
   /// (`Specs/CALL-REALTIMEKIT-MIGRATION.md` §3.3).
   ///
@@ -710,6 +721,17 @@ class RemoteConfig {
   /// Mirrors config.ts `notifQuickActions`.
   static bool get notifQuickActions =>
       _b('notifQuickActions', true);
+
+  /// [NOTIF-REACT-1 2026-08-17] Notify the AUTHOR of a message when someone
+  /// reacts to it. Owner decision 2026-08-17: every reaction, 1:1 and groups
+  /// alike, foreground and background — no throttling. Mute (NOTIF-ACTIONS-1) is
+  /// the escape hatch if a busy group gets noisy.
+  ///
+  /// Before this, reactions were a transient socket frame only: they were never
+  /// persisted and never pushed, so a reaction to a sleeping phone simply did
+  /// not exist. Default TRUE. Mirrors config.ts `notifReactions`.
+  static bool get notifReactions =>
+      _b('notifReactions', true);
 
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.

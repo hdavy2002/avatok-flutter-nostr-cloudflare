@@ -1353,12 +1353,65 @@ export async function reactMsg(req: Request, env: Env, execCtx?: ExecutionContex
   // because this is an early-return-shaped route and workerd drops unawaited
   // telemetry on those paths.
   const email = await emailOf(env, ctx.uid).catch(() => null);
+
+  // ── [NOTIF-REACT-1 2026-08-17] Notify the message's AUTHOR ────────────────
+  //
+  // Reactions used to be invisible to anyone whose phone was asleep: this route
+  // wrote D1 and broadcast a TRANSIENT InboxDO frame, and a transient frame by
+  // definition reaches only a device with a live socket. So "Dhyani reacted 😂
+  // to your message" — the owner's third screenshot — could not exist.
+  //
+  // Addressed to ONE person: whoever wrote the reacted-to message. Notifying the
+  // whole conversation would mean everyone in a 30-person group gets a banner
+  // every time anyone likes anyone's message.
+  //
+  // `target_uid` is client-supplied, so it is VALIDATED as a member of this
+  // conversation before use — a caller cannot use it to push a notification at
+  // a stranger. That is the whole trust requirement: it selects a recipient
+  // from a set the caller is already in, and carries no authority.
+  //
+  // No author resolvable → NO PUSH. The alternative (guessing, e.g. "in a DM it
+  // must be the other person") is wrong the moment someone reacts to their own
+  // message, and a notification sent to the wrong person is worse than none.
+  let notified = false;
+  let authorReason = "ok";
+  if (op !== "add") {
+    authorReason = "not_add"; // un-reacting must never notify
+  } else {
+    const claimed = String(b.target_uid || "");
+    if (!claimed) {
+      authorReason = "no_target_uid"; // pre-[NOTIF-REACT-1] client
+    } else if (!mem.includes(claimed)) {
+      authorReason = "not_member";
+    } else if (claimed === ctx.uid) {
+      authorReason = "self"; // reacting to your own message
+    } else {
+      try {
+        const reactorName = await senderDisplayName(env, ctx.uid);
+        const banner = await bannerExtras(env, ctx.uid, conv, mem.length > 2, target);
+        await env.Q_PUSH.send({
+          ...banner,
+          kind: "reaction", to: claimed, from: ctx.uid,
+          fromName: reactorName, emoji, target,
+        });
+        notified = true;
+      } catch {
+        authorReason = "enqueue_failed";
+      }
+    }
+  }
+
   bg(execCtx, env, "chat_reaction", env.Q_ANALYTICS.send({
     event: "chat_reaction", uid: ctx.uid, ts: Date.now(),
     props: { conv, emoji, op, stored, group: mem.length > 2, email, account_id: ctx.uid,
+      // [NOTIF-REACT-1] `notified` is the success value: whether the author's
+      // device was actually told. `notify_reason` says why not, which is the
+      // difference between "an old client omitted target_uid" and "the push
+      // queue rejected it" — indistinguishable from a bare false.
+      notified, notify_reason: authorReason,
       app_name: "avatok", service_name: "avatok-api", worker: true },
   }));
-  return json({ ok: true, stored });
+  return json({ ok: true, stored, notified });
 }
 
 // ---- GET /api/msg/reactions?conv=<id> ----------------------------------------
