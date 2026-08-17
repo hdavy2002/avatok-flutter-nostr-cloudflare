@@ -268,7 +268,7 @@ export async function aiMediaSongSharePage(req: Request, env: Env, token: string
     : `<div class="cover fallback" aria-label="Song cover">♪</div>`;
   const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} · AvaTOK</title><meta name="description" content="${description}">
-<link rel="canonical" href="${canonical}"><meta property="og:type" content="music.song"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${coverMeta}<meta property="og:image:width" content="1200"><meta property="og:image:height" content="1200"><meta property="og:image:type" content="image/png"><meta property="og:audio" content="${audio}"><meta property="og:audio:type" content="audio/mpeg">
+<link rel="canonical" href="${canonical}"><meta property="og:type" content="music.song"><meta property="og:site_name" content="AvaTOK"><meta property="og:url" content="${canonical}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}">${coverMeta}<meta property="og:image:width" content="1200"><meta property="og:image:height" content="1200"><meta property="og:audio" content="${audio}"><meta property="og:audio:type" content="audio/mpeg">
 <style>body{margin:0;padding:16px;background:#090b0d;color:#f5f7f8;font-family:system-ui,sans-serif;min-height:100vh;box-sizing:border-box;display:grid;place-items:center}.card{width:min(92vw,560px);max-height:calc(100vh - 32px);overflow:auto;background:#18242b;border:1px solid #34434b;border-radius:24px;box-shadow:0 24px 70px #0008}.cover{display:block;width:100%;max-height:52vh;aspect-ratio:1;object-fit:contain;background:#10181d}.fallback{display:grid;place-items:center;font-size:120px;background:linear-gradient(135deg,#193b4c,#19a974)}.copy{padding:22px}.eyebrow{display:inline-block;color:#55d696;font-size:12px;letter-spacing:.08em;font-weight:700;text-decoration:none;margin-bottom:7px}.title{font-size:28px;line-height:1.15;margin:0 0 8px}.desc{color:#bdc9ce;line-height:1.45;margin:0 0 18px}audio{display:block;width:100%;accent-color:#35ce35}.shares{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.shares a{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-weight:800;text-decoration:none;background:#25363d;color:#fff}</style></head><body><main class="card">${coverBody}<section class="copy"><a class="eyebrow" href="https://avatok.ai">Made with AvaTOK app</a><h1 class="title">${title}</h1><p class="desc">${description}</p><audio controls preload="metadata" src="${audio}">Your browser cannot play this song.</audio><div class="shares" aria-label="Share this song"><a href="https://wa.me/?text=${encodeURIComponent(`${title} — ${canonical}`)}" aria-label="WhatsApp">WA</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonical)}" aria-label="LinkedIn">in</a><a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonical)}" aria-label="Facebook">f</a><a href="https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(canonical)}" aria-label="X">𝕏</a><a href="mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${description}\n${canonical}`)}" aria-label="Email">✉</a></div></section></main></body></html>`;
   return new Response(body, {
     headers: {
@@ -293,10 +293,42 @@ export async function aiMediaSongShareAsset(
     "SELECT key, mime_type, storage FROM user_media WHERE id=?1 AND uid=?2 LIMIT 1",
   ).bind(mediaId, job!.owner_uid).first<{ key: string; mime_type: string; storage: string }>();
   if (!row || row.storage !== "digital") return new Response("Not found", { status: 404 });
-  // Forward Range so the browser player can seek without downloading the
-  // entire song first. R2 returns the selected range as a stream.
-  const object = await env.DIGITAL.get(row.key, { range: req.headers });
+
+  // [SHARE-OG-IMAGE-1 2026-08-17] The og:image must come back as a plain 200.
+  // Passing the request headers as an R2 range makes R2 populate `object.range`
+  // even when the caller sent NO Range header, so this route answered social
+  // crawlers with `206 Partial Content` — WhatsApp/Facebook/X treat that as an
+  // invalid preview image and drop the card. Range forwarding is only ever
+  // needed for AUDIO seeking, so covers now bypass it entirely.
+  const wantsRange = asset === "audio";
+  const object = await env.DIGITAL.get(row.key, wantsRange ? { range: req.headers } : undefined);
   if (!object) return new Response("Not found", { status: 404 });
+
+  // [SHARE-OG-IMAGE-1] Second half of the same bug: the generated cover is a
+  // ~2 MB PNG. WhatsApp silently refuses preview images over roughly 600 KB
+  // (Facebook's own limit is far higher, which is why the card can work in one
+  // app and not another). Serve crawlers a resized JPEG through Cloudflare's
+  // image transform, and fail SOFT — any transform problem falls through to
+  // the original bytes, so a preview is never worse than it is today.
+  if (asset === "cover" && object.size > 500_000 && !new URL(req.url).searchParams.has("raw")) {
+    try {
+      const rawUrl = new URL(req.url);
+      rawUrl.searchParams.set("raw", "1");
+      const resized = await fetch(rawUrl.toString(), {
+        cf: { image: { width: 1200, height: 1200, fit: "contain", quality: 80, format: "jpeg" } },
+      } as RequestInit);
+      if (resized.ok) {
+        return new Response(resized.body, {
+          headers: {
+            "content-type": "image/jpeg",
+            "cache-control": "public, max-age=31536000, immutable",
+            "content-disposition": "inline",
+            "x-content-type-options": "nosniff",
+          },
+        });
+      }
+    } catch { /* fail soft — original bytes below */ }
+  }
   const headers = new Headers({
     "content-type": row.mime_type || (asset === "cover" ? "image/png" : "audio/mpeg"),
     "cache-control": asset === "cover" ? "public, max-age=31536000, immutable" : "public, max-age=300",
@@ -365,6 +397,25 @@ export async function aiMediaVideoShareAsset(req: Request, env: Env, token: stri
   if (!row || row.storage !== "digital") return new Response("Not found", { status: 404 });
   const object = await env.DIGITAL.get(row.key, asset === "video" ? { range: req.headers } : undefined);
   if (!object) return new Response("Not found", { status: 404 });
+  // [SHARE-OG-IMAGE-1] Same WhatsApp size ceiling as the song cover (~600 KB):
+  // shrink an oversized thumbnail for crawlers, failing soft to the original.
+  if (asset === "thumbnail" && object.size > 500_000 && req.method !== "HEAD" && !new URL(req.url).searchParams.has("raw")) {
+    try {
+      const rawUrl = new URL(req.url);
+      rawUrl.searchParams.set("raw", "1");
+      const resized = await fetch(rawUrl.toString(), {
+        cf: { image: { width: 1200, fit: "contain", quality: 80, format: "jpeg" } },
+      } as RequestInit);
+      if (resized.ok) {
+        return new Response(resized.body, {
+          headers: {
+            "content-type": "image/jpeg", "cache-control": "public, max-age=31536000, immutable",
+            "content-disposition": "inline", "x-content-type-options": "nosniff",
+          },
+        });
+      }
+    } catch { /* fail soft */ }
+  }
   const headers = new Headers({ "content-type": row.mime_type || (asset === "thumbnail" ? "image/png" : "video/mp4"), "cache-control": asset === "thumbnail" ? "public, max-age=31536000, immutable" : "public, max-age=300", "content-disposition": "inline", "x-content-type-options": "nosniff", "etag": object.httpEtag });
   if (asset === "video") headers.set("accept-ranges", "bytes");
   // `in` checks don't narrow R2Range's optional numbers — read then test.
