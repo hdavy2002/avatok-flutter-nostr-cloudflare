@@ -1813,6 +1813,132 @@ class CallSession {
     Analytics.capture('call_first_audio_ms', props);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [CALL-AUDIBLE-1 2026-08-17] Honest user-visible "connected" state.
+  // ─────────────────────────────────────────────────────────────────────────
+  //
+  // `_connected` above keeps its exact, unchanged meaning — "a remote track
+  // object arrived" — and every timer/watchdog/teardown side effect it drives
+  // is untouched. This section adds a NEW, LATER, purely-presentational
+  // milestone that the UI reads instead: [audibleReady]. It only flips once
+  // real inbound audio is confirmed, reusing the first-audio probe above
+  // (`audioFlowing` / `_reportFirstAudio`) rather than a second stats poller.
+  // Never gated on `audioLevel` — a silent caller must still reach it.
+  //
+  // Route readiness (the PLAN doc's second half of the "connected" formula —
+  // audio route/session confirmed) is deliberately NOT separately gated here.
+  // `CallAudioController.apply(source: 'boot_media')` runs during `_bootMedia`
+  // — before ICE, before the peer connection, and therefore always before
+  // `onTrack`/RTK-connect can fire — and its only completion signal is the
+  // single-slot `onRouteConfirmed` callback `_bootMedia` already installs
+  // (see [CALL-AUDIO-OWNER-1] above). Claiming that slot a second time here
+  // would race the existing wiring for no observable benefit, since by the
+  // time [audibleReady] can even be evaluated the route has already settled.
+  // So route-readiness is treated as satisfied by construction.
+
+  /// User-visible "the call is actually audible" truth. UI (call_screen.dart,
+  /// the minimized [CallAudioPill]) shows "Connecting audio…" and withholds
+  /// the running call timer while `_connected` is true but this is false.
+  ///
+  /// Flag OFF ([RemoteConfig.callAudibleStateV1]): mirrors `_connected`
+  /// immediately — no UI change from today.
+  final ValueNotifier<bool> audibleReady = ValueNotifier<bool>(false);
+
+  /// Safety backstop for paths with no `getStats()` evidence — RealtimeKit
+  /// (`_rtkActive`, no `_pc` at all) and, defensively, any future path that
+  /// reaches `_connected` without a `_pc`. RTK's own `remoteJoin` backstop
+  /// (`_onRtkConnected` via that event) never calls `_reportFirstAudio`, so
+  /// without this timer a call that only ever fires `remoteJoin` — the peer
+  /// was already publishing before we joined — would never flip
+  /// [audibleReady] and would show "Connecting audio…" forever.
+  ///
+  /// Deliberately NOT applied to the SFU/P2P (`_pc`) path: there the real
+  /// first-audio probe (`_pollFirstAudio`, up to 25s) is the ground truth,
+  /// and a 4s override would mask exactly the 12-16s gap this issue exists to
+  /// surface.
+  static const Duration _kAudibleSafetyTimeout = Duration(seconds: 4);
+  Timer? _audibleSafetyTimer;
+
+  /// Guards the `audioFlowing.addListener` below from being installed twice.
+  /// `_armAudibleGate` is called from `_handleRemoteTrack`, which can run
+  /// again for a second track (e.g. video arriving after audio) on the same
+  /// connect — without this, a second call would register the SAME listener
+  /// function a second time, and `ChangeNotifier` does not de-dupe, so
+  /// `_markAudibleReady` would fire (harmlessly, thanks to its own
+  /// `audibleReady.value` guard) but leave the listener double-registered
+  /// until removal, which only removes one instance.
+  bool _audibleGateArmed = false;
+
+  /// Call once, right after `_connected = true` (both sites: `onTrack`'s
+  /// connected block and `_onRtkConnected`). Idempotent and inert once
+  /// [audibleReady] has already flipped or the call has ended.
+  void _armAudibleGate() {
+    if (_ended) return;
+    if (!RemoteConfig.callAudibleStateV1) {
+      // Flag off: mirror `_connected` immediately. No new UI behaviour.
+      _markAudibleReady(viaTimeout: false, flagOff: true);
+      return;
+    }
+    if (audibleReady.value || _audibleGateArmed) return;
+    if (audioFlowing.value) {
+      // Bytes were already flowing by the time onTrack/RTK-connect fired
+      // (can happen on a healthy SFU pull) — no need to wait on the listener.
+      _markAudibleReady(viaTimeout: false, flagOff: false);
+      return;
+    }
+    _audibleGateArmed = true;
+    audioFlowing.addListener(_onAudioFlowingForGate);
+    final noStatsPath = _rtkActive || _pc == null;
+    if (noStatsPath) {
+      _audibleSafetyTimer?.cancel();
+      _audibleSafetyTimer = Timer(_kAudibleSafetyTimeout, () {
+        if (_ended || audibleReady.value) return;
+        _markAudibleReady(viaTimeout: true, flagOff: false);
+      });
+    }
+  }
+
+  void _onAudioFlowingForGate() {
+    if (audioFlowing.value) {
+      _markAudibleReady(viaTimeout: false, flagOff: false);
+    }
+  }
+
+  void _markAudibleReady({required bool viaTimeout, required bool flagOff}) {
+    if (audibleReady.value) return;
+    audibleReady.value = true;
+    _audibleSafetyTimer?.cancel();
+    _audibleSafetyTimer = null;
+    if (_audibleGateArmed) {
+      audioFlowing.removeListener(_onAudioFlowingForGate);
+      _audibleGateArmed = false;
+    }
+    if (!flagOff) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final props = <String, Object>{
+        'call_id': config.room,
+        'ms_from_connected': _connectedAtMs == 0 ? -1 : now - _connectedAtMs,
+        'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
+        'media_path': _rtkActive
+            ? 'rtk'
+            : (_sfuActive
+                ? 'sfu'
+                : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none'))),
+        'outgoing': config.outgoing,
+        'video': config.video,
+      };
+      Analytics.capture(viaTimeout ? 'call_audible_timeout' : 'call_audible_ready', props);
+    }
+    // [CALL-AUDIBLE-1] The connection haptic moves here from the `_connected`
+    // block(s) — it is UI feedback, not one of the load-bearing side effects
+    // (timers/watchdogs/teardown) that block must keep doing unchanged. With
+    // the flag off this fires synchronously (mirroring `_connected`), so the
+    // haptic's timing is byte-for-byte what it was before this issue. With
+    // the flag on it lands when the call is actually audible, not 12-16s
+    // early — no telemetry for the flag-off shim, since it measures nothing.
+    HapticFeedback.mediumImpact();
+  }
+
   Future<void> _pollPlayoutHealth() async {
     if (!_playoutSamplerWanted) return;
     try {
@@ -4736,7 +4862,10 @@ class CallSession {
       _telemetry.setMediaPath(
         _sfuActive || _sfuStarting ? 'sfu' : (_relayForced ? 'relay' : 'direct'),
       ); // [CALL-REL-4/5]
-      HapticFeedback.mediumImpact();
+      // [CALL-AUDIBLE-1] Haptic moved to `_markAudibleReady` — see that
+      // method's doc comment. Everything else in this block (ringback stop,
+      // talk-time start, timers, watchdogs, receptionist abort, glare clear,
+      // phase) is untouched.
       if (gOutgoingCallId == config.room) {
         gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
       }
@@ -4756,6 +4885,7 @@ class CallSession {
       // user is told the call is live.
       _stage('first_remote_track');
       _startFirstAudioProbe();
+      _armAudibleGate(); // [CALL-AUDIBLE-1]
     }
   }
 
@@ -6222,7 +6352,8 @@ class CallSession {
     // CALL-RTK-3 assertion filters on it.
     _telemetry.connected(null);
     _telemetry.setMediaPath('rtk');
-    HapticFeedback.mediumImpact();
+    // [CALL-AUDIBLE-1] Haptic moved to `_markAudibleReady` — see that
+    // method's doc comment. Everything else in this block is untouched.
     if (gOutgoingCallId == config.room) {
       gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
     }
@@ -6250,6 +6381,7 @@ class CallSession {
           ? -1
           : DateTime.now().millisecondsSinceEpoch - _setupT0,
     });
+    _armAudibleGate(); // [CALL-AUDIBLE-1]
   }
 
   /// [CALL-RTK-4] A provider error before the call ever connected: leave the
@@ -8759,6 +8891,21 @@ class CallSession {
 
   void _applyRingAck(bool ok) {
     _ringAckOk = ok; // [CALL-TELEMETRY-1] recorded even if already handled
+    // [CALL-PREJOIN-2 2026-08-17] THE correct moment to start publishing early.
+    //
+    // A positive ring-ack is the server confirming it accepted and enqueued the
+    // ring — which it can only do for a call it has already recorded, with both
+    // `caller_uid` and `callee_uid` set. That is exactly the precondition the
+    // SFU seat write checks: on 2026-08-17 the pre-join fired from the socket's
+    // `welcome` frame instead, raced call placement, and `POST /sfu-seat`
+    // answered 403 `not_a_participant` (prod avatok-af94b158).
+    //
+    // Publishing here means our audio is already in the SFU while the callee's
+    // phone is still ringing, so their first pull finds a live track instead of
+    // both phones waiting on each other after Accept — the "connected, meter
+    // running, hello? hello?" silence. Gated by `callerPrejoinOnRingV1`; a
+    // no-op when off, and it never throws into the ring path.
+    if (ok) _maybeStartCallerPrejoin();
     if (_ringAckHandled) return;
     if (ok) {
       _ringAckHandled = true;
@@ -9949,6 +10096,14 @@ class CallSession {
     _stopFirstAudioProbe();
     if (_firstAudioProbeStartMs > 0 && !_firstAudioReported) {
       _reportFirstAudio(bytes: 0, outcome: 'ended');
+    }
+    // [CALL-AUDIBLE-1] A call that ends before audibility ever flipped must
+    // not leak the listener or the 4s safety timer past teardown.
+    _audibleSafetyTimer?.cancel();
+    _audibleSafetyTimer = null;
+    if (_audibleGateArmed) {
+      audioFlowing.removeListener(_onAudioFlowingForGate);
+      _audibleGateArmed = false;
     }
     // [AVA-VM-FALLBACK-1] The fallback ran but the DO's receipt never arrived
     // (socket died, app killed). Report what we know rather than nothing — an
