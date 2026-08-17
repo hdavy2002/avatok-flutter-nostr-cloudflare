@@ -173,6 +173,35 @@ export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionC
 }
 
 // GET /api/ai/jobs/:job_id
+/**
+ * [MEDIA-PEER-VIEW-1 2026-08-17] Can `uid` see a NON-PRIVATE media job that was
+ * created in `convId`? A song made with #ava (public mode) is posted into the
+ * conversation for everyone, but the job endpoint used to require OWNERSHIP —
+ * so the other person's card could never hydrate and the song simply never
+ * appeared for them (owner report 2026-08-17). Membership, not ownership, is
+ * the correct gate for a job that was deliberately created in public.
+ *
+ * DM membership is derived from the deterministic conv id (dm_<lo>__<hi>, see
+ * authz.ts dmConvId) because DMs do not necessarily carry conversation_members
+ * rows; groups are checked against that table.
+ */
+async function canViewSharedMediaJob(env: Env, job: VeniceMediaJobRecord, uid: string): Promise<boolean> {
+  if (job.owner_uid === uid) return true;
+  if (job.is_private) return false;
+  const conv = String(job.conv_id || "");
+  if (conv.startsWith("dm_")) {
+    const parts = conv.slice(3).split("__");
+    return parts.length === 2 && parts.includes(uid);
+  }
+  if (!conv.startsWith("g_")) return false;
+  try {
+    const row = await env.DB_META
+      .prepare("SELECT 1 AS ok FROM conversation_members WHERE conv_id = ?1 AND uid = ?2 LIMIT 1")
+      .bind(conv, uid).first<{ ok: number }>();
+    return !!row;
+  } catch { return false; }
+}
+
 export async function aiMediaJobsGet(req: Request, env: Env, jobId: string): Promise<Response> {
   const ctxUser = await requireUser(req, env);
   if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
@@ -181,7 +210,9 @@ export async function aiMediaJobsGet(req: Request, env: Env, jobId: string): Pro
   const r = await getAiMediaJob(env, id, ctxUser.uid);
   if (r.ok) return json({ ok: true, job: r.job });
   const v = await getVeniceMediaJob(env, id);
-  if (!v || v.owner_uid !== ctxUser.uid) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
+  if (!v || !(await canViewSharedMediaJob(env, v, ctxUser.uid))) {
+    return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
+  }
   return json({ ok: true, job: await hydrateVenice(env, v) });
 }
 

@@ -218,16 +218,36 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
       : `Square album cover artwork for a song titled "${title}". The creative brief for this exact song is: ${description} Depict ONLY what that brief implies — its genre, language and cultural setting, emotional tone, and central imagery. Ground every visual choice in the brief; do not substitute a different culture, climate, or music scene, and avoid generic music graphics. Cinematic, polished, emotionally expressive, no text, no letters, no logos, no watermark.`;
     const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
     if (!promptVerdict.safe) throw new Error("cover_prompt_blocked");
-    const seedWords = new Uint32Array(1);
-    crypto.getRandomValues(seedWords);
-    const { b64 } = await veniceGenerateImage(env as any, model, prompt, {
-      aspectRatio: "1:1", format: "png", seed: 1 + (seedWords[0] % 999_999_999),
-    });
-    const bin = atob(b64);
-    const coverBytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) coverBytes[i] = bin.charCodeAt(i);
-    const outputVerdict = await moderateGeneratedImage(env, job.owner_uid, coverBytes);
-    if (outputVerdict.blocked) throw new Error("cover_output_blocked");
+    // [COVER-RETRY-SAFE-1 2026-08-17] Our OWN generated artwork was being
+    // rejected by our OWN output gate — a real song shipped with no cover on
+    // 2026-08-17 (venice_media_cover_failed reason=cover_output_blocked), which
+    // also leaves the share card with no preview image. A single borderline
+    // render (figures, skin tones, a moody nude-toned palette) is enough to
+    // trip the classifier, so rather than giving up on the first verdict, retry
+    // once with a deliberately safe, figure-free composition. The output gate is
+    // never bypassed — the retry must pass it too.
+    const safePrompt = isVideo
+      ? `Full-frame cinematic thumbnail for a short video titled "${title}". ${description} Depict the setting, objects, light and atmosphere ONLY — absolutely no people, no faces, no bodies. Edge-to-edge, no text, no letters, no logos, no watermark.`
+      : `Square album cover artwork for a song titled "${title}". Creative brief: ${description} Express it through landscape, objects, symbolism, colour and light ONLY — absolutely no people, no faces, no bodies. Tasteful, polished, gallery-quality, no text, no letters, no logos, no watermark.`;
+    let coverBytes: Uint8Array | null = null;
+    let attemptsUsed = 0;
+    for (const attemptPrompt of [prompt, safePrompt]) {
+      attemptsUsed++;
+      const seedWords = new Uint32Array(1);
+      crypto.getRandomValues(seedWords);
+      const { b64 } = await veniceGenerateImage(env as any, model, attemptPrompt, {
+        aspectRatio: "1:1", format: "png", seed: 1 + (seedWords[0] % 999_999_999),
+      });
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const verdict = await moderateGeneratedImage(env, job.owner_uid, bytes);
+      if (!verdict.blocked) { coverBytes = bytes; break; }
+      await track(env, job.owner_uid, "venice_media_cover_retry", "avaai", {
+        job_id: job.job_id, kind: job.kind, attempt: attemptsUsed, reason: "output_blocked",
+      }).catch(() => {});
+    }
+    if (!coverBytes) throw new Error("cover_output_blocked");
     const stored = await registerArtifactMedia(env, {
       uid: job.owner_uid, bytes: coverBytes, mimeType: "image/png",
       fileName: `ava-${job.kind === "venice_video_generate" ? "video-thumbnail" : "song-cover"}-${job.job_id.slice(0, 8)}.png`,
