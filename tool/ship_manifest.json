@@ -1,8 +1,8 @@
 {
- "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory — see `_verified_at` on each entry.",
+ "_readme": "[SHIP-GATE-1] What SUCCESS looks like, in telemetry, for every issue that ships behaviour to app/ or worker/. Written BEFORE the build goes out, not after. tool/check_ship_readiness.py --check manifest fails when an issue shipped without an entry here; --check telemetry queries PostHog and fails when the events are absent OR present-but-carrying-a-failure-value. Written on 2026-08-08 because three of four call fixes shipped the day before and did nothing: the telemetry arrived saying `presence=unknown decision=ring_unknown` on every single call and was reported as 'telemetry is flowing'. Event and property names below were read out of the emit sites in the code, not from memory \u2014 see `_verified_at` on each entry.",
  "_schema": "See the module docstring of tool/check_ship_readiness.py. Required per entry: description, two_sided, min_devices_on_build, flags, success[]. Escape hatch for a commit that ships no user-visible behaviour: \"no_telemetry\": \"<reason>\" (a reason is mandatory).",
  "PA-UI-1": {
-  "description": "Approved receptionist redesign, step 1: the Settings section `ava_receptionist` stops being a mega-page and becomes a small HUB titled \"Ava PA\" (settings/sections/receptionist_section.dart). The hub holds two lane entries — \"Phone calls\" (pa_phone_screen.dart) and \"AvaTOK calls\" (pa_inapp_screen.dart) — plus the SHARED voice/persona controls that used to be buried in the mega-page. Client-only; no worker change, no schema change, no new flag. Opening the hub emits ui_interaction name=pa_hub_open.",
+  "description": "Approved receptionist redesign, step 1: the Settings section `ava_receptionist` stops being a mega-page and becomes a small HUB titled \"Ava PA\" (settings/sections/receptionist_section.dart). The hub holds two lane entries \u2014 \"Phone calls\" (pa_phone_screen.dart) and \"AvaTOK calls\" (pa_inapp_screen.dart) \u2014 plus the SHARED voice/persona controls that used to be buried in the mega-page. Client-only; no worker change, no schema change, no new flag. Opening the hub emits ui_interaction name=pa_hub_open.",
   "shipped": "2026-08-09",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -16,13 +16,13 @@
     "property": "phase",
     "equals": "first_paint",
     "min_events": 1,
-    "note": "The hub renders and is reached at all. ZERO pa_hub_open on the new build means the Settings row no longer opens the redesigned hub (registration or push regressed) — the old mega-page emitted no such event, so absence is not ambiguous. phase is uiInteraction's default and is asserted so this is a VALUE check, not an \"events are flowing\" check."
+    "note": "The hub renders and is reached at all. ZERO pa_hub_open on the new build means the Settings row no longer opens the redesigned hub (registration or push regressed) \u2014 the old mega-page emitted no such event, so absence is not ambiguous. phase is uiInteraction's default and is asserted so this is a VALUE check, not an \"events are flowing\" check."
    }
   ],
   "_verified_at": "app/lib/features/settings/sections/receptionist_section.dart:170-175 (SettingsSection id ava_receptionist, title 'Ava PA', order 24) and :278 Analytics.uiInteraction('pa_hub_open', 0); app/lib/core/analytics.dart:561-570 uiInteraction -> capture('ui_interaction', {name, latency_ms, phase: 'first_paint', ...})"
  },
  "PA-UI-2": {
-  "description": "Approved receptionist redesign, step 2: the two lane screens. pa_phone_screen.dart owns the PSTN lane (recept_pstn_rejected / _not_picked_up / _unreachable + the advanced recept_pstn_redirect_all) and shows a \"Carrier setup needed → Fix it\" banner that pushes the EXISTING PstnForwardingSetupScreen; pa_inapp_screen.dart owns the AvaTOK lane (recept_avatok_*), which needs no carrier setup. Both save immediately by re-sending the FULL receptionist settings payload with exactly one field changed, and revert the switch when the server refuses. Same change retired the standalone \"Voicemail\" settings row (registerPstnForwardingSection commented out in core/ava_bootstrap.dart) without deleting the setup screen or wizard.",
+  "description": "Approved receptionist redesign, step 2: the two lane screens. pa_phone_screen.dart owns the PSTN lane (recept_pstn_rejected / _not_picked_up / _unreachable + the advanced recept_pstn_redirect_all) and shows a \"Carrier setup needed \u2192 Fix it\" banner that pushes the EXISTING PstnForwardingSetupScreen; pa_inapp_screen.dart owns the AvaTOK lane (recept_avatok_*), which needs no carrier setup. Both save immediately by re-sending the FULL receptionist settings payload with exactly one field changed, and revert the switch when the server refuses. Same change retired the standalone \"Voicemail\" settings row (registerPstnForwardingSection commented out in core/ava_bootstrap.dart) without deleting the setup screen or wizard.",
   "shipped": "2026-08-09",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -40,7 +40,7 @@
      "recept_pstn_redirect_all"
     ],
     "min_events": 1,
-    "note": "The PSTN lane actually PERSISTS. This event is emitted only on res.ok, so its presence is the server-accepted save — the failure twin pa_phone_toggle_failed is the thing to look at when this is absent. A toggle value outside this list means the screen is writing a column this lane does not own."
+    "note": "The PSTN lane actually PERSISTS. This event is emitted only on res.ok, so its presence is the server-accepted save \u2014 the failure twin pa_phone_toggle_failed is the thing to look at when this is absent. A toggle value outside this list means the screen is writing a column this lane does not own."
    },
    {
     "event": "pa_inapp_toggle_saved",
@@ -70,7 +70,7 @@
   "_verified_at": "app/lib/features/settings/sections/pa_phone_screen.dart:174 uiInteraction('pa_phone_toggle'), :213 capture('pa_phone_toggle_saved'), :218 capture('pa_phone_toggle_failed'), field names :299/:307/:315/:334; pa_inapp_screen.dart:127/:164/:169 and field names :208/:215/:222/:237; core/ava_bootstrap.dart:165 registerPstnForwardingSection() commented out"
  },
  "PA-UI-3": {
-  "description": "Settings menu cleanup requested by the owner on 2026-08-09, alongside the PA redesign. Three removals, no behaviour change to any live lane: (1) the \"Auto-Responder\" row is deleted from settings_screen.dart and its page auto_responder_settings_page.dart is deleted with it — nothing else in app/lib referenced the page; the worker route /api/auto-responder and consumers/src/auto_reply.ts are untouched. (2) Confirmed the \"Voicemail\" row can no longer appear (its registerPstnForwardingSection() call site stays commented out from PA-UI-2); PstnForwardingSetupScreen and PstnForwardingWizard are deliberately KEPT because pa_phone_screen.dart's \"Fix it\" flow pushes them, and the stale \"Settings → Voicemail\" pointer in pstn_forwarding_intro.dart now says \"Ava PA → Phone calls\". (3) registerCampaignsSection() is COMMENTED OUT in core/ava_bootstrap.dart — the campaigns feature code and the server-side campaign lane are untouched, only the Settings entry is hidden.",
+  "description": "Settings menu cleanup requested by the owner on 2026-08-09, alongside the PA redesign. Three removals, no behaviour change to any live lane: (1) the \"Auto-Responder\" row is deleted from settings_screen.dart and its page auto_responder_settings_page.dart is deleted with it \u2014 nothing else in app/lib referenced the page; the worker route /api/auto-responder and consumers/src/auto_reply.ts are untouched. (2) Confirmed the \"Voicemail\" row can no longer appear (its registerPstnForwardingSection() call site stays commented out from PA-UI-2); PstnForwardingSetupScreen and PstnForwardingWizard are deliberately KEPT because pa_phone_screen.dart's \"Fix it\" flow pushes them, and the stale \"Settings \u2192 Voicemail\" pointer in pstn_forwarding_intro.dart now says \"Ava PA \u2192 Phone calls\". (3) registerCampaignsSection() is COMMENTED OUT in core/ava_bootstrap.dart \u2014 the campaigns feature code and the server-side campaign lane are untouched, only the Settings entry is hidden.",
   "shipped": "2026-08-09",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -86,19 +86,19 @@
     "property": "phase",
     "equals": "first_paint",
     "min_events": 1,
-    "note": "This change only REMOVES rows, so it has no positive event of its own — the assertion is that the Settings screen still builds and its surviving rows still open. pa_hub_open is the cheapest proof of that: it can only fire from a Settings list that rendered past the point where the deleted Auto-Responder tile used to sit. If the removal broke the build or the list, this goes to zero."
+    "note": "This change only REMOVES rows, so it has no positive event of its own \u2014 the assertion is that the Settings screen still builds and its surviving rows still open. pa_hub_open is the cheapest proof of that: it can only fire from a Settings list that rendered past the point where the deleted Auto-Responder tile used to sit. If the removal broke the build or the list, this goes to zero."
    },
    {
     "event": "autoresponder_enabled",
     "exists": true,
     "min_events": 0,
-    "note": "PRESENCE IS THE BUG SIGNAL: zero expected on the new build. This event had exactly one emit site — the deleted auto_responder_settings_page.dart — so any occurrence on a build carrying this change means the page is still reachable from some path the removal missed. Occurrences from OLDER builds are expected and are not a failure."
+    "note": "PRESENCE IS THE BUG SIGNAL: zero expected on the new build. This event had exactly one emit site \u2014 the deleted auto_responder_settings_page.dart \u2014 so any occurrence on a build carrying this change means the page is still reachable from some path the removal missed. Occurrences from OLDER builds are expected and are not a failure."
    }
   ],
   "_verified_at": "app/lib/features/settings/settings_screen.dart (Auto-Responder _tile + its import replaced by a [PA-UI-3] comment); auto_responder_settings_page.dart deleted, its only referrer was settings_screen.dart:23/:317 and the sole emit site of autoresponder_enabled was :127; app/lib/core/ava_bootstrap.dart registerCampaignsSection() + its import commented out; registerPstnForwardingSection() still commented out"
  },
  "CALL-ACCEPT-STATUS-KILL-1": {
-  "description": "Caller-side accept-kills-call race (the 2026-08-08 18:10 IST davy↔Tiger ghost-calling cascade, prod call avatok-b3e2da5c). callCommand's FCM durable backstop pushed EVERY changed command's wire status to the peer, including `accept`; on the caller, CallSession._statusSub's catch-all ended any not-yet-connected session with whatever status arrived, so when the accept push beat WebRTC connect the caller killed the call at the moment of accept, auto-cancelled, and the callee's freshly-accepted call died — followed by instant redial → busy → retry storm. Fix is two-layered: worker only fans out terminal/handoff statuses (protects shipped clients on deploy); client catch-all ignores non-terminal statuses and emits call_status_ignored_nonterminal (next build).",
+  "description": "Caller-side accept-kills-call race (the 2026-08-08 18:10 IST davy\u2194Tiger ghost-calling cascade, prod call avatok-b3e2da5c). callCommand's FCM durable backstop pushed EVERY changed command's wire status to the peer, including `accept`; on the caller, CallSession._statusSub's catch-all ended any not-yet-connected session with whatever status arrived, so when the accept push beat WebRTC connect the caller killed the call at the moment of accept, auto-cancelled, and the callee's freshly-accepted call died \u2014 followed by instant redial \u2192 busy \u2192 retry storm. Fix is two-layered: worker only fans out terminal/handoff statuses (protects shipped clients on deploy); client catch-all ignores non-terminal statuses and emits call_status_ignored_nonterminal (next build).",
   "shipped": "2026-08-09",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -112,20 +112,20 @@
     "property": "connected",
     "equals": true,
     "min_events": 0,
-    "note": "PRESENCE IS THE BUG SIGNAL: the target is ZERO call_ended reason=accept events after the worker deploy. Any occurrence means a caller session was still torn down by an accept status — either the worker filter regressed or an old worker is live."
+    "note": "PRESENCE IS THE BUG SIGNAL: the target is ZERO call_ended reason=accept events after the worker deploy. Any occurrence means a caller session was still torn down by an accept status \u2014 either the worker filter regressed or an old worker is live."
    },
    {
     "event": "call_status_ignored_nonterminal",
     "property": "status",
     "equals": "accept",
     "min_events": 0,
-    "note": "Client guard (next build). Zero expected once the worker filter is live; any occurrence is the guard correctly swallowing a stray non-terminal status (replay/old worker) instead of killing the call — benign, but worth a look if it spikes."
+    "note": "Client guard (next build). Zero expected once the worker filter is live; any occurrence is the guard correctly swallowing a stray non-terminal status (replay/old worker) instead of killing the call \u2014 benign, but worth a look if it spikes."
    }
   ],
-  "_verified_at": "worker/src/routes/api.ts callCommand — BACKSTOP_STATUSES set gating the Q_PUSH send; app/lib/core/calls/call_session.dart _statusSub — terminal set guard before the _endWith catch-all, emit site of call_status_ignored_nonterminal"
+  "_verified_at": "worker/src/routes/api.ts callCommand \u2014 BACKSTOP_STATUSES set gating the Q_PUSH send; app/lib/core/calls/call_session.dart _statusSub \u2014 terminal set guard before the _endWith catch-all, emit site of call_status_ignored_nonterminal"
  },
  "PA-RETUNE-1": {
-  "description": "PA re-tune (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 1/3/6/7), worker-only, INBOUND vobiz lane only — campaign mode untouched. Ava now opens a forwarded PSTN call with a bare \"Hello?\", learns who is calling and what they want in a few sentences, refuses to engage with the subject matter (no product talk, no domain answers, no offers to connect), and ends the call herself. The one-line \"<who> called about <what>\" summary + an intent category ride on the end_call tool's NEW `summary`/`category` arguments — same Gemini session, no second model (owner decision 2026-06-30) — and become the inbox card headline (summary.reason, which the frozen client renderer already displays) and the push body. A 6-min DO ALARM watchdog force-finalizes a stuck session, and the settle is capped at hard_cap_ms so a stuck session can never bill past the cap.",
+  "description": "PA re-tune (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 1/3/6/7), worker-only, INBOUND vobiz lane only \u2014 campaign mode untouched. Ava now opens a forwarded PSTN call with a bare \"Hello?\", learns who is calling and what they want in a few sentences, refuses to engage with the subject matter (no product talk, no domain answers, no offers to connect), and ends the call herself. The one-line \"<who> called about <what>\" summary + an intent category ride on the end_call tool's NEW `summary`/`category` arguments \u2014 same Gemini session, no second model (owner decision 2026-06-30) \u2014 and become the inbox card headline (summary.reason, which the frozen client renderer already displays) and the push body. A 6-min DO ALARM watchdog force-finalizes a stuck session, and the settle is capped at hard_cap_ms so a stuck session can never bill past the cap.",
   "shipped": "2026-08-09",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -144,7 +144,7 @@
     "equals": true,
     "min_events": 2,
     "min_pass_rate": 0.7,
-    "note": "message_taken equivalent: this lane's canonical outcome event carrying the one-liner. The slack covers the REAL cases where Ava never reaches end_call and so cannot emit a summary — the caller hangs up first, the hard cap fires, or the watchdog fires. Those calls still deliver a recording; they just have no headline. A pass rate near 0 means the end_call summary/category arguments are not being produced at all."
+    "note": "message_taken equivalent: this lane's canonical outcome event carrying the one-liner. The slack covers the REAL cases where Ava never reaches end_call and so cannot emit a summary \u2014 the caller hangs up first, the hard cap fires, or the watchdog fires. Those calls still deliver a recording; they just have no headline. A pass rate near 0 means the end_call summary/category arguments are not being produced at all."
    },
    {
     "event": "ava_recept_call_summary",
@@ -175,7 +175,7 @@
     "property": "settle_trued_up",
     "equals": false,
     "min_events": 0,
-    "note": "PRESENCE IS THE BUG SIGNAL (spec 6a): the target is ZERO of these in the soak window. min_events 0 so an empty result is the pass; if any DO fire, settle_trued_up=true means the session ran past the cap and the settle was capped — investigate the hung leg."
+    "note": "PRESENCE IS THE BUG SIGNAL (spec 6a): the target is ZERO of these in the soak window. min_events 0 so an empty result is the pass; if any DO fire, settle_trued_up=true means the session ran past the cap and the settle was capped \u2014 investigate the hung leg."
    },
    {
     "event": "pa_message_delivery",
@@ -185,7 +185,7 @@
     "note": "The delivery half, decoupled from the call half. false here = the recording and message never reached the callee's inbox even though the call summary said the call completed."
    }
   ],
-  "_verified_at": "worker/src/do/vobiz_agent_room.ts — composePaPrompt() at init, end_call summary/category args in connectGemini + onGeminiMessage, alarm()/setAlarm watchdog, settleTruedUp cap in the [RECEPT-BILLING-3] block, evAwait(pa_watchdog_fired) + evAwait(pa_message_delivery) in finalize(); props spread in worker/src/lib/recept_stats.ts recordCallSummary()"
+  "_verified_at": "worker/src/do/vobiz_agent_room.ts \u2014 composePaPrompt() at init, end_call summary/category args in connectGemini + onGeminiMessage, alarm()/setAlarm watchdog, settleTruedUp cap in the [RECEPT-BILLING-3] block, evAwait(pa_watchdog_fired) + evAwait(pa_message_delivery) in finalize(); props spread in worker/src/lib/recept_stats.ts recordCallSummary()"
  },
  "PA-GATE-1": {
   "description": "PA zero-balance backstop + config-key declarations (Specs/SPEC-AVA-SPAM-SECRETARY-2026-08-09.md Phase A 5). The answer webhook returns an immediate <Hangup/> for owners with no spendable balance, so a stray forwarded call costs nothing when the wallet is empty (the app-side MMI deactivation is Phase B). Declares paWatchdogMs and paZeroBalanceHangup in PlatformConfig + DEFAULTS + numericKeys in the same change, per the fake-flag rule.",
@@ -350,7 +350,7 @@
      "null"
     ],
     "min_events": 1,
-    "note": "Only meaningful once a flag is flipped AND secrets/presets exist; while dark, every request emits call_rtk_blocked with reason=flag_off, which is correct behaviour, not failure. A join that returns without a meeting_id means the CF API response envelope changed shape (the route accepts both result.* and data.* — see call_rtk.ts) and the client got a token to nowhere."
+    "note": "Only meaningful once a flag is flipped AND secrets/presets exist; while dark, every request emits call_rtk_blocked with reason=flag_off, which is correct behaviour, not failure. A join that returns without a meeting_id means the CF API response envelope changed shape (the route accepts both result.* and data.* \u2014 see call_rtk.ts) and the client got a token to nowhere."
    }
   ],
   "_verified_at": "worker/src/routes/call_rtk.ts:329 (trackUser ... 'call_rtk_joined'), :210/:216/:226/:293 (call_rtk_blocked), :301/:322 (call_rtk_error)"
@@ -385,7 +385,7 @@
     "property": "join_ms",
     "lt": 3000,
     "min_events": 1,
-    "note": "Spec §5 Phase 1/2 assertion. Emitted in realtimekit_provider.dart after joinRoom succeeds, for both 1:1 and group."
+    "note": "Spec \u00a75 Phase 1/2 assertion. Emitted in realtimekit_provider.dart after joinRoom succeeds, for both 1:1 and group."
    },
    {
     "event": "call_network_handover",
@@ -397,7 +397,7 @@
      "failed"
     ],
     "min_events": 1,
-    "note": "THE WHATSAPP TEST (spec §5 Phase 2): outcome=survived on a deliberate WiFi->cellular switch mid-call, on two phones both on the new build. This event only exists when a network transition actually happened - it needs the deliberate two-phone test, it will not accumulate on its own. Do not describe [CALL-RTK-3] as shipped until this has been read with outcome=survived."
+    "note": "THE WHATSAPP TEST (spec \u00a75 Phase 2): outcome=survived on a deliberate WiFi->cellular switch mid-call, on two phones both on the new build. This event only exists when a network transition actually happened - it needs the deliberate two-phone test, it will not accumulate on its own. Do not describe [CALL-RTK-3] as shipped until this has been read with outcome=survived."
    }
   ],
   "_verified_at": "app/lib/core/calls/rtc/realtimekit_provider.dart:419,475 (rtk_join outcome), :485 (call_connected provider), :275,:292 (call_network_handover outcome failed/survived); call_session.dart:5602 (call_rtk_active), :5613 (call_rtk_fallback)"
@@ -665,7 +665,7 @@
   "_verified_at": "app/lib/core/calls/call_session.dart _emitAvaVmFallback -> Analytics.capture('ava_vm_fallback', {call_id, trigger, recorded_ms, stored, fallback_wait_ms, activation_mode, peer_uid, caller_uid}); requested from _onAvaLiveTimeout via ReceptionistCall.requestVoicemailFallback (receptionist_call.dart) and resolved by the DO's vm_result frame; server side worker/src/do/reception_room_cf.ts startVmFallback + finalize (ava_vm_fallback_started / ava_vm_fallback_result)"
  },
  "CALL-HONEST-FAIL-1": {
-  "description": "Tell the caller WHY the call stopped. The terminal reason was always known (21 distinct call_ended.reason values in 7 days of prod) and never rendered; ten attempts on 2026-08-07 all looked identical to the user. ONE table (app/lib/core/ui/call_failure_copy.dart) maps reason/scenario/outcome -> a sentence, shown on the call screen and on both call-log lists. Success is NOT 'the event fired' — it is that the event carries a REAL message_key, because an unmapped ending deliberately emits nothing at all.",
+  "description": "Tell the caller WHY the call stopped. The terminal reason was always known (21 distinct call_ended.reason values in 7 days of prod) and never rendered; ten attempts on 2026-08-07 all looked identical to the user. ONE table (app/lib/core/ui/call_failure_copy.dart) maps reason/scenario/outcome -> a sentence, shown on the call screen and on both call-log lists. Success is NOT 'the event fired' \u2014 it is that the event carries a REAL message_key, because an unmapped ending deliberately emits nothing at all.",
   "shipped": "2026-08-08",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -682,7 +682,7 @@
      "surface": "call_screen"
     },
     "min_events": 1,
-    "note": "A failed call that told the user nothing emits NO event, so absence here is the failure mode this issue exists to fix: it means the terminal reason fell outside the table and the caller was left guessing again. Cross-check against call_ended in the same window — every call_ended whose reason is in the explained set should have a paired call_failure_shown on the same call_id."
+    "note": "A failed call that told the user nothing emits NO event, so absence here is the failure mode this issue exists to fix: it means the terminal reason fell outside the table and the caller was left guessing again. Cross-check against call_ended in the same window \u2014 every call_ended whose reason is in the explained set should have a paired call_failure_shown on the same call_id."
    },
    {
     "event": "call_failure_shown",
@@ -991,13 +991,13 @@
     "property": "call_id",
     "exists": true,
     "min_events": 1,
-    "note": "The chip/notification tap actually ROUTED back into the call from outside the app. Emitted only inside the onNotificationTapReturnToCall callback (main.dart), which fires solely from the FGS notification/chip content intent via MainActivity -> AvaVoiceAudioPlugin -> method channel — so one event with a call_id IS a user tapping the chip and landing back in the call. Absence on the new build after the owner tests the flow means either the CallStyle notification failed to post (CallStyle throws if misconfigured; the FGS catch at CallForegroundService.kt swallows it silently) or the tap intent no longer reaches Dart."
+    "note": "The chip/notification tap actually ROUTED back into the call from outside the app. Emitted only inside the onNotificationTapReturnToCall callback (main.dart), which fires solely from the FGS notification/chip content intent via MainActivity -> AvaVoiceAudioPlugin -> method channel \u2014 so one event with a call_id IS a user tapping the chip and landing back in the call. Absence on the new build after the owner tests the flow means either the CallStyle notification failed to post (CallStyle throws if misconfigured; the FGS catch at CallForegroundService.kt swallows it silently) or the tap intent no longer reaches Dart."
    }
   ],
   "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/CallForegroundService.kt (CallStyle branch, API>=S) ; app/lib/main.dart onNotificationTapReturnToCall -> Analytics.capture('call_notification_tap_return', {call_id}) then returnToActiveCall()"
  },
  "CALL-PIP-SWAP-1": {
-  "description": "WhatsApp-style self-view thumbnail on the 1:1 video call screen (call_screen.dart): bigger, draggable within screen bounds, and tap-to-swap — tapping the thumbnail puts the REMOTE feed in the thumbnail and your own video full screen (and back). Swap is enabled only once the call is connected (remote video exists); before that the tap is inert. Client-only, no flag, no worker change.",
+  "description": "WhatsApp-style self-view thumbnail on the 1:1 video call screen (call_screen.dart): bigger, draggable within screen bounds, and tap-to-swap \u2014 tapping the thumbnail puts the REMOTE feed in the thumbnail and your own video full screen (and back). Swap is enabled only once the call is connected (remote video exists); before that the tap is inert. Client-only, no flag, no worker change.",
   "shipped": "2026-08-09",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -1167,7 +1167,7 @@
     "property": "amount_coins",
     "equals": 2,
     "min_events": 1,
-    "note": "With flag on, an image generation must reserve exactly veniceImageTokens (2) — read the reservation event amount, not just its presence. Video=50, music=10 likewise."
+    "note": "With flag on, an image generation must reserve exactly veniceImageTokens (2) \u2014 read the reservation event amount, not just its presence. Video=50, music=10 likewise."
    }
   ]
  },
@@ -1280,7 +1280,7 @@
     "note": "VALUE check with an absence twin: on the new build, ZERO call_sfu_fallback rows may carry detail containing 'Null check operator'. The clean disposed_* details are the acceptable shape when teardown races a join; min_events 0 because the race itself should be rarer now that CALL-VIDEO-SFUGUARD-1 removed its main trigger."
    }
   ],
-  "_verified_at": "app/lib/core/calls/call_sfu_transport.dart connect() — local `pc`, _pc assigned once; failure emit site unchanged in call_session.dart _startSfu"
+  "_verified_at": "app/lib/core/calls/call_sfu_transport.dart connect() \u2014 local `pc`, _pc assigned once; failure emit site unchanged in call_session.dart _startSfu"
  },
  "TELEMETRY-AWAIT-1": {
   "description": "After the 2026-08-14 10:39 merged deploy, ALL unawaited Q_ANALYTICS sends from AvaAgentDO turn paths and guardianScan stopped arriving (awaited sends like presence_beat kept flowing; consumer verified healthy via live tail; turn verified running via live tail at 11:26 UTC with zero errors and no events landing). Fix: await every statement-level trackUserContact/trackUser emit in do/ava_agent.ts (24+3+2 sites incl. ambient $ai_generation) and guardianScan's guardian_scan track. Queue sends are milliseconds; the latency cost is nil and the drop class is eliminated.",
@@ -1295,7 +1295,7 @@
     "property": "model_actual",
     "equals": "google/gemini-3.7-flash",
     "min_events": 1,
-    "note": "One @ava turn after this deploy must land this event with the 3.7 model — this simultaneously proves the telemetry pipeline is back AND answers which model serves real turns. guardian_scan reappearing on message sends is the companion check."
+    "note": "One @ava turn after this deploy must land this event with the 3.7 model \u2014 this simultaneously proves the telemetry pipeline is back AND answers which model serves real turns. guardian_scan reappearing on message sends is the companion check."
    }
   ],
   "_verified_at": "worker/src/do/ava_agent.ts (grep '^\\s*await trackUserContact' = 28 sites) ; worker/src/routes/ava_guardian.ts guardian_scan emit; diagnosis evidence: wrangler tail avatok-api 11:26 UTC turn OK + wrangler tail avatok-consumers 'Queue analytics (1 message) - Ok'"
@@ -1392,7 +1392,7 @@
   ]
  },
  "CALL-PREWARM-1": {
-  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P1 — the callee pre-warms its media path (ICE fetch + /api/callsfu/:room/join seat) the moment the incoming-call push lands, gated behind callPrewarmOnRingV1. CallSession._startSfuMedia() now adopts the pre-warmed join instead of doing the ICE+seat round trip cold, so accept only has to publish + pull. Discarded (seat closed) on decline/cancel/timeout/missed and when older than 60s.",
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P1 \u2014 the callee pre-warms its media path (ICE fetch + /api/callsfu/:room/join seat) the moment the incoming-call push lands, gated behind callPrewarmOnRingV1. CallSession._startSfuMedia() now adopts the pre-warmed join instead of doing the ICE+seat round trip cold, so accept only has to publish + pull. Discarded (seat closed) on decline/cancel/timeout/missed and when older than 60s.",
   "flags": [
    "callSfuV1",
    "callPrewarmOnRingV1"
@@ -1407,7 +1407,7 @@
     "equals": true,
     "min_events": 1,
     "where": {},
-    "note": "The callee's accept must actually adopt a live pre-warmed seat, not just find an entry — had_join:false means the /join round trip never finished in time and the accept path fell back to cold-start behaviour."
+    "note": "The callee's accept must actually adopt a live pre-warmed seat, not just find an entry \u2014 had_join:false means the /join round trip never finished in time and the accept path fell back to cold-start behaviour."
    },
    {
     "event": "call_first_audio_ms",
@@ -1417,12 +1417,12 @@
     "where": {
      "network": "wifi"
     },
-    "note": "Callee stage_first_audio_bytes on wifi must be < 4500ms. Read the actual number, do not just confirm the event exists (CLAUDE.md ship-gate rule 3). Note the plan's own P1 target (Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md) is a tighter <2500ms accept→first_audio on wifi — 4500ms is the ship-gate floor for this manifest entry, not the aspiration."
+    "note": "Callee stage_first_audio_bytes on wifi must be < 4500ms. Read the actual number, do not just confirm the event exists (CLAUDE.md ship-gate rule 3). Note the plan's own P1 target (Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md) is a tighter <2500ms accept\u2192first_audio on wifi \u2014 4500ms is the ship-gate floor for this manifest entry, not the aspiration."
    }
   ]
  },
  "CALL-PREJOIN-1": {
-  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2 — the CALLER joins the SFU and publishes its audio track DURING THE RING (from the 'welcome' handler, the moment its own room socket is confirmed open with nobody else present yet), gated behind callSfuV1 && callerPrejoinOnRingV1. CallSfuTransport.connect() is split into connectPublish()/connectPull() so the publish half can run at ring time and the pull half only once a peer seat exists; CallSession._startSfuMedia() adopts the pre-joined transport when the peer-join election lands on SFU (case 'sfu-start'), and discards it (closes the local PC + the SFU seat) on every other outcome: RTK election, a genuine P2P offer, sfu-abort, or hangup while still ringing. Video (for a video call) publishes AFTER accept via the existing mid-call camera-on path (CallSfuTransport.publishVideo) — only audio is live during the ring. Callee-side code is unchanged; its existing pull now finds a live track on the first attempt instead of racing the caller's own post-accept publish.",
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2 \u2014 the CALLER joins the SFU and publishes its audio track DURING THE RING (from the 'welcome' handler, the moment its own room socket is confirmed open with nobody else present yet), gated behind callSfuV1 && callerPrejoinOnRingV1. CallSfuTransport.connect() is split into connectPublish()/connectPull() so the publish half can run at ring time and the pull half only once a peer seat exists; CallSession._startSfuMedia() adopts the pre-joined transport when the peer-join election lands on SFU (case 'sfu-start'), and discards it (closes the local PC + the SFU seat) on every other outcome: RTK election, a genuine P2P offer, sfu-abort, or hangup while still ringing. Video (for a video call) publishes AFTER accept via the existing mid-call camera-on path (CallSfuTransport.publishVideo) \u2014 only audio is live during the ring. Callee-side code is unchanged; its existing pull now finds a live track on the first attempt instead of racing the caller's own post-accept publish.",
   "flags": [
    "callSfuV1",
    "callerPrejoinOnRingV1"
@@ -1437,7 +1437,7 @@
     "equals": "",
     "min_events": 1,
     "where": {},
-    "note": "The CALLER must actually finish publishing to the SFU before accept — this event's presence is the proof the ring-time publish completed, not merely that a prejoin attempt started (call_prejoin_started fires unconditionally and proves nothing by itself)."
+    "note": "The CALLER must actually finish publishing to the SFU before accept \u2014 this event's presence is the proof the ring-time publish completed, not merely that a prejoin attempt started (call_prejoin_started fires unconditionally and proves nothing by itself)."
    },
    {
     "event": "call_first_audio_ms",
@@ -1445,12 +1445,12 @@
     "equals": "",
     "min_events": 1,
     "where": {},
-    "note": "Query BOTH the caller's and the callee's call_first_audio_ms for the SAME call_id and compute stage_sfu_pull_audio - stage_sfu_publish on each. Plan target: < 700ms (mutual wait gone) on both sides of the SAME call, not just one leg. Read the actual millisecond values (CLAUDE.md ship-gate rule 3) — do not stop at confirming the stages are present. On the caller's own timeline stage_sfu_publish should read as a small number measured from call_started (it happened during the ring), not ~10s in, which is the other half of the proof this shipped."
+    "note": "Query BOTH the caller's and the callee's call_first_audio_ms for the SAME call_id and compute stage_sfu_pull_audio - stage_sfu_publish on each. Plan target: < 700ms (mutual wait gone) on both sides of the SAME call, not just one leg. Read the actual millisecond values (CLAUDE.md ship-gate rule 3) \u2014 do not stop at confirming the stages are present. On the caller's own timeline stage_sfu_publish should read as a small number measured from call_started (it happened during the ring), not ~10s in, which is the other half of the proof this shipped."
    }
   ]
  },
  "CALL-TRANSLATE-APIVER-3": {
-  "description": "Live-probed the v1beta auth_tokens endpoint (schema validation precedes key validation, so probeable with any key): the docs' liveConnectConstraints field does not exist on the wire on v1alpha OR v1beta — the AuthToken proto field is bidiGenerateContentSetup with generationConfig inside, mirroring the WS setup frame. Mint body rewritten to the probed shape.",
+  "description": "Live-probed the v1beta auth_tokens endpoint (schema validation precedes key validation, so probeable with any key): the docs' liveConnectConstraints field does not exist on the wire on v1alpha OR v1beta \u2014 the AuthToken proto field is bidiGenerateContentSetup with generationConfig inside, mirroring the WS setup frame. Mint body rewritten to the probed shape.",
   "flags": [],
   "min_devices_on_build": 1,
   "shipped": "pending",
@@ -1467,7 +1467,7 @@
   ]
  },
  "CALL-SFU-TELEM-AWAIT-1": {
-  "description": "No worker-side call_sfu_* event (joined/error/blocked/published/pulled) ever reached PostHog in 30 days — all 12 trackUser emits in routes/call_sfu.ts were unawaited and workerd dropped them at response return (same class as TELEMETRY-AWAIT-1). All now awaited.",
+  "description": "No worker-side call_sfu_* event (joined/error/blocked/published/pulled) ever reached PostHog in 30 days \u2014 all 12 trackUser emits in routes/call_sfu.ts were unawaited and workerd dropped them at response return (same class as TELEMETRY-AWAIT-1). All now awaited.",
   "flags": [
    "callSfuV1"
   ],
@@ -1481,7 +1481,7 @@
     "equals": "",
     "min_events": 2,
     "where": {},
-    "note": "Next SFU call must land call_sfu_joined (one per side) carrying sfu_ms/seat_ms/elapsed_ms — the CALL-SFU-LAT-1 success assertion now becomes checkable at all."
+    "note": "Next SFU call must land call_sfu_joined (one per side) carrying sfu_ms/seat_ms/elapsed_ms \u2014 the CALL-SFU-LAT-1 success assertion now becomes checkable at all."
    }
   ]
  },
@@ -1503,7 +1503,7 @@
   ]
  },
  "CALL-TRANSLATE-CRASH-1": {
-  "description": "First-ever successful translation start (2026-08-16 12:28 UTC, post APIVER-3 + new key) fatally crashed BOTH phones ~9ms after session_created: java.lang.IllegalStateException 'Reply already submitted'. pendingPrepare in CallTranslationAudioPlugin was read-then-nulled unsynchronized from the OkHttp reader thread (setupComplete success) and failPrepare callers (incl. stopInternal invoked by a second prepare) — both could reply to the same MethodChannel.Result. Fixed with synchronized takePendingPrepare() plus safeReply() that swallows a residual duplicate instead of dying.",
+  "description": "First-ever successful translation start (2026-08-16 12:28 UTC, post APIVER-3 + new key) fatally crashed BOTH phones ~9ms after session_created: java.lang.IllegalStateException 'Reply already submitted'. pendingPrepare in CallTranslationAudioPlugin was read-then-nulled unsynchronized from the OkHttp reader thread (setupComplete success) and failPrepare callers (incl. stopInternal invoked by a second prepare) \u2014 both could reply to the same MethodChannel.Result. Fixed with synchronized takePendingPrepare() plus safeReply() that swallows a residual duplicate instead of dying.",
   "flags": [],
   "min_devices_on_build": 2,
   "shipped": "pending",
@@ -1551,7 +1551,7 @@
     "where": {
      "reason": "prepare_failed"
     },
-    "note": "Next failed Translate tap on the new build must carry a non-empty native_code (stopped/provider_failed/setup_failed/webrtc_playback_unavailable/...) and native_detail with the adapter token — that string IS the diagnosis. If the tap instead succeeds, funnel provider_ready ok:true is the win."
+    "note": "Next failed Translate tap on the new build must carry a non-empty native_code (stopped/provider_failed/setup_failed/webrtc_playback_unavailable/...) and native_detail with the adapter token \u2014 that string IS the diagnosis. If the tap instead succeeds, funnel provider_ready ok:true is the win."
    }
   ]
  },
@@ -1600,7 +1600,7 @@
   ]
  },
  "CALL-TRANSLATE-WSURL-1": {
-  "description": "ROOT CAUSE of every translation start failure: connectSocket built the Gemini socket URL with OkHttp HttpUrl.get() on a wss:// scheme, which throws IllegalArgumentException synchronously — the socket NEVER connected from the app. The throw escaped prepare() unanswered (engine replied bare 'error', confirmed by PREPFAIL-OBS-1 telemetry native_code:'error' empty detail on build 10559), and the un-taken pendingPrepare is what the cleanup double-replied for the 12:28 both-phones crash. Fixed: scheme swapped to https (OkHttp's documented WebSocket usage) and the thread/socket setup wrapped so any future throw is a coded single failure (socket_setup_failed).",
+  "description": "ROOT CAUSE of every translation start failure: connectSocket built the Gemini socket URL with OkHttp HttpUrl.get() on a wss:// scheme, which throws IllegalArgumentException synchronously \u2014 the socket NEVER connected from the app. The throw escaped prepare() unanswered (engine replied bare 'error', confirmed by PREPFAIL-OBS-1 telemetry native_code:'error' empty detail on build 10559), and the un-taken pendingPrepare is what the cleanup double-replied for the 12:28 both-phones crash. Fixed: scheme swapped to https (OkHttp's documented WebSocket usage) and the thread/socket setup wrapped so any future throw is a coded single failure (socket_setup_failed).",
   "flags": [],
   "min_devices_on_build": 2,
   "shipped": "pending",
@@ -1614,7 +1614,7 @@
     "where": {
      "ok": true
     },
-    "note": "A Translate tap on the new build must reach funnel provider_ready ok:true (native setupComplete — the stage no phone has EVER reached). Ultimate: user reports audible translated speech; server chain already proven from sandbox (setupComplete + audio accepted)."
+    "note": "A Translate tap on the new build must reach funnel provider_ready ok:true (native setupComplete \u2014 the stage no phone has EVER reached). Ultimate: user reports audible translated speech; server chain already proven from sandbox (setupComplete + audio accepted)."
    }
   ]
  },
@@ -1638,7 +1638,7 @@
   ]
  },
  "CALL-ACCEPT-FRAME-1": {
-  "description": "P3 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md: kill the blank screen between accepting an incoming call and the Flutter call UI appearing. MainActivity.kt detects a native Accept launch (flutter_callkit_incoming's TransparentActivity relaunches MainActivity with action=CallkitConstants.ACTION_CALL_ACCEPT, cold or warm) and, if Flutter's first frame has not painted yet, shows a full-screen native 'Connecting…'/'AvaTOK' overlay (dark bg 0xFF0E1113) removed with a 150ms fade in onFlutterUiDisplayed() or a 6s failsafe. The same detection captures SystemClock.elapsedRealtime() at accept and reports the accept-to-first-frame span to Dart via the existing avatok/voice_audio channel (AvaVoiceAudioPlugin.emitAcceptToFirstFrame -> event 'acceptToFirstFrame', resent once after 3s in case Dart's handler was not yet registered, deduped in native_voice_audio.dart on the (ms, cold) pair). Client-only; no worker change, no new flag — the overlay is unconditional (a native no-op improvement that cannot regress an already-warm accept).",
+  "description": "P3 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md: kill the blank screen between accepting an incoming call and the Flutter call UI appearing. MainActivity.kt detects a native Accept launch (flutter_callkit_incoming's TransparentActivity relaunches MainActivity with action=CallkitConstants.ACTION_CALL_ACCEPT, cold or warm) and, if Flutter's first frame has not painted yet, shows a full-screen native 'Connecting\u2026'/'AvaTOK' overlay (dark bg 0xFF0E1113) removed with a 150ms fade in onFlutterUiDisplayed() or a 6s failsafe. The same detection captures SystemClock.elapsedRealtime() at accept and reports the accept-to-first-frame span to Dart via the existing avatok/voice_audio channel (AvaVoiceAudioPlugin.emitAcceptToFirstFrame -> event 'acceptToFirstFrame', resent once after 3s in case Dart's handler was not yet registered, deduped in native_voice_audio.dart on the (ms, cold) pair). Client-only; no worker change, no new flag \u2014 the overlay is unconditional (a native no-op improvement that cannot regress an already-warm accept).",
   "shipped": "pending",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -1649,7 +1649,7 @@
     "property": "ms",
     "lt": 2000,
     "min_events": 1,
-    "note": "Presence alone is not enough — this asserts the VALUE. ms is the native accept-tap-to-first-Flutter-frame span; the ship-gate success bar is <800ms warm / <2000ms cold (cold=true/false is a separate property on the same event, not asserted here since a single slow cold boot on a low-end device is not itself a regression). Absence of this event entirely on the new build means MainActivity's detection or the method-channel forward broke — check `cold` on the events that DO arrive to tell a slow engine from a broken instrument. The blank-screen fix itself (the 'Connecting…' overlay) has no telemetry signature of its own and must be verified VISUALLY on a real accept — a two-phone real-call check per the ship-gate rules, not just this number."
+    "note": "Presence alone is not enough \u2014 this asserts the VALUE. ms is the native accept-tap-to-first-Flutter-frame span; the ship-gate success bar is <800ms warm / <2000ms cold (cold=true/false is a separate property on the same event, not asserted here since a single slow cold boot on a low-end device is not itself a regression). Absence of this event entirely on the new build means MainActivity's detection or the method-channel forward broke \u2014 check `cold` on the events that DO arrive to tell a slow engine from a broken instrument. The blank-screen fix itself (the 'Connecting\u2026' overlay) has no telemetry signature of its own and must be verified VISUALLY on a real accept \u2014 a two-phone real-call check per the ship-gate rules, not just this number."
    }
   ],
   "_verified_at": "app/android/app/src/main/kotlin/ai/avatok/avatok_call/MainActivity.kt: isNativeAcceptLaunch/onCreate/onNewIntent/onFlutterUiDisplayed/showConnectingOverlay/reportAcceptToFirstFrame; app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt: emitAcceptToFirstFrame; app/lib/core/voice/native_voice_audio.dart: _ensureHandler 'acceptToFirstFrame' branch -> Analytics.capture('call_accept_first_frame_ms', {ms, cold})"
@@ -1676,7 +1676,7 @@
   ]
  },
  "VERTEX-1": {
-  "description": "REST Gemini calls (Ava's brain, GenUI compose/plan, AvaVision snapshot, post-call summary, name vetting, affiliate image generation and the three Gemini-TTS render paths) move from the AI-Studio Developer API (generativelanguage.googleapis.com + GEMINI_API_KEY) to Vertex AI (aiplatform.googleapis.com), for production quota at India scale. Auth reuses the existing GOOGLE_TTS_SA_JSON service account (ava-tts@avatok-avaglobal, cloud-platform scope) — NO new secret. Server-only; no app/ change, no schema change. Gated by the VERTEX_PROJECT wrangler var: blank it and redeploy to revert. lib/vertex.ts falls back to the Developer API on ANY Vertex failure, so this cannot become an outage — which is exactly why 'events are flowing' is not evidence here and the assertion below is on the VALUE transport=vertex. DELIBERATELY NOT MIGRATED: every Live/bidi-WebSocket lane (Vertex has one live model and NO live-translate model, so moving them would delete call translation) and the File Search/RAG stores (Developer-API-only product).",
+  "description": "REST Gemini calls (Ava's brain, GenUI compose/plan, AvaVision snapshot, post-call summary, name vetting, affiliate image generation and the three Gemini-TTS render paths) move from the AI-Studio Developer API (generativelanguage.googleapis.com + GEMINI_API_KEY) to Vertex AI (aiplatform.googleapis.com), for production quota at India scale. Auth reuses the existing GOOGLE_TTS_SA_JSON service account (ava-tts@avatok-avaglobal, cloud-platform scope) \u2014 NO new secret. Server-only; no app/ change, no schema change. Gated by the VERTEX_PROJECT wrangler var: blank it and redeploy to revert. lib/vertex.ts falls back to the Developer API on ANY Vertex failure, so this cannot become an outage \u2014 which is exactly why 'events are flowing' is not evidence here and the assertion below is on the VALUE transport=vertex. DELIBERATELY NOT MIGRATED: every Live/bidi-WebSocket lane (Vertex has one live model and NO live-translate model, so moving them would delete call translation) and the File Search/RAG stores (Developer-API-only product).",
   "shipped": "2026-08-17",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -1687,7 +1687,7 @@
     "property": "transport",
     "equals": "vertex",
     "min_events": 1,
-    "note": "THE assertion. Emitted from inside lib/vertex.ts on every Google REST call, so it covers all converted call sites by construction. transport='devapi' with vertex_configured=true means the switch silently did not land (missing IAM role, or a model id that exists on the Developer API but not on Vertex) — the user still gets a healthy answer, which is why the VALUE must be asserted."
+    "note": "THE assertion. Emitted from inside lib/vertex.ts on every Google REST call, so it covers all converted call sites by construction. transport='devapi' with vertex_configured=true means the switch silently did not land (missing IAM role, or a model id that exists on the Developer API but not on Vertex) \u2014 the user still gets a healthy answer, which is why the VALUE must be asserted."
    },
    {
     "event": "google_call_transport",
@@ -1697,7 +1697,7 @@
     "note": "Vertex was configured and tried, but the Developer API served the request anyway. Any true here is a silent failure of this issue."
    }
   ],
-  "_verified_at": "worker/src/lib/vertex.ts emitTransport() on all three exit paths of generateContentVia(); worker/wrangler.toml VERTEX_PROJECT='avatok-avaglobal'. NOTE 2026-08-17: the first success definition asserted ava_reason_call.transport=='vertex' and was WRONG — 14 days of prod showed zero ava_reason_call events with a Google provider (that gateway carries cf_ai/venice/openrouter only), so the check was unobservable and could never go green."
+  "_verified_at": "worker/src/lib/vertex.ts emitTransport() on all three exit paths of generateContentVia(); worker/wrangler.toml VERTEX_PROJECT='avatok-avaglobal'. NOTE 2026-08-17: the first success definition asserted ava_reason_call.transport=='vertex' and was WRONG \u2014 14 days of prod showed zero ava_reason_call events with a Google provider (that gateway carries cf_ai/venice/openrouter only), so the check was unobservable and could never go green."
  },
  "NOTIF-ICON-1": {
   "description": "WhatsApp-parity notifications, step 1 of Specs/NOTIF-PARITY-PLAN.md. AvaTOK had NO monochrome status-bar icon: both AndroidInitializationSettings calls in lib/push/push_service.dart passed '@mipmap/ic_launcher' and not one of the seven AndroidNotificationDetails sites passed an `icon:` at all, so every banner inherited full-colour launcher art, which Android silhouettes into a white blob beside the clock. Adds app/android-res/drawable-{m,h,xh,xxh,xxx}dpi/ic_notification.png (double ring enclosing a capital A, white-on-transparent), the accent colour resource app/android-res/values/notification.xml, the two FCM default_notification_* manifest meta-data keys, and a shared `_kNotifIcon` constant wired into both init sites and all seven detail sites. Client + Android resources only; no worker change, no schema change, no new flag. android-res is the source of truth (tool/postcreate.py patch_launcher_icon copytree's it over the res tree on every CI build); the res tree copy is kept in sync.",
@@ -1714,13 +1714,13 @@
     "property": "icon",
     "equals": "ic_notification",
     "min_events": 1,
-    "note": "The success VALUE, not the arrival of the event. push_shown already fires today and would keep firing with the blob icon, so 'push_shown is flowing' proves nothing here — ship-gate rule 3. The `icon` property is a literal echo of the constant handed to AndroidNotificationDetails, so icon='ic_notification' on the newest $app_build means the monochrome asset resolved at build time and was the glyph actually drawn. Any other value, or an absent property, means the drawable did not survive patch_launcher_icon and the blob is still shipping. One device is enough: a status-bar icon is one-sided, unlike the stacking/reply work in later phases.",
+    "note": "The success VALUE, not the arrival of the event. push_shown already fires today and would keep firing with the blob icon, so 'push_shown is flowing' proves nothing here \u2014 ship-gate rule 3. The `icon` property is a literal echo of the constant handed to AndroidNotificationDetails, so icon='ic_notification' on the newest $app_build means the monochrome asset resolved at build time and was the glyph actually drawn. Any other value, or an absent property, means the drawable did not survive patch_launcher_icon and the blob is still shipping. One device is enough: a status-bar icon is one-sided, unlike the stacking/reply work in later phases.",
     "_verified_at": "app/lib/push/push_service.dart _showMessageNotif -> _track('push_shown', ...), emit site read on 2026-08-17"
    }
   ]
  },
  "NOTIF-PAYLOAD-1": {
-  "description": "Server half of Specs/NOTIF-PARITY-PLAN.md phase 1. The chat push carried a sender name and 140 characters and nothing else, so the client could not draw a MessagingStyle notification even if it wanted to: no message id to de-dup on, no sender photo, no group name, no timestamp. Adds mid/ts/isGroup/groupName/senderAvatarUrl/senderAvatarVersion to the notify data block (consumers/src/fcm.ts buildPayload), forwards them through the large-group fanout re-enqueue and its retry (handleFanout), and resolves them producer-side in worker/src/routes/messaging.ts via a new bannerExtras() that reuses publicIdentityFor — the SAME public-profile source the call path rings with. bannerExtras returns an UNAWAITED promise resolved only inside the already-detached push path, so no latency is added to /api/msg/send (see [MSG-SEND-TIMEOUT-1]). Purely additive and data-only; shipped clients ignore unknown keys.",
+  "description": "Server half of Specs/NOTIF-PARITY-PLAN.md phase 1. The chat push carried a sender name and 140 characters and nothing else, so the client could not draw a MessagingStyle notification even if it wanted to: no message id to de-dup on, no sender photo, no group name, no timestamp. Adds mid/ts/isGroup/groupName/senderAvatarUrl/senderAvatarVersion to the notify data block (consumers/src/fcm.ts buildPayload), forwards them through the large-group fanout re-enqueue and its retry (handleFanout), and resolves them producer-side in worker/src/routes/messaging.ts via a new bannerExtras() that reuses publicIdentityFor \u2014 the SAME public-profile source the call path rings with. bannerExtras returns an UNAWAITED promise resolved only inside the already-detached push path, so no latency is added to /api/msg/send (see [MSG-SEND-TIMEOUT-1]). Purely additive and data-only; shipped clients ignore unknown keys.",
   "shipped": "2026-08-17",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -1741,7 +1741,7 @@
   ]
  },
  "NOTIF-FLAGS-1": {
-  "description": "Declares notifMessagingStyle in the PlatformConfig interface AND in DEFAULTS in worker/src/routes/config.ts in the same change, plus the RemoteConfig.notifMessagingStyle client mirror. Default true. Exists as its own id because the repo's fake-flag rule has bitten before (inAppUpdateEnabled): a client-side getter whose key is absent from DEFAULTS compiles, reads fine, and can NEVER be flipped, because putConfig rejects unknown keys with a 400 — so the documented brake on the feature does not exist. push_service.dart calls RemoteConfig.hydrateFromDisk() before reading it, because nothing hydrates config in the background isolate and the getter would otherwise always return its compile-time default on the one path that matters most.",
+  "description": "Declares notifMessagingStyle in the PlatformConfig interface AND in DEFAULTS in worker/src/routes/config.ts in the same change, plus the RemoteConfig.notifMessagingStyle client mirror. Default true. Exists as its own id because the repo's fake-flag rule has bitten before (inAppUpdateEnabled): a client-side getter whose key is absent from DEFAULTS compiles, reads fine, and can NEVER be flipped, because putConfig rejects unknown keys with a 400 \u2014 so the documented brake on the feature does not exist. push_service.dart calls RemoteConfig.hydrateFromDisk() before reading it, because nothing hydrates config in the background isolate and the getter would otherwise always return its compile-time default on the one path that matters most.",
   "shipped": "2026-08-17",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -1751,7 +1751,7 @@
   "no_telemetry": "A flag declaration ships no user-visible behaviour of its own; the behaviour it gates is asserted under NOTIF-STYLE-1. Its own proof is not an event but a write: `ALLOW_PROD=1 scripts/flags.sh set notifMessagingStyle=false` must NOT 400, and a cache-busted GET /api/config must then show false. That is the exact check inAppUpdateEnabled failed."
  },
  "NOTIF-STYLE-1": {
-  "description": "Client half of phase 1, and the fix for the owner's screenshot. Every chat message was posted under the single hardcoded notification id 8000, so a message from a second person REPLACED the first in place rather than stacking beside it — the shade could physically never hold more than one AvaTOK chat row, which is why there was no 'N messages from N chats' bundle. Replaces it with: a stable per-conversation id (8900..9499, clear of the 8100-8899 missed-call range), MessagingStyle + Person with the sender's photo so each child expands on its OWN chevron, a shared groupKey plus a setAsGroupSummary child carrying the InboxStyle 'N messages from M chats' line, an account-scoped on-disk log of what is currently in the shade (global disk key with the account id as the top-level map key, because the background isolate has no AccountScope), and a payload of 'chat:<conv>' so a tap opens THAT thread instead of the app home. Falls back to the legacy single banner when the push carries no conv or the render throws.",
+  "description": "Client half of phase 1, and the fix for the owner's screenshot. Every chat message was posted under the single hardcoded notification id 8000, so a message from a second person REPLACED the first in place rather than stacking beside it \u2014 the shade could physically never hold more than one AvaTOK chat row, which is why there was no 'N messages from N chats' bundle. Replaces it with: a stable per-conversation id (8900..9499, clear of the 8100-8899 missed-call range), MessagingStyle + Person with the sender's photo so each child expands on its OWN chevron, a shared groupKey plus a setAsGroupSummary child carrying the InboxStyle 'N messages from M chats' line, an account-scoped on-disk log of what is currently in the shade (global disk key with the account id as the top-level map key, because the background isolate has no AccountScope), and a payload of 'chat:<conv>' so a tap opens THAT thread instead of the app home. Falls back to the legacy single banner when the push carries no conv or the render throws.",
   "shipped": "2026-08-17",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -1767,7 +1767,7 @@
     "property": "style",
     "equals": "messaging",
     "min_events": 1,
-    "note": "push_shown already fires today and will keep firing from the legacy path, so its arrival proves nothing — ship-gate rule 3. style='messaging' is emitted ONLY from _showStackedMessageNotif, i.e. only when the MessagingStyle render actually completed. style absent, or a rise in push_stacked_failed, means the new path threw and the app quietly degraded to the old banner — which is a pass on every weaker assertion.",
+    "note": "push_shown already fires today and will keep firing from the legacy path, so its arrival proves nothing \u2014 ship-gate rule 3. style='messaging' is emitted ONLY from _showStackedMessageNotif, i.e. only when the MessagingStyle render actually completed. style absent, or a rise in push_stacked_failed, means the new path threw and the app quietly degraded to the old banner \u2014 which is a pass on every weaker assertion.",
     "_verified_at": "app/lib/push/push_service.dart _showStackedMessageNotif, written 2026-08-17"
    },
    {
@@ -1776,7 +1776,7 @@
     "property": "chats",
     "gte": 2,
     "min_events": 1,
-    "note": "THE assertion for the owner's screenshot. A per-chat notification can render perfectly and still not bundle; only chats>=2 proves two conversations coexisted in the shade at the same moment instead of one overwriting the other, which was the entire bug. This event cannot be produced by the legacy path — it did not exist. Needs a tester messaged by TWO different people while backgrounded, so it is the case a single-device check silently cannot reach.",
+    "note": "THE assertion for the owner's screenshot. A per-chat notification can render perfectly and still not bundle; only chats>=2 proves two conversations coexisted in the shade at the same moment instead of one overwriting the other, which was the entire bug. This event cannot be produced by the legacy path \u2014 it did not exist. Needs a tester messaged by TWO different people while backgrounded, so it is the case a single-device check silently cannot reach.",
     "_verified_at": "app/lib/push/push_service.dart _renderShadeSummary, written 2026-08-17"
    },
    {
@@ -1793,7 +1793,7 @@
   ]
  },
  "SHARE-OG-IMAGE-1": {
-  "description": "Song share cards showed no preview image. Two causes, both verified live: (1) the /s/song/<tok>/cover route passed the request headers as an R2 range, so R2 populated object.range even with NO Range header and the route answered social crawlers 206 Partial Content — WhatsApp/Facebook/X reject that for og:image; covers now bypass range entirely and return 200. (2) the generated cover is a ~2MB PNG, over WhatsApp's ~600KB preview ceiling; crawlers now get a Cloudflare-transformed 1200px JPEG (fail-soft to original bytes). Same size fix applied to video thumbnails. og:image:type removed (was hardcoded image/png while a JPEG may be served).",
+  "description": "Song share cards showed no preview image. Two causes, both verified live: (1) the /s/song/<tok>/cover route passed the request headers as an R2 range, so R2 populated object.range even with NO Range header and the route answered social crawlers 206 Partial Content \u2014 WhatsApp/Facebook/X reject that for og:image; covers now bypass range entirely and return 200. (2) the generated cover is a ~2MB PNG, over WhatsApp's ~600KB preview ceiling; crawlers now get a Cloudflare-transformed 1200px JPEG (fail-soft to original bytes). Same size fix applied to video thumbnails. og:image:type removed (was hardcoded image/png while a JPEG may be served).",
   "flags": [],
   "min_devices_on_build": 0,
   "shipped": "verified",
@@ -1873,7 +1873,7 @@
   "_verified_at": "worker/src/lib/venice.ts (VENICE_VIDEO_RESOLUTIONS/normalizeVideoResolution/normalizeVideoAspect/capVideoPrompt, applied inside veniceQueueVideo); worker/src/lib/venice_media.ts (runVeniceVideo submit shaping + ava_video_submit_fallback retry); worker/src/lib/venice_media_jobs.ts (listVeniceVideoThumbnailJobsForRecovery failed-cover window, reopenVideoCover); worker/src/queues/ai_media_recovery.ts (reopen before requeue); worker/src/queues/venice_media.ts (awaited venice_media_cover_failed / venice_video_thumbnail_completed); worker/src/routes/ai_media_jobs.ts (og:image direct asset, HEAD parity on the resized thumbnail); worker/test/video_provider_contract.test.ts"
  },
  "NOTIF-ACTIONS-1": {
-  "description": "Phase 2 of Specs/NOTIF-PARITY-PLAN.md. Adds Reply (RemoteInput, allowGeneratedReplies:true), Mark as read and Mute to the per-conversation message notifications from NOTIF-STYLE-1, and a top-level @pragma('vm:entry-point') notificationActionBackground registered as onDidReceiveBackgroundNotificationResponse on BOTH initialize() call sites so an action works with the app dead. The reply is a DIRECT ApiAuth.postJson to /api/msg/send after bootstrapBackgroundIsolate re-establishes AccountScope and the Clerk bearer — deliberately not Outbox.enqueue, whose per-isolate statics over an account-scoped file the main isolate mirrors would risk the reply being overwritten. client_id is stamped into the shade log before posting and reused per text, because some OEMs deliver one action to both the foreground callback and the background isolate and two ids would send the message twice. Mark as read POSTs /api/msg/read and writes ReadStateStore; the launcher badge is deliberately NOT adjusted because BadgeService.recompute returns early in a background isolate and there is no decrement primitive, so a guessed number would be worse than a briefly stale one. Mute is a real feature build, not a wiring job: ChatFlagsStore had a 'muted' flag that NOTHING on the push path ever consulted on either client or server. Muted conversations now post to a new quiet channel avatok_messages_muted, because from Android 8 the channel owns sound and a per-notification playSound flag is ignored.",
+  "description": "Phase 2 of Specs/NOTIF-PARITY-PLAN.md. Adds Reply (RemoteInput, allowGeneratedReplies:true), Mark as read and Mute to the per-conversation message notifications from NOTIF-STYLE-1, and a top-level @pragma('vm:entry-point') notificationActionBackground registered as onDidReceiveBackgroundNotificationResponse on BOTH initialize() call sites so an action works with the app dead. The reply is a DIRECT ApiAuth.postJson to /api/msg/send after bootstrapBackgroundIsolate re-establishes AccountScope and the Clerk bearer \u2014 deliberately not Outbox.enqueue, whose per-isolate statics over an account-scoped file the main isolate mirrors would risk the reply being overwritten. client_id is stamped into the shade log before posting and reused per text, because some OEMs deliver one action to both the foreground callback and the background isolate and two ids would send the message twice. Mark as read POSTs /api/msg/read and writes ReadStateStore; the launcher badge is deliberately NOT adjusted because BadgeService.recompute returns early in a background isolate and there is no decrement primitive, so a guessed number would be worse than a briefly stale one. Mute is a real feature build, not a wiring job: ChatFlagsStore had a 'muted' flag that NOTHING on the push path ever consulted on either client or server. Muted conversations now post to a new quiet channel avatok_messages_muted, because from Android 8 the channel owns sound and a per-notification playSound flag is ignored.",
   "shipped": "2026-08-17",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -1907,7 +1907,7 @@
   ]
  },
  "CALL-PREJOIN-ISOLATE-1": {
-  "description": "Fixes the CALL-PREJOIN-1 regression proved by prod call avatok-a0170dc6 (2026-08-17): the ring-time pre-join's PeerConnection was built by _newPC, which assigns _pc and installs onTrack as its last acts — so the pre-join became the session's LIVE connection at ring start and a track on it stopped the ringback and declared call_connected 7.3s before the callee accepted (13.802 vs accept 21.070), leaving 13s of connected-looking silence. _newPC gains isolated:false (default preserves all 4 existing callers byte-for-byte); isolated suppresses exactly three things — _pc assignment (which also neutralises onConnectionState, already guarded by identical(pc,_pc)), onTrack (caches to _prejoinEarlyTracks), and _resetPlayoutHealthBaselines. _promotePrejoinPc() at adoption reverses all three and replays cached tracks through the same handler. _discardPrejoinedSfu now retires the PRE-JOIN's pc by identity instead of _pc (retiring _pc would have closed the live call's connection once isolated).",
+  "description": "Fixes the CALL-PREJOIN-1 regression proved by prod call avatok-a0170dc6 (2026-08-17): the ring-time pre-join's PeerConnection was built by _newPC, which assigns _pc and installs onTrack as its last acts \u2014 so the pre-join became the session's LIVE connection at ring start and a track on it stopped the ringback and declared call_connected 7.3s before the callee accepted (13.802 vs accept 21.070), leaving 13s of connected-looking silence. _newPC gains isolated:false (default preserves all 4 existing callers byte-for-byte); isolated suppresses exactly three things \u2014 _pc assignment (which also neutralises onConnectionState, already guarded by identical(pc,_pc)), onTrack (caches to _prejoinEarlyTracks), and _resetPlayoutHealthBaselines. _promotePrejoinPc() at adoption reverses all three and replays cached tracks through the same handler. _discardPrejoinedSfu now retires the PRE-JOIN's pc by identity instead of _pc (retiring _pc would have closed the live call's connection once isolated).",
   "flags": [
    "callSfuV1",
    "callerPrejoinOnRingV1"
@@ -1922,12 +1922,12 @@
     "equals": "",
     "min_events": 1,
     "where": {},
-    "note": "PRIMARY: on a call where the caller has call_prejoin_started, the CALLER's call_connected timestamp must be AFTER the callee's accept (call_command / callee call_started), never before — that ordering IS the regression test. Companion: call_prejoin_promoted present with had_early_track reported; call_prejoin_discarded must NOT be followed by the live call ending."
+    "note": "PRIMARY: on a call where the caller has call_prejoin_started, the CALLER's call_connected timestamp must be AFTER the callee's accept (call_command / callee call_started), never before \u2014 that ordering IS the regression test. Companion: call_prejoin_promoted present with had_early_track reported; call_prejoin_discarded must NOT be followed by the live call ending."
    }
   ]
  },
  "CALL-PREWARM-2": {
-  "description": "CALL-PREWARM-1 never executed on a single real call — zero call_prewarm_* events exist in project history. Its hook sat in push_service._showIncoming, but production rings arrive via _routeToBrandedIncoming straight from the native tap channel (prod avatok-a0170dc6: call_branded_fsi_routed with no call_incoming_received/shown). Hook added to IncomingBusinessCallScreen.initState — the convergence point every branded ring lane must pass through to show an Accept button. Idempotent per callId so the existing push_service hook double-firing costs nothing. Key match verified empirically: ring call_id and session call_id are the same string in prod telemetry.",
+  "description": "CALL-PREWARM-1 never executed on a single real call \u2014 zero call_prewarm_* events exist in project history. Its hook sat in push_service._showIncoming, but production rings arrive via _routeToBrandedIncoming straight from the native tap channel (prod avatok-a0170dc6: call_branded_fsi_routed with no call_incoming_received/shown). Hook added to IncomingBusinessCallScreen.initState \u2014 the convergence point every branded ring lane must pass through to show an Accept button. Idempotent per callId so the existing push_service hook double-firing costs nothing. Key match verified empirically: ring call_id and session call_id are the same string in prod telemetry.",
   "flags": [
    "callSfuV1",
    "callPrewarmOnRingV1"
@@ -1959,12 +1959,12 @@
     "equals": "",
     "min_events": 1,
     "where": {},
-    "note": "The event that has NEVER fired. Answering a call from the notification/lock screen on the new build must emit it (ms + cold). Visual companion: no blank screen between the tap and the AvaTOK call UI — a dark 'Connecting…' surface instead."
+    "note": "The event that has NEVER fired. Answering a call from the notification/lock screen on the new build must emit it (ms + cold). Visual companion: no blank screen between the tap and the AvaTOK call UI \u2014 a dark 'Connecting\u2026' surface instead."
    }
   ]
  },
  "NOTIF-REACT-1": {
-  "description": "Phase 3 of Specs/NOTIF-PARITY-PLAN.md — the owner's third screenshot, \"X reacted <emoji> to your message\". Two things were quietly untrue before this. (1) The CLIENT NEVER CALLED POST /api/msg/react at all: kMsgReactUrl was declared in core/config.dart and grep found it referenced in exactly one file, its own declaration. Reactions rode the PartyKit relay only, so they were never persisted and vanished on reinstall. (2) Because the server never heard about a reaction, there was nothing to notify from — the feature was unbuildable, not merely unbuilt. message_actions.dart _react now POSTs the reaction with a target_uid naming the AUTHOR of the reacted-to message; reactMsg validates that uid is a member of the conversation and is not the reactor, then enqueues kind:'reaction'; consumers/src/fcm.ts renders it data-only; the client folds it into that conversation's EXISTING MessagingStyle card as one more line rather than a competing notification, and does not bump the launcher badge because a reaction is not an unread message. An unresolvable author means NO push rather than a guess — guessing 'in a DM it must be the other person' is wrong the moment someone reacts to their own message.",
+  "description": "Phase 3 of Specs/NOTIF-PARITY-PLAN.md \u2014 the owner's third screenshot, \"X reacted <emoji> to your message\". Two things were quietly untrue before this. (1) The CLIENT NEVER CALLED POST /api/msg/react at all: kMsgReactUrl was declared in core/config.dart and grep found it referenced in exactly one file, its own declaration. Reactions rode the PartyKit relay only, so they were never persisted and vanished on reinstall. (2) Because the server never heard about a reaction, there was nothing to notify from \u2014 the feature was unbuildable, not merely unbuilt. message_actions.dart _react now POSTs the reaction with a target_uid naming the AUTHOR of the reacted-to message; reactMsg validates that uid is a member of the conversation and is not the reactor, then enqueues kind:'reaction'; consumers/src/fcm.ts renders it data-only; the client folds it into that conversation's EXISTING MessagingStyle card as one more line rather than a competing notification, and does not bump the launcher badge because a reaction is not an unread message. An unresolvable author means NO push rather than a guess \u2014 guessing 'in a DM it must be the other person' is wrong the moment someone reacts to their own message.",
   "shipped": "2026-08-17",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -1981,7 +1981,7 @@
     "property": "notified",
     "equals": true,
     "min_events": 1,
-    "note": "SERVER side. chat_reaction already fired before this change and will keep firing whether or not anyone is notified, so its arrival proves nothing — ship-gate rule 3. notified=true means an author was resolved, validated as a member, was not the reactor, and the push was actually enqueued. When false, notify_reason distinguishes an old client that sent no target_uid from a queue rejection, which a bare false cannot.",
+    "note": "SERVER side. chat_reaction already fired before this change and will keep firing whether or not anyone is notified, so its arrival proves nothing \u2014 ship-gate rule 3. notified=true means an author was resolved, validated as a member, was not the reactor, and the push was actually enqueued. When false, notify_reason distinguishes an old client that sent no target_uid from a queue rejection, which a bare false cannot.",
     "_verified_at": "worker/src/routes/messaging.ts reactMsg, written 2026-08-17"
    },
    {
@@ -1992,13 +1992,13 @@
     "property": "style",
     "equals": "messaging",
     "min_events": 1,
-    "note": "CLIENT side, on the AUTHOR's device — the other half. The server can enqueue happily while the recipient's app drops it. Needs two people on the newest build: one to write a message, the other to react to it.",
+    "note": "CLIENT side, on the AUTHOR's device \u2014 the other half. The server can enqueue happily while the recipient's app drops it. Needs two people on the newest build: one to write a message, the other to react to it.",
     "_verified_at": "app/lib/push/push_service.dart _showReactionNotif, written 2026-08-17"
    }
   ]
  },
  "NOTIF-SYNC-1": {
-  "description": "Phase 4 (part) of Specs/NOTIF-PARITY-PLAN.md: reading a conversation on one device takes its notification down on the user's OTHER devices. readMsg now enqueues a silent data-only kind:'notif_clear' addressed to ctx.uid — the reader's own devices, never a peer — mirroring the existing del/hide silent lane; the client clears that conversation's shade log, cancels its notification and re-counts the bundle summary. This mattered little before NOTIF-STYLE-1, when a single shared banner was simply overwritten by the next message; now that every chat owns a persistent card, a chat read elsewhere would otherwise sit in the other device's shade indefinitely and keep inflating the 'N messages from M chats' line.",
+  "description": "Phase 4 (part) of Specs/NOTIF-PARITY-PLAN.md: reading a conversation on one device takes its notification down on the user's OTHER devices. readMsg now enqueues a silent data-only kind:'notif_clear' addressed to ctx.uid \u2014 the reader's own devices, never a peer \u2014 mirroring the existing del/hide silent lane; the client clears that conversation's shade log, cancels its notification and re-counts the bundle summary. This mattered little before NOTIF-STYLE-1, when a single shared banner was simply overwritten by the next message; now that every chat owns a persistent card, a chat read elsewhere would otherwise sit in the other device's shade indefinitely and keep inflating the 'N messages from M chats' line.",
   "shipped": "2026-08-17",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -2016,7 +2016,7 @@
   ]
  },
  "CALL-PREROLL-1": {
-  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md, extending CALL-PREWARM-1/2 — the callee pre-rolls its WHOLE media path during the ring, not just the ICE+seat join: CallPrewarm._preroll acquires the mic (track disabled), builds an isolated peer connection with no session handlers, PUBLISHES (silent) and PULLS the caller's audio (muted, via a passive onTrack cache mirroring CallSession._prejoinEarlyTracks). CallSession._bootMedia peeks the pre-rolled stream (non-consuming) before getUserMedia, audio-only calls only. _startSfuMedia's hasFullPreroll branch (gated on the returned stream being IDENTICAL to the one CallPrewarm.adopt was called with) promotes the connection via the new _promotePrerollPc — installs onTrack/onConnectionState for the first time, unmutes the local track (done earlier, at peek) and each cached remote track, then replays them through the extracted _handleRemoteTrack ladder instead of re-running publish/pull. Gated on callPrerollV1 stacked on top of callPrewarmOnRingV1; either off is byte-identical to CALL-PREWARM-2's already-shipped behaviour.",
+  "description": "Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md, extending CALL-PREWARM-1/2 \u2014 the callee pre-rolls its WHOLE media path during the ring, not just the ICE+seat join: CallPrewarm._preroll acquires the mic (track disabled), builds an isolated peer connection with no session handlers, PUBLISHES (silent) and PULLS the caller's audio (muted, via a passive onTrack cache mirroring CallSession._prejoinEarlyTracks). CallSession._bootMedia peeks the pre-rolled stream (non-consuming) before getUserMedia, audio-only calls only. _startSfuMedia's hasFullPreroll branch (gated on the returned stream being IDENTICAL to the one CallPrewarm.adopt was called with) promotes the connection via the new _promotePrerollPc \u2014 installs onTrack/onConnectionState for the first time, unmutes the local track (done earlier, at peek) and each cached remote track, then replays them through the extracted _handleRemoteTrack ladder instead of re-running publish/pull. Gated on callPrerollV1 stacked on top of callPrewarmOnRingV1; either off is byte-identical to CALL-PREWARM-2's already-shipped behaviour.",
   "shipped": "pending",
   "two_sided": true,
   "min_devices_on_build": 2,
@@ -2032,7 +2032,7 @@
     "equals": true,
     "min_events": 1,
     "where": {},
-    "note": "The ring-time preroll actually finished BOTH legs before accept. Companion assertion on the SAME event: pulled must also be true (checked separately below) — published alone means the callee could publish but the caller's own ring-time audio was never found."
+    "note": "The ring-time preroll actually finished BOTH legs before accept. Companion assertion on the SAME event: pulled must also be true (checked separately below) \u2014 published alone means the callee could publish but the caller's own ring-time audio was never found."
    },
    {
     "event": "call_preroll_ready",
@@ -2040,7 +2040,7 @@
     "equals": true,
     "min_events": 1,
     "where": {},
-    "note": "The peer's audio was pulled and muted BEFORE accept, during the ring — the whole point of this issue. Both this and the published assertion must be observed from the SAME call_preroll_ready event to mean anything; two different calls each satisfying one half is not evidence the fast path ever ran end to end."
+    "note": "The peer's audio was pulled and muted BEFORE accept, during the ring \u2014 the whole point of this issue. Both this and the published assertion must be observed from the SAME call_preroll_ready event to mean anything; two different calls each satisfying one half is not evidence the fast path ever ran end to end."
    },
    {
     "event": "call_first_audio_ms",
@@ -2050,15 +2050,15 @@
     "where": {
      "outcome": "audio"
     },
-    "note": "The callee's own headline number. Must sit under ~2000ms on wifi once call_preroll_ready(published, pulled) has fired for the same call — CALL-PREWARM-1's baseline was ~1.5-2s; this issue's whole purpose is cutting the remaining publish+pull cost on top of that. `equals: \"\"` is a presence-only placeholder for a numeric field the manifest checker cannot range-check; read the actual value.",
+    "note": "The callee's own headline number. Must sit under ~2000ms on wifi once call_preroll_ready(published, pulled) has fired for the same call \u2014 CALL-PREWARM-1's baseline was ~1.5-2s; this issue's whole purpose is cutting the remaining publish+pull cost on top of that. `equals: \"\"` is a presence-only placeholder for a numeric field the manifest checker cannot range-check; read the actual value.",
     "_verified_at": "app/lib/core/calls/call_session.dart _reportFirstAudio (unchanged by this issue) -> call_first_audio_ms{..., ms_from_connected, outcome}"
    }
   ],
-  "manual_check": "On the callee's device, confirm NOTHING is audible from the earpiece/speaker between the ring starting and the Accept tap — call_preroll_ready proves the pull succeeded, not that the mute held for the whole ring. Also confirm a DECLINED or missed call leaves no mic indicator lit afterward (CallPrewarm.discard/_closeEntry teardown).",
-  "_verified_at": "app/lib/core/calls/call_prewarm.dart (CallPrewarm._preroll, .peek, .adopt, ._closeEntry); app/lib/core/calls/call_session.dart _bootMedia peek-adoption (~line 3262), _startSfuMedia hasFullPreroll branch, _promotePrerollPc, _handleRemoteTrack/_handleConnectionState extraction from _newPC; worker/src/routes/config.ts callPrerollV1 (PlatformConfig + DEFAULTS); app/lib/core/remote_config.dart RemoteConfig.callPrerollV1 — written 2026-08-17, unshipped"
+  "manual_check": "On the callee's device, confirm NOTHING is audible from the earpiece/speaker between the ring starting and the Accept tap \u2014 call_preroll_ready proves the pull succeeded, not that the mute held for the whole ring. Also confirm a DECLINED or missed call leaves no mic indicator lit afterward (CallPrewarm.discard/_closeEntry teardown).",
+  "_verified_at": "app/lib/core/calls/call_prewarm.dart (CallPrewarm._preroll, .peek, .adopt, ._closeEntry); app/lib/core/calls/call_session.dart _bootMedia peek-adoption (~line 3262), _startSfuMedia hasFullPreroll branch, _promotePrerollPc, _handleRemoteTrack/_handleConnectionState extraction from _newPC; worker/src/routes/config.ts callPrerollV1 (PlatformConfig + DEFAULTS); app/lib/core/remote_config.dart RemoteConfig.callPrerollV1 \u2014 written 2026-08-17, unshipped"
  },
  "DELETE-UNHIDE-1": {
-  "description": "Owner report 2026-08-17: 'old deleted messages come back when I load the app'. sync_hub's hidden-flag seed recorded BOTH values from the server `hidden` column, and HiddenStore.mergeBulk overwrites unconditionally (unlike its monotonic sibling ReadStateStore.mergeBulk beside it). So every sync copied hidden=0 back over a locally hidden message and un-deleted it — permanently, because the local flag was then false too and nothing re-posts it. The hide POST is fire-and-forget with no retry and no outbox and is skipped entirely when evId is null, so hides made offline or that failed never reached the server at all. The seed now writes only `true`; un-hiding still works through the explicit Undo and the `hide` push.",
+  "description": "Owner report 2026-08-17: 'old deleted messages come back when I load the app'. sync_hub's hidden-flag seed recorded BOTH values from the server `hidden` column, and HiddenStore.mergeBulk overwrites unconditionally (unlike its monotonic sibling ReadStateStore.mergeBulk beside it). So every sync copied hidden=0 back over a locally hidden message and un-deleted it \u2014 permanently, because the local flag was then false too and nothing re-posts it. The hide POST is fire-and-forget with no retry and no outbox and is skipped entirely when evId is null, so hides made offline or that failed never reached the server at all. The seed now writes only `true`; un-hiding still works through the explicit Undo and the `hide` push.",
   "shipped": "2026-08-17",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -2066,7 +2066,7 @@
   "no_telemetry": "This removes a write; there is no new event and the correct outcome is the ABSENCE of resurrected messages, which no event can assert. Verified by reading the two stores' merge semantics side by side (chat_state.dart ReadStateStore.mergeBulk is monotonic, HiddenStore.mergeBulk was not) rather than by telemetry. Field check: a message deleted for me, app force-closed and reopened, stays deleted."
  },
  "DELETE-CHAT-1": {
-  "description": "'Delete chat' in the thread overflow menu was literally `() => Navigator.pop(context)` — it closed the sheet and did nothing: no local wipe, no server call, no confirmation. The server's thread-clear machinery (threadClear, the thread_clears table, its /sync snapshot) has been complete for a while and the client had NO half of it — no store, no sender, no reader. So a 'deleted' chat was never deleted and /api/msg/sync re-materialised the backlog on the next launch. Adds ThreadClearStore (a per-conversation cleared-through cursor in epoch seconds, monotonic), a confirm dialog, an on-screen wipe, ChatPreviewStore.remove so the chat-list subtitle goes too, and render-time filters on the cache-restore and cold-open paths. A CURSOR rather than a row wipe because sync re-inserts rows unconditionally, so a wipe would only hold until the next connection. LOCAL ONLY for now: the server keys its cursor on a canonical message id that is not reachable from this screen, so cross-device clear is deliberately not faked.",
+  "description": "'Delete chat' in the thread overflow menu was literally `() => Navigator.pop(context)` \u2014 it closed the sheet and did nothing: no local wipe, no server call, no confirmation. The server's thread-clear machinery (threadClear, the thread_clears table, its /sync snapshot) has been complete for a while and the client had NO half of it \u2014 no store, no sender, no reader. So a 'deleted' chat was never deleted and /api/msg/sync re-materialised the backlog on the next launch. Adds ThreadClearStore (a per-conversation cleared-through cursor in epoch seconds, monotonic), a confirm dialog, an on-screen wipe, ChatPreviewStore.remove so the chat-list subtitle goes too, and render-time filters on the cache-restore and cold-open paths. A CURSOR rather than a row wipe because sync re-inserts rows unconditionally, so a wipe would only hold until the next connection. LOCAL ONLY for now: the server keys its cursor on a canonical message id that is not reachable from this screen, so cross-device clear is deliberately not faked.",
   "shipped": "2026-08-17",
   "two_sided": false,
   "min_devices_on_build": 1,
@@ -2078,7 +2078,7 @@
     "property": "scope",
     "equals": "local_only",
     "min_events": 1,
-    "note": "The event firing at all is meaningful here ONLY because the button previously had no code path that could emit anything — but the property is what proves the handler ran to completion. Two blockers were caught in review before this shipped and both would have made the fix a silent no-op: the cursor was loaded in initState where _convKey is still null, and an extra Navigator.pop closed the thread route so `mounted` was false by the time the user confirmed, skipping the wipe AND this event. scope='local_only' is also the honest marker that this clear does not yet reach the user's other devices.",
+    "note": "The event firing at all is meaningful here ONLY because the button previously had no code path that could emit anything \u2014 but the property is what proves the handler ran to completion. Two blockers were caught in review before this shipped and both would have made the fix a silent no-op: the cursor was loaded in initState where _convKey is still null, and an extra Navigator.pop closed the thread route so `mounted` was false by the time the user confirmed, skipping the wipe AND this event. scope='local_only' is also the honest marker that this clear does not yet reach the user's other devices.",
     "_verified_at": "app/lib/features/avatok/chat_thread/menus.dart Delete chat action, 2026-08-17"
    }
   ]
@@ -2112,5 +2112,23 @@
    }
   ],
   "_verified_at": "app/lib/features/avatok/chat_thread/media.dart:463-476 (ai_media_job_share_started emitted first thing in _shareJobArtifact), :518-534 (ok=false error=no_link_no_artifact / ok=true share_kind=song_link), :369-378 (_fetchArtifactBytes single-buffer); app/lib/core/ai_media_jobs.dart:107-146 (isTransientNetworkFailure), :620-676 (fetch coalescing + cooldown + ai_media_job_fetch_offline), :700-748 (_shareLinks cache); app/lib/features/avatok/chat_thread/special_content.dart:930-940 (_refetchAttempted once-per-mount guard); app/lib/features/avatok/widgets/ai_media_job_card.dart:466-473,490-493,566-576 (no thumbnailBytes! force-unwrap)"
+ },
+ "DELETE-CHAT-XDEV-1": {
+  "description": "Makes 'Delete chat' reach every device of the user's, completing DELETE-CHAT-1. The server half has existed since [MSG-DELETE-1] and NOTHING called it: threadClear keeps a monotonic per-conv cursor in the actor's own InboxDO, wakes their other devices, and snapshots thread_clears into every /sync \u2014 but `grep thread_clear app/lib` returned zero hits, and consumers/src/fcm.ts had no branch for kind:'thread_clear' either, so even the wake push produced no payload. Adds: the FCM branch; a client POST with a synthesised cursor_mid; the missing /sync reader; and a foreground push branch that syncs immediately. The cursor is synthesised as '<nowMs padded to 13>.ffffffff' \u2014 NOT a fake message id: canonicalMsgId is zero-padded precisely so ids sort as strings, and the server only ever MAX-compares this value, never dereferences it, so an upper bound for the current millisecond is the correct thing to send. Self-scoped: touches only the actor's own InboxDO, zero peer writes and zero peer pushes.",
+  "shipped": "2026-08-17",
+  "two_sided": false,
+  "min_devices_on_build": 1,
+  "flags": [],
+  "success": [
+   {
+    "event": "thread_clear_committed",
+    "where": {},
+    "property": "peer_writes",
+    "equals": 0,
+    "min_events": 1,
+    "note": "Server-side, and it asserts the SAFETY invariant rather than mere arrival: peer_writes=0 proves a self-clear never touched the other person's inbox. The event has existed since [MSG-DELETE-1] and has NEVER fired, because no client called the route \u2014 so its first appearance is also the proof the client half now exists. Pair with chat_thread_clear_sent (ok=true) on the device.",
+    "_verified_at": "worker/src/routes/messaging.ts threadClear; client caller added 2026-08-17"
+   }
+  ]
  }
 }
