@@ -1,6 +1,32 @@
 # AvaTOK — WhatsApp-parity notifications (Android)
 
-**Status:** plan, not started · **Scope:** production feature · **Owner ask:** 2026-08-17
+**Status:** Phase 0 + Phase 1 written and committed, NOT yet deployed or built ·
+**Scope:** production feature · **Owner ask:** 2026-08-17
+
+| Phase | Issue ids | State |
+|---|---|---|
+| 0 | `NOTIF-ICON-1`, `NOTIF-PAYLOAD-1`, `NOTIF-FLAGS-1` | committed |
+| 1 | `NOTIF-STYLE-1` | committed |
+| 2 | reply / pills / mark-read / mute | not started |
+| 3 | reactions | not started |
+| 4 | conversation space, thumbnails, read-sync | not started |
+
+Not yet done, and both are required before any of this reaches a phone: the
+worker + consumers deploy to production, and an Android build. Neither has been
+run — the owner has not asked for a build, and the repo forbids triggering one
+unprompted.
+
+### Known gaps carried into Phase 2
+
+- The launcher badge is bumped *before* the duplicate check, so a duplicate FCM
+  delivery still inflates the count by one even though the shade correctly
+  ignores it. Pre-existing ordering in `_showMessageNotif`; fixing it means
+  moving `_bumpBadge` below the dedup, which touches the legacy path too.
+- Turning `notifMessagingStyle` off does not retro-cancel notifications already
+  posted at 8900+; they age out normally.
+- The shade log is a read-modify-write blob shared by two isolates, so two
+  messages landing in the same instant can lose one line from the *expanded*
+  card. The notification itself is unaffected.
 **Issue id prefix:** `[NOTIF-PARITY-n]`
 
 ---

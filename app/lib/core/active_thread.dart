@@ -35,8 +35,27 @@ abstract class ActiveThread {
   /// no thread is visible. Compare against the `conv` field on a `notify` push.
   static String? convKey;
 
+  /// [NOTIF-STYLE-1 2026-08-17] Called with the conversation key each time a
+  /// thread becomes visible. Registered by `push_service.dart` at init.
+  ///
+  /// Reading a chat has to take that chat's notification out of the shade. This
+  /// did not matter before: every message reused the single id 8000, so the next
+  /// message simply overwrote whatever stale banner was there. Now that each
+  /// conversation owns its own notification and its own stored message list,
+  /// nothing would ever clear them — the bundle would keep counting messages the
+  /// user had already read, and re-expand them on the next push.
+  ///
+  /// A callback rather than a direct import because `push_service.dart` already
+  /// imports this file, and importing it back would be a cycle.
+  static void Function(String key)? onEnter;
+
   /// Mark [key] as the visible thread.
-  static void enter(String? key) => convKey = key;
+  static void enter(String? key) {
+    convKey = key;
+    if (key == null || key.isEmpty) return;
+    // Never let a notification-bookkeeping failure break opening a chat.
+    try { onEnter?.call(key); } catch (_) {/* cosmetic */}
+  }
 
   /// Clear [convKey], but only if [key] still owns it.
   ///

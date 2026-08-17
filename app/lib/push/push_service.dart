@@ -310,7 +310,13 @@ void _onNotifTap(String? payload) {
   // [AVANOTIF-VM-1] Notification-tap telemetry — always fires on the main
   // isolate (a tap resumes/launches the app), so a plain Analytics.capture is
   // safe here (no bg-isolate routing needed, unlike _track elsewhere in this file).
-  Analytics.capture('push_notif_tapped', {'payload_kind': payload});
+  // [NOTIF-STYLE-1] Report the KIND, never the raw payload. Since message
+  // notifications became per-conversation their payload is `chat:<conv>`, and
+  // sending that verbatim would put an unbounded set of conversation ids into a
+  // PostHog property that until now held a handful of fixed strings — unusable
+  // for grouping, and a needless identifier in analytics.
+  final payloadKind = payload.contains(':') ? '${payload.split(':').first}:' : payload;
+  Analytics.capture('push_notif_tapped', {'payload_kind': payloadKind});
   // Group-invite tap → open the app; the Groups tab + notification bell surface
   // the pending invite (opening the exact thread from a cold tap is a refinement).
   if (payload.startsWith('group')) {
@@ -1458,18 +1464,41 @@ Future<Map<String, dynamic>> _readShadeBlob() async {
 
 int _asMs(Object? v) => (v is num) ? v.toInt() : 0;
 
-/// Append one message to its conversation's shade log.
+/// The result of folding one incoming message into the shade log — computed but
+/// NOT yet written. See [_buildShadeUpdate] for why the write is deferred.
+class _ShadeUpdate {
+  _ShadeUpdate(this.all, this.byConv, this.evicted);
+
+  /// The whole on-disk blob, ready to persist.
+  final Map<String, dynamic> all;
+
+  /// Just this account's conversations, for rendering.
+  final Map<String, dynamic> byConv;
+
+  /// Conversations dropped by [_kMaxShadeThreads]. Their notifications must be
+  /// cancelled, or they linger in the bundle as children the summary no longer
+  /// counts and nothing will ever update again.
+  final List<String> evicted;
+}
+
+/// Fold one message into its conversation's shade log and return the result.
 ///
-/// Returns the account's whole conversation map so the caller can render both the
-/// child and the summary from one read/write, or NULL when this message was a
-/// DUPLICATE and nothing should be re-rendered.
+/// PURE with respect to disk: it reads, but it does NOT write. The caller
+/// persists only AFTER the notification has actually rendered.
 ///
-/// The duplicate check is not defensive padding: FCM is at-least-once, and this
-/// function is reachable from BOTH the background isolate and the foreground
-/// handler, so the same push genuinely can arrive twice. Without `mid` the same
-/// sentence would appear twice inside the expanded conversation, which looks
-/// exactly like a bug in the messaging layer.
-Future<Map<String, dynamic>?> _appendShadeMessage({
+/// That ordering is deliberate. Writing first means that if the render then
+/// throws, the message is already recorded as "shown" while the user is looking
+/// at the legacy fallback banner — and the next push re-renders it inside the
+/// stacked card, so one message appears twice on screen.
+///
+/// Returns NULL when this message is a DUPLICATE and nothing should change.
+/// The duplicate check is not defensive padding: FCM is at-least-once and this
+/// path is reachable from BOTH the background isolate and the foreground
+/// handler, so the same push genuinely does arrive twice. When `mid` is absent
+/// (a pre-[NOTIF-PAYLOAD-1] server) there is nothing to compare and duplicates
+/// can still slip through — accepted, because the alternative is matching on
+/// message text, which would swallow someone legitimately sending "ok" twice.
+Future<_ShadeUpdate?> _buildShadeUpdate({
   required String acct,
   required String conv,
   required String mid,
@@ -1481,7 +1510,9 @@ Future<Map<String, dynamic>?> _appendShadeMessage({
   required String avatarPath,
 }) async {
   final all = await _readShadeBlob();
-  final byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+  var byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+  // Drop conversations the user has already dismissed from the shade by hand.
+  byConv = await _pruneDismissed(byConv, keep: conv);
   final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
   final msgs = ((t['m'] as List?) ?? const <dynamic>[])
       .map((e) => Map<String, dynamic>.from(e as Map))
@@ -1499,17 +1530,58 @@ Future<Map<String, dynamic>?> _appendShadeMessage({
   if (groupName.isNotEmpty) t['n'] = groupName;
   t['last'] = ts;
   byConv[conv] = t;
+  final evicted = <String>[];
   if (byConv.length > _kMaxShadeThreads) {
     final keys = byConv.keys.toList()
       ..sort((a, b) => _asMs((byConv[b] as Map)['last'])
           .compareTo(_asMs((byConv[a] as Map)['last'])));
     for (final k in keys.skip(_kMaxShadeThreads)) {
       byConv.remove(k);
+      evicted.add(k);
     }
   }
   all[acct] = byConv;
-  await DiskCache.writeGlobal(_kMsgThreadsKey, jsonEncode(all));
-  return byConv;
+  return _ShadeUpdate(all, byConv, evicted);
+}
+
+Future<void> _persistShade(Map<String, dynamic> all) =>
+    DiskCache.writeGlobal(_kMsgThreadsKey, jsonEncode(all));
+
+/// Drop conversations whose notification is no longer on screen.
+///
+/// The store and the shade can drift apart, because the user can dismiss the
+/// bundle (or the phone can reboot) without telling us. Nothing would then
+/// remove those entries, so the summary would go on reporting "7 messages from 3
+/// chats" over a bundle holding one child, and the stale messages would
+/// re-appear inside the next expanded card.
+///
+/// [keep] is the conversation currently being rendered — its notification does
+/// not exist yet, so it must be exempt or it would prune itself.
+///
+/// Entirely best-effort: `getActiveNotifications` needs API 23+ and can throw on
+/// OEM skins. On any failure the map is returned untouched, which is simply
+/// today's behaviour.
+Future<Map<String, dynamic>> _pruneDismissed(
+  Map<String, dynamic> byConv, {
+  required String keep,
+}) async {
+  try {
+    if (byConv.length <= 1) return byConv;
+    final android = _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return byConv;
+    final active = await android.getActiveNotifications();
+    if (active.isEmpty) return byConv; // treat "can't tell" as "don't prune"
+    final liveIds = active.map((n) => n.id).whereType<int>().toSet();
+    final out = Map<String, dynamic>.from(byConv);
+    for (final k in byConv.keys) {
+      if (k == keep) continue;
+      if (!liveIds.contains(_msgNotifId(k))) out.remove(k);
+    }
+    return out;
+  } catch (_) {
+    return byConv;
+  }
 }
 
 /// Forget one conversation's shade log and take its notification down. Called
@@ -1654,17 +1726,19 @@ Future<bool> _showStackedMessageNotif(
       (d['senderAvatarVersion'] ?? '').toString(),
     );
 
-    final byConv = await _appendShadeMessage(
+    await _ensureLocalInit(); // needed by _pruneDismissed as well as the show below
+    final upd = await _buildShadeUpdate(
       acct: acct, conv: conv, mid: mid, who: who,
       text: preview.isEmpty ? 'New message' : preview,
       ts: ts, isGroup: isGroup, groupName: groupName, avatarPath: avatarPath,
     );
     // Duplicate delivery — the shade is already correct. Returning true stops the
     // caller re-drawing anything.
-    if (byConv == null) {
+    if (upd == null) {
       await _track('push_shown_duplicate', {'type': 'message', 'had_mid': mid.isNotEmpty});
       return true;
     }
+    final byConv = upd.byConv;
 
     final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
     final msgs = ((t['m'] as List?) ?? const <dynamic>[])
@@ -1701,7 +1775,6 @@ Future<bool> _showStackedMessageNotif(
       ],
     );
 
-    await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
     await _local.show(
       _msgNotifId(conv), // per-CONVERSATION, not the old shared 8000
       isGroup && groupName.isNotEmpty ? groupName : who,
@@ -1723,6 +1796,17 @@ Future<bool> _showStackedMessageNotif(
       // bare string 'chat', which is why every tap landed on the app home.
       payload: 'chat:$conv',
     );
+    // Persist ONLY now that the render has actually succeeded — see
+    // _buildShadeUpdate's contract. A throw above leaves the log untouched, so
+    // the legacy fallback banner is the only thing on screen and the message is
+    // not silently recorded as already shown.
+    await _persistShade(upd.all);
+    // A conversation pushed out by the cap still has a live notification. Left
+    // alone it sits in the bundle as a child the summary no longer counts and
+    // nothing will ever update again.
+    for (final k in upd.evicted) {
+      await _local.cancel(_msgNotifId(k));
+    }
     await _renderShadeSummary(byConv);
     await _track('push_shown', {
       'channel': 'messages',
@@ -3666,6 +3750,21 @@ class PushService {
         }
       },
     );
+    // [NOTIF-STYLE-1] Reading a chat IN THE APP must take that chat's
+    // notification out of the shade. This never mattered before, because every
+    // message reused the single id 8000 and the next one simply overwrote
+    // whatever stale banner was sitting there. Now each conversation owns its
+    // own notification and its own stored message list, so without this hook
+    // nothing would ever clear them: the bundle would keep counting messages
+    // already read, and re-expand them on the next push.
+    //
+    // `ActiveThread.enter` is the one point every thread flavour reaches (DM,
+    // group, voicemail) — see chat_thread/setup.dart `_markRead`. The inbox
+    // screen prefixes its key with 'inbox:', so strip that to recover the conv.
+    ActiveThread.onEnter = (key) {
+      final conv = key.startsWith('inbox:') ? key.substring('inbox:'.length) : key;
+      unawaited(_clearShadeThread(conv));
+    };
     final androidLocal = _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await androidLocal?.createNotificationChannel(_msgChannel);
