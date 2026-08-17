@@ -7,7 +7,7 @@
 |---|---|---|
 | 0 | `NOTIF-ICON-1`, `NOTIF-PAYLOAD-1`, `NOTIF-FLAGS-1` | committed |
 | 1 | `NOTIF-STYLE-1` | committed |
-| 2 | reply / pills / mark-read / mute | not started |
+| 2 | `NOTIF-ACTIONS-1` | committed + server live, **needs a build** |
 | 3 | reactions | not started |
 | 4 | conversation space, thumbnails, read-sync | not started |
 
@@ -15,6 +15,24 @@ Not yet done, and both are required before any of this reaches a phone: the
 worker + consumers deploy to production, and an Android build. Neither has been
 run — the owner has not asked for a build, and the repo forbids triggering one
 unprompted.
+
+### Phase 1 is UNVERIFIED, not proven (checked in PostHog 2026-08-17)
+
+Build 10564 is on the owner's phone and does contain the work — confirmed by
+checking the commit is an ancestor of that build's sha, not by assuming. But
+**not one notification has been drawn on it.** The last `push_shown` was 01:59
+on build 10561, before this code existed, and `push_summary_shown` /
+`push_stacked_failed` have never been ingested even once.
+
+Why: in the 06:19–06:21 exchange the owner was the SENDER, and on the receiving
+device every message produced `fcm_fg_received` immediately followed by
+`push_fg_banner_suppressed` — the app was open on that exact thread, so the
+banner was suppressed by design. The absence of `push_stacked_failed` means
+nothing crashed either; the path simply has not executed.
+
+**To verify:** AvaTOK fully closed or the phone locked, and **two different
+people** messaging. One sender cannot produce a bundle, and reading the thread
+suppresses the notification.
 
 ### Known gaps carried into Phase 2
 
