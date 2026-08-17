@@ -179,7 +179,18 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
     const current = await getVeniceMediaJob(env, job.job_id);
     return current?.cover_status === "succeeded" || current?.cover_status === "failed";
   }
-  const opId = `song-cover:${job.job_id}`;
+  // [COVER-RETRY-SAFE-1 2026-08-17] The op id must be unique PER ATTEMPT.
+  // Wallet reservations are keyed `aijob:<opId>` with op_id-deduped
+  // idempotency, so a watchdog retry that reused the old id could reserve but
+  // never settle: production hit exactly this — a recovered cover generated
+  // fine, passed the safety scan, then died with `cover_settlement_failed` and
+  // the song stayed artwork-less. claimSongCover stamps updated_at, which is
+  // stable for THIS attempt (a redelivery is rejected by the claim above) and
+  // different for the next one, so idempotency is preserved without freezing
+  // every future retry.
+  const claimed = await getVeniceMediaJob(env, job.job_id);
+  const attemptStamp = claimed?.updated_at ?? job.updated_at;
+  const opId = `song-cover:${job.job_id}:${attemptStamp}`;
   const capability = "media_song_cover_generate";
   const model = veniceRoute("image", "free").model;
   const email = await emailFor(env, job.owner_uid).catch(() => null);
@@ -243,6 +254,24 @@ async function generateSongCover(env: Env, job: VeniceMediaJobRecord): Promise<b
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const verdict = await moderateGeneratedImage(env, job.owner_uid, bytes);
       if (!verdict.blocked) { coverBytes = bytes; break; }
+      // [COVER-RETRY-SAFE-1] A SCAN that could not run is not a safety verdict.
+      // moderateGeneratedImage fails CLOSED (blocked:true, ok:false) on any
+      // error — and on 2026-08-17 the classifier took 235s and timed out, so a
+      // perfectly ordinary album cover was "blocked" and the song shipped bare.
+      // Treat that as TRANSIENT: release this attempt and leave the cover
+      // retryable so the watchdog tries again once the scanner is healthy.
+      // The image is never published unscanned — this only chooses between
+      // "try later" and "give up forever".
+      if (verdict.ok === false) {
+        await releaseAiJob(env, reservation, {
+          uid: job.owner_uid, opId, capability, reason: "cover_scan_unavailable",
+        }).catch(() => {});
+        await track(env, job.owner_uid, "venice_media_cover_deferred", "avaai", {
+          job_id: job.job_id, kind: job.kind, attempt: attemptsUsed, reason: "scan_unavailable",
+        }).catch(() => {});
+        await finishSongCover(env, job.job_id, null).catch(() => {});
+        return true;
+      }
       await track(env, job.owner_uid, "venice_media_cover_retry", "avaai", {
         job_id: job.job_id, kind: job.kind, attempt: attemptsUsed, reason: "output_blocked",
       }).catch(() => {});

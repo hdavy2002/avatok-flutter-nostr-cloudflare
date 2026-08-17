@@ -39,7 +39,15 @@ describe("Venice song rich-card contract", () => {
 
   it("generates a separately metered one-Token cover without failing the song", () => {
     const queue = readFileSync("src/queues/venice_media.ts", "utf8");
-    expect(queue).toContain('const opId = `song-cover:${job.job_id}`');
+    // [COVER-RETRY-SAFE-1] The op id is now scoped PER ATTEMPT. A stable id
+    // made a watchdog retry unsettleable (wallet reservations are op_id-deduped),
+    // so a recovered cover generated, passed its scan, then died with
+    // cover_settlement_failed. The claim timestamp keeps one attempt idempotent
+    // while letting the next attempt bill cleanly.
+    expect(queue).toContain('const opId = `song-cover:${job.job_id}:${attemptStamp}`');
+    // A scan that could not RUN must be transient, never a permanent block.
+    expect(queue).toContain("verdict.ok === false");
+    expect(queue).toContain('reason: "cover_scan_unavailable"');
     expect(queue).toContain("flatPriceTokens: 1");
     expect(queue).toContain("flatChargeTokens: 1");
     expect(queue).toContain("await generateSongCover(env, job)");
