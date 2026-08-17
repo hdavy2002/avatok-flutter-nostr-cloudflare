@@ -339,7 +339,29 @@ class ProfileStore {
     try {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       if (j['found'] != true) return false; // no profile row yet → not complete
-      return j['profile_complete'] == true;
+      if (j['profile_complete'] != true) return false;
+      // [PROFILE-HARD-GATE-1] (owner decision 2026-08-17) Completeness alone is no
+      // longer enough to enter the app: the profile must have PASSED — content
+      // moderation, real-name plausibility and photo moderation — so that only
+      // genuine users get in. The server stamps that verdict (profile_vetted_at)
+      // and reports it as `profile_approved`.
+      //
+      // Why the server's stored verdict and not a fresh check: an approved user
+      // must keep working during an AI-moderation outage (owner decision, same
+      // date). Because `profile_approved` reflects the last SUCCESSFUL save
+      // rather than a live classifier call, an OpenRouter/Gemini outage holds
+      // only new or changed profiles and can never evict someone already in.
+      //
+      // Fails OPEN in two directions on purpose, because the cost of a false
+      // block here is a user locked out of the entire app:
+      //   • `profile_gate_enforced` mirrors the profileCompletionGate flag, so
+      //     flipping that flag off releases everyone instantly, no deploy.
+      //   • an OLD server that does not send these keys yields
+      //     `profile_gate_enforced != true` and is treated as not enforcing,
+      //     preserving today's behaviour exactly.
+      final enforced = j['profile_gate_enforced'] == true;
+      if (!enforced) return true;
+      return j['profile_approved'] == true;
     } catch (_) {
       return null;
     }
