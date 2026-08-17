@@ -194,9 +194,15 @@ export async function listVeniceVideoThumbnailJobsForRecovery(
   env: Env, staleBeforeMs: number, limit = 100,
 ): Promise<VeniceMediaJobRecord[]> {
   try {
+    // [MEDIA-PEER-VIEW-1 2026-08-17] Widened from video-only to MUSIC as well.
+    // A song whose cover was rejected by the output gate was terminal forever —
+    // the owner shipped a real song with no artwork on 2026-08-17 and, because
+    // the share card's og:image is that cover, its preview was blank too. Songs
+    // now get the same bounded self-healing videos already had.
     const rows = await env.DB_MEDIA.prepare(
       `SELECT * FROM venice_media_jobs
-       WHERE kind='venice_video_generate' AND status='succeeded' AND updated_at<?1
+       WHERE kind IN ('venice_video_generate','venice_music_generate')
+         AND status='succeeded' AND updated_at<?1
          AND (cover_status IN ('pending','generating')
               OR (cover_status='failed' AND completed_at IS NOT NULL
                   AND updated_at <= completed_at + ?3))
@@ -216,7 +222,7 @@ export async function listVeniceVideoThumbnailJobsForRecovery(
 export async function reopenVideoCover(env: Env, jobId: string): Promise<boolean> {
   try {
     const res = await env.DB_MEDIA.prepare(
-      "UPDATE venice_media_jobs SET cover_status='pending', updated_at=?2 WHERE job_id=?1 AND kind='venice_video_generate' AND cover_status='failed'",
+      "UPDATE venice_media_jobs SET cover_status='pending', updated_at=?2 WHERE job_id=?1 AND kind IN ('venice_video_generate','venice_music_generate') AND cover_status='failed'",
     ).bind(jobId, now()).run();
     return (res.meta?.changes ?? 0) > 0;
   } catch (e) {
