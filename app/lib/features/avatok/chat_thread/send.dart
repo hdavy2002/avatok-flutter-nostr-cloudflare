@@ -197,6 +197,13 @@ extension _ChatThreadSend on _ChatThreadScreenState {
         _avaWorkingShownMs = DateTime.now().millisecondsSinceEpoch;
       }
     });
+    // [AVA-WORKING-DOTS-3] Painting is not seeing. Telemetry from build 10564
+    // proved the indicator reached a frame in 17-30ms and stayed up for 3.6-17s
+    // while the owner still reported "no typing animation" — it was building
+    // BELOW the fold (ListView cacheExtent builds off-screen items too), behind
+    // the newest message and the open keyboard. Raising it must therefore also
+    // bring it into view, exactly like an incoming message does.
+    if (!wasVisible) _jump(force: true);
   }
 
   /// [AVA-WORKING-DOTS-1] Hide the indicator. Called from every terminal edge:
