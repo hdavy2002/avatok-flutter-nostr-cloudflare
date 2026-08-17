@@ -826,6 +826,21 @@ class CallSession {
   /// Guards [_maybeStartCallerPrejoin] to at most one attempt per call —
   /// idempotent against being reachable from more than one signalling frame.
   bool _prejoinStarted = false;
+
+  /// [CALL-PREJOIN-ISOLATE-1 2026-08-17] The pre-join's OWN peer connection,
+  /// captured at construction so it can be promoted (adoption) or retired
+  /// (discard) by identity. Never the same object as [_pc] until promotion.
+  RTCPeerConnection? _prejoinPc;
+
+  /// [CALL-PREJOIN-ISOLATE-1] False until the pre-join's PC is promoted to be
+  /// the session's live connection in [_startSfuMedia]. While false, that PC's
+  /// `onTrack` caches instead of acting — see [_newPC]'s `isolated` parameter.
+  bool _prejoinPromoted = false;
+
+  /// [CALL-PREJOIN-ISOLATE-1] Remote-track events that arrived on the pre-join
+  /// PC BEFORE promotion. Replayed, in order, the instant it is promoted, so a
+  /// track delivered while the callee was still ringing is DELAYED, never lost.
+  final List<RTCTrackEvent> _prejoinEarlyTracks = <RTCTrackEvent>[];
   // [CALL-RTK-3] Cloudflare RealtimeKit media leg. Deliberately a SEPARATE set
   // of flags from the `_sfu*` ones above rather than a reinterpretation of
   // them: the two transports must be able to abort independently, and reusing
@@ -4494,6 +4509,36 @@ class CallSession {
   Future<RTCPeerConnection> _newPC({
     bool forceRelay = false,
     List<Map<String, dynamic>>? sfuIce,
+    /// [CALL-PREJOIN-ISOLATE-1 2026-08-17] Build a peer connection that does
+    /// NOT speak for the session until it is deliberately promoted.
+    ///
+    /// Default `false` keeps every existing caller byte-for-byte identical —
+    /// nothing else passes this. `true` is used ONLY by the caller's ring-time
+    /// SFU pre-join ([_maybeStartCallerPrejoin]).
+    ///
+    /// WHY THIS EXISTS. `_newPC` assigns [_pc] and installs `onTrack` as its
+    /// last acts, so the pre-join's connection became the session's live
+    /// connection the INSTANT it was built — at ring start, before anybody had
+    /// accepted anything. When the SFU delivered a track on it, `onTrack` ran
+    /// the whole connect ladder: ringback stopped, `_connected = true`, phase
+    /// `connected`. Production call avatok-a0170dc6 (2026-08-17): the CALLER's
+    /// screen said "connected" at 13.802 while the callee did not accept until
+    /// 21.070 and real audio only arrived at ~27 — connected-looking silence
+    /// for 13 seconds, worse than having no pre-join at all.
+    ///
+    /// Isolated therefore means exactly three suppressions, each undone at
+    /// promotion in [_startSfuMedia]:
+    ///   1. `_pc` is NOT assigned. This alone also neutralises
+    ///      `onConnectionState`, whose body already returns unless
+    ///      `identical(pc, _pc)` — so transport transitions on a pre-join can
+    ///      neither end nor "connect" the call.
+    ///   2. `onTrack` caches into [_prejoinEarlyTracks] and returns, instead of
+    ///      touching the renderer, ringback, phase, watchdogs or notifiers.
+    ///   3. The playout-health baselines are not reset — they belong to the
+    ///      live call and are reset at promotion instead.
+    /// Media behaviour is otherwise IDENTICAL: same ICE config, same jitter
+    /// bounds, same codec/track setup, same generation stamp.
+    bool isolated = false,
   }) async {
     if (RemoteConfig.callCellPresetV1) {
       _localCellular = await _isLikelyCellular();
@@ -4544,6 +4589,15 @@ class CallSession {
       }
     };
     pc.onTrack = (e) async {
+      // [CALL-PREJOIN-ISOLATE-1 2026-08-17] An un-promoted pre-join may not
+      // speak for the session — cache and return. Checked FIRST, before every
+      // other guard, because this connection legitimately receives tracks
+      // while the callee is still ringing and none of them mean "connected".
+      // Promotion replays these through this same handler.
+      if (isolated && !_prejoinPromoted) {
+        _prejoinEarlyTracks.add(e);
+        return;
+      }
       // [CF-CALL-P2P-1] A superseded PC (e.g. a second `_newPC()` from a
       // relay-fallback or a racing offer/answer) can still have a pending
       // `onTrack` in flight; never let it clobber the renderer out from under
@@ -4734,10 +4788,47 @@ class CallSession {
         _failTimer?.cancel();
       }
     };
-    _resetPlayoutHealthBaselines();
-    _pc = pc;
+    // [CALL-PREJOIN-ISOLATE-1] Both of these make `pc` the session's live
+    // connection; a pre-join is not live until [_startSfuMedia] promotes it.
+    if (!isolated) {
+      _resetPlayoutHealthBaselines();
+      _pc = pc;
+    }
     if (cellPair) unawaited(_applyAudioBitrate(40000));
     return pc;
+  }
+
+  /// [CALL-PREJOIN-ISOLATE-1 2026-08-17] Make the caller's ring-time pre-join
+  /// connection the session's LIVE connection, at the moment the call is
+  /// genuinely being answered ([_startSfuMedia]'s adoption branch).
+  ///
+  /// This is the exact inverse of the three suppressions documented on
+  /// [_newPC]'s `isolated` parameter, in the same order, plus the replay of
+  /// any track that arrived while the callee was still ringing. Idempotent.
+  void _promotePrejoinPc() {
+    final pc = _prejoinPc;
+    if (pc == null || _prejoinPromoted) return;
+    _prejoinPromoted = true;
+    _resetPlayoutHealthBaselines();
+    _pc = pc;
+    final early = List<RTCTrackEvent>.of(_prejoinEarlyTracks);
+    _prejoinEarlyTracks.clear();
+    Analytics.capture('call_prejoin_promoted', {
+      'call_id': config.room,
+      'had_early_track': early.isNotEmpty,
+      'early_track_count': early.length,
+    });
+    // Replayed AFTER `_prejoinPromoted` is true and `_pc` is assigned, so the
+    // handler takes its normal path and the connect ladder runs exactly once,
+    // now that it is legitimate.
+    final handler = pc.onTrack;
+    if (handler != null) {
+      for (final e in early) {
+        try {
+          handler(e);
+        } catch (_) {/* one bad replay must not abort the adoption */}
+      }
+    }
   }
 
   /// [CALL-ICE-CFG-1 2026-08-05] Push freshly-minted TURN credentials onto the
@@ -6053,10 +6144,17 @@ class CallSession {
   /// Factored out of `_startSfuMedia` so the CALLER's ring-time pre-join
   /// (`_maybeStartCallerPrejoin`) and the normal cold-start path build the
   /// transport through the exact same construction and can never drift.
-  CallSfuTransport _buildSfuTransport() {
+  CallSfuTransport _buildSfuTransport({bool isolatedPc = false}) {
     return CallSfuTransport(
       room: room,
-      createPeerConnection: (iceServers) => _newPC(sfuIce: iceServers),
+      // [CALL-PREJOIN-ISOLATE-1] The ring-time pre-join builds an ISOLATED
+      // connection and remembers it, so adoption can promote it and discard
+      // can retire it — both by identity, never by touching `_pc` blindly.
+      createPeerConnection: (iceServers) async {
+        final pc = await _newPC(sfuIce: iceServers, isolated: isolatedPc);
+        if (isolatedPc) _prejoinPc = pc;
+        return pc;
+      },
       configurePeerConnection: (pc) async {
         await _applyVideoCodecPreference(pc);
         await _preferResolutionOnVideo(pc, cellular: await _isLikelyCellular());
@@ -6131,7 +6229,7 @@ class CallSession {
     try {
       Analytics.capture('call_prejoin_started', {'call_id': callId});
     } catch (_) {/* telemetry must never affect the ring path */}
-    final transport = _buildSfuTransport();
+    final transport = _buildSfuTransport(isolatedPc: true);
     _prejoinedSfu = transport;
     final future = transport.connectPublish(
       localStream: stream,
@@ -6174,14 +6272,17 @@ class CallSession {
   /// of times: the second and later calls see `_prejoinedSfu == null` and
   /// no-op.
   ///
-  /// MUST run before `_startP2pOffer()` builds its own `RTCPeerConnection`
-  /// and before `case 'offer':` reuses `_pc` — `_newPC()` assigns `_pc` as a
-  /// side effect the instant the prejoin's peer connection is created (see
-  /// `_newPC`'s tail), so a live prejoin PC left in `_pc` makes
-  /// `_startP2pOffer`'s own `_pc != null` guard silently no-op forever, and
-  /// would otherwise hand a P2P offer's `setRemoteDescription` to the SFU's
-  /// peer connection. `_retirePc` is the same detach-then-close primitive
-  /// `_startSfuMedia`'s own cold-path failure branch already uses.
+  /// [CALL-PREJOIN-ISOLATE-1 2026-08-17] It is still called before
+  /// `_startP2pOffer()` and `case 'offer':`, but for RESOURCE reasons now, not
+  /// correctness: an un-promoted pre-join no longer assigns `_pc`, so it can no
+  /// longer poison `_startP2pOffer`'s `_pc != null` guard or hand a P2P offer
+  /// to the SFU connection. (That WAS the pre-isolation hazard, and it was
+  /// real: prod avatok-a0170dc6.) What remains is that a dead pre-join holds an
+  /// SFU seat and an open PeerConnection until this runs.
+  ///
+  /// `_retirePc` is the same detach-then-close primitive `_startSfuMedia`'s own
+  /// cold-path failure branch uses; it clears `_pc` only when the retired
+  /// connection IS `_pc`, i.e. only when this pre-join had been promoted.
   Future<void> _discardPrejoinedSfu(String reason) async {
     final t = _prejoinedSfu;
     if (t == null) return;
@@ -6190,7 +6291,17 @@ class CallSession {
     try {
       Analytics.capture('call_prejoin_discarded', {'call_id': config.room, 'reason': reason});
     } catch (_) {/* telemetry must never affect call setup */}
-    await _retirePc(_pc);
+    // [CALL-PREJOIN-ISOLATE-1 2026-08-17] Retire the PRE-JOIN's connection, by
+    // identity — never `_pc`. Before isolation `_pc` WAS the pre-join's PC (the
+    // bug), so retiring `_pc` happened to work; now the two are different
+    // objects until promotion and retiring `_pc` would close the LIVE call's
+    // connection. `_retirePc` clears `_pc` only when it is the same object,
+    // which is exactly right for the promoted case.
+    final pc = _prejoinPc;
+    _prejoinPc = null;
+    _prejoinEarlyTracks.clear();
+    _prejoinPromoted = false;
+    await _retirePc(pc);
     await _safeAwait(() => t.dispose());
   }
 
@@ -6227,6 +6338,13 @@ class CallSession {
         if (publishFailure == null) {
           adoptedPrejoin = pre;
           Analytics.capture('call_prejoin_adopted', {'call_id': config.room});
+          // [CALL-PREJOIN-ISOLATE-1 2026-08-17] The call is genuinely being
+          // answered now, so the pre-join's connection becomes the session's
+          // live one — `_pc` assigned, playout baselines reset, and any track
+          // that arrived during the ring replayed through the normal handler.
+          // Must run BEFORE `connectPull` below: the pull's own track events
+          // arrive on this PC and have to take the live path, not the cache.
+          _promotePrejoinPc();
         } else {
           Analytics.capture('call_prejoin_discarded', {
             'call_id': config.room,
@@ -7024,12 +7142,17 @@ class CallSession {
           break;
         }
         // [CALL-PREJOIN-1 2026-08-16] A genuine P2P offer means the peer
-        // elected P2P — any caller pre-join seat is now dead weight, and
-        // critically `_pc` may still be the PREJOIN's (SFU) connection here
-        // (the `_sfuActive || _sfuStarting` guard above does not see it: the
-        // pre-join never sets those). Without this, `_pc ?? await _newPC()`
-        // below would hand this P2P offer's `setRemoteDescription` to the
-        // SFU peer connection. See [_discardPrejoinedSfu].
+        // elected P2P — any caller pre-join seat is now dead weight and must
+        // be released rather than left holding an SFU seat for a call that is
+        // going direct.
+        //
+        // [CALL-PREJOIN-ISOLATE-1 2026-08-17] This used to be load-bearing for
+        // a second reason: `_pc` could still BE the pre-join's SFU connection
+        // (the `_sfuActive || _sfuStarting` guard above does not see a
+        // pre-join), so `_pc ?? await _newPC()` below would have handed this
+        // P2P offer's `setRemoteDescription` to the SFU peer connection. An
+        // un-promoted pre-join no longer assigns `_pc` at all, so that hazard
+        // is gone at the source — this call now exists purely to free the seat.
         await _discardPrejoinedSfu('p2p_offer_received');
         final sigState = _pc?.signalingState;
         final collision = sigState != null &&
