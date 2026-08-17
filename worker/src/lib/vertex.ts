@@ -112,6 +112,43 @@ export async function vertexToken(env: VertexEnv): Promise<string | null> {
   } catch { return null; }
 }
 
+/**
+ * [VERTEX-1] The ONE request-shape difference that actually bit us.
+ *
+ * The Developer API accepts a single-turn body with no role —
+ * `contents: [{ parts: [{ text }] }]` — and infers "user". Vertex does NOT: it
+ * rejects with HTTP 400 "Please use a valid role: user, model." Several call
+ * sites (routes/api.ts geminiDirectVet, and any raw body built by hand) omit the
+ * role, so on 2026-08-17 EVERY Vertex attempt 400'd and silently fell back to the
+ * Developer API — the migration deployed, ran, served every request correctly and
+ * achieved nothing. It took the vertex_error field to see it; the users, the logs
+ * and the response bodies all looked perfect.
+ *
+ * Normalising here rather than at each call site means a future call site that
+ * forgets the role still works. Applied ONLY to the Vertex request: the Developer
+ * API body stays byte-for-byte what the caller passed, so the fallback path is
+ * unchanged.
+ *
+ * Deliberately conservative — it fills in a MISSING role and touches nothing
+ * else. It never rewrites a role the caller set (an "assistant"/"model" mix-up is
+ * the caller's bug and must stay visible), and it leaves non-array or oddly
+ * shaped bodies (embedContent's `content`, predict's `instances`) alone.
+ */
+function normalizeForVertex(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const b = body as Record<string, unknown>;
+  if (!Array.isArray(b.contents)) return body;
+  let changed = false;
+  const contents = b.contents.map((c) => {
+    if (!c || typeof c !== "object" || Array.isArray(c)) return c;
+    const turn = c as Record<string, unknown>;
+    if (typeof turn.role === "string" && turn.role) return turn;
+    changed = true;
+    return { ...turn, role: "user" };
+  });
+  return changed ? { ...b, contents } : body;
+}
+
 export interface GoogleCallResult {
   ok: boolean;
   status: number;
@@ -232,7 +269,7 @@ export async function generateContentVia(
         const r = await postJson(
           vertexUrl(env, model, method),
           { authorization: `Bearer ${token}` },
-          body,
+          normalizeForVertex(body),
           opts.timeoutMs,
         );
         if (r.ok) {
