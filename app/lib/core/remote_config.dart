@@ -682,6 +682,21 @@ class RemoteConfig {
   /// Kill switch: set false in KV to restore the strict equality, no build.
   static bool get foregroundRingDetectionV2 =>
       _b('foregroundRingDetectionV2', true);
+
+  /// [NOTIF-STYLE-1 2026-08-17] Draw incoming chat messages as a per-conversation
+  /// Android MessagingStyle stack — one notification per chat, bundled under a
+  /// "N messages from M chats" summary, each expandable on its own chevron with
+  /// the sender's photo — instead of the single shared banner AvaTOK posted under
+  /// the one hardcoded id 8000 (where a second person's message REPLACED the
+  /// first rather than stacking beside it).
+  ///
+  /// Default TRUE; false restores the legacy single BigText banner exactly.
+  /// Read from the BACKGROUND isolate too, which is why push_service.dart calls
+  /// [hydrateFromDisk] before consulting it — nothing else hydrates config there,
+  /// so the getter would otherwise always return this compile-time default on the
+  /// path that matters most. Mirrors config.ts `notifMessagingStyle`.
+  static bool get notifMessagingStyle =>
+      _b('notifMessagingStyle', true);
   /// Phase B — the server-side voicemail bot (5-rings → prompt → 25s record).
   /// Mirrors config.ts `voicemailBot`.
   static bool get voicemailBot => _b('voicemailBot', false);
