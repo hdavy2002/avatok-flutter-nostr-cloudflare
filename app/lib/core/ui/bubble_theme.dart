@@ -125,6 +125,18 @@ const BubbleTheme kBubbleAva = BubbleTheme(
   radius: kBubbleRadiusIn,
 );
 
+/// Private Ava turns — both the user's question and Ava's reply use the same
+/// soft lavender fill. The light treatment is intentionally unlike public Ava
+/// and ordinary human chat, so private content is recognizable at a glance.
+const BubbleTheme kBubbleAvaPrivate = BubbleTheme(
+  bg: Color(0xFFEDE7FF),
+  ink: Color(0xFF211A35),
+  meta: Color(0xFF665C7A),
+  play: Color(0xFF6D4BD2),
+  border: Color(0xFFC6B8EE),
+  radius: kBubbleRadiusIn,
+);
+
 /// Compatibility palette for group sender resolution. All entries intentionally
 /// resolve to the same neutral incoming treatment; identity is provided by the
 /// sender header and avatar, not a rainbow of card backgrounds.
@@ -164,8 +176,15 @@ BubbleTheme resolveBubbleTheme({
   required bool mine,
   required bool isGroup,
   bool isAva = false,
+  bool isPrivateAva = false,
+  bool privateOnRight = false,
   String? senderKey,
 }) {
+  if (isPrivateAva) {
+    return kBubbleAvaPrivate.copyWith(
+      radius: privateOnRight ? kBubbleRadiusOut : kBubbleRadiusIn,
+    );
+  }
   if (isAva) return kBubbleAva;
   if (mine) return kBubbleMine;
   if (!isGroup) return kBubbleTheirs;

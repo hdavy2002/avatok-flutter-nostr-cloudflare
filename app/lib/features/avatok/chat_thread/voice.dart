@@ -359,6 +359,15 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
   /// disposed, which is exactly the "player stops when I leave the chat"
   /// report this issue fixes.
   Future<void> _playAudio(_Msg m) async {
+    if (_loadingAudioId != null) {
+      Analytics.capture('voice_note_play_tap_suppressed', {
+        ..._voiceTelemetry(),
+        'reason': 'another_play_in_flight',
+        'requested_message_id': m.id,
+      });
+      return;
+    }
+    final started = DateTime.now().millisecondsSinceEpoch;
     final trackId = _audioTrackId(m);
     if (_playingAudioId == m.id) {
       // [VOICE-SCRUB-1] Pause rather than stop — pausing holds the position
@@ -370,22 +379,54 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     // parked where the user scrubbed to) instead of re-downloading, rewriting
     // the temp file and restarting it from 0:00.
     if (_openAudioId == m.id && AudioPlaybackService.I.isCurrent(trackId)) {
-      await AudioPlaybackService.I.play(
-        track: AudioTrack(
-          trackId: trackId,
-          title: widget.chat.name,
-          subtitle: 'Voice note',
-          originRoute: _convKey,
-        ),
-        bytes: m.localBytes ?? Uint8List(0), // ignored on the resume-in-place path
-        startAt: _audioPos,
-      );
-      await AudioPlaybackService.I.setSpeed(_audioSpeed);
+      try {
+        if (mounted) setState(() { _loadingAudioId = m.id; _audioTick++; });
+        await AudioPlaybackService.I.play(
+          track: AudioTrack(
+            trackId: trackId,
+            title: widget.chat.name,
+            subtitle: 'Voice note',
+            originRoute: _convKey,
+          ),
+          bytes: m.localBytes ?? Uint8List(0), // ignored on the resume-in-place path
+          startAt: _audioPos,
+        ).timeout(const Duration(seconds: 12));
+        await AudioPlaybackService.I.setSpeed(_audioSpeed);
+        Analytics.uiInteraction('voice_note_resume',
+            DateTime.now().millisecondsSinceEpoch - started,
+            phase: 'interactive', source: 'loaded_player');
+      } catch (e) {
+        Analytics.capture('voice_note_play_failed', {
+          ..._voiceTelemetry(),
+          'message_id': m.id,
+          'stage': 'resume',
+          'error': e.runtimeType.toString(),
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Couldn't resume this voice message")));
+        }
+      } finally {
+        if (mounted && _loadingAudioId == m.id) {
+          setState(() { _loadingAudioId = null; _audioTick++; });
+        }
+      }
       return;
     }
     try {
-      final bytes = m.localBytes ?? (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
-      if (bytes == null) return;
+      if (mounted) setState(() { _loadingAudioId = m.id; _audioTick++; });
+      Analytics.capture('voice_note_play_started', {
+        ..._voiceTelemetry(),
+        'message_id': m.id,
+        'cache_source': m.localBytes != null ? 'memory' : 'disk_or_network',
+      });
+      final bytes = m.localBytes ?? (m.media != null
+          ? await MediaService.downloadAndDecrypt(m.media!)
+              .timeout(const Duration(seconds: 30))
+          : null);
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('voice_note_bytes_unavailable');
+      }
       await AudioPlaybackService.I.play(
         track: AudioTrack(
           trackId: trackId,
@@ -394,15 +435,28 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
           originRoute: _convKey,
         ),
         bytes: bytes,
-      );
+      ).timeout(const Duration(seconds: 12));
       // [UI-BUBBLE-3] honour the chosen playback speed for this note.
       await AudioPlaybackService.I.setSpeed(_audioSpeed);
       Analytics.capture('voice_note_played', {..._voiceTelemetry(), 'speed': _audioSpeed});
+      Analytics.uiInteraction('voice_note_play',
+          DateTime.now().millisecondsSinceEpoch - started,
+          phase: 'interactive', source: m.localBytes != null ? 'memory' : 'cache_or_network');
     } catch (e) {
       AvaLog.I.log('media', 'voice play failed: $e');
+      Analytics.capture('voice_note_play_failed', {
+        ..._voiceTelemetry(),
+        'message_id': m.id,
+        'latency_ms': DateTime.now().millisecondsSinceEpoch - started,
+        'error': e.runtimeType.toString(),
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Couldn't play this voice message")));
+      }
+    } finally {
+      if (mounted && _loadingAudioId == m.id) {
+        setState(() { _loadingAudioId = null; _audioTick++; });
       }
     }
   }

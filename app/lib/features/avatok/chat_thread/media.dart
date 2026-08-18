@@ -276,6 +276,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// alone invalidates the per-row cache and repaints the card with the job's
   /// new state.
   void _upsertJobMessage(AiMediaJob job) {
+    if (job.kind == AiMediaJobKind.musicGenerate && job.isSucceeded) {
+      unawaited(_prepareMusicForDisplay(job));
+    }
     _mutMsgs(() {
       // The legacy image producer emits an early ava_status card before the
       // durable job id exists. Once the job card is hydrated, retire that
@@ -302,6 +305,63 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
           ts: job.createdAt, special: 'ai_job', extra: {'job_id': job.jobId}));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
+  }
+
+  Future<void> _prepareMusicForDisplay(AiMediaJob job) async {
+    if (_musicReadyJobIds.contains(job.jobId) ||
+        !_musicPreparingJobIds.add(job.jobId)) return;
+    final started = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final audioId = job.artifactMediaId;
+      final coverId = job.coverMediaId;
+      final audioUrl = job.artifactUrl;
+      final coverUrl = job.coverUrl;
+      if (audioId == null || audioId.isEmpty || coverId == null || coverId.isEmpty ||
+          audioUrl == null || audioUrl.isEmpty || coverUrl == null || coverUrl.isEmpty) {
+        throw StateError('music_assets_not_ready');
+      }
+
+      var audio = await MediaService.cachedBlob(audioId);
+      if (audio == null) {
+        final fetched = await _fetchArtifactBytes(audioUrl);
+        audio = fetched.$1;
+        await MediaService.writeBlob(audioId, audio);
+      }
+      var cover = await MediaService.cachedBlob(coverId);
+      if (cover == null) {
+        final fetched = await _fetchArtifactBytes(coverUrl);
+        cover = fetched.$1;
+        await MediaService.writeBlob(coverId, cover);
+      }
+      if (!mounted) return;
+      _musicCoverBytes[job.jobId] = cover;
+      _musicReadyJobIds.add(job.jobId);
+      _musicPrepareAttempts.remove(job.jobId);
+      Analytics.capture('music_card_ready_on_device', {
+        'job_id': job.jobId,
+        'audio_bytes': audio.length,
+        'cover_bytes': cover.length,
+        'prepare_ms': DateTime.now().millisecondsSinceEpoch - started,
+      });
+      _mutMsgs(() {});
+    } catch (error) {
+      final attempt = (_musicPrepareAttempts[job.jobId] ?? 0) + 1;
+      _musicPrepareAttempts[job.jobId] = attempt;
+      Analytics.capture('music_card_prepare_waiting', {
+        'job_id': job.jobId,
+        'attempt': attempt,
+        'error': error.runtimeType.toString(),
+      });
+      if (mounted && attempt < 12) {
+        Future<void>.delayed(const Duration(seconds: 5), () async {
+          if (!mounted) return;
+          final fresh = await AiMediaJobRepository.I.fetch(job.jobId) ?? job;
+          await _prepareMusicForDisplay(fresh);
+        });
+      }
+    } finally {
+      _musicPreparingJobIds.remove(job.jobId);
+    }
   }
 
   /// Remove the placeholder message for job [jobId] (explicit local delete —
@@ -696,6 +756,13 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     final isMusic = job.kind == AiMediaJobKind.musicGenerate;
     final succeeded = job.isSucceeded;
     final artifactUrl = job.artifactUrl;
+    if (isMusic && succeeded && !_musicReadyJobIds.contains(job.jobId)) {
+      unawaited(_prepareMusicForDisplay(job));
+      return AiMediaJobPreparingCard(
+        key: ValueKey('ai_media_preparing_${job.jobId}'),
+        job: job,
+      );
+    }
     return AiMediaJobCard(
       key: AiMediaJobCard.keyFor(job.jobId),
       job: job,
@@ -713,6 +780,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
               : (isMusic && succeeded)
                   ? _AiMusicJobPreview(
                       job: job,
+                      coverBytes: _musicCoverBytes[job.jobId],
                       onPlay: () => _playJobArtifact(job),
                       onShare: () => _shareJobArtifact(job),
                     )
@@ -1345,15 +1413,23 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// hardware Cmd/Ctrl+V shortcut. Tries an image first; on miss, falls back to
   /// the normal text paste (insert at the cursor / replace the selection).
   Future<void> _onComposerPaste({String via = 'context_menu'}) async {
+    final started = DateTime.now().millisecondsSinceEpoch;
+    Analytics.capture('composer_paste_started', {'via': via, 'private_mode': _avaMode});
     final handledImage = await _tryPasteImage();
     if (handledImage) {
       // [CHAT-PASTE-1] toolbar/context-menu Paste or hardware Cmd/Ctrl+V.
       Analytics.capture('chat_image_pasted', {'via': via});
+      Analytics.uiInteraction('composer_paste',
+          DateTime.now().millisecondsSinceEpoch - started,
+          phase: 'interactive', source: 'clipboard', extra: {'kind': 'image', 'via': via});
       return;
     }
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
-    if (text == null || text.isEmpty) return;
+    if (text == null || text.isEmpty) {
+      Analytics.capture('composer_paste_empty', {'via': via});
+      return;
+    }
     final base = _ctrl.text;
     final sel = _ctrl.selection;
     final start = sel.start < 0 ? base.length : sel.start;
@@ -1364,6 +1440,9 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       selection: TextSelection.collapsed(offset: start + text.length),
     );
     _onInputChanged(newText);
+    Analytics.uiInteraction('composer_paste',
+        DateTime.now().millisecondsSinceEpoch - started,
+        phase: 'interactive', source: 'clipboard', extra: {'kind': 'text', 'via': via});
   }
 
   // Bottom sheet: image preview + a caption field. Returns the caption (possibly
@@ -1833,11 +1912,13 @@ class _AiMusicJobPreview extends StatelessWidget {
     required this.job,
     required this.onPlay,
     required this.onShare,
+    this.coverBytes,
   });
 
   final AiMediaJob job;
   final Future<void> Function() onPlay;
   final Future<void> Function() onShare;
+  final Uint8List? coverBytes;
 
   static String _titleFor(AiMediaJob job) {
     final songTitle = (job.songTitle ?? '').trim();
@@ -1897,7 +1978,11 @@ class _AiMusicJobPreview extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  if ((job.coverUrl ?? '').isNotEmpty)
+                  if (coverBytes != null)
+                    Positioned.fill(
+                      child: Image.memory(coverBytes!, fit: BoxFit.cover),
+                    )
+                  else if ((job.coverUrl ?? '').isNotEmpty)
                     Positioned.fill(
                       child: LayoutBuilder(
                         builder: (context, constraints) => _AiMusicCoverImage(
@@ -1972,7 +2057,10 @@ class _AiMusicJobPreview extends StatelessWidget {
                       tooltip: 'Share $title',
                       onPressed: () => unawaited(onShare()),
                       icon: const Icon(Icons.ios_share_rounded),
-                      color: AD.textSecondary,
+                      color: Colors.black,
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD400),
+                      ),
                     ),
                   ],
                 ),

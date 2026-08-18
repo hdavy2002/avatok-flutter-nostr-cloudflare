@@ -117,6 +117,7 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         onCamera: () => _pickImage(ImageSource.camera),
         onMic: _toggleRecord,
         onChanged: _onInputChanged,
+        onPaste: () => _onComposerPaste(via: 'paste_button'),
         onGif: _sendGif,
         onSticker: _sendStickerAsset,
         onMention: _openMentionPicker,

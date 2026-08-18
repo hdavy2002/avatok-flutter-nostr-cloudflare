@@ -38,6 +38,7 @@ class RichInputBar extends StatefulWidget {
   final VoidCallback onCamera;
   final VoidCallback onMic;
   final ValueChanged<String> onChanged;
+  final VoidCallback onPaste;
 
   /// [CHAT-MENTIONS-1] Tapping the "@" control. The HOST owns the picker (it is
   /// the only thing that knows who is in the thread), so this bar just reports
@@ -65,6 +66,7 @@ class RichInputBar extends StatefulWidget {
     required this.onCamera,
     required this.onMic,
     required this.onChanged,
+    required this.onPaste,
     required this.onGif,
     required this.onSticker,
     this.onMention,
@@ -204,6 +206,13 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                   onTap: widget.onMention!,
                 ),
               _barIcon(
+                icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.bold),
+                color: Colors.black,
+                backgroundColor: const Color(0xFFFFD400),
+                tooltip: 'Paste',
+                onTap: widget.onPaste,
+              ),
+              _barIcon(
                 icon: PhosphorIcons.paperclip(PhosphorIconsStyle.regular),
                 color: AD.iconClipOnWhite,
                 tooltip: 'Attach a file',
@@ -243,6 +252,24 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                         style: const TextStyle(fontFamily: ADText.family,
                             fontWeight: FontWeight.w400, fontSize: 16, color: AD.textPrimary),
                         cursorColor: AD.iconSearch,
+                        contextMenuBuilder: (context, editableState) {
+                          final items = editableState.contextMenuButtonItems
+                              .map((item) => item.type == ContextMenuButtonType.paste
+                                  ? ContextMenuButtonItem(
+                                      type: ContextMenuButtonType.paste,
+                                      label: 'Paste',
+                                      onPressed: () {
+                                        editableState.hideToolbar();
+                                        widget.onPaste();
+                                      },
+                                    )
+                                  : item)
+                              .toList();
+                          return AdaptiveTextSelectionToolbar.buttonItems(
+                            anchors: editableState.contextMenuAnchors,
+                            buttonItems: items,
+                          );
+                        },
                         decoration: InputDecoration(
                           hintText: widget.hintText,
                           hintStyle: const TextStyle(fontFamily: ADText.family,
@@ -298,6 +325,7 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
     required Color color,
     required String tooltip,
     required VoidCallback onTap,
+    Color? backgroundColor,
   }) =>
       Tooltip(
         message: tooltip,
@@ -307,7 +335,13 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
           child: SizedBox(
             width: 34,
             height: 44,
-            child: Icon(icon, color: color, size: 21),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: backgroundColor ?? Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(child: Icon(icon, color: color, size: 21)),
+            ),
           ),
         ),
       );

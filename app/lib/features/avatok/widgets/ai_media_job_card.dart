@@ -111,6 +111,19 @@ class AiMediaJobCard extends StatelessWidget {
   }
 }
 
+/// Client-side preparation state after the server has finished generation but
+/// before artwork and audio are both cached on this device. It deliberately
+/// reuses the working card so no dead play/share controls are exposed.
+class AiMediaJobPreparingCard extends StatelessWidget {
+  const AiMediaJobPreparingCard({super.key, required this.job, this.width = double.infinity});
+
+  final AiMediaJob job;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => _WorkingCard(job: job, width: width);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared per-kind copy/icon helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,10 +267,12 @@ class _WorkingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = AD.iconSearch; // blue = "in progress", distinct from ready/failed/cancelled
+    final music = job.kind == AiMediaJobKind.musicGenerate;
+    final accent = music ? Colors.white : AD.iconSearch;
     return _CardShell(
       width: width,
       borderColor: accent,
+      fill: music ? Colors.black : AD.card,
       child: LayoutBuilder(builder: (context, constraints) {
         final previewSize = constraints.maxWidth.isFinite ? constraints.maxWidth : 240.0;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -265,7 +280,8 @@ class _WorkingCard extends StatelessWidget {
         const SizedBox(height: Msg.s2),
         Text(_workingLabel(job),
             maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: ADText.rowName(c: AD.textPrimary).copyWith(fontStyle: FontStyle.italic)),
+            style: ADText.rowName(c: music ? Colors.white : AD.textPrimary)
+                .copyWith(fontStyle: FontStyle.italic)),
         if (job.progress != null) ...[
           const SizedBox(height: Msg.s2),
           ClipRRect(
@@ -273,7 +289,7 @@ class _WorkingCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: job.progress!.clamp(0.0, 1.0),
               minHeight: 4,
-              backgroundColor: AD.borderControl,
+              backgroundColor: music ? Colors.white24 : AD.borderControl,
               valueColor: AlwaysStoppedAnimation(accent),
             ),
           ),
@@ -282,7 +298,11 @@ class _WorkingCard extends StatelessWidget {
           const SizedBox(height: Msg.s2),
           Align(
             alignment: Alignment.centerRight,
-            child: _pillButton(label: 'Cancel', onPressed: onCancel, color: AD.textSecondary),
+            child: _pillButton(
+              label: 'Cancel',
+              onPressed: onCancel,
+              color: music ? Colors.white : AD.textSecondary,
+            ),
           ),
         ],
       ]);
@@ -320,7 +340,9 @@ class _AnimatedMediaPlaceholderState extends State<_AnimatedMediaPlaceholder>
       width: widget.size, height: widget.size,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AD.mediaPlaceholderBg,
+          color: widget.kind == AiMediaJobKind.musicGenerate
+              ? Colors.black
+              : AD.mediaPlaceholderBg,
           borderRadius: BorderRadius.circular(AD.rListCard),
           border: Border.all(color: widget.accent.withValues(alpha: 0.8)),
         ),
@@ -333,7 +355,9 @@ class _AnimatedMediaPlaceholderState extends State<_AnimatedMediaPlaceholder>
             Container(
               width: 58, height: 58,
               decoration: BoxDecoration(
-                color: AD.card,
+                color: widget.kind == AiMediaJobKind.musicGenerate
+                    ? Colors.black
+                    : AD.card,
                 shape: BoxShape.circle,
                 border: Border.all(color: widget.accent.withValues(alpha: 0.8)),
               ),

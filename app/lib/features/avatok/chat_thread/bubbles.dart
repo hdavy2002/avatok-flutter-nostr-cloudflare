@@ -197,6 +197,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
     // same lilac as Ava's replies so a glance tells me "this is an Ava
     // conversation", never confused with a green message to a person.
     final toAva = m.me && m.aiLocal;
+    final privateAva = toAva || m.special == 'ava_private';
     final onRight = m.me && !isAva;
     // [AVAGRP-BUBBLE-1] Resolve ONE BubbleTheme for this whole bubble — never
     // re-derive a colour further down (in `_specialContent`, the meta row, the
@@ -207,6 +208,8 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
       mine: onRight && !toAva,
       isGroup: widget.chat.group,
       isAva: isAva || toAva,
+      isPrivateAva: privateAva,
+      privateOnRight: toAva,
       senderKey: m.senderPub,
     );
     // Telemetry seam: a group peer bubble with a senderPub but no learned name
@@ -1256,6 +1259,7 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
         return VoiceNoteBubble(
           key: ValueKey('voice_${m.media?.id ?? m.id}'),
           playing: _playingAudioId == m.id,
+          loading: _loadingAudioId == m.id,
           speed: _audioSpeed,
           onRight: m.me && !_isAvaBubble(m),
           onPlayPause: () => _playAudio(m),

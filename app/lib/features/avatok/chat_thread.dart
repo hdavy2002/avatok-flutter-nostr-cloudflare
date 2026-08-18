@@ -312,6 +312,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   bool _realMode = false;
   final Set<String> _seenEv = {};
   int? _playingAudioId;
+  int? _loadingAudioId;
   // [VOICE-SCRUB-1] The note currently LOADED into the shared player — which is
   // not the same thing as the note currently playing. A paused note, or one
   // parked where the user scrubbed to, is still open: keeping this distinct is
@@ -1104,6 +1105,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   /// `_convKey`/`_serverConvId` are known — see [_bindAiJobs]), cancelled in
   /// `dispose`.
   StreamSubscription<AiMediaJobUpdate>? _aiJobsSub;
+  final Set<String> _musicReadyJobIds = <String>{};
+  final Set<String> _musicPreparingJobIds = <String>{};
+  final Map<String, Uint8List> _musicCoverBytes = <String, Uint8List>{};
+  final Map<String, int> _musicPrepareAttempts = <String, int>{};
 
 
   /// Dedicated, mutually-exclusive composer audience modes. Public is the

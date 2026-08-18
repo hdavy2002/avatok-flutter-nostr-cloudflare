@@ -302,6 +302,7 @@ class AudioPlaybackService with WidgetsBindingObserver {
         'track_id': track.trackId,
         'error': e.toString(),
       });
+      rethrow;
     }
   }
 

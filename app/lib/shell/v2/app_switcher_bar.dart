@@ -195,7 +195,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                   if (velocity > 80) _setExpanded(false);
                 },
                 child: SizedBox(
-                  height: 64,
+                  height: 40,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -203,7 +203,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                         _expanded
                             ? Icons.keyboard_arrow_down_rounded
                             : Icons.keyboard_arrow_up_rounded,
-                        size: 26,
+                        size: 18,
                         color: AD.textSecondary,
                       ),
                       const SizedBox(width: Msg.s1),
@@ -213,11 +213,11 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           child: Text(
-                            _expanded ? 'Swipe down · hide' : 'Swipe up · menu',
+                            _expanded ? 'Swipe down' : 'Swipe up',
                             style: ADText.sectionLabel(c: Colors.white).copyWith(
-                              fontSize: 15,
+                              fontSize: 12,
                               height: 1.1,
                             ),
                           ),

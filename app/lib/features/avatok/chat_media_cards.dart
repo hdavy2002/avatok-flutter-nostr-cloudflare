@@ -202,6 +202,7 @@ class VoiceNoteBubble extends StatefulWidget {
   const VoiceNoteBubble({
     super.key,
     required this.playing,
+    this.loading = false,
     required this.speed,
     required this.onPlayPause,
     required this.onCycleSpeed,
@@ -213,6 +214,7 @@ class VoiceNoteBubble extends StatefulWidget {
   });
 
   final bool playing;
+  final bool loading;
   final double speed; // 1.0 | 1.5 | 2.0
   final VoidCallback onPlayPause;
   final VoidCallback onCycleSpeed;
@@ -311,7 +313,7 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // LARGE circular play/pause — 44dp touch target.
       GestureDetector(
-        onTap: widget.onPlayPause,
+        onTap: widget.loading ? null : widget.onPlayPause,
         behavior: HitTestBehavior.opaque,
         child: Container(
           width: 44,
@@ -323,13 +325,22 @@ class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
             boxShadow: const [],
           ),
           child: Center(
-            child: PhosphorIcon(
-              active
-                  ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
-                  : PhosphorIcons.play(PhosphorIconsStyle.fill),
-              size: 20,
-              color: Colors.white,
-            ),
+            child: widget.loading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
+                : PhosphorIcon(
+                    active
+                        ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                        : PhosphorIcons.play(PhosphorIconsStyle.fill),
+                    size: 20,
+                    color: Colors.white,
+                  ),
           ),
         ),
       ),

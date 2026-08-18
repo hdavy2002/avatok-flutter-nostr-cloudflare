@@ -43,12 +43,18 @@ extension _ChatThreadActions on _ChatThreadScreenState {
   // bottom sheet. "+" opens the full emoji picker; "More…" opens the full menu.
   void _onBubbleLongPressAt(_Msg m, Offset pos) {
     HapticFeedback.mediumImpact();
+    // Close the keyboard before measuring the available overlay height. The old
+    // menu used the full screen size while the IME still occupied its lower
+    // half, hiding Edit/Delete/Info exactly when the composer had focus.
+    FocusManager.instance.primaryFocus?.unfocus();
     Analytics.capture('chat_reaction_pill_open', {'group': widget.chat.group});
     _closeReactionOverlay();
-    final size = MediaQuery.of(context).size;
+    final media = MediaQuery.of(context);
+    final size = media.size;
+    final usableBottom = size.height - media.viewInsets.bottom - media.padding.bottom;
     const pillW = 312.0;
     final left = pos.dx.clamp(12.0, math.max(12.0, size.width - pillW - 12.0)).toDouble();
-    final top = (pos.dy - 64).clamp(90.0, math.max(90.0, size.height - 360.0)).toDouble();
+    final top = (pos.dy - 64).clamp(90.0, math.max(90.0, usableBottom - 360.0)).toDouble();
     const quick = ['❤️', '👍', '😂', '😮', '😢', '👏'];
     final hasImage = _msgHasImage(m);
 
@@ -162,6 +168,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
   // ---- bubble long-press actions ----
   void _onBubbleLongPress(_Msg m) {
     HapticFeedback.mediumImpact();
+    FocusManager.instance.primaryFocus?.unfocus();
     final hasImage = _msgHasImage(m);
     showModalBottomSheet(
       context: context,
