@@ -20,6 +20,7 @@ import { brainIngest } from "../lib/brain_ingest";
 import { avaReason } from "../lib/ava_reason"; // One Brain B1: unified reasoning gateway
 import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
+import { moderate, namePlausible } from "../lib/moderation";
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { CALL_RING_LIFETIME_MS, ringLifetimeMs } from "../lib/call_delivery_contract";
 import { CALL_ROOM_TOKEN_LIFETIME_MS } from "../lib/call_room_auth";
@@ -2521,7 +2522,7 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const firstName = b.first_name === undefined ? null : (String(b.first_name).trim().slice(0, 60) || null);
   const lastName = b.last_name === undefined ? null : (String(b.last_name).trim().slice(0, 60) || null);
   const assembled = [firstName, lastName].filter(Boolean).join(" ").trim();
-  const name = ((b.name || "").trim() || assembled) || null;
+  let name = ((b.name || "").trim() || assembled) || null;
   const avatarUrl = typeof b.avatar_url === "string" ? b.avatar_url.trim() : null;
   const email = (b.email || "").trim().toLowerCase();
   const emailHash = email ? await sha256Hex(email) : null;
@@ -2573,10 +2574,12 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     // three testers who all have complete rows in D1. The gate was reading the
     // envelope, not the letter. Merge first, then judge.
     const prevRow = await db.prepare(
-      "SELECT avatar_url, first_name, last_name, birth_year, gender, bio FROM users WHERE uid=?1",
+      "SELECT avatar_url, first_name, last_name, birth_year, gender, bio, profile_vetted_at, profile_vetted_reason FROM users WHERE uid=?1",
     ).bind(ctx.uid).first<{
       avatar_url: string | null; first_name: string | null; last_name: string | null;
       birth_year: number | null; gender: string | null; bio: string | null;
+      profile_vetted_at: number | null;
+      profile_vetted_reason: string | null;
     }>().catch(() => null);
     // Effective value = this request's value when the key was PROVIDED, else the
     // stored one. `??` (not `||`) is deliberate: an explicit "" clears a field and
@@ -2604,22 +2607,55 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
       });
       return json({ error: "profile_incomplete", missing, message: "Please complete every field (only your phone number is optional)." }, 400);
     }
-    // Real-name plausibility (gemini-2.5-flash-lite). FAIL OPEN: if the model is
-    // unavailable we log it but let the save through (never block a real user on an
-    // AI outage / depleted key); we only reject when the model actively says the
-    // name is implausible.
+    // Fail closed for NEW/CHANGED profiles when the safety classifier cannot
+    // answer. Already-approved, unchanged profiles never enter this path on app
+    // launch, so a provider outage cannot lock the whole existing user base.
+    const fullEffectiveName = `${effFirst} ${effLast}`.trim();
+    if (!namePlausible(fullEffectiveName)) {
+      track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "name_format", field: "first_name" });
+      return json({ error: "implausible_name", field: "first_name", message: "That doesn't look like a real name. Please use your real first and last name." }, 400);
+    }
+    // The public/display name is derived from the vetted first + last fields.
+    // A client cannot submit clean component fields alongside a separate funny
+    // display string and have that unreviewed alias appear across the app.
+    name = fullEffectiveName;
+    const safetyFields = [
+      { text: fullEffectiveName, field: "name" as const },
+      { text: effFirst!, field: "name" as const },
+      { text: effLast!, field: "name" as const },
+      { text: effBio!, field: "bio" as const },
+    ];
+    for (const candidate of safetyFields) {
+      const verdict = await moderate(env, candidate);
+      if (!verdict.ok) {
+        await track(env, ctx.uid, "profile_vet_error", "profile", { stage: "content_model", field: candidate.field }).catch(() => {});
+        return json({ error: "profile_vet_unavailable", field: candidate.field, message: "Ava couldn't verify this profile right now. Nothing was saved — please try again shortly." }, 503);
+      }
+      if (!verdict.safe) {
+        track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "content", field: candidate.field, categories: verdict.categories });
+        return json({ error: "profile_vet_rejected", field: candidate.field, message: verdict.reason }, 422);
+      }
+    }
+    // Real-name plausibility (gemini-2.5-flash-lite). The model helper reports
+    // provider exhaustion explicitly; this hard gate fails closed so an
+    // unverified profile is never persisted.
     //
     // Only vet a name that actually CHANGED. Vetting every publish would fire a
     // Gemini call on every app launch (the launch publish re-sends the profile),
     // and the old `vetRealName(firstName!, lastName!)` passed this request's nulls
     // straight through — vetting the literal string "null null" and rejecting a
     // perfectly good stored profile the moment the gate stopped short-circuiting.
-    const nameChanged = (firstName !== null && firstName !== (prevRow?.first_name ?? null))
+    // `vetted_v2` forces one strict re-check for approvals created by the older
+    // save path, which could stamp an existing unreviewed name as approved.
+    const needsStrictRevet = prevRow?.profile_vetted_reason !== "vetted_v2";
+    const nameChanged = needsStrictRevet || !prevRow?.profile_vetted_at
+      || (firstName !== null && firstName !== (prevRow?.first_name ?? null))
       || (lastName !== null && lastName !== (prevRow?.last_name ?? null));
     if (nameChanged) {
       const nm = await vetRealName(env, effFirst!, effLast!);
       if (nm.unavailable) {
-        track(env, ctx.uid, "profile_vet_error", "profile", { stage: "realname_model" });
+        await track(env, ctx.uid, "profile_vet_error", "profile", { stage: "realname_model" }).catch(() => {});
+        return json({ error: "profile_vet_unavailable", field: "first_name", message: "Ava couldn't verify that name right now. Nothing was saved — please try again shortly." }, 503);
       }
       if (!nm.plausible) {
         track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "realname", field: "first_name" });
@@ -2627,32 +2663,29 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
       }
     }
     // Avatar nudity moderation (Rekognition DetectModerationLabels). Only run on a
-    // NEW/changed photo (skip re-moderating an unchanged avatar on later saves) and
-    // only when creds are configured. INTENT: reject on a positive sexual-nudity
-    // detection; FAIL OPEN on a transient Rekognition/infra error so a flaky API
-    // never bricks signup (mirrors the deepfake-check best-effort fetch pattern).
-    if (avatarUrl && rekognitionConfigured(env)) {
-      let changed = true;
-      try {
-        const prev = await db.prepare("SELECT avatar_url FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatar_url: string | null }>();
-        changed = (prev?.avatar_url ?? "") !== avatarUrl;
-      } catch { changed = true; }
-      if (changed) {
+    // NEW/changed photo (skip re-moderating an unchanged v2-approved avatar on
+    // later saves). Reject explicit unsafe results and fail closed on provider or
+    // fetch errors so no photo is stamped approved without actually being checked.
+    const photoNeedsVet = needsStrictRevet || !prevRow?.profile_vetted_at || (avatarUrl !== null && avatarUrl !== (prevRow?.avatar_url ?? null));
+    if (photoNeedsVet) {
+      if (!rekognitionConfigured(env)) {
+        await track(env, ctx.uid, "profile_vet_error", "profile", { stage: "photo_model_config" }).catch(() => {});
+        return json({ error: "profile_vet_unavailable", field: "photo", message: "Ava couldn't verify that photo right now. Nothing was saved — please try again shortly." }, 503);
+      }
+      {
         try {
-          const res = await fetch(avatarUrl);
-          if (res.ok) {
-            const bytes = new Uint8Array(await res.arrayBuffer());
-            const mod = await detectModerationLabels(env, bytes);
-            const verdict = avatarModerationRejected(mod.ModerationLabels);
-            if (verdict.rejected) {
-              track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "photo", field: "photo", label: verdict.label });
-              return json({ error: "profile_vet_rejected", field: "photo", message: "That photo didn't pass our check — please choose another." }, 400);
-            }
+          const res = await fetch(effAvatar!);
+          if (!res.ok) throw new Error(`avatar_fetch_${res.status}`);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          const mod = await detectModerationLabels(env, bytes);
+          const verdict = avatarModerationRejected(mod.ModerationLabels);
+          if (verdict.rejected) {
+            track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "photo", field: "photo", label: verdict.label });
+            return json({ error: "profile_vet_rejected", field: "photo", message: "That photo didn't pass our check — please choose another." }, 400);
           }
-          // A non-OK fetch or empty labels → allow (fail open on infra issues).
         } catch {
-          // Transient Rekognition/network error → allow the save (fail open).
-          track(env, ctx.uid, "profile_vet_error", "profile", { stage: "photo_moderation" });
+          await track(env, ctx.uid, "profile_vet_error", "profile", { stage: "photo_moderation" }).catch(() => {});
+          return json({ error: "profile_vet_unavailable", field: "photo", message: "Ava couldn't verify that photo right now. Nothing was saved — please try again shortly." }, 503);
         }
       }
     }
@@ -2702,7 +2735,7 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
        profile_vetted_reason=COALESCE(?13, profile_vetted_reason)`,
   ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender,
          vetVerdict === "passed" ? now : null,
-         vetVerdict === "passed" ? "vetted" : null).run();
+         vetVerdict === "passed" ? "vetted_v2" : null).run();
   // [WELCOME-100-1] New account → 100-token welcome bonus (persistent promo
   // bucket; idempotent). Awaited (no executionCtx here) but NEVER blocks signup.
   if (!existedBefore) {
@@ -2736,7 +2769,7 @@ export async function me(req: Request, env: Env): Promise<Response> {
     // [PROFILE-HARD-GATE-1] profile_vetted_at rides along so /api/me can tell the
     // client whether this account is admitted, with no extra query and no
     // classifier call on the launch path.
-    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token, profile_vetted_at FROM users WHERE uid=?1";
+    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token, profile_vetted_at, profile_vetted_reason FROM users WHERE uid=?1";
   // [ACCT-RELINK-1] Resolve to the canonical account first (handles a login whose
   // Clerk id previously changed and was already aliased).
   let uid = await resolveCanonicalUid(env, clerkRaw);
@@ -2808,7 +2841,7 @@ export async function me(req: Request, env: Env): Promise<Response> {
     // halves. Flip it off and the client stops gating immediately, with no
     // deploy — which matters because a bug here locks people out of the app.
     // It fails OPEN (`false`) if the config read throws, for the same reason.
-    profile_approved: prof.profile_vetted_at != null,
+    profile_approved: prof.profile_vetted_at != null && prof.profile_vetted_reason === "vetted_v2",
     profile_gate_enforced: await (async () => {
       try { return (await readConfig(env)).profileCompletionGate === true; } catch { return false; }
     })(),
