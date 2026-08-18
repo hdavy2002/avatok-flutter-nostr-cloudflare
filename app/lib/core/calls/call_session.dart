@@ -6627,7 +6627,15 @@ class CallSession {
       },
       // [CALL-DEADAIR-1] Per-rung timings for `call_first_audio_ms`, and the
       // overlapped peer-seat poll. Both are inert when the flag is off.
-      onStage: _stage,
+      onStage: (name) {
+        _stage(name);
+        if (name == 'sfu_peer_wait_rearmed') {
+          Analytics.capture('call_sfu_peer_wait_rearmed', {
+            'call_id': config.room,
+            'reason': 'early_poll_expired_before_accept',
+          });
+        }
+      },
       // [CALL-SFU-DUPAUDIO-1 2026-08-09] A repull now mutes the audio sections
       // it supersedes (2026-08-08 double-voice "echo" on both phones after a
       // handover dual-rejoin). `count > 0` here IS the bug happening and being

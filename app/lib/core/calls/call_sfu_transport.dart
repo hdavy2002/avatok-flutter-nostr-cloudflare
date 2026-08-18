@@ -50,6 +50,20 @@ import '../ava_log.dart';
 import '../audio_tuning.dart' as audio_tuning;
 import 'call_sfu_api.dart';
 
+/// Reuse an overlapped peer lookup when it succeeded, but never let a lookup
+/// that expired before Accept become a terminal negative. Silent prewarm can
+/// intentionally delay the real ring, so Accept needs a fresh bounded window.
+Future<T?> awaitEarlyPeerOrRearm<T>(
+  Future<T?>? early,
+  Future<T?> Function() rearm, {
+  void Function()? onRearm,
+}) async {
+  final result = early == null ? null : await early;
+  if (result != null) return result;
+  onRearm?.call();
+  return rearm();
+}
+
 /// Why a connect attempt gave up. Carried into `call_sfu_fallback` so a bad day
 /// at Cloudflare shows up as a chart rather than as "calls are broken".
 enum SfuFailure {
@@ -802,7 +816,11 @@ class CallSfuTransport {
       // frequently already resolved by the time `connectPull` runs.
       final earlyPeer = _pendingEarlyPeer;
       _pendingEarlyPeer = null;
-      final peer = await (earlyPeer ?? _awaitPeerAudio(peerWait ?? _peerWait));
+      final peer = await awaitEarlyPeerOrRearm(
+        earlyPeer,
+        () => _awaitPeerAudio(peerWait ?? _peerWait),
+        onRearm: () => onStage?.call('sfu_peer_wait_rearmed'),
+      );
       if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_waiting_for_peer');
       }

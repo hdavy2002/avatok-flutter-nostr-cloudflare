@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDataChannelOnlySdp } from "../src/routes/call_sfu";
+import { buildSfuPrepareBody, isDataChannelOnlySdp } from "../src/routes/call_sfu";
 
 describe("authenticated SFU transport prepare contract", () => {
   const dataOnlyOffer = [
@@ -23,5 +23,14 @@ describe("authenticated SFU transport prepare contract", () => {
 
   it("rejects a non-WebRTC application transport", () => {
     expect(isDataChannelOnlySdp("v=0\r\nm=application 9 TCP/DTLS/SCTP arbitrary\r\n")).toBe(false);
+  });
+
+  it("uses Cloudflare's camel-case DataChannel establish contract", () => {
+    const body = buildSfuPrepareBody(dataOnlyOffer);
+    expect(body).toEqual({
+      dataChannel: { location: "remote", dataChannelName: "server-events" },
+      sessionDescription: { type: "offer", sdp: dataOnlyOffer },
+    });
+    expect(body).not.toHaveProperty("datachannel");
   });
 });

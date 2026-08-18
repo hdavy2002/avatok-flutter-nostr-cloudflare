@@ -148,6 +148,18 @@ export function isDataChannelOnlySdp(sdp: string): boolean {
     /^m=application\s+\d+\s+UDP\/DTLS\/SCTP\s+webrtc-datachannel(?:\s|$)/.test(mediaSections[0]);
 }
 
+/** Exact Cloudflare Realtime DataChannel establish payload. */
+export function buildSfuPrepareBody(offerSdp: string): Record<string, unknown> {
+  return {
+    // Cloudflare's current Connection API expects camel-case `dataChannel`.
+    // The lower-case spelling is accepted by neither the live endpoint nor
+    // the official server-events example and caused every transport prewarm
+    // to fail with provider status 400.
+    dataChannel: { location: "remote", dataChannelName: PREPARE_DATA_CHANNEL },
+    sessionDescription: { type: "offer", sdp: offerSdp },
+  };
+}
+
 /**
  * The only place this module talks to Cloudflare. Body is parsed defensively:
  * a non-JSON error page from an edge must not throw inside a call path, it must
@@ -325,10 +337,7 @@ export async function callSfuPrepare(req: Request, env: Env, room: string, ctx: 
 
   const r = await sfu(env, `/sessions/${encodeURIComponent(sessionId)}/datachannels/establish`, {
     method: "POST",
-    body: JSON.stringify({
-      datachannel: { location: "remote", dataChannelName: PREPARE_DATA_CHANNEL },
-      sessionDescription: { type: "offer", sdp: offerSdp },
-    }),
+    body: JSON.stringify(buildSfuPrepareBody(offerSdp)),
   });
   if (!r.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {

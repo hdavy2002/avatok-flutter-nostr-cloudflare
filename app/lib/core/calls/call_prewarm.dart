@@ -63,6 +63,21 @@ class CallPrewarmedData {
 
 enum CallPrewarmPhase { idle, prewarming, ready, adopted, cancelled, failed }
 
+/// Missing legacy ring metadata is a wildcard, not a new lease. The native and
+/// Flutter ring paths can converge after an FCM lease has already been created;
+/// they must not supersede that nonce/generation with empty compatibility data.
+bool callPrewarmLeaseMatches({
+  required String existingCallId,
+  required String incomingCallId,
+  required String existingNonce,
+  required String incomingNonce,
+  required int? existingGeneration,
+  required int? incomingGeneration,
+}) =>
+    existingCallId == incomingCallId &&
+    (incomingNonce.isEmpty || existingNonce == incomingNonce) &&
+    (incomingGeneration == null || existingGeneration == incomingGeneration);
+
 class _Entry {
   _Entry({
     required this.callId,
@@ -120,9 +135,14 @@ class CallPrewarm {
     if (transportOnly && !RemoteConfig.callSilentTransportPrewarmV1) return;
     final old = _entry;
     if (old != null &&
-        old.callId == callId &&
-        (nonce.isEmpty || old.nonce == nonce) &&
-        old.generation == generation &&
+        callPrewarmLeaseMatches(
+          existingCallId: old.callId,
+          incomingCallId: callId,
+          existingNonce: old.nonce,
+          incomingNonce: nonce,
+          existingGeneration: old.generation,
+          incomingGeneration: generation,
+        ) &&
         !old.discarded) {
       return;
     }
@@ -239,7 +259,9 @@ class CallPrewarm {
         return;
       }
       e.transportPc = pc;
-      e.transportChannel = await pc.createDataChannel('avatok-prewarm', RTCDataChannelInit());
+      // Must match the Cloudflare Connection API's server-events establish
+      // contract. This carries no microphone or media track.
+      e.transportChannel = await pc.createDataChannel('server-events', RTCDataChannelInit());
       final connected = Completer<void>();
       pc.onConnectionState = (state) {
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected &&
