@@ -286,7 +286,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
       ...(taggedPrewarm ? {
         deviceId: prewarmDeviceId,
         prewarmNonce,
-        prewarmGeneration,
+        prewarmGeneration: preacceptGeneration,
       } : {}),
     }),
   });
@@ -436,7 +436,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
         callId: room, uid: g.uid, sessionId,
         deviceId: preacceptDeviceId,
         prewarmNonce: preacceptNonce,
-        prewarmGeneration,
+        prewarmGeneration: preacceptGeneration,
       }),
     });
     const authBody = (await authRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -504,7 +504,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
       ...(preacceptMedia ? {
         deviceId: preacceptDeviceId,
         prewarmNonce: preacceptNonce,
-        prewarmGeneration,
+        prewarmGeneration: preacceptGeneration,
         preacceptMedia: true,
       } : {}),
     }),
