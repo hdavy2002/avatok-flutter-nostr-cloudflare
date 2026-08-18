@@ -670,10 +670,8 @@ class _CallScreenState extends State<CallScreen> {
     _session.videoActive.addListener(_onSessionChanged);
     // [CALL-VIDEO-FIX-1 2026-08-17] Transitional "Adding video…" state for
     // the SFU mid-call camera-on — see `CallSession.videoUpgrading`. Only
-    // wired for rebuilds here; this screen does not yet render a distinct
-    // spinner/label off it, so today it is a no-op beyond keeping the
-    // listener contract consistent with every other video-affecting
-    // notifier on this session.
+    // wired for rebuilds here; the status line and Video tile below both show
+    // the in-flight state and disable repeat taps until negotiation settles.
     _session.videoUpgrading.addListener(_onSessionChanged);
     _session.remoteVideoStatus.addListener(_onSessionChanged);
     _session.onCellularHold.addListener(_onSessionChanged);
@@ -702,6 +700,7 @@ class _CallScreenState extends State<CallScreen> {
   /// audio…" while connected but not yet audible (flag on only), otherwise the
   /// ordinary status line (ringing/declined/etc — unchanged).
   String _connectedLabel(CallSession s, bool connected, bool audible) {
+    if (s.videoUpgrading.value) return 'Adding video…';
     if (connected && audible) return s.clock;
     if (connected && !audible) return 'Connecting audio…';
     return s.statusText;
@@ -1377,6 +1376,7 @@ class _CallScreenState extends State<CallScreen> {
     // "Connected"/timer look until audio is actually confirmed flowing.
     final audible = !RemoteConfig.callAudibleStateV1 || s.audibleReady.value;
     final video = s.videoActive.value;
+    final videoUpgrading = s.videoUpgrading.value;
     final remoteVideoStatus = s.remoteVideoStatus.value;
     final camOn = s.cameraOn.value;
     final speaker = s.speakerOn.value;
@@ -2152,9 +2152,9 @@ class _CallScreenState extends State<CallScreen> {
                           ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
                           : PhosphorIcons.videoCameraSlash(
                               PhosphorIconsStyle.bold),
-                      label: 'Video',
-                      active: video && camOn,
-                      onTap: s.toggleCamera,
+                      label: videoUpgrading ? 'Adding…' : 'Video',
+                      active: videoUpgrading || (video && camOn),
+                      onTap: videoUpgrading ? null : s.toggleCamera,
                     ),
                   ),
                   Expanded(
