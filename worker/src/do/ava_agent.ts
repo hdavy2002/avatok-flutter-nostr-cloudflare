@@ -88,7 +88,7 @@ import {
   type SongFlowState,
 } from "../lib/song_flow";
 import {
-  parseSongInterviewTurn, recoverSongInterviewDiscussion, songInterviewRecoveryReply,
+  parseSongInterviewTurn, recoverSongInterviewDiscussion, recoverSongInterviewLocally, songInterviewRecoveryReply,
   songInterviewUserPayload, SONG_INTERVIEW_FALLBACK_MODEL, SONG_INTERVIEW_SYSTEM,
   type SongInterviewTurn,
 } from "../lib/song_interview";
@@ -1863,6 +1863,24 @@ export class AvaAgentDO {
               uid, route: "ava_agent.song_interview", handled: true,
               extra: { turn_id: statusId, conv_kind: convKind, music_mode: activeInterviewFlow.kind ?? "vocal" },
             }).catch(() => {});
+            const localRecovery = recoverSongInterviewLocally(activeInterviewFlow, userText);
+            if (localRecovery) {
+              const recoveredFlow = withSongInterview(activeInterviewFlow, localRecovery.context, localRecovery.reply);
+              await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+                turn_id: statusId, conv_kind: convKind, private: priv,
+                phase: activeInterviewFlow.phase, outcome: "deterministic_interview_recovery",
+                recovery_action: localRecovery.action,
+              }).catch(() => {});
+              if (localRecovery.action === "generate") {
+                await this.postAva({ conv, uid, text: localRecovery.reply, private: priv, source: "music" });
+                songAction = { kind: "generate", flow: { ...recoveredFlow, phase: "generating", kind: "instrumental" } };
+              } else {
+                await this.state.storage.put(flowKey, stampFlowUpdated(recoveredFlow));
+                await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                await this.postAva({ conv, uid, text: localRecovery.reply, private: priv, source: "music" });
+                return { ok: true, status_id: statusId, recovered: true };
+              }
+            } else {
             // Preserve the semantic song state and terminate this route here.
             // Falling through to the generic tool loop produced the unrelated
             // "Ava unavailable" bubble seen in production and could also let a
@@ -1879,6 +1897,7 @@ export class AvaAgentDO {
               failure_code: String((e as any)?.message ?? e).split(":")[0].slice(0, 80),
             }).catch(() => {});
             return { ok: false, status_id: statusId, error: "song_interview_models_exhausted" };
+            }
           }
         }
 

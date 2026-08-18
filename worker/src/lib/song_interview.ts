@@ -131,6 +131,63 @@ export function songInterviewRecoveryReply(): string {
   return "I kept your song direction, but the producer pass did not return a usable reply. Send your next thought and I’ll continue from the same point.";
 }
 
+/**
+ * Deterministic recovery for the two high-confidence turns that must never
+ * loop on a canned model-failure reply: a duration answer and an explicit
+ * instrumental-generation request. It does not guess spend intent; generation
+ * is returned only when the user's latest words explicitly ask to create/make.
+ */
+export function recoverSongInterviewLocally(
+  flow: SongFlowState,
+  latestUserText: string,
+): SongInterviewTurn | null {
+  const latest = String(latestUserText || "").trim();
+  const history = `${flow.conversation ?? ""} ${latest}`;
+  const durationMatch = history.match(/(?:do\s+)?(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min)?\b/i);
+  const parsedMinutes = durationMatch ? Number(durationMatch[1]) : NaN;
+  const durationSeconds = Number.isFinite(parsedMinutes)
+    ? clampSongDurationSeconds(parsedMinutes <= 10 ? parsedMinutes * 60 : parsedMinutes)
+    : (flow.context?.durationSeconds ?? flow.durationSeconds);
+
+  const asksInstrumental = /\binstrumental\b/i.test(latest) && /\b(create|make|generate|compose)\b/i.test(latest);
+  if (asksInstrumental) {
+    const cleaned = latest
+      .replace(/\b(create|make|generate|compose)(?:\s+me)?\b/gi, "")
+      .replace(/\ban?\s+instrumental(?:\s+(?:music|song|track))?\b/gi, "")
+      .replace(/\bfor\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const theme = cleaned || flow.context?.theme || "a calm, happy morning";
+    const context: SongProductionContext = {
+      ...flow.context,
+      theme,
+      genre: flow.context?.genre || "ambient acoustic instrumental",
+      mood: flow.context?.mood || (/calm/i.test(latest) && /happy/i.test(latest)
+        ? "calm, warm and happy" : "calm and uplifting"),
+      instruments: flow.context?.instruments?.length
+        ? flow.context.instruments
+        : ["soft piano", "acoustic guitar", "warm pads"],
+      intendedUse: flow.context?.intendedUse || (/morning/i.test(latest) ? "happy morning listening" : undefined),
+      durationSeconds: durationSeconds ?? 60,
+    };
+    return {
+      action: "generate",
+      reply: `Got it — I’m creating a ${Math.round((context.durationSeconds ?? 60) / 6) / 10}-minute calm instrumental with soft piano, acoustic guitar and warm pads.`,
+      context,
+    };
+  }
+
+  const durationOnly = /^\s*(?:do\s+)?\d+(?:\.\d+)?\s*(?:minutes?|mins?|min)?\s*[.!]?\s*$/i.test(latest);
+  if (durationOnly && durationSeconds) {
+    return {
+      action: "discuss",
+      reply: `Perfect — I’ve set it to ${Math.round(durationSeconds / 6) / 10} minutes. Tell me the feeling or occasion, and I’ll shape the music around it.`,
+      context: { ...flow.context, durationSeconds },
+    };
+  }
+  return null;
+}
+
 export function songInterviewUserPayload(
   flow: SongFlowState,
   latestUserText: string,
