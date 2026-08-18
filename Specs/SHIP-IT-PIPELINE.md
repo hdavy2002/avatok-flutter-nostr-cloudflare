@@ -18,14 +18,14 @@ is staging or production, and do not ask APK versus AAB.
 
    ```bash
    gh workflow run android.yml --ref main \\
-     -f environment=prod -f artifact=both -f play_track=internal
+     -f environment=prod -f artifact=aab -f play_track=internal
    ```
 
 4. Approve the exact run at the production GitHub Environment gate.
-5. Confirm the workflow produced the signed APK and AAB, published the AAB to
+5. Confirm the workflow produced only the signed AAB (no APK), published it to
    Google Play Internal testing, and updated `latestAppBuild`.
-6. Report the run URL, build number, artifact links, Play publication status, and
-   pointer status.
+6. Verify the matching quiet FCM update fan-out completed, then report the run
+   URL, build number, AAB artifact, Play status, pointer status, and FCM result.
 
 ## Safety rules
 

@@ -64,11 +64,11 @@ asking the environment/format widgets above. Follow this fixed flow:
 
    ```bash
    gh workflow run android.yml --ref main \\
-     -f environment=prod -f artifact=both -f play_track=internal
+     -f environment=prod -f artifact=aab -f play_track=internal
    ```
 
-3. The workflow creates the signed arm64 APK and signed Play-upload AAB, uploads
-   both as GitHub artifacts/release assets, publishes the AAB to Google Play
+3. The workflow creates only the signed Play-upload AAB (no APK), uploads it as
+   the GitHub artifact/release asset, publishes the AAB to Google Play
    Internal testing, updates the app's `latestAppBuild` pointer, and sends the
    matching quiet FCM `app_update` notification to registered devices. The run
    MUST verify both `update_broadcast_last_build` and

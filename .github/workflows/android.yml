@@ -1,11 +1,10 @@
 name: Android build
 
 # All app builds run on GitHub Actions — never on a local machine.
-# Builds the app under app/ as a signed arm64 side-loadable APK and, when
-# requested, a signed Play-upload AAB. Production "ship it" runs request both,
-# publishes the AAB to Google Play Internal testing, updates latestAppBuild, and
-# verifies that the matching FCM update notification reached the fan-out worker.
-# The APK remains attached to the GitHub Release for side-loading.
+# Builds the app under app/ as a signed Play-upload AAB by default. Production
+# "ship it" runs are AAB-only: no side-load APK task or artifact is created.
+# The workflow publishes to Google Play Internal testing, updates latestAppBuild,
+# and verifies the matching FCM update notification reached the fan-out worker.
 
 # Staging lane (creator-marketplace Phase 1, A1): pushes to the `staging`
 # branch build with --dart-define=AVATOK_ENV=staging (app talks to
@@ -32,21 +31,14 @@ on:
         type: choice
         options: [staging, prod]
       artifact:
-        # [AVA-UPDATE-AUTO] Was `apk` (owner decision 2026-07-04: "for all builds
-        # going forward I need an APK and not AAB"). Now `both`, because that
-        # decision predates Play publishing and the two defaults contradicted each
-        # other: Play accepts ONLY an .aab, so `apk` + `play_track=internal` — the
-        # combination you get by touching nothing — failed the Play guard outright.
-        #
-        # `both` honours the original decision (the side-loadable arm64 APK is still
-        # built and still attached to the GitHub Release) while also producing the
-        # .aab that Play needs. Costs one extra Gradle task. Pick `apk` explicitly
-        # for a side-load-only build; `apk` + a Play track is refused by the guard.
-        description: 'Artifact format (both = side-load APK + the .aab Play needs)'
+        # Play releases are AAB-only (owner decision 2026-08-18). APK remains an
+        # explicit option for a non-Play diagnostic build, but a Play track rejects
+        # apk/both so "ship it" can never spend time creating a side-load artifact.
+        description: 'Artifact format (Play publishing requires AAB)'
         required: true
-        default: both
+        default: aab
         type: choice
-        options: [both, apk, aab]
+        options: [aab, apk, both]
       play_track:
         # [AVA-UPDATE-AUTO] Publishing to Play is what makes automatic updates
         # possible AT ALL: Play only auto-updates (and only serves the in-app
@@ -77,10 +69,8 @@ env:
   # inference from the branch. The `|| (...)` keeps the old branch-derived value
   # as a fallback for the (currently disabled) push trigger, where inputs are ''.
   AVATOK_ENV: ${{ inputs.environment || (github.ref_name == 'staging' && 'staging' || 'prod') }}
-  # APK is the DEFAULT (owner decision 2026-07-04: "for all builds going forward I
-  # need an APK and not AAB"). 2026-07-09: the owner asked to be able to CHOOSE per
-  # build, so `aab`/`both` are selectable — but nothing changes unless he picks them.
-  # Empty inputs (push trigger) => apk only, exactly as before.
+  # Play releases are AAB-only by default. APK/both remain available only for
+  # explicit non-Play diagnostic builds.
   BUILD_APK: ${{ (inputs.artifact == 'aab') && 'false' || 'true' }}
   BUILD_AAB: ${{ (inputs.artifact == 'aab' || inputs.artifact == 'both') && 'true' || 'false' }}
   # [AVA-UPDATE-AUTO] '' / 'none' => no Play upload. Empty inputs (push trigger)
@@ -127,7 +117,7 @@ jobs:
         run: |
           ENV="${AVATOK_ENV}"
           REF="${GITHUB_REF_NAME}"
-          echo "environment=$ENV  branch=$REF  artifact=${{ inputs.artifact || 'both' }}  play_track=${PLAY_TRACK}"
+          echo "environment=$ENV  branch=$REF  artifact=${{ inputs.artifact || 'aab' }}  play_track=${PLAY_TRACK}"
           if [ "$ENV" = "prod" ] && [ "$REF" != "main" ]; then
             echo "::error::PROD build requested from branch '$REF'. Production is built from 'main' only."
             exit 1
@@ -145,7 +135,11 @@ jobs:
               exit 1
             fi
             if [ "$BUILD_AAB" != "true" ]; then
-              echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=both (default) or artifact=aab."
+              echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab."
+              exit 1
+            fi
+            if [ "$BUILD_APK" = "true" ]; then
+              echo "::error::Play publishing is AAB-only. Re-run with artifact=aab; APK generation is intentionally disabled for faster releases."
               exit 1
             fi
           fi
@@ -332,7 +326,11 @@ jobs:
             exit 1
           fi
           if [ "$BUILD_AAB" != "true" ]; then
-            echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab or artifact=both."
+            echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab."
+            exit 1
+          fi
+          if [ "$BUILD_APK" = "true" ]; then
+            echo "::error::Play publishing is AAB-only. Re-run with artifact=aab; APK generation is intentionally disabled for faster releases."
             exit 1
           fi
           if [ "$HAS_PLAY_SA" != "true" ]; then
@@ -494,8 +492,8 @@ jobs:
         with:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
-          # [AAB-AUTO-1] BOTH artifacts are listed. `fail_on_unmatched_files: false`
-          # means whichever one this run didn't build is simply skipped.
+          # Non-Play diagnostic runs may still explicitly request an APK. The
+          # standard Play/ship path is AAB-only and leaves the APK glob empty.
           # [APK-NAME-1] The .apk is matched by GLOB (dist/*.apk) because its name now
           # carries the build number — a hardcoded name here would silently attach
           # nothing (fail_on_unmatched_files:false). Old versioned APKs accumulate on
@@ -506,18 +504,12 @@ jobs:
           fail_on_unmatched_files: false
           body: |
             Built by CI from `app/` — environment: **${{ env.AVATOK_ENV }}**,
-            format: **${{ inputs.artifact || 'apk' }}**.
+            format: **${{ inputs.artifact || 'aab' }}**.
 
-            **This build's APK: `${{ env.APK_NAME }}`** — download this one (the number
-            changes every build, so your browser never serves a stale cached file).
+            `avatok-call.aab` is the signed Google Play App Bundle. Play publishing
+            runs are AAB-only and intentionally do not build or attach a side-load APK.
 
-            Side-loadable, arm64-v8a only. Install directly on the device (enable
-            "Install unknown apps" for your browser / file manager if prompted). No
-            Play Store step involved.
-
-            `avatok-call.aab` — Play Store App Bundle, present only when this build
-            requested `aab` or `both`. Always signed with the Play upload key; the
-            build fails rather than emit a debug-signed bundle.
+            APK artifacts exist only for an explicit non-Play diagnostic run.
 
       # Automatic build tracking: drop a PostHog annotation (commit SHA + message)
       # on the project timeline for every APK/AAB build, matching the `release`
