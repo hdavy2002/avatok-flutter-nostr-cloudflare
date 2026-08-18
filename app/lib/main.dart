@@ -32,10 +32,12 @@ import 'core/font_scale.dart';
 import 'core/guest_session.dart';
 import 'core/onboarding_store.dart';
 import 'core/perf_monitor.dart';
+import 'core/process_exit_diagnostics.dart';
 import 'core/prefs_sync.dart';
 import 'core/profile_store.dart';
 import 'core/remote_config.dart';
 import 'core/theme.dart';
+import 'core/ui_freeze_monitor.dart';
 import 'core/ui/avatok_dark.dart'; // [UI-COLDSTART-1] boot loader matches the shell
 import 'core/ui/boot_screen.dart'; // [BOOT-FLASH-2] shared static launch screen
 import 'core/ui/zine_widgets.dart';
@@ -186,6 +188,8 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
   // analytics is ready. Aggregated into periodic ui_frame_stats events, never
   // per-frame. Idempotent + fully guarded.
   PerfMonitor.start();
+  UiFreezeMonitor.I.start();
+  unawaited(ProcessExitDiagnostics.reportPreviousExits());
   // Startup performance metric (PERF-6): ms from main() entry to first frame.
   // Proves/regresses the deferred-init work on real devices (target: <1s).
   if (firstFrameMs != null) {

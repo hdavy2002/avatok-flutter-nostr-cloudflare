@@ -103,6 +103,10 @@ class Analytics {
   /// event props so it survives even if this global is reset by a concurrent
   /// action; this global is a convenience for action-scoped bursts of events.
   static String? currentTraceId;
+  /// Most recent named user interaction. Freeze recovery events include this so
+  /// a stall can be tied to the button/action that immediately preceded it.
+  static String? lastInteractionName;
+  static int? lastInteractionAtMs;
   /// P13: true when the last-known transport is cellular (for latency dashboards).
   static bool get isCellular => _net == 'cell';
 
@@ -560,6 +564,8 @@ class Analytics {
   /// `screen`, build, release, email/phone all ride via _base automatically.
   static Future<void> uiInteraction(String name, int latencyMs,
       {String phase = 'first_paint', String? source, Map<String, Object>? extra}) {
+    lastInteractionName = name;
+    lastInteractionAtMs = DateTime.now().millisecondsSinceEpoch;
     return capture('ui_interaction', {
       'name': name,
       'latency_ms': latencyMs,

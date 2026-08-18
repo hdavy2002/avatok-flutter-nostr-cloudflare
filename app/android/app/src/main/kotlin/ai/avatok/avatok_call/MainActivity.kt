@@ -1,6 +1,8 @@
 package ai.avatok.avatok_call
 
 import android.content.Intent
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
@@ -30,6 +32,7 @@ class MainActivity : FlutterFragmentActivity() {
     // and hides the window in the app switcher.
     private val secureChannel = "avatok/secure_screen"
     private val incomingTapChannelName = "avatok/incoming_call_tap"
+    private val processExitChannelName = "avatok/process_exit"
     private var incomingTapChannel: MethodChannel? = null
 
     // [CALL-ACCEPT-FRAME-1] Native "Connecting…" continuity overlay + tap→
@@ -908,6 +911,47 @@ class MainActivity : FlutterFragmentActivity() {
         // Specs/SPIKE-2026-07-12-avadial-telecom.md.
         flutterEngine.plugins.add(ai.avatok.avadial.AvaDialPlugin())
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, processExitChannelName)
+            .setMethodCallHandler { call, result ->
+                if (call.method != "consumePreviousExits") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
+                    result.success(emptyList<Map<String, Any?>>())
+                    return@setMethodCallHandler
+                }
+                try {
+                    val prefs = getSharedPreferences("avatok_process_exit", MODE_PRIVATE)
+                    val lastReported = prefs.getLong("last_reported_timestamp", 0L)
+                    val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                    val exits = manager.getHistoricalProcessExitReasons(packageName, 0, 8)
+                        .filter { it.timestamp > lastReported }
+                        .sortedBy { it.timestamp }
+                    val payload = exits.map { info ->
+                        mapOf<String, Any?>(
+                            "reason" to processExitReasonName(info.reason),
+                            "reason_code" to info.reason,
+                            "status" to info.status,
+                            "importance" to info.importance,
+                            "pss_kb" to info.pss,
+                            "rss_kb" to info.rss,
+                            "timestamp_ms" to info.timestamp,
+                            "description" to (info.description ?: ""),
+                            "trace_available" to runCatching {
+                                info.traceInputStream?.use { true } ?: false
+                            }.getOrDefault(false),
+                        )
+                    }
+                    exits.maxOfOrNull { it.timestamp }?.let {
+                        prefs.edit().putLong("last_reported_timestamp", it).apply()
+                    }
+                    result.success(payload)
+                } catch (error: Throwable) {
+                    result.error("process_exit_read_failed", error.javaClass.simpleName, null)
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, secureChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -1045,6 +1089,23 @@ class MainActivity : FlutterFragmentActivity() {
         // "cold start from notification tap" case; onNewIntent (below) handles the
         // "app already running" case.
         forwardNotificationTapIfPresent(intent)
+    }
+
+    private fun processExitReasonName(reason: Int): String = when (reason) {
+        ApplicationExitInfo.REASON_ANR -> "anr"
+        ApplicationExitInfo.REASON_CRASH -> "java_crash"
+        ApplicationExitInfo.REASON_CRASH_NATIVE -> "native_crash"
+        ApplicationExitInfo.REASON_LOW_MEMORY -> "low_memory"
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "excessive_resource_usage"
+        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "initialization_failure"
+        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "permission_change"
+        ApplicationExitInfo.REASON_SIGNALED -> "signaled"
+        ApplicationExitInfo.REASON_USER_REQUESTED -> "user_requested"
+        ApplicationExitInfo.REASON_USER_STOPPED -> "user_stopped"
+        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "dependency_died"
+        ApplicationExitInfo.REASON_OTHER -> "other"
+        ApplicationExitInfo.REASON_UNKNOWN -> "unknown"
+        else -> "reason_$reason"
     }
 
     override fun onNewIntent(intent: Intent) {
