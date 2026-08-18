@@ -70,10 +70,10 @@ Future<T?> awaitEarlyPeerOrRearm<T>(
 /// testable without a native WebRTC runtime.
 bool callSfuAudioReplaceContractHolds({
   required String? senderTrackId,
-  required String expectedTrackId,
+  required String? expectedTrackId,
   required bool renegotiated,
 }) =>
-    expectedTrackId.isNotEmpty &&
+    (expectedTrackId?.isNotEmpty ?? false) &&
     senderTrackId == expectedTrackId &&
     !renegotiated;
 

@@ -333,11 +333,12 @@ class CallPrewarm {
         throw StateError('transport_audio_mid_unresolved');
       }
       e.transportAudioMid = audioMid;
-      e.transportAudioTrackName = 'audio-${join.sessionId}';
+      final audioTrackName = 'audio-${join.sessionId}';
+      e.transportAudioTrackName = audioTrackName;
       _capture('call_prewarm_audio_publish_started', {
         'call_id': e.callId,
         'mid': audioMid,
-        'track_name': e.transportAudioTrackName,
+        'track_name': audioTrackName,
         'privacy': 'sendonly_null_track',
       });
       final answer = await CallSfuApi.publishPreAccept(
@@ -347,7 +348,7 @@ class CallPrewarm {
         <Map<String, dynamic>>[{
           'mid': audioMid,
           'kind': 'audio',
-          'trackName': e.transportAudioTrackName,
+          'trackName': audioTrackName,
         }],
         prewarmNonce: e.nonce,
         prewarmGeneration: e.generation ?? 1,
