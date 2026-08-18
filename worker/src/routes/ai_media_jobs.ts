@@ -42,21 +42,31 @@ function veniceAsAiJob(
   coverUrl: string | null = null,
 ): any {
   if (!job) return null;
+  const baseStatus = job.status === "submitting" || job.status === "polling" || job.status === "delivering"
+    ? "running" : job.status;
+  // A song is not user-ready until its artwork sidecar is also ready. Do not
+  // expose the audio URL/play controls during that gap: the client keeps the
+  // black generating card visible. A terminal cover failure becomes a failed
+  // job card instead of a misleading playable card with missing artwork.
+  const status = job.kind === "venice_music_generate" && job.status === "succeeded"
+    ? (job.cover_status === "succeeded" ? "succeeded"
+      : job.cover_status === "failed" ? "failed" : "running")
+    : baseStatus;
   return {
     job_id: job.job_id,
     owner_uid: job.owner_uid,
     conv_id: job.conv_id,
     kind: job.kind,
-    status: job.status === "submitting" || job.status === "polling" || job.status === "delivering" ? "running" : job.status,
+    status,
     source_media_id: null,
     label: job.label ?? (job.kind === "venice_video_generate" ? "Generating your video…" : "Generating your song…"),
     progress: null,
     artifact_media_id: job.artifact_media_id,
-    artifact_url: artifactUrl,
+    artifact_url: status === "succeeded" ? artifactUrl : null,
     song_title: job.song_title,
     song_description: job.song_description,
     cover_media_id: job.cover_media_id,
-    cover_url: coverUrl,
+    cover_url: status === "succeeded" ? coverUrl : null,
     cover_status: job.cover_status,
     // Video jobs reuse the same safe card metadata/artwork columns as music;
     // expose modality-specific names to clients and OG/share code.
@@ -65,7 +75,8 @@ function veniceAsAiJob(
     thumbnail_media_id: job.kind === "venice_video_generate" ? job.cover_media_id : null,
     thumbnail_url: job.kind === "venice_video_generate" ? coverUrl : null,
     thumbnail_status: job.kind === "venice_video_generate" ? job.cover_status : null,
-    error_code: job.error_code,
+    error_code: job.kind === "venice_music_generate" && job.status === "succeeded" && job.cover_status === "failed"
+      ? "artifact_unavailable" : job.error_code,
     reservation_id: job.reservation_id,
     created_at: job.created_at,
     updated_at: job.updated_at,
