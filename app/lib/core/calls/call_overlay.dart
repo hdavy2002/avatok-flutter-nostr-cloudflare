@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../features/avatok/call_screen.dart';
@@ -83,6 +84,15 @@ class _MinimizedLayer extends StatelessWidget {
                       ],
                     ),
                   );
+                }
+                // Android owns the cross-app minimized-call surface through
+                // CallForegroundService's platform CallStyle notification. On
+                // Android 13+ that is the sticky, tappable ongoing-call chip in
+                // the system header, so every other app remains below it. A
+                // second green Flutter overlay only covered AvaTOK's own menus
+                // and could never affect another app's viewport.
+                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+                  return const SizedBox.shrink();
                 }
                 return Positioned.fill(
                   child: CallAudioPill(
