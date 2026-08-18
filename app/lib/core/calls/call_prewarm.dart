@@ -583,7 +583,7 @@ class CallPrewarm {
     }
   }
 
-  void _capture(String event, Map<String, dynamic> props) {
+  void _capture(String event, Map<String, Object> props) {
     try {
       Analytics.capture(event, props);
     } catch (_) {}
