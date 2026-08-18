@@ -122,6 +122,7 @@ class CallSfuTransport {
     required this.room,
     required this.createPeerConnection,
     this.configurePeerConnection,
+    this.installAdoptedPeerConnection,
     this.enableRed = false,
     this.onRedNegotiated,
     this.onStage,
@@ -148,6 +149,10 @@ class CallSfuTransport {
 
   /// Apply codec and sender limits after SFU tracks exist, before publishing.
   final Future<void> Function(RTCPeerConnection pc)? configurePeerConnection;
+
+  /// Installs CallSession's handlers on a PC created by the foreground
+  /// transport prewarm. Normal PCs are wired by their canonical creator.
+  final void Function(RTCPeerConnection pc)? installAdoptedPeerConnection;
 
   /// [CALL-MEDIA-540P-1] Opus RED (RFC 2198), passed in rather than read here
   /// so this transport stays free of RemoteConfig and both call paths are
@@ -489,12 +494,14 @@ class CallSfuTransport {
     /// this: a network-recovery join must always be current, never a stale
     /// pre-ring seat).
     CallSfuJoinResult? prewarmedJoin,
+    RTCPeerConnection? prewarmedPc,
   }) async {
     final publishFailure = await connectPublish(
       localStream: localStream,
       fallbackIceServers: fallbackIceServers,
       video: video,
       prewarmedJoin: prewarmedJoin,
+      prewarmedPc: prewarmedPc,
     );
     if (publishFailure != null) return publishFailure;
     return connectPull(video: video);
@@ -519,6 +526,7 @@ class CallSfuTransport {
     required List<Map<String, dynamic>> fallbackIceServers,
     required bool video,
     CallSfuJoinResult? prewarmedJoin,
+    RTCPeerConnection? prewarmedPc,
   }) async {
     try {
       return await _serialize(
@@ -531,6 +539,7 @@ class CallSfuTransport {
           fallbackIceServers: fallbackIceServers,
           video: video,
           prewarmedJoin: prewarmedJoin,
+          prewarmedPc: prewarmedPc,
           token: token,
         ),
       );
@@ -556,6 +565,7 @@ class CallSfuTransport {
     required List<Map<String, dynamic>> fallbackIceServers,
     required bool video,
     CallSfuJoinResult? prewarmedJoin,
+    RTCPeerConnection? prewarmedPc,
     // [CALL-VIDEO-FIX-2] The generation this body was issued under. Shared
     // state (`_sessionId`, `_pc`) is only written while it is still current —
     // a timed-out body keeps running and must not clobber its successor.
@@ -608,7 +618,7 @@ class CallSfuTransport {
       // clean `disposed_during_setup` result (seen on the caller of prod call
       // avatok-9f407abf, 2026-08-14). The local stays valid; the `_disposed`
       // checks remain the clean exits.
-      final pc = await createPeerConnection(
+      final pc = prewarmedPc ?? await createPeerConnection(
         join.iceServers.isNotEmpty ? join.iceServers : fallbackIceServers,
       );
       // [CALL-VIDEO-FIX-2] Superseded while the PC was being built: close what
@@ -618,6 +628,9 @@ class CallSfuTransport {
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_during_setup');
       }
       _pc = pc;
+      if (prewarmedPc != null) {
+        installAdoptedPeerConnection?.call(pc);
+      }
       if (_disposed) {
         await pc.close();
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'disposed_during_setup');

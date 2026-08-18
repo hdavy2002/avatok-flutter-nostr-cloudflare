@@ -462,6 +462,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     rings: Number((callPolicyConfig as { receptionistRings?: number } | null)?.receptionistRings ?? 4),
     cycleMs: Number((callPolicyConfig as { ringCycleMs?: number } | null)?.ringCycleMs ?? 6000),
   };
+  const silentTransportPrewarmConfigured =
+    (callPolicyConfig as { callSilentTransportPrewarmV1?: boolean } | null)?.callSilentTransportPrewarmV1 === true;
+  const silentPrewarmDeadlineMs = Math.max(2_000, Math.min(30_000,
+    Number((callPolicyConfig as { callSilentPrewarmDeadlineMs?: number } | null)?.callSilentPrewarmDeadlineMs ?? 12_000)));
   // The ring lifetime this call will actually be given. Used for the ring-receipt
   // token TTL as well as the DO deadline — a token that expired at 20 s while the
   // ring ran to 28 s would 403 exactly the late cycles this feature counts.
@@ -1151,7 +1155,24 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // `expired` on precisely the receipts that decide the handoff. With the flag
   // off `ringLifetimeMs()` returns CALL_RING_LIFETIME_MS, so this line is
   // unchanged in that configuration.
-  const expiresAt = Date.now() + ringLifetime;
+  // [CALL-SILENT-PREWARM-1] The action/ring capabilities must cover the silent
+  // preparation lease *plus* the full server-owned ringing window. Reusing the
+  // legacy ring-only lifetime would make Accept/Decline and ring receipts
+  // expire part-way through an otherwise valid post-prewarm ring.
+  // Never insert a silent delay for a killed/background-only app. A live
+  // Inbox socket proves the main Flutter isolate is available to own WebRTC;
+  // otherwise the call uses the unchanged immediate ring path.
+  let silentTransportPrewarm = false;
+  if (silentTransportPrewarmConfigured && b.kind !== "video" && presenceState === "fresh") {
+    try {
+      const liveProbe = await env.INBOX.get(env.INBOX.idFromName(b.to))
+        .fetch("https://inbox/live", { method: "GET" });
+      const live = (await liveProbe.json().catch(() => ({}))) as { live?: boolean; count?: number };
+      silentTransportPrewarm = liveProbe.ok && (live.live === true || (live.count ?? 0) > 0);
+    } catch { /* fail open to the ordinary immediate ring */ }
+  }
+  const expiresAt = Date.now() + ringLifetime +
+    (silentTransportPrewarm ? silentPrewarmDeadlineMs : 0);
   // Reconnects are new WebSocket admissions, so this must outlive ringing.
   // Terminal CallRoom state remains the authoritative revocation boundary.
   const roomTokenExpiresAt = Date.now() + CALL_ROOM_TOKEN_LIFETIME_MS;
@@ -1173,6 +1194,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   let ringSeq: number | null = null;
   let ringDeadlineMs: number | null = null;
   let calleeLive = false;
+  const prewarmNonce = silentTransportPrewarm ? crypto.randomUUID() : "";
+  const prewarmGeneration = 1;
   try {
     const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
     const participantResponse = await callStub.fetch("https://call-room/participants", {
@@ -1193,10 +1216,25 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         // did not — that is a defect, and the DO asserts it rather than letting
         // it look like an ordinary quiet call.
         presenceAtDial: presenceState,
+        ...(silentTransportPrewarm ? {
+          silentPrewarm: {
+            enabled: true, nonce: prewarmNonce, generation: prewarmGeneration,
+            deadlineMs: Date.now() + silentPrewarmDeadlineMs,
+            invite: { callId: b.callId, from: ctx.uid, to: b.to,
+              fromName: resolvedName, callType: b.kind ?? "audio", traceId,
+              ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+              roomToken: calleeRoomToken,
+              ...(callerAvatarUrl ? { callerAvatarUrl } : {}),
+              ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
+              identitySnapshotVersion,
+              ...(isDialpad ? { via: "dialpad" } : {}),
+            },
+          },
+        } : {}),
       }),
     });
     const participantResult = await participantResponse.json().catch(() => null) as
-      { ok?: boolean; seq?: number; ringDeadlineMs?: number } | null;
+      { ok?: boolean; seq?: number; ringDeadlineMs?: number; prewarming?: boolean; prewarm_deadline_ms?: number } | null;
     if (!participantResponse.ok || participantResult?.ok !== true) {
       markRingStage("participants_failed");
       await settleRingPath();
@@ -1210,6 +1248,43 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // enforce — the single ring timeout, stated once by its owner.
     ringDeadlineMs = typeof participantResult.ringDeadlineMs === "number"
       ? participantResult.ringDeadlineMs : null;
+    if (participantResult.prewarming === true) {
+      // The callee's silent wake is delivered by the existing durable push lane;
+      // no caller ringback starts until CallRoom reports call-ringing.
+      // Mirror it over the already-probed live Inbox lane so the main isolate
+      // can begin immediately instead of waiting on foreground FCM delivery.
+      try {
+        await env.INBOX.get(env.INBOX.idFromName(b.to)).fetch("https://inbox/event", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "call_prewarm", callId: b.callId,
+            prewarmNonce, prewarmGeneration,
+            prewarmDeadlineMs: participantResult.prewarm_deadline_ms ?? Date.now() + silentPrewarmDeadlineMs,
+            trace_id: traceId, ts: Date.now() }),
+        });
+      } catch { /* FCM plus the server deadline remain the fallback */ }
+      await env.Q_PUSH.send({
+        kind: "call-prewarm", to: b.to, from: ctx.uid, fromName: resolvedName,
+        callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
+        ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
+        roomToken: calleeRoomToken, prewarmNonce,
+        prewarmGeneration, prewarmDeadlineMs: participantResult.prewarm_deadline_ms ?? Date.now() + silentPrewarmDeadlineMs,
+      } as any);
+      const prewarmPolicy = (async () => {
+        try {
+          const noAnswer = b.kind === "video" ? { eligible: false, reason: "video" }
+            : await receptionistNoAnswerEligibility(env, b.to as string);
+          await callStub.fetch("https://call-room/no-answer-policy", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ autoReceptionistEligible: noAnswer.eligible, noAnswerReason: noAnswer.reason }),
+          });
+        } catch { /* fallback remains a no-answer outcome */ }
+      })();
+      if (execCtx) execCtx.waitUntil(prewarmPolicy); else await prewarmPolicy;
+      return json({ sent: 1, reachable: true, prewarming: true,
+        prewarmNonce, prewarmGeneration,
+        prewarmDeadlineMs: participantResult.prewarm_deadline_ms ?? null,
+        ringbackUrl: "", roomToken: callerRoomToken, presence: presenceState });
+    }
   } catch (e) {
     console.error("Failed to register ring receipt token / participants in CallRoom:", String(e));
     markRingStage("participants_threw");
@@ -1636,6 +1711,26 @@ export async function callNativeDecline(req: Request, env: Env): Promise<Respons
   return json({ ok: true, seq: out.seq ?? null });
 }
 
+/** [CALL-SILENT-PREWARM-1] Callee transport-ready acknowledgement. The DO
+ * validates membership plus the nonce/generation/device and stamps the single
+ * server ring anchor; the client never supplies ring_started_at. */
+export async function callPrewarmReady(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return json({ error: u.error }, u.status);
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const callId = String(b.callId ?? "").slice(0, 128);
+  const nonce = String(b.nonce ?? "").slice(0, 128);
+  const deviceId = String(b.deviceId ?? "").slice(0, 128);
+  const generation = Number(b.generation);
+  if (!callId || !nonce || !deviceId || !Number.isFinite(generation)) return json({ error: "callId, nonce, generation and deviceId required" }, 400);
+  const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+  const r = await stub.fetch("https://call/prewarm-ready", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ callId, nonce, generation, deviceId, sessionId: b.sessionId, authenticatedUid: u.uid }),
+  });
+  return json(await r.json().catch(() => ({ ok: false, error: "call_authority_unavailable" })), r.status);
+}
+
 export async function callStatus(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -1895,6 +1990,16 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
     role?: string;
   };
   if (!b.callId || !b.command) return json({ error: "callId and command required" }, 400);
+  if (b.command === "prewarm_ready") {
+    const d = b.data ?? {};
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+    const r = await stub.fetch("https://call/prewarm-ready", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ callId: b.callId, nonce: d.nonce, generation: d.generation,
+        deviceId: d.deviceId, sessionId: d.sessionId, authenticatedUid: ctx.uid }),
+    });
+    return json(await r.json().catch(() => ({ ok: false, error: "authority_unreachable" })), r.status);
+  }
 
   // [CALL-AUTHZ-1 2026-08-01] The client-sent `role` is IGNORED.
   //
@@ -1982,6 +2087,36 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
         ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
       });
     } catch { /* the socket path already delivered; the push is the backstop */ }
+  }
+
+  // [CALL-SILENT-PREWARM-1] First answer wins across every handset logged in
+  // as the callee. `accept` must never be sent to the caller (see the guard
+  // above), but the callee's OTHER devices do need an authoritative teardown.
+  // Address this status back to the authenticated actor and tag the winning
+  // device so that handset can ignore its own cleanup frame.
+  if (b.command === "accept_call" && out.ok === true && out.changed === true &&
+      out.replayed !== true && out.actor === "callee") {
+    const rawWinner = b.data?.winnerDeviceId;
+    const winnerDeviceId = typeof rawWinner === "string" ? rawWinner.trim().slice(0, 128) : "";
+    if (winnerDeviceId) try {
+      const inboxStub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
+      await inboxStub.fetch("https://inbox/event", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "call_status", callId: b.callId, status: "answered_elsewhere",
+          winner_device_id: winnerDeviceId, ts: Date.now(),
+          ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
+        }),
+      });
+    } catch { /* best-effort fast lane; the durable push remains */ }
+    if (winnerDeviceId) try {
+      await env.Q_PUSH.send({
+        kind: "call-status", to: ctx.uid, callId: b.callId,
+        status: "answered_elsewhere", winner_device_id: winnerDeviceId,
+        ts: Date.now(),
+        ...(typeof out.seq === "number" ? { seq: out.seq } : {}),
+      });
+    } catch { /* the live self-lane already delivered where available */ }
   }
 
   try {

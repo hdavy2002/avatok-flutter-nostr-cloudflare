@@ -141,6 +141,9 @@ class IncomingBusinessCallScreen extends StatefulWidget {
   /// still show a blank circle on the frame that matters.
   final String avatarVersion;
   final bool video;
+  final String prewarmNonce;
+  final int? prewarmGeneration;
+  final String prewarmNetworkIdentity;
 
   const IncomingBusinessCallScreen({
     super.key,
@@ -150,6 +153,9 @@ class IncomingBusinessCallScreen extends StatefulWidget {
     this.avatarUrl = '',
     this.avatarVersion = '',
     this.video = false,
+    this.prewarmNonce = '',
+    this.prewarmGeneration,
+    this.prewarmNetworkIdentity = '',
   });
 
   @override
@@ -398,6 +404,10 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
 
   Map<String, dynamic> get _extra => {
         'callId': widget.callId,
+        if (widget.prewarmNonce.isNotEmpty) 'prewarmNonce': widget.prewarmNonce,
+        if (widget.prewarmGeneration != null) 'prewarmGeneration': widget.prewarmGeneration,
+        if (widget.prewarmNetworkIdentity.isNotEmpty)
+          'prewarmNetworkIdentity': widget.prewarmNetworkIdentity,
         'from': widget.fromUid,
         'fromName': widget.fromName,
         'kind': widget.video ? 'video' : 'audio',

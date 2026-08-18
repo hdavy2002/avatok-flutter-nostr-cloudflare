@@ -42,6 +42,7 @@
  * THE CONTRACT, in the order a client uses it
  * -------------------------------------------
  *   POST /api/callsfu/:room/join    -> mint a CF session, get ICE servers
+ *   POST /api/callsfu/:room/prepare -> establish the datachannel-only transport
  *   POST /api/callsfu/:room/publish -> client offers, SFU answers (our tracks up)
  *   GET  /api/callsfu/:room/peer    -> what is the other side publishing?
  *   POST /api/callsfu/:room/pull    -> SFU offers, client answers (their tracks down)
@@ -131,6 +132,7 @@ const ICE_TTL_S = 6 * 3600;
 
 /** Same ceiling the group path enforces, so both transports agree. */
 const MAX_TRACK_NAME_LEN = 128;
+const PREPARE_DATA_CHANNEL = "server-events";
 
 /** Cloudflare Realtime is configured, or every route here fails closed. */
 function sfuConfigured(env: Env): boolean {
@@ -138,6 +140,13 @@ function sfuConfigured(env: Env): boolean {
 }
 
 type SfuResult = { ok: boolean; status: number; data: Record<string, unknown> };
+
+/** A prewarm offer must not be able to smuggle media into the transport-only path. */
+export function isDataChannelOnlySdp(sdp: string): boolean {
+  const mediaSections = sdp.split(/\r?\n/).filter((line) => line.startsWith("m="));
+  return mediaSections.length === 1 &&
+    /^m=application\s+\d+\s+UDP\/DTLS\/SCTP\s+webrtc-datachannel(?:\s|$)/.test(mediaSections[0]);
+}
 
 /**
  * The only place this module talks to Cloudflare. Body is parsed defensively:
@@ -284,6 +293,77 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
     ...(ice.relayReason ? { relay_reason: ice.relayReason } : {}),
     media: { audio: true, video: g.video },
   });
+}
+
+/**
+ * POST /api/callsfu/:room/prepare — establish a datachannel-only transport.
+ *
+ * Cloudflare's `/datachannels/establish` endpoint accepts an optional client
+ * offer and returns the SFU answer. This route deliberately accepts only an
+ * application m-line: prewarm is transport-only and must never become a media
+ * publish bypass. The DO marker is written only after Cloudflare accepts the
+ * offer, and is bound to the authenticated uid's currently owned seat.
+ */
+export async function callSfuPrepare(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
+  const g = await guard(req, env, ctx);
+  if (g instanceof Response) return g;
+
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
+  const offer = b.offer as { type?: unknown; sdp?: unknown } | undefined;
+  const offerSdp = typeof offer?.sdp === "string" ? offer.sdp : "";
+  const offerType = typeof offer?.type === "string" ? offer.type : "offer";
+  if (!sessionId || !offerSdp || offerType !== "offer") {
+    return json({ error: "session_and_offer_required" }, 400);
+  }
+  if (!isDataChannelOnlySdp(offerSdp)) {
+    return json({ error: "datachannel_only_offer_required" }, 400);
+  }
+  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+    return json({ error: "session_not_owned" }, 403);
+  }
+
+  const r = await sfu(env, `/sessions/${encodeURIComponent(sessionId)}/datachannels/establish`, {
+    method: "POST",
+    body: JSON.stringify({
+      datachannel: { location: "remote", dataChannelName: PREPARE_DATA_CHANNEL },
+      sessionDescription: { type: "offer", sdp: offerSdp },
+    }),
+  });
+  if (!r.ok) {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
+      call_id: room, session_id: sessionId, stage: "prepare", status: r.status,
+    }));
+    return json({ error: "prepare_failed", status: r.status }, 502);
+  }
+  const providerAnswer = r.data.sessionDescription as { type?: unknown; sdp?: unknown } | undefined;
+  if (r.data.requiresImmediateRenegotiation === true ||
+      providerAnswer?.type !== "answer" || typeof providerAnswer.sdp !== "string" || !providerAnswer.sdp) {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
+      call_id: room, session_id: sessionId, stage: "prepare_contract",
+      requires_renegotiation: r.data.requiresImmediateRenegotiation === true,
+    }));
+    return json({ error: "prepare_contract_unsupported" }, 502);
+  }
+
+  // The marker is intentionally a separate DO operation: generic seat writes
+  // from media publish must not be able to claim transport readiness.
+  const marked = await roomFetch(env, room, "/sfu-seat-prepare", {
+    method: "POST",
+    body: JSON.stringify({ callId: room, uid: g.uid, sessionId }),
+  });
+  if (!marked.ok) {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
+      call_id: room, session_id: sessionId, stage: "prepare_marker", status: marked.status,
+    }));
+    return json({ error: "sfu_prepare_marker_failed", status: marked.status }, 502);
+  }
+
+  ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_prepared", APP, {
+    call_id: room, session_id: sessionId, datachannel: PREPARE_DATA_CHANNEL,
+  }));
+  return json({ ok: true, session_id: sessionId, datachannel: PREPARE_DATA_CHANNEL,
+    answer: providerAnswer, requires_immediate_renegotiation: false });
 }
 
 /**

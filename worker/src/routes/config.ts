@@ -114,6 +114,10 @@ export interface PlatformConfig {
    * Client mirror: RemoteConfig.callPrerollV1.
    */
   callPrerollV1: boolean;
+  /** Server-authoritative silent transport prewarm; dark until matching client ships. */
+  callSilentTransportPrewarmV1: boolean;
+  /** Maximum silent prewarm window before the server promotes the call to a cold ring. */
+  callSilentPrewarmDeadlineMs: number;
   /**
    * [CALL-RTK-2 2026-08-08] 1:1 media via a Cloudflare RealtimeKit meeting join.
    *
@@ -1472,6 +1476,8 @@ const DEFAULTS: PlatformConfig = {
   // [CALL-PREROLL-RETIRE-1] Retired. New clients hard-disable pre-Accept
   // media acquisition; retain the false key only so older builds stay dark.
   callPrerollV1: false,
+  callSilentTransportPrewarmV1: false,
+  callSilentPrewarmDeadlineMs: 12_000,
   // [CALL-RTK-2 2026-08-08] RealtimeKit migration, Phase 0. Both ship FALSE:
   // the worker route exists and the secrets may be set, but no user reaches it
   // until a client build implements the seam and a two-phone test passes.
@@ -2114,7 +2120,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [CALL-RTK-2 2026-08-08] RealtimeKit join deadline — numeric, must be here
     // or `flags.sh set callRtkJoinDeadlineSec=15` 400s `bad type`.
     // (`callRealtimeKitV1` / `groupRealtimeKitV1` are BOOLEANS — not listed.)
-    "callRtkJoinDeadlineSec",
+    "callRtkJoinDeadlineSec", "callSilentPrewarmDeadlineMs",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",

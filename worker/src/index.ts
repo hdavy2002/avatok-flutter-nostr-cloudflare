@@ -131,7 +131,7 @@ import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceBeat } from "./routes/conference";
 import { groupCallJoin, groupCallRejoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus, groupCallInvite } from "./routes/groupcall";
-import { callSfuJoin, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuHeartbeat, callSfuClose } from "./routes/call_sfu";
+import { callSfuJoin, callSfuPrepare, callSfuPublish, callSfuPeer, callSfuPull, callSfuRenegotiate, callSfuHeartbeat, callSfuClose } from "./routes/call_sfu";
 import { callRtkJoin } from "./routes/call_rtk";
 import { conferenceRoomRoute } from "./routes/conference_room";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
@@ -487,10 +487,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // ringing, the 2-peer cap and the participant identities — is the authority for
     // both transports. There is deliberately no `ws` verb here: 1:1 signalling
     // stays on the existing CallRoom socket, only the MEDIA path is new.
-    const cs = p.match(/^\/api\/callsfu\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|peer|pull|renegotiate|heartbeat|close)$/);
+    const cs = p.match(/^\/api\/callsfu\/([A-Za-z0-9_:.-]{1,64})\/(join|prepare|publish|peer|pull|renegotiate|heartbeat|close)$/);
     if (cs) {
       const room = cs[1];
       if (cs[2] === "join" && req.method === "POST") return await callSfuJoin(req, env, room, ctx);
+      if (cs[2] === "prepare" && req.method === "POST") return await callSfuPrepare(req, env, room, ctx);
       if (cs[2] === "publish" && req.method === "POST") return await callSfuPublish(req, env, room, ctx);
       if (cs[2] === "peer" && req.method === "GET") return await callSfuPeer(req, env, room, ctx);
       if (cs[2] === "pull" && req.method === "POST") return await callSfuPull(req, env, room, ctx);

@@ -89,6 +89,11 @@ class CallSessionConfig {
   /// hears ringback into the void ([MULTIACCT-4] guarantee is preserved even
   /// when RemoteConfig.receptTakeoverGuard is off).
   final bool deferRing;
+  /// Silent transport prewarm identity carried from the incoming ring. Empty /
+  /// null means the normal cold path and preserves older callers.
+  final String prewarmNonce;
+  final int? prewarmGeneration;
+  final String prewarmNetworkIdentity;
   const CallSessionConfig({
     required this.room,
     required this.title,
@@ -102,6 +107,9 @@ class CallSessionConfig {
     this.traceId = '',
     this.business = false,
     this.deferRing = false,
+    this.prewarmNonce = '',
+    this.prewarmGeneration,
+    this.prewarmNetworkIdentity = '',
   });
 }
 
@@ -1019,6 +1027,7 @@ class CallSession {
   Timer? _busyCardTimeout;             // abandons an untouched busy card after 60s
   StreamSubscription? _statusSub;
   bool _takeoverGuard = false;
+  bool _silentTransportPrewarming = false;
   bool _deviceRinging = false;
   Timer? _deviceRingingTimer;
   // [DIAL-NARRATION-1] (owner request 2026-07-09): progressive status lines while
@@ -1066,6 +1075,31 @@ class CallSession {
     // relative to it. Only the first writer's deadline matters (see above), so
     // only schedule once too.
     if (firstTime) _schedulePrewarm();
+  }
+
+  /// The /api/call response says the callee is still in the silent transport
+  /// window. Keep the caller in finding/waking state: no ringback, no
+  /// no-answer/Ava timer, and no local deadline until CallRoom emits its
+  /// authoritative `call-ringing` frame.
+  void notePrewarming({int? deadlineMs}) {
+    if (_ended || _connected || !config.outgoing) return;
+    _silentTransportPrewarming = true;
+    _deviceRingingTimer?.cancel();
+    _deviceRingingTimer = null;
+    _ringAckFallback?.cancel();
+    _ringAckFallback = null;
+    _ringTimeout?.cancel();
+    _ringTimeout = null;
+    _pendingAckResult = null;
+    _ringAckHandled = false;
+    _ringback.stop();
+    _setDialStage("Waking $_peerFirst's phone…");
+    _maybeStartCallerPrejoin();
+    Analytics.capture('caller_waiting_room', {
+      'call_id': config.room,
+      'phase': 'waking',
+      'prewarm_deadline_ms': deadlineMs ?? -1,
+    });
   }
 
   /// [CALL-ROUTED-OPTIMISTIC-1 2026-08-03] The server answered the place-call
@@ -6574,6 +6608,7 @@ class CallSession {
         await _applyVideoCodecPreference(pc);
         await _preferResolutionOnVideo(pc, cellular: await _isLikelyCellular());
       },
+      installAdoptedPeerConnection: _installAdoptedSfuPc,
       // [CALL-MEDIA-540P-1] Same flag the P2P tuner reads, so RED does not
       // switch itself off the moment a call lands on the SFU instead.
       enableRed: RemoteConfig.callAudioRedExperimentV1,
@@ -6621,6 +6656,17 @@ class CallSession {
       },
       overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
     );
+  }
+
+  /// Wire the one canonical PC that was negotiated by CallPrewarm while the
+  /// app was foregrounded. No media has existed on it; this is the accept-time
+  /// handoff that makes it the CallSession-owned connection.
+  void _installAdoptedSfuPc(RTCPeerConnection pc) {
+    final myPcGen = ++_pcGeneration;
+    _resetPlayoutHealthBaselines();
+    _pc = pc;
+    pc.onTrack = (e) => _handleRemoteTrack(pc, myPcGen, e);
+    pc.onConnectionState = (s) => _handleConnectionState(pc, s);
   }
 
   /// [CALL-PREJOIN-1 2026-08-16] P2 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md.
@@ -6802,7 +6848,15 @@ class CallSession {
         // only way it can safely hand back a fully pre-rolled transport
         // (publish AND pull already done) without risking a mismatched local
         // stream. See `CallPrewarm.adopt`'s doc comment.
-        prewarmed = await CallPrewarm.instance.adopt(config.room, currentStream: stream);
+        prewarmed = await CallPrewarm.instance.adopt(
+          config.room,
+          nonce: config.prewarmNonce,
+          generation: config.prewarmGeneration,
+          networkIdentity: config.prewarmNetworkIdentity.isEmpty
+              ? null
+              : config.prewarmNetworkIdentity,
+          currentStream: stream,
+        );
       } catch (_) {/* prewarm must never affect call setup */}
     }
     final prewarmedIce = prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
@@ -6856,6 +6910,7 @@ class CallSession {
           fallbackIceServers: prewarmedIce.isNotEmpty ? prewarmedIce : _ice,
           video: config.video && !RemoteConfig.callSfuAudioOnly,
           prewarmedJoin: prewarmed?.join,
+          prewarmedPc: prewarmed?.transportPc,
         );
       }
     } catch (e, st) {
@@ -7753,6 +7808,34 @@ class CallSession {
         // callee now sends one per ring CYCLE — so the frame is forwarded and
         // repeats are handled honestly instead of being dropped on the floor.
         _onDeviceRinging(d);
+        break;
+      case 'call-ringing':
+        // Silent transport prewarm has completed (or its bounded fallback
+        // promoted the call). This is the authoritative ring anchor; only now
+        // may the existing real-ring pathway start ringback and the deadline.
+        if (config.outgoing && !_connected && !_ended) {
+          final deadline = d['ring_deadline_ms'];
+          final parsedDeadline = deadline is num
+              ? deadline.toInt()
+              : int.tryParse((deadline ?? '').toString());
+          _silentTransportPrewarming = false;
+          noteServerRingDeadline(parsedDeadline);
+          _deviceRingingTimer?.cancel();
+          _deviceRingingTimer = null;
+          _ringAckFallback?.cancel();
+          _ringAckFallback = null;
+          _ringAckHandled = true;
+          _onDeviceRinging({
+            ...d,
+            'ringCount': d['ring_count'] ?? 0,
+            'ringsRequired': d['rings_required'] ?? 0,
+          });
+          Analytics.capture('caller_waiting_room', {
+            'call_id': config.room,
+            'phase': 'ringing',
+            'ring_started_at': d['ring_started_at'] ?? -1,
+          });
+        }
         break;
       case 'ring-delivered':
         _onRingDelivered();
@@ -8930,6 +9013,10 @@ class CallSession {
   }
 
   void _armNoAnswerWindow(Duration window) {
+    if (_silentTransportPrewarming) {
+      _pendingRingWindow = window;
+      return;
+    }
     if (!_takeoverGuard) { _startRingWindow(window); return; }
     _pendingRingWindow = window;
     if (_deviceRinging) {
@@ -8973,6 +9060,7 @@ class CallSession {
   }
 
   void _startRingWindow(Duration window) {
+    if (_silentTransportPrewarming) return;
     // [AVA-RING-BLEED-1] Never (re)arm a no-answer window once Ava owns the call —
     // its _onNoAnswer would tear down the live receptionist session.
     if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
@@ -9012,7 +9100,7 @@ class CallSession {
   }
 
   void _onRingAck(bool ok) {
-    if (!_takeoverGuard || _connected || _ended) return;
+    if (!_takeoverGuard || _connected || _ended || _silentTransportPrewarming) return;
     // [ISSUE-VIDEO-RINGACK-1] (2026-07-14) VIDEO never runs _probeReceptionist
     // (there is no receptionist on video), so _armNoAnswerWindow is never
     // reached and _pendingRingWindow stays null FOREVER on a video call. The
@@ -9174,10 +9262,14 @@ class CallSession {
     }
   }
 
-  void notePlaceResult(bool reachable) {
+  void notePlaceResult(bool reachable, {bool prewarming = false, int? prewarmDeadlineMs}) {
     if (_ended || _connected) return;
     if (!reachable) {
       _onRingAck(false);
+      return;
+    }
+    if (prewarming) {
+      notePrewarming(deadlineMs: prewarmDeadlineMs);
       return;
     }
     // [CALL-PREJOIN-3 2026-08-18] START PUBLISHING HERE, not on the FCM
@@ -9278,7 +9370,7 @@ class CallSession {
       });
       return;
     }
-    if (_connected || _ended) return;
+    if (_connected || _ended || _silentTransportPrewarming) return;
     if (_deviceRinging) {
       // [CALL-4RINGS-1 2026-08-08] REPEAT RECEIPT — the callee's phone is on its
       // Nth ring cycle. This used to be an unconditional `return`, which was

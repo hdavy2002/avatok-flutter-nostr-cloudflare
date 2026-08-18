@@ -115,6 +115,51 @@ class CallSfuApi {
     return CallSfuJoinResult.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// POST /prepare — negotiate a datachannel-only transport against an
+  /// already-joined SFU session. The accepted call later re-offers on this
+  /// same PC after adding its microphone.
+  static Future<Map<String, dynamic>?> prepare(
+    String room,
+    String sessionId,
+    String offerSdp,
+  ) async {
+    final res = await ApiAuth.postJson('$_base/$room/prepare', {
+      'sessionId': sessionId,
+      'offer': {'type': 'offer', 'sdp': offerSdp},
+    }, timeout: _t);
+    if (res.statusCode != 200) _fail(res.statusCode, res.body);
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    final answer = j['answer'];
+    if (answer is Map) return answer.cast<String, dynamic>();
+    if (j['sdp'] != null) {
+      return {'type': (j['type'] ?? 'answer').toString(), 'sdp': j['sdp'].toString()};
+    }
+    return null;
+  }
+
+  /// Tell CallRoom that this foreground-owned transport really reached
+  /// ICE/DTLS connected. This is intentionally separate from local telemetry:
+  /// the server starts the audible ring only after this acknowledgement.
+  static Future<void> prewarmReady(
+    String room, {
+    required String nonce,
+    required int generation,
+    required String sessionId,
+    required String deviceId,
+  }) async {
+    final res = await ApiAuth.postJson('$kApiBase/call/command', {
+      'callId': room,
+      'command': 'prewarm_ready',
+      'data': {
+        'nonce': nonce,
+        'generation': generation,
+        'sessionId': sessionId,
+        'deviceId': deviceId,
+      },
+    }, timeout: _t);
+    if (res.statusCode != 200) _fail(res.statusCode, res.body);
+  }
+
   /// POST /publish — we offer, the SFU answers. Track names are ours to choose;
   /// the server bounds them and records them on our seat so the peer's /peer
   /// read is enough to pull without any extra signalling message.

@@ -126,7 +126,27 @@ interface SfuSeat {
   video_track: string | null;
   audio_mid?: string | null;
   video_mid?: string | null;
+  /** Set only after Cloudflare accepts the datachannel-only prepare offer. */
+  transport_prepared?: boolean;
+  transport_prepared_at?: number | null;
   updated_at: number;
+}
+
+/** Server-owned silent prewarm lease. The invite is intentionally small and
+ * contains only the same call-scoped capabilities already sent in a ring. */
+interface SilentPrewarm {
+  nonce: string;
+  generation: number;
+  deadline_ms: number;
+  phase: "prewarming" | "ringing" | "terminal";
+  ring_started_at: number | null;
+  ring_deadline_ms?: number | null;
+  ring_seq?: number | null;
+  ring_reason?: "ready" | "fallback";
+  ring_delivery_pending?: boolean;
+  device_id: string | null;
+  transport_session_id: string | null;
+  invite: Record<string, unknown>;
 }
 
 interface BillingState {
@@ -276,6 +296,7 @@ export class CallRoom {
   // migration per call" even after the active attempt finishes/fails.
   private activeMigrationAttemptId: string | null | undefined;
   private migrationUsed: boolean | undefined;
+  private silentPrewarm: SilentPrewarm | null | undefined;
 
   /** [CALL-REL-5/6] Hydrate the recovery/migration coordination fields from DO
    *  storage on first use. Does NOT touch generation state, the 2-peer cap, or
@@ -759,6 +780,16 @@ export class CallRoom {
       if (r.state.session_state === "connected" || r.state.session_state === "handoff" || r.state.session_state === "completed") {
         this.ringDeadline = null;
         try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
+        // A terminal or connected call must never retain a pending ring push:
+        // the alarm runs before the normal deadline branch and would otherwise
+        // be able to enqueue a stale incoming-call notification after answer.
+        const prewarm = await this.loadSilentPrewarm();
+        if (prewarm && prewarm.phase !== "terminal") {
+          prewarm.phase = "terminal";
+          prewarm.ring_delivery_pending = false;
+          await this.state.storage.put("silent_prewarm", prewarm);
+          this.silentPrewarm = prewarm;
+        }
       }
     }
 
@@ -868,6 +899,166 @@ export class CallRoom {
     } catch { /* durable terminal-state probe remains the correctness backstop */ }
   }
 
+  private async loadSilentPrewarm(): Promise<SilentPrewarm | null> {
+    if (this.silentPrewarm !== undefined) return this.silentPrewarm;
+    this.silentPrewarm = (await this.state.storage.get<SilentPrewarm>("silent_prewarm")) ?? null;
+    return this.silentPrewarm;
+  }
+
+  /** Atomically turns PREWARMING into RINGING. The alarm calls the same method
+   * as a device's ready signal, so readiness and timeout cannot both start a
+   * ring or move the ring anchor twice. */
+  private async promoteSilentPrewarm(callId: string, reason: "ready" | "fallback"): Promise<Record<string, unknown>> {
+    const promoted = await this.withAggregateLock(async () => {
+      const p = await this.loadSilentPrewarm();
+      const s = await this.loadSession(callId);
+      if (!p) {
+        return { response: { ok: true, changed: false, phase: p?.phase ?? null, ring_started_at: p?.ring_started_at ?? null }, delivery: null };
+      }
+      if (p.ring_delivery_pending === true &&
+          (s.session_state === "connected" || s.session_state === "handoff" || s.session_state === "completed")) {
+        p.ring_delivery_pending = false;
+        await this.state.storage.put("silent_prewarm", p);
+        this.silentPrewarm = p;
+        return { response: { ok: true, changed: false, phase: p.phase,
+          ring_started_at: p.ring_started_at, delivery_pending: false }, delivery: null };
+      }
+      if (p.phase === "ringing" && p.ring_delivery_pending === true) {
+        const inv = p.invite;
+        const ringSeq = p.ring_seq ?? null;
+        const deadline = p.ring_deadline_ms ?? this.ringDeadline ?? null;
+        const ringIdentity = {
+          caller_name: typeof inv.fromName === "string" ? inv.fromName : "AvaTOK",
+          caller_avatar_url: typeof inv.callerAvatarUrl === "string" ? inv.callerAvatarUrl : null,
+          caller_avatar_version: typeof inv.callerAvatarVersion === "string" ? inv.callerAvatarVersion : null,
+          identity_snapshot_version: typeof inv.identitySnapshotVersion === "number" || typeof inv.identitySnapshotVersion === "string"
+            ? inv.identitySnapshotVersion : null,
+        };
+        return {
+          response: { ok: true, changed: false, phase: p.phase, ring_started_at: p.ring_started_at,
+            ring_deadline_ms: deadline, ring_seq: ringSeq, ring_identity: ringIdentity,
+            delivery_pending: true },
+          delivery: { s, p, inv, at: p.ring_started_at ?? Date.now(), deadline, ringSeq, ringIdentity },
+        };
+      }
+      if (p.phase !== "prewarming") {
+        return { response: { ok: true, changed: false, phase: p.phase, ring_started_at: p.ring_started_at }, delivery: null };
+      }
+      const at = Date.now();
+      const transitioned = await this.runCommand(callId, "callee_ringing", "server");
+      if (transitioned.ok !== true) return { response: transitioned, delivery: null };
+      // Ring timeout starts at the same authoritative instant as the ring.
+      await this.loadRingCounters();
+      const deadline = at + ringLifetimeMs(this.ringPolicy ?? { enabled: false, rings: 4, cycleMs: 6000 });
+      const ringSeq = typeof transitioned.seq === "number" ? transitioned.seq : null;
+      p.phase = "ringing";
+      p.ring_started_at = at;
+      p.ring_deadline_ms = deadline;
+      p.ring_seq = ringSeq;
+      p.ring_reason = reason;
+      p.ring_delivery_pending = true;
+      // Persist the complete transition, including its retry marker, before
+      // scheduling or notifying anything. A scheduling failure can then be
+      // retried safely instead of stranding a ring with no delivery marker.
+      await this.state.storage.put("silent_prewarm", p);
+      this.silentPrewarm = p;
+      this.ringDeadline = deadline;
+      await this.state.storage.put("ringDeadline", deadline);
+      for (const w of this.state.getWebSockets()) {
+        this.sendTo(w, {
+          type: "call-ringing", callId, ring_started_at: at,
+          ring_deadline_ms: deadline,
+          seq: typeof transitioned.seq === "number" ? transitioned.seq : undefined,
+          prewarm_generation: p.generation, reason,
+        });
+      }
+      const inv = p.invite;
+      await this.scheduleNextAlarm();
+      const ringIdentity = {
+        caller_name: typeof inv.fromName === "string" ? inv.fromName : "AvaTOK",
+        caller_avatar_url: typeof inv.callerAvatarUrl === "string" ? inv.callerAvatarUrl : null,
+        caller_avatar_version: typeof inv.callerAvatarVersion === "string" ? inv.callerAvatarVersion : null,
+        identity_snapshot_version: typeof inv.identitySnapshotVersion === "number" || typeof inv.identitySnapshotVersion === "string"
+          ? inv.identitySnapshotVersion : null,
+      };
+      return {
+        response: { ...transitioned, changed: true, phase: p.phase, ring_started_at: at,
+          ring_deadline_ms: deadline, ring_seq: ringSeq, ring_identity: ringIdentity },
+        // `p.phase = ringing` is the exactly-once delivery gate. External queue
+        // delivery and telemetry intentionally happen after the lock releases.
+        delivery: { s, p, inv, at, deadline, ringSeq, ringIdentity },
+      };
+    });
+    if (promoted.delivery) {
+      const { s, p, inv, at, deadline, ringSeq, ringIdentity } = promoted.delivery;
+      let queued = false;
+      const liveDelivery = s.callee_uid && typeof inv.from === "string"
+        ? this.env.INBOX.get(this.env.INBOX.idFromName(s.callee_uid)).fetch("https://inbox/event", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "call_ring", callId, fromPub: inv.from,
+            fromName: ringIdentity.caller_name,
+            kind: typeof inv.callType === "string" ? inv.callType : "audio",
+            trace_id: typeof inv.traceId === "string" ? inv.traceId : undefined,
+            ringReceiptToken: typeof inv.ringReceiptToken === "string" ? inv.ringReceiptToken : undefined,
+            nativeActionToken: typeof inv.nativeActionToken === "string" ? inv.nativeActionToken : undefined,
+            tokenExpiresAt: typeof inv.tokenExpiresAt === "number" ? inv.tokenExpiresAt : undefined,
+            roomToken: typeof inv.roomToken === "string" ? inv.roomToken : undefined,
+            seq: ringSeq ?? undefined, ringDeadlineMs: deadline,
+            prewarmNonce: p.nonce, prewarmGeneration: p.generation,
+            prewarmDeadlineMs: p.deadline_ms,
+            callerAvatarUrl: ringIdentity.caller_avatar_url ?? undefined,
+            callerAvatarVersion: ringIdentity.caller_avatar_version ?? undefined,
+            identitySnapshotVersion: ringIdentity.identity_snapshot_version ?? undefined,
+            via: inv.via === "dialpad" ? "dialpad" : undefined, ts: at,
+          }),
+        })
+        : null;
+      if (s.callee_uid && typeof inv.from === "string") {
+        try {
+          await this.env.Q_PUSH.send({ kind: "call", to: s.callee_uid, from: inv.from,
+            fromName: ringIdentity.caller_name,
+            callId, callType: typeof inv.callType === "string" ? inv.callType : "audio",
+            traceId: typeof inv.traceId === "string" ? inv.traceId : undefined,
+            ringReceiptToken: typeof inv.ringReceiptToken === "string" ? inv.ringReceiptToken : undefined,
+            nativeActionToken: typeof inv.nativeActionToken === "string" ? inv.nativeActionToken : undefined,
+            tokenExpiresAt: typeof inv.tokenExpiresAt === "number" ? inv.tokenExpiresAt : undefined,
+            roomToken: typeof inv.roomToken === "string" ? inv.roomToken : undefined,
+            seq: ringSeq ?? undefined, ringDeadlineMs: deadline,
+            prewarmNonce: p.nonce, prewarmGeneration: p.generation, prewarmDeadlineMs: p.deadline_ms,
+            callerAvatarUrl: ringIdentity.caller_avatar_url ?? undefined,
+            callerAvatarVersion: ringIdentity.caller_avatar_version ?? undefined,
+            identitySnapshotVersion: ringIdentity.identity_snapshot_version ?? undefined,
+            via: inv.via === "dialpad" ? "dialpad" : undefined, ts: at } as any);
+          queued = true;
+        } catch { /* durable pending marker below schedules a retry */ }
+      }
+      if (liveDelivery) {
+        try { await liveDelivery; } catch { /* durable FCM lane remains authoritative */ }
+      }
+      await this.withAggregateLock(async () => {
+        const current = await this.loadSilentPrewarm();
+        if (current?.phase === "ringing" && current.ring_delivery_pending === true &&
+            current.ring_seq === ringSeq) {
+          if (queued) {
+            current.ring_delivery_pending = false;
+            await this.state.storage.put("silent_prewarm", current);
+            this.silentPrewarm = current;
+          }
+          // Keep retry alarms prompt when enqueue failed; successful delivery
+          // still leaves the authoritative ring deadline armed.
+          await this.scheduleNextAlarm();
+        }
+      });
+      await this.trackRingEvent(s, "call_silent_prewarm_ring_started", {
+        reason, ring_started_at: at, ring_seq: ringSeq, ring_deadline_ms: deadline,
+        ring_identity: ringIdentity, prewarm_generation: p.generation,
+        device_id: p.device_id, transport_session_id: p.transport_session_id,
+      });
+    }
+    return promoted.response;
+  }
+
   /** [CALL-AUTHZ-1] Stamp the participants once, at admission, from the
    *  AUTHENTICATED caller uid and the dialled callee uid. Everything downstream
    *  derives membership from this, so it must be written before any
@@ -879,6 +1070,7 @@ export class CallRoom {
     autoReceptionistEligible = false,
     noAnswerReason: string | null = null,
     ringPolicy: RingPolicy | null = null,
+    silentPrewarm: SilentPrewarm | null = null,
   ): Promise<{ ok: true; seq: number; epoch: number; ringDeadlineMs: number | null } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
     if (s.caller_uid || s.callee_uid) {
@@ -908,6 +1100,18 @@ export class CallRoom {
     const policy: RingPolicy = ringPolicy ?? { enabled: false, rings: 4, cycleMs: 6000 };
     this.ringPolicy = policy;
     await this.state.storage.put("ring_policy", policy);
+    // Silent transport prewarm is a separate, bounded lease. The normal ring
+    // deadline is not armed until promoteSilentPrewarm() stamps ring_started_at.
+    if (silentPrewarm) {
+      this.silentPrewarm = silentPrewarm;
+      await this.state.storage.put("silent_prewarm", silentPrewarm);
+      this.ringDeadline = null;
+      try { await this.state.storage.delete("ringDeadline"); } catch { /* best-effort */ }
+      await this.runCommand(callId, "admit_call", "server");
+      await this.scheduleNextAlarm();
+      const seeded = await this.loadSession(callId);
+      return { ok: true, seq: seeded.transition_sequence, epoch: seeded.epoch, ringDeadlineMs: null };
+    }
     const deadline = Date.now() + ringLifetimeMs(policy);
     this.ringDeadline = deadline;
     await this.state.storage.put("ringDeadline", deadline);
@@ -1190,6 +1394,11 @@ export class CallRoom {
     if (away) candidates.push(away.awaySince + RECONNECT_GRACE_MS);
     if (billing && !billing.stopped) candidates.push(billing.next_tick);
     if (this.ringDeadline != null) candidates.push(this.ringDeadline);
+    const prewarm = await this.loadSilentPrewarm();
+    if (prewarm?.phase === "prewarming") candidates.push(prewarm.deadline_ms);
+    if (prewarm?.phase === "ringing" && prewarm.ring_delivery_pending === true) {
+      candidates.push(Date.now() + 1_000);
+    }
     const sfuSeats = await this.loadSfuSeats();
     const sfuLeaseDeadlines = Object.values(sfuSeats)
       .map((seat) => seat.updated_at + SFU_LEASE_MS);
@@ -1474,6 +1683,8 @@ export class CallRoom {
           callee_leg_state: aggregate.callee_leg_state,
           service_leg_state: aggregate.service_leg_state,
           wire_status: legacyWireStatus(aggregate),
+          ring_started_at: (await this.loadSilentPrewarm())?.ring_started_at ?? this.ringFirstAtMs ?? null,
+          prewarm_phase: (await this.loadSilentPrewarm())?.phase ?? null,
           caller_uid: aggregate.caller_uid,
           callee_uid: aggregate.callee_uid,
           // CALL-ANSWERED-LIVE-1: how many transports are on the call RIGHT NOW.
@@ -1759,6 +1970,17 @@ export class CallRoom {
           await this.state.storage.put("room_token_callee", tokens.calleeRoomToken);
           await this.state.storage.put("room_token_expires_at", tokens.roomTokenExpiresAt);
         }
+        const rawPrewarm = body.silentPrewarm as Record<string, unknown> | undefined;
+        const silentPrewarm = rawPrewarm?.enabled === true &&
+          typeof rawPrewarm.nonce === "string" && rawPrewarm.nonce.length >= 16
+          ? {
+            nonce: rawPrewarm.nonce.slice(0, 128),
+            generation: Number.isFinite(Number(rawPrewarm.generation)) ? Math.max(1, Math.round(Number(rawPrewarm.generation))) : 1,
+            deadline_ms: Math.max(Date.now() + 1_000, Number(rawPrewarm.deadlineMs) || Date.now() + 12_000),
+            phase: "prewarming" as const, ring_started_at: null,
+            device_id: null, transport_session_id: null,
+            invite: (rawPrewarm.invite && typeof rawPrewarm.invite === "object") ? rawPrewarm.invite as Record<string, unknown> : {},
+          } : null;
         const result = await this.setParticipants(
           callId,
           callerUid,
@@ -1768,6 +1990,7 @@ export class CallRoom {
           // [CALL-4RINGS-1] Optional, so a Worker deploy that predates this (or a
           // replayed request) still registers participants exactly as before.
           parseRingPolicy(body.ringPolicy),
+          silentPrewarm,
         );
         // [CALL-4RINGS-1] Dial-time presence verdict, recorded for the
         // backstop-with-zero-receipts assertion in alarm(). Written after
@@ -1777,7 +2000,48 @@ export class CallRoom {
             await this.state.storage.put("presence_at_dial", body.presenceAtDial.slice(0, 16));
           } catch { /* best-effort — this is telemetry, never a gate */ }
         }
-        return Response.json(result, { status: result.ok ? 200 : 409 });
+        return Response.json({ ...result, ...(silentPrewarm ? {
+          prewarming: true, prewarm_nonce: silentPrewarm.nonce,
+          prewarm_generation: silentPrewarm.generation,
+          prewarm_deadline_ms: silentPrewarm.deadline_ms,
+        } : {}) }, { status: result.ok ? 200 : 409 });
+      }
+      // [CALL-SILENT-PREWARM-1] The callee proves transport readiness with the
+      // nonce/generation delivered in the silent FCM wake. The DO is the only
+      // place allowed to stamp ring_started_at; duplicate and stale wakes are
+      // harmless no-ops. `deviceId` is retained for per-device diagnostics and
+      // to make a first-answer-wins cleanup message attributable.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/prewarm-ready")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const nonce = typeof body.nonce === "string" ? body.nonce : "";
+        const generation = Number(body.generation);
+        const deviceId = typeof body.deviceId === "string" ? body.deviceId.slice(0, 128) : "";
+        const sessionId = typeof body.sessionId === "string" ? body.sessionId.slice(0, 128) : "";
+        const uid = typeof body.authenticatedUid === "string" ? body.authenticatedUid : "";
+        // Validate and stamp the transport identity under the same local lock as
+        // the alarm. The marker is server-written by /sfu-seat-prepare; a caller
+        // cannot make an arbitrary session look ready by copying its id here.
+        const gate = await this.withAggregateLock(async () => {
+          const p = await this.loadSilentPrewarm();
+          const s = await this.loadSession(callId);
+          const calleeSeat = s.callee_uid ? (await this.loadSfuSeats())[s.callee_uid] : undefined;
+          if (!p || p.nonce !== nonce || p.generation !== generation || !deviceId || uid !== s.callee_uid ||
+              !sessionId || calleeSeat?.session_id !== sessionId || calleeSeat.transport_prepared !== true) {
+            return { ok: false as const, error: "stale_prewarm" };
+          }
+          if (p.phase === "prewarming") {
+            p.device_id = deviceId;
+            p.transport_session_id = sessionId;
+            await this.state.storage.put("silent_prewarm", p);
+            this.silentPrewarm = p;
+          }
+          return { ok: true as const };
+        });
+        if (!gate.ok) return Response.json(gate, { status: 409 });
+        const out = await this.promoteSilentPrewarm(callId, "ready");
+        return Response.json(out, { status: out.ok === false ? 409 : 200 });
       }
       // [CALL-RING-FIRST-1 2026-08-03] Set the no-answer receptionist verdict
       // AFTER the ring has already gone out.
@@ -1872,12 +2136,52 @@ export class CallRoom {
           video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : (carry?.video_track ?? null),
           audio_mid: typeof body.audioMid === "string" ? body.audioMid.slice(0, 16) : (carry?.audio_mid ?? null),
           video_mid: typeof body.videoMid === "string" ? body.videoMid.slice(0, 16) : (carry?.video_mid ?? null),
+          transport_prepared: carry?.transport_prepared ?? false,
+          transport_prepared_at: carry?.transport_prepared_at ?? null,
           updated_at: Date.now(),
         };
         this.sfuSeats = { ...(await this.loadSfuSeats()), [uid]: seat };
         try { await this.state.storage.put("sfuSeats", this.sfuSeats); } catch { /* best-effort */ }
         await this.scheduleNextAlarm();
         return Response.json({ ok: true, seat });
+      }
+      /**
+       * Mark a seat transport-ready only after the authenticated SFU route has
+       * received a successful Cloudflare datachannel establish response.
+       * Keeping this separate from /sfu-seat prevents a media seat refresh from
+       * manufacturing prewarm readiness, and the session equality check closes
+       * the stale-session race during reconnect/adopt swaps.
+       */
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/sfu-seat-prepare")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const uid = typeof body.uid === "string" ? body.uid : "";
+        const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+        if (!uid || !sessionId) return Response.json({ ok: false, error: "uid_and_session_required" }, { status: 400 });
+        const marked = await this.withAggregateLock(async () => {
+          const s = await this.loadSession(callId);
+          if (uid !== s.caller_uid && uid !== s.callee_uid) {
+            return { ok: false as const, error: "not_a_participant", status: 403 };
+          }
+          const seats = { ...(await this.loadSfuSeats()) };
+          const seat = seats[uid];
+          if (!seat || seat.session_id !== sessionId) {
+            return { ok: false as const, error: "session_not_owned", status: 409 };
+          }
+          seat.transport_prepared = true;
+          seat.transport_prepared_at = Date.now();
+          seat.updated_at = seat.transport_prepared_at;
+          seats[uid] = seat;
+          // Readiness is an authority decision, not telemetry. If this durable
+          // write fails the route must fail closed and the call will cold-ring.
+          await this.state.storage.put("sfuSeats", seats);
+          this.sfuSeats = seats;
+          await this.scheduleNextAlarm();
+          return { ok: true as const, session_id: sessionId, prepared_at: seat.transport_prepared_at };
+        });
+        if (!marked.ok) return Response.json({ ok: false, error: marked.error }, { status: marked.status });
+        return Response.json(marked);
       }
       if (req.method === "POST" && stateUrl.pathname.endsWith("/sfu-seat-heartbeat")) {
         let body: Record<string, unknown> = {};
@@ -2916,6 +3220,16 @@ export class CallRoom {
    * of pre-free-policy billing state. It never settles a human-call minute. */
   async alarm(): Promise<void> {
     const now = Date.now();
+    const prewarm = await this.loadSilentPrewarm();
+    if (prewarm?.phase === "prewarming" && now >= prewarm.deadline_ms - 500) {
+      // Best-effort transport optimisation: a killed isolate, ICE failure or
+      // stale FCM must still produce the ordinary incoming ring.
+      await this.promoteSilentPrewarm(String(this.state.id.name ?? ""), "fallback");
+    } else if (prewarm?.phase === "ringing" && prewarm.ring_delivery_pending === true) {
+      // Q_PUSH is at-least-once but not guaranteed to accept on the first try;
+      // keep retrying the durable ring until enqueue succeeds or the call ends.
+      await this.promoteSilentPrewarm(String(this.state.id.name ?? ""), prewarm.ring_reason ?? "fallback");
+    }
     if (this.ringDeadline === undefined) this.ringDeadline = (await this.state.storage.get<number>("ringDeadline")) ?? null;
     if (this.ringDeadline != null && now >= this.ringDeadline - 500) {
       const session = await this.loadSession("");

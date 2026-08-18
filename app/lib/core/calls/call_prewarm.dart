@@ -1,67 +1,35 @@
-/// [CALL-PREWARM-1 2026-08-16] P1 of `Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md`.
+/// Safe, best-effort pre-warm for an incoming 1:1 call.
 ///
-/// The whole media stack (ICE credentials, SFU seat) is normally built AFTER
-/// the callee taps Accept, serially. WhatsApp's trick is that none of that
-/// work happens at pickup — both sides build their media path during the
-/// ring. This is the callee half of that: the moment the incoming-call PUSH
-/// lands (seconds before the ring UI can even be shown, and well before
-/// Accept), [start] begins fetching ICE credentials and claiming an SFU seat
-/// (`POST /api/callsfu/:room/join`) in the background. At accept time,
-/// `CallSession._startSfuMedia()` calls [adopt] instead of doing that work
-/// cold, so it only has to publish + pull.
-///
-/// [CALL-PREROLL-1 2026-08-17] Extends the above (gated on the ADDITIONAL
-/// `callPrerollV1` flag, on top of `callPrewarmOnRingV1`): instead of
-/// stopping at the join, also acquire the mic (track disabled), build an
-/// ISOLATED peer connection, PUBLISH (silent — local track stays disabled)
-/// and PULL the caller's audio (muted — remote track stays disabled), all
-/// during the ring. At accept, [adopt] hands back the whole pre-built
-/// transport and `CallSession` only has to flip two `enabled` flags instead
-/// of running publish+pull cold — removing the SFU join AND publish AND pull
-/// from the accept path, not just the join.
-///
-/// Privacy: the mic track and the pulled remote track BOTH stay disabled the
-/// entire time this class owns them. Nothing is audible to either party and
-/// nothing leaves the device until `CallSession` explicitly re-enables them,
-/// which only happens once the call is genuinely being answered.
-///
-/// Gated entirely on `RemoteConfig.callPrewarmOnRingV1` (and, for the preroll
-/// extension, additionally `RemoteConfig.callPrerollV1`): every public method
-/// is a no-op — or degrades to the P1-only behaviour — while the relevant
-/// flag is off, so this class does nothing beyond what already shipped on any
-/// build or account until both are flipped on.
-///
-/// Per-account scoping (CLAUDE.md) does not apply here — this is in-memory
-/// only, holds no durable or user-identifying state, and every entry lives
-/// for at most tens of seconds (a ring) before being adopted or discarded.
+/// The incoming ring path may authenticate and reserve one Cloudflare SFU
+/// session. It must never acquire a microphone, create a MediaStream, publish,
+/// pull, or attach remote audio before Accept. Any failure falls through to the
+/// normal cold call path.
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../analytics.dart';
-import '../audio_tuning.dart' as audio_tuning;
 import '../ice_cache.dart';
+import '../disk_cache.dart';
 import '../remote_config.dart';
 import 'call_sfu_api.dart';
 import 'call_sfu_transport.dart';
 
-/// What [CallPrewarm.adopt] hands back to the caller: a pre-warmed SFU join
-/// (may be null if the prewarm join failed or never finished) plus whatever
-/// ICE servers were fetched in parallel (falls back to an empty list, exactly
-/// like a fresh [IceCache.get] would fall back to `kIceServers` upstream).
-///
-/// [CALL-PREROLL-1 2026-08-17] The `preroll*` fields are non-null/true only
-/// when `callPrerollV1` (+ `callPrewarmOnRingV1`) produced a FULLY pre-rolled
-/// media path during the ring — see [hasFullPreroll]. `CallSession` must
-/// check that getter, not the individual fields, before treating this as
-/// adoptable: any partial combination means the preroll did not finish in
-/// time or failed, and must be treated as "P1 only" (or nothing at all).
+/// Result adopted by CallSession after Accept. The old preroll members are
+/// retained as inert compatibility fields for staged rollouts; they are always
+/// null/false in the safe implementation.
 class CallPrewarmedData {
   CallPrewarmedData({
     required this.join,
     required this.iceServers,
+    this.nonce = '',
+    this.generation,
+    this.transportPc,
+    this.transportReady = false,
     this.prerollStream,
     this.prerollTransport,
     this.prerollPc,
@@ -72,535 +40,552 @@ class CallPrewarmedData {
 
   final CallSfuJoinResult? join;
   final List<Map<String, dynamic>> iceServers;
-
-  /// [CALL-PREROLL-1] The mic stream acquired during the ring. Non-null only
-  /// when the preroll got as far as `getUserMedia`. `CallSession`'s boot
-  /// sequence takes ownership of this via `CallPrewarm.instance.peek` — well
-  /// BEFORE this object is ever built — so by the time [adopt] runs, this is
-  /// only present here for [CallPrewarm]'s own identity check (see
-  /// `adopt`'s doc comment); `CallSession` should never need to read it off
-  /// this object directly.
+  final String nonce;
+  final int? generation;
+  final RTCPeerConnection? transportPc;
+  final bool transportReady;
+  @Deprecated('Pre-accept media is retired; always null.')
   final MediaStream? prerollStream;
-
-  /// The isolated transport that ran `connectPublish` + `connectPull` during
-  /// the ring. Non-null only when a peer connection was built for it.
+  @Deprecated('Pre-accept media is retired; always null.')
   final CallSfuTransport? prerollTransport;
-
-  /// The transport's own peer connection, captured separately because
-  /// `CallSession` needs it by identity to install handlers on promotion —
-  /// see `CallSession._promotePrerollPc`.
+  @Deprecated('Pre-accept media is retired; always null.')
   final RTCPeerConnection? prerollPc;
-
-  /// The remote-track events this connection received DURING THE RING —
-  /// muted the instant they arrived (see [CallPrewarm]'s own `onTrack`
-  /// installation) so nothing was audible before accept. `CallSession`
-  /// re-enables and replays each of these through its normal connect ladder
-  /// at promotion, since no `onTrack` will ever fire again for a track this
-  /// connection already received.
+  @Deprecated('Pre-accept media is retired; always empty.')
   final List<RTCTrackEvent> prerollEarlyTracks;
-
+  @Deprecated('Pre-accept media is retired; always false.')
   final bool prerollPublished;
+  @Deprecated('Pre-accept media is retired; always false.')
   final bool prerollPulled;
 
-  /// True only when every preroll piece is present and BOTH legs succeeded —
-  /// the single condition `CallSession` should branch on. Anything less must
-  /// be treated as "no preroll" and fall through to the join-only or fully
-  /// cold path.
-  bool get hasFullPreroll =>
-      prerollStream != null &&
-      prerollTransport != null &&
-      prerollPc != null &&
-      prerollPublished &&
-      prerollPulled;
+  bool get hasFullPreroll => false;
+  bool get hasJoin => join != null && join!.sessionId.isNotEmpty;
 }
 
-class _PrewarmEntry {
-  _PrewarmEntry(this.callId, this.startedAtMs);
+enum CallPrewarmPhase { idle, prewarming, ready, adopted, cancelled, failed }
 
+class _Entry {
+  _Entry({
+    required this.callId,
+    required this.startedAtMs,
+    required this.nonce,
+    required this.generation,
+    required this.networkIdentity,
+    this.deviceId = '',
+  });
   final String callId;
   final int startedAtMs;
-
+  final String nonce;
+  final int? generation;
+  String? networkIdentity;
+  final String deviceId;
+  StreamSubscription<List<ConnectivityResult>>? networkSub;
   Future<CallSfuJoinResult?>? joinFuture;
-  CallSfuJoinResult? joinResult;
   Future<List<Map<String, dynamic>>>? iceFuture;
-
-  // ── [CALL-PREROLL-1 2026-08-17] ───────────────────────────────────────
-  /// Set by [CallPrewarm.discard]/`_closeEntry` the INSTANT teardown starts,
-  /// so [CallPrewarm._preroll] (which may be mid-await on a network call at
-  /// that moment) notices at its very next checkpoint and stops making
-  /// forward progress — never relies on `_entry` still pointing at this
-  /// object, because [CallPrewarm.adopt] deliberately clears `_entry` first
-  /// (its exactly-once contract) while still wanting `_preroll` to keep
-  /// running to completion underneath it.
+  CallSfuJoinResult? join;
+  RTCPeerConnection? transportPc;
+  RTCDataChannel? transportChannel;
+  Future<void>? transportFuture;
+  bool transportReady = false;
+  bool readyPosted = false;
   bool discarded = false;
-
-  /// Set the instant [CallPrewarm.peek] hands this stream to a booting
-  /// `CallSession` — once true, this entry's mic stream is OWNED by that
-  /// session (which will dispose it in its own teardown) and must never be
-  /// touched by [CallPrewarm]'s own teardown again, even if this entry is
-  /// later superseded/discarded before `adopt()` ever runs. Does not protect
-  /// [transport]/[prerollPc]: those are only handed over by [CallPrewarm.adopt].
-  bool peeked = false;
-
-  MediaStream? micStream;
-  CallSfuTransport? transport;
-  RTCPeerConnection? prerollPc;
-  final List<RTCTrackEvent> earlyTracks = <RTCTrackEvent>[];
-  bool prerollPublished = false;
-  bool prerollPulled = false;
-  Future<void>? prerollFuture;
+  CallPrewarmPhase phase = CallPrewarmPhase.prewarming;
 }
 
 class CallPrewarm {
   CallPrewarm._();
-
   static final CallPrewarm instance = CallPrewarm._();
 
-  /// [CALL-PREWARM-1] How long a prewarmed entry is considered current. Past
-  /// this, `adopt` treats it as absent and tears it down instead.
-  ///
-  /// Bounded by the SERVER's seat lease, not by taste: `CallRoom`'s
-  /// `SFU_LEASE_MS` is 45s and a pre-warmed seat sends NO heartbeats (the
-  /// transport's heartbeat only starts after connect). 40s keeps every
-  /// adopted seat inside its lease with margin; a slower answer simply falls
-  /// back to today's cold join.
   static const int freshWindowMs = 40000;
+  static const Duration joinDeadline = Duration(seconds: 12);
+  static const Duration teardownWait = Duration(seconds: 2);
+  static const Duration transportDeadline = Duration(seconds: 12);
 
-  _PrewarmEntry? _entry;
+  _Entry? _entry;
+  int _now() => DateTime.now().millisecondsSinceEpoch;
+  CallPrewarmPhase get phase => _entry?.phase ?? CallPrewarmPhase.idle;
+  String? get activeCallId => _entry?.callId;
 
-  int _nowMs() => DateTime.now().millisecondsSinceEpoch;
-
-  /// Begin warming [callId]'s media path. Fire-and-forget by design — NEVER
-  /// await this from the ring/push-handling path; a slow or failed prewarm
-  /// must never delay or break showing the incoming-call UI.
-  ///
-  /// No-op when [callId] is empty or `RemoteConfig.callPrewarmOnRingV1` is
-  /// false. If a prewarm for this exact call is already running or ready,
-  /// this is a no-op (idempotent — safe to call more than once per ring).
-  void start(String callId) {
+  /// Fire-and-forget. Idempotent for one call generation/nonce, and always
+  /// best-effort so it cannot delay or suppress a ring.
+  void start(
+    String callId, {
+    String nonce = '',
+    int? generation,
+    String? networkIdentity,
+    bool transportOnly = false,
+    String deviceId = '',
+  }) {
     if (callId.isEmpty) return;
-    if (!RemoteConfig.callPrewarmOnRingV1) return;
-    final existing = _entry;
+    if (!transportOnly && !RemoteConfig.callPrewarmOnRingV1) return;
+    if (transportOnly && !RemoteConfig.callSilentTransportPrewarmV1) return;
+    final old = _entry;
+    if (old != null &&
+        old.callId == callId &&
+        (nonce.isEmpty || old.nonce == nonce) &&
+        old.generation == generation &&
+        !old.discarded) {
+      return;
+    }
+    if (old != null) unawaited(_discardEntry(old, 'superseded'));
+    final e = _Entry(
+      callId: callId,
+      startedAtMs: _now(),
+      nonce: nonce,
+      generation: generation,
+      networkIdentity: networkIdentity,
+      deviceId: deviceId,
+    );
+    _entry = e;
+    _capture('call_prewarm_started', {
+      'call_id': callId,
+      'trigger': 'fcm_background',
+      if (nonce.isNotEmpty) 'nonce': nonce,
+      if (generation != null) 'generation': generation,
+    });
+    e.iceFuture = IceCache.get().catchError((_) => <Map<String, dynamic>>[]);
+    e.joinFuture = _restoreOrJoin(e);
+  }
+
+  /// The FCM background isolate is short-lived. Keep its JOIN alive long
+  /// enough to persist the exact seat/ICE handoff, so the foreground isolate
+  /// can adopt it without pretending the two Dart heaps are shared.
+  Future<void> startJoinOnly(
+    String callId, {
+    String nonce = '',
+    int? generation,
+    String? networkIdentity,
+    String deviceId = '',
+  }) async {
+    start(callId,
+      nonce: nonce,
+      generation: generation,
+      networkIdentity: networkIdentity,
+      transportOnly: true,
+      deviceId: deviceId,
+    );
+    final e = _entry;
+    if (e != null && e.callId == callId) {
+      try { await e.joinFuture?.timeout(joinDeadline); } catch (_) {}
+    }
+  }
+
+  /// Main-isolate-only phase. The background FCM handler never calls this: it
+  /// only runs [start], which performs JOIN and no WebRTC work.
+  Future<void> startForegroundTransport(
+    String callId, {
+    String nonce = '',
+    int? generation,
+    String? networkIdentity,
+    String deviceId = '',
+  }) async {
+    if (!RemoteConfig.callSilentTransportPrewarmV1) return;
+    var e = _entry;
+    if (e == null || e.callId != callId || e.discarded) {
+      start(callId, nonce: nonce, generation: generation,
+          networkIdentity: networkIdentity, transportOnly: true,
+          deviceId: deviceId);
+      e = _entry;
+    }
+    if (e == null || e.callId != callId || e.discarded) return;
+    final currentNetwork = await _currentNetworkIdentity();
+    if (e.networkIdentity == null || e.networkIdentity!.isEmpty) {
+      e.networkIdentity = currentNetwork;
+    }
+    if (nonce.isNotEmpty && nonce != e.nonce) {
+      await discard(callId, 'stale_nonce');
+      return;
+    }
+    if (generation != null && generation != e.generation) {
+      await discard(callId, 'stale_generation');
+      return;
+    }
+    if (networkIdentity != null && e.networkIdentity != null &&
+        networkIdentity != e.networkIdentity) {
+      await discard(callId, 'network_changed');
+      return;
+    }
+    if (currentNetwork.isNotEmpty && e.networkIdentity != currentNetwork) {
+      await discard(callId, 'network_changed');
+      return;
+    }
+    e.networkSub ??= Connectivity().onConnectivityChanged.listen((results) {
+      final next = _networkIdentity(results);
+      if (next.isNotEmpty && next != e!.networkIdentity) {
+        unawaited(discard(callId, 'network_changed'));
+      }
+    }, onError: (_) {});
+    if (e.transportReady) return;
+    final existing = e.transportFuture;
     if (existing != null) {
-      if (existing.callId == callId) return; // already warming/ready
-      // A different call is still mid-warm — one ring at a time is the norm,
-      // but never leak a seat if that assumption is ever wrong.
-      unawaited(discard(existing.callId, 'superseded'));
+      await existing;
+      return;
     }
-    final entry = _PrewarmEntry(callId, _nowMs());
-    _entry = entry;
+    final future = _prepareTransport(e);
+    e.transportFuture = future;
+    await future;
+  }
+
+  Future<void> _prepareTransport(_Entry e) async {
+    RTCPeerConnection? pc;
     try {
-      Analytics.capture('call_prewarm_started', {'call_id': callId});
-    } catch (_) {/* telemetry must never affect the ring path */}
-    entry.iceFuture = IceCache.get();
-    entry.joinFuture = _join(entry);
-    // [CALL-PREROLL-1 2026-08-17] Extends the join above — inert unless the
-    // owner has ALSO flipped `callPrerollV1`. Started here (not chained off
-    // `joinFuture`'s completion) only because `_preroll` itself awaits the
-    // join/ICE futures first; kicking it off now costs nothing and keeps
-    // every future for this entry minted in one place.
-    if (RemoteConfig.callPrerollV1) {
-      entry.prerollFuture = _preroll(entry);
+      final join = await _awaitJoin(e);
+      if (e.discarded || join == null || join.sessionId.isEmpty) return;
+      pc = await createPeerConnection({
+        'iceServers': join.iceServers,
+        'iceCandidatePoolSize': 2,
+      });
+      if (e.discarded) {
+        await pc.close();
+        return;
+      }
+      e.transportPc = pc;
+      e.transportChannel = await pc.createDataChannel('avatok-prewarm', RTCDataChannelInit());
+      final connected = Completer<void>();
+      pc.onConnectionState = (state) {
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected &&
+            !connected.isCompleted) {
+          connected.complete();
+        } else if ((state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+                state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) &&
+            !connected.isCompleted) {
+          connected.completeError(StateError('transport_${state.name}'));
+        }
+      };
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': false,
+        'offerToReceiveVideo': false,
+      });
+      await pc.setLocalDescription(offer);
+      final answer = await CallSfuApi.prepare(e.callId, join.sessionId, offer.sdp ?? '');
+      if (answer == null || answer['sdp'] == null || e.discarded) {
+        throw StateError('transport_prepare_no_answer');
+      }
+      await pc.setRemoteDescription(RTCSessionDescription(
+        answer['sdp'].toString(),
+        (answer['type'] ?? 'answer').toString(),
+      ));
+      await connected.future.timeout(transportDeadline);
+      if (e.discarded) return;
+      e.transportReady = true;
+      e.phase = CallPrewarmPhase.ready;
+      if (e.deviceId.isEmpty) throw StateError('transport_missing_device_id');
+      await CallSfuApi.prewarmReady(
+        e.callId,
+        nonce: e.nonce,
+        generation: e.generation ?? 1,
+        sessionId: join.sessionId,
+        deviceId: e.deviceId,
+      );
+      e.readyPosted = true;
+      _capture('call_prewarm_transport_ready', {
+        'call_id': e.callId,
+        'transport': 'datachannel_only',
+        'ready_truth': 'ice_dtls_connected',
+      });
+    } catch (error) {
+      _capture('call_prewarm_transport_failed', {
+        'call_id': e.callId,
+        'failure': error.toString(),
+      });
+      e.transportReady = false;
+      final channel = e.transportChannel;
+      e.transportChannel = null;
+      try { await channel?.close(); } catch (_) {}
+      try { await pc?.close(); } catch (_) {}
+      e.transportPc = null;
+      // The server seat is coupled to this failed negotiation. Retire this
+      // exact session before Accept can fall through to a fresh join.
+      final failedJoin = e.join;
+      e.join = null;
+      if (failedJoin != null && failedJoin.sessionId.isNotEmpty) {
+        try { await CallSfuApi.close(e.callId, failedJoin.sessionId, const []); } catch (_) {}
+      }
+      await _deleteHandoff(e);
     }
   }
 
-  Future<CallSfuJoinResult?> _join(_PrewarmEntry entry) async {
-    final swStart = _nowMs();
+  Future<CallSfuJoinResult?> _restoreOrJoin(_Entry e) async {
+    final restored = await _readHandoff(e);
+    if (restored != null) {
+      e.join = restored;
+      e.phase = CallPrewarmPhase.ready;
+      _capture('call_prewarm_handoff_restored', {'call_id': e.callId});
+      return restored;
+    }
+    return _join(e);
+  }
+
+  Future<CallSfuJoinResult?> _join(_Entry e) async {
+    final started = _now();
+    final request = CallSfuApi.join(e.callId);
     try {
-      final result = await CallSfuApi.join(entry.callId);
-      // Superseded/discarded/adopted while the join was in flight — the
-      // result is still recorded on the entry object itself (adopt/discard
-      // may still be awaiting this exact future), but it must not resurrect
-      // an entry that has already been cleared from `_entry`.
-      entry.joinResult = result;
-      try {
-        Analytics.capture('call_prewarm_ready', {
-          'call_id': entry.callId,
-          'join_ms': _nowMs() - swStart,
-        });
-      } catch (_) {/* telemetry must never affect the call path */}
+      final result = await request.timeout(joinDeadline);
+      if (e.discarded) {
+        if (result.sessionId.isNotEmpty) {
+          unawaited(CallSfuApi.close(e.callId, result.sessionId, const []));
+        }
+        return null;
+      }
+      e.join = result;
+      e.phase = CallPrewarmPhase.ready;
+      await _writeHandoff(e, result);
+      _capture('call_prewarm_joined', {
+        'call_id': e.callId,
+        'elapsed_ms': _now() - started,
+        'result': 'ok',
+      });
       return result;
+    } on TimeoutException {
+      e.phase = CallPrewarmPhase.failed;
+      _capture('call_prewarm_joined', {
+        'call_id': e.callId,
+        'elapsed_ms': _now() - started,
+        'result': 'timeout',
+      });
+      // Future.timeout cannot cancel HTTP. Close a late seat when it resolves.
+      unawaited(request.then((late) async {
+        if (late.sessionId.isNotEmpty) {
+          await CallSfuApi.close(e.callId, late.sessionId, const []);
+        }
+      }).catchError((_) {}));
+      return null;
+    } catch (error) {
+      e.phase = CallPrewarmPhase.failed;
+      _capture('call_prewarm_joined', {
+        'call_id': e.callId,
+        'elapsed_ms': _now() - started,
+        'result': 'failed',
+        'failure': error.toString(),
+      });
+      return null;
+    }
+  }
+
+  /// Retired compatibility hook. It intentionally never returns media.
+  MediaStream? peek(String callId) => null;
+
+  /// Claims a join exactly once. A stale nonce/generation/network identity or
+  /// lease returns null, causing the caller to execute the cold path.
+  Future<CallPrewarmedData?> adopt(
+    String callId, {
+    String nonce = '',
+    int? generation,
+    String? networkIdentity,
+    MediaStream? currentStream,
+  }) async {
+    if (callId.isEmpty ||
+        (!RemoteConfig.callPrewarmOnRingV1 && !RemoteConfig.callSilentTransportPrewarmV1)) {
+      return null;
+    }
+    final e = _entry;
+    if (e == null || e.callId != callId || e.discarded) return null;
+    if (nonce.isNotEmpty && nonce != e.nonce) {
+      await discard(callId, 'stale_nonce');
+      return null;
+    }
+    if (generation != null && generation != e.generation) {
+      await discard(callId, 'stale_generation');
+      return null;
+    }
+    if (networkIdentity != null &&
+        e.networkIdentity != null &&
+        networkIdentity != e.networkIdentity) {
+      await discard(callId, 'network_changed');
+      return null;
+    }
+    final currentNetwork = await _currentNetworkIdentity();
+    if (e.networkIdentity != null && e.networkIdentity!.isNotEmpty &&
+        currentNetwork.isNotEmpty && currentNetwork != e.networkIdentity) {
+      await discard(callId, 'network_changed');
+      return null;
+    }
+    final age = _now() - e.startedAtMs;
+    if (age < 0 || age > freshWindowMs) {
+      await discard(callId, 'stale');
+      return null;
+    }
+    if (e.transportFuture != null) {
+      try { await e.transportFuture!.timeout(transportDeadline); } catch (_) {}
+      if (!e.transportReady) {
+        _entry = null;
+        await _discardEntry(e, 'transport_not_ready');
+        return null;
+      }
+    }
+    _entry = null; // first-answer-wins, exactly once
+    await e.networkSub?.cancel();
+    e.networkSub = null;
+    e.phase = CallPrewarmPhase.adopted;
+    final join = await _awaitJoin(e);
+    final ice = await _awaitIce(e);
+    final transportPc = e.transportReady ? e.transportPc : null;
+    await _deleteHandoff(e);
+    _capture('call_prewarm_adopted', {
+      'call_id': callId,
+      'age_ms': age,
+      'had_join': join != null && join.sessionId.isNotEmpty,
+      'fallback': join == null,
+    });
+    return CallPrewarmedData(
+      join: join,
+      iceServers: ice,
+      nonce: e.nonce,
+      generation: e.generation,
+      transportPc: transportPc,
+      transportReady: transportPc != null,
+    );
+  }
+
+  Future<CallSfuJoinResult?> _awaitJoin(_Entry e) async {
+    try {
+      return await (e.joinFuture ?? Future<CallSfuJoinResult?>.value(e.join))
+          .timeout(joinDeadline);
     } catch (_) {
-      // A failed prewarm join must never surface to the user — swallow and
-      // let the normal accept-time path run exactly as if this never ran.
       return null;
     }
   }
 
-  /// [CALL-PREROLL-1 2026-08-17] Acquire the mic, build an isolated peer
-  /// connection, publish it (silent) and pull the caller's audio (muted) —
-  /// all during the ring, all best-effort. Every checkpoint below re-checks
-  /// [_PrewarmEntry.discarded] rather than `identical(_entry, entry)`,
-  /// because [adopt] clears `_entry` (its exactly-once contract) while this
-  /// must be allowed to keep running to completion underneath it; only a
-  /// genuine discard/supersede should stop it early.
-  Future<void> _preroll(_PrewarmEntry entry) async {
-    final swStart = _nowMs();
+  Future<List<Map<String, dynamic>>> _awaitIce(_Entry e) async {
     try {
-      Analytics.capture('call_preroll_started', {'call_id': entry.callId});
-    } catch (_) {/* telemetry must never affect the ring path */}
-    try {
-      final join = await (entry.joinFuture ?? Future<CallSfuJoinResult?>.value(null));
-      if (entry.discarded) return;
-      if (join == null || join.sessionId.isEmpty) {
-        // The plain P1 join already failed/degraded — nothing to build a
-        // preroll on top of. Falls through to today's P1-only (or fully
-        // cold) accept-time path.
-        return;
-      }
-      final ice = await (entry.iceFuture ?? Future<List<Map<String, dynamic>>>.value(const []));
-      if (entry.discarded) return;
-
-      // a. Mic — SILENT from the instant it exists.
-      MediaStream stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          'audio': audio_tuning.avaMicConstraints(),
-          'video': false,
-        });
-      } catch (e) {
-        try {
-          Analytics.capture('call_preroll_failed', {
-            'call_id': entry.callId,
-            'stage': 'mic',
-            'detail': e.toString(),
-          });
-        } catch (_) {/* telemetry must never affect the ring path */}
-        return;
-      }
-      for (final t in stream.getAudioTracks()) {
-        try { t.enabled = false; } catch (_) {/* best-effort silence */}
-      }
-      entry.micStream = stream; // visible to `_closeEntry` even if we abort below
-      if (entry.discarded) return; // `_closeEntry` will dispose `stream` itself
-
-      // b. Isolated peer connection, built through a transport with NO
-      // onTrack/onConnectionState wiring beyond the passive cache below —
-      // that absence of session behaviour IS the isolation: this connection
-      // cannot touch a renderer, a ringback player or a phase notifier,
-      // because none of those exist yet (there is no `CallSession` at all
-      // while the phone is still ringing).
-      RTCPeerConnection? pc;
-      final transport = CallSfuTransport(
-        room: entry.callId,
-        createPeerConnection: (iceServers) async {
-          final built = await createPeerConnection({
-            'iceServers': iceServers,
-            'iceCandidatePoolSize': 2,
-            // [CALL-SURVIVE-1] Same jitter-buffer bounds as
-            // `CallSession._newPC` — this connection is promoted to be the
-            // session's live one verbatim, so its config must already match.
-            'audioJitterBufferMaxPackets': 50,
-            'audioJitterBufferFastAccelerate': true,
-          });
-          pc = built;
-          entry.prerollPc = built; // visible to `_closeEntry` immediately
-          built.onTrack = (e) {
-            // CRITICAL: mute the instant it arrives — the callee's phone is
-            // still ringing and must not play the caller's voice before
-            // accept. Cached (not acted on further) for exactly the same
-            // reason `CallSession._prejoinEarlyTracks` exists: nothing here
-            // may touch UI/telemetry/phase state, because none of it exists
-            // yet — only `CallSession`, once it adopts this connection, may
-            // drive that ladder (see `CallSession._promotePrerollPc`).
-            try {
-              if (e.track.kind == 'audio') e.track.enabled = false;
-            } catch (_) {/* best-effort mute */}
-            entry.earlyTracks.add(e);
-          };
-          return built;
-        },
-        enableRed: RemoteConfig.callAudioRedExperimentV1,
-        onStage: (stage) {
-          try {
-            Analytics.capture('call_preroll_stage', {
-              'call_id': entry.callId,
-              'stage': stage,
-            });
-          } catch (_) {/* telemetry must never affect the ring path */}
-        },
-      );
-      entry.transport = transport; // visible to `_closeEntry` immediately
-      if (entry.discarded) return; // `_closeEntry` will dispose it
-
-      // c. Publish — silent (the track added above is already disabled).
-      final publishFailure = await transport.connectPublish(
-        localStream: stream,
-        fallbackIceServers: ice,
-        video: false,
-        prewarmedJoin: join,
-      );
-      if (entry.discarded) return;
-      if (publishFailure != null) {
-        try {
-          Analytics.capture('call_preroll_failed', {
-            'call_id': entry.callId,
-            'stage': 'publish',
-            'detail': publishFailure.detail ?? publishFailure.failure?.name ?? 'unknown',
-          });
-        } catch (_) {/* telemetry must never affect the ring path */}
-        return;
-      }
-      entry.prerollPublished = true;
-
-      // d. Pull — muted the instant a track arrives (see the `onTrack` cache
-      // installed above). A peer who has not published yet (still ringing on
-      // their own side, or hasn't reached ring-time pre-join) is a normal,
-      // expected outcome here, not a failure to alarm on.
-      final pullResult = await transport.connectPull(video: false);
-      if (entry.discarded) return;
-      if (!pullResult.connected) {
-        try {
-          Analytics.capture('call_preroll_failed', {
-            'call_id': entry.callId,
-            'stage': 'pull',
-            'detail': pullResult.detail ?? pullResult.failure?.name ?? 'unknown',
-          });
-        } catch (_) {/* telemetry must never affect the ring path */}
-        return;
-      }
-      entry.prerollPulled = true;
-
-      try {
-        Analytics.capture('call_preroll_ready', {
-          'call_id': entry.callId,
-          'ms': _nowMs() - swStart,
-          'published': true,
-          'pulled': true,
-        });
-      } catch (_) {/* telemetry must never affect the ring path */}
-    } catch (e) {
-      try {
-        Analytics.capture('call_preroll_failed', {
-          'call_id': entry.callId,
-          'stage': 'unknown',
-          'detail': e.toString(),
-        });
-      } catch (_) {/* telemetry must never affect the ring path */}
+      return await (e.iceFuture ??
+              Future<List<Map<String, dynamic>>>.value(const []))
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
     }
   }
 
-  /// [CALL-PREROLL-1 2026-08-17] Peek at [callId]'s pre-rolled mic stream
-  /// WITHOUT consuming the entry. `CallSession`'s boot sequence calls this
-  /// BEFORE `getUserMedia` so it can skip capture entirely when a preroll
-  /// stream already exists — the full entry (join/transport/pc) is still
-  /// consumed exactly once, later, via [adopt] in `_startSfuMedia`.
-  ///
-  /// Returns null whenever there is nothing to hand back (either flag off,
-  /// no entry, wrong call, or the preroll hasn't reached a mic yet) — every
-  /// one of those falls through to a normal `getUserMedia` call exactly as
-  /// today. Safe to call more than once; the second call for the same
-  /// already-peeked stream just hands back the same object.
-  MediaStream? peek(String callId) {
-    if (callId.isEmpty) return null;
-    if (!RemoteConfig.callPrewarmOnRingV1 || !RemoteConfig.callPrerollV1) return null;
-    final entry = _entry;
-    if (entry == null || entry.callId != callId || entry.discarded) return null;
-    final stream = entry.micStream;
-    if (stream != null) entry.peeked = true;
-    return stream;
-  }
-
-  /// Returns the prewarmed data for [callId] EXACTLY ONCE — the entry is
-  /// cleared on return, win or lose, so a second call can never adopt the
-  /// same seat twice. The seat is NOT closed here: the caller now owns it.
-  ///
-  /// Returns null when there is nothing to adopt, the flag is off, or the
-  /// entry is older than [freshWindowMs] — a stale entry is discarded
-  /// (seat closed) instead of handed back, per the SAFETY rule.
-  ///
-  /// [CALL-PREROLL-1 2026-08-17] [currentStream] is `CallSession`'s OWN
-  /// `_stream` at the moment it calls this (from `_startSfuMedia`, after its
-  /// boot sequence has already run). The returned [CallPrewarmedData] only
-  /// carries a full preroll ([CallPrewarmedData.hasFullPreroll]) when its mic
-  /// stream is `identical` to [currentStream] — i.e. only when [peek] already
-  /// handed this exact object to that session's boot. Any other outcome
-  /// (video call, a preroll that never reached a stream, an accept that beat
-  /// the preroll to `getUserMedia`) means the local audio actually being
-  /// captured is NOT the one the preroll's transport published, so adopting
-  /// the transport would publish the wrong track — that combination is
-  /// treated as "no full preroll", and whatever preroll resources exist are
-  /// disposed right here (never left for `CallSession` to discover it cannot
-  /// use) while the plain P1 join/ICE are still handed back as before.
-  Future<CallPrewarmedData?> adopt(String callId, {MediaStream? currentStream}) async {
-    if (callId.isEmpty) return null;
-    if (!RemoteConfig.callPrewarmOnRingV1) return null;
-    final entry = _entry;
-    if (entry == null || entry.callId != callId) return null;
-    final ageMs = _nowMs() - entry.startedAtMs;
-    if (ageMs > freshWindowMs) {
-      _entry = null;
-      unawaited(_closeEntry(entry, 'stale', ageMs));
-      return null;
-    }
-    _entry = null; // exactly once, regardless of what happens below
-    CallSfuJoinResult? join;
-    final jf = entry.joinFuture;
-    if (jf != null) {
-      try {
-        join = await jf;
-      } catch (_) {
-        join = null; // _join already swallows, but never let adopt() throw
-      }
-    }
-    List<Map<String, dynamic>> ice = const [];
-    final icf = entry.iceFuture;
-    if (icf != null) {
-      try {
-        ice = await icf;
-      } catch (_) {
-        ice = const [];
-      }
-    }
-    // [CALL-PREROLL-1] Give the preroll a bounded grace window to finish if
-    // accept happened while it was still mid-flight — the mic/publish/pull
-    // are individually fast, but an accept that lands within a second or two
-    // of the push arriving can genuinely race them. Past this, proceed
-    // without it exactly as if `callPrerollV1` were off; `_closeEntry`-style
-    // cleanup of whatever DID finish happens in the mismatch branch below,
-    // not here.
-    final pf = entry.prerollFuture;
-    if (pf != null) {
-      try {
-        await pf.timeout(const Duration(seconds: 3), onTimeout: () {});
-      } catch (_) {/* adopt() must never throw */}
-    }
-    final fullyPrerolled = entry.prerollPublished &&
-        entry.prerollPulled &&
-        entry.micStream != null &&
-        entry.transport != null &&
-        entry.prerollPc != null;
-    final streamMatches =
-        fullyPrerolled && currentStream != null && identical(entry.micStream, currentStream);
-    CallPrewarmedData data;
-    if (streamMatches) {
-      data = CallPrewarmedData(
-        join: join,
-        iceServers: ice,
-        prerollStream: entry.micStream,
-        prerollTransport: entry.transport,
-        prerollPc: entry.prerollPc,
-        prerollEarlyTracks: List<RTCTrackEvent>.of(entry.earlyTracks),
-        prerollPublished: entry.prerollPublished,
-        prerollPulled: entry.prerollPulled,
-      );
-    } else {
-      // Either there was no full preroll, or its stream is not the one this
-      // session actually booted with — dispose whatever the preroll built so
-      // it is never silently orphaned. The mic stream itself is skipped here
-      // ONLY when `entry.peeked` is true: that means `CallSession` already
-      // took ownership of it via `peek` and will dispose it in its own
-      // teardown, even though (in a video-call or lost-race scenario) the
-      // TRANSPORT/PC built around it are still ours to close.
-      if (entry.transport != null) {
-        try { await entry.transport!.dispose(); } catch (_) {}
-        // dispose() clears this join's authoritative SFU seat. Never return
-        // that same session id to the normal accept path: doing so caused the
-        // measured `session_not_owned` failure and the 18s recovery in
-        // avatok-1204d417. A fresh join is required after any transport close.
-        join = null;
-      }
-      if (entry.prerollPc != null) {
-        try { await entry.prerollPc!.close(); } catch (_) {}
-      }
-      if (entry.micStream != null && !entry.peeked) {
-        try {
-          for (final t in entry.micStream!.getTracks()) {
-            try { await t.stop(); } catch (_) {}
-          }
-          await entry.micStream!.dispose();
-        } catch (_) {}
-      }
-      data = CallPrewarmedData(join: join, iceServers: ice);
-    }
-    try {
-      Analytics.capture('call_prewarm_adopted', {
-        'call_id': callId,
-        'age_ms': ageMs,
-        'had_join': join != null && join.sessionId.isNotEmpty,
-        'full_preroll': streamMatches,
-      });
-    } catch (_) {/* telemetry must never affect the call path */}
-    return data;
-  }
-
-  /// Tear down a pre-warmed seat for [callId] because the ring ended without
-  /// being adopted — decline, caller cancel, timeout, or a stale entry.
-  /// Best-effort and exception-proof: never let teardown surface an error.
   Future<void> discard(String callId, String reason) async {
-    if (callId.isEmpty) return;
-    final entry = _entry;
-    if (entry == null || entry.callId != callId) return;
+    final e = _entry;
+    if (e == null || e.callId != callId) return;
     _entry = null;
-    final ageMs = _nowMs() - entry.startedAtMs;
-    await _closeEntry(entry, reason, ageMs);
+    await _discardEntry(e, reason);
   }
 
-  Future<void> _closeEntry(_PrewarmEntry entry, String reason, int ageMs) async {
+  Future<void> _discardEntry(_Entry e, String reason) async {
+    if (e.discarded) return;
+    e.discarded = true;
+    e.phase = CallPrewarmPhase.cancelled;
+    _capture('call_prewarm_discarded', {
+      'call_id': e.callId,
+      'reason': reason,
+      'age_ms': _now() - e.startedAtMs,
+    });
+    final pc = e.transportPc;
+    e.transportPc = null;
+    final channel = e.transportChannel;
+    e.transportChannel = null;
+    await e.networkSub?.cancel();
+    e.networkSub = null;
+    try { await channel?.close(); } catch (_) {}
+    try { await pc?.close(); } catch (_) {}
+    final join = await _awaitJoinBounded(e);
+    if (join != null && join.sessionId.isNotEmpty) {
+      try { await CallSfuApi.close(e.callId, join.sessionId, const []); } catch (_) {}
+    }
+    await _deleteHandoff(e);
+  }
+
+  Future<String> _handoffKey(_Entry e) async {
+    final account = await DiskCache.readGlobal('clerk_account_id') ?? '';
+    return 'call_prewarm_handoff_${account}_${e.deviceId}_${e.callId}_${e.nonce}';
+  }
+
+  Future<void> _writeHandoff(_Entry e, CallSfuJoinResult join) async {
+    if (e.deviceId.isEmpty || e.nonce.isEmpty) return;
     try {
-      Analytics.capture('call_prewarm_discarded', {
-        'call_id': entry.callId,
-        'reason': reason,
-        'age_ms': ageMs,
-      });
-    } catch (_) {/* telemetry must never affect the ring path */}
-    // [CALL-PREROLL-1 2026-08-17] Stop `_preroll` making further progress as
-    // early as possible, then let it actually settle before we start closing
-    // the resources it may still be mid-write on.
-    entry.discarded = true;
-    final pf = entry.prerollFuture;
-    if (pf != null) {
-      try {
-        await pf.timeout(const Duration(seconds: 5), onTimeout: () {});
-      } catch (_) {/* teardown is unconditional */}
+      await DiskCache.writeGlobal(await _handoffKey(e), jsonEncode({
+        'call_id': e.callId,
+        'nonce': e.nonce,
+        'generation': e.generation,
+        'network_identity': e.networkIdentity,
+        'device_id': e.deviceId,
+        'started_at_ms': e.startedAtMs,
+        'join': {
+          'session_id': join.sessionId,
+          'ice_servers': join.iceServers,
+          'relay_available': join.relayAvailable,
+          'relay_degraded': join.relayDegraded,
+          'video_allowed': join.videoAllowed,
+          'relay_reason': join.relayReason,
+        },
+      }));
+    } catch (_) {}
+  }
+
+  Future<CallSfuJoinResult?> _readHandoff(_Entry e) async {
+    if (e.deviceId.isEmpty || e.nonce.isEmpty) return null;
+    try {
+      final raw = await DiskCache.readGlobal(await _handoffKey(e));
+      if (raw == null || raw.isEmpty) return null;
+      final j = jsonDecode(raw);
+      if (j is! Map || j['call_id']?.toString() != e.callId ||
+          j['nonce']?.toString() != e.nonce ||
+          j['device_id']?.toString() != e.deviceId) return null;
+      final started = int.tryParse((j['started_at_ms'] ?? '').toString());
+      final age = started == null ? -1 : _now() - started;
+      if (age < 0 || age > freshWindowMs) {
+        await DiskCache.deleteGlobal(await _handoffKey(e));
+        return null;
+      }
+      final join = j['join'];
+      if (join is! Map) return null;
+      final restored = join.cast<String, dynamic>();
+      return CallSfuJoinResult(
+        sessionId: (restored['session_id'] ?? '').toString(),
+        iceServers: ((restored['ice_servers'] as List?) ?? const [])
+            .cast<Map>()
+            .map((v) => v.cast<String, dynamic>())
+            .toList(),
+        relayAvailable: restored['relay_available'] == true,
+        relayDegraded: restored['relay_degraded'] == true,
+        videoAllowed: restored['video_allowed'] != false,
+        relayReason: restored['relay_reason']?.toString(),
+      );
+    } catch (_) {
+      return null;
     }
-    final transport = entry.transport;
-    entry.transport = null;
-    if (transport != null) {
-      // [CALL-PREROLL-1] The transport owns THIS session's SFU-seat close
-      // (with the real mids it published) — skip the plain join-based close
-      // below so the seat is closed exactly once, not raced by two
-      // independent calls for the same session id.
-      try { await transport.dispose(); } catch (_) {/* teardown is unconditional */}
-    } else {
-      try {
-        var join = entry.joinResult;
-        join ??= await (entry.joinFuture ?? Future<CallSfuJoinResult?>.value(null))
-            .timeout(const Duration(seconds: 3), onTimeout: () => null);
-        if (join != null && join.sessionId.isNotEmpty) {
-          // CallSfuApi.close is itself best-effort and never throws; no
-          // publish happened during prewarm, so there are no mids to report.
-          await CallSfuApi.close(entry.callId, join.sessionId, const []);
-        }
-      } catch (_) {/* teardown is unconditional */}
+  }
+
+  Future<void> _deleteHandoff(_Entry e) async {
+    if (e.deviceId.isEmpty || e.nonce.isEmpty) return;
+    await DiskCache.deleteGlobal(await _handoffKey(e));
+  }
+
+  Future<CallSfuJoinResult?> _awaitJoinBounded(_Entry e) async {
+    try {
+      return await (e.joinFuture ?? Future<CallSfuJoinResult?>.value(e.join))
+          .timeout(teardownWait);
+    } catch (_) {
+      return e.join;
     }
-    // [CALL-PREROLL-1] `transport.dispose()` (above) does NOT close the raw
-    // peer connection — same contract as `CallSession`'s own teardown, see
-    // `CallSfuTransport.dispose`'s doc comment — so it is always closed here
-    // too, in the ordering the privacy-critical teardown contract requires:
-    // transport (seat) -> pc -> mic stream.
-    final pc = entry.prerollPc;
-    entry.prerollPc = null;
-    if (pc != null) {
-      try { await pc.close(); } catch (_) {/* teardown is unconditional */}
+  }
+
+  /// SFU ICE credentials and sessions are not portable across interface
+  /// changes. Discarding forces a clean, current join on Accept.
+  Future<void> notifyNetworkChanged({String? networkIdentity}) async {
+    final e = _entry;
+    if (e == null) return;
+    if (networkIdentity != null && networkIdentity == e.networkIdentity) return;
+    await discard(e.callId, 'network_changed');
+  }
+
+  static String _networkIdentity(List<ConnectivityResult> results) {
+    final names = results.map((r) => r.name).toSet().toList()..sort();
+    return names.join('+');
+  }
+
+  Future<String> _currentNetworkIdentity() async {
+    try {
+      return _networkIdentity(await Connectivity().checkConnectivity());
+    } catch (_) {
+      return '';
     }
-    // [CALL-PREROLL-1] The mic stream is the one resource `peek()` may have
-    // already handed to a booting `CallSession` — once `entry.peeked` is
-    // true that session owns it and will stop/dispose it in its own
-    // teardown; closing it here too would pull the mic out from under a call
-    // that is still (or about to be) live. `entry.transport`/`prerollPc`
-    // above are NEVER handed over by `peek()` (only `adopt()` does that, and
-    // `adopt()` clears `_entry` first so this method can't run afterward),
-    // so they are always ours to close regardless of `peeked`.
-    final stream = entry.micStream;
-    entry.micStream = null;
-    if (stream != null && !entry.peeked) {
-      try {
-        for (final t in stream.getTracks()) {
-          try { await t.stop(); } catch (_) {/* keep closing the rest */}
-        }
-        await stream.dispose();
-      } catch (_) {/* teardown is unconditional */}
-    }
+  }
+
+  void _capture(String event, Map<String, dynamic> props) {
+    try {
+      Analytics.capture(event, props);
+    } catch (_) {}
   }
 }

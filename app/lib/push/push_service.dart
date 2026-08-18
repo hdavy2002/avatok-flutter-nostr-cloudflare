@@ -640,6 +640,14 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // Call-log delete/clear from another of MY devices — silent wake. The isolate
       // has no AccountScope, so park it for SyncHub.drainPendingCallOps on foreground.
       await _queuePendingCallOp(d);
+    } else if (type == 'call-prewarm') {
+      // Do not JOIN from this short-lived isolate: a background seat
+      // can race and replace the foreground owner's canonical transport. The
+      // foreground live frame owns JOIN + PeerConnection; this path is quiet.
+      await _bgTrack('call_prewarm_join_requested', {
+        'call_id': (d['callId'] ?? '').toString(),
+        'transport': 'background_noop_live_owned',
+      });
     } else if (type == 'call-status') {
       // Caller cancelled / call ended before we answered → stop ringing.
       // [CALL-REDUCER-1] Background isolate routes through the SAME reducer as
@@ -647,9 +655,14 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // forgot the ringtone fallback and the glare globals entirely), which is
       // why a call ended while the app was backgrounded could leave state
       // behind that only a restart cleared.
+      final status = (d['status'] ?? '').toString();
+      if (status == 'answered_elsewhere') {
+        final winner = (d['winner_device_id'] ?? '').toString();
+        if (winner.isNotEmpty && winner == await DeviceId.get()) return;
+      }
       await applyRingTransition(
         (d['callId'] ?? '').toString(),
-        (d['status'] ?? '').toString(),
+        status,
         seq: int.tryParse((d['seq'] ?? '').toString()),
         source: 'fcm_bg',
       );
@@ -766,7 +779,8 @@ bool _terminalCallStatus(String s) =>
     s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer' ||
     s == 'bye' || s == 'hangup' ||
     s == 'decline' || s == 'declined' ||
-    s == 'decline_ava' || s == 'decline_agent';
+    s == 'decline_ava' || s == 'decline_agent' ||
+    s == 'answered_elsewhere';
 
 /// A call-status that means the CALLER's own CallSession is over.
 ///
@@ -2756,6 +2770,9 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
           avatarUrl: callerAvatarFromPayload(d),
           avatarVersion: (d['callerAvatarVersion'] ?? '').toString(),
           video: (d['kind'] ?? '') == 'video',
+          prewarmNonce: (d['prewarmNonce'] ?? '').toString(),
+          prewarmGeneration: int.tryParse((d['prewarmGeneration'] ?? '').toString()),
+          prewarmNetworkIdentity: (d['prewarmNetworkIdentity'] ?? '').toString(),
         ),
       ));
       Analytics.capture('call_branded_fsi_routed', {
@@ -3589,6 +3606,13 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       // [TRACE-ID-1] Carry the caller's correlation id through CallKit so the
       // callee's CallSession stitches to the same trace as the caller + Worker.
       'trace_id': d['trace_id'] ?? '',
+      'prewarmNonce': d['prewarmNonce'] ?? '',
+      'prewarmGeneration': d['prewarmGeneration'] ?? '',
+      'prewarmDeadlineMs': d['prewarmDeadlineMs'] ?? '',
+      // Native stale-intent validation uses the full ring capability expiry,
+      // not the already-elapsed silent deadline.
+      'expiresAtMs': d['tokenExpiresAt'] ?? '',
+      'serverSequence': d['seq'] ?? '',
       // [GCALL-W4-RING] Group-call ring. These two fields are what make Accept
       // open the conference screen instead of the 1:1 one — everything above is
       // shared, so a group call now rings through exactly the same CallKit path
@@ -3841,6 +3865,12 @@ class PushService {
     final status = (f['status'] ?? '').toString();
     if (callId.isEmpty || status.isEmpty) return;
     final seq = int.tryParse((f['seq'] ?? '').toString());
+    if (status == 'answered_elsewhere') {
+      final winner = (f['winner_device_id'] ?? '').toString();
+      if (winner.isNotEmpty && winner == await DeviceId.get()) return;
+      await applyRingTransition(callId, status, seq: seq, source: 'inbox_ws');
+      return;
+    }
     Analytics.capture('call_status_ws_received', {
       'call_id': callId,
       'status': status,
@@ -3860,6 +3890,29 @@ class PushService {
       seq: int.tryParse((f['seq'] ?? '').toString()),
       source: 'inbox_ws',
     );
+  }
+
+  /// Main-isolate entrypoint for the live Inbox `call_prewarm` frame. This is
+  /// deliberately public so SyncHub can route the frame without importing the
+  /// CallPrewarm implementation into its lifecycle code.
+  static Future<void> handleWsPrewarm(Map<String, dynamic> f) async {
+    final callId = (f['callId'] ?? f['call_id'] ?? '').toString();
+    if (callId.isEmpty) return;
+    final nonce = (f['prewarmNonce'] ?? f['nonce'] ?? '').toString();
+    final generation = int.tryParse(
+        (f['prewarmGeneration'] ?? f['generation'] ?? '').toString());
+    final deviceId = await DeviceId.get();
+    CallPrewarm.instance.start(callId, nonce: nonce, generation: generation,
+        transportOnly: true, deviceId: deviceId);
+    await CallPrewarm.instance.startForegroundTransport(callId,
+        nonce: nonce, generation: generation, deviceId: deviceId);
+    Analytics.capture('call_prewarm_foreground_requested', {
+      'call_id': callId,
+      'transport': 'flutter_datachannel_only',
+      'source': f['type'] == 'call-prewarm' ? 'fcm_foreground' : 'inbox_live',
+      if (f['seq'] != null) 'seq': f['seq'],
+      if (f['prewarmDeadlineMs'] != null) 'prewarm_deadline_ms': f['prewarmDeadlineMs'],
+    });
   }
 
   /// [WS-RING-1] Incoming ring delivered over the live InboxDO WebSocket
@@ -4470,9 +4523,27 @@ class PushService {
       // to the foreground get shipped now too.
       drainPendingBgTelemetry();
       // Server-relayed call status → update the active CallScreen.
+      if (d['type'] == 'call-prewarm') {
+        // Main isolate owns JOIN + WebRTC. Keep the listener non-blocking while
+        // the helper obtains the stable device id and negotiates transport.
+        unawaited(handleWsPrewarm(d));
+        return;
+      }
       if (d['type'] == 'call-status') {
         final callId = (d['callId'] ?? '').toString();
         final status = (d['status'] ?? '').toString();
+        if (status == 'answered_elsewhere') {
+          final winner = (d['winner_device_id'] ?? '').toString();
+          unawaited(() async {
+            if (winner.isNotEmpty && winner == await DeviceId.get()) return;
+            await applyRingTransition(
+              callId, status,
+              seq: int.tryParse((d['seq'] ?? '').toString()),
+              source: 'fcm_fg',
+            );
+          }());
+          return;
+        }
         // [BUSY-CARD-1] On a BUSY status the server MAY include busy_reason (why),
         // receptionist_enabled (whether "Leave a message for Ava" can show) and an
         // optional pronoun. Present → the caller shows the personalized busy card;
@@ -5856,12 +5927,20 @@ class PushService {
     if (override != null) return override(room);
     String? authoritative;
     try {
+      final acceptingDeviceId = await DeviceId.get();
       final claim = await ApiAuth.postJson(
         kCallCommandUrl,
         {
           'callId': room,
           'command': 'accept_call',
-          'commandId': 'accept:$room',
+          // Stable for retries on one handset, distinct across devices so the
+          // authority can reject a real first-answer-wins race rather than
+          // returning the other handset's cached successful response.
+          // Device id comes first because CallRoom bounds command ids to 64
+          // characters; even an unusually long room id must not truncate away
+          // the part that distinguishes two handsets.
+          'commandId': 'accept:$acceptingDeviceId:$room',
+          'data': {'winnerDeviceId': acceptingDeviceId},
         },
         timeout: const Duration(milliseconds: 1500),
       );
@@ -6133,6 +6212,9 @@ class PushService {
           // hands off to CallScreen.
           avatarUrl: callerAvatarFromPayload(Map<String, dynamic>.from(e)),
           traceId: (e['trace_id'] ?? '').toString(), // [TRACE-ID-1]
+          prewarmNonce: (e['prewarmNonce'] ?? '').toString(),
+          prewarmGeneration: int.tryParse((e['prewarmGeneration'] ?? '').toString()),
+          prewarmNetworkIdentity: (e['prewarmNetworkIdentity'] ?? '').toString(),
         ),
       ));
       Analytics.capture('call_accept_screen_opened', {'call_id': room});

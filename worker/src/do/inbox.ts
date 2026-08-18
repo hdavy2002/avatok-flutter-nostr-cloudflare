@@ -521,6 +521,15 @@ export class InboxDO {
       // every device.
       if (url.pathname.endsWith("/safety_flag")) return this.safetyFlag(await req.json());
       if (url.pathname.endsWith("/read")) return this.markRead(await req.json());
+      // Internal liveness probe for transport prewarm. It does not broadcast
+      // or mutate state; callers that cannot prove a live main isolate must
+      // use the ordinary immediate ring path.
+      if (url.pathname.endsWith("/live") && req.method === "GET") {
+        const count = this.state.getWebSockets().length;
+        return new Response(JSON.stringify({ live: count > 0, count }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
       // Transient "Ava is working…" chip — broadcast only, never persisted.
       if (url.pathname.endsWith("/ava_status")) return this.avaStatus(await req.json());

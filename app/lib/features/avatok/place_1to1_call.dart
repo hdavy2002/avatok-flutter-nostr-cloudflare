@@ -304,6 +304,8 @@ Future<void> _dialerPlaceInBackground(
     String routingReason = '';
     int? ringDeadlineMs;
     bool calleeLive = false;
+    bool prewarming = false;
+    int? prewarmDeadlineMs;
     String presence = '';
     int? presenceAgeMs;
     try {
@@ -317,6 +319,9 @@ Future<void> _dialerPlaceInBackground(
       // [CALL-PRESENCE-1 2026-08-03] Does the callee hold a live WebSocket? The
       // server has always known; it just never said.
       calleeLive = body['callee_live'] == true;
+      prewarming = body['prewarming'] == true;
+      final pd = body['prewarmDeadlineMs'] ?? body['prewarm_deadline_ms'];
+      prewarmDeadlineMs = pd is int ? pd : int.tryParse((pd ?? '').toString());
       // [CALL-PRESENCE-1 2026-08-07] The HEARTBEAT verdict — 'fresh' | 'stale' |
       // 'unknown'. Stronger than callee_live (which is only ever true when the WS
       // ring happened to land) because it is a standing record the callee's phone
@@ -381,7 +386,7 @@ Future<void> _dialerPlaceInBackground(
       session?.noteServerRoutedTerminal(routed);
     } else if (res.statusCode == 200 && !reachableFalse) {
       Analytics.capture('call_place_ok', {'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
-      session?.notePlaceResult(true);
+      session?.notePlaceResult(true, prewarming: prewarming, prewarmDeadlineMs: prewarmDeadlineMs);
     } else if (res.statusCode == 404 || reachableFalse) {
       Analytics.capture('call_no_device', {
         'to': uid.length > 40 ? uid.substring(0, 40) : uid,

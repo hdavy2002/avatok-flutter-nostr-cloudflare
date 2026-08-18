@@ -237,7 +237,10 @@ class MainActivity : FlutterFragmentActivity() {
             val ageMs = if (timestampMs > 0L) {
                 (System.currentTimeMillis() - timestampMs).coerceAtLeast(0L)
             } else 0L
-            val expired = timestampMs > 0L && ageMs > expiryMs
+            val expiresAtMs = (raw["expiresAtMs"] as? Number)?.toLong() ?: 0L
+            val expired = if (expiresAtMs > 0L) {
+                System.currentTimeMillis() >= expiresAtMs
+            } else timestampMs > 0L && ageMs >= expiryMs
 
             val out = HashMap<String, Any?>(raw)
             out["ageMs"] = ageMs
@@ -437,6 +440,14 @@ class MainActivity : FlutterFragmentActivity() {
                 ?: data?.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR).orEmpty()),
             "callerAvatarVersion" to (extra["callerAvatarVersion"] ?: ""),
             "roomToken" to (extra["roomToken"] ?: ""),
+            // [CALL-PREWARM-NATIVE-1] These identity fields are copied through
+            // the cold-start intent so a late FCM/CallKit action cannot mutate a
+            // newer invite. Older payloads simply use empty values and retain
+            // the existing cold path.
+            "inviteNonce" to (extra["inviteNonce"] ?: extra["prewarmNonce"] ?: extra["nonce"] ?: "").toString(),
+            "generation" to (extra["generation"] ?: extra["prewarmGeneration"] ?: "").toString(),
+            "expiresAtMs" to (extra["expiresAtMs"] ?: extra["nativeActionExpiresAt"] ?: extra["tokenExpiresAt"] ?: 0L).toString(),
+            "serverSequence" to (extra["serverSequence"] ?: extra["seq"] ?: "").toString(),
         )
     }
 
@@ -456,6 +467,31 @@ class MainActivity : FlutterFragmentActivity() {
     private fun showNativeRingScreen(payload: Map<String, Any?>) {
         if (nativeRingScreen != null) return
         if (connectingOverlay != null) return // mutually exclusive continuity surfaces
+        val callId = (payload["callId"] as? String).orEmpty()
+        // Validate identity and expiry before constructing/attaching any native
+        // ring surface. The bridge record must already be RINGING; this method
+        // is never allowed to create that transition from a local intent.
+        if (isCallNativeAnswerV1Enabled(this) && NativeCallPrewarmBridge.isEnabled(this)) {
+            val inviteNonce = (payload["inviteNonce"] as? String).orEmpty()
+            val generation = (payload["generation"] as? String).orEmpty()
+            val expiresAtMs = (payload["expiresAtMs"] as? Number)?.toLong()
+                ?: payload["expiresAtMs"]?.toString()?.toLongOrNull() ?: 0L
+            val serverSequence = (payload["serverSequence"] as? Number)?.toLong()
+                ?: payload["serverSequence"]?.toString()?.toLongOrNull() ?: 0L
+            if (expiresAtMs > 0L && expiresAtMs <= System.currentTimeMillis()) return
+            if (inviteNonce.isNotEmpty() && generation.isNotEmpty() && serverSequence > 0L) {
+                // This is the server-promoted ring edge carried by the intent;
+                // it is not inferred from showing the UI.
+                NativeCallPrewarmBridge.ringing(
+                    this, callId, inviteNonce, generation, serverSequence, expiresAtMs,
+                )
+            }
+            if (inviteNonce.isNotEmpty() && generation.isNotEmpty() &&
+                !NativeCallPrewarmBridge.isCurrent(this, callId, inviteNonce, generation)) {
+                android.util.Log.w("MainActivity", "dropping stale incoming-call intent callId=$callId")
+                return
+            }
+        }
         val root = window.decorView.findViewById<ViewGroup>(android.R.id.content) ?: return
 
         nativeRingPayload = payload
@@ -563,7 +599,6 @@ class MainActivity : FlutterFragmentActivity() {
         )
         nativeRingScreen = screen
 
-        val callId = (payload["callId"] as? String).orEmpty()
         val msFromIntent = (SystemClock.elapsedRealtime() - nativeRingShownAtElapsedMs).coerceAtLeast(0L)
         ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin.emitNativeRingShown(callId, msFromIntent)
 
@@ -646,6 +681,12 @@ class MainActivity : FlutterFragmentActivity() {
         // in this app treats accept/decline as one-time intents.
         val payload = nativeRingPayload ?: return
         nativeRingPayload = null
+        val payloadExpiry = (payload["expiresAtMs"] as? Number)?.toLong()
+            ?: payload["expiresAtMs"]?.toString()?.toLongOrNull() ?: 0L
+        if (payloadExpiry > 0L && payloadExpiry <= System.currentTimeMillis()) {
+            removeNativeRingScreen()
+            return
+        }
         val callId = (payload["callId"] as? String).orEmpty()
         val cold = !flutterUiDisplayed
         val msFromScreenShown =
@@ -663,7 +704,16 @@ class MainActivity : FlutterFragmentActivity() {
             "kind" to (payload["kind"] ?: "audio"),
             "msFromScreenShown" to msFromScreenShown,
             "cold" to cold,
+            "inviteNonce" to (payload["inviteNonce"] ?: ""),
+            "generation" to (payload["generation"] ?: ""),
+            "expiresAtMs" to (payload["expiresAtMs"] ?: 0L),
         )
+        if (isCallNativeAnswerV1Enabled(this) && NativeCallPrewarmBridge.isEnabled(this)) {
+            NativeCallPrewarmBridge.action(
+                this, callId, (payload["inviteNonce"] as? String).orEmpty(),
+                (payload["generation"] as? String).orEmpty(), "accept",
+            )
+        }
         recordNativeRingAction(action)
     }
 
@@ -678,6 +728,12 @@ class MainActivity : FlutterFragmentActivity() {
     private fun onNativeRingDecline() {
         val payload = nativeRingPayload ?: return
         nativeRingPayload = null
+        val payloadExpiry = (payload["expiresAtMs"] as? Number)?.toLong()
+            ?: payload["expiresAtMs"]?.toString()?.toLongOrNull() ?: 0L
+        if (payloadExpiry > 0L && payloadExpiry <= System.currentTimeMillis()) {
+            removeNativeRingScreen()
+            return
+        }
         val callId = (payload["callId"] as? String).orEmpty()
         removeNativeRingScreen()
         dropPendingIncomingTap(callId)
@@ -688,7 +744,16 @@ class MainActivity : FlutterFragmentActivity() {
             "from" to (payload["from"] ?: ""),
             "fromName" to (payload["fromName"] ?: ""),
             "kind" to (payload["kind"] ?: "audio"),
+            "inviteNonce" to (payload["inviteNonce"] ?: ""),
+            "generation" to (payload["generation"] ?: ""),
+            "expiresAtMs" to (payload["expiresAtMs"] ?: 0L),
         )
+        if (isCallNativeAnswerV1Enabled(this) && NativeCallPrewarmBridge.isEnabled(this)) {
+            NativeCallPrewarmBridge.action(
+                this, callId, (payload["inviteNonce"] as? String).orEmpty(),
+                (payload["generation"] as? String).orEmpty(), "decline",
+            )
+        }
         recordNativeRingAction(action)
     }
 
@@ -704,10 +769,23 @@ class MainActivity : FlutterFragmentActivity() {
     private fun recordNativeRingAction(action: Map<String, Any?>) {
         val nonce = UUID.randomUUID().toString()
         val timestampMs = System.currentTimeMillis()
+        val inviteExpiryMs = (action["expiresAtMs"] as? Number)?.toLong()
+            ?: action["expiresAtMs"]?.toString()?.toLongOrNull()
+            ?: 0L
+        // Never extend an explicit invite expiry. A missing expiry gets the
+        // bounded local action TTL; an already-expired invite is not persisted.
+        val actionExpiresAtMs = when {
+            inviteExpiryMs > timestampMs ->
+                minOf(inviteExpiryMs, timestampMs + NATIVE_ANSWER_ACTION_TTL_MS)
+            inviteExpiryMs == 0L -> timestampMs + NATIVE_ANSWER_ACTION_TTL_MS
+            else -> return
+        }
+        val ttlMs = actionExpiresAtMs - timestampMs
         val fullAction = action + mapOf(
             "nonce" to nonce,
             "timestampMs" to timestampMs,
-            "expiryMs" to NATIVE_ANSWER_ACTION_TTL_MS,
+            "expiryMs" to ttlMs,
+            "expiresAtMs" to actionExpiresAtMs,
         )
         pendingNativeRingAction = fullAction
         persistPendingRingAction(this, fullAction)
@@ -725,6 +803,19 @@ class MainActivity : FlutterFragmentActivity() {
     private fun clearNativeRingScreen(callId: String?) {
         val currentId = (nativeRingPayload?.get("callId") as? String)
         if (callId == null || callId == currentId) {
+            // Best-effort terminal cleanup for a caller-cancel/remote-answer
+            // signal. Identity is read from the durable state, so a late clear
+            // for an older call cannot remove a newer invite.
+            if (callId != null && NativeCallPrewarmBridge.isEnabled(this)) {
+                val state = NativeCallPrewarmBridge.snapshot(this)
+                val stateId = state["callId"] as? String
+                if (stateId == callId) {
+                    NativeCallPrewarmBridge.terminal(
+                        this, callId, state["nonce"] as? String ?: "",
+                        state["generation"] as? String ?: "", "remote_terminal",
+                    )
+                }
+            }
             nativeRingPayload = null
             removeNativeRingScreen()
         }
@@ -900,6 +991,49 @@ class MainActivity : FlutterFragmentActivity() {
                         writeNativeAnswerFlag(this@MainActivity, call.argument<Boolean>("enabled") == true)
                         result.success(true)
                     }
+                    // [CALL-PREWARM-NATIVE-1] Native state/ordering bridge.
+                    // All transport work remains in Dart; these calls only make
+                    // the invite identity and terminal edges durable across a
+                    // killed Flutter isolate. Missing flag = disabled.
+                    "setCallPrewarmNativeV1" -> {
+                        NativeCallPrewarmBridge.setEnabled(this@MainActivity, call.argument<Boolean>("enabled") == true)
+                        result.success(true)
+                    }
+                    "prewarmStart" -> result.success(NativeCallPrewarmBridge.start(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString().orEmpty(), call.argument<Any?>("generation")?.toString().orEmpty(),
+                        call.argument<Any?>("expiresAtMs")?.toString()?.toLongOrNull() ?: 0L,
+                    ))
+                    "prewarmReady" -> result.success(NativeCallPrewarmBridge.ready(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString().orEmpty(), call.argument<Any?>("generation")?.toString().orEmpty(),
+                    ))
+                    "prewarmFailed" -> result.success(NativeCallPrewarmBridge.failed(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString().orEmpty(), call.argument<Any?>("generation")?.toString().orEmpty(),
+                        call.argument<Any?>("reason")?.toString().orEmpty(),
+                    ))
+                    "prewarmRinging" -> result.success(NativeCallPrewarmBridge.ringing(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString().orEmpty(), call.argument<Any?>("generation")?.toString().orEmpty(),
+                        call.argument<Any?>("serverSequence")?.toString()?.toLongOrNull() ?: 0L,
+                        call.argument<Any?>("expiresAtMs")?.toString()?.toLongOrNull() ?: 0L,
+                    ))
+                    "prewarmAction" -> result.success(NativeCallPrewarmBridge.action(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString().orEmpty(), call.argument<Any?>("generation")?.toString().orEmpty(),
+                        call.argument<Any?>("action")?.toString().orEmpty(), call.argument<Any?>("winnerDeviceId")?.toString().orEmpty(),
+                    ))
+                    "prewarmTerminal" -> result.success(NativeCallPrewarmBridge.terminal(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString().orEmpty(), call.argument<Any?>("generation")?.toString().orEmpty(),
+                        call.argument<Any?>("reason")?.toString().orEmpty(), call.argument<Any?>("winnerDeviceId")?.toString().orEmpty(),
+                    ))
+                    "prewarmCancel" -> result.success(NativeCallPrewarmBridge.cancel(
+                        this@MainActivity, call.argument<Any?>("callId")?.toString().orEmpty(),
+                        call.argument<Any?>("nonce")?.toString(), call.argument<Any?>("generation")?.toString(),
+                    ))
+                    "prewarmState" -> result.success(NativeCallPrewarmBridge.snapshot(this@MainActivity))
                     else -> result.notImplemented()
                 }
             }

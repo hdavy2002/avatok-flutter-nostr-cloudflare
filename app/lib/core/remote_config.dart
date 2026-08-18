@@ -162,6 +162,12 @@ class RemoteConfig {
   /// the same change, per the fake-flag rule.
   static bool get callPrewarmOnRingV1 => _b('callPrewarmOnRingV1', false);
 
+  /// Main-isolate-only transport prewarm. The background FCM isolate remains
+  /// JOIN-only; this permits Flutter foreground to build a datachannel-only PC
+  /// and adopt it on Accept. Ships dark until the server contract is enabled.
+  static bool get callSilentTransportPrewarmV1 =>
+      _b('callSilentTransportPrewarmV1', false);
+
   /// [CALL-PREWARM-1] P2 of the same plan — caller pre-joins and publishes to
   /// the SFU at ring start. Declared now; not yet read by any client code
   /// (ships as its own change).
@@ -1108,6 +1114,10 @@ class RemoteConfig {
       await _callNativeAnswerChannel.invokeMethod(
         'setCallNativeAnswerV1',
         {'enabled': callNativeAnswerV1},
+      );
+      await _callNativeAnswerChannel.invokeMethod(
+        'setCallPrewarmNativeV1',
+        {'enabled': callNativeAnswerV1 && callSilentTransportPrewarmV1},
       );
     } catch (e) {
       AvaLog.I.log('config', 'callNativeAnswerV1 disk mirror failed: $e');

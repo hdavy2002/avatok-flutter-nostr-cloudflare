@@ -816,6 +816,14 @@ class SyncHub {
           unawaited(PushService.handleWsRing(m));
         } catch (_) {/* tolerate a bad ring frame */}
         break;
+      case 'call_prewarm':
+        // The server sent this only after proving the main isolate owns a live
+        // Inbox socket. WebRTC stays out of Firebase's background isolate and
+        // is held here until CallSession adopts the canonical connection.
+        try {
+          unawaited(PushService.handleWsPrewarm(m));
+        } catch (_) {/* optimisation failure must never break sync */}
+        break;
       case 'call_del':
         // One call-log entry deleted on another of MY devices.
         unawaited(CallLogStore().applyRemoteDelete((m['entry_id'] ?? '').toString()));

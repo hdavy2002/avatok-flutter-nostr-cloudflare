@@ -355,6 +355,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       String routingReason = '';
       int? ringDeadlineMs;
       bool calleeLive = false;
+      bool prewarming = false;
+      int? prewarmDeadlineMs;
       String presence = '';
       int? presenceAgeMs;
       try {
@@ -365,6 +367,9 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         final d = body['ringDeadlineMs'];
         ringDeadlineMs = d is int ? d : int.tryParse((d ?? '').toString());
         calleeLive = body['callee_live'] == true;
+        prewarming = body['prewarming'] == true;
+        final pd = body['prewarmDeadlineMs'] ?? body['prewarm_deadline_ms'];
+        prewarmDeadlineMs = pd is int ? pd : int.tryParse((pd ?? '').toString());
         presence = (body['presence'] ?? '').toString();
         final a = body['presence_age_ms'];
         presenceAgeMs = a is int ? a : int.tryParse((a ?? '').toString());
@@ -406,7 +411,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         try { hasRingback = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString().isNotEmpty; } catch (_) {}
         Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': hasRingback, 'mount': 'optimistic'});
         // Reachable — release the honest guard flow into the full ring window.
-        session?.notePlaceResult(true);
+        session?.notePlaceResult(true, prewarming: prewarming, prewarmDeadlineMs: prewarmDeadlineMs);
       } else if (res.statusCode == 404 || reachableFalse) {
         Analytics.capture('call_no_device', {
           'to': to.length > 40 ? to.substring(0, 40) : to,

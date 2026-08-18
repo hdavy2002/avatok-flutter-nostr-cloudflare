@@ -249,6 +249,9 @@ class CallScreen extends StatefulWidget {
   // CallSession.notePlaceResult / notePlaceFailed. Default false = the classic
   // awaited path (screen mounts after the POST).
   final bool deferRing;
+  final String prewarmNonce;
+  final int? prewarmGeneration;
+  final String prewarmNetworkIdentity;
   const CallScreen({
     super.key,
     required this.room,
@@ -267,6 +270,9 @@ class CallScreen extends StatefulWidget {
     this.business = false,
     this.dialer = false,
     this.deferRing = false,
+    this.prewarmNonce = '',
+    this.prewarmGeneration,
+    this.prewarmNetworkIdentity = '',
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -611,6 +617,9 @@ class _CallScreenState extends State<CallScreen> {
       traceId: widget.traceId, // [TRACE-ID-1]
       business: widget.business, // [DIALPAD-BIZ-CALLS Phase C]
       deferRing: widget.deferRing, // [INSTANT-CALL-MOUNT-1]
+      prewarmNonce: widget.prewarmNonce,
+      prewarmGeneration: widget.prewarmGeneration,
+      prewarmNetworkIdentity: widget.prewarmNetworkIdentity,
     ));
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.

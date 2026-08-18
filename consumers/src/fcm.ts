@@ -87,7 +87,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (!uid) return;
   // A ring invitation is perishable. Queue retry/backlog must never turn an
   // obsolete invite into a phantom call minutes later.
-  if (msg.kind === "call" && ringInviteExpired(msg.tokenExpiresAt)) {
+  if ((msg.kind === "call" || msg.kind === "call-prewarm") && ringInviteExpired(msg.tokenExpiresAt)) {
     await capturePush(env, "call_ring_suppressed", uid, {
       call_id: msg.callId ?? null, reason: "expired_before_fcm",
       token_expires_at: msg.tokenExpiresAt ?? null,
@@ -112,7 +112,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   // caller's cancel via routes/api.ts callStatus → /mark-terminal). If it's
   // already terminal, suppress the ring entirely. Best-effort — a DO hiccup must
   // never block a legitimate ring, so any error falls through to the normal send.
-  if (msg.kind === "call" && msg.callId && env.CALL_ROOMS) {
+  if ((msg.kind === "call" || msg.kind === "call-prewarm") && msg.callId && env.CALL_ROOMS) {
     try {
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(msg.callId));
       const r = await stub.fetch("https://call/state", { method: "GET" });
@@ -637,7 +637,7 @@ export function ringInviteExpired(expiresAt: number | undefined, now = Date.now(
 }
 
 export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
-  if (msg.kind === "call") {
+  if (msg.kind === "call" || msg.kind === "call-prewarm") {
     // NOTE: "from" is a RESERVED key in FCM data payloads — including it makes
     // Firebase reject the whole message (400 INVALID_ARGUMENT "Invalid data
     // payload key: from"), so calls never ring. Use "fromPub" instead.
@@ -666,7 +666,7 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     // AND `call_incoming_shown route=fcm_bg`. Absence of both = this was not the cause.
     return { highPriority: true, ttlSeconds: Math.max(1, Math.ceil(remainingMs / 1000)),
       data: {
-      type: "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
+      type: msg.kind === "call-prewarm" ? "call-prewarm" : "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
       fromName: msg.fromName ?? "AvaTOK", kind: msg.callType ?? "audio",
       // [TRACE-ID-1] Correlation id -> the callee's push handler reads it and
       // stitches its CallSession telemetry to the caller's + Worker's trace.
@@ -707,6 +707,9 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
       // first place. One is "when does the ring end", the other is "when does
       // this token stop working".
       ...(msg.ringDeadlineMs != null ? { ringDeadlineMs: String(msg.ringDeadlineMs) } : {}),
+      ...(msg.prewarmNonce ? { prewarmNonce: msg.prewarmNonce } : {}),
+      ...(msg.prewarmGeneration != null ? { prewarmGeneration: String(msg.prewarmGeneration) } : {}),
+      ...(msg.prewarmDeadlineMs != null ? { prewarmDeadlineMs: String(msg.prewarmDeadlineMs) } : {}),
       // [ADDCALL-3-SRV] Group-ness. `ringGroup` (worker routes/groupcall.ts) has
       // enqueued group/gid/groupName on every group ring since [GCALL-W4-RING],
       // but this branch dropped them, so the FCM leg arrived indistinguishable
@@ -750,6 +753,7 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     return { highPriority: true, ttlSeconds: 60,
       collapseKey: msg.callId ? `call-status:${msg.callId}` : undefined, data: {
       type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "",
+      ...(msg.winner_device_id ? { winner_device_id: String(msg.winner_device_id) } : {}),
       ...(msg.activation_mode ? { activation_mode: String(msg.activation_mode) } : {}),
       ...(msg.no_answer_reason ? { no_answer_reason: String(msg.no_answer_reason) } : {}),
       ...(msg.busy_reason ? { busy_reason: String(msg.busy_reason) } : {}),
