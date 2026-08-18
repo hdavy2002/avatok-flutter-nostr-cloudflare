@@ -913,7 +913,7 @@ export class CallRoom {
       const p = await this.loadSilentPrewarm();
       const s = await this.loadSession(callId);
       if (!p) {
-        return { response: { ok: true, changed: false, phase: p?.phase ?? null, ring_started_at: p?.ring_started_at ?? null }, delivery: null };
+        return { response: { ok: true, changed: false, phase: null, ring_started_at: null }, delivery: null };
       }
       if (p.ring_delivery_pending === true &&
           (s.session_state === "connected" || s.session_state === "handoff" || s.session_state === "completed")) {
