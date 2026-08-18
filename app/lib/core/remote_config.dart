@@ -456,10 +456,10 @@ class RemoteConfig {
   // [AVA-IDGATE-1] livenessOnboardingGate getter REMOVED. The onboarding/app-open
   // liveness gate (HumanCheckPage + _landOrGate) is gone; liveness fires at the first
   // public action, enforced server-side. Nothing on the client reads this any more.
-  /// P11: mandatory + AI-vetted profile completion. Ships dark (default OFF); flip
-  /// ON at launch. When on, an incomplete profile is routed to the Profile screen
+  /// P11: mandatory + AI-vetted profile completion. Default ON: an incomplete
+  /// or unapproved profile is routed to the Profile screen
   /// before the app, and the save shows a hold state while the server vets. Mirrors config.ts.
-  static bool get profileCompletionGate => _b('profileCompletionGate', false);
+  static bool get profileCompletionGate => _b('profileCompletionGate', true);
   /// P8 Stage 3: daily auto-backup to the user's OWN Google Drive — ON for ALL
   /// users (no premium gate). Flip OFF in KV to disable the daily job.
   static bool get driveAutoBackup => _b('driveAutoBackup', true);
@@ -662,9 +662,10 @@ class RemoteConfig {
   static bool get richInputEnabled => _b('richInputEnabled', true);
   /// STREAM B (stranger safety gate). When false the whole feature is hidden: a
   /// new non-contact thread renders the normal composer (no gate), no Message
-  /// requests grouping, no media blur. Default ON (safety ships enabled). Mirrors
+  /// requests grouping, no media blur. Default OFF: every sender lands in the
+  /// ordinary chat list. Mirrors
   /// config.ts `strangerGateEnabled`.
-  static bool get strangerGateEnabled => _b('strangerGateEnabled', true);
+  static bool get strangerGateEnabled => _b('strangerGateEnabled', false);
   // DIALPAD BUSINESS CALLS + AVA VOICE AGENT (Specs/PLAN-2026-07-11-dialpad-
   // business-calls-ava-voice-agent.md §8/§15.6). One kill switch per phase;
   // all default OFF so a config-fetch failure keeps today's behaviour exactly

@@ -1696,7 +1696,7 @@ const DEFAULTS: PlatformConfig = {
   // OWNER-CONTROLLED: flip in KV when ready to re-verify the existing base.
   requireDiditLiveness: false,
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
-  profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
+  profileCompletionGate: true,     // Mandatory complete + AI-vetted profile before app access
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified
   restoreV2: false,               // P8 Stage 2: R2 lazy-older restore paging — dark
   driveAutoBackup: true,          // P8 Stage 3: daily Drive backup for EVERY user (no premium gate)
@@ -1705,7 +1705,7 @@ const DEFAULTS: PlatformConfig = {
   // AI Messenger Batch 2026-07-03 defaults (spec §8 / §12).
   marketplaceAgentSettingsEnabled: true, // STREAM A — ships ON
   mktI18nNegotiationEnabled: true,       // STREAM A — ships ON
-  strangerGateEnabled: true,             // STREAM B — ships ON
+  strangerGateEnabled: false,            // All senders appear in the normal chat list
   linkPreviewsEnabled: true,             // STREAM C — ships ON
   richInputEnabled: true,                // STREAM E — ships ON
   groupTranslationEnabled: false,        // STREAM G — OFF (cost watch)

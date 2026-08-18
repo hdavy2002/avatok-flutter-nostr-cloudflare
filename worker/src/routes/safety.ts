@@ -21,16 +21,15 @@ import { readConfig } from "./config";
 
 const REPORT_MAX = 25; // hard cap on envelopes copied per report
 
-/** Feature flag — strangerGateEnabled (default ON). When OFF the routes still
+/** Feature flag — strangerGateEnabled (default OFF). When OFF the routes still
  *  function but the client hides the whole feature. Kept here so a server-side
  *  panic-off also stops report/block side effects from the gate. */
 async function gateEnabled(env: Env): Promise<boolean> {
   try {
     const cfg = await readConfig(env);
-    // Default ON: only treat as OFF when explicitly false.
-    return (cfg as unknown as { strangerGateEnabled?: boolean }).strangerGateEnabled !== false;
+    return (cfg as unknown as { strangerGateEnabled?: boolean }).strangerGateEnabled === true;
   } catch {
-    return true; // fail ON — a config read failure must not disable safety
+    return false; // message requests are retired; a config outage must not revive them
   }
 }
 

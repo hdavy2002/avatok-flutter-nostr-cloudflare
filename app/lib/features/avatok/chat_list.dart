@@ -2130,9 +2130,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           (searching || _showArchived || !archived.contains(k));
     }).map((c) {
       final k = contactKey(c);
-      // Phone-only callers can't be greeted with "Say hi" — their thread is a
-      // one-way voicemail record, so fall back to the formatted number.
-      final empty = c.isPhoneOnly ? c.subtitle : 'Say hi 👋';
+      // Never fabricate a conversation preview while the local projection is
+      // hydrating. That caused the visible "Say hi" / "Ava is thinking" flash
+      // before cached real previews replaced it. An empty cached thread may show
+      // its stable contact subtitle; message history only shows real content.
+      final empty = c.subtitle;
       return Chat(name: c.name, seed: c.seed, avatarUrl: c.avatarUrl,
           last: draftOr(k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : empty)),
           time: timeOf(k), unread: _unread[k] ?? 0);
