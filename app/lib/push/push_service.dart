@@ -132,6 +132,7 @@ final _local = FlutterLocalNotificationsPlugin();
 // No leading '@drawable/' and no extension: flutter_local_notifications resolves
 // a bare name against the drawable folder itself.
 const String _kNotifIcon = 'ic_notification';
+const Color _kNotifAccent = Color(0xFFFFD400);
 // Messages channel. Keep the id 'avatok_messages' UNCHANGED — changing a channel
 // id makes Android drop the old channel and create a fresh one, resetting the
 // user's sound/vibration/importance overrides. playSound + enableVibration are set
@@ -505,6 +506,7 @@ Future<void> _showCallRecordingNotif(Map<String, dynamic> d) async {
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
         icon: _kNotifIcon, // [NOTIF-ICON-1]
+        color: _kNotifAccent,
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
         number: count,
@@ -534,6 +536,7 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
         icon: _kNotifIcon, // [NOTIF-ICON-1]
+        color: _kNotifAccent,
         importance: Importance.high, priority: Priority.high,
         number: count,
         ticker: '$who added you to $group',
@@ -1779,6 +1782,7 @@ Future<void> _renderShadeSummary(Map<String, dynamic> byConv) async {
           _msgChannel.id, _msgChannel.name,
           channelDescription: _msgChannel.description,
           icon: _kNotifIcon, // [NOTIF-ICON-1]
+          color: _kNotifAccent,
           importance: Importance.high, priority: Priority.high,
           groupKey: _kMsgGroupKey,
           setAsGroupSummary: true,
@@ -1880,6 +1884,7 @@ Future<bool> _renderConvNotification({
         ch.id, ch.name,
         channelDescription: ch.description,
         icon: _kNotifIcon, // [NOTIF-ICON-1]
+        color: _kNotifAccent,
         importance: muted ? Importance.low : Importance.high,
         priority: muted ? Priority.low : Priority.high,
         number: count, // launchers read this for the icon badge count
@@ -2449,6 +2454,7 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
         icon: _kNotifIcon, // [NOTIF-ICON-1]
+        color: _kNotifAccent,
         importance: Importance.high, priority: Priority.high,
         number: count, // launchers read this for the icon badge count
         ticker: 'Message from $who',
