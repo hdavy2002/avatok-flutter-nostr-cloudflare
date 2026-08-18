@@ -286,7 +286,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
       ...(taggedPrewarm ? {
         deviceId: prewarmDeviceId,
         prewarmNonce,
-        prewarmGeneration: preacceptGeneration,
+        prewarmGeneration,
       } : {}),
     }),
   });
