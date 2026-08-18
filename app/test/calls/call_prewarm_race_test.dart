@@ -73,4 +73,41 @@ void main() {
     expect(peer, 'early-peer');
     expect(rearmed, 0);
   });
+
+  test('preaccept audio mid resolver selects the audio section only', () {
+    const sdp = 'v=0\r\n'
+        'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n'
+        'a=mid:0\r\n'
+        'm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n'
+        'a=mid:3\r\n';
+    expect(callPrewarmAudioMidFromSdp(sdp), '3');
+    expect(callPrewarmAudioMidFromSdp('v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\n'), isNull);
+  });
+
+  test('preaccept replacement contract requires the expected track and no offer', () {
+    expect(
+      callSfuAudioReplaceContractHolds(
+        senderTrackId: 'mic-1',
+        expectedTrackId: 'mic-1',
+        renegotiated: false,
+      ),
+      isTrue,
+    );
+    expect(
+      callSfuAudioReplaceContractHolds(
+        senderTrackId: 'mic-1',
+        expectedTrackId: 'mic-1',
+        renegotiated: true,
+      ),
+      isFalse,
+    );
+    expect(
+      callSfuAudioReplaceContractHolds(
+        senderTrackId: null,
+        expectedTrackId: 'mic-1',
+        renegotiated: false,
+      ),
+      isFalse,
+    );
+  });
 }

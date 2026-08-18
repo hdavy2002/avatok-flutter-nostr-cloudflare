@@ -835,6 +835,10 @@ class CallSession {
   bool _sfuAborted = false;
   bool _sfuDecider = false;
   bool _sfuReconnectInFlight = false;
+  /// True while `_stream` is the empty protocol-silence stream used by an
+  /// incoming prewarmed SFU call. Cleared only after the real mic replaces the
+  /// retained SFU sender or the call falls back to a cold transport.
+  bool _prewarmAudioPending = false;
   // [CALL-PREJOIN-1 2026-08-16] P2 of Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md.
   // The CALLER'S pre-joined-and-publishing SFU transport, started while the
   // callee's phone is still ringing (`_maybeStartCallerPrejoin`). Non-null
@@ -3605,9 +3609,34 @@ class CallSession {
     // purpose — the preroll never captures video, so a video call always
     // falls through to a fresh `getUserMedia` below exactly as before this
     // flag existed.
-    final prerolledStream =
-        config.video ? null : CallPrewarm.instance.peek(config.room);
-    if (prerolledStream != null) {
+    // [CALL-SILENT-SLOT-1] For an incoming audio call whose foreground
+    // prewarm has already published a null-track SENDONLY section, keep Accept
+    // independent of microphone acquisition: the session starts with an empty
+    // local stream, then replaces the retained sender after the SFU PC is
+    // adopted. This is protocol silence, never a captured/muted mic.
+    MediaStream? protocolSilenceStream;
+    if (!config.outgoing && !config.video &&
+        RemoteConfig.callSilentTransportPrewarmV1 &&
+        CallPrewarm.instance.hasPrepublishedAudio(config.room)) {
+      try {
+        protocolSilenceStream = await createLocalMediaStream('prewarm-${config.room}');
+        _prewarmAudioPending = true;
+        Analytics.capture('call_preaccept_audio_slot', {
+          'call_id': config.room,
+          'privacy': 'null_track_protocol_silence',
+        });
+      } catch (e) {
+        Analytics.capture('call_preaccept_audio_slot_failed', {
+          'call_id': config.room,
+          'failure': e.toString(),
+        });
+      }
+    }
+    final prerolledStream = protocolSilenceStream ??
+        (config.video ? null : CallPrewarm.instance.peek(config.room));
+    if (protocolSilenceStream != null) {
+      _stream = protocolSilenceStream;
+    } else if (prerolledStream != null) {
       _stream = prerolledStream;
       // [CALL-PREROLL-1] CRITICAL: this track was published SILENT during
       // the ring (privacy rule: nothing is captured-and-sent pre-accept) —
@@ -3690,7 +3719,7 @@ class CallSession {
       return;
     }
     } // [CALL-PREROLL-1] end of the `prerolledStream == null` cold-getUserMedia branch
-    _stage('mic_ready');
+    _stage(_prewarmAudioPending ? 'protocol_silence_ready' : 'mic_ready');
     // [CALL-DEADAIR-1] Join the ICE fetch back in. By here it has almost always
     // already resolved (it ran alongside the mic acquisition), so this is a
     // no-cost join rather than a serial wait — but `_ice` MUST be settled before
@@ -6322,12 +6351,108 @@ class CallSession {
     }
   }
 
+  /// Acquire the real microphone only after Accept. When [transport] is
+  /// supplied, swap the track into the already-published prewarm sender before
+  /// any pull negotiation; replaceTrack needs no re-offer.
+  Future<bool> _ensureAcceptedAudio({CallSfuTransport? transport}) async {
+    final current = _stream;
+    if (!_prewarmAudioPending && current?.getAudioTracks().isNotEmpty == true) {
+      return true;
+    }
+    MediaStream? media;
+    try {
+      var mediaTimedOut = false;
+      final mediaFuture = navigator.mediaDevices.getUserMedia({
+        'audio': audio_tuning.avaMicConstraints(),
+        'video': false,
+      });
+      // Future.timeout cannot cancel native capture. If Android/iOS returns a
+      // stream after the bounded Accept window, stop and dispose it so a late
+      // result cannot leave the microphone open after fallback or teardown.
+      unawaited(mediaFuture.then((lateStream) async {
+        if (!mediaTimedOut) return;
+        for (final t in lateStream.getTracks()) {
+          try { await t.stop(); } catch (_) {}
+        }
+        try { await lateStream.dispose(); } catch (_) {}
+        Analytics.capture('call_media_late_stream_disposed', {
+          'call_id': config.room,
+          'video': false,
+          'stage': 'accepted_audio',
+        });
+      }).catchError((_) {}));
+      media = await mediaFuture.timeout(const Duration(seconds: 8), onTimeout: () {
+        mediaTimedOut = true;
+        throw TimeoutException(
+          'accepted getUserMedia did not return within 8s',
+        );
+      });
+      // The call may have ended while native capture was opening. Never attach
+      // a newly returned microphone to a torn-down SFU sender.
+      if (_ended) {
+        for (final t in media.getTracks()) { try { await t.stop(); } catch (_) {} }
+        await media.dispose();
+        return false;
+      }
+      final audioTracks = media.getAudioTracks();
+      final track = audioTracks.isEmpty ? null : audioTracks.first;
+      if (track == null) throw StateError('accepted_audio_track_missing');
+      if (transport != null && !await transport.replacePublishedAudioTrack(track)) {
+        throw StateError('prewarm_audio_replace_failed');
+      }
+      if (_ended) {
+        for (final t in media.getTracks()) { try { await t.stop(); } catch (_) {} }
+        await media.dispose();
+        return false;
+      }
+      _stream = media;
+      _prewarmAudioPending = false;
+      localRenderer.srcObject = media;
+      if (current != null && !identical(current, media)) {
+        try { await current.dispose(); } catch (_) {}
+      }
+      _stage(transport == null ? 'mic_ready_fallback' : 'mic_replaced');
+      Analytics.capture('call_preaccept_audio_replaced', {
+        'call_id': config.room,
+        'path': transport == null ? 'fallback' : 'sfu_replace_track',
+        'renegotiated': false,
+      });
+      return true;
+    } catch (e, st) {
+      if (media != null) {
+        for (final t in media.getTracks()) { try { await t.stop(); } catch (_) {} }
+        try { await media.dispose(); } catch (_) {}
+      }
+      Analytics.error(
+        domain: 'call_setup',
+        code: e is TimeoutException ? 'media_timeout' : 'media_denied',
+        message: e.toString(),
+        action: 'accepted_audio',
+        extra: {'call_id': config.room, 'prewarm': true},
+      );
+      _telemetry.runtimeError(
+        stage: 'accepted_audio_failed',
+        error: e,
+        stack: st,
+        extra: {'prewarm': true},
+      );
+      return false;
+    }
+  }
+
   Future<void> _startP2pOffer() async {
     // [CALL-PREJOIN-1 2026-08-16] A caller pre-join PC must never survive
     // into the P2P path — `_pc != null` below would otherwise silently no-op
     // this method forever, since `_newPC`'s side effect already set `_pc` to
     // the prejoin's (SFU) connection. See [_discardPrejoinedSfu].
     await _discardPrejoinedSfu('p2p_selected');
+    if (!config.outgoing && RemoteConfig.callSilentTransportPrewarmV1) {
+      await CallPrewarm.instance.discard(config.room, 'p2p_selected');
+    }
+    if (_prewarmAudioPending && !await _ensureAcceptedAudio()) {
+      _endWith('ended', reason: 'media-denied');
+      return;
+    }
     if (_ended || _connected || _pc != null || _remoteId == null) return;
     final pc = await _newPC();
     final offer = _tuned(await pc.createOffer());
@@ -6366,6 +6491,13 @@ class CallSession {
     // raw SFU — the caller's ring-time pre-join seat (if any) is now dead
     // weight. See [_discardPrejoinedSfu].
     await _discardPrejoinedSfu('rtk_selected');
+    if (!config.outgoing && RemoteConfig.callSilentTransportPrewarmV1) {
+      await CallPrewarm.instance.discard(config.room, 'rtk_selected');
+    }
+    if (_prewarmAudioPending && !await _ensureAcceptedAudio()) {
+      _endWith('ended', reason: 'media-denied');
+      return;
+    }
     _connectWatchdogFast?.cancel();
     _connectWatchdogFast = null;
     _rtkStarting = true;
@@ -6849,7 +6981,8 @@ class CallSession {
     // pre-join above by construction: `CallPrewarm` is armed only from the
     // CALLEE's incoming-push handler, never on an outgoing call.
     CallPrewarmedData? prewarmed;
-    if (adoptedPrejoin == null && RemoteConfig.callPrewarmOnRingV1) {
+    if (adoptedPrejoin == null &&
+        (RemoteConfig.callPrewarmOnRingV1 || RemoteConfig.callSilentTransportPrewarmV1)) {
       try {
         // [CALL-PREROLL-1 2026-08-17] `currentStream` lets `adopt` compare it,
         // by identity, against whatever `CallPrewarm` itself pre-rolled — the
@@ -6877,6 +7010,8 @@ class CallSession {
     final hasFullPreroll = adoptedPrejoin == null &&
         RemoteConfig.callPrerollV1 &&
         (prewarmed?.hasFullPreroll ?? false);
+    final hasPrepublishedAudio = adoptedPrejoin == null &&
+        (prewarmed?.hasPrepublishedAudio ?? false);
     final transport = adoptedPrejoin ??
         (hasFullPreroll ? prewarmed!.prerollTransport! : _buildSfuTransport());
     _sfu = transport;
@@ -6907,6 +7042,31 @@ class CallSession {
           peerVideoAvailable: false,
           videoConnected: false,
         );
+      } else if (hasPrepublishedAudio) {
+        final adopted = await transport.adoptPrewarmedPublish(
+          join: prewarmed!.join!,
+          pc: prewarmed.transportPc!,
+          audioSender: prewarmed.transportAudioSender!,
+          audioMid: prewarmed.transportAudioMid!,
+          audioTrackName: prewarmed.transportAudioTrackName!,
+        );
+        if (!adopted) {
+          result = CallSfuResult.failed(
+            SfuFailure.publishFailed,
+            detail: 'prewarm_adopt_failed',
+          );
+        } else if (!await _ensureAcceptedAudio(transport: transport)) {
+          result = CallSfuResult.failed(
+            SfuFailure.publishFailed,
+            detail: 'prewarm_audio_replace_failed',
+          );
+        } else {
+          // The null-track section was published before Accept. Pull only
+          // after the sender has been replaced with the real microphone.
+          result = await transport.connectPull(
+            video: config.video && !RemoteConfig.callSfuAudioOnly,
+          );
+        }
       } else {
         result = await transport.connect(
           localStream: stream,
@@ -10403,6 +10563,7 @@ class CallSession {
     _sfu = null;
     _sfuActive = false;
     _sfuStarting = false;
+    _prewarmAudioPending = false;
     // [CALL-RTK-3] The RealtimeKit leg has exactly one teardown path, here,
     // beside the SFU's. `RtcSession.leave()` is documented idempotent, and it
     // is wrapped in _safeAwait for the same reason everything else in this

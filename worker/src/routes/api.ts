@@ -1997,7 +1997,9 @@ export async function callCommand(req: Request, env: Env): Promise<Response> {
     const r = await stub.fetch("https://call/prewarm-ready", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ callId: b.callId, nonce: d.nonce, generation: d.generation,
-        deviceId: d.deviceId, sessionId: d.sessionId, authenticatedUid: ctx.uid }),
+        deviceId: d.deviceId, sessionId: d.sessionId,
+        mediaReadyRequired: d.mediaReadyRequired === true,
+        authenticatedUid: ctx.uid }),
     });
     return json(await r.json().catch(() => ({ ok: false, error: "authority_unreachable" })), r.status);
   }

@@ -30,6 +30,9 @@ class CallPrewarmedData {
     this.generation,
     this.transportPc,
     this.transportReady = false,
+    this.transportAudioSender,
+    this.transportAudioMid,
+    this.transportAudioTrackName,
     this.prerollStream,
     this.prerollTransport,
     this.prerollPc,
@@ -44,6 +47,11 @@ class CallPrewarmedData {
   final int? generation;
   final RTCPeerConnection? transportPc;
   final bool transportReady;
+  /// Retained send-only sender. It has no track until Accept calls
+  /// replaceTrack(realMicTrack), so the prewarm cannot read the microphone.
+  final RTCRtpSender? transportAudioSender;
+  final String? transportAudioMid;
+  final String? transportAudioTrackName;
   @Deprecated('Pre-accept media is retired; always null.')
   final MediaStream? prerollStream;
   @Deprecated('Pre-accept media is retired; always null.')
@@ -59,6 +67,11 @@ class CallPrewarmedData {
 
   bool get hasFullPreroll => false;
   bool get hasJoin => join != null && join!.sessionId.isNotEmpty;
+  bool get hasPrepublishedAudio =>
+      transportPc != null &&
+      transportAudioSender != null &&
+      (transportAudioMid?.isNotEmpty ?? false) &&
+      (transportAudioTrackName?.isNotEmpty ?? false);
 }
 
 enum CallPrewarmPhase { idle, prewarming, ready, adopted, cancelled, failed }
@@ -77,6 +90,25 @@ bool callPrewarmLeaseMatches({
     existingCallId == incomingCallId &&
     (incomingNonce.isEmpty || existingNonce == incomingNonce) &&
     (incomingGeneration == null || existingGeneration == incomingGeneration);
+
+/// Resolve the audio m-section mid from an offer without requiring a WebRTC
+/// runtime. This is the fallback after setLocalDescription when the plugin has
+/// not surfaced transceiver.mid yet.
+String? callPrewarmAudioMidFromSdp(String? sdp) {
+  if (sdp == null || sdp.isEmpty) return null;
+  var inAudio = false;
+  for (final line in sdp.split(RegExp(r'\r?\n'))) {
+    if (line.startsWith('m=')) {
+      inAudio = line.startsWith('m=audio ');
+      continue;
+    }
+    if (inAudio && line.startsWith('a=mid:')) {
+      final mid = line.substring('a=mid:'.length).trim();
+      return mid.isEmpty ? null : mid;
+    }
+  }
+  return null;
+}
 
 class _Entry {
   _Entry({
@@ -99,6 +131,9 @@ class _Entry {
   CallSfuJoinResult? join;
   RTCPeerConnection? transportPc;
   RTCDataChannel? transportChannel;
+  RTCRtpSender? transportAudioSender;
+  String? transportAudioMid;
+  String? transportAudioTrackName;
   Future<void>? transportFuture;
   bool transportReady = false;
   bool readyPosted = false;
@@ -119,6 +154,14 @@ class CallPrewarm {
   int _now() => DateTime.now().millisecondsSinceEpoch;
   CallPrewarmPhase get phase => _entry?.phase ?? CallPrewarmPhase.idle;
   String? get activeCallId => _entry?.callId;
+
+  /// True while a foreground send-only audio prewarm is available or still
+  /// completing. Accept may use an empty local stream during this window;
+  /// [adopt] waits for the bounded transport future.
+  bool hasPrepublishedAudio(String callId) {
+    final e = _entry;
+    return e != null && e.callId == callId && !e.discarded && e.transportFuture != null;
+  }
 
   /// Fire-and-forget. Idempotent for one call generation/nonce, and always
   /// best-effort so it cannot delay or suppress a ring.
@@ -259,9 +302,14 @@ class CallPrewarm {
         return;
       }
       e.transportPc = pc;
-      // Must match the Cloudflare Connection API's server-events establish
-      // contract. This carries no microphone or media track.
-      e.transportChannel = await pc.createDataChannel('server-events', RTCDataChannelInit());
+      // Privacy boundary: negotiate a SENDONLY audio slot with no track. This
+      // cannot read from the microphone. Accept later swaps the retained sender
+      // to the real mic using replaceTrack(), with no second offer.
+      final audioTransceiver = await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendOnly),
+      );
+      e.transportAudioSender = audioTransceiver.sender;
       final connected = Completer<void>();
       pc.onConnectionState = (state) {
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected &&
@@ -278,9 +326,35 @@ class CallPrewarm {
         'offerToReceiveVideo': false,
       });
       await pc.setLocalDescription(offer);
-      final answer = await CallSfuApi.prepare(e.callId, join.sessionId, offer.sdp ?? '');
+      final audioMid = audioTransceiver.mid.isNotEmpty
+          ? audioTransceiver.mid
+          : callPrewarmAudioMidFromSdp(offer.sdp);
+      if (audioMid == null || audioMid.isEmpty) {
+        throw StateError('transport_audio_mid_unresolved');
+      }
+      e.transportAudioMid = audioMid;
+      e.transportAudioTrackName = 'audio-${join.sessionId}';
+      _capture('call_prewarm_audio_publish_started', {
+        'call_id': e.callId,
+        'mid': audioMid,
+        'track_name': e.transportAudioTrackName,
+        'privacy': 'sendonly_null_track',
+      });
+      final answer = await CallSfuApi.publishPreAccept(
+        e.callId,
+        join.sessionId,
+        offer.sdp ?? '',
+        <Map<String, dynamic>>[{
+          'mid': audioMid,
+          'kind': 'audio',
+          'trackName': e.transportAudioTrackName,
+        }],
+        prewarmNonce: e.nonce,
+        prewarmGeneration: e.generation ?? 1,
+        prewarmDeviceId: e.deviceId,
+      );
       if (answer == null || answer['sdp'] == null || e.discarded) {
-        throw StateError('transport_prepare_no_answer');
+        throw StateError('transport_publish_no_answer');
       }
       await pc.setRemoteDescription(RTCSessionDescription(
         answer['sdp'].toString(),
@@ -297,12 +371,18 @@ class CallPrewarm {
         generation: e.generation ?? 1,
         sessionId: join.sessionId,
         deviceId: e.deviceId,
+        mediaReadyRequired: true,
       );
       e.readyPosted = true;
       _capture('call_prewarm_transport_ready', {
         'call_id': e.callId,
-        'transport': 'datachannel_only',
-        'ready_truth': 'ice_dtls_connected',
+        'transport': 'audio_sendonly_null_track',
+        'ready_truth': 'ice_dtls_connected_sfu_published',
+      });
+      _capture('call_prewarm_audio_publish_ready', {
+        'call_id': e.callId,
+        'mid': audioMid,
+        'privacy': 'protocol_silence_until_accept',
       });
     } catch (error) {
       _capture('call_prewarm_transport_failed', {
@@ -320,7 +400,10 @@ class CallPrewarm {
       final failedJoin = e.join;
       e.join = null;
       if (failedJoin != null && failedJoin.sessionId.isNotEmpty) {
-        try { await CallSfuApi.close(e.callId, failedJoin.sessionId, const []); } catch (_) {}
+        final mids = e.transportAudioMid == null
+            ? const <String>[]
+            : <String>[e.transportAudioMid!];
+        try { await CallSfuApi.close(e.callId, failedJoin.sessionId, mids); } catch (_) {}
       }
       await _deleteHandoff(e);
     }
@@ -339,7 +422,12 @@ class CallPrewarm {
 
   Future<CallSfuJoinResult?> _join(_Entry e) async {
     final started = _now();
-    final request = CallSfuApi.join(e.callId);
+    final request = CallSfuApi.join(
+      e.callId,
+      prewarmNonce: e.nonce,
+      prewarmGeneration: e.generation,
+      prewarmDeviceId: e.deviceId,
+    );
     try {
       final result = await request.timeout(joinDeadline);
       if (e.discarded) {
@@ -441,6 +529,9 @@ class CallPrewarm {
     final join = await _awaitJoin(e);
     final ice = await _awaitIce(e);
     final transportPc = e.transportReady ? e.transportPc : null;
+    final transportAudioSender = e.transportReady ? e.transportAudioSender : null;
+    final transportAudioMid = e.transportReady ? e.transportAudioMid : null;
+    final transportAudioTrackName = e.transportReady ? e.transportAudioTrackName : null;
     await _deleteHandoff(e);
     _capture('call_prewarm_adopted', {
       'call_id': callId,
@@ -455,6 +546,9 @@ class CallPrewarm {
       generation: e.generation,
       transportPc: transportPc,
       transportReady: transportPc != null,
+      transportAudioSender: transportAudioSender,
+      transportAudioMid: transportAudioMid,
+      transportAudioTrackName: transportAudioTrackName,
     );
   }
 
@@ -503,7 +597,10 @@ class CallPrewarm {
     try { await pc?.close(); } catch (_) {}
     final join = await _awaitJoinBounded(e);
     if (join != null && join.sessionId.isNotEmpty) {
-      try { await CallSfuApi.close(e.callId, join.sessionId, const []); } catch (_) {}
+      final mids = e.transportAudioMid == null
+          ? const <String>[]
+          : <String>[e.transportAudioMid!];
+      try { await CallSfuApi.close(e.callId, join.sessionId, mids); } catch (_) {}
     }
     await _deleteHandoff(e);
   }

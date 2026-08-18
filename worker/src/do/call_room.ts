@@ -129,6 +129,14 @@ interface SfuSeat {
   /** Set only after Cloudflare accepts the datachannel-only prepare offer. */
   transport_prepared?: boolean;
   transport_prepared_at?: number | null;
+  /** Device/lease identity is present only for the new callee prepublish path.
+   * Legacy joins intentionally leave these fields absent so they keep working. */
+  device_id?: string | null;
+  prewarm_nonce?: string | null;
+  prewarm_generation?: number | null;
+  /** Server-written after Cloudflare accepts the pre-accept audio publish. */
+  preaccept_media_ready?: boolean;
+  preaccept_media_ready_at?: number | null;
   updated_at: number;
 }
 
@@ -209,6 +217,8 @@ export class CallRoom {
   // In-memory mirrors; hydrated lazily from DO storage after hibernation/eviction.
   private answeredAt: number | null | undefined; // undefined = not loaded yet
   private answeredBy: string | null | undefined;
+  /** Device id that won the first human Accept, when supplied by a new client. */
+  private acceptedDeviceId: string | null | undefined;
   private ended: boolean | undefined;
   // [AVACALL-RING-CANCEL-1] Durable terminal status for a call that ended BEFORE
   // (or without) the two peers ever connecting — most importantly a caller
@@ -483,6 +493,7 @@ export class CallRoom {
     if (this.answeredAt !== undefined) return;
     this.answeredAt = (await this.state.storage.get<number>("answeredAt")) ?? null;
     this.answeredBy = (await this.state.storage.get<string>("answeredBy")) ?? null;
+    this.acceptedDeviceId = (await this.state.storage.get<string>("acceptedDeviceId")) ?? null;
     this.ended = (await this.state.storage.get<boolean>("ended")) ?? false;
     // [AVACALL-RING-CANCEL-1] hydrate durable terminal status alongside the rest.
     this.terminalStatus = (await this.state.storage.get<string>("terminalStatus")) ?? null;
@@ -761,6 +772,20 @@ export class CallRoom {
       // already_terminal / no-change guards catch the retry and hand back state).
       await this.state.storage.put("fsm", r.state);
       this.session = r.state;
+      // [CALL-SFU-PREACCEPT-1] Bind the accepted callee media lease to the
+      // exact handset that won the serialized Accept race. This is optional for
+      // legacy clients (which do not send winnerDeviceId), but when present it
+      // prevents a late prewarm from another handset replacing the winner's
+      // Cloudflare seat after the call has already been accepted.
+      if (name === "accept_call" && effectiveActor === "callee") {
+        const winner = typeof opts.data?.winnerDeviceId === "string"
+          ? opts.data.winnerDeviceId.trim().slice(0, 128)
+          : "";
+        if (winner) {
+          await this.state.storage.put("acceptedDeviceId", winner);
+          this.acceptedDeviceId = winner;
+        }
+      }
       // Keep the legacy terminal marker in lock-step: /api/call-state and the
       // ring-suppression probe still read it, and they must never disagree with
       // the aggregate. Two sources of truth is the bug we are removing.
@@ -796,6 +821,7 @@ export class CallRoom {
     const result = {
       ok: true,
       command: name,
+      actor: effectiveActor,
       changed: r.changed,
       events: r.events,
       session_state: r.state.session_state,
@@ -1669,6 +1695,7 @@ export class CallRoom {
           answered: this.answeredAt != null,
           answered_at: this.answeredAt ?? null,
           answered_by: this.answeredBy ?? null,
+          accepted_device_id: this.acceptedDeviceId ?? null,
           ended: this.ended === true,
           // [AVACALL-RING-CANCEL-1] Durable terminal status (e.g. 'cancel') set by
           // a caller who ended before the callee connected — null when the call is
@@ -2020,6 +2047,7 @@ export class CallRoom {
         const deviceId = typeof body.deviceId === "string" ? body.deviceId.slice(0, 128) : "";
         const sessionId = typeof body.sessionId === "string" ? body.sessionId.slice(0, 128) : "";
         const uid = typeof body.authenticatedUid === "string" ? body.authenticatedUid : "";
+        const mediaReadyRequired = body.mediaReadyRequired === true;
         // Validate and stamp the transport identity under the same local lock as
         // the alarm. The marker is server-written by /sfu-seat-prepare; a caller
         // cannot make an arbitrary session look ready by copying its id here.
@@ -2028,7 +2056,8 @@ export class CallRoom {
           const s = await this.loadSession(callId);
           const calleeSeat = s.callee_uid ? (await this.loadSfuSeats())[s.callee_uid] : undefined;
           if (!p || p.nonce !== nonce || p.generation !== generation || !deviceId || uid !== s.callee_uid ||
-              !sessionId || calleeSeat?.session_id !== sessionId || calleeSeat.transport_prepared !== true) {
+              !sessionId || calleeSeat?.session_id !== sessionId || calleeSeat.transport_prepared !== true ||
+              (mediaReadyRequired && calleeSeat.preaccept_media_ready !== true)) {
             return { ok: false as const, error: "stale_prewarm" };
           }
           if (p.phase === "prewarming") {
@@ -2103,12 +2132,41 @@ export class CallRoom {
         const callId = typeof body.callId === "string" ? body.callId : "";
         const uid = typeof body.uid === "string" ? body.uid : "";
         const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+        const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
+        const prewarmNonce = typeof body.prewarmNonce === "string" ? body.prewarmNonce.slice(0, 128) : "";
+        const rawGeneration = Number(body.prewarmGeneration);
+        const prewarmGeneration = Number.isFinite(rawGeneration) ? Math.max(1, Math.round(rawGeneration)) : null;
+        const preacceptMedia = body.preacceptMedia === true;
         if (!uid || !sessionId) return Response.json({ ok: false, error: "uid_and_session_required" }, { status: 400 });
         const s = await this.loadSession(callId);
         // Seat identity, same rule the WebSocket path enforces. An unknown uid is
         // not a participant of this call and must never become pullable.
         if (uid !== s.caller_uid && uid !== s.callee_uid) {
           return Response.json({ ok: false, error: "not_a_participant" }, { status: 403 });
+        }
+        // [CALL-SFU-PREACCEPT-1] A callee prepublish is a capability-bearing
+        // operation, not a client assertion. Bind it to the DO's current
+        // silent-prewarm lease and the exact seat session. Untagged joins stay
+        // legacy-compatible; tagged joins fail closed when the lease is stale.
+        const taggedPrewarm = Boolean(prewarmNonce || deviceId || prewarmGeneration != null || preacceptMedia);
+        if (taggedPrewarm) {
+          const p = await this.loadSilentPrewarm();
+          await this.loadCallState();
+          const acceptedWinner = this.acceptedDeviceId != null && this.acceptedDeviceId === deviceId;
+          // Once the first handset has proved readiness, bind the lease to
+          // both its device and Cloudflare session. A later handset must not
+          // replace that ready seat while the call is still ringing.
+          const leaseBound = Boolean(p?.device_id || p?.transport_session_id);
+          const boundToThisLease = leaseBound &&
+            p?.device_id === deviceId && p?.transport_session_id === sessionId;
+          if (uid !== s.callee_uid || !prewarmNonce || !deviceId || prewarmGeneration == null ||
+              !p || p.nonce !== prewarmNonce || p.generation !== prewarmGeneration ||
+              (leaseBound && !boundToThisLease) ||
+              ((!acceptedWinner && p.phase !== "prewarming" && p.phase !== "ringing") ||
+                (!acceptedWinner && Date.now() >= p.deadline_ms)) ||
+              (this.acceptedDeviceId && !acceptedWinner)) {
+            return Response.json({ ok: false, error: this.acceptedDeviceId ? "accepted_elsewhere" : "stale_prewarm" }, { status: 409 });
+          }
         }
         const previous = (await this.loadSfuSeats())[uid];
         /**
@@ -2136,14 +2194,84 @@ export class CallRoom {
           video_track: typeof body.videoTrack === "string" ? body.videoTrack.slice(0, 128) : (carry?.video_track ?? null),
           audio_mid: typeof body.audioMid === "string" ? body.audioMid.slice(0, 16) : (carry?.audio_mid ?? null),
           video_mid: typeof body.videoMid === "string" ? body.videoMid.slice(0, 16) : (carry?.video_mid ?? null),
-          transport_prepared: carry?.transport_prepared ?? false,
-          transport_prepared_at: carry?.transport_prepared_at ?? null,
+          // A preaccept media marker is written only after Cloudflare accepts
+          // the publish offer. That successful provider operation proves the
+          // transport is prepared too, so the readiness gate must see both
+          // durable markers on the same seat write.
+          transport_prepared: preacceptMedia ? true : (carry?.transport_prepared ?? false),
+          transport_prepared_at: preacceptMedia ? Date.now() : (carry?.transport_prepared_at ?? null),
+          device_id: deviceId || (carry?.device_id ?? null),
+          prewarm_nonce: prewarmNonce || (carry?.prewarm_nonce ?? null),
+          prewarm_generation: prewarmGeneration ?? (carry?.prewarm_generation ?? null),
+          preaccept_media_ready: preacceptMedia ? true : (carry?.preaccept_media_ready ?? false),
+          preaccept_media_ready_at: preacceptMedia ? Date.now() : (carry?.preaccept_media_ready_at ?? null),
           updated_at: Date.now(),
         };
-        this.sfuSeats = { ...(await this.loadSfuSeats()), [uid]: seat };
-        try { await this.state.storage.put("sfuSeats", this.sfuSeats); } catch { /* best-effort */ }
+        const existingSeats = await this.loadSfuSeats();
+        const nextSeats = { ...existingSeats, [uid]: seat };
+        this.sfuSeats = nextSeats;
+        if (preacceptMedia) {
+          // The media-ready marker is an authority decision, not telemetry.
+          // Never return success (or allow prewarm-ready to ring) when the
+          // durable write failed and this marker exists only in this isolate's
+          // memory. Restore the prior in-memory snapshot before failing closed.
+          try {
+            await this.state.storage.put("sfuSeats", nextSeats);
+          } catch {
+            this.sfuSeats = existingSeats;
+            return Response.json({ ok: false, error: "media_marker_persist_failed" }, { status: 503 });
+          }
+        } else {
+          // Legacy seat refreshes remain best-effort for compatibility with
+          // the pre-SFU-marker path.
+          try { await this.state.storage.put("sfuSeats", nextSeats); } catch { /* best-effort */ }
+        }
         await this.scheduleNextAlarm();
-        return Response.json({ ok: true, seat });
+        return Response.json({ ok: true, seat, preaccept_media_ready: seat.preaccept_media_ready === true });
+      }
+      /**
+       * Authorize a callee pre-accept publication against the live lease. The
+       * authenticated Worker route calls this immediately before asking
+       * Cloudflare to create the provider track; a prior self-seat read can be
+       * stale if another device wins or the prewarm deadline expires.
+       */
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/sfu-preaccept-authorize")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const uid = typeof body.uid === "string" ? body.uid : "";
+        const sessionId = typeof body.sessionId === "string" ? body.sessionId.slice(0, 128) : "";
+        const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
+        const nonce = typeof body.prewarmNonce === "string" ? body.prewarmNonce.slice(0, 128) : "";
+        const rawGeneration = Number(body.prewarmGeneration);
+        const generation = Number.isFinite(rawGeneration) ? Math.max(1, Math.round(rawGeneration)) : null;
+        const gate = await this.withAggregateLock(async () => {
+          const p = await this.loadSilentPrewarm();
+          const s = await this.loadSession(callId);
+          await this.loadCallState();
+          const seat = s.callee_uid ? (await this.loadSfuSeats())[s.callee_uid] : undefined;
+          const acceptedWinner = this.acceptedDeviceId != null && this.acceptedDeviceId === deviceId;
+          const leaseBound = Boolean(p?.device_id || p?.transport_session_id);
+          const boundToThisLease = leaseBound &&
+            p?.device_id === deviceId && p?.transport_session_id === sessionId;
+          const valid = Boolean(
+            uid && uid === s.callee_uid && sessionId && deviceId && nonce && generation != null &&
+            p && p.nonce === nonce && p.generation === generation &&
+            seat && seat.session_id === sessionId && seat.device_id === deviceId &&
+            seat.prewarm_nonce === nonce && seat.prewarm_generation === generation &&
+            (!leaseBound || boundToThisLease) &&
+            (acceptedWinner || ((p.phase === "prewarming" || p.phase === "ringing") && Date.now() < p.deadline_ms)) &&
+            (!this.acceptedDeviceId || acceptedWinner)
+          );
+          if (!valid) {
+            return {
+              ok: false as const,
+              error: this.acceptedDeviceId && !acceptedWinner ? "accepted_elsewhere" : "stale_prewarm",
+            };
+          }
+          return { ok: true as const, device_id: deviceId, session_id: sessionId };
+        });
+        return Response.json(gate, { status: gate.ok ? 200 : 409 });
       }
       /**
        * Mark a seat transport-ready only after the authenticated SFU route has
@@ -2205,7 +2333,10 @@ export class CallRoom {
        * the peer has not published yet — a NORMAL race on every call, since both
        * phones create their session concurrently. The client polls/retries on null;
        * a 404 here would be indistinguishable from a real failure and would push
-       * callers into a needless fallback to P2P.
+       * callers into a needless fallback to P2P. [CALL-SFU-PREACCEPT-1] The
+       * callee's seat is also hidden from the caller until the persisted FSM says
+       * that the callee accepted; the callee may still read the caller's
+       * prepublished seat during the ring.
        */
       if (req.method === "GET" && stateUrl.pathname.endsWith("/sfu-peer")) {
         const callId = stateUrl.searchParams.get("callId") ?? "";
@@ -2217,8 +2348,15 @@ export class CallRoom {
         }
         const seats = await this.loadSfuSeats();
         const peerUid = uid === s.caller_uid ? s.callee_uid : s.caller_uid;
-        const seat = peerUid ? (seats[peerUid] ?? null) : null;
-        return Response.json({ ok: true, seat, peer_uid: peerUid ?? null });
+        const calleeAccepted = s.session_state === "connected" && s.callee_leg_state === "accepted";
+        const calleeMediaBlocked = peerUid === s.callee_uid && !calleeAccepted;
+        const seat = calleeMediaBlocked ? null : (peerUid ? (seats[peerUid] ?? null) : null);
+        return Response.json({
+          ok: true,
+          seat,
+          peer_uid: peerUid ?? null,
+          media_access: calleeMediaBlocked ? "blocked_callee_not_accepted" : "released",
+        });
       }
       if (req.method === "GET" && stateUrl.pathname.endsWith("/sfu-seat-self")) {
         const callId = stateUrl.searchParams.get("callId") ?? "";

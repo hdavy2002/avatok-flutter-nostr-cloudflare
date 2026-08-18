@@ -64,6 +64,19 @@ Future<T?> awaitEarlyPeerOrRearm<T>(
   return rearm();
 }
 
+/// Pure contract for the preaccept audio handoff. A replacement is successful
+/// only when the sender now owns the expected microphone track and no offer was
+/// needed; keeping this separate makes the privacy/no-renegotiation guarantee
+/// testable without a native WebRTC runtime.
+bool callSfuAudioReplaceContractHolds({
+  required String? senderTrackId,
+  required String expectedTrackId,
+  required bool renegotiated,
+}) =>
+    expectedTrackId.isNotEmpty &&
+    senderTrackId == expectedTrackId &&
+    !renegotiated;
+
 /// Why a connect attempt gave up. Carried into `call_sfu_fallback` so a bad day
 /// at Cloudflare shows up as a chart rather than as "calls are broken".
 enum SfuFailure {
@@ -245,6 +258,12 @@ class CallSfuTransport {
 
   /// Mids we have opened, for the close call on teardown.
   final List<String> _openMids = <String>[];
+
+  /// The sender carrying our published audio. During callee prewarm this is a
+  /// send-only sender with no track; Accept replaces it without renegotiation.
+  RTCRtpSender? _audioSender;
+  String? _audioMid;
+  String? _publishedAudioTrackName;
 
   /// [CALL-SFU-DUPAUDIO-1] Mids of the remote AUDIO m-sections we are currently
   /// pulling. Tracked separately from [_openMids] (which mixes publish, video
@@ -430,6 +449,21 @@ class CallSfuTransport {
     return null;
   }
 
+  Future<RTCRtpSender?> _senderForTrack(
+    RTCPeerConnection pc,
+    MediaStreamTrack track,
+  ) async {
+    try {
+      final senders = await pc.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.id == track.id) return sender;
+      }
+    } catch (e) {
+      AvaLog.I.log('call', 'audio sender resolution threw: $e');
+    }
+    return null;
+  }
+
   /// [CALL-VIDEO-FIX-6] Bounded, loggable reason for a negotiation abort. Never
   /// carries provider text — only our own classification.
   static String _abortDetail(Object e) {
@@ -571,6 +605,59 @@ class CallSfuTransport {
     }
   }
 
+  /// Adopt a foreground prewarm whose audio m-section was already published
+  /// with a null track. This only transfers ownership; it deliberately does
+  /// not create an offer or call /publish again.
+  Future<bool> adoptPrewarmedPublish({
+    required CallSfuJoinResult join,
+    required RTCPeerConnection pc,
+    required RTCRtpSender audioSender,
+    required String audioMid,
+    required String audioTrackName,
+  }) async {
+    if (_disposed || join.sessionId.isEmpty || audioMid.isEmpty || audioTrackName.isEmpty) {
+      return false;
+    }
+    _sessionId = join.sessionId;
+    _joinVideoAllowed = join.videoAllowed;
+    _joinRelayDegraded = join.relayDegraded;
+    _pc = pc;
+    _audioSender = audioSender;
+    _audioMid = audioMid;
+    _publishedAudioTrackName = audioTrackName;
+    if (!_openMids.contains(audioMid)) _openMids.add(audioMid);
+    _publishDone = true;
+    installAdoptedPeerConnection?.call(pc);
+    onStage?.call('sfu_prewarm_adopted');
+    return true;
+  }
+
+  /// Replace the prewarm's null-track sender with the accepted call's real mic.
+  /// `replaceTrack` updates RTP immediately and does not renegotiate the PC.
+  Future<bool> replacePublishedAudioTrack(MediaStreamTrack track) async {
+    if (track.kind != 'audio') return false;
+    try {
+      return await _serialize('replaceAudioTrack', (token) async {
+        final pc = _pc;
+        if (pc == null || !_ownsNegotiation(token)) return false;
+        final sender = _audioSender ?? await _senderForTrack(pc, track);
+        if (sender == null || !_ownsNegotiation(token)) return false;
+        await sender.replaceTrack(track);
+        if (!_ownsNegotiation(token) || !identical(pc, _pc)) return false;
+        _audioSender = sender;
+        onStage?.call('sfu_audio_replaced');
+        return callSfuAudioReplaceContractHolds(
+          senderTrackId: sender.track?.id,
+          expectedTrackId: track.id,
+          renegotiated: false,
+        );
+      });
+    } catch (e) {
+      AvaLog.I.log('call', 'replacePublishedAudioTrack failed: $e');
+      return false;
+    }
+  }
+
   /// [CALL-VIDEO-FIX-1] The actual publish logic, run under [_serialize] by
   /// [connectPublish]. See [_serialize]'s doc comment for why this is split
   /// out — this body must never call [_serialize] itself.
@@ -671,6 +758,11 @@ class CallSfuTransport {
       if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_adding_audio');
       }
+      _audioSender = await _senderForTrack(pc, audioTrack);
+      if (_audioSender == null) {
+        _peerPollAbort = true;
+        return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'audio_sender_unresolved');
+      }
 
       MediaStreamTrack? videoTrackLocal;
       if (wantVideo) {
@@ -716,6 +808,8 @@ class CallSfuTransport {
         return CallSfuResult.failed(SfuFailure.publishFailed, detail: 'audio_mid_unresolved');
       }
       tracks.add({'mid': audioMid, 'kind': 'audio', 'trackName': _audioTrackName(join.sessionId)});
+      _audioMid = audioMid;
+      _publishedAudioTrackName = _audioTrackName(join.sessionId);
       if (videoTrackLocal != null) {
         final videoMid = await _midForSender(pc, videoTrackLocal);
         if (!_ownsNegotiation(token) || !identical(pc, _pc)) {
@@ -1185,6 +1279,9 @@ class CallSfuTransport {
   Future<void> _closePc() async {
     try { await _pc?.close(); } catch (_) {}
     _pc = null;
+    _audioSender = null;
+    _audioMid = null;
+    _publishedAudioTrackName = null;
   }
 
   /// Teardown. Clearing the seat matters as much as closing the tracks: a stale
@@ -1219,6 +1316,9 @@ class CallSfuTransport {
     _sessionId = null;
     _publishDone = false; // [CALL-PREJOIN-1]
     _pendingEarlyPeer = null; // [CALL-PREJOIN-1]
+    _audioSender = null;
+    _audioMid = null;
+    _publishedAudioTrackName = null;
     // The peer connection itself belongs to CallSession once handed over — it
     // closes it in its own teardown, in its own order. Closing it here too would
     // race that.

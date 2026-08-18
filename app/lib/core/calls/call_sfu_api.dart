@@ -109,15 +109,28 @@ class CallSfuApi {
   /// POST /join → a Cloudflare session for THIS phone, plus ICE servers.
   /// Also registers our seat in the CallRoom DO, which is what makes the peer
   /// able to find us at all.
-  static Future<CallSfuJoinResult> join(String room) async {
-    final res = await ApiAuth.postJson('$_base/$room/join', const {}, timeout: _t);
+  static Future<CallSfuJoinResult> join(
+    String room, {
+    String prewarmNonce = '',
+    int? prewarmGeneration,
+    String prewarmDeviceId = '',
+  }) async {
+    final body = <String, dynamic>{};
+    if (prewarmNonce.isNotEmpty && prewarmGeneration != null && prewarmDeviceId.isNotEmpty) {
+      body['prewarm'] = {
+        'nonce': prewarmNonce,
+        'generation': prewarmGeneration,
+        'deviceId': prewarmDeviceId,
+      };
+    }
+    final res = await ApiAuth.postJson('$_base/$room/join', body, timeout: _t);
     if (res.statusCode != 200) _fail(res.statusCode, res.body);
     return CallSfuJoinResult.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  /// POST /prepare — negotiate a datachannel-only transport against an
-  /// already-joined SFU session. The accepted call later re-offers on this
-  /// same PC after adding its microphone.
+  /// POST /prepare — legacy datachannel-only transport fallback. The current
+  /// privacy-safe foreground path uses [publishPreAccept] instead, because its
+  /// send-only audio slot can be adopted and replaceTrack'd without a re-offer.
   static Future<Map<String, dynamic>?> prepare(
     String room,
     String sessionId,
@@ -146,6 +159,7 @@ class CallSfuApi {
     required int generation,
     required String sessionId,
     required String deviceId,
+    bool mediaReadyRequired = false,
   }) async {
     final res = await ApiAuth.postJson('$kApiBase/call/command', {
       'callId': room,
@@ -155,6 +169,7 @@ class CallSfuApi {
         'generation': generation,
         'sessionId': sessionId,
         'deviceId': deviceId,
+        'mediaReadyRequired': mediaReadyRequired,
       },
     }, timeout: _t);
     if (res.statusCode != 200) _fail(res.statusCode, res.body);
@@ -169,10 +184,44 @@ class CallSfuApi {
     String offerSdp,
     List<Map<String, dynamic>> tracks,
   ) async {
+    return _publish(room, sessionId, offerSdp, tracks);
+  }
+
+  /// The foreground callee's first SFU offer. This is deliberately the same
+  /// `/publish` contract as [publish], but has a name that makes the privacy
+  /// boundary explicit at the call site: the offer contains a send-only audio
+  /// section with no microphone track. The server only sees protocol silence
+  /// until Accept swaps the retained sender to the real mic.
+  static Future<Map<String, dynamic>?> publishPreAccept(
+    String room,
+    String sessionId,
+    String offerSdp,
+    List<Map<String, dynamic>> tracks,
+    {
+    required String prewarmNonce,
+    required int prewarmGeneration,
+    required String prewarmDeviceId,
+    }
+  ) async {
+    return _publish(room, sessionId, offerSdp, tracks, preaccept: {
+      'nonce': prewarmNonce,
+      'generation': prewarmGeneration,
+      'deviceId': prewarmDeviceId,
+    });
+  }
+
+  static Future<Map<String, dynamic>?> _publish(
+    String room,
+    String sessionId,
+    String offerSdp,
+    List<Map<String, dynamic>> tracks,
+    {Map<String, dynamic>? preaccept}
+  ) async {
     final res = await ApiAuth.postJson('$_base/$room/publish', {
       'sessionId': sessionId,
       'offer': {'type': 'offer', 'sdp': offerSdp},
       'tracks': tracks,
+      if (preaccept != null) 'preaccept': preaccept,
     }, timeout: _t);
     if (res.statusCode != 200) _fail(res.statusCode, res.body);
     final j = jsonDecode(res.body) as Map<String, dynamic>;

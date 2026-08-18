@@ -244,6 +244,16 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
   const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
   const startedAt = Date.now();
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const prewarm = body.prewarm as Record<string, unknown> | undefined;
+  const prewarmNonce = typeof prewarm?.nonce === "string" ? prewarm.nonce.slice(0, 128) : "";
+  const prewarmDeviceId = typeof prewarm?.deviceId === "string" ? prewarm.deviceId.trim().slice(0, 128) : "";
+  const rawPrewarmGeneration = Number(prewarm?.generation);
+  const prewarmGeneration = Number.isFinite(rawPrewarmGeneration) ? Math.max(1, Math.round(rawPrewarmGeneration)) : null;
+  const taggedPrewarm = Boolean(prewarmNonce || prewarmDeviceId || prewarmGeneration != null);
+  if (taggedPrewarm && (!prewarmNonce || !prewarmDeviceId || prewarmGeneration == null)) {
+    return json({ error: "prewarm_identity_required" }, 400);
+  }
 
   // [CALL-SFU-LAT-1] The Realtime session mint and the TURN credential mint are
   // independent network calls; running them serially put the full ICE-mint
@@ -271,7 +281,14 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
   const seatStart = Date.now();
   const seatRes = await roomFetch(env, room, "/sfu-seat", {
     method: "POST",
-    body: JSON.stringify({ callId: room, uid: g.uid, sessionId }),
+    body: JSON.stringify({
+      callId: room, uid: g.uid, sessionId,
+      ...(taggedPrewarm ? {
+        deviceId: prewarmDeviceId,
+        prewarmNonce,
+        prewarmGeneration,
+      } : {}),
+    }),
   });
   if (!seatRes.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
@@ -284,6 +301,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
     call_id: room,
     session_id: sessionId,
     video_allowed: g.video,
+    prewarm: taggedPrewarm,
     relay_available: !ice.relayDegraded,
     relay_degraded: ice.relayDegraded,
     elapsed_ms: Date.now() - startedAt,
@@ -389,14 +407,45 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
 
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const sessionId = typeof b.sessionId === "string" ? b.sessionId : "";
+  const preaccept = b.preaccept as Record<string, unknown> | undefined;
+  const preacceptNonce = typeof preaccept?.nonce === "string" ? preaccept.nonce.slice(0, 128) : "";
+  const preacceptDeviceId = typeof preaccept?.deviceId === "string" ? preaccept.deviceId.trim().slice(0, 128) : "";
+  const rawPreacceptGeneration = Number(preaccept?.generation);
+  const preacceptGeneration = Number.isFinite(rawPreacceptGeneration) ? Math.max(1, Math.round(rawPreacceptGeneration)) : null;
+  const preacceptMedia = Boolean(preaccept);
   const offer = b.offer as { sdp?: unknown } | undefined;
   const offerSdp = typeof offer?.sdp === "string" ? offer.sdp : "";
   const rawTracks = Array.isArray(b.tracks) ? b.tracks : [];
   if (!sessionId || !offerSdp || rawTracks.length === 0) {
     return json({ error: "session_offer_and_tracks_required" }, 400);
   }
+  if (preacceptMedia && (!preacceptNonce || !preacceptDeviceId || preacceptGeneration == null)) {
+    return json({ error: "preaccept_identity_required" }, 400);
+  }
   if (!(await ownsSession(env, room, g.uid, sessionId))) {
     return json({ error: "session_not_owned" }, 403);
+  }
+
+  if (preacceptMedia) {
+    // Authorize against the live, serialized CallRoom lease immediately before
+    // the provider operation. A self-seat read can be stale if another device
+    // accepted or the prewarm deadline elapsed after that read.
+    const authRes = await roomFetch(env, room, "/sfu-preaccept-authorize", {
+      method: "POST",
+      body: JSON.stringify({
+        callId: room, uid: g.uid, sessionId,
+        deviceId: preacceptDeviceId,
+        prewarmNonce: preacceptNonce,
+        prewarmGeneration,
+      }),
+    });
+    const authBody = (await authRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!authRes.ok || authBody.ok !== true) {
+      ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
+        call_id: room, session_id: sessionId, reason: authBody.error ?? "stale_prewarm_identity",
+      }));
+      return json({ error: authBody.error ?? "stale_prewarm", retry: false }, authRes.status === 409 ? 409 : 502);
+    }
   }
 
   const tracks: Array<Record<string, unknown>> = [];
@@ -413,6 +462,9 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
       return json({ error: "video_not_allowed", reason: "audio_only" }, 409);
     }
     tracks.push({ location: "local", mid, trackName });
+  }
+  if (preacceptMedia && (tracks.length !== 1 || String((rawTracks[0] as Record<string, unknown>).kind ?? "audio") !== "audio")) {
+    return json({ error: "preaccept_audio_only_required" }, 400);
   }
 
   const sfuStart = Date.now(); // [CALL-SFU-LAT-1]
@@ -445,14 +497,30 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
       names.audioMid = String(t.mid);
     }
   }
-  await roomFetch(env, room, "/sfu-seat", {
+  const seatWrite = await roomFetch(env, room, "/sfu-seat", {
     method: "POST",
-    body: JSON.stringify({ callId: room, uid: g.uid, sessionId, ...names }),
-  }).catch(() => undefined);
+    body: JSON.stringify({
+      callId: room, uid: g.uid, sessionId, ...names,
+      ...(preacceptMedia ? {
+        deviceId: preacceptDeviceId,
+        prewarmNonce: preacceptNonce,
+        prewarmGeneration,
+        preacceptMedia: true,
+      } : {}),
+    }),
+  }).catch(() => null);
+  if (preacceptMedia && (!seatWrite || !seatWrite.ok)) {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
+      call_id: room, session_id: sessionId, reason: "media_marker_failed",
+      status: seatWrite?.status ?? 0,
+    }));
+    return json({ error: "preaccept_media_marker_failed", retry: true }, 502);
+  }
 
   ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_published", APP, {
     call_id: room, session_id: sessionId, track_count: tracks.length,
     has_video: Boolean(names.videoTrack),
+    preaccept_media: preacceptMedia,
     elapsed_ms: Date.now() - startedAt, sfu_ms: sfuMs, // [CALL-SFU-LAT-1]
   }));
 
@@ -472,6 +540,11 @@ export async function callSfuPeer(req: Request, env: Env, room: string, ctx: Exe
   if (g instanceof Response) return g;
   const r = await roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
   const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (body.media_access === "blocked_callee_not_accepted") {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
+      call_id: room, stage: "peer", reason: "callee_not_accepted",
+    }));
+  }
   return json(body, r.status);
 }
 
@@ -522,7 +595,16 @@ export async function callSfuPull(req: Request, env: Env, room: string, ctx: Exe
     roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`),
   ]);
   if (!owns) return json({ error: "session_not_owned" }, 403);
-  const peer = (await peerRes.json().catch(() => ({}))) as { seat?: { session_id?: string; audio_track?: string | null; video_track?: string | null } | null };
+  const peer = (await peerRes.json().catch(() => ({}))) as {
+    seat?: { session_id?: string; audio_track?: string | null; video_track?: string | null } | null;
+    media_access?: string;
+  };
+  if (peer.media_access === "blocked_callee_not_accepted") {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
+      call_id: room, stage: "pull", kind, reason: "callee_not_accepted",
+    }));
+    return json({ error: "callee_not_accepted", retry: true, kind }, 409);
+  }
   const seat = peer.seat;
   if (!seat?.session_id) return json({ error: "peer_not_published", retry: true }, 409);
 
