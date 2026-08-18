@@ -428,7 +428,11 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           BUILD_NO=$((10000 + GITHUB_RUN_NUMBER))
-          DEADLINE=$((SECONDS + 180))
+          # The production fan-out consumer is scheduled every five minutes.
+          # Allow one full schedule interval plus queue/KV propagation time;
+          # the old 180s window falsely failed build 10576 even though both
+          # markers reached the expected build moments after the timeout.
+          DEADLINE=$((SECONDS + 420))
           while [ "$SECONDS" -lt "$DEADLINE" ]; do
             STARTED=$(scripts/cf.sh worker kv key get update_broadcast_last_build --binding TOKENS --remote 2>/dev/null || true)
             COMPLETED=$(scripts/cf.sh worker kv key get update_broadcast_completed_build --binding TOKENS --remote 2>/dev/null || true)
@@ -439,7 +443,7 @@ jobs:
             fi
             sleep 10
           done
-          echo "::error::Build $BUILD_NO reached Play Internal, but its FCM update fan-out did not complete within 180 seconds. Do not report this SHIP IT as successful."
+          echo "::error::Build $BUILD_NO reached Play Internal, but its FCM update fan-out did not complete within 420 seconds. Do not report this SHIP IT as successful."
           exit 1
 
       # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every
