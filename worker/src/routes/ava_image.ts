@@ -247,6 +247,14 @@ function environmentTag(env: Env): "staging" | "prod" {
   return env.TEST_CLOCK_ALLOWED === "1" ? "staging" : "prod";
 }
 
+// Deterministic SFW backstop for obvious sexual-image requests. The model gate
+// remains authoritative for nuanced prompts, but a classifier outage must not
+// turn an unmistakable bikini/nudity request into either generation or the
+// misleading generic "Ava unavailable" response.
+function obviousSexualImagePrompt(prompt: string): boolean {
+  return /\b(bikini|bikinis|lingerie|underwear|nude|naked|topless|sexually?\s+explicit)\b/i.test(prompt);
+}
+
 /**
  * Global per-account/day image-gen circuit breaker. Runs AFTER the per-tier
  * plan-allowance gate (so a plan_limit block is reported as that, not this) and
@@ -583,6 +591,13 @@ async function generateImageVenice(
       });
     } catch { /* telemetry best-effort */ }
   };
+
+  if (obviousSexualImagePrompt(prompt)) {
+    track(env, uid, "venice_nsfw_blocked", "avaai", {
+      stage: "local_prompt", uid, reason: "obvious_sexual_request", model, provider: "local",
+    });
+    throw new Error("content_blocked: I can't create sexualized or revealing images. Try a non-sexual outfit or scene instead.");
+  }
 
   // ── (1) PROMPT GATE — text lane, "venice_image_prompt" rubric ────────────
   // Runs unconditionally on the Venice path (NOT gated behind
@@ -1120,6 +1135,18 @@ export async function runAvaImage(
   }
   if (!prompt) return blockedResult({ ok: false, reason: "prompt_required", message: "Tell me what to draw.", httpStatus: 400 });
   if (prompt.length > 2000) return blockedResult({ ok: false, reason: "prompt_too_long", message: "That prompt is too long.", httpStatus: 400 });
+  if (obviousSexualImagePrompt(prompt)) {
+    await track(env, uid, "venice_nsfw_blocked", "avaai", {
+      stage: "local_prompt", reason: "obvious_sexual_request", provider: "local",
+    }).catch(() => {});
+    return blockedResult({
+      ok: false,
+      blocked: true,
+      reason: "content_blocked",
+      message: "I can't create sexualized or revealing images. Try a non-sexual outfit or scene instead.",
+      httpStatus: 200,
+    });
+  }
 
   // (2) Moderation on the prompt — refuse disallowed (deepfake/abuse, incl.
   // minors) BEFORE we generate. llama-guard via P2. NOTE: this is a NO-OP
