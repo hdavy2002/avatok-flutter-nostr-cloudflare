@@ -236,6 +236,14 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      # Stream's M125 WebRTC fork intentionally has no decoded-playback callback.
+      # The Stream pilot still needs flutter_webrtc for the dark Cloudflare
+      # rollback path, so adapt that plugin and fail-close only AvaTOK's optional
+      # recording/translation taps inside this ephemeral CI checkout.
+      - name: Prepare WebRTC sources for Stream pilot
+        if: env.STREAM_CALL_SDK == '1'
+        run: python3 scripts/patch_stream_pilot_webrtc.py app
+
       # flutter_callkit_incoming 2.5.8 emits Decline only to a live Dart event
       # sink. With the app swiped away that sink does not exist, so the action is
       # silently lost. This fail-closed source patch adds a native bridge hook;

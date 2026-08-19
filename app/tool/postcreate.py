@@ -361,8 +361,10 @@ def patch_stream_call_pilot() -> None:
     """Keep Stream's WebRTC fork out of ordinary builds.
 
     The Stream pilot and flutter_webrtc both publish org.webrtc classes. A
-    pilot build deliberately selects Stream's M125-compatible fork for the APK;
-    every normal build retains the existing pinned Cloudflare dependency.
+    pilot build deliberately selects Stream's M125 fork for the APK; every
+    normal build retains the existing pinned Cloudflare dependency. Pilot CI
+    separately fail-closes the optional decoded-playback audio taps that are
+    not part of Stream's fork.
     """
     kts = APP / "android/app/build.gradle.kts"
     if not kts.exists():
