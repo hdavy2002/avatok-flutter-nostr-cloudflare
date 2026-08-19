@@ -12,7 +12,7 @@ import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import '../../core/vault.dart';
 import '../../core/account_key.dart';
-import '../../identity/identity.dart' show AccountScope;
+import '../../identity/identity.dart' show AccountScope, Identity;
 
 /// A saved AvaTok contact. `uid` holds the routing id (Clerk uid). Handles are
 /// retired — the network identity shown is the AvaTOK number (or real phone).
@@ -46,6 +46,46 @@ class Contact {
 
   String get seed => uid; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
+
+  /// True when [name] is an internal/bootstrap label rather than a name a
+  /// person chose. These values may be replaced by the public directory, but a
+  /// real locally-saved name must never be overwritten by background hydration.
+  bool get hasMachineFallbackName {
+    final value = name.trim();
+    if (value.isEmpty ||
+        value == 'AvaTOK contact' ||
+        value == 'Unknown sender') {
+      return true;
+    }
+    if (!uid.startsWith('user_')) return false;
+    return value == uid || value == machineShortName(uid);
+  }
+
+  /// Historical builds persisted this shortened Clerk id as the visible chat
+  /// name. Kept only to recognise and repair those rows; new UI must never show
+  /// or persist it as a label.
+  static String machineShortName(String uid) => uid.length > 16
+      ? '${uid.substring(0, 10)}…${uid.substring(uid.length - 4)}'
+      : uid;
+
+  /// Merge a public-directory result without destroying locally meaningful
+  /// contact data. Only machine-generated names are replaceable; all other
+  /// fields are filled when missing.
+  Contact mergeResolvedProfile(Contact resolved) {
+    final resolvedName = resolved.name.trim();
+    final useResolvedName = hasMachineFallbackName &&
+        resolvedName.isNotEmpty &&
+        !resolved.hasMachineFallbackName;
+    return copyWith(
+      name: useResolvedName ? resolvedName : name,
+      handle: handle.isEmpty ? resolved.handle : handle,
+      email: email.isEmpty ? resolved.email : email,
+      avatarUrl: avatarUrl.isEmpty ? resolved.avatarUrl : avatarUrl,
+      phone: phone.isEmpty ? resolved.phone : phone,
+      number: number.isEmpty ? resolved.number : number,
+    );
+  }
+
   /// A phone-only caller saved from the AI Receptionist — keyed by a synthetic
   /// `tel:<E.164>` id because they have no AvaTOK account / uid yet.
   bool get isPhoneOnly => uid.startsWith('tel:');
@@ -77,14 +117,29 @@ class ContactsStore {
   // on a cold restart, so the new thread "never appeared".
   static final _changes = StreamController<List<Contact>>.broadcast();
   static Stream<List<Contact>> get changes => _changes.stream;
+  static Future<void> _writeTail = Future<void>.value();
+
+  static Future<T> _serializeWrite<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    _writeTail = _writeTail.catchError((_) {}).then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stack) {
+        completer.completeError(error, stack);
+      }
+    });
+    return completer.future;
+  }
 
   // Account-scoped: each logged-in Clerk account keeps its OWN contact list.
   // Previously this used a single global key, so contacts leaked between
   // accounts on the same device (e.g. a contact added by one user showed up for
   // another). A fresh account starts empty and is restored from its own vault
   // via [pullAndMerge].
-  Future<List<Contact>> load() async {
-    final raw = await DiskCache.read(_key);
+  Future<List<Contact>> load() => _loadForScope(AccountScope.id);
+
+  Future<List<Contact>> _loadForScope(String? scope) async {
+    final raw = await DiskCache.readForScope(_key, scope: scope);
     if (raw == null || raw.isEmpty) return [];
     try {
       final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
@@ -95,8 +150,14 @@ class ContactsStore {
     }
   }
 
-  Future<void> _save(List<Contact> cs) =>
-      DiskCache.write(_key, jsonEncode(cs.map((c) => c.toJson()).toList()));
+  Future<void> _saveForScope(List<Contact> cs, String? scope) =>
+      DiskCache.writeForScope(_key,
+          jsonEncode(cs.map((c) => c.toJson()).toList()), scope: scope);
+
+  Future<void> _save(List<Contact> cs) {
+    final scope = AccountScope.id;
+    return _serializeWrite(() => _saveForScope(cs, scope));
+  }
 
   /// EXPLICIT user add (or update); de-dupes on uid. Returns the new list.
   ///
@@ -105,18 +166,28 @@ class ContactsStore {
   /// re-create contacts from restored data MUST use [addIfNotDeleted] instead —
   /// see [ISSUE-CONTACT-RESURRECT-1].
   Future<List<Contact>> add(Contact c) async {
-    final cs = await load();
-    cs.removeWhere((x) => x.uid == c.uid);
-    cs.insert(0, c);
-    await _save(cs);
-    // [ISSUE-CONTACT-SEMANTICS-1] An explicit add un-deletes: clear any
-    // tombstone (and un-hide the thread) so the contact behaves like new.
-    final deleted = await deletedContacts();
-    if (deleted.remove(c.uid) != null) await _saveMapKey(_kDeletedKey, deleted);
-    final hidden = await hiddenThreads();
-    if (hidden.remove(c.uid) != null) await _saveMapKey(_kHiddenKey, hidden);
-    _changes.add(cs); // live-refresh any open chat list
-    _syncUp(cs); // push encrypted copy to the cross-device vault (best-effort)
+    final scope = AccountScope.id;
+    final cs = await _serializeWrite(() async {
+      final latest = await _loadForScope(scope);
+      latest.removeWhere((x) => x.uid == c.uid);
+      latest.insert(0, c);
+      // [ISSUE-CONTACT-SEMANTICS-1] An explicit add un-deletes: clear any
+      // tombstone (and un-hide the thread) so the contact behaves like new.
+      final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+      if (deleted.remove(c.uid) != null) {
+        await _saveMapKeyForScope(_kDeletedKey, deleted, scope);
+      }
+      final hidden = await _loadMapKeyForScope(_kHiddenKey, scope);
+      if (hidden.remove(c.uid) != null) {
+        await _saveMapKeyForScope(_kHiddenKey, hidden, scope);
+      }
+      await _saveForScope(latest, scope);
+      return latest;
+    });
+    if (AccountScope.id == scope) {
+      _changes.add(cs); // live-refresh any open chat list
+      _syncUp(cs, expectedScope: scope);
+    }
     return cs;
   }
 
@@ -138,21 +209,34 @@ class ContactsStore {
   // NOTE the tombstone is re-read here, not passed in by the caller: the vault
   // hydrates asynchronously, so any snapshot the caller took before its own
   // network round-trips is likely stale. Read late, decide late.
-  Future<List<Contact>?> addIfNotDeleted(Contact c) async {
-    final deleted = await deletedContacts();
-    if (deleted.containsKey(c.uid)) {
-      // Same event name + property shape as the mergeTel guard, so PostHog can
-      // segment which automated path tried to resurrect a tombstoned contact.
-      Analytics.capture(
-          'contact_resurrect_blocked', const {'source': 'add_if_not_deleted'});
-      return null; // tombstoned — stays deleted
+  Future<List<Contact>?> addIfNotDeleted(Contact c, {String? expectedScope}) async {
+    final scope = expectedScope ?? AccountScope.id;
+    if (expectedScope != null && AccountScope.id != expectedScope) return null;
+    final cs = await _serializeWrite<List<Contact>?>(() async {
+      if (expectedScope != null && AccountScope.id != expectedScope) return null;
+      final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+      if (deleted.containsKey(c.uid)) {
+        // Same event name + property shape as the mergeTel guard, so PostHog can
+        // segment which automated path tried to resurrect a tombstoned contact.
+        Analytics.capture(
+            'contact_resurrect_blocked', const {'source': 'add_if_not_deleted'});
+        return null; // tombstoned — stays deleted
+      }
+      final latest = await _loadForScope(scope);
+      latest.removeWhere((x) => x.uid == c.uid);
+      latest.insert(0, c);
+      await _saveForScope(latest, scope);
+      return latest;
+    });
+    if (cs == null) return null;
+    if (AccountScope.id == scope) {
+      _changes.add(cs);
     }
-    final cs = await load();
-    cs.removeWhere((x) => x.uid == c.uid);
-    cs.insert(0, c);
-    await _save(cs);
-    _changes.add(cs);
-    _syncUp(cs);
+    // Automated scope-bound repairs stay local. Normal startup/sync will carry
+    // the repaired identity without risking mutable auth during an account swap.
+    if (expectedScope == null && AccountScope.id == scope) {
+      _syncUp(cs, expectedScope: scope);
+    }
     return cs;
   }
 
@@ -196,9 +280,13 @@ class ContactsStore {
   static const _kAvatarResolveAttemptKey = 'avatok_avatar_resolve_attempt'; // JSON {uid: ms}
   static const _avatarResolveTtlMs = 24 * 60 * 60 * 1000; // 24h
 
-  Future<Map<String, int>> _loadMapKey(String key) async {
+  Future<Map<String, int>> _loadMapKey(String key) =>
+      _loadMapKeyForScope(key, AccountScope.id);
+
+  Future<Map<String, int>> _loadMapKeyForScope(
+      String key, String? scope) async {
     try {
-      final raw = await DiskCache.read(key);
+      final raw = await DiskCache.readForScope(key, scope: scope);
       if (raw == null || raw.isEmpty) return {};
       final m = jsonDecode(raw) as Map<String, dynamic>;
       return {for (final e in m.entries) e.key: (e.value as num?)?.toInt() ?? 0};
@@ -208,7 +296,11 @@ class ContactsStore {
   }
 
   Future<void> _saveMapKey(String key, Map<String, int> m) =>
-      DiskCache.write(key, jsonEncode(m));
+      _saveMapKeyForScope(key, m, AccountScope.id);
+
+  Future<void> _saveMapKeyForScope(
+          String key, Map<String, int> m, String? scope) =>
+      DiskCache.writeForScope(key, jsonEncode(m), scope: scope);
 
   /// Key-set + value equality for the tombstone / hidden maps.
   /// [ISSUE-CONTACT-RESURRECT-1] — used to decide whether the local maps have
@@ -229,25 +321,35 @@ class ContactsStore {
 
   /// DELETE from the AvaTOK contact book, permanently (tombstoned).
   Future<List<Contact>> deleteContact(String uid) async {
-    final deleted = await deletedContacts();
-    deleted[uid] = DateTime.now().millisecondsSinceEpoch;
-    await _saveMapKey(_kDeletedKey, deleted);
-    final cs = await load();
-    cs.removeWhere((x) => x.uid == uid);
-    await _save(cs);
-    _changes.add(cs);
+    final scope = AccountScope.id;
+    final cs = await _serializeWrite(() async {
+      final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+      deleted[uid] = DateTime.now().millisecondsSinceEpoch;
+      await _saveMapKeyForScope(_kDeletedKey, deleted, scope);
+      final latest = await _loadForScope(scope);
+      latest.removeWhere((x) => x.uid == uid);
+      await _saveForScope(latest, scope);
+      return latest;
+    });
+    if (AccountScope.id == scope) {
+      _changes.add(cs);
+      _syncUp(cs, expectedScope: scope);
+    }
     Analytics.capture('contact_deleted', const {});
-    _syncUp(cs);
     return cs;
   }
 
   /// Hide the chat thread; the contact itself is untouched.
   Future<void> hideThread(String uid) async {
-    final hidden = await hiddenThreads();
-    hidden[uid] = DateTime.now().millisecondsSinceEpoch;
-    await _saveMapKey(_kHiddenKey, hidden);
+    final scope = AccountScope.id;
+    final cs = await _serializeWrite(() async {
+      final hidden = await _loadMapKeyForScope(_kHiddenKey, scope);
+      hidden[uid] = DateTime.now().millisecondsSinceEpoch;
+      await _saveMapKeyForScope(_kHiddenKey, hidden, scope);
+      return await _loadForScope(scope);
+    });
     Analytics.capture('thread_hidden', const {});
-    _syncUp(await load());
+    if (AccountScope.id == scope) _syncUp(cs, expectedScope: scope);
   }
 
   /// LEGACY removal — kept for callers outside the chat-list menu. Maps to the
@@ -285,22 +387,30 @@ class ContactsStore {
     // provisional row, not the person, and refusing would strand the promotion
     // forever (add() only ever clears the tombstone for the uid it was given,
     // so a stale `tel:$e164` tombstone would survive every future merge).
-    final deleted = await deletedContacts();
-    if (deleted.containsKey(real.uid)) {
-      Analytics.capture('contact_resurrect_blocked', const {'source': 'merge_tel'});
-      return null; // refused — caller must NOT rekey the thread
+    final scope = AccountScope.id;
+    final cs = await _serializeWrite<List<Contact>?>(() async {
+      final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+      if (deleted.containsKey(real.uid)) {
+        Analytics.capture(
+            'contact_resurrect_blocked', const {'source': 'merge_tel'});
+        return null; // refused — caller must NOT rekey the thread
+      }
+      final latest = await _loadForScope(scope);
+      latest.removeWhere((x) => x.uid == 'tel:$e164');
+      latest.removeWhere((x) => x.uid == real.uid);
+      final merged = real.phone.isEmpty
+          ? Contact(uid: real.uid, name: real.name, handle: real.handle,
+              email: real.email, avatarUrl: real.avatarUrl, phone: e164, number: real.number)
+          : real;
+      latest.insert(0, merged);
+      await _saveForScope(latest, scope);
+      return latest;
+    });
+    if (cs == null) return null;
+    if (AccountScope.id == scope) {
+      _changes.add(cs);
+      _syncUp(cs, expectedScope: scope);
     }
-    final cs = await load();
-    cs.removeWhere((x) => x.uid == 'tel:$e164');
-    cs.removeWhere((x) => x.uid == real.uid);
-    final merged = real.phone.isEmpty
-        ? Contact(uid: real.uid, name: real.name, handle: real.handle,
-            email: real.email, avatarUrl: real.avatarUrl, phone: e164, number: real.number)
-        : real;
-    cs.insert(0, merged);
-    await _save(cs);
-    _changes.add(cs);
-    _syncUp(cs);
     return cs;
   }
 
@@ -312,36 +422,66 @@ class ContactsStore {
   // server backup — silent, permanent data loss. Now we pull-merge-push instead.
   static String? _vaultHydratedFor;
   static String get _scopeKey => AccountScope.id ?? '_default';
+  static String _scopeKeyFor(String? scope) =>
+      (scope == null || scope.isEmpty) ? '_default' : scope;
 
   /// Encrypt the contact list with the user's key and upload it so it follows
   /// the user to any device. Best-effort; never throws.
-  Future<void> _syncUp(List<Contact> cs) async {
-    final id = ApiAuth.identity;
-    if (id == null) return;
-    if (_vaultHydratedFor != _scopeKey) {
+  Future<bool> _syncUp(List<Contact> cs,
+      {String? expectedScope, bool allowFirstPut = false}) async {
+    final scope = expectedScope ?? AccountScope.id;
+    final identity = ApiAuth.identity;
+    bool scopeIsCurrent() =>
+        AccountScope.id == scope && identical(ApiAuth.identity, identity);
+    if (!scopeIsCurrent()) return false;
+    if (identity == null) return false;
+    if (_vaultHydratedFor != _scopeKeyFor(scope) && !allowFirstPut) {
       // Never pushed-before-pulled. pullAndMerge unions local into remote and
       // pushes the superset itself, so the mutation still reaches the vault —
       // without ever being able to shrink it.
-      Analytics.capture('contacts_syncup_deferred', {'reason': 'not_hydrated', 'local_count': cs.length});
-      unawaited(pullAndMerge());
-      return;
+      Analytics.capture('contacts_syncup_deferred',
+          {'reason': 'not_hydrated', 'local_count': cs.length});
+      if (scopeIsCurrent()) unawaited(pullAndMerge());
+      return false;
     }
     final keyMat = await AccountKey.I.ensureHex();
-    if (keyMat == null) return; // no account key yet (offline) — the next sync carries it
+    if (!scopeIsCurrent()) return false;
+    if (keyMat == null) {
+      return false; // no account key yet (offline) — the next sync carries it
+    }
     try {
       // [ISSUE-CONTACT-SEMANTICS-1] Vault blob v2: carries the deleted-contact
       // tombstones + hidden-thread map alongside the contacts, so "deleted stays
       // deleted" and "removed threads stay removed" across reinstalls/devices.
       // (v1 blobs — a bare JSON list — are still read by pullAndMerge.)
-      final blob = await Vault.encrypt(
-          jsonEncode({
-            'v': 2,
-            'contacts': cs.map((c) => c.toJson()).toList(),
-            'deleted': await deletedContacts(),
-            'hidden': await hiddenThreads(),
-          }),
-          keyMat);
-      await Vault.put('contacts', blob);
+      final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+      if (!scopeIsCurrent()) return false;
+      final hidden = await _loadMapKeyForScope(_kHiddenKey, scope);
+      if (!scopeIsCurrent()) return false;
+      final blob = await Vault.encrypt(jsonEncode({
+        'v': 2,
+        'contacts': cs.map((c) => c.toJson()).toList(),
+        'deleted': deleted,
+        'hidden': hidden,
+      }), keyMat);
+      if (!scopeIsCurrent()) return false;
+      // Vault.put is intentionally best-effort and swallows its HTTP result, so
+      // this result-bearing path persists directly. Confirmed-empty hydration
+      // may only become trusted after the server acknowledges this write.
+      final put = await ApiAuth.postJson(
+          kVaultUrl, {'kind': 'contacts', 'blob': blob},
+          timeout: const Duration(seconds: 20));
+      if (!scopeIsCurrent()) return false;
+      if (put.statusCode != 200) {
+        Analytics.error(
+          domain: 'vault',
+          code: 'vault_put_failed',
+          message: 'status ${put.statusCode}',
+          action: 'put',
+          extra: {'kind': 'contacts', 'status': put.statusCode},
+        );
+        return false;
+      }
       // The encrypted vault remains the restore authority. This separate,
       // privacy-minimised uid set is the server-readable call-policy index that
       // lets the edge decide whether a caller is saved without decrypting chat
@@ -351,10 +491,22 @@ class ContactsStore {
           .where((uid) => uid.startsWith('user_'))
           .toSet()
           .toList(growable: false);
-      await ApiAuth.postJson(kContactCallPolicyUrl, {
-        'contactUids': contactUids,
-      });
-    } catch (_) {/* best-effort */}
+      try {
+        await ApiAuth.postJson(kContactCallPolicyUrl, {
+          'contactUids': contactUids,
+        });
+      } catch (_) {/* vault persistence already succeeded */}
+      return scopeIsCurrent();
+    } catch (e) {
+      Analytics.error(
+        domain: 'vault',
+        code: 'vault_put_failed',
+        message: e.toString(),
+        action: 'put',
+        extra: {'kind': 'contacts', 'status': 0},
+      );
+      return false;
+    }
   }
 
   /// Pull the encrypted contact list from the vault (on login / new device) and
@@ -373,27 +525,40 @@ class ContactsStore {
   // Collapsing to one shared future also turns the five-way startup stampede
   // into a single network round-trip.
   static Future<List<Contact>>? _pullInFlight;
+  static String? _pullInFlightScope;
 
   Future<List<Contact>> pullAndMerge() {
+    final scope = AccountScope.id;
+    final identity = ApiAuth.identity;
     final existing = _pullInFlight;
-    if (existing != null) return existing;
-    final fut = _pullAndMergeOnce();
+    if (existing != null && _pullInFlightScope == _scopeKeyFor(scope)) {
+      return existing;
+    }
+    final fut = _pullAndMergeOnce(scope, identity);
     _pullInFlight = fut;
+    _pullInFlightScope = _scopeKeyFor(scope);
     return fut.whenComplete(() {
-      if (identical(_pullInFlight, fut)) _pullInFlight = null;
+      if (identical(_pullInFlight, fut)) {
+        _pullInFlight = null;
+        _pullInFlightScope = null;
+      }
     });
   }
 
-  Future<List<Contact>> _pullAndMergeOnce() async {
-    final id = ApiAuth.identity;
-    final local = await load();
-    if (id == null) return local;
+  Future<List<Contact>> _pullAndMergeOnce(
+      String? scope, Identity? identity) async {
+    bool scopeIsCurrent() =>
+        AccountScope.id == scope && identical(ApiAuth.identity, identity);
+    final local = await _loadForScope(scope);
+    if (identity == null || !scopeIsCurrent()) return local;
     final keyMat = await AccountKey.I.ensureHex(); // restores from escrow / mints + escrows the key
+    if (!scopeIsCurrent()) return local;
     // [ISSUE-VAULT-RESTORE-1] (2026-07-09) Tri-state fetch with retries. The old
     // `Vault.get` returned null for BOTH "no backup" and "request failed", and a
     // single 8s-timeout failure at first login left the contact list empty with
     // no retry and no telemetry — while the backup sat intact on the server.
     final fetch = await Vault.fetch('contacts');
+    if (!scopeIsCurrent()) return local;
     if (fetch.failed) {
       Analytics.error(
         domain: 'account',
@@ -406,13 +571,38 @@ class ContactsStore {
     }
     if (fetch.confirmedEmpty) {
       // Server says: no backup for this account. That's an authoritative answer
-      // (fresh account), so pushes may proceed from here on.
-      _vaultHydratedFor = _scopeKey;
-      Analytics.capture('contacts_restored', {'remote_count': 0, 'local_count': local.length, 'confirmed_empty': true});
-      return local;
+      // (fresh account), so pushes may proceed from here on. Re-read under the
+      // write serializer: contacts may have been added while the fetch was in
+      // flight, and that exact latest snapshot must become the first backup.
+      return _serializeWrite(() async {
+        final latest = await _loadForScope(scope);
+        if (!scopeIsCurrent()) return latest;
+        // Bypass only the hydration guard for this authoritative first put; all
+        // captured-scope/auth checks remain active, and no pull recursion occurs.
+        // Holding the serializer prevents a later write racing this snapshot.
+        final scopeKey = _scopeKeyFor(scope);
+        if (_vaultHydratedFor == scopeKey) _vaultHydratedFor = null;
+        final persisted = await _syncUp(latest,
+            expectedScope: scope, allowFirstPut: true);
+        if (persisted && scopeIsCurrent()) {
+          _vaultHydratedFor = scopeKey;
+          Analytics.capture('contacts_restored', {
+            'remote_count': 0,
+            'local_count': latest.length,
+            'confirmed_empty': true,
+          });
+        } else if (_pullInFlightScope == scopeKey) {
+          // Do not leave a completed failed restore reusable for the mutation
+          // queued behind this serializer; its sync must start a fresh pull.
+          _pullInFlight = null;
+          _pullInFlightScope = null;
+        }
+        return latest;
+      });
     }
     final blob = fetch.blob!;
     final plain = keyMat == null ? null : await Vault.decrypt(blob, keyMat);
+    if (!scopeIsCurrent()) return local;
     if (plain == null) {
       // A backup EXISTS but we can't read it (missing/wrong key). Absolutely do
       // not allow pushes — they'd replace a real backup with a stub.
@@ -454,27 +644,38 @@ class ContactsStore {
       );
       return local;
     }
-    _vaultHydratedFor = _scopeKey; // pulled + decrypted — pushes are safe now
-    // Merge tombstones + hidden maps (per-uid latest timestamp wins on both sides).
-    final deleted = await deletedContacts();
-    for (final e in remoteDeleted.entries) {
-      if ((deleted[e.key] ?? 0) < e.value) deleted[e.key] = e.value;
-    }
-    await _saveMapKey(_kDeletedKey, deleted);
-    final hidden = await hiddenThreads();
-    for (final e in remoteHidden.entries) {
-      if ((hidden[e.key] ?? 0) < e.value) hidden[e.key] = e.value;
-    }
-    await _saveMapKey(_kHiddenKey, hidden);
-    final byNpub = <String, Contact>{for (final c in local) c.uid: c};
-    for (final c in remote) {
-      byNpub[c.uid] = c;
-    }
-    // Deleted contacts stay deleted — drop tombstoned uids from the merge.
-    final merged = byNpub.values
-        .where((c) => c.uid.isNotEmpty && !deleted.containsKey(c.uid))
-        .toList();
-    await _save(merged);
+    final result = await _serializeWrite(() async {
+      // Merge against the latest local state only after all network awaits, then
+      // persist maps + contacts as one store transaction for this account.
+      final latestLocal = await _loadForScope(scope);
+      final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+      for (final e in remoteDeleted.entries) {
+        if ((deleted[e.key] ?? 0) < e.value) deleted[e.key] = e.value;
+      }
+      final hidden = await _loadMapKeyForScope(_kHiddenKey, scope);
+      for (final e in remoteHidden.entries) {
+        if ((hidden[e.key] ?? 0) < e.value) hidden[e.key] = e.value;
+      }
+      final byNpub = <String, Contact>{
+        for (final c in latestLocal) c.uid: c
+      };
+      for (final c in remote) {
+        byNpub[c.uid] = c;
+      }
+      // Deleted contacts stay deleted — drop tombstoned uids from the merge.
+      final merged = byNpub.values
+          .where((c) => c.uid.isNotEmpty && !deleted.containsKey(c.uid))
+          .toList();
+      await _saveMapKeyForScope(_kDeletedKey, deleted, scope);
+      await _saveMapKeyForScope(_kHiddenKey, hidden, scope);
+      await _saveForScope(merged, scope);
+      return (contacts: merged, deleted: deleted, hidden: hidden);
+    });
+    final merged = result.contacts;
+    final deleted = result.deleted;
+    final hidden = result.hidden;
+    if (!scopeIsCurrent()) return merged;
+    _vaultHydratedFor = _scopeKeyFor(scope); // pulled + decrypted — pushes are safe now
     _changes.add(merged); // live-refresh the chat list the moment restore lands
     // [ISSUE-VAULT-RESTORE-1] restore counter — proves in PostHog whether the
     // user's contacts actually came back (the 2026-07-09 report had no way to tell).
@@ -497,64 +698,148 @@ class ContactsStore {
     final tombstonesDiffer = !_sameMap(deleted, remoteDeleted);
     final hiddenDiffer = !_sameMap(hidden, remoteHidden);
     if (merged.length != remote.length || tombstonesDiffer || hiddenDiffer) {
-      _syncUp(merged);
+      _syncUp(merged, expectedScope: scope);
     }
     return merged;
   }
 
-  /// Backfill profile photos for contacts saved before avatarUrl existed (or
-  /// whose photo changed): resolve each one missing an avatar from the directory
-  /// and persist. Best-effort, runs in the background. Returns the updated list.
-  Future<List<Contact>> refreshMissingAvatars() async {
-    final cs = await load();
+  /// Repair incomplete directory identity for existing contacts. Historical
+  /// message ingestion persisted shortened Clerk ids as names; those rows must
+  /// be hydrated even when they already have an avatar. Human-saved names are
+  /// never overwritten.
+  Future<List<Contact>> refreshMissingProfiles() async {
+    final scope = AccountScope.id;
+    bool scopeIsCurrent() => AccountScope.id == scope;
+    final cs = await _loadForScope(scope);
+    if (!scopeIsCurrent()) return cs;
     var changed = false;
     var skippedUnresolvable = 0;
     var skippedRecent = 0;
     var resolved = 0;
+    var namesRepaired = 0;
+    var unresolved = 0;
+    final resolvedByUid = <String, Contact>{};
     // [CONTACT-RESOLVE-TTL] Remember which avatar-less contacts we already tried
     // recently so relaunches don't re-resolve the same ones every time.
-    final attempts = await _loadMapKey(_kAvatarResolveAttemptKey);
+    final attempts =
+        await _loadMapKeyForScope(_kAvatarResolveAttemptKey, scope);
+    if (!scopeIsCurrent()) return cs;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     var attemptsChanged = false;
     for (var i = 0; i < cs.length; i++) {
       final c = cs[i];
-      if (c.avatarUrl.isNotEmpty || c.uid.isEmpty) continue;
+      final needsName = c.hasMachineFallbackName;
+      final needsAvatar = c.avatarUrl.isEmpty;
+      if ((!needsName && !needsAvatar) || c.uid.isEmpty) continue;
       // [ISSUE-CONTACT-AVATAR-1] Only a real AvaTOK account can HAVE a directory
       // photo. `tel:` ids are receptionist/PSTN-only callers with no account, so
       // resolving them is a guaranteed 404 — and we re-ran it on every launch.
       // Telemetry 2026-07-12..15: 630 of 790 contact_resolve calls 404'd, all from
       // root ('/'), i.e. this loop. Skipping them removes ~80% of the calls and
       // the pointless per-launch latency.
-      if (!c.uid.startsWith('user_')) { skippedUnresolvable++; continue; }
+      if (!c.uid.startsWith('user_')) {
+        skippedUnresolvable++;
+        continue;
+      }
       // [CONTACT-RESOLVE-TTL] Skip a contact we resolved (or tried to) within the
       // TTL — a photoless account rarely gains a photo mid-day, so re-hitting the
       // directory on every launch is pure noise.
       final last = attempts[c.uid] ?? 0;
-      if (nowMs - last < _avatarResolveTtlMs) { skippedRecent++; continue; }
+      // A visible identity fallback deserves a quick retry; a merely missing
+      // photo can keep the existing low-cost daily cadence.
+      final ttlMs = needsName ? 60 * 1000 : _avatarResolveTtlMs;
+      if (nowMs - last < ttlMs) {
+        skippedRecent++;
+        continue;
+      }
       attempts[c.uid] = nowMs;
       attemptsChanged = true;
+      final sw = Stopwatch()..start();
       final r = await Directory.resolve(c.uid);
-      if (r != null && r.avatarUrl.isNotEmpty) {
-        // [ISSUE-CONTACT-AVATAR-1] (owner report 2026-07-15, pic4 "some contacts
-        // have no details" / pic6 "profile pictures don't show")
-        //
-        // This USED to rebuild the contact as
-        //   Contact(uid:…, name:…, handle:…, email:…, avatarUrl:…)
-        // which omits `phone` and `number` — both default to '' — so backfilling a
-        // photo silently ERASED the contact's AvaTOK number and phone. `subtitle`
-        // reads number → phone → email, so the row then rendered with no detail
-        // line at all, and the contact card said "hasn't shared an AvaTOK number
-        // yet" about someone who had one. The photo write was destroying the very
-        // details it sat next to. copyWith touches ONLY the avatar.
-        cs[i] = c.copyWith(avatarUrl: r.avatarUrl);
+      sw.stop();
+      if (!scopeIsCurrent()) return cs;
+      if (r == null) {
+        unresolved++;
+        Analytics.capture('contact_identity_hydration', {
+          'source': 'startup_repair',
+          'outcome': 'unresolved',
+          'latency_ms': sw.elapsedMilliseconds,
+          'needed_name': needsName,
+          'needed_avatar': needsAvatar,
+          'uid_kind': 'clerk',
+        });
+        continue;
+      }
+      resolvedByUid[c.uid] = r;
+      final merged = c.mergeResolvedProfile(r);
+      final nameRepaired = c.name != merged.name;
+      final avatarRepaired = c.avatarUrl != merged.avatarUrl;
+      final detailsRepaired = c.email != merged.email ||
+          c.phone != merged.phone ||
+          c.number != merged.number;
+      if (!nameRepaired && r.hasMachineFallbackName) unresolved++;
+      if (nameRepaired || avatarRepaired || detailsRepaired) {
+        cs[i] = merged;
         changed = true;
         resolved++;
+        if (nameRepaired) namesRepaired++;
       }
+      Analytics.capture('contact_identity_hydration', {
+        'source': 'startup_repair',
+        'outcome': nameRepaired || avatarRepaired || detailsRepaired
+            ? (nameRepaired ? 'updated' : 'partial_profile')
+            : (r.hasMachineFallbackName
+                ? 'profile_missing_name'
+                : 'already_current'),
+        'latency_ms': sw.elapsedMilliseconds,
+        'name_repaired': nameRepaired,
+        'avatar_repaired': avatarRepaired,
+        'details_repaired': detailsRepaired,
+        'uid_kind': 'clerk',
+      });
     }
-    if (changed) await _save(cs);
     // [CONTACT-RESOLVE-TTL] Persist the attempt timestamps so the TTL survives a
     // relaunch (this is the whole point — stop re-resolving every cold start).
-    if (attemptsChanged) await _saveMapKey(_kAvatarResolveAttemptKey, attempts);
+    if (attemptsChanged && scopeIsCurrent()) {
+      await _saveMapKeyForScope(_kAvatarResolveAttemptKey, attempts, scope);
+    }
+    if (!scopeIsCurrent()) return cs;
+
+    // Never save the snapshot loaded before the network awaits: another contact
+    // mutation may have landed while profiles were resolving. Re-read the
+    // latest list and merge only the resolved uid fields into that version.
+    var output = cs;
+    if (changed && resolvedByUid.isNotEmpty) {
+      final result = await _serializeWrite<({List<Contact> contacts, bool changed})>(
+          () async {
+        final latest = await _loadForScope(scope);
+        final deleted = await _loadMapKeyForScope(_kDeletedKey, scope);
+        var latestChanged = false;
+        latest.removeWhere((c) {
+          final remove = deleted.containsKey(c.uid);
+          if (remove) latestChanged = true;
+          return remove;
+        });
+        for (var i = 0; i < latest.length; i++) {
+          final resolvedProfile = resolvedByUid[latest[i].uid];
+          if (resolvedProfile == null) continue;
+          final merged = latest[i].mergeResolvedProfile(resolvedProfile);
+          if (merged.name != latest[i].name ||
+              merged.handle != latest[i].handle ||
+              merged.email != latest[i].email ||
+              merged.avatarUrl != latest[i].avatarUrl ||
+              merged.phone != latest[i].phone ||
+              merged.number != latest[i].number) {
+            latest[i] = merged;
+            latestChanged = true;
+          }
+        }
+        if (latestChanged) await _saveForScope(latest, scope);
+        return (contacts: latest, changed: latestChanged);
+      });
+      output = result.contacts;
+      if (result.changed && scopeIsCurrent()) _changes.add(output);
+    }
     // Proves the backfill is doing useful work rather than burning 404s, and that
     // numbers survive it (number_kept vs the old silent wipe). The owner's email is
     // auto-stamped onto every event by Analytics._base, so it stays pullable by
@@ -562,11 +847,14 @@ class ContactsStore {
     Analytics.capture('contact_avatar_backfill', {
       'scanned': cs.length,
       'resolved': resolved,
+      'names_repaired': namesRepaired,
+      'unresolved': unresolved,
       'skipped_unresolvable': skippedUnresolvable,
-      'skipped_recent': skippedRecent, // [CONTACT-RESOLVE-TTL] re-resolves avoided
+      'skipped_recent':
+          skippedRecent, // [CONTACT-RESOLVE-TTL] re-resolves avoided
       'number_kept': cs.where((c) => c.number.isNotEmpty).length,
     });
-    return cs;
+    return output;
   }
 }
 
@@ -640,7 +928,7 @@ class Directory {
     // the key signal for the "DMs stuck on waiting-to-reach-phone" bug class.
     final kind = q.startsWith('@')
         ? 'handle'
-        : q.startsWith('npub1')
+        : (q.startsWith('npub1') || q.startsWith('user_'))
             ? 'uid'
             : q.contains('@')
                 ? 'email'
@@ -670,7 +958,8 @@ class Directory {
         if (r.statusCode == 404) {
           await _rememberMiss(q);
         }
-        Analytics.capture('contact_resolve', {'kind': kind, 'found': false, 'reason': 'http_${r.statusCode}'});
+        Analytics.capture('contact_resolve',
+            {'kind': kind, 'found': false, 'reason': 'http_${r.statusCode}'});
         return null;
       }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -679,19 +968,38 @@ class Directory {
       // addressing id. Accept it at the top level OR nested under `profile`
       // (older worker shape) so a contact ALWAYS gets a routable id — a missing
       // id here was leaving DMs stuck on "waiting to reach phone".
-      final uid = j['uid'] ?? j['uid'] ?? p?['uid'];
+      final uid = j['uid'] ?? p?['uid'];
       if (uid == null) {
         // Server said found:false (or a shape we can't address) — the exact case
         // that silently broke delivery. Track it so we catch regressions early.
-        Analytics.capture('contact_resolve',
-            {'kind': kind, 'found': false, 'reason': j['found'] == false ? 'not_registered' : 'no_uid'});
+        Analytics.capture('contact_resolve', {
+          'kind': kind,
+          'found': false,
+          'reason': j['found'] == false ? 'not_registered' : 'no_uid'
+        });
         return null;
       }
-      Analytics.capture('contact_resolve', {'kind': kind, 'found': true});
+      // A raw Clerk uid is routable even before its public profile has reached
+      // the directory. Keep that routing ability, but do not call it a resolved
+      // identity or turn the uid into user-facing text. The short server cache
+      // lets a just-published profile repair quickly.
+      if (p == null) {
+        Analytics.capture('contact_resolve', {
+          'kind': kind,
+          'found': false,
+          'reason': 'profile_missing',
+          'routable': true,
+          'profile_present': false,
+          'name_present': false,
+        });
+        return Contact(uid: uid.toString(), name: 'AvaTOK contact');
+      }
       final first = (p?['first_name'] ?? '').toString();
       final last = (p?['last_name'] ?? '').toString();
-      final assembled = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
-      final name = (p?['name'] ?? p?['display_name'] ?? '').toString().isNotEmpty
+      final assembled =
+          [first, last].where((s) => s.isNotEmpty).join(' ').trim();
+      final name =
+          (p?['name'] ?? p?['display_name'] ?? '').toString().isNotEmpty
           ? (p?['name'] ?? p?['display_name']).toString()
           : assembled;
       // Directory responses have historically used both the canonical `number`
@@ -703,13 +1011,22 @@ class Directory {
               j['number'] ??
               j['avatok_number_display'] ??
               j['avatok_number'] ??
-              '').toString();
-      final phone = (p?['phone'] ?? p?['phone_number'] ?? j['phone'] ?? '').toString();
+              '')
+          .toString();
+      final phone =
+          (p?['phone'] ?? p?['phone_number'] ?? j['phone'] ?? '').toString();
+      Analytics.capture('contact_resolve', {
+        'kind': kind,
+        'found': true,
+        'profile_present': true,
+        'name_present': name.isNotEmpty,
+        'avatar_present':
+            (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString().isNotEmpty,
+        'number_present': number.isNotEmpty,
+      });
       return Contact(
         uid: uid.toString(),
-        name: name.isNotEmpty
-            ? name
-            : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(uid.toString())),
+        name: name.isNotEmpty ? name : 'AvaTOK contact',
         email: (p?['email'] ?? '').toString(),
         avatarUrl: (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString(),
         phone: phone,
@@ -718,10 +1035,12 @@ class Directory {
     } catch (e) {
       // Even with no directory hit, a raw uid is still addable.
       if (q.startsWith('npub1')) {
-        Analytics.capture('contact_resolve', {'kind': 'uid', 'found': true, 'reason': 'offline_fallback'});
+        Analytics.capture('contact_resolve',
+            {'kind': 'uid', 'found': true, 'reason': 'offline_fallback'});
         return Contact(uid: q, name: _short(q));
       }
-      Analytics.capture('contact_resolve', {'kind': kind, 'found': false, 'reason': 'error'});
+      Analytics.capture(
+          'contact_resolve', {'kind': kind, 'found': false, 'reason': 'error'});
       return null;
     }
   }

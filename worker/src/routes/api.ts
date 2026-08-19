@@ -2967,7 +2967,8 @@ export async function withSearchCache(req: Request, env: Env, handler: () => Pro
     if (res.status === 200) {
       const body = await res.clone().text();
       // Empty/not-found → short TTL so new users show up fast + probes stay cheap.
-      const empty = body.includes('"results":[]') || body.includes('"uid":null');
+      const empty = body.includes('"results":[]') || body.includes('"uid":null')
+        || body.includes('"profile":null');
       await kv?.put(ck, body, { expirationTtl: empty ? 60 : 1800 });
     }
   } catch { /* cache write best-effort */ }
@@ -2980,7 +2981,13 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
   const db = metaSession(env);
   const fetchProf = (uid: string) => db.prepare("SELECT uid,display_name,first_name,last_name,avatar_url,avatok_number_display FROM users WHERE uid=?1").bind(uid).first();
 
-  if (q.startsWith("user_")) return json({ uid: q, profile: profOut(await fetchProf(q)) });
+  if (q.startsWith("user_")) {
+    const profile = profOut(await fetchProf(q));
+    // The uid remains routable even if profile publication is still catching
+    // up, but make the missing identity explicit. withSearchCache recognises
+    // profile:null and retries it after the short empty-result TTL.
+    return json({ uid: q, profile, profile_found: profile !== null });
+  }
   if (q.includes("@") && q.includes(".")) {
     const r = await db.prepare("SELECT uid FROM users WHERE email_hash=?1 AND email_discoverable<>0 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(q.toLowerCase())).first<{ uid: string }>();
     if (!r) return json({ uid: null }, 404);

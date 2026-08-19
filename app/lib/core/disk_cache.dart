@@ -30,10 +30,11 @@ class DiskCache {
   static String? _scopeDirScope;
   static String? _scopeDirPath;
 
-  static Future<String> _scopeDir() async {
+  static Future<String> _scopeDirFor(String? capturedScope) async {
+    final scope = (capturedScope == null || capturedScope.isEmpty)
+        ? 'default'
+        : capturedScope;
     final base = await _baseDir();
-    final scope =
-        (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'default' : AccountScope.id!;
     if (_scopeDirPath != null && _scopeDirScope == scope) return _scopeDirPath!;
     final dir = Directory('$base/cache/$scope');
     if (!await dir.exists()) await dir.create(recursive: true);
@@ -42,17 +43,23 @@ class DiskCache {
     return dir.path;
   }
 
-  static Future<File> _file(String name) async {
-    final dirPath = await _scopeDir();
+  static Future<File> _fileForScope(String name, String? scope) async {
+    final dirPath = await _scopeDirFor(scope);
     final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
     return File('$dirPath/$safe.json');
   }
 
   /// Read a cached value, or null if absent. Never throws (a read failure must
   /// not blank the UI) — failures are logged so we can see them in PostHog.
-  static Future<String?> read(String name) async {
+  static Future<String?> read(String name) =>
+      readForScope(name, scope: AccountScope.id);
+
+  /// Read from an explicitly captured account scope. Background work must use
+  /// this form so an account switch during platform I/O cannot redirect it.
+  static Future<String?> readForScope(String name,
+      {required String? scope}) async {
     try {
-      final f = await _file(name);
+      final f = await _fileForScope(name, scope);
       if (await f.exists() && await f.length() > 0) return await f.readAsString();
     } catch (e) {
       AvaLog.I.log('cache', 'read FAILED $name: $e');
@@ -60,9 +67,14 @@ class DiskCache {
     return null;
   }
 
-  static Future<void> write(String name, String value) async {
+  static Future<void> write(String name, String value) =>
+      writeForScope(name, value, scope: AccountScope.id);
+
+  /// Write to an explicitly captured account scope. See [readForScope].
+  static Future<void> writeForScope(String name, String value,
+      {required String? scope}) async {
     try {
-      final f = await _file(name);
+      final f = await _fileForScope(name, scope);
       await f.writeAsString(value, flush: true);
     } catch (e) {
       AvaLog.I.log('cache', 'write FAILED $name: $e');
@@ -71,7 +83,7 @@ class DiskCache {
 
   static Future<void> delete(String name) async {
     try {
-      final f = await _file(name);
+      final f = await _fileForScope(name, AccountScope.id);
       if (await f.exists()) await f.delete();
     } catch (_) {/* best-effort */}
   }

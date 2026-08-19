@@ -1575,8 +1575,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // recreates every `Avatar` widget and restarts its async image load. Rows
     // that were already painted correctly dropped back to initials and popped
     // to the photo again, seconds after launch, for no new data whatsoever.
-    _contactsStore.refreshMissingAvatars().then((list) {
-      if (!mounted) return;
+    final profileRepairScope = AccountScope.id;
+    _contactsStore.refreshMissingProfiles().then((list) {
+      if (!mounted || AccountScope.id != profileRepairScope) return;
       if (_sameContacts(_contacts, list)) return; // nothing resolved → no repaint
       setState(() => _contacts = list);
     });
@@ -1867,7 +1868,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _syncingGroups.remove(gid);
   }
 
-  final Set<String> _autoAdding = {}; // uids currently being auto-added (dedupe)
+  final Set<String> _autoAdding =
+      {}; // uids currently being auto-added (dedupe)
+  final Map<String, int> _identityHydrationRetryAt = {};
+  final Set<String> _identityFallbackReported =
+      {}; // telemetry dedupe; never uploaded
 
   /// Materialise a contact for the sender of an inbound message.
   ///
@@ -1884,21 +1889,98 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// if their old messages replay.
   Future<void> _ensureContact(String uid) async {
     if (uid.isEmpty || uid == _id?.uid) return;
-    if (_contacts.any((c) => c.uid == uid) || !_autoAdding.add(uid)) return;
-    final placeholder = Contact(
-        uid: uid,
-        name: uid.length > 14 ? '${uid.substring(0, 10)}…${uid.substring(uid.length - 4)}' : uid);
-    var list = await _contactsStore.addIfNotDeleted(placeholder);
-    if (list == null) return; // tombstoned — do not resurrect
-    if (mounted) setState(() => _contacts = list!);
-    try {
-      final resolved = await Directory.resolve(uid);
-      if (resolved != null && resolved.uid == uid) {
-        list = await _contactsStore.addIfNotDeleted(resolved); // de-dupes on uid
-        if (list == null) return;
-        if (mounted) setState(() => _contacts = list!);
+    final scope = AccountScope.id;
+    bool scopeIsCurrent() => AccountScope.id == scope;
+    Contact? existing;
+    for (final c in _contacts) {
+      if (c.uid == uid) {
+        existing = c;
+        break;
       }
-    } catch (_) {/* placeholder stands */}
+    }
+    // A real saved name is authoritative. A historical machine fallback is not:
+    // retry its directory hydration on the next message in this process.
+    if (existing != null && !existing.hasMachineFallbackName) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final retryKey = '${scope ?? '_default'}:$uid';
+    if (nowMs < (_identityHydrationRetryAt[retryKey] ?? 0)) return;
+    final autoKey = retryKey;
+    if (!_autoAdding.add(autoKey)) return;
+    // A history replay may contain hundreds of frames from the same peer.
+    _identityHydrationRetryAt[retryKey] = nowMs + 60 * 1000;
+    final sw = Stopwatch()..start();
+    try {
+      var base = existing;
+      if (base == null) {
+        // Never expose or persist an internal Clerk id. The row appears
+        // immediately with a neutral label while directory hydration runs.
+        base = Contact(uid: uid, name: 'AvaTOK contact');
+        final placeholderList = await _contactsStore.addIfNotDeleted(
+            base, expectedScope: scope);
+        if (!scopeIsCurrent()) return;
+        if (placeholderList == null) return; // tombstoned — do not resurrect
+        if (mounted) setState(() => _contacts = placeholderList);
+        unawaited(Analytics.capture('contact_identity_placeholder_created', {
+          'source': 'inbound_message',
+          'fallback_kind': 'neutral',
+          'uid_kind': uid.startsWith('user_') ? 'clerk' : 'other',
+        }));
+      }
+      final resolved = await Directory.resolve(uid);
+      if (!scopeIsCurrent()) return;
+      if (resolved != null && resolved.uid == uid) {
+        final current = base!;
+        final merged = current.mergeResolvedProfile(resolved);
+        final nameRepaired = current.name != merged.name;
+        final avatarRepaired = current.avatarUrl != merged.avatarUrl;
+        final detailsRepaired = current.email != merged.email ||
+            current.phone != merged.phone ||
+            current.number != merged.number;
+        final identityChanged =
+            nameRepaired || avatarRepaired || detailsRepaired;
+        if (identityChanged) {
+          final list = await _contactsStore.addIfNotDeleted(merged,
+              expectedScope: scope); // tombstone-aware
+          if (!scopeIsCurrent()) return;
+          if (list == null) return;
+          if (mounted) setState(() => _contacts = list);
+        }
+        unawaited(Analytics.capture('contact_identity_hydration', {
+          'source': 'inbound_message',
+          'outcome': nameRepaired
+              ? 'updated'
+              : (identityChanged
+                  ? 'partial_profile'
+                  : (resolved.hasMachineFallbackName
+                      ? 'profile_missing_name'
+                      : 'already_current')),
+          'latency_ms': sw.elapsedMilliseconds,
+          'name_repaired': nameRepaired,
+          'avatar_repaired': avatarRepaired,
+          'details_repaired': detailsRepaired,
+          'uid_kind': uid.startsWith('user_') ? 'clerk' : 'other',
+        }));
+        if (nameRepaired || !resolved.hasMachineFallbackName) {
+          _identityHydrationRetryAt.remove(retryKey);
+        }
+      } else {
+        unawaited(Analytics.capture('contact_identity_hydration', {
+          'source': 'inbound_message',
+          'outcome': 'unresolved',
+          'latency_ms': sw.elapsedMilliseconds,
+          'uid_kind': uid.startsWith('user_') ? 'clerk' : 'other',
+        }));
+      }
+    } catch (_) {
+      unawaited(Analytics.capture('contact_identity_hydration', {
+        'source': 'inbound_message',
+        'outcome': 'error',
+        'latency_ms': sw.elapsedMilliseconds,
+        'uid_kind': uid.startsWith('user_') ? 'clerk' : 'other',
+      }));
+    } finally {
+      _autoAdding.remove(autoKey);
+    }
   }
 
   /// Materialise a PROVISIONAL phone-only contact for an unknown caller the AI
@@ -2130,14 +2212,31 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           (searching || _showArchived || !archived.contains(k));
     }).map((c) {
       final k = contactKey(c);
+      final usesIdentityFallback = c.hasMachineFallbackName;
+      final displayName =
+          usesIdentityFallback ? 'AvaTOK contact' : c.name.trim();
+      if (usesIdentityFallback && _identityFallbackReported.add(c.uid)) {
+        unawaited(Analytics.capture('chat_identity_fallback_visible', {
+          'surface': 'chat_list',
+          'fallback_kind': c.name.trim().isEmpty
+              ? 'empty'
+              : (c.name.trim().startsWith('user_') ? 'internal_id' : 'neutral'),
+          'uid_kind': c.uid.startsWith('user_') ? 'clerk' : 'other',
+        }));
+      }
       // Never fabricate a conversation preview while the local projection is
       // hydrating. That caused the visible "Say hi" / "Ava is thinking" flash
       // before cached real previews replaced it. An empty cached thread may show
       // its stable contact subtitle; message history only shows real content.
       final empty = c.subtitle;
-      return Chat(name: c.name, seed: c.seed, avatarUrl: c.avatarUrl,
-          last: draftOr(k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : empty)),
-          time: timeOf(k), unread: _unread[k] ?? 0);
+      return Chat(
+          name: displayName,
+          seed: c.seed,
+          avatarUrl: c.avatarUrl,
+          last: draftOr(
+              k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : empty)),
+          time: timeOf(k),
+          unread: _unread[k] ?? 0);
     }).toList();
     final realRows = [...contactChats];
     // Pinned chats first, then most-recently-active by last-message time.
