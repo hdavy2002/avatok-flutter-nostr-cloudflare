@@ -77,6 +77,14 @@ export interface RoutingDecisionResult {
   busy_kind: BusyKind;
 }
 
+/** Optional call-site services for the latency-sensitive pre-ring path. */
+export interface RoutingExecutionOptions {
+  /** Reuse the config already loaded by /api/call instead of reading it again. */
+  config?: Awaited<ReturnType<typeof readConfig>>;
+  /** Keep best-effort event writes alive without putting them before the ring. */
+  defer?: (work: Promise<void>) => void;
+}
+
 // ---------------------------------------------------------------------------
 // Concurrency (plan §15.1): AGENT_CONCURRENCY_A = 1 (primary number agent —
 // one call at a time), AGENT_CONCURRENCY_B = 5 (per service number, safe
@@ -224,12 +232,40 @@ function reasonFor(fb: { action: RoutingAction }, base: ReasonCode): ReasonCode 
   return fb.action === "busy" ? "BUSY" : base;
 }
 
+/** Build the immutable routing snapshot from the config already read above. */
+function snapshotFromConfig(
+  cfg: Awaited<ReturnType<typeof readConfig>>,
+  overrides: Partial<CallSnapshot> = {},
+): CallSnapshot {
+  return {
+    rate: overrides.rate ?? null,
+    length_options: overrides.length_options ?? null,
+    platform_fee_per_min: overrides.platform_fee_per_min ?? cfg.platformFeePerMin,
+    line_fee_per_min: overrides.line_fee_per_min ?? cfg.serviceLineFeePerMin,
+    routing_mode: overrides.routing_mode ?? null,
+    business_hours_version: overrides.business_hours_version ?? null,
+    blocked: overrides.blocked ?? false,
+    agent_enabled: overrides.agent_enabled ?? false,
+    voicemail_enabled: overrides.voicemail_enabled ?? false,
+    booking_authority: overrides.booking_authority ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // decideRouting — the pre-ring decision (plan §3 steps 1-4, §15.1, §15.2).
 // ---------------------------------------------------------------------------
-export async function decideRouting(env: Env, input: RoutingDecisionInput): Promise<RoutingDecisionResult> {
-  const cfg = await readConfig(env);
-  const resolved = await resolveNumberAndProfile(env, input.callee_id, input.number_dialed ?? null);
+export async function decideRouting(
+  env: Env,
+  input: RoutingDecisionInput,
+  options: RoutingExecutionOptions = {},
+): Promise<RoutingDecisionResult> {
+  // These reads do not depend on one another. In production they used to form a
+  // serial config -> profile -> blocklist chain before any phone could ring.
+  const [cfg, resolved, blocked] = await Promise.all([
+    options.config ? Promise.resolve(options.config) : readConfig(env),
+    resolveNumberAndProfile(env, input.callee_id, input.number_dialed ?? null),
+    isBlocked(env, input.callee_id, input.caller_id),
+  ]);
 
   // Number lifecycle (plan §15.3): a retired service number is never
   // recycled — it resolves to "service no longer available", not a normal
@@ -237,11 +273,9 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
   // the closest existing reason code; a dedicated NUMBER_RETIRED code can be
   // added to the registry later without breaking this call site.
   if (resolved.retired) {
-    const snapshot = await buildCallSnapshot(env, { blocked: false, agent_enabled: false, voicemail_enabled: false });
-    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, 0, null);
+    const snapshot = snapshotFromConfig(cfg, { blocked: false, agent_enabled: false, voicemail_enabled: false });
+    return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, 0, null, options);
   }
-
-  const blocked = await isBlocked(env, input.callee_id, input.caller_id);
 
   const agentEnabled = resolved.agent_profile != null; // Mode A/B: an Agent Profile in force = agent is a candidate
   // [VM-KILL-1] the global voicemail kill switch (owner 2026-07-21) forces every
@@ -253,10 +287,7 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
 
   const numberKey = concurrencyKeyFor(resolved);
   const cap = resolved.is_service_number ? cfg.agentConcurrencyB : cfg.agentConcurrencyA;
-  const inUse = await countActiveAgentSessions(env, numberKey, cfg.agentMaxCallSec);
-  const hasSlot = inUse < cap;
-
-  const snapshot = await buildCallSnapshot(env, {
+  const snapshot = snapshotFromConfig(cfg, {
     rate: resolved.agent_profile?.rate ?? null,
     length_options: resolved.agent_profile?.length_options ?? null,
     routing_mode: resolved.agent_profile?.routing ?? null,
@@ -267,9 +298,25 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
     booking_authority: resolved.agent_profile?.booking_authority ?? null,
   });
 
-  // 1. Blocked — silent no-answer (plan §15.2): normal ring UX, voicemail
-  //    unavailable, caller never told.
-  if (blocked) return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", inUse, cap, null);
+  // A blocked call must not wake any callee-side authority. The silent outcome
+  // is already final once the blocklist and number profile have landed.
+  if (blocked) return finalize(env, cfg, input, resolved, snapshot, "silent_noanswer", "BLOCKED", 0, cap, null, options);
+
+  // A primary number with no agent profile cannot own an agent session, so its
+  // concurrency table/DDL read is provably irrelevant. Busy authority remains
+  // mandatory for the human call and runs concurrently with the count whenever
+  // a service number or agent profile actually needs that count.
+  const concurrencyPromise = (resolved.is_service_number || agentEnabled)
+    ? countActiveAgentSessions(env, numberKey, cfg.agentMaxCallSec)
+    : Promise.resolve(0);
+  // An explicitly unreachable call takes the offline agent/voicemail branch;
+  // querying human busy state cannot change that verdict.
+  const authorityPromise = input.callee_reachable !== false
+    && authorityEnabled(cfg as unknown as Parameters<typeof authorityEnabled>[0])
+    ? authorityQuery(env, input.callee_id).catch(() => null)
+    : Promise.resolve(null);
+  const [inUse, authorityState] = await Promise.all([concurrencyPromise, authorityPromise]);
+  const hasSlot = inUse < cap;
 
   // 1b. Concurrency (plan §11/§15.1, owner decision 2026-07-11): a Mode B
   //     (service/paid) number whose AGENT_CONCURRENCY_B slots are all in use
@@ -278,43 +325,37 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
   //     overflow to voicemail. Checked ahead of offline/busy/hours so a
   //     genuinely-full agent number never dead-ends into a silent ring first.
   if (resolved.is_service_number && agentEnabled && !hasSlot) {
-    return finalize(env, cfg, input, resolved, snapshot, "busy", "BUSY", inUse, cap, "agents_full");
+    return finalize(env, cfg, input, resolved, snapshot, "busy", "BUSY", inUse, cap, "agents_full", options);
   }
 
   // 2. Offline (plan §15.1 OFFLINE_DETECT): skip the ring entirely.
   if (input.callee_reachable === false) {
     const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
-    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "OFFLINE"), inUse, cap, fb.busy_kind);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "OFFLINE"), inUse, cap, fb.busy_kind, options);
   }
 
   // 3. Busy (plan §15.1): callee already on a call = decline immediately, no
   //    fake ringing. Reads the existing call-state authority DO (fail-open —
   //    a null/errored read is treated as "not busy", never as a false block).
-  let busy = false;
-  if (authorityEnabled(cfg as unknown as Parameters<typeof authorityEnabled>[0])) {
-    try {
-      const q = await authorityQuery(env, input.callee_id);
-      const phase = (q?.phase as string | undefined) ?? null;
-      busy = phase === "connected" || phase === "connecting";
-    } catch { busy = false; }
-  }
+  const authorityPhase = (authorityState?.phase as string | undefined) ?? null;
+  const busy = authorityPhase === "connected" || authorityPhase === "connecting";
   if (busy) {
     // Mode B human-answered paid line (no AI agent configured) already on a
     // call — busy tone, no voicemail, no charge, hold released at the call
     // site (plan §11 refund matrix / §15.1). Distinguished from agents_full
     // (checked in step 1b above) by the absence of an agent profile.
     if (resolved.is_service_number && !agentEnabled) {
-      return finalize(env, cfg, input, resolved, snapshot, "busy", "BUSY", inUse, cap, "human_busy");
+      return finalize(env, cfg, input, resolved, snapshot, "busy", "BUSY", inUse, cap, "human_busy", options);
     }
     const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
-    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "BUSY"), inUse, cap, fb.busy_kind);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "BUSY"), inUse, cap, fb.busy_kind, options);
   }
 
   // 4. Business hours (plan §15.1): out-of-hours = agent/voicemail
   //    immediately, no ring.
   if (!inHours) {
     const fb = agentOrFallback(resolved, agentEnabled, hasSlot, voicemailEnabled);
-    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "BUSINESS_HOURS"), inUse, cap, fb.busy_kind);
+    return finalize(env, cfg, input, resolved, snapshot, fb.action, reasonFor(fb, "BUSINESS_HOURS"), inUse, cap, fb.busy_kind, options);
   }
 
   // 5. Concurrency overflow while otherwise ringable is NOT a routing
@@ -323,7 +364,7 @@ export async function decideRouting(env: Env, input: RoutingDecisionInput): Prom
   //    (decideNoAnswerRouting below), so a busy agent never pre-empts a live
   //    human pickup. Mode B's overflow was already handled unconditionally in
   //    step 1b above (never rings an AI line with zero capacity).
-  return finalize(env, cfg, input, resolved, snapshot, "ring", "RANG_OWNER", inUse, cap, null);
+  return finalize(env, cfg, input, resolved, snapshot, "ring", "RANG_OWNER", inUse, cap, null, options);
 }
 
 // ---------------------------------------------------------------------------
@@ -404,6 +445,7 @@ async function finalize(
   concurrency_in_use: number,
   concurrency_cap: number,
   busy_kind: BusyKind,
+  options: RoutingExecutionOptions = {},
 ): Promise<RoutingDecisionResult> {
   const result: RoutingDecisionResult = {
     action, reason, snapshot,
@@ -413,8 +455,7 @@ async function finalize(
   };
   // Emit routing_decision ALWAYS when businessCallUx is on (plan §3 deliverable).
   if (cfg.businessCallUx) {
-    try {
-      await emitRoutingDecision(env, {
+    const emission = emitRoutingDecision(env, {
         call_id: input.call_id,
         trace_id: input.trace_id,
         caller_id: input.caller_id,
@@ -432,8 +473,9 @@ async function finalize(
           booking_authority: snapshot.booking_authority,
           concurrency_in_use,
         },
-      });
-    } catch { /* best-effort — telemetry never blocks routing */ }
+      }).catch(() => { /* best-effort — telemetry never blocks routing */ });
+    if (options.defer) options.defer(emission);
+    else await emission;
   }
   return result;
 }

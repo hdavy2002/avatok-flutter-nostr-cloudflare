@@ -290,13 +290,17 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         emailFor(env, ctx.uid).catch(() => null),
         phoneFor(env, ctx.uid).catch(() => null),
       ]);
-      for (const s of stages) {
-        await trackUserContact(env, ctx.uid, callerEmail, callerPhone, "call_ring_path_ms", "avatok", {
+      // Submit stage events concurrently. Sequential PostHog requests could
+      // consume the whole waitUntil lifetime and silently lose the tail stages.
+      await Promise.allSettled(stages.map((s, index) =>
+        trackUserContact(env, ctx.uid, callerEmail, callerPhone, "call_ring_path_ms", "avatok", {
           call_id: b.callId, to: b.to, stage: s.stage, ms: s.ms, fastpath: fastPath,
+          delta_ms: s.ms - (index === 0 ? 0 : stages[index - 1].ms),
+          stage_index: index,
           trace_id: traceId, via: b.via ?? "chat",
           app_name: "avatok", service_name: "avatok-api", worker: true,
-        }, traceId || undefined);
-      }
+        }, traceId || undefined),
+      ));
     } catch { /* timing telemetry must never change a call outcome */ }
   };
   // workerd DROPS unawaited work on an EARLY-RETURN path, so every `return` that
@@ -1018,8 +1022,12 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         routingResult = await decideRouting(env, {
           call_id: b.callId, trace_id: callTraceId, caller_id: ctx.uid, callee_id: b.to,
           number_dialed: null, via: "dialpad", callee_reachable: n > 0 ? true : undefined,
+        }, {
+          config: cfg,
+          defer: execCtx ? (work) => execCtx.waitUntil(work) : undefined,
         });
-        await emitCallEvent(env, {
+        markRingStage("dialpad_routing");
+        const callCreatedEvent = emitCallEvent(env, {
           event: "call_created",
           call_id: b.callId,
           trace_id: callTraceId,
@@ -1029,7 +1037,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
           ts: Date.now(),
           event_schema_version: EVENT_SCHEMA_VERSION,
           props: { snapshot: routingResult.snapshot, call_type: b.kind ?? "audio", via: "dialpad" },
-        });
+        }).catch(() => { /* event-stream emission must never change the call */ });
+        if (execCtx) execCtx.waitUntil(callCreatedEvent); else await callCreatedEvent;
       }
     } catch { /* dialpad routing failure fails open to the normal human ring */ }
   } else {
@@ -1281,6 +1290,8 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         } catch { /* fallback remains a no-answer outcome */ }
       })();
       if (execCtx) execCtx.waitUntil(prewarmPolicy); else await prewarmPolicy;
+      markRingStage("prewarm_started");
+      await settleRingPath();
       return json({ sent: 1, reachable: true, prewarming: true,
         prewarmNonce, prewarmGeneration,
         prewarmDeadlineMs: participantResult.prewarm_deadline_ms ?? null,
@@ -1548,6 +1559,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   }
   // [CALL-RING-FASTPATH-1] Flush the ring-path stopwatch. Last thing before the
   // response, so `ws_ring` is included and the whole series lands together.
+  markRingStage("response_ready");
   await settleRingPath();
 
   return json({
