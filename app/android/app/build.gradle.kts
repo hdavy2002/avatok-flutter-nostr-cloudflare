@@ -89,10 +89,11 @@ flutter {
     source = "../.."
 }
 
-// [STREAM-CALL-PILOT-4] Explicit build-time media-engine selection. A normal
-// build keeps flutter_webrtc's pinned 125 binary. Only a deliberate pilot build
-// swaps in Stream's M125-compatible fork; packaging both would create duplicate
-// org.webrtc classes and make the Cloudflare rollback untrustworthy.
+// [STREAM-CALL-PILOT-4] Keep one M125 WebRTC binary in every build. Stream
+// 1.9.2 targets the same public M125 API, but its fork omits flutter_webrtc's
+// playback callback used by AvaTOK call recording/translation. Pilot builds
+// therefore exclude only Stream's fork and retain the existing AvaTOK binary;
+// packaging both would create duplicate org.webrtc classes.
 val streamCallSdk = System.getenv("STREAM_CALL_SDK") == "1"
 
 // [CALL-RTK-6] flutter_webrtc ships com.github.davidliu:audioswitch (a fork) and
@@ -105,7 +106,7 @@ val streamCallSdk = System.getenv("STREAM_CALL_SDK") == "1"
 configurations.all {
     exclude(group = "com.twilio", module = "audioswitch")
     if (streamCallSdk) {
-        exclude(group = "io.github.webrtc-sdk", module = "android")
+        exclude(group = "io.getstream", module = "stream-webrtc-android")
     }
 }
 
@@ -121,11 +122,7 @@ dependencies {
     // Gradle keeps private to that module — CallTranslationAudioPlugin.java (in :app)
     // can't see org.webrtc.audio.JavaAudioDeviceModule without it declared here too.
     // Version MUST match flutter_webrtc's android/build.gradle exactly.
-    if (streamCallSdk) {
-        implementation("io.getstream:stream-webrtc-android:1.3.8")
-    } else {
-        implementation("io.github.webrtc-sdk:android:125.6422.03")
-    }
+    implementation("io.github.webrtc-sdk:android:125.6422.03")
 
     // AvaVision on-device live-vision engine (CameraX + MediaPipe Tasks-Vision +
     // TFLite) REMOVED 2026-06-22 to cut ~30–50 MB of native libs from the launch
