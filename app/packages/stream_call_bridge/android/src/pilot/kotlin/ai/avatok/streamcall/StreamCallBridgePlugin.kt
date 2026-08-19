@@ -26,7 +26,7 @@ import io.getstream.video.android.core.RealtimeConnection
 import io.getstream.video.android.core.StreamVideo
 import io.getstream.video.android.core.StreamVideoBuilder
 import io.getstream.video.android.core.notifications.NotificationConfig
-import io.getstream.video.android.core.notifications.handlers.StreamDefaultNotificationHandler
+import io.getstream.video.android.core.notifications.DefaultNotificationHandler
 import io.getstream.video.android.core.socket.common.token.TokenProvider
 import io.getstream.video.android.core.model.RejectReason
 import io.getstream.video.android.core.internal.InternalStreamVideoApi
@@ -45,7 +45,7 @@ import io.getstream.android.video.generated.models.CallAcceptedEvent
 import io.getstream.android.video.generated.models.CallEndedEvent
 import io.getstream.android.video.generated.models.CallRejectedEvent
 
-private data class StoredCredentials(
+internal data class StoredCredentials(
     val userId: String,
     val apiKey: String,
     val token: String,
@@ -130,7 +130,11 @@ internal object StreamCallRuntime {
                 // this in foreground would leave no Answer surface because the
                 // legacy CallKit route correctly ignores Stream-owned rings.
                 hideRingingNotificationInForeground = false,
-                notificationHandler = StreamDefaultNotificationHandler(
+                // Stream 1.9.2's newer interceptor-based handler does not yet
+                // implement the full NotificationHandler contract accepted by
+                // NotificationConfig. Its compatibility handler does and keeps
+                // native ringing/answer/decline notifications operational.
+                notificationHandler = DefaultNotificationHandler(
                     application = app as Application,
                     hideRingingNotificationInForeground = false,
                 ),
