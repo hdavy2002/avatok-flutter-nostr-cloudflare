@@ -10,7 +10,8 @@ import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/calls/call_session_manager.dart'; // [INSTANT-CALL-MOUNT-1]
 import '../../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
 import '../../core/calls/rtc/stream_call_api.dart';
-import '../../core/calls/rtc/stream_call_provider.dart' show StreamCallPilot;
+import '../../core/calls/rtc/stream_call_provider.dart'
+    show CallMediaProviderWire, StreamCallPilot;
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart'; // [INSTANT-CALL-MOUNT-1] kill switch
