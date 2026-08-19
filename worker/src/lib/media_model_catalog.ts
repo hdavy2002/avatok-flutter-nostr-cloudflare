@@ -1,9 +1,4 @@
 import type { PlatformConfig } from "../routes/config";
-import {
-  VENICE_VIDEO_DURATIONS_S,
-  veniceRoute,
-  type VeniceTier,
-} from "./venice";
 
 export interface MediaModelChoice {
   id: string;
@@ -17,70 +12,31 @@ export interface MediaModelChoice {
   price: { kind: "flat" | "per_minute"; tokens: number; unit: string };
 }
 
-/** One runtime catalog feeds Ava's conversation and server validation. Adding
- * a provider tomorrow means adding one capability record, not new dialogue. */
-export function mediaModelCatalog(cfg: PlatformConfig, tier: VeniceTier): {
+/** Runtime capability catalog for the single Vertex media lane. */
+export function mediaModelCatalog(cfg: PlatformConfig, _tier: "free" | "paid"): {
   video: MediaModelChoice[];
   audio: MediaModelChoice[];
 } {
-  const t2v = veniceRoute("video_t2v", tier);
-  const i2v = veniceRoute("video_i2v", tier);
-  const music = veniceRoute("music", tier);
-  const videoDurations = VENICE_VIDEO_DURATIONS_S.filter((n) => n >= 8 && n <= 15);
   return {
-    video: [
-      {
-        id: t2v.model, provider: "Venice", media: "video", label: "LTX Fast text-to-video",
-        supports: ["text-to-video", "vertical video", "horizontal video"],
-        durationsSeconds: [...videoDurations], resolutions: ["1080p", "1440p", "2160p"],
-        aspectRatios: ["9:16", "16:9"],
-        price: { kind: "flat", tokens: cfg.veniceVideoTokens, unit: "per clip" },
-      },
-      ...(i2v.model === t2v.model ? [] : [{
-        id: i2v.model, provider: "Venice", media: "video" as const, label: "LTX Fast image-to-video",
-        supports: ["animate an existing image", "vertical video", "horizontal video"],
-        durationsSeconds: [...videoDurations], resolutions: ["1080p", "1440p", "2160p"],
-        aspectRatios: ["9:16", "16:9"],
-        price: { kind: "flat" as const, tokens: cfg.veniceVideoTokens, unit: "per clip" },
-      }]),
-    ],
-    audio: [
-      {
-        id: music.model, provider: "Venice", media: "audio", label: "MiniMax Music 2.6",
-        supports: ["vocal song", "instrumental", "custom lyrics"],
-        // [SONG-LEN-2] MiniMax rejects lyrics_prompt >= 1000 chars (live 400,
-        // 2026-08-16), which caps a vocal at roughly 60-90 seconds. Advertise
-        // what it can actually deliver so Ava never promises a 3-minute song
-        // this model cannot sing.
-        durationsSeconds: { min: 60, max: 90 },
-        price: { kind: "flat", tokens: cfg.veniceMusicTokens, unit: "per track" },
-      },
-      ...(String((cfg as any).veniceLongMusicModel ?? "").trim()
-        ? [{
-            id: String((cfg as any).veniceLongMusicModel).trim(), provider: "Venice", media: "audio" as const,
-            label: "Long-form music (2-3.5 min)",
-            supports: ["vocal song", "instrumental", "custom lyrics", "long songs"],
-            durationsSeconds: { min: 60, max: 210 },
-            price: { kind: "flat" as const, tokens: cfg.veniceMusicTokens, unit: "per track" },
-          }]
-        : []),
-      // [SONG-QUICK-1] The engine-written quick song. Advertised separately
-      // because its capability is genuinely different: it writes its OWN words,
-      // so there is nothing to review before it sings. Only listed when it is a
-      // distinct model from the two above, so Ava never offers the same id twice.
-      ...(() => {
-        const quick = String((cfg as any).veniceQuickSongModel ?? "").trim();
-        const taken = [music.model, String((cfg as any).veniceLongMusicModel ?? "").trim()];
-        return quick && !taken.includes(quick)
-          ? [{
-              id: quick, provider: "Venice", media: "audio" as const,
-              label: "Quick song (engine writes the words)",
-              supports: ["engine-written lyrics", "vocal song", "no lyric approval step", "long songs"],
-              durationsSeconds: { min: 60, max: 210 },
-              price: { kind: "flat" as const, tokens: cfg.veniceMusicTokens, unit: "per track" },
-            }]
-          : [];
-      })(),
-    ],
+    video: [{
+      id: "veo-3.1-generate-preview",
+      provider: "Google Vertex",
+      media: "video",
+      label: "Veo video generation",
+      supports: ["text-to-video", "image-to-video", "vertical video", "horizontal video"],
+      durationsSeconds: [4, 6, 8],
+      resolutions: ["720p", "1080p"],
+      aspectRatios: ["9:16", "16:9"],
+      price: { kind: "flat", tokens: Number((cfg as any).veniceVideoTokens ?? 0), unit: "per clip" },
+    }],
+    audio: [{
+      id: "lyria-3-pro-preview",
+      provider: "Google Vertex",
+      media: "audio",
+      label: "Lyria 3 Pro music generation",
+      supports: ["vocal song", "instrumental", "custom lyrics", "rich instrumentation"],
+      durationsSeconds: { min: 30, max: 184 },
+      price: { kind: "flat", tokens: Number((cfg as any).veniceMusicTokens ?? 0), unit: "per track" },
+    }],
   };
 }

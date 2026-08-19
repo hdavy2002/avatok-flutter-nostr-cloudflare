@@ -55,6 +55,7 @@ class AvaDocActions {
     required String? name,
     required bool show,
     required void Function(AiMediaJobCreateOutcome outcome) onOutcome,
+    Future<String?> Function(String mediaRef)? prepareReadableCopy,
   }) {
     if (!show || conv == null || conv.isEmpty || mediaRef == null || mediaRef.isEmpty) {
       return const <Widget>[];
@@ -84,9 +85,9 @@ class AvaDocActions {
         );
     return <Widget>[
       item(PhosphorIcons.sparkle(PhosphorIconsStyle.regular), 'Summarize',
-          () => summarize(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome)),
+          () => summarize(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome, prepareReadableCopy: prepareReadableCopy)),
       item(PhosphorIcons.translate(PhosphorIconsStyle.regular), 'Translate',
-          () => translate(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome)),
+          () => translate(threadContext, conv: conv, mediaRef: mediaRef, name: name, onOutcome: onOutcome, prepareReadableCopy: prepareReadableCopy)),
     ];
   }
 
@@ -96,12 +97,15 @@ class AvaDocActions {
   /// any more (the artifact IS the result now, not an inline text blob).
   static Future<void> summarize(BuildContext context,
       {required String conv, required String mediaRef, String? name,
-      required void Function(AiMediaJobCreateOutcome) onOutcome}) async {
+      required void Function(AiMediaJobCreateOutcome) onOutcome,
+      Future<String?> Function(String mediaRef)? prepareReadableCopy}) async {
     Analytics.capture('ava_doc_action_tap', {'action': 'summarize', 'conv': conv});
+    final readableRef = await prepareReadableCopy?.call(mediaRef) ?? mediaRef;
+    if (readableRef.isEmpty) return;
     final outcome = await AiMediaJobRepository.I.create(
       convId: conv,
       kind: AiMediaJobKind.docSummarize,
-      sourceMediaId: mediaRef,
+      sourceMediaId: readableRef,
       label: 'Preparing summary…',
     );
     onOutcome(outcome);
@@ -112,15 +116,18 @@ class AvaDocActions {
   /// just inline text). [onOutcome] renders the pending card / 402 / failure.
   static Future<void> translate(BuildContext context,
       {required String conv, required String mediaRef, String? name,
-      required void Function(AiMediaJobCreateOutcome) onOutcome}) async {
+      required void Function(AiMediaJobCreateOutcome) onOutcome,
+      Future<String?> Function(String mediaRef)? prepareReadableCopy}) async {
     final lang = await _pickLanguage(context);
     if (lang == null || !context.mounted) return;
+    final readableRef = await prepareReadableCopy?.call(mediaRef) ?? mediaRef;
+    if (readableRef.isEmpty) return;
     Analytics.capture('ava_doc_action_tap',
         {'action': 'translate', 'conv': conv, 'lang': lang.code});
     final outcome = await AiMediaJobRepository.I.create(
       convId: conv,
       kind: AiMediaJobKind.docTranslate,
-      sourceMediaId: mediaRef,
+      sourceMediaId: readableRef,
       targetLanguage: lang.code,
       label: 'Translating to ${lang.label}…',
     );

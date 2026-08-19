@@ -224,6 +224,75 @@ export interface GoogleCallOpts {
   forceDevApi?: boolean;
 }
 
+/** Strict Vertex media request. Unlike generateContentVia(), media generation
+ * must not silently fall back to the Developer API: the capability contract is
+ * explicitly Vertex-backed and a fallback could create an untracked provider
+ * charge or return a different media shape. */
+export async function vertexMediaRequest(
+  env: VertexEnv,
+  path: string,
+  body: unknown,
+  opts: { version?: "v1" | "v1beta1"; timeoutMs?: number } = {},
+): Promise<GoogleCallResult> {
+  const token = await vertexToken(env);
+  if (!token || !env.VERTEX_PROJECT) {
+    return { ok: false, status: 401, out: { error: { message: "vertex is not configured" } }, via: "vertex" };
+  }
+  const version = opts.version ?? "v1";
+  const loc = location(env);
+  const root = `https://${host(loc)}/${version}/projects/${env.VERTEX_PROJECT}/locations/${loc}`;
+  const url = path.startsWith("http") ? path : `${root}${path.startsWith("/") ? path : `/${path}`}`;
+  try {
+    const r = await postJson(url, { authorization: `Bearer ${token}` }, body, opts.timeoutMs);
+    await emitTransport(env, path.split(":")[0], "media", "vertex", r.status, r.ok, true);
+    return { ...r, via: "vertex" };
+  } catch (e) {
+    const message = String((e as any)?.message ?? e).slice(0, 300);
+    await emitTransport(env, path.split(":")[0], "media", "vertex", 599, false, true, message, null);
+    return { ok: false, status: 599, out: { error: { message } }, via: "vertex" };
+  }
+}
+
+/** Lyria 3 uses the Agent Platform interactions endpoint (global). */
+export async function vertexInteraction(
+  env: VertexEnv,
+  model: string,
+  input: unknown[],
+  timeoutMs = 120_000,
+): Promise<GoogleCallResult> {
+  return vertexMediaRequest(env, "/interactions", { model, input }, { version: "v1beta1", timeoutMs });
+}
+
+/** Veo and other long-running Vertex media models use predictLongRunning. */
+export async function vertexPredictLongRunning(
+  env: VertexEnv,
+  model: string,
+  instances: unknown[],
+  parameters: Record<string, unknown> = {},
+  timeoutMs = 30_000,
+): Promise<GoogleCallResult> {
+  return vertexMediaRequest(
+    env,
+    `/publishers/google/models/${vertexModelId(model)}:predictLongRunning`,
+    { instances, parameters },
+    { version: "v1", timeoutMs },
+  );
+}
+
+export async function vertexFetchPredictOperation(
+  env: VertexEnv,
+  model: string,
+  operationName: string,
+  timeoutMs = 30_000,
+): Promise<GoogleCallResult> {
+  return vertexMediaRequest(
+    env,
+    `/publishers/google/models/${vertexModelId(model)}:fetchPredictOperation`,
+    { operationName },
+    { version: "v1", timeoutMs },
+  );
+}
+
 async function postJson(url: string, headers: Record<string, string>, body: unknown, timeoutMs?: number) {
   const res = await fetch(url, {
     method: "POST",

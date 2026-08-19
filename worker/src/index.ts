@@ -8,7 +8,7 @@
 import type { Env } from "./types";
 import { json, preflight } from "./util";
 import * as api from "./routes/api";
-import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead } from "./routes/media";
+import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead, sweepAvaReadableCopies } from "./routes/media";
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
@@ -365,6 +365,9 @@ export default {
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         recoverAiMediaJobs(env)
           .catch((e) => { console.error("[ai-media-recovery] failed:", String(e)); }),
+        sweepAvaReadableCopies(env)
+          .then((n) => { if (n) console.log("[ava-readable-cleanup]", n); })
+          .catch((e) => { console.error("[ava-readable-cleanup] failed:", String(e)); }),
       ]),
     );
   },

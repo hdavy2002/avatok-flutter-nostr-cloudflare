@@ -51,30 +51,29 @@ import { transcribeAudioBuffer, sttFormatFor, bytesToBase64 } from "../routes/st
 // extraction and the resolution parameter all stay in one place.
 import { generateImage, imageResolutionForTier, fulfilQueuedImage } from "../routes/ava_image";
 import { loadQueuedImageInput } from "../lib/ai_media_inputs";
-import { imageModel } from "../lib/ava_reason/policy";
 import { readConfig } from "../routes/config";
 import {
   extractDocumentText, summarizeDocumentForArtifact, translateDocumentForArtifact,
   buildDocumentArtifactBytes,
 } from "../routes/ava_copilot";
 // [VENICE-VID-1 / VENICE-MUS-1] The shared Q_AI_MEDIA queue now also carries
-// Venice video/music POLL messages — see queues/venice_media.ts's header for
+// Venice video/music POLL messages — see queues/media.ts's header for
 // why they reuse this queue rather than a new binding, and
-// lib/venice_media_jobs.ts's header for why they are a SEPARATE small job
-// table rather than a new AiMediaJobKind. isVeniceMediaKind()/
-// runVeniceMediaJobMessage() are the discriminator + handler this file
+// lib/media_jobs.ts's header for why they are a SEPARATE small job
+// table rather than a new AiMediaJobKind. isMediaJobKind()/
+// runMediaJobMessage() are the discriminator + handler this file
 // dispatches to below, before ANY ai_media_jobs.ts lookup.
-import { isVeniceMediaKind, runVeniceMediaJobMessage } from "./venice_media";
-import type { VeniceMediaJobKind } from "../lib/venice_media_jobs";
+import { isMediaJobKind, runMediaJobMessage } from "./media";
+import type { MediaJobKind } from "../lib/media_jobs";
 
 export interface AiMediaJobQueueMsg {
   job_id: string;
   // Widened (not just AiMediaJobKind) because this ONE queue message shape is
-  // now shared with venice_media_jobs' own kind values — see the import
+  // now shared with media_jobs' own kind values — see the import
   // comment above. Env.Q_AI_MEDIA (worker/src/types.ts) already types `kind`
   // as a plain `string`, so this was always safe to widen; nothing about the
   // wire format changed.
-  kind: AiMediaJobKind | VeniceMediaJobKind;
+  kind: AiMediaJobKind | MediaJobKind;
 }
 
 /** Thrown by a kind handler to request a queue-level retry (CF redelivers up
@@ -168,8 +167,6 @@ const UPGRADE_MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
 
 const handleImageUpgrade: KindHandler = async (env, job) => {
   if (!job.source_media_id) throw new Error("unsupported_format: image_upgrade job has no source image");
-  const key = (env as unknown as { OPENROUTER_API_KEY?: string }).OPENROUTER_API_KEY;
-  if (!key) throw new Error("provider_unavailable: image generation key is not configured");
 
   const src = await fetchSourceMediaBytes(env, job.source_media_id);
   if (!String(src.mime || "").toLowerCase().startsWith("image/")) {
@@ -186,7 +183,7 @@ const handleImageUpgrade: KindHandler = async (env, job) => {
   const resolution = imageResolutionForTier(cfg.imageFullResolutionTier);
   const dataUrl = `data:${src.mime};base64,${bytesToBase64(src.bytes)}`;
 
-  const gen = await generateImage(env, key, UPSCALE_INSTRUCTION, job.owner_uid, dataUrl, { resolution });
+  const gen = await generateImage(env, "", UPSCALE_INSTRUCTION, job.owner_uid, dataUrl, { resolution });
 
   const sensitivity = await resolveArtifactSensitivity(env, job.source_media_id);
   const fileName = `${stripExt(src.fileName)}.${resolution.toLowerCase()}.png`;
@@ -216,7 +213,7 @@ const handleImageUpgrade: KindHandler = async (env, job) => {
   return {
     artifact: { mediaId: artifact.id, mimeType: "image/png", fileName, rendition: "full", resolution },
     settlement: {
-      modelActual: imageModel(env),
+      modelActual: "gemini-3.1-flash-image-preview",
       usage: { images: 1, imageOutputTokens: gen.imageOutputTokens },
       providerCostUsdMicro: gen.costUsd != null ? Math.round(gen.costUsd * 1_000_000) : undefined,
     },
@@ -461,11 +458,11 @@ export async function runAiMediaJobMessage(env: Env, msg: AiMediaJobQueueMsg, at
   if (!jobId) return; // malformed message — nothing to do, ack and move on
 
   // [VENICE-VID-1 / VENICE-MUS-1] Discriminate BEFORE any ai_media_jobs.ts
-  // lookup: a venice_* kind would 404 against THAT table (claimAiMediaJob ->
+  // lookup: a media_* kind belongs to the dedicated media_jobs table, not the
   // "not_found" -> silent return below) and the job would never be polled
-  // again. See queues/venice_media.ts for the actual poll/deliver logic.
-  if (isVeniceMediaKind(msg.kind)) {
-    await runVeniceMediaJobMessage(env, { job_id: jobId, kind: msg.kind });
+  // again. See queues/media.ts for the actual poll/deliver logic.
+  if (isMediaJobKind(msg.kind)) {
+    await runMediaJobMessage(env, { job_id: jobId, kind: msg.kind });
     return;
   }
 

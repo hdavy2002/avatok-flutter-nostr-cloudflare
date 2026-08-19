@@ -1364,12 +1364,12 @@ export async function runAgentLoop(
     // model's intent through.
     onImage?: (prompt: string, editRef?: string, editOpts?: { editPrevious?: boolean }) => Promise<string | { status: string; job_id?: string | null }>;
     // [VENICE-VID-1] In-thread video generation, same async/durable-job shape
-    // as onImage above (see lib/venice_media.ts's runVeniceVideo, invoked via
+    // as onImage above (see lib/media.ts's runVertexVideo, invoked via
     // do/ava_agent.ts's onVideo callback). `sourceImageUrl` is the public URL
     // of an existing image the model was given (the tool's `source_image_url`
     // arg) — its PRESENCE alone selects image-to-video over text-to-video.
     // [VENICE-VID-DURATION-1 / VENICE-I2V-AUTO-1] `videoOpts.durationSeconds`
-    // rides through to runVeniceVideo unchanged; `videoOpts.useLastImage` is
+    // rides through to runVertexVideo unchanged; `videoOpts.useLastImage` is
     // set when the model called generate_video with `use_last_image:true` and
     // gave no explicit source_image_url — the caller resolves the actual URL
     // from its own last-asset memory (last generated image, else the last
@@ -1379,8 +1379,8 @@ export async function runAgentLoop(
       videoOpts?: { durationSeconds?: number; useLastImage?: boolean },
     ) => Promise<string | { status: string; job_id?: string | null }>;
     // [VENICE-MUS-1 / VENICE-SONG-1] In-thread music generation, same shape.
-    // `durationSeconds` is optional — the handler (lib/venice_media.ts's
-    // runVeniceMusic) clamps it 60-210s and defaults to 60 when omitted.
+    // `durationSeconds` is optional — the handler (lib/media.ts's
+    // runVertexMusic) clamps it 60-210s and defaults to 60 when omitted.
     // `lyrics` rides through when the model is finishing an approved SONG
     // (see draft_lyrics/onDraftLyrics below) — omitted for a plain
     // instrumental/music request.
@@ -1390,6 +1390,10 @@ export async function runAgentLoop(
     // approval — see draft_lyrics's tool description below. Text-only, no
     // async job (no job_id in play), so this returns a plain string.
     onDraftLyrics?: (theme: string, durationSeconds?: number) => Promise<string>;
+    // Server-readable document/media actions. The callback must authorize the
+    // attachment id against this conversation before creating a job.
+    onAttachment?: (attachmentId: string, action: "summarize" | "translate", targetLanguage?: string) => Promise<string | { status: string; job_id?: string | null }>;
+    attachments?: Array<{ id: string; name: string; kind: string; mime: string; mine?: boolean }>;
     // [VENICE-VID-1 / VENICE-SONG-1] Per-conversation last-asset memory
     // (do/ava_agent.ts's AvaAgentDO storage, key `lastmedia:<conv>`), read
     // ONCE by the caller before this call and folded into the system prompt
@@ -1470,6 +1474,7 @@ export async function runAgentLoop(
   // [VENICE-VID-1] Mirrors imageDecl's shape exactly (same async/durable-job
   // contract, see onVideo's doc comment above) — intent phrasing "make/create/
   // generate/animate a video" routes here.
+  const editImageDecl = opts?.onImage ? { name: "edit_image", description: "Edit an existing image using the latest conversation image or an explicit URL.", parameters: { type: "object", properties: { prompt: { type: "string" }, edit_ref: { type: "string" }, edit_previous: { type: "boolean" } }, required: ["prompt"] } } : null;
   const videoDecl = opts?.onVideo
     ? {
         name: "generate_video",
@@ -1478,7 +1483,7 @@ export async function runAgentLoop(
           type: "object",
           properties: {
             prompt: { type: "string", description: "A vivid, self-contained description of the video's subject, motion and style. Fold in the relevant context from the conversation since the generator has no chat history." },
-            duration_seconds: { type: "number", description: "Clip length in whole seconds. Choose any value from 8 through 15; values above 15 are not supported." },
+            duration_seconds: { type: "number", description: "Clip length in whole seconds. Vertex supports 4, 6, or 8 seconds; defaults to 8." },
             source_image_url: { type: "string", description: "Optional: the exact public URL of an existing image to animate into a video (image-to-video). Only set this when you actually have that URL." },
             use_last_image: { type: "boolean", description: "Set true (instead of guessing source_image_url) when the user wants an image they shared or you just generated in THIS conversation turned into a video/animated — the server resolves it automatically." },
           },
@@ -1497,7 +1502,7 @@ export async function runAgentLoop(
           type: "object",
           properties: {
             prompt: { type: "string", description: "A vivid, self-contained description of the music: genre, mood, instruments, tempo. Fold in the relevant context from the conversation since the generator has no chat history." },
-            duration_seconds: { type: "number", description: "Desired length in seconds, 60-210. Defaults to 60 when omitted." },
+            duration_seconds: { type: "number", description: "Desired length in seconds, 30-184. Defaults to 60 when omitted." },
             lyrics: { type: "string", description: "Approved song lyrics (from draft_lyrics) to sing over the track. Omit for a plain instrumental." },
           },
           required: ["prompt"],
@@ -1521,12 +1526,29 @@ export async function runAgentLoop(
         },
       }
     : null;
+  const attachmentDecl = opts?.onAttachment && opts?.attachments?.length
+    ? {
+        name: "analyze_attachment",
+        description: "Summarize or translate a PDF, DOC, DOCX, TXT, CSV, or other document explicitly shared in this chat. Use the attachment_id from the available attachment list. The server will only process a file after ownership/conversation authorization and a client-authorized readable copy exists.",
+        parameters: {
+          type: "object",
+          properties: {
+            attachment_id: { type: "string", description: "The exact id of the file in the available attachment list." },
+            action: { type: "string", enum: ["summarize", "translate"], description: "What to do with the file." },
+            target_language: { type: "string", description: "Required for translate, for example English, Hindi, or Spanish." },
+          },
+          required: ["attachment_id", "action"],
+        },
+      }
+    : null;
   const tools = toOpenAITools([
     memDecl, ...appDecls,
     ...(imageDecl ? [imageDecl] : []),
+    ...(editImageDecl ? [editImageDecl] : []),
     ...(videoDecl ? [videoDecl] : []),
     ...(musicDecl ? [musicDecl] : []),
     ...(lyricsDecl ? [lyricsDecl] : []),
+    ...(attachmentDecl ? [attachmentDecl] : []),
   ]);
   const sys =
     "You are Ava, the user's warm, concise personal assistant. "
@@ -1556,7 +1578,7 @@ export async function runAgentLoop(
         + "ITERATION: if the user asks to change, tweak, fix, or otherwise edit the image YOU JUST MADE in this chat ('make it brighter', 'add a hat', 'change the background', 'redo it but bigger', 'now make it black and white') — call generate_image with edit_previous:true and edit_instruction set to a clear, self-contained description of the change. Do NOT start a brand-new unrelated generation for an edit request, and do NOT set edit_ref yourself for it (edit_previous resolves the last image automatically). If there is no previous image to edit, generate_image will tell you — relay that plainly and offer to create a new one instead. Only use a plain prompt (edit_previous omitted/false) for a genuinely new, unrelated image. "
       : "")
     + (videoDecl
-      ? "When the user explicitly asks you to create, generate, or animate a VIDEO clip, call generate_video with a vivid prompt. Videos may be any whole-second duration from 8 through 15 seconds and cost a flat 45 Tokens; if the user asks for more than 15 seconds, explain that videos longer than 15 seconds are not supported yet. If they do not specify a duration, use 10 seconds. If the user wants an image they shared or you just generated turned into a video / animated, set use_last_image:true instead of guessing a URL yourself — only set source_image_url when you actually have the exact URL. Video generation takes a few minutes and appears in this chat on its own — acknowledge briefly (e.g. 'On it — making that video now, it'll take a few minutes ✨') and NEVER claim it's already visible. If generate_video reports it was blocked or unavailable, relay that message plainly instead. Do not call generate_video for a still picture — use generate_image instead. "
+      ? "When the user explicitly asks you to create, generate, or animate a VIDEO clip, call generate_video with a vivid prompt. Vertex video supports 4, 6, or 8 seconds; use 8 seconds by default and explain the limit if the user asks for longer. If the user wants an image they shared or you just generated turned into a video / animated, set use_last_image:true instead of guessing a URL yourself — only set source_image_url when you actually have the exact URL. Video generation takes a few minutes and appears in this chat on its own — acknowledge briefly (e.g. 'On it — making that video now, it'll take a few minutes ✨') and NEVER claim it's already visible. If generate_video reports it was blocked or unavailable, relay that message plainly instead. Do not call generate_video for a still picture — use generate_image instead. "
         + "TO EDIT a video you already made in this chat ('make it faster', 'change the ending', 'try a different style'), there is no in-place video edit — instead combine the ORIGINAL video's prompt (see 'last video you made' below, if shown) with the requested change into ONE new, complete prompt and call generate_video again. "
       : "")
     + (musicDecl
@@ -1565,6 +1587,12 @@ export async function runAgentLoop(
           ? "SONG FLOW (lyrics/vocals involved): when the user asks for a SONG or a track WITH LYRICS, do NOT call generate_music right away. Interview the user until the brief is complete: theme/intention, genre, mood, instruments, language, length (offer 1, 1.5, 2, or 3 minutes), voice character (for example warm and intimate, bright and soulful, deep and powerful, or airy and dreamlike), and whether they want male, female, duet, or group singing. Explain voice suggestions briefly and ask one compact follow-up at a time. Then call draft_lyrics with all of that context and duration_seconds; it returns lyrics as text — show them verbatim and ask what they want changed or whether to make the track. If they ask for changes, call draft_lyrics again with the refined context — as many turns as needed. ONLY once the user explicitly approves do you call generate_music, passing the approved lyrics and the complete musical brief. NEVER call generate_music for a song before lyrics have been shown and approved. "
           : "")
         + "Music/song generation takes a few minutes and appears in this chat on its own — acknowledge briefly and NEVER claim it's already visible. If generate_music or draft_lyrics reports it was blocked or unavailable, relay that message plainly instead. "
+      : "")
+    + (attachmentDecl
+      ? "When the user asks you to summarize, translate, extract, or otherwise work on a file shared in THIS chat, call analyze_attachment with the exact attachment_id from the available attachment list. Do not claim to have read a file unless the tool succeeds. If the tool says the file needs permission or a readable copy, explain that plainly and ask the user to approve processing. "
+      : "")
+    + (opts?.attachments?.length
+      ? `Available attachments (untrusted metadata only): ${opts.attachments.slice(-8).map((a) => `${a.id}=${a.name} (${a.mime || a.kind})`).join("; ")} `
       : "")
     + (opts?.lastMedia
       ? [
@@ -1763,6 +1791,18 @@ export async function runAgentLoop(
           const lines = await memorySearch(q);
           count = lines.length;
           result = { matches: lines.slice(0, 8) };
+        } else if (name === "edit_image" && opts?.onImage) {
+          if (imageStarted) {
+            result = { status: "An image is already being generated for this request." };
+          } else {
+            imageStarted = true;
+            const editRef = args?.edit_ref ? String(args.edit_ref) : undefined;
+            const editPrevious = args?.edit_previous !== false && !editRef;
+            const r = await opts.onImage(String(args?.prompt ?? query), editRef, editPrevious ? { editPrevious: true } : undefined);
+            const status = typeof r === "string" ? r : r.status;
+            const jobId = typeof r === "string" ? null : (r.job_id ?? null);
+            result = jobId ? { job_id: jobId, status: "queued" } : { status };
+          }
         } else if (name === "generate_image" && opts?.onImage) {
           // [AVA-IMAGE-UX-1 / §44] Async, in-thread. The handler creates a
           // durable AiMediaJob and posts the legacy chip; we do NOT wait for
@@ -1787,7 +1827,7 @@ export async function runAgentLoop(
         } else if (name === "generate_video" && opts?.onVideo) {
           // [VENICE-VID-1 / VENICE-VID-DURATION-1 / VENICE-I2V-AUTO-1] Same
           // async/durable-job contract as generate_image above
-          // (lib/venice_media.ts's runVeniceVideo via do/ava_agent.ts's
+          // (lib/media.ts's runVertexVideo via do/ava_agent.ts's
           // onVideo) — one video per turn, tool RESULT shape identical.
           if (videoStarted) {
             result = { status: "A video is already being generated for this request." };
@@ -1824,6 +1864,14 @@ export async function runAgentLoop(
           const durationArg = args?.duration_seconds != null ? Number(args.duration_seconds) : undefined;
           const lyrics = await opts.onDraftLyrics(theme, Number.isFinite(durationArg) ? durationArg : undefined);
           result = { lyrics };
+        } else if (name === "analyze_attachment" && opts?.onAttachment) {
+          const attachmentId = String(args?.attachment_id ?? "").trim();
+          const action = String(args?.action ?? "summarize").trim().toLowerCase() === "translate" ? "translate" : "summarize";
+          const targetLanguage = args?.target_language ? String(args.target_language).trim() : undefined;
+          const r = await opts.onAttachment(attachmentId, action, targetLanguage);
+          const status = typeof r === "string" ? r : r.status;
+          const jobId = typeof r === "string" ? null : (r.job_id ?? null);
+          result = jobId ? { job_id: jobId, status: "queued" } : { status };
         } else {
           const r = await executeTool(env, userId, name, args);
           // Composio can return HTTP 200 with a tool-level failure (successful:false
@@ -1846,7 +1894,7 @@ export async function runAgentLoop(
           ...(count != null ? { count } : {}),
           // The trimmed tool result + whether it's a connected-app tool (vs.
           // search_memory) — lets the caller render the data as a GenUI surface.
-          result, is_app: !["search_memory", "generate_image", "generate_video", "generate_music", "draft_lyrics"].includes(name),
+          result, is_app: !["search_memory", "generate_image", "generate_video", "generate_music", "draft_lyrics", "analyze_attachment"].includes(name),
         });
       } catch { /* telemetry is best-effort, never breaks the loop */ }
       messages.push({ role: "tool", tool_call_id: c.id, name, content: JSON.stringify(result) });

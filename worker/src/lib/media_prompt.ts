@@ -1,27 +1,43 @@
-// [VENICE-PROMPT-1 / VENICE-SONG-1] Prompt/lyrics crafting via Gemini 3.7
-// (Venice-hosted). Spec: Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md, owner
+// Prompt/lyrics crafting via Gemini 3.7 Flash on Vertex.
 // requirements 2026-08-14 (B — song flow, C — video flow).
 //
 // Two small, fail-soft helpers:
 //   craftVideoPrompt — turns a user's rough video ask into a stronger,
-//     duration-aware generation prompt. Used by lib/venice_media.ts's
-//     runVeniceVideo before the prompt gate + Venice call.
+//     duration-aware generation prompt. Used by the Vertex video adapter
+//     before the prompt gate + Vertex call.
 //   draftLyrics — writes duration-aware song lyrics for a theme (verse/chorus
 //     shape sized to the requested length), shown to the user for approval
 //     BEFORE any music is actually generated (do/ava_agent.ts's onDraftLyrics
-//     -> lib/venice_media.ts's runVeniceDraftLyrics).
+//     -> the in-thread Vertex music flow.
 //
-// Both call Venice's OpenAI-compatible /chat/completions via lib/venice.ts's
-// veniceChatComplete, on the model verified live on Venice 2026-08-14:
-// "gemini-3-7-flash" (see Specs/VENICE-AI-MEDIA-PLAN-2026-08-14.md and the
-// owner's work order for this file). Video prompt enhancement fails soft to
-// the user's original prompt. Lyrics drafting fails closed: a theme must never
-// be mislabeled and saved as generated lyrics when the provider is unavailable.
+// Video prompt enhancement fails soft to the user's original prompt. Lyrics
+// drafting fails closed: a theme must never be mislabeled and saved as generated
+// lyrics when the provider is unavailable.
 import type { Env } from "../types";
-import { veniceChatComplete } from "./venice";
+import { vertexMediaRequest } from "./vertex";
 
-const CRAFT_MODEL = "gemini-3-7-flash";
+const CRAFT_MODEL = "gemini-3.7-flash";
 const CRAFT_TIMEOUT_MS = 20000;
+
+async function vertexText(
+  env: Env,
+  system: string,
+  user: string,
+  maxOutputTokens: number,
+  temperature: number,
+): Promise<string> {
+  const r = await vertexMediaRequest(env, `/publishers/google/models/${CRAFT_MODEL}:generateContent`, {
+    contents: [
+      { role: "user", parts: [{ text: `${system}\n\nUser request:\n${user}` }] },
+    ],
+    generationConfig: { maxOutputTokens, temperature },
+  }, { timeoutMs: CRAFT_TIMEOUT_MS });
+  if (!r.ok) throw new Error(String(r.out?.error?.message ?? "Vertex Gemini request failed"));
+  return (r.out?.candidates?.[0]?.content?.parts ?? [])
+    .map((p: any) => typeof p?.text === "string" ? p.text : "")
+    .join("")
+    .trim();
+}
 
 // Standard songwriting rule of thumb: ~150 words/min sung. Used only to size
 // how much lyric content to ask for at a given track length — not sent to
@@ -50,11 +66,7 @@ export async function craftVideoPrompt(env: Env, userAsk: string, durationSecond
       : "") +
     "Output ONLY the rewritten prompt text — no preamble, no quotes, no explanation, under 90 words.";
   try {
-    const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-      { role: "system", content: sys },
-      { role: "user", content: ask },
-    ], { maxTokens: 220, temperature: 0.7, timeoutMs: CRAFT_TIMEOUT_MS });
-    const text = (r.text || "").trim();
+    const text = await vertexText(env, sys, ask, 220, 0.7);
     return text || ask;
   } catch {
     return ask;
@@ -79,11 +91,7 @@ export async function craftVideoCardMetadata(env: Env, userAsk: string): Promise
   };
   if (!ask) return fallback;
   try {
-    const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-      { role: "system", content: "Create promotional share-card metadata for the actual visual scene described by the user. Study the subject and action, location or culture, lighting, camera language, mood, color, and overall vibe. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, vivid and accurate). Avoid generic phrases such as 'AI video' or 'short video'. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis." },
-      { role: "user", content: ask },
-    ], { maxTokens: 180, temperature: 0.35, timeoutMs: CRAFT_TIMEOUT_MS });
-    const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");
+    const raw = (await vertexText(env, "Create promotional share-card metadata for the actual visual scene described by the user. Study the subject and action, location or culture, lighting, camera language, mood, color, and overall vibe. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific) and description (one or two sentences, 40-160 characters, vivid and accurate). Avoid generic phrases such as 'AI video' or 'short video'. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis.", ask, 180, 0.35)).replace(/^```json\s*|\s*```$/g, "");
     const parsed = JSON.parse(raw) as { title?: unknown; description?: unknown };
     const title = String(parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
     const description = String(parsed.description ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
@@ -131,11 +139,7 @@ export async function craftSongCardMetadata(
     : "Create promotional share-card metadata for an original song. Study the approved lyrics closely and infer the song's real theme, emotion, imagery, language and audience; use the musical brief as secondary context. Return ONLY valid JSON with two string fields: title (5-80 characters, memorable and specific — in the same language as the lyrics when natural) and description (one or two sentences, 60-220 characters) that explicitly names the genre, language, mood and the song's central imagery so an artist could paint the right cover from it alone. Do not mention prompts, AI, or unsupported facts. Do not use markdown or emojis.";
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-        { role: "system", content: sys },
-        { role: "user", content: source },
-      ], { maxTokens: 220, temperature: 0.45, timeoutMs: CRAFT_TIMEOUT_MS });
-      const raw = (r.text || "").trim().replace(/^```json\s*|\s*```$/g, "");
+      const raw = (await vertexText(env, sys, source, 220, 0.45)).replace(/^```json\s*|\s*```$/g, "");
       const parsed = JSON.parse(raw) as { title?: unknown; description?: unknown };
       const title = String(parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
       const description = String(parsed.description ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
@@ -190,11 +194,7 @@ export async function draftLyrics(env: Env, theme: string, durationSeconds?: num
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const r = await veniceChatComplete(env as any, CRAFT_MODEL, [
-        { role: "system", content: sys },
-        { role: "user", content: t },
-      ], { maxTokens, temperature: 0.85, timeoutMs: CRAFT_TIMEOUT_MS });
-      const text = (r.text || "").trim();
+      const text = await vertexText(env, sys, t, maxTokens, 0.85);
       if (!text) throw new Error("empty lyrics response");
       return text;
     } catch (error) {

@@ -48,10 +48,10 @@ import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // A
 import { avaReason } from "../lib/ava_reason";
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
-import { runVeniceVideo, runVeniceMusic, runVeniceDraftLyrics } from "../lib/venice_media"; // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] in-thread video/music/lyrics gen, same async-job shape as runAvaImage
+import { runVertexVideo, runVertexMusic, runVertexDraftLyrics } from "../lib/vertex_media"; // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] in-thread video/music/lyrics gen, same async-job shape as runAvaImage
 // [AVA-IMG-EDIT-1] Reads a job's freshly-minted artifact URL by id — used to
 // resolve "the image you just made" into an edit source (see onImage below).
-import { getAiMediaJob } from "../lib/ai_media_jobs";
+import { getAiMediaJob, createAiMediaJob } from "../lib/ai_media_jobs";
 import { veniceTier } from "../lib/venice_tier"; // [VENICE-TIER-1] 18+ opt-in AND paid balance -> "paid" | "free"
 import { veniceChatComplete, VENICE_UNCENSORED_CHAT_MODEL } from "../lib/venice"; // [VENICE-CHAT-1] uncensored-text chat lane
 import { track, trackException } from "../hooks"; // [VENICE-CHAT-1] ava_reason_call telemetry (provider "venice")
@@ -1634,9 +1634,9 @@ export class AvaAgentDO {
               return { ok: true, status_id: statusId };
             }
           }
-          let video: Awaited<ReturnType<typeof runVeniceVideo>>;
+          let video: Awaited<ReturnType<typeof runVertexVideo>>;
           try {
-            video = await runVeniceVideo(this.env, {
+            video = await runVertexVideo(this.env, {
               uid, conv, private: priv, tier: mediaTier, sourceImageUrl,
               prompt: videoPrompt(turn.context), durationSeconds: turn.context.durationSeconds,
               resolution: turn.context.resolution, aspectRatio: turn.context.aspectRatio,
@@ -1903,7 +1903,7 @@ export class AvaAgentDO {
 
         if (songAction.kind === "draft") {
           await this.state.storage.put(flowKey, stampFlowUpdated(songAction.flow));
-          const drafted = await runVeniceDraftLyrics(this.env, {
+          const drafted = await runVertexDraftLyrics(this.env, {
             uid,
             theme: songAction.flow.brief ?? stripAvaWakeWordForIntent(userText),
             durationSeconds: songAction.flow.durationSeconds,
@@ -1950,9 +1950,9 @@ export class AvaAgentDO {
         const musicMode = flowKind === "instrumental"
           ? "instrumental" as const
           : flowKind === "engine_written" ? "engine_written" as const : "vocal" as const;
-        let music: Awaited<ReturnType<typeof runVeniceMusic>>;
+        let music: Awaited<ReturnType<typeof runVertexMusic>>;
         try {
-          music = await runVeniceMusic(this.env, {
+          music = await runVertexMusic(this.env, {
             uid, conv,
             prompt: songAction.flow.brief ?? "Create a track from the approved musical brief",
             durationSeconds: songAction.flow.durationSeconds,
@@ -2232,9 +2232,9 @@ export class AvaAgentDO {
           }
         }
         const mediaTier = await veniceTier(this.env, uid);
-        let video: Awaited<ReturnType<typeof runVeniceVideo>>;
+        let video: Awaited<ReturnType<typeof runVertexVideo>>;
         try {
-          video = await runVeniceVideo(this.env, {
+          video = await runVertexVideo(this.env, {
             uid, conv, prompt, sourceImageUrl: src, private: priv, tier: mediaTier,
           });
         } catch {
@@ -2754,6 +2754,30 @@ export class AvaAgentDO {
               video: lastMediaMem.video ? { prompt: lastMediaMem.video.prompt } : undefined,
               music: lastMediaMem.music ? { prompt: lastMediaMem.music.prompt } : undefined,
             },
+            attachments: attachments.map((a) => ({ id: a.key, name: a.name, kind: a.kind, mime: a.mime, mine: a.mine })),
+            onAttachment: async (attachmentId, action, targetLanguage) => {
+              const selected = attachments.find((a) => a.key === attachmentId);
+              if (!selected) return "I couldn't match that file to an attachment in this chat.";
+              const row = await this.env.DB_MEDIA.prepare(
+                "SELECT id, encrypted FROM user_media WHERE (id=?1 OR key LIKE '%/' || ?1) AND deleted_at IS NULL LIMIT 1",
+              ).bind(attachmentId).first<{ id: string; encrypted: number }>().catch(() => null);
+              if (!row) return "I couldn't find a stored copy of that file.";
+              if (Number(row.encrypted) === 1) {
+                return "That attachment is end-to-end encrypted. I need your approval to create a temporary server-readable copy before I can analyze it.";
+              }
+              const kind = action === "translate" ? "doc_translate" : "doc_summarize";
+              const created = await createAiMediaJob(this.env, {
+                ownerUid: uid, convId: conv, sourceMediaId: row.id, kind,
+                targetLanguage: action === "translate" ? (targetLanguage || "en") : null,
+                label: action === "translate" ? `Translating ${selected.name}…` : `Summarizing ${selected.name}…`,
+                email,
+              });
+              if (!created.ok) return created.error === "AI_INSUFFICIENT_TOKENS"
+                ? "You don't have enough AI allowance for that file right now."
+                : "I couldn't start processing that file right now.";
+              await this.env.Q_AI_MEDIA.send({ job_id: created.job.job_id, kind });
+              return { job_id: created.job.job_id, status: action === "translate" ? "Translation started." : "Summary started." };
+            },
             // In-thread image gen. All gating (premium + per-user daily allowance)
             // lives in runAvaImage, keyed to THIS caller. PRIVACY: pass `private`
             // so a @ava image goes ONLY to the requester (private), and a #ava image
@@ -2809,12 +2833,12 @@ export class AvaAgentDO {
             },
             // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] In-thread video/
             // music/lyrics gen. Same shape as onImage above — moderation +
-            // wallet reservation live inside lib/venice_media.ts's
-            // runVeniceVideo/runVeniceMusic/runVeniceDraftLyrics, keyed to
+            // wallet reservation live inside lib/media.ts's
+            // runVertexVideo/runVertexMusic/runVertexDraftLyrics, keyed to
             // THIS caller. No keepAlive/detach needed for video/music: unlike
             // runAvaImage, the multi-minute wait is pushed onto the queue
-            // consumer (queues/venice_media.ts), not kept alive in this DO's
-            // own call stack — see lib/venice_media.ts's file header.
+            // consumer (queues/media.ts), not kept alive in this DO's
+            // own call stack — see lib/media.ts's file header.
             //
             // [VENICE-TIER-1] `tier` is now resolved per-invocation via
             // veniceTier(env, uid) (18+ opt-in AND paid balance > 0 -> "paid",
@@ -2823,7 +2847,7 @@ export class AvaAgentDO {
             // closure — only paid when the model actually calls generate_video/
             // generate_music this turn, not on every turn regardless of tool
             // use — and fails safe to "free" on any read error (see
-            // venice_tier.ts). Both runVeniceVideo/runVeniceMusic already took
+            // venice_tier.ts). Both runVertexVideo/runVertexMusic already took
             // tier as a parameter for exactly this reason, so this is a
             // one-line change at the call site, not a signature change.
             //
@@ -2848,12 +2872,12 @@ export class AvaAgentDO {
                   src = (await this.resolvePublicImageRef(last.lastUserImageRef.id)) ?? undefined;
                 }
               }
-              const r = await runVeniceVideo(this.env, {
+              const r = await runVertexVideo(this.env, {
                 uid, conv, prompt, sourceImageUrl: src, private: priv, tier,
                 durationSeconds: videoOpts?.durationSeconds,
               });
               if (r.job_id) await this.rememberLastMedia(conv, "video", r.job_id, prompt);
-              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "venice_video_generate" };
+              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "video_generate" };
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             onMusic: async (prompt, durationSeconds, lyrics) => {
@@ -2871,12 +2895,12 @@ export class AvaAgentDO {
                 return "The active song state has not accepted these lyrics for generation. Continue naturally from the conversation and infer whether the person wants discussion, revision, or production.";
               }
               const tier = await veniceTier(this.env, uid);
-              const r = await runVeniceMusic(this.env, {
+              const r = await runVertexMusic(this.env, {
                 uid, conv, prompt, durationSeconds, lyrics,
                 musicMode: lyrics ? "vocal" : "instrumental", private: priv, tier,
               });
               if (r.job_id) await this.rememberLastMedia(conv, "music", r.job_id, lyrics ? `${prompt}\n\nLyrics:\n${lyrics}` : prompt);
-              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "venice_music_generate" };
+              if (r.job_id) lastStartedMedia = { job_id: r.job_id, media_job_kind: "music_generate" };
               return r.job_id ? { status: r.message, job_id: r.job_id } : r.message;
             },
             // [VENICE-SONG-1] Step (b) of the song flow — text-only, no wallet
@@ -2889,7 +2913,7 @@ export class AvaAgentDO {
                   !isSongProductionContextReady(active.context, "vocal")) {
                 return "The active song state has not selected lyric drafting. Continue naturally from the saved conversation and let the person's meaning determine the next step.";
               }
-              const r = await runVeniceDraftLyrics(this.env, { uid, theme, durationSeconds });
+              const r = await runVertexDraftLyrics(this.env, { uid, theme, durationSeconds });
               if (r.lyrics) {
                 const reviewing: SongFlowState = withSongLyrics({
                   phase: "awaiting_brief", brief: String(theme).slice(0, 2000),

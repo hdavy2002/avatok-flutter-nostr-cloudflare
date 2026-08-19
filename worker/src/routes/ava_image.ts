@@ -76,14 +76,7 @@ import { enforceAllowance } from "../lib/usage";
 import { mediaSession } from "../db/shard";
 import { postAvaMessage } from "./ava_thread";
 import type { MessageScope } from "../lib/ava_kinds";
-import { imageModel } from "../lib/ava_reason/policy"; // One Brain B1: env-overridable image model
-// [VENICE-IMG-1 2026-08-14] Venice AI image client + routing map — dark behind
-// cfg.veniceMediaEnabled (routes/config.ts). See generateImageVenice() below.
-import { veniceGenerateImage, veniceRoute } from "../lib/venice";
-// [VENICE-SAFE-1 2026-08-14] The two moderation gates around the Venice path —
-// prompt gate (text lane, politics-allowed rubric) and output gate (Gemma
-// vision lane). See lib/moderation.ts for the rubric + fail-open/fail-closed
-// reasoning; nothing here re-implements either classifier.
+import { vertexMediaRequest } from "../lib/vertex";
 import { moderate, moderateGeneratedImage } from "../lib/moderation";
 // [AVA-IMAGE-UX-1 / §44] Durable job/message state machine — the PRIMARY
 // mechanism a job-hydrated client (AiMediaJobRepository/AiMediaJobCard, M4)
@@ -175,18 +168,9 @@ function detach(env: Env, keepAlive: AvaImageKeepAlive | undefined, p: Promise<u
 // Image generation is metered by the Phase-1 SUBSCRIPTION ALLOWANCE (plans.ts):
 // every tier — including Free — gets a daily image grant (Free 3, Plus 30,
 // Pro 100, Max unlimited), enforced server-side via enforceAllowance("image").
-// PROVIDER: OpenRouter's dedicated Image API (POST /api/v1/images) on xAI Grok —
-// the Google Gemini image model hit a hard 429 quota on our free key (owner
-// decision 2026-06-24: switch to OpenRouter). Returns base64 PNG bytes.
-//
-// One Brain B1 (SPEC §4): this is the OpenRouter *image-generation* endpoint
-// (/v1/images), which is NOT chat/vision-shaped and has no avaReason verb/adapter,
-// so it stays a direct fetch by design. What B1 fixes here: the model is no longer
-// hard-coded — it comes from policy.imageModel(env) (OPENROUTER_IMAGE_MODEL env
-// override → the default below) so it is flippable without a code deploy, and the
-// call now emits an `ava_reason_call`-compatible telemetry event so image spend is
-// attributable in the same PostHog schema as every gateway call.
-// Default model id lives in policy.imageModel(env); no module-level const here.
+// PROVIDER: Google Vertex Gemini image generation. The route returns bytes to
+// the existing artifact/job pipeline, so storage, moderation, allowances and
+// chat rendering remain unchanged while the provider moves.
 
 function inboxOf(env: Env, uid: string) {
   return env.INBOX.get(env.INBOX.idFromName(uid));
@@ -370,9 +354,8 @@ async function endChip(env: Env, uid: string, conv: string, statusId: string | u
   } catch { /* best-effort */ }
 }
 
-// One OpenRouter Image API call → PNG bytes. `key` is the OPENROUTER_API_KEY.
-// `editRef` (optional) supplies an existing public image URL to edit ("make it
-// blue") — passed as an input_reference for image-to-image. Errors emit
+// One Vertex image call → PNG bytes. `editRef` (optional) supplies an existing
+// public image URL or data URL to edit ("make it blue"). Errors emit
 // `ava_image_error` telemetry so the real provider message is visible in PostHog.
 // [§46/§48] Best-effort provider usage/cost captured off the Images API
 // response for billing ground truth (completeAiMediaJob's settlement prefers
@@ -390,14 +373,8 @@ export interface GeneratedImage {
   resolution: string;
 }
 
-/** [AVA-IMG-TIERS-1 / WS-10 groundwork] Per-call generation options. Resolution
- *  used to be hard-coded `"2K"` inline; it is now a parameter with that same
- *  default, so WS-10's fast small preview + on-demand 2K rendition only has to
- *  supply a value and add a second call — no surgery on this function.
- *  ⚠️ Legal values for Grok Imagine's `resolution` field are NOT documented
- *  anywhere in this repo; only "2K" has ever been sent. Verify accepted values
- *  against the provider docs before passing anything else. `aspectRatio` is
- *  listed by the provider as supported but is not sent unless set. */
+/** Per-call generation options shared by chat and image-job callers. Vertex
+ *  supports the configured `1K` and `2K` image sizes. */
 export interface GenerateImageOptions {
   resolution?: string;
   aspectRatio?: string;
@@ -408,29 +385,9 @@ const DEFAULT_IMAGE_RESOLUTION = "2K";
 // ---------------------------------------------------------------------------
 // [AVA-IMG-TIERS-1 / WS-10] Resolution tier -> provider resolution string.
 //
-// VERIFIED AGAINST THE LIVE PROVIDER, 2026-08-07 — not assumed, and not the
-// same list the OpenRouter docs print. The generic docs list four tiers
-// (`512`, `1K`, `2K`, `4K`), but the tiers are per-MODEL and the authoritative
-// source is the per-endpoint capability descriptor:
-//
-//   curl https://openrouter.ai/api/v1/images/models/x-ai/grok-imagine-image-quality/endpoints
-//   -> supported_parameters.resolution = { type: "enum", values: ["1K","2K"] }
-//      supported_parameters.input_references = { type: "range", min: 0, max: 3 }
-//      supported_parameters.n = { type: "range", min: 1, max: 1 }
-//
-// ⚠️ SO THERE IS NO 512 ON THIS MODEL. `imagePreviewResolutionTier` documents
-// tier 0 as "512px", but sending "512" to grok-imagine-image-quality would be
-// a HARD 400 from the provider, not a graceful downgrade to the nearest
-// supported size. Tier 0 therefore clamps to "1K" — the smallest thing this
-// model can actually produce — rather than being passed through to fail. If
-// the image model is ever changed via OPENROUTER_IMAGE_MODEL, re-read that
-// endpoint descriptor before assuming this map still holds.
-//
-// The speed win is real even without a 512: the preview is displayed in a
-// 240 px bubble, so 1K is already ~4x the pixels anyone sees, and 1K is both
-// faster to generate and cheaper ($0.05/image vs $0.07 at 2K).
+// Tier 0 clamps to 1K because Vertex's image model does not use a 512 tier.
 const RESOLUTION_BY_TIER: Record<number, string> = {
-  0: "1K", // documented as 512, clamped — grok-imagine has no 512 tier (see above)
+  0: "1K",
   1: "1K",
   2: "2K",
 };
@@ -452,11 +409,8 @@ export function imageResolutionForTier(tier: unknown): string {
   return RESOLUTION_BY_TIER[n] ?? DEFAULT_IMAGE_RESOLUTION;
 }
 
-// [AVA-IMG-TIERS-1 / WS-10] EXPORTED so queues/ai_media.ts's image_upgrade
-// handler can make the second (2K) provider call through this SAME function.
-// A second copy of the OpenRouter Images request would drift on telemetry,
-// error classification, usage/cost extraction and the supported-field list —
-// the exact drift this file's header warns about.
+// Exported so queues/ai_media.ts's image_upgrade handler uses this same Vertex
+// adapter and cannot drift in moderation, telemetry or response shaping.
 //
 // `editRef` accepts either an https URL or a base64 `data:` URL; the upgrade
 // path uses the latter, so no presigned private-R2 URL is ever handed to the
@@ -464,197 +418,65 @@ export function imageResolutionForTier(tier: unknown): string {
 export async function generateImage(
   env: Env, key: string, prompt: string, uid: string, editRef?: string, opts: GenerateImageOptions = {},
 ): Promise<GeneratedImage> {
-  // [VENICE-IMG-1 2026-08-14] Dark-by-default reroute: when the KV kill switch
-  // is flipped on, generate via Venice instead of OpenRouter. Default false ⇒
-  // byte-for-byte identical behaviour to before this change (see routes/config.ts
-  // DEFAULTS.veniceMediaEnabled). Does not (yet) cover editRef (image-to-image) —
-  // Venice's sync image endpoint used here is text-to-image only, so an edit
-  // request still falls through to OpenRouter below even when the flag is on.
-  if (!editRef) {
-    const cfg = await readConfig(env);
-    if (cfg.veniceMediaEnabled) {
-      return generateImageVenice(env, uid, prompt, opts);
-    }
-  }
-  // One Brain B1: model is env-overridable (OPENROUTER_IMAGE_MODEL) via policy.
-  const model = imageModel(env);
-  const resolution = opts.resolution || DEFAULT_IMAGE_RESOLUTION;
-  const t0 = Date.now();
-  // ava_reason_call-compatible telemetry (same schema as the gateway) so image
-  // spend is attributable alongside every other AI call. verb "see" tags this as a
-  // vision/image op; provider "openrouter". Emitted best-effort on ok and error.
-  const emitReason = (ok: boolean, error: string | null) => {
-    try {
-      track(env, uid, "ava_reason_call", "avaai", {
-        role: "ava_image", capability: "image_generate", trigger: editRef ? "image_edit" : "image_create",
-        opportunity: null, feature: "ava_image", verb: "see", provider: "openrouter",
-        model, primary_model: null, ok, fallback_used: false, cache_hit: false,
-        latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
-        resolution,
-      });
-    } catch { /* telemetry best-effort */ }
-  };
-  // Grok Imagine supports: resolution, aspect_ratio, n, input_references (no
-  // output_format) — send only supported fields so the endpoint doesn't reject.
-  const body: any = { model, prompt, resolution };
-  if (opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
-  if (editRef) {
-    body.input_references = [{ type: "image_url", image_url: { url: editRef } }];
-  }
-  const r = await fetch("https://openrouter.ai/api/v1/images", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${key}`,
-      "HTTP-Referer": "https://avatok.ai",
-      "X-Title": "AvaTOK",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60000),
-  });
-  const j = (await r.json().catch(() => ({}))) as any;
-  if (!r.ok) {
-    const msg = String(j?.error?.message ?? j?.error ?? "unknown").slice(0, 300);
-    track(env, uid, "ava_image_error", "avaai", { stage: "generate", status: r.status, model, provider: "openrouter", resolution, error: msg });
-    emitReason(false, `openrouter ${r.status}: ${msg}`);
-    throw new Error(`openrouter ${r.status}: ${msg}`);
-  }
-  // Response: { data: [{ b64_json }] }. Some providers may return a data URL.
-  const item = Array.isArray(j?.data) ? j.data[0] : null;
-  let b64 = String(item?.b64_json ?? "");
-  if (!b64 && typeof item?.url === "string" && item.url.startsWith("data:")) {
-    b64 = item.url.slice(item.url.indexOf(",") + 1);
-  }
-  if (!b64) {
-    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model, provider: "openrouter", resolution });
-    emitReason(false, "openrouter returned no image");
-    throw new Error("openrouter returned no image");
-  }
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  emitReason(true, null);
-  // [§46/§48] Best-effort real usage/cost off the SAME response — never
-  // fabricated. Different OpenRouter image providers report this
-  // differently (or not at all); read only what's actually present.
-  const usage = j?.usage ?? {};
-  const imageOutputTokens = typeof usage?.image_tokens === "number" ? usage.image_tokens
-    : typeof usage?.completion_tokens === "number" ? usage.completion_tokens : undefined;
-  const costUsd = typeof usage?.cost === "number" ? usage.cost : undefined;
-  return { bytes, imageOutputTokens, costUsd, providerMs: Date.now() - t0, resolution };
+  // Google Vertex is now the single image-generation provider. Keep the
+  // provider decision here so chat/tool callers and the existing job pipeline
+  // retain the same contract while Venice is removed underneath it.
+  return generateImageVertex(env, uid, prompt, editRef, opts);
 }
 
-// [VENICE-IMG-1 2026-08-14] Venice AI image path — only reached from
-// generateImage() above when cfg.veniceMediaEnabled is true. Mirrors the
-// OpenRouter path's telemetry shape (ava_reason_call / ava_image_error) with
-// provider "venice" and the routing-map model id, so dashboards built on
-// provider="openrouter" gain a sibling rather than a new taxonomy. Model comes
-// from veniceRoute("image","free").model, never hard-coded (lib/venice.ts is
-// the single source of truth for Venice model ids).
-//
-// [VENICE-SAFE-1 2026-08-14] TWO moderation gates wrap the provider call:
-//   1. PROMPT GATE (before the Venice call): lib/moderation.ts's text lane
-//      with the "venice_image_prompt" rubric — blocks sexual/nude requests of
-//      any real person, real-person violence/crime depictions, deceptive-
-//      realism framing, and private-individual generation, while EXPLICITLY
-//      allowing political satire/caricature/memes of public figures.
-//   2. OUTPUT GATE (after the Venice call, before returning bytes to the
-//      caller): lib/moderation.ts's Gemma vision lane — the backstop for
-//      anything the prompt gate or Venice's own safe_mode missed.
-// Both gates throw `Error("content_blocked: <reason>")` on a block, which
-// classifyImageJobError() below recognizes via KNOWN_JOB_ERROR_CODES, and both
-// emit `venice_nsfw_blocked` telemetry so a block is auditable per-user.
-// [VENICE-LABEL-1] watermarking is a separate, not-yet-done issue.
-async function generateImageVenice(
-  env: Env, uid: string, prompt: string, opts: GenerateImageOptions,
+// Vertex is the single image provider. The surrounding job and artifact
+// contracts stay unchanged so existing chat cards and downloads keep working.
+async function generateImageVertex(
+  env: Env, uid: string, prompt: string, editRef: string | undefined, opts: GenerateImageOptions,
 ): Promise<GeneratedImage> {
-  const model = veniceRoute("image", "free").model;
+  const model = "gemini-3.1-flash-image-preview";
   const resolution = opts.resolution || DEFAULT_IMAGE_RESOLUTION;
-  // [AVA-IMG-VARIETY-1] Always give Venice an explicit fresh seed. Although
-  // its API says an omitted seed is random, the owner observed near-identical
-  // logo results repeating in chat. A cryptographic 32-bit sample mapped into
-  // Venice's documented positive range makes every request unambiguously ask
-  // for a new variation without changing the user's prompt or producing more
-  // than the one image they requested.
-  const seedWords = new Uint32Array(1);
-  crypto.getRandomValues(seedWords);
-  const generationSeed = 1 + (seedWords[0] % 999_999_999);
   const t0 = Date.now();
-  const emitReason = (ok: boolean, error: string | null) => {
-    try {
-      track(env, uid, "ava_reason_call", "avaai", {
-        role: "ava_image", capability: "image_generate", trigger: "image_create",
-        opportunity: null, feature: "ava_image", verb: "see", provider: "venice",
-        model, primary_model: null, ok, fallback_used: false, cache_hit: false,
-        latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
-        resolution, seeded: true,
-      });
-    } catch { /* telemetry best-effort */ }
-  };
-
   if (obviousSexualImagePrompt(prompt)) {
-    track(env, uid, "venice_nsfw_blocked", "avaai", {
-      stage: "local_prompt", uid, reason: "obvious_sexual_request", model, provider: "local",
-    });
     throw new Error("content_blocked: I can't create sexualized or revealing images. Try a non-sexual outfit or scene instead.");
   }
-
-  // ── (1) PROMPT GATE — text lane, "venice_image_prompt" rubric ────────────
-  // Runs unconditionally on the Venice path (NOT gated behind
-  // cfg.aiContentModerationEnabled — that flag governs the generic llama-guard
-  // guardInput() call in runAvaImage()/generateAvaImageSync(), which is a
-  // separate, currently-dark gate). This one is the SFW-only, politics-allowed
-  // gate the Venice lane specifically requires and must always run.
-  const promptVerdict = await moderate(env, { text: prompt, field: "venice_image_prompt" });
-  if (!promptVerdict.safe) {
-    track(env, uid, "venice_nsfw_blocked", "avaai", {
-      stage: "prompt", uid, reason: promptVerdict.reason, categories: promptVerdict.categories,
-      model, provider: "venice",
-    });
-    emitReason(false, `content_blocked: ${promptVerdict.reason || "prompt not allowed"}`);
-    throw new Error(`content_blocked: ${promptVerdict.reason || "That image can't be created."}`);
+  const verdict = await moderate(env, { text: prompt, field: "vertex_image_prompt" });
+  if (!verdict.safe) throw new Error(`content_blocked: ${verdict.reason || "That image can't be created."}`);
+  const parts: any[] = [{ text: prompt }];
+  if (editRef) {
+    let url = editRef;
+    if (url.startsWith("data:")) {
+      const comma = url.indexOf(",");
+      if (comma > 0) {
+        const header = url.slice(5, comma);
+        const mime = header.split(";")[0] || "image/png";
+        parts.push({ inlineData: { mimeType: mime, data: url.slice(comma + 1) } });
+      }
+    } else if (/^https:\/\//i.test(url)) {
+      const source = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      if (!source.ok) throw new Error("unsupported_format: source image could not be read");
+      const mime = source.headers.get("content-type")?.split(";")[0] || "image/png";
+      const bytes = new Uint8Array(await source.arrayBuffer());
+      if (bytes.byteLength > 8 * 1024 * 1024) throw new Error("input_too_large: source image is too large");
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      parts.push({ inlineData: { mimeType: mime, data: btoa(binary) } });
+    }
   }
-
-  let b64: string;
-  try {
-    ({ b64 } = await veniceGenerateImage(env as any, model, prompt, {
-      aspectRatio: opts.aspectRatio,
-      seed: generationSeed,
-    }));
-  } catch (e: any) {
-    const msg = String(e?.message ?? e ?? "unknown").slice(0, 300);
-    track(env, uid, "ava_image_error", "avaai", { stage: "generate", model, provider: "venice", resolution, error: msg });
-    emitReason(false, msg);
-    throw e instanceof Error ? e : new Error(msg);
-  }
-  if (!b64) {
-    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model, provider: "venice", resolution });
-    emitReason(false, "venice returned no image");
-    throw new Error("venice returned no image");
-  }
-  const bin = atob(b64);
+  const r = await vertexMediaRequest(env, `/publishers/google/models/${model}:generateContent`, {
+    contents: [{ role: "user", parts }],
+    generationConfig: { responseModalities: ["IMAGE"], imageConfig: { imageSize: resolution } },
+  }, { timeoutMs: 90_000 });
+  const responseParts = r.out?.candidates?.[0]?.content?.parts ?? [];
+  const imagePart = responseParts.find((p: any) => p?.inlineData?.data || p?.inline_data?.data);
+  const b64 = imagePart?.inlineData?.data ?? imagePart?.inline_data?.data;
+  if (!r.ok || !b64) throw new Error(`provider_unavailable: ${String(r.out?.error?.message ?? "Vertex returned no image").slice(0, 200)}`);
+  const bin = atob(String(b64));
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-
-  // ── (2) OUTPUT GATE — Gemma vision lane, one call, no retries ────────────
-  // The backstop for anything the prompt gate or Venice's own safe_mode
-  // missed. Runs BEFORE this function returns bytes to the caller, so a
-  // blocked image is never stored, watermarked, or posted into a thread.
   const outputVerdict = await moderateGeneratedImage(env, uid, bytes);
-  if (outputVerdict.blocked) {
-    track(env, uid, "venice_nsfw_blocked", "avaai", {
-      stage: "output", uid, label: outputVerdict.label, nsfw: outputVerdict.nsfw,
-      violence: outputVerdict.violence, classifier_ok: outputVerdict.ok,
-      model, provider: "venice",
-    });
-    emitReason(false, "content_blocked: output failed safety check");
-    throw new Error("content_blocked: That image can't be created — it didn't pass our safety check.");
-  }
-
-  emitReason(true, null);
-  // Venice's sync image response carries no per-call usage/cost fields today
-  // (unlike some OpenRouter image providers) — left undefined, never
-  // fabricated, per the §46/§48 rule this file already follows above.
+  if (outputVerdict.blocked) throw new Error("content_blocked: That image did not pass our safety check.");
+  void track(env, uid, "ava_reason_call", "avaai", {
+    role: "ava_image", capability: "image_generate", trigger: editRef ? "image_edit" : "image_create",
+    feature: "ava_image", verb: "see", provider: "vertex", model, ok: true,
+    fallback_used: false, cache_hit: false, latency_ms: Date.now() - t0,
+    tokens_in: null, tokens_out: null, error: null, resolution,
+  });
   return { bytes, providerMs: Date.now() - t0, resolution };
 }
 
@@ -850,7 +672,7 @@ async function fulfil(a: FulfilArgs): Promise<void> {
         rendition: "primary", resolution: gen.resolution,
       },
       settlement: {
-        modelActual: imageModel(env),
+        modelActual: "gemini-3.1-flash-image-preview",
         usage: { images: 1, imageOutputTokens: gen.imageOutputTokens },
         providerCostUsdMicro: gen.costUsd != null ? Math.round(gen.costUsd * 1_000_000) : undefined,
       },
@@ -886,7 +708,7 @@ async function fulfil(a: FulfilArgs): Promise<void> {
     // slow/missing image was on.
     await trackUser(env, uid, await emailP, "ava_image_completed", "avaai", {
       ok: true, job_id: jobId, tier, edit: !!editRef, private: priv,
-      resolution: gen.resolution, model: imageModel(env),
+      resolution: gen.resolution, model: "gemini-3.1-flash-image-preview",
       bytes: gen.bytes.byteLength,
       time_to_placeholder_ms: timeToPlaceholderMs,
       gate_chain_ms: gateChainMs,
@@ -1136,7 +958,7 @@ export async function runAvaImage(
   if (!prompt) return blockedResult({ ok: false, reason: "prompt_required", message: "Tell me what to draw.", httpStatus: 400 });
   if (prompt.length > 2000) return blockedResult({ ok: false, reason: "prompt_too_long", message: "That prompt is too long.", httpStatus: 400 });
   if (obviousSexualImagePrompt(prompt)) {
-    await track(env, uid, "venice_nsfw_blocked", "avaai", {
+    await track(env, uid, "ava_image_blocked", "avaai", {
       stage: "local_prompt", reason: "obvious_sexual_request", provider: "local",
     }).catch(() => {});
     return blockedResult({
@@ -1197,10 +1019,6 @@ export async function runAvaImage(
     });
   }
 
-  // Image gen runs on OpenRouter (xAI Grok) via our OPENROUTER_API_KEY.
-  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
-  if (!key) return blockedResult({ ok: false, reason: "no_image_key", message: "Image generation is unavailable right now.", httpStatus: 503 });
-
   // [AVA-IMAGE-UX-1 / §44] Create the durable job FIRST — this (not the
   // legacy chip below) is the PRIMARY state mechanism a job-hydrated client
   // reconciles against, and it is what reserves the wallet spend (§41: never
@@ -1213,18 +1031,9 @@ export async function runAvaImage(
   // gate chain, in front of the chip) was started at the top of this function
   // and is already in flight — this await is normally free.
   const email = await emailP;
-  // [VENICE-TOKENS-1] Reserve site: when Venice image generation is live for
-  // this call, reserve the Venice flat tariff (cfg.veniceImageTokens) instead
-  // of the legacy OpenRouter catalog estimate — see ai_billing.ts's
-  // ReserveAiJobInput.flatPriceTokens for how the override actually skips the
-  // catalog computation. Gated on `!a.editRef` too: generateImage() (above)
-  // only routes to Venice for a plain text-to-image request — an edit
-  // (editRef set) always falls through to the OpenRouter path even when
-  // veniceMediaEnabled is true, so reserving the Venice tariff for an edit
-  // would price a call that never actually reaches Venice. Flag off (or an
-  // edit) ⇒ undefined ⇒ byte-for-byte identical reserve behaviour to before
-  // this change.
-  const flatPriceTokens = cfg.veniceMediaEnabled && !a.editRef ? cfg.veniceImageTokens : undefined;
+  // Vertex media is metered through the existing image allowance/catalog. Keep
+  // the flat override unset so the reservation behavior remains unchanged.
+  const flatPriceTokens = undefined;
   const created = await createAiMediaJob(env, {
     ownerUid: uid, convId: conv, kind: "image_generate",
     sourceMediaId: null,
@@ -1337,11 +1146,8 @@ export async function generateAvaImageSync(
     return { ok: false, blocked: true, message: "You've hit today's image-generation limit — it resets tomorrow." };
   }
 
-  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
-  if (!key) return { ok: false, message: "Image generation is unavailable right now." };
-
   try {
-    const gen = await generateImage(env, key, prompt, uid, a.editRef);
+    const gen = await generateImage(env, "", prompt, uid, a.editRef);
     const url = await storePublicImage(env, uid, gen.bytes);
     // Consume ONE image from the per-tier allowance AND the global cap counter,
     // same rationale as fulfil(): only after a successful delivery.

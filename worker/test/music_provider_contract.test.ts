@@ -7,7 +7,7 @@
 // The shaping helpers are pure, so the limits are testable without a provider.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { compactMusicPrompt, trimLyricsToCap } from "../src/lib/venice_media";
+import { compactMusicPrompt, trimLyricsToCap } from "../src/lib/vertex_media";
 
 const STRUCTURED_BRIEF = [
   "Theme / intent: Gen Z pride, freedom from corrupt politicians and a new India",
@@ -57,14 +57,12 @@ describe("music provider request contract", () => {
   });
 
   it("declares each model's real limits, including ElevenLabs having no lyrics", () => {
-    const src = readFileSync("src/lib/venice_media.ts", "utf8");
+    const src = readFileSync("src/lib/vertex_media.ts", "utf8");
     expect(src).toContain('"minimax-music-v26": { promptMaxChars: 290, lyricsMaxChars: 950, supportsLyrics: true }');
     expect(src).toContain('"elevenlabs-music": { promptMaxChars: 2000, lyricsMaxChars: 0, supportsLyrics: false }');
     // A vocal song must never be routed to a model that cannot sing lyrics.
     expect(src).toContain("musicLimitsFor(longModel).supportsLyrics");
-    // Both fields are shaped before the provider call, not after a rejection.
-    expect(src).toContain("const submitPrompt = compactMusicPrompt(stylePrompt, limits.promptMaxChars)");
-    // And a rejection still gets one conservative retry rather than reaching the user.
-    expect(src).toContain('void track(env, a.uid, "ava_music_model_fallback"');
+    expect(src).toContain('const VERTEX_MUSIC_MODEL = "lyria-3-pro-preview"');
+    expect(src).toContain("approved custom lyrics");
   });
 });

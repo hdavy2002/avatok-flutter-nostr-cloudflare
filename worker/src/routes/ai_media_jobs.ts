@@ -25,9 +25,9 @@ import {
   type AiMediaJobKind, type AiMediaJobStatus,
 } from "../lib/ai_media_jobs";
 import {
-  getVeniceMediaJob, listVeniceMediaJobs, failVeniceMediaJob,
-  type VeniceMediaJobRecord,
-} from "../lib/venice_media_jobs";
+  getMediaJob, listMediaJobs, failMediaJob,
+  type MediaJobRecord,
+} from "../lib/media_jobs";
 import { presignDigitalReadUrl } from "./media";
 import { enqueueAiMediaJob, isAiMediaKindImplemented } from "../queues/ai_media";
 
@@ -36,8 +36,8 @@ const VALID_KINDS = new Set<AiMediaJobKind>([
 ]);
 const VALID_STATUSES = new Set<AiMediaJobStatus>(["queued", "running", "succeeded", "failed", "cancelled"]);
 
-function veniceAsAiJob(
-  job: Awaited<ReturnType<typeof getVeniceMediaJob>>,
+function mediaAsAiJob(
+  job: Awaited<ReturnType<typeof getMediaJob>>,
   artifactUrl: string | null = null,
   coverUrl: string | null = null,
 ): any {
@@ -48,7 +48,7 @@ function veniceAsAiJob(
   // expose the audio URL/play controls during that gap: the client keeps the
   // black generating card visible. A terminal cover failure becomes a failed
   // job card instead of a misleading playable card with missing artwork.
-  const status = job.kind === "venice_music_generate" && job.status === "succeeded"
+  const status = job.kind === "music_generate" && job.status === "succeeded"
     ? (job.cover_status === "succeeded" ? "succeeded"
       : job.cover_status === "failed" ? "failed" : "running")
     : baseStatus;
@@ -59,7 +59,7 @@ function veniceAsAiJob(
     kind: job.kind,
     status,
     source_media_id: null,
-    label: job.label ?? (job.kind === "venice_video_generate" ? "Generating your video…" : "Generating your song…"),
+    label: job.label ?? (job.kind === "video_generate" ? "Generating your video…" : "Generating your song…"),
     progress: null,
     artifact_media_id: job.artifact_media_id,
     artifact_url: status === "succeeded" ? artifactUrl : null,
@@ -70,12 +70,12 @@ function veniceAsAiJob(
     cover_status: job.cover_status,
     // Video jobs reuse the same safe card metadata/artwork columns as music;
     // expose modality-specific names to clients and OG/share code.
-    video_title: job.kind === "venice_video_generate" ? job.song_title : null,
-    video_description: job.kind === "venice_video_generate" ? job.song_description : null,
-    thumbnail_media_id: job.kind === "venice_video_generate" ? job.cover_media_id : null,
-    thumbnail_url: job.kind === "venice_video_generate" ? coverUrl : null,
-    thumbnail_status: job.kind === "venice_video_generate" ? job.cover_status : null,
-    error_code: job.kind === "venice_music_generate" && job.status === "succeeded" && job.cover_status === "failed"
+    video_title: job.kind === "video_generate" ? job.song_title : null,
+    video_description: job.kind === "video_generate" ? job.song_description : null,
+    thumbnail_media_id: job.kind === "video_generate" ? job.cover_media_id : null,
+    thumbnail_url: job.kind === "video_generate" ? coverUrl : null,
+    thumbnail_status: job.kind === "video_generate" ? job.cover_status : null,
+    error_code: job.kind === "music_generate" && job.status === "succeeded" && job.cover_status === "failed"
       ? "artifact_unavailable" : job.error_code,
     reservation_id: job.reservation_id,
     created_at: job.created_at,
@@ -84,7 +84,7 @@ function veniceAsAiJob(
   };
 }
 
-async function veniceArtifactUrl(env: Env, artifactMediaId: string | null): Promise<string | null> {
+async function mediaArtifactUrl(env: Env, artifactMediaId: string | null): Promise<string | null> {
   if (!artifactMediaId) return null;
   try {
     const row = await env.DB_MEDIA.prepare("SELECT key, visibility, storage FROM user_media WHERE id=?1")
@@ -95,7 +95,7 @@ async function veniceArtifactUrl(env: Env, artifactMediaId: string | null): Prom
   } catch { return null; }
 }
 
-async function videoThumbnailShareable(env: Env, job: VeniceMediaJobRecord): Promise<boolean> {
+async function videoThumbnailShareable(env: Env, job: MediaJobRecord): Promise<boolean> {
   if (!job.cover_media_id) return false;
   try {
     const row = await env.DB_MEDIA.prepare(
@@ -109,11 +109,11 @@ async function videoThumbnailShareable(env: Env, job: VeniceMediaJobRecord): Pro
   } catch { return false; }
 }
 
-async function hydrateVenice(env: Env, job: Awaited<ReturnType<typeof getVeniceMediaJob>>): Promise<any> {
-  return veniceAsAiJob(
+async function hydrateMedia(env: Env, job: Awaited<ReturnType<typeof getMediaJob>>): Promise<any> {
+  return mediaAsAiJob(
     job,
-    await veniceArtifactUrl(env, job?.artifact_media_id ?? null),
-    await veniceArtifactUrl(env, job?.cover_media_id ?? null),
+    await mediaArtifactUrl(env, job?.artifact_media_id ?? null),
+    await mediaArtifactUrl(env, job?.cover_media_id ?? null),
   );
 }
 
@@ -196,7 +196,7 @@ export async function aiMediaJobsCreate(req: Request, env: Env, ctx?: ExecutionC
  * authz.ts dmConvId) because DMs do not necessarily carry conversation_members
  * rows; groups are checked against that table.
  */
-async function canViewSharedMediaJob(env: Env, job: VeniceMediaJobRecord, uid: string): Promise<boolean> {
+async function canViewSharedMediaJob(env: Env, job: MediaJobRecord, uid: string): Promise<boolean> {
   if (job.owner_uid === uid) return true;
   if (job.is_private) return false;
   const conv = String(job.conv_id || "");
@@ -220,28 +220,28 @@ export async function aiMediaJobsGet(req: Request, env: Env, jobId: string): Pro
   if (!id) return json({ error: "job_id required" }, 400);
   const r = await getAiMediaJob(env, id, ctxUser.uid);
   if (r.ok) return json({ ok: true, job: r.job });
-  const v = await getVeniceMediaJob(env, id);
+  const v = await getMediaJob(env, id);
   if (!v || !(await canViewSharedMediaJob(env, v, ctxUser.uid))) {
     return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
   }
-  return json({ ok: true, job: await hydrateVenice(env, v) });
+  return json({ ok: true, job: await hydrateMedia(env, v) });
 }
 
 // POST /api/ai/jobs/:job_id/share — explicit publication of a succeeded song.
 export async function aiMediaJobSongShare(req: Request, env: Env, jobId: string): Promise<Response> {
   const ctxUser = await requireUser(req, env);
   if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
-  let job = await getVeniceMediaJob(env, String(jobId || "").trim());
+  let job = await getMediaJob(env, String(jobId || "").trim());
   if (!job || job.owner_uid !== ctxUser.uid) return json({ error: "not_found" }, 404);
-  if (job.kind !== "venice_music_generate" || job.status !== "succeeded" || !job.artifact_media_id) {
+  if (job.kind !== "music_generate" || job.status !== "succeeded" || !job.artifact_media_id) {
     return json({ error: "song_not_ready" }, 409);
   }
   if (!job.share_token) {
     const token = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     await env.DB_MEDIA.prepare(
-      "UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL",
+      "UPDATE media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL",
     ).bind(job.job_id, token, Date.now()).run();
-    job = await getVeniceMediaJob(env, job.job_id);
+    job = await getMediaJob(env, job.job_id);
   }
   if (!job?.share_token) return json({ error: "share_unavailable" }, 503);
   const origin = new URL(req.url).origin;
@@ -252,13 +252,13 @@ export async function aiMediaJobSongShare(req: Request, env: Env, jobId: string)
 export async function aiMediaJobVideoShare(req: Request, env: Env, jobId: string): Promise<Response> {
   const ctxUser = await requireUser(req, env);
   if (isFail(ctxUser)) return json({ error: ctxUser.error }, ctxUser.status);
-  let job = await getVeniceMediaJob(env, String(jobId || "").trim());
+  let job = await getMediaJob(env, String(jobId || "").trim());
   if (!job || job.owner_uid !== ctxUser.uid) return json({ error: "not_found" }, 404);
-  if (job.kind !== "venice_video_generate" || job.status !== "succeeded" || !job.artifact_media_id || !(await videoThumbnailShareable(env, job))) return json({ error: "video_not_ready" }, 409);
+  if (job.kind !== "video_generate" || job.status !== "succeeded" || !job.artifact_media_id || !(await videoThumbnailShareable(env, job))) return json({ error: "video_not_ready" }, 409);
   if (!job.share_token) {
     const token = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
-    await env.DB_MEDIA.prepare("UPDATE venice_media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL").bind(job.job_id, token, Date.now()).run();
-    job = await getVeniceMediaJob(env, job.job_id);
+    await env.DB_MEDIA.prepare("UPDATE media_jobs SET share_token=?2, shared_at=?3, updated_at=?3 WHERE job_id=?1 AND share_token IS NULL").bind(job.job_id, token, Date.now()).run();
+    job = await getMediaJob(env, job.job_id);
   }
   if (!job?.share_token) return json({ error: "share_unavailable" }, 503);
   // WhatsApp holds link-preview failures far longer than our HTML cache. Give
@@ -281,12 +281,12 @@ function songHtml(value: string): string {
   }[ch] || ch));
 }
 
-async function sharedSong(env: Env, token: string): Promise<VeniceMediaJobRecord | null> {
+async function sharedSong(env: Env, token: string): Promise<MediaJobRecord | null> {
   const row = await env.DB_MEDIA.prepare(
-    "SELECT * FROM venice_media_jobs WHERE share_token=?1 AND kind='venice_music_generate' AND status='succeeded' LIMIT 1",
+    "SELECT * FROM media_jobs WHERE share_token=?1 AND kind='music_generate' AND status='succeeded' LIMIT 1",
   ).bind(token).first<any>();
   if (!row?.job_id) return null;
-  return await getVeniceMediaJob(env, String(row.job_id));
+  return await getMediaJob(env, String(row.job_id));
 }
 
 /** Public OG/landing page. The opaque token is created only by the owner share action. */
@@ -396,9 +396,9 @@ export async function aiMediaSongShareAsset(
   });
 }
 
-async function sharedVideo(env: Env, token: string): Promise<VeniceMediaJobRecord | null> {
-  const row = await env.DB_MEDIA.prepare("SELECT * FROM venice_media_jobs WHERE share_token=?1 AND kind='venice_video_generate' AND status='succeeded' LIMIT 1").bind(token).first<any>();
-  return row?.job_id ? await getVeniceMediaJob(env, String(row.job_id)) : null;
+async function sharedVideo(env: Env, token: string): Promise<MediaJobRecord | null> {
+  const row = await env.DB_MEDIA.prepare("SELECT * FROM media_jobs WHERE share_token=?1 AND kind='video_generate' AND status='succeeded' LIMIT 1").bind(token).first<any>();
+  return row?.job_id ? await getMediaJob(env, String(row.job_id)) : null;
 }
 
 export async function aiMediaVideoSharePage(req: Request, env: Env, token: string): Promise<Response> {
@@ -485,11 +485,11 @@ export async function aiMediaJobsCancel(req: Request, env: Env, jobId: string): 
   if (!id) return json({ error: "job_id required" }, 400);
   const r = await cancelAiMediaJob(env, id, ctxUser.uid);
   if (r.ok) return json({ ok: true, job: r.job });
-  const v = await getVeniceMediaJob(env, id);
+  const v = await getMediaJob(env, id);
   if (!v || v.owner_uid !== ctxUser.uid) return json({ error: r.error }, r.error === "forbidden" ? 403 : 404);
-  const cancelled = await failVeniceMediaJob(env, { jobId: id, errorCode: "cancelled_by_user", reason: "user_cancelled" });
+  const cancelled = await failMediaJob(env, { jobId: id, errorCode: "cancelled_by_user", reason: "user_cancelled" });
   return cancelled.ok
-    ? json({ ok: true, job: await hydrateVenice(env, cancelled.job) })
+    ? json({ ok: true, job: await hydrateMedia(env, cancelled.job) })
     : json({ error: cancelled.error }, 409);
 }
 
@@ -507,7 +507,7 @@ export async function aiMediaJobsList(req: Request, env: Env): Promise<Response>
   const limitRaw = Number(url.searchParams.get("limit"));
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
   const jobs = await listAiMediaJobs(env, { ownerUid: ctxUser.uid, convId: conv, statuses, limit });
-  const venice = await listVeniceMediaJobs(env, ctxUser.uid, conv, limit ?? 50);
-  const veniceJobs = await Promise.all(venice.map((j) => hydrateVenice(env, j)));
-  return json({ ok: true, jobs: [...jobs, ...veniceJobs].sort((a, b) => Number(a.created_at) - Number(b.created_at)) });
+  const mediaRows = await listMediaJobs(env, ctxUser.uid, conv, limit ?? 50);
+  const mediaJobs = await Promise.all(mediaRows.map((j) => hydrateMedia(env, j)));
+  return json({ ok: true, jobs: [...jobs, ...mediaJobs].sort((a, b) => Number(a.created_at) - Number(b.created_at)) });
 }

@@ -258,6 +258,7 @@ extension _ChatThreadActions on _ChatThreadScreenState {
                     // renders the 402 "out of tokens" message, never a
                     // generic failure — see _handleJobOutcome's own note).
                     onOutcome: _handleJobOutcome,
+                    prepareReadableCopy: (_) => _prepareAvaReadableCopy(m),
                   ),
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
                   // [AVAGRP-BUBBLE-1 / message-info] "Info" (§4, WhatsApp-style):
@@ -712,6 +713,44 @@ extension _ChatThreadActions on _ChatThreadScreenState {
         ]),
       ),
     );
+  }
+
+  /// Ask once, then make the temporary readable copy Ava needs for document
+  /// analysis. The original Messenger attachment remains encrypted and is not
+  /// replaced. Returning null cancels the Ava action without creating a job.
+  Future<String?> _prepareAvaReadableCopy(_Msg m) async {
+    final source = m.media;
+    if (source == null) return null;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Let Ava read this file?'),
+        content: const Text(
+          'A temporary server-readable copy is needed to summarize or translate it. '
+          'The original Messenger attachment stays encrypted, and the temporary copy is deleted within 24 hours.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Allow once')),
+        ],
+      ),
+    );
+    if (approved != true || !mounted) return null;
+    try {
+      final bytes = m.localBytes ?? await MediaService.downloadAndDecrypt(source);
+      final copy = await MediaService.uploadReadableCopyForAva(
+        bytes,
+        source: source,
+        kind: source.kind,
+        contentType: source.contentType,
+        name: source.name,
+      );
+      if (mounted) _capNote('Ava is reading a temporary copy…');
+      return copy.id;
+    } catch (e) {
+      AvaLog.I.log('ava', 'readable attachment copy failed: $e');
+      if (mounted) _capNote("Ava couldn't read that file.");
+      return null;
+    }
   }
 
   // Save a chat media file into the user's OWN AvaTOK Google Drive folder

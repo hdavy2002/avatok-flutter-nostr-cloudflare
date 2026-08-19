@@ -11,7 +11,7 @@ import {
   musicRetryModel,
   resolveMusicModel,
   validateMusicModeRequest,
-} from "../src/lib/venice_media";
+} from "../src/lib/vertex_media";
 import {
   classifySongRequest,
   isQuickSongContextReady,
@@ -207,9 +207,9 @@ describe("quick song — configuration and server-side authority", () => {
   });
 
   it("tags the submitted job so an engine-written song is distinguishable forever", () => {
-    const media = readFileSync("src/lib/venice_media.ts", "utf8");
+    const media = readFileSync("src/lib/vertex_media.ts", "utf8");
     expect(media).toContain("music_mode: musicMode, model: submittedModel, email,");
-    const jobs = readFileSync("src/lib/venice_media_jobs.ts", "utf8");
+    const jobs = readFileSync("src/lib/media_jobs.ts", "utf8");
     expect(jobs).toContain('"vocal" | "instrumental" | "engine_written" | null');
     // The column is plain TEXT with no CHECK constraint, so no migration is
     // needed and the 27-column insert contract is untouched.

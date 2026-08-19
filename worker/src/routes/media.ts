@@ -341,6 +341,25 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
 
   const encryptedHeader = (req.headers.get("x-encrypted") || "").trim().toLowerCase();
   const isPlaintext = encryptedHeader === "0" || encryptedHeader === "false";
+  const readableHeader = (req.headers.get("x-ava-readable") || "").trim().toLowerCase();
+  const approvalHeader = (req.headers.get("x-ava-approval") || "").trim().toLowerCase();
+  const sourceMediaId = (req.headers.get("x-source-media-id") || "").trim();
+  const isAvaReadableCopy = (readableHeader === "1" || readableHeader === "true")
+    && (approvalHeader === "1" || approvalHeader === "true");
+
+  // Ava may analyze a Messenger attachment only after the user explicitly
+  // authorizes a temporary server-readable copy. The source lookup is scoped
+  // to the authenticated user's own media rows, so a forged id/key cannot
+  // authorize access to somebody else's attachment.
+  if (isAvaReadableCopy) {
+    if (!isPlaintext || !sourceMediaId) {
+      return json({ error: "ava_readable_copy_requires_plaintext_source" }, 400);
+    }
+    const source = await mediaSession(env).prepare(
+      "SELECT id FROM user_media WHERE uid=?1 AND deleted_at IS NULL AND (id=?2 OR key=?2) LIMIT 1",
+    ).bind(ctx.uid, sourceMediaId).first<any>();
+    if (!source) return json({ error: "source_media_not_found" }, 404);
+  }
 
   // [P1 fix / AVA-MEDIA-AUTHZ-1] voiceNoteEncryptionEnabled was a CLIENT-ONLY
   // brake: this route honoured x-encrypted:0 unconditionally, so flipping the
@@ -350,14 +369,14 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   // shape CLAUDE.md documents for inAppUpdateEnabled. Enforced server-side
   // now: when the flag says encryption IS required, a plaintext upload is
   // rejected outright rather than silently accepted.
-  if (isPlaintext) {
+  if (isPlaintext && !isAvaReadableCopy) {
     const cfg = await readConfig(env);
     if (cfg.voiceNoteEncryptionEnabled) {
       return json({ error: "plaintext_disabled" }, 400);
     }
   }
 
-  const r2Key = userKey(ctx.uid, isPlaintext ? "private" : "dm", hash); // per-user path (bytes owned by sender)
+  const r2Key = userKey(ctx.uid, isAvaReadableCopy ? "ava-readable" : isPlaintext ? "private" : "dm", hash); // per-user path (bytes owned by sender)
   const ct = "application/octet-stream"; // ciphertext OR opaque-on-the-wire plaintext blob — real mime rides in x-real-mime
   // The real content type/name travel in headers. Used only to categorise the
   // Library entry — never to scan (ciphertext is unscannable by design;
@@ -365,6 +384,7 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   const realMime = req.headers.get("x-real-mime") || "application/octet-stream";
   const fileName = req.headers.get("x-file-name") || defaultName(realMime, hash);
   const app = (req.headers.get("x-app") || "avachat").toLowerCase();
+  const sourceKind = isAvaReadableCopy ? "ava_readable_copy" : "sent";
   // VIDPOL-2: same 64 MB ceiling either way (ciphertext/plaintext are ~same size as source).
   const vidCap = videoCapReject(realMime, bytes.byteLength);
   if (vidCap) return vidCap;
@@ -394,11 +414,11 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
     id = crypto.randomUUID();
     await mdb.prepare(
       `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, uncommitted, uncommitted_at)
-       VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,'sent',?14,?15)`,
+       VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,?14,?15,?16)`,
     ).bind(
       id, ctx.uid, mediaType(realMime), isPlaintext ? "digital" : "blossom",
       isPlaintext ? 0 : 1, r2Key, isPlaintext ? "" : url, ct, bytes.byteLength, app, Date.now(),
-      categoryOf(realMime), fileName, uncommitted ? 1 : 0, uncommitted ? Date.now() : null,
+      categoryOf(realMime), fileName, sourceKind, uncommitted ? 1 : 0, uncommitted ? Date.now() : null,
     ).run();
     const reg = afterRegisterFile(env, ctx.uid, { kind: categoryOf(realMime), bytes: bytes.byteLength, source_app: app, dedup: false });
     if (exec) exec.waitUntil(reg); else await reg.catch(() => { /* best-effort */ });
@@ -421,7 +441,25 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   // `id` is additive in this response ([SPEC-SEND-1]): a speculative upload has
   // to be able to name the row it later commits (POST /api/media/commit
   // {media_id}), and this route previously returned only the key/hash.
-  return json({ hash, key: r2Key, url, status: "live", encrypted: isPlaintext ? 0 : 1, id });
+  return json({ hash, key: r2Key, url, status: "live", encrypted: isPlaintext ? 0 : 1, id, ava_readable_copy: isAvaReadableCopy });
+}
+
+/** Remove temporary decrypted copies after Ava has had a bounded analysis window. */
+export async function sweepAvaReadableCopies(env: Env): Promise<number> {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const db = mediaSession(env);
+  const rows = await db.prepare(
+    "SELECT id, key FROM user_media WHERE source_kind='ava_readable_copy' AND created_at<?1 AND deleted_at IS NULL LIMIT 100",
+  ).bind(cutoff).all<any>();
+  let removed = 0;
+  for (const row of rows.results ?? []) {
+    if (typeof row.key === "string" && row.key) await env.DIGITAL.delete(row.key).catch(() => {});
+    const result = await db.prepare(
+      "UPDATE user_media SET deleted_at=?2 WHERE id=?1 AND deleted_at IS NULL",
+    ).bind(row.id, Date.now()).run();
+    removed += Number((result as { meta?: { changes?: number } })?.meta?.changes ?? 0);
+  }
+  return removed;
 }
 
 // POST /api/media/commit {media_id} — [SPEC-SEND-1 / WS-30a] "the user actually

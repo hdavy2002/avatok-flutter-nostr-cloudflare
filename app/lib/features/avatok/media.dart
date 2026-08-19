@@ -287,6 +287,57 @@ class MediaService {
     return media;
   }
 
+  /// Creates a temporary server-readable copy of an already-decrypted
+  /// Messenger attachment after the user explicitly approves Ava analysis.
+  /// The original E2E-encrypted attachment is never replaced or re-keyed.
+  static Future<ChatMedia> uploadReadableCopyForAva(
+    Uint8List bytes, {
+    required ChatMedia source,
+    required MediaKind kind,
+    required String contentType,
+    required String name,
+  }) async {
+    final extraHeaders = {
+      'x-real-mime': contentType,
+      'x-file-name': name,
+      'x-app': 'ava',
+      'x-encrypted': '0',
+      'x-ava-readable': '1',
+      'x-ava-approval': '1',
+      'x-source-media-id': source.id,
+    };
+    final res = await ApiAuth.postBytes(
+      kUploadPrivateUrl,
+      bytes,
+      extraHeaders: extraHeaders,
+      timeout: const Duration(seconds: 60),
+    );
+    if (res.statusCode != 200) {
+      Analytics.capture('ava_readable_copy_failed', {
+        'kind': kind.name, 'status': res.statusCode, 'size': bytes.length,
+      });
+      throw MediaUploadException('Ava approval upload failed (${res.statusCode})');
+    }
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    final id = (j['id'] ?? j['key'] ?? j['hash'] ?? '').toString();
+    final url = (j['url'] ?? '').toString();
+    final copy = ChatMedia(
+      kind: kind,
+      id: id,
+      keyB64: '', nonceB64: '', macB64: '',
+      contentType: contentType,
+      name: name,
+      size: bytes.length,
+      storage: 'digital',
+      digitalUrl: url.isNotEmpty ? url : null,
+    );
+    await _cacheWrite(copy.id, bytes);
+    Analytics.capture('ava_readable_copy_created', {
+      'kind': kind.name, 'size': bytes.length,
+    });
+    return copy;
+  }
+
   /// [CHAT-UPLOAD-1] Paced PUT of the ciphertext: emits the body in ~32 KB chunks
   /// spaced so throughput stays under [_kInCallUploadBytesPerSec], leaving uplink
   /// headroom for the live WebRTC call. Auth is a Bearer JWT (no body HMAC), so a

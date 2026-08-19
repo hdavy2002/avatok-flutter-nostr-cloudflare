@@ -2,20 +2,20 @@ import type { Env } from "../types";
 import { failAiMediaJob } from "../lib/ai_media_jobs";
 import { loadQueuedImageInput, purgeExpiredQueuedImageInputs } from "../lib/ai_media_inputs";
 import {
-  claimVeniceMediaRecoveryLease,
-  failVeniceMediaJob,
-  listVeniceMediaJobsForRecovery,
-  listVeniceVideoThumbnailJobsForRecovery,
+  claimMediaRecoveryLease,
+  failMediaJob,
+  listMediaJobsForRecovery,
+  listVideoThumbnailJobsForRecovery,
   reopenVideoCover,
-} from "../lib/venice_media_jobs";
-import { enqueueVeniceMediaPoll } from "./venice_media";
+} from "../lib/media_jobs";
+import { enqueueMediaPoll } from "./media";
 import { track, trackException } from "../hooks";
 
 const QUEUED_STALE_MS = 2 * 60 * 1000;
 const RUNNING_STALE_MS = 3 * 60 * 1000;
 const MAX_RESTARTS = 3;
-const VENICE_STALE_MS = 3 * 60 * 1000;
-const MAX_VENICE_POLL_ATTEMPTS = 40;
+const MEDIA_STALE_MS = 3 * 60 * 1000;
+const MAX_MEDIA_POLL_ATTEMPTS = 40;
 const BATCH_LIMIT = 100;
 
 /**
@@ -27,14 +27,14 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
   requeued: number;
   failed: number;
   purged: number;
-  veniceRequeued: number;
-  veniceFailed: number;
+  mediaRequeued: number;
+  mediaFailed: number;
 }> {
   const now = Date.now();
   let requeued = 0;
   let failed = 0;
-  let veniceRequeued = 0;
-  let veniceFailed = 0;
+  let mediaRequeued = 0;
+  let mediaFailed = 0;
 
   const queued = await env.DB_MEDIA.prepare(
     `SELECT job_id, owner_uid FROM ai_media_jobs
@@ -89,30 +89,30 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
   // work is asynchronous. The queue consumer has a hard deadline, but this
   // sweep is the second line of defence when a delayed poll message is lost,
   // the Worker is evicted, or submission never transitions to polling.
-  const veniceJobs = await listVeniceMediaJobsForRecovery(env, now, now - VENICE_STALE_MS, BATCH_LIMIT);
-  for (const job of veniceJobs) {
+  const mediaJobs = await listMediaJobsForRecovery(env, now, now - MEDIA_STALE_MS, BATCH_LIMIT);
+  for (const job of mediaJobs) {
     try {
-      if (job.kind === "venice_music_generate" && !job.music_mode) {
-        const result = await failVeniceMediaJob(env, {
+      if (job.kind === "music_generate" && !job.music_mode) {
+        const result = await failMediaJob(env, {
           jobId: job.job_id,
           errorCode: "MUSIC_ROUTE_UNVERIFIED",
           reason: "watchdog_rejects_legacy_music_route",
         });
-        if (result.ok && result.transitioned) veniceFailed++;
-        void track(env, job.owner_uid, "venice_media_job_watchdog_rejected", "avaai", {
+        if (result.ok && result.transitioned) mediaFailed++;
+        void track(env, job.owner_uid, "media_job_watchdog_rejected", "avaai", {
           job_id: job.job_id, kind: job.kind, reason: "unverified_music_route",
         });
         continue;
       }
       if (job.status === "submitting") {
-        const result = await failVeniceMediaJob(env, {
+        const result = await failMediaJob(env, {
           jobId: job.job_id,
           errorCode: "provider_submission_stalled",
           reason: "stale_submission_watchdog",
         });
         if (result.ok && result.transitioned) {
-          veniceFailed++;
-          void track(env, job.owner_uid, "venice_media_job_watchdog_failed", "avaai", {
+          mediaFailed++;
+          void track(env, job.owner_uid, "media_job_watchdog_failed", "avaai", {
             job_id: job.job_id, kind: job.kind, reason: "stale_submission", attempts: job.attempts,
           });
         }
@@ -123,24 +123,24 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
       // longer applies. Always requeue final settlement/notification recovery;
       // the stable billing operation id makes this safe and idempotent.
       if (job.status === "delivering") {
-        const leased = await claimVeniceMediaRecoveryLease(
-          env, job.job_id, now - VENICE_STALE_MS, now,
+        const leased = await claimMediaRecoveryLease(
+          env, job.job_id, now - MEDIA_STALE_MS, now,
         );
         if (!leased) continue;
-        await enqueueVeniceMediaPoll(env, job.job_id, job.kind);
-        veniceRequeued++;
+        await enqueueMediaPoll(env, job.job_id, job.kind);
+        mediaRequeued++;
         continue;
       }
 
-      if (now >= job.deadline_at || job.attempts >= MAX_VENICE_POLL_ATTEMPTS) {
-        const result = await failVeniceMediaJob(env, {
+      if (now >= job.deadline_at || job.attempts >= MAX_MEDIA_POLL_ATTEMPTS) {
+        const result = await failMediaJob(env, {
           jobId: job.job_id,
           errorCode: "PROVIDER_TIMEOUT",
           reason: now >= job.deadline_at ? "watchdog_deadline_exceeded" : "watchdog_poll_attempt_limit",
         });
         if (result.ok && result.transitioned) {
-          veniceFailed++;
-          void track(env, job.owner_uid, "venice_media_job_watchdog_failed", "avaai", {
+          mediaFailed++;
+          void track(env, job.owner_uid, "media_job_watchdog_failed", "avaai", {
             job_id: job.job_id, kind: job.kind,
             reason: now >= job.deadline_at ? "deadline_exceeded" : "poll_attempt_limit",
             attempts: job.attempts,
@@ -149,13 +149,13 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
         continue;
       }
 
-      const leased = await claimVeniceMediaRecoveryLease(
-        env, job.job_id, now - VENICE_STALE_MS, now,
+      const leased = await claimMediaRecoveryLease(
+        env, job.job_id, now - MEDIA_STALE_MS, now,
       );
       if (!leased) continue;
-      await enqueueVeniceMediaPoll(env, job.job_id, job.kind);
-      veniceRequeued++;
-      void track(env, job.owner_uid, "venice_media_job_watchdog_requeued", "avaai", {
+      await enqueueMediaPoll(env, job.job_id, job.kind);
+      mediaRequeued++;
+      void track(env, job.owner_uid, "media_job_watchdog_requeued", "avaai", {
         job_id: job.job_id, kind: job.kind, attempts: job.attempts,
       });
     } catch (e) {
@@ -166,7 +166,7 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
     }
   }
 
-  const thumbnailJobs = await listVeniceVideoThumbnailJobsForRecovery(env, now - VENICE_STALE_MS, BATCH_LIMIT);
+  const thumbnailJobs = await listVideoThumbnailJobsForRecovery(env, now - MEDIA_STALE_MS, BATCH_LIMIT);
   for (const job of thumbnailJobs) {
     try {
       // [VIDEO-AUDIT-1] A 'failed' cover must be reopened first: claimSongCover
@@ -174,8 +174,8 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
       // would silently do nothing. Bounded by the retry window in the query.
       if (job.cover_status === "failed" && !(await reopenVideoCover(env, job.job_id))) continue;
       await env.Q_AI_MEDIA.send({ job_id: job.job_id, kind: job.kind });
-      veniceRequeued++;
-      void track(env, job.owner_uid, "venice_video_thumbnail_watchdog_requeued", "avaai", { job_id: job.job_id, kind: job.kind, cover_status: job.cover_status });
+      mediaRequeued++;
+      void track(env, job.owner_uid, "media_video_thumbnail_watchdog_requeued", "avaai", { job_id: job.job_id, kind: job.kind, cover_status: job.cover_status });
     } catch (e) {
       void trackException(env, e, { uid: job.owner_uid, route: "ai_media_recovery.video_thumbnail", handled: true, extra: { job_id: job.job_id } });
     }
@@ -183,15 +183,15 @@ export async function recoverAiMediaJobs(env: Env): Promise<{
 
   // This heartbeat is the operational watchdog: an absent event means the
   // scheduled recovery itself is unhealthy, not merely that one video failed.
-  void track(env, "system", "venice_media_watchdog_scan", "avaai", {
-    active_jobs: veniceJobs.length, thumbnail_jobs: thumbnailJobs.length,
-    requeued: veniceRequeued, failed: veniceFailed,
+  void track(env, "system", "media_watchdog_scan", "avaai", {
+    active_jobs: mediaJobs.length, thumbnail_jobs: thumbnailJobs.length,
+    requeued: mediaRequeued, failed: mediaFailed,
   });
 
-  if (requeued || failed || purged || veniceRequeued || veniceFailed) {
+  if (requeued || failed || purged || mediaRequeued || mediaFailed) {
     console.log("[ai-media-recovery]", JSON.stringify({
-      requeued, failed, purged, veniceRequeued, veniceFailed,
+      requeued, failed, purged, mediaRequeued, mediaFailed,
     }));
   }
-  return { requeued, failed, purged, veniceRequeued, veniceFailed };
+  return { requeued, failed, purged, mediaRequeued, mediaFailed };
 }

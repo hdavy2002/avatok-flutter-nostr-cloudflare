@@ -53,8 +53,8 @@ enum AiMediaJobKind { imageGenerate, videoGenerate, musicGenerate, docSummarize,
 extension AiMediaJobKindWire on AiMediaJobKind {
   String get wire => switch (this) {
         AiMediaJobKind.imageGenerate => 'image_generate',
-        AiMediaJobKind.videoGenerate => 'venice_video_generate',
-        AiMediaJobKind.musicGenerate => 'venice_music_generate',
+        AiMediaJobKind.videoGenerate => 'video_generate',
+        AiMediaJobKind.musicGenerate => 'music_generate',
         AiMediaJobKind.docSummarize => 'doc_summarize',
         AiMediaJobKind.docTranslate => 'doc_translate',
         AiMediaJobKind.audioTranscribe => 'audio_transcribe',
@@ -75,8 +75,8 @@ extension AiMediaJobKindWire on AiMediaJobKind {
 
   static AiMediaJobKind? fromWire(String? s) => switch (s) {
         'image_generate' => AiMediaJobKind.imageGenerate,
-        'venice_video_generate' => AiMediaJobKind.videoGenerate,
-        'venice_music_generate' => AiMediaJobKind.musicGenerate,
+        'video_generate' => AiMediaJobKind.videoGenerate,
+        'music_generate' => AiMediaJobKind.musicGenerate,
         'doc_summarize' => AiMediaJobKind.docSummarize,
         'doc_translate' => AiMediaJobKind.docTranslate,
         'audio_transcribe' => AiMediaJobKind.audioTranscribe,
@@ -694,7 +694,7 @@ class AiMediaJobRepository {
   /// share page URL. The server does not create this token until this method
   /// is called, so private generated audio is not public by default.
   /// [MEDIA-CARD-SAFE-1] Share links, once minted, are PERMANENT server-side
-  /// (`venice_media_jobs.share_token` is written once and reused — see
+  /// (`media_jobs.share_token` is written once and reused — see
   /// `worker/src/routes/ai_media_jobs.ts::aiMediaJobSongShare`). Remembering
   /// them for this process means the second Share of the same song needs no
   /// round-trip at all, and a share attempted while the phone is offline can
