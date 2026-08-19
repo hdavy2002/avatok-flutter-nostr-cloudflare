@@ -46,7 +46,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     switch (action) {
       case 'publish':
         final r = await ListingsApi.publish(l.id);
-        msg = r.isEmpty ? 'Published' : (r['detail']?.toString() ?? r['error']?.toString() ?? 'Failed');
+        msg = r['ok'] == true
+            ? 'Published'
+            : (r['detail']?.toString() ?? r['error']?.toString() ?? 'Failed');
       case 'live':
         final r = await ListingsApi.setStatus(l.id, 'live');
         msg = r['ok'] == true ? 'You are LIVE — followers notified' : 'Failed';

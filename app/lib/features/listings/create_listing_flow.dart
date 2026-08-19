@@ -218,7 +218,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
     }
     final r = await ListingsApi.publish(id);
     if (!mounted) return;
-    if (r.isEmpty) {
+    if (r['ok'] == true) {
       Analytics.capture('listing_published_client', {'kind': _kind});
       HapticFeedback.mediumImpact(); // P9: tactile publish confirmation
       Navigator.pop(context, true);

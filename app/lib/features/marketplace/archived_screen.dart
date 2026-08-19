@@ -144,7 +144,7 @@ class _Row extends StatelessWidget {
     Analytics.capture('listing_republished', {'listing_id': card.id});
     final res = await ListingsApi.publish(card.id);
     if (!context.mounted) return;
-    if (res.isEmpty) {
+    if (res['ok'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Re-published with a fresh expiry.')));
       onChanged();
