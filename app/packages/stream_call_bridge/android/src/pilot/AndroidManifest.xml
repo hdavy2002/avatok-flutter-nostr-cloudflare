@@ -1,5 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <!-- [STREAM-PROD-11] This production pilot is 1:1 audio only. Stream core's
+         library manifest also advertises livestream playback and screen-share
+         projection. Those unused capabilities add Play foreground-service
+         declarations that are unrelated to an audio call, so remove both the
+         permissions and their owning services in this pilot source set. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        tools:node="remove" />
     <application>
         <!-- Present only in the opt-in pilot source set. Normal Cloudflare APKs
              expose none of Stream's notification actions. -->
@@ -17,6 +28,12 @@
         </activity>
         <service
             android:name="io.getstream.android.push.firebase.ChatFirebaseMessagingService"
+            tools:node="remove" />
+        <service
+            android:name="io.getstream.video.android.core.screenshare.StreamScreenShareService"
+            tools:node="remove" />
+        <service
+            android:name="io.getstream.video.android.core.notifications.internal.service.LivestreamViewerService"
             tools:node="remove" />
         <service
             android:name="ai.avatok.streamcall.AvaTokStreamFirebaseMessagingService"
