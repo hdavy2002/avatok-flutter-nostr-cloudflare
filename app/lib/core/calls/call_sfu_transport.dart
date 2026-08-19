@@ -296,6 +296,13 @@ class CallSfuTransport {
   /// [connectPull] ever runs.
   Future<CallSfuPeer?>? _pendingEarlyPeer;
 
+  /// A terminal `/peer` response captured by the overlapped poll. Absence of a
+  /// peer is a normal 200 response and keeps polling; an explicit server/auth
+  /// failure is different and must make Accept fall back immediately instead
+  /// of spending the rest of the 6-8 second seat window on a broken room.
+  SfuFailure? _peerPollFailure;
+  String? _peerPollFailureDetail;
+
   /// Track names are ours to choose. Namespacing by session id keeps them unique
   /// across a reconnect that mints a new session, so a peer that is briefly
   /// holding a stale seat cannot pull a name that now means something else.
@@ -673,6 +680,8 @@ class CallSfuTransport {
     required _NegotiationToken token,
   }) async {
     _peerPollAbort = false; // [CALL-DEADAIR-1] fresh attempt (reconnect reuses this object)
+    _peerPollFailure = null;
+    _peerPollFailureDetail = null;
     _publishDone = false;
     _pendingEarlyPeer = null;
     try {
@@ -919,6 +928,13 @@ class CallSfuTransport {
         return CallSfuResult.failed(SfuFailure.unknown, detail: 'superseded_waiting_for_peer');
       }
       if (peer == null) {
+        final hardFailure = _peerPollFailure;
+        if (hardFailure != null) {
+          return CallSfuResult.failed(
+            hardFailure,
+            detail: _peerPollFailureDetail ?? 'peer_lookup_failed',
+          );
+        }
         return CallSfuResult.failed(SfuFailure.peerNeverPublished);
       }
       onStage?.call('sfu_peer_seat');
@@ -1016,6 +1032,16 @@ class CallSfuTransport {
   /// for the rest of its window on a call that has already fallen back to P2P.
   bool _peerPollAbort = false;
 
+  /// `/peer` returns 200 with an empty seat while the other phone is still
+  /// joining. Only response failures that cannot become a seat by waiting are
+  /// terminal. Timeouts, throttling and early-data responses retain the
+  /// bounded retry behaviour; auth/contract errors and server failures abort.
+  bool _isHardPeerLookupFailure(CallSfuException e) {
+    if (e.status >= 500) return true;
+    if (e.status < 400 || e.status >= 500) return false;
+    return e.status != 408 && e.status != 425 && e.status != 429;
+  }
+
   /// Poll until the peer has registered an audio track, or the window expires.
   Future<CallSfuPeer?> _awaitPeerAudio(Duration wait) async {
     final deadline = DateTime.now().add(wait);
@@ -1023,7 +1049,18 @@ class CallSfuTransport {
       try {
         final p = await CallSfuApi.peer(room);
         if (p.hasAudio) return p;
-      } catch (_) {/* transient; keep polling until the deadline */}
+      } on CallSfuException catch (e) {
+        if (_isHardPeerLookupFailure(e)) {
+          _peerPollFailure = e.unavailable
+              ? SfuFailure.unavailable
+              : SfuFailure.joinFailed;
+          _peerPollFailureDetail = 'peer_${e.error}_${e.status}';
+          _peerPollAbort = true;
+          return null;
+        }
+        // A retryable response (timeout/too-early/throttle) shares the same
+        // bounded patience as a transport exception below.
+      } catch (_) {/* transient network/client failure; keep polling */}
       await Future<void>.delayed(_peerPoll);
     }
     return null;
@@ -1316,6 +1353,8 @@ class CallSfuTransport {
     _sessionId = null;
     _publishDone = false; // [CALL-PREJOIN-1]
     _pendingEarlyPeer = null; // [CALL-PREJOIN-1]
+    _peerPollFailure = null;
+    _peerPollFailureDetail = null;
     _audioSender = null;
     _audioMid = null;
     _publishedAudioTrackName = null;
