@@ -1754,6 +1754,7 @@ class CallSession {
   int? _phVideoBytes, _phVideoFramesDecoded, _phVideoFramesDropped;
   bool _firstRemoteVideoFrameReported = false;
   bool _firstRemoteVideoTrackReported = false;
+  bool _firstRemoteVoiceEnergyReported = false;
 
   // [CALL-REL-5] Recovery evidence (two consecutive healthy playout samples)
   // depends on this sampler, so callIceRecoveryV2 also starts it even if the
@@ -2501,6 +2502,33 @@ class CallSession {
       }
       if (_phTotalAudioEnergy != null && totalAudioEnergy != null) {
         energyDelta = totalAudioEnergy - _phTotalAudioEnergy!;
+      }
+
+      // The audible milestone deliberately accepts decoded silence, because a
+      // quiet person is still connected. This separate call-level event answers
+      // when non-silent remote energy first arrived. It reuses this sampler and
+      // records no audio or content.
+      if (!_firstRemoteVoiceEnergyReported &&
+          audioLevel != null &&
+          audioLevel >= 0.01 &&
+          (energyDelta == null || energyDelta > 0)) {
+        _firstRemoteVoiceEnergyReported = true;
+        Analytics.capture('call_first_remote_voice_energy', {
+          'call_id': config.room,
+          'ms_from_connected':
+              _connectedAtMs == 0 ? -1 : nowMs - _connectedAtMs,
+          'ms_from_start': _setupT0 == 0 ? -1 : nowMs - _setupT0,
+          'audio_level': audioLevel,
+          if (energyDelta != null) 'total_audio_energy_delta': energyDelta,
+          'media_path': _sfuActive
+              ? 'sfu'
+              : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none')),
+          'active_audio_route': activeAudioRoute,
+          'route_confirmed': routeConfirmed,
+          if (nativeFocusHeld != null) 'native_focus_held': nativeFocusHeld,
+          'outgoing': config.outgoing,
+          'video': config.video,
+        });
       }
 
       if (_phJbufDelaySec != null &&
