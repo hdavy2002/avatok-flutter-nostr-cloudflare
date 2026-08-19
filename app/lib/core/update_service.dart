@@ -295,7 +295,7 @@ class UpdateService {
     // Play state must take precedence over the config-only up-to-date shortcut.
     if (path == _UpdatePath.downloaded) {
       await _act(
-        path: path,
+        path: _UpdatePath.downloaded,
         trigger: 'manual',
         available: latest > 0 ? latest : (current ?? 0),
       );
