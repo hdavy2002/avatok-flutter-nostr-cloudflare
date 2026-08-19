@@ -29,13 +29,14 @@ export type ModField =
   | "listing_title" | "listing_desc"
   | "greeting" | "status"
   | "message" | "generic"
-  | "venice_image_prompt"
+  | "venice_image_prompt" | "vertex_image_prompt"
   // [VENICE-VID-1 / VENICE-MUS-1] Same rubric as venice_image_prompt (see
   // policyFor() below) — reused verbatim, not retuned, per the work order:
   // one ALLOW/BLOCK contract for every Venice media prompt gate. Music
   // arguably needs no real-person policy, but staying on the SAME rubric
   // keeps the gate uniform and cheap rather than inventing a second one.
-  | "venice_video_prompt" | "venice_music_prompt";
+  | "venice_video_prompt" | "venice_music_prompt"
+  | "vertex_video_prompt" | "vertex_music_prompt";
 
 export interface ModResult {
   safe: boolean;
@@ -115,6 +116,9 @@ function policyFor(field: ModField): string {
     // drift apart.
     case "venice_video_prompt":
     case "venice_music_prompt":
+    case "vertex_image_prompt":
+    case "vertex_video_prompt":
+    case "vertex_music_prompt":
       // Self-contained rubric (not the generic `base` text above) — the Venice
       // image-generation prompt gate has its own ALLOW/BLOCK contract. See
       // VENICE_IMAGE_PROMPT_RUBRIC's doc comment for why this is the ONE place

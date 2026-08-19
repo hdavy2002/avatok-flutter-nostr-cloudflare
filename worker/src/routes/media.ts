@@ -739,7 +739,7 @@ function artifactMediaKind(mime: string): string {
 //                           NOT public — lives in the DIGITAL bucket, never BLOBS.
 //   u/<uid>/video/…         (future) Bunny is separate, but keep the convention
 //   u/<uid>/backups/…       account exports
-function userKey(uid: string, kind: "public" | "dm" | "private", hash: string): string {
+function userKey(uid: string, kind: "public" | "dm" | "private" | "ava-readable", hash: string): string {
   return `u/${uid}/${kind}/${hash}`;
 }
 
