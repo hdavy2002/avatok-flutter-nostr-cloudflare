@@ -151,6 +151,16 @@ class RemoteConfig {
   static bool get callSfuV1 => _b('callSfuV1', false);
   static bool get callSfuAudioOnly => _b('callSfuAudioOnly', false);
 
+  /// [STREAM-CALL-PILOT-1] Staging-only switch for the optional Stream 1:1
+  /// voice transport. The client defaults to OFF so a config fetch failure can
+  /// never move a call away from the proven Cloudflare/P2P path. The worker can
+  /// add this key later; older workers simply leave the adapter dormant.
+  ///
+  /// This flag does not itself ring or join a call. The Stream adapter also
+  /// requires an explicit per-call provider decision, which keeps one call
+  /// sticky and prevents the two peers from choosing different transports.
+  static bool get streamCallPilotEnabled => _b('streamCallPilotEnabled', false);
+
   /// [CALL-PREWARM-1 2026-08-16] P1 of
   /// `Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md`. When true, the callee
   /// begins warming its media path (ICE credentials + SFU seat join) the

@@ -486,7 +486,11 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
 
   Future<void> _completeAccept(String callId, Map<String, dynamic> extra) async {
     try {
-      await PushService.acceptRingingCall(callId, fallbackExtra: extra);
+      await PushService.acceptRingingCall(
+        callId,
+        fallbackExtra: extra,
+        source: 'branded_screen',
+      );
     } catch (e, st) {
       Analytics.captureException(
         e,
@@ -705,15 +709,12 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
                         textAlign: TextAlign.center,
                         style: ADText.appTitle(c: AD.textPrimary)),
                     const SizedBox(height: 8),
-                    // [CALL-ACCEPT-GAP-1 2026-08-03] This route is now held for
-                    // the few hundred ms between the tap and CallScreen being
-                    // pushed, so it must not sit there looking frozen with every
-                    // button greyed out. Saying "Connecting…" makes the wait
-                    // legible, and it is also the exact word CallScreen shows on
-                    // its first frame — so the handover reads as one continuous
-                    // screen rather than two.
+                    // Keep the accepted surface visually stable. Internal join,
+                    // transport and playout stages are measured in telemetry;
+                    // they are not user-facing progress screens on the normal
+                    // fast path.
                     Text(_accepting
-                            ? 'Connecting…'
+                            ? 'AvaTOK audio call'
                             : 'This is an AvaTOK to AvaTOK call',
                         textAlign: TextAlign.center,
                         style: ADText.preview(c: AD.textSecondary)),

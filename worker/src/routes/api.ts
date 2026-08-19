@@ -22,6 +22,7 @@ import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { moderate, namePlausible } from "../lib/moderation";
 import { readConfig } from "./config"; // P11: profileCompletionGate
+import { prepareStreamCall } from "./stream_video_calls";
 import { CALL_RING_LIFETIME_MS, ringLifetimeMs } from "../lib/call_delivery_contract";
 import { CALL_ROOM_TOKEN_LIFETIME_MS } from "../lib/call_room_auth";
 import { receptionistNoAnswerEligibility } from "./receptionist";
@@ -252,7 +253,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const ringPathT0 = Date.now();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string };
+  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string; stream_capable?: unknown };
   // [WP3] 'dialpad' = the AvaTOK-number business channel (plan §3). Friend-
   // channel (email/chat) calls never send this and are byte-for-byte unaffected.
   const isDialpad = b.via === "dialpad";
@@ -1137,6 +1138,40 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       start: { to: b.to, call_id: b.callId, trace_id: traceId },
     });
   }
+  // [STREAM-CALL-PILOT-1] The legacy UI does not send `stream_capable`, so it
+  // remains byte-for-byte on the Cloudflare path. A future isolated Stream
+  // client opts in explicitly; this branch runs after admission, glare, and
+  // dialpad routing, but before the first true ring side effect below.
+  // A 409 that explicitly names `provider:cloudflare` is a control-plane
+  // fallback, not an error: continue through the existing ring below. Any
+  // other response is returned and the same call is never dual-rung.
+  if (b.stream_capable === true) {
+    const streamResponse = await prepareStreamCall({
+      env,
+      config: callPolicyConfig,
+      callerUid: ctx.uid,
+      calleeUid: callTo,
+      callId: callIdStr,
+      clientSupportsStream: true,
+      scope: "one_to_one",
+      media: b.kind === "video" ? "video" : "audio",
+      idempotencyKey: req.headers.get("idempotency-key")?.trim() || null,
+      traceId,
+      ctx: execCtx,
+      admissionAlreadyGranted: true,
+    });
+    if (streamResponse.status !== 409) {
+      await settleRingPath();
+      return streamResponse;
+    }
+    const streamBody = await streamResponse.clone().json().catch(() => null) as { provider?: unknown } | null;
+    if (streamBody?.provider !== "cloudflare") {
+      await settleRingPath();
+      return streamResponse;
+    }
+    // Provider authority deliberately selected legacy. Continue below; no
+    // Stream ring was started and the current Cloudflare code remains owner.
+  }
   // Generate a cryptographically secure token + expiration for the true ringing receipt
   const ringReceiptToken = crypto.randomUUID();
   // [CALL-NATIVE-DECLINE-1] A distinct capability for the Android notification
@@ -1212,6 +1247,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
         callId: b.callId, callerUid: ctx.uid, calleeUid: b.to,
+        mediaKind: b.kind === "video" ? "video" : "audio",
         // Ring credentials, merged in from the old second /control hop.
         token: ringReceiptToken, nativeActionToken, expiresAt,
         // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.

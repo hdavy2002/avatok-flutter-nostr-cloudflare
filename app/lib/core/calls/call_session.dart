@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:crypto/crypto.dart' show sha1; // [CALL-RESTORE-1] stable peer id
+import 'package:crypto/crypto.dart'
+    show sha1; // [CALL-RESTORE-1] stable peer id
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -15,7 +16,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../analytics.dart';
 import '../account_storage.dart';
 import '../api_auth.dart';
-import '../audio_tuning.dart' as audio_tuning; // [CALL-SURVIVE-1] shared Opus tuner
+import '../audio_tuning.dart'
+    as audio_tuning; // [CALL-SURVIVE-1] shared Opus tuner
 import '../ava_log.dart';
 import '../call_log_store.dart';
 import '../call_recording/call_recording_model.dart';
@@ -48,6 +50,8 @@ import 'call_sfu_transport.dart';
 // import — no realtimekit_core type reaches call_session.dart.
 import 'rtc/realtimekit_provider.dart';
 import 'rtc/rtc_provider.dart';
+import 'rtc/stream_call_api.dart';
+import 'rtc/stream_call_provider.dart';
 
 /// Coarse call lifecycle exposed via [CallSession.phase]. Wave 2 (PiP/pill,
 /// reconnect, Gemini parity) keys off THIS enum; the full call view also reads
@@ -67,10 +71,12 @@ class CallSessionConfig {
   final String ringbackUrl;
   final String? teamId;
   final int? teamSlot;
+
   /// [TRACE-ID-1] Correlation id minted at the dial boundary (caller) or carried
   /// in the incoming push (callee). '' when unknown → the session mints one so a
   /// trace always exists. Rides every call event + the reliability score.
   final String traceId;
+
   /// [DIALPAD-BIZ-CALLS Phase C] true = this call was placed through the
   /// business (dialpad) channel (place_1to1_call.dart, via:'dialpad'). While
   /// RemoteConfig.businessCallUx is on, business OUTGOING AUDIO calls use the
@@ -78,6 +84,7 @@ class CallSessionConfig {
   /// of the generic call-outcome menu — otherwise the menu pre-empts the
   /// 'no-answer' phase and the WP3 routing probe never runs.
   final bool business;
+
   /// [INSTANT-CALL-MOUNT-1] true = the launch site mounted the call screen
   /// OPTIMISTICALLY (the instant the user tapped), BEFORE the POST /api/call
   /// round-trip resolved, so tapping the call icon feels instant. In this mode
@@ -89,11 +96,19 @@ class CallSessionConfig {
   /// hears ringback into the void ([MULTIACCT-4] guarantee is preserved even
   /// when RemoteConfig.receptTakeoverGuard is off).
   final bool deferRing;
+
   /// Silent transport prewarm identity carried from the incoming ring. Empty /
   /// null means the normal cold path and preserves older callers.
   final String prewarmNonce;
   final int? prewarmGeneration;
   final String prewarmNetworkIdentity;
+
+  /// Provider chosen by the server before ringing. Existing call sites default
+  /// to Cloudflare/P2P; Stream is only meaningful when the staging pilot gate
+  /// and a typed Stream ticket are both present. The value is immutable so a
+  /// live call cannot silently migrate providers halfway through setup.
+  final CallMediaProvider mediaProvider;
+  final StreamCallJoinTicket? streamTicket;
   const CallSessionConfig({
     required this.room,
     required this.title,
@@ -110,6 +125,8 @@ class CallSessionConfig {
     this.prewarmNonce = '',
     this.prewarmGeneration,
     this.prewarmNetworkIdentity = '',
+    this.mediaProvider = CallMediaProvider.cloudflare,
+    this.streamTicket,
   });
 }
 
@@ -158,16 +175,19 @@ const CallSessionToken kCallSessionToken = CallSessionToken._();
 // not exist when the config is constructed. Keying by call id lets whichever
 // code path learns it first deposit it, and lets a reconnect pick it up later.
 final Map<String, String> _kRoomTokens = <String, String>{};
-final Map<String, Completer<String>> _kRoomTokenWaiters = <String, Completer<String>>{};
+final Map<String, Completer<String>> _kRoomTokenWaiters =
+    <String, Completer<String>>{};
 const FlutterSecureStorage _kRoomTokenStore = FlutterSecureStorage(
   mOptions: MacOsOptions(useDataProtectionKeyChain: false),
 );
 
-String _roomTokenStorageKey(String callId) => scopedKey('call_room_token_v1_$callId');
+String _roomTokenStorageKey(String callId) =>
+    scopedKey('call_room_token_v1_$callId');
 
 Future<void> _persistRoomToken(String callId, String token) async {
   try {
-    await _kRoomTokenStore.write(key: _roomTokenStorageKey(callId), value: token);
+    await _kRoomTokenStore.write(
+        key: _roomTokenStorageKey(callId), value: token);
   } catch (_) {/* in-memory credential still supports this process */}
 }
 
@@ -175,7 +195,8 @@ Future<String> _restoreRoomToken(String callId) async {
   final have = _kRoomTokens[callId];
   if (have != null && have.isNotEmpty) return have;
   try {
-    final stored = await _kRoomTokenStore.read(key: _roomTokenStorageKey(callId));
+    final stored =
+        await _kRoomTokenStore.read(key: _roomTokenStorageKey(callId));
     if (stored != null && stored.isNotEmpty) {
       _kRoomTokens[callId] = stored;
       return stored;
@@ -233,7 +254,9 @@ bool _depositRoomToken(String callId, String token) {
 /// Drop a finished call's credential. Called from teardown.
 void forgetCallRoomToken(String callId) {
   _kRoomTokens.remove(callId);
-  unawaited(_kRoomTokenStore.delete(key: _roomTokenStorageKey(callId)).catchError((_) {}));
+  unawaited(_kRoomTokenStore
+      .delete(key: _roomTokenStorageKey(callId))
+      .catchError((_) {}));
   final w = _kRoomTokenWaiters.remove(callId);
   if (w != null && !w.isCompleted) w.complete('');
 }
@@ -265,14 +288,19 @@ Future<String> _awaitRoomToken(String callId, Duration timeout) {
 class CallNetStats {
   /// Round-trip time in ms (from the selected candidate pair), -1 if unknown.
   final int rttMs;
+
   /// Inbound (down) bitrate in kbps, computed from the byte delta / interval.
   final int downKbps;
+
   /// Outbound (up) bitrate in kbps.
   final int upKbps;
+
   /// Cumulative bytes sent + received this call (for the "data used" readout).
   final int bytesTotal;
+
   /// Inbound packet-loss percentage (0–100), -1 if unknown.
   final double lossPct;
+
   /// Discrete quality bucket 0 (worst) … 4 (best), derived from rtt + loss.
   final int quality;
   final double? estMos;
@@ -325,15 +353,19 @@ class RecoveryAttempt {
   final int startedAtMs;
   final int attempt; // 1-based ordinal within this call
   bool completed = false;
+
   /// True once THIS endpoint was chosen (by the DO) as the ICE-restart offerer
   /// for this attempt. Either side may have REQUESTED recovery (REL-3 fix);
   /// only the chosen offerer restarts.
   bool isOfferer = false;
+
   /// Consecutive healthy playout samples observed by the OFFERER since this
   /// attempt's ICE restart went out. Completion requires >= 2 (plan §7.3.5).
   int healthySamplesSinceStart = 0;
+
   /// True once the peer sent `recovery-ready` for this attempt id.
   bool peerReady = false;
+
   /// True once THIS (non-offerer) endpoint has sent its own `recovery-ready`
   /// for this attempt — guards against sending it more than once.
   bool selfReadySent = false;
@@ -351,10 +383,12 @@ class RecoveryAttempt {
 /// Distinct from [RecoveryAttempt] because it owns a SECOND, separate
 /// `RTCPeerConnection` that must coexist with the live `_pc` until cutover.
 class RelayMigrationAttempt {
-  final String id; // UUID, sent in signaling — NO SDP secrets beyond the SDP itself
+  final String
+      id; // UUID, sent in signaling — NO SDP secrets beyond the SDP itself
   final int startedAtMs;
   RTCPeerConnection? newPc;
   bool remoteTrackSeen = false;
+
   /// [CALL-REL-6 SHOULD-FIX-4] The new PC's remote stream, captured the
   /// moment its `onTrack` first fires. Cutover repoints `remoteRenderer` to
   /// THIS stream directly instead of relying on a fresh `onTrack` firing
@@ -393,6 +427,7 @@ class CallSession {
   // ── Renderers (owned; survive view detach — disposed only in hangup) ────────
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+
   /// Our peer id in the CallRoom DO (the `?id=` on the signalling socket, which
   /// the DO stores as the hibernation tag).
   ///
@@ -441,7 +476,8 @@ class CallSession {
       // Truncated SHA-1 → 10 hex chars. Not security-sensitive (the DO trusts the
       // room id, not this tag); it only needs to be stable and collision-free
       // within a room.
-      final digest = sha1.convert(utf8.encode(seed)).toString().substring(0, 10);
+      final digest =
+          sha1.convert(utf8.encode(seed)).toString().substring(0, 10);
       _myId = 'app-$digest';
     } catch (_) {/* keep the random fallback — see the doc above */}
   }
@@ -449,7 +485,9 @@ class CallSession {
   bool _stablePeerIdAdopted = false;
 
   // ── Public notifiers (listen; never dispose from a view) ────────────────────
-  final ValueNotifier<CallPhase> phase = ValueNotifier<CallPhase>(CallPhase.connecting);
+  final ValueNotifier<CallPhase> phase =
+      ValueNotifier<CallPhase>(CallPhase.connecting);
+
   /// Fine-grained UI label string (the old `_phase`). Values: ringing |
   /// connecting | connected | declined | busy | no-answer | ava-countdown |
   /// receptionist-connecting | receptionist | receptionist-wrapup | ended.
@@ -460,6 +498,7 @@ class CallSession {
   final ValueNotifier<bool> speakerOn = ValueNotifier<bool>(true);
   final ValueNotifier<bool> cameraOn = ValueNotifier<bool>(true);
   final ValueNotifier<bool> videoActive = ValueNotifier<bool>(true);
+
   /// [CALL-VIDEO-FIX-1 2026-08-17] True while a mid-call camera-on is
   /// actually in flight on the SFU path (getUserMedia through a confirmed
   /// publish), false the rest of the time. Exists so the UI has an honest
@@ -471,15 +510,17 @@ class CallSession {
   /// (`_restartWithVideo`'s non-SFU branch) is unchanged and still sets the
   /// flags optimistically, per this fix's scope.
   final ValueNotifier<bool> videoUpgrading = ValueNotifier<bool>(false);
+
   /// Remote video is separate from [videoActive], which represents OUR camera.
   /// A call can have local video enabled while the peer's video negotiation or
   /// renderer is unavailable.
   final ValueNotifier<bool> remoteVideoActive = ValueNotifier<bool>(false);
+
   /// `waiting` means negotiation is still in progress, `active` means a remote
   /// video track arrived, and `unavailable` means the call is audio-connected
   /// but remote video could not be established.
-  final ValueNotifier<String> remoteVideoStatus =
-      ValueNotifier<String>('idle');
+  final ValueNotifier<String> remoteVideoStatus = ValueNotifier<String>('idle');
+
   /// [CALL-VIDEO-FIX-1 2026-08-17] Wall-clock ms when the remote VIDEO track
   /// last attached, so `remoteRenderer.onFirstFrameRendered` can report
   /// `ms_from_attach` on `remote_video_first_frame`. Set in
@@ -488,10 +529,12 @@ class CallSession {
   /// a stale-but-harmless gap rather than crashing on a null.
   int? _remoteVideoAttachedAtMs;
   final ValueNotifier<bool> onCellularHold = ValueNotifier<bool>(false);
+
   /// SEAM for WS-D/C: true while the peer's signaling socket is gone but media
   /// may still be flowing (today: set on 'peer-left', cleared on reconnect /
   /// 'welcome'). WS-D wires the grace-period semantics onto it.
   final ValueNotifier<bool> peerAway = ValueNotifier<bool>(false);
+
   /// [CALLREC-PEER-1] True while the OTHER party has told us their device is
   /// recording this call. Consent surface, spec §4 — the peer gets no other
   /// warning, and twelve US states are all-party consent, so this is the thing
@@ -503,6 +546,7 @@ class CallSession {
   /// build on the SENDER's side, and so a client with `callRecordingEnabled`
   /// off — which can never record — can still show that it is BEING recorded.
   final ValueNotifier<bool> peerRecording = ValueNotifier<bool>(false);
+
   /// [CALLREC-PEER-1] The last value we announced to the peer, so an unchanged
   /// store notification does not put a frame on the wire.
   bool _lastRecordingAnnounced = false;
@@ -544,14 +588,17 @@ class CallSession {
   /// and exactly one resume — and the resume only happens once EVERY hold is
   /// gone. See [_syncRecorderHold].
   bool _recorderHeld = false;
+
   /// [CALLREC-PEER-1] Our listener on the recording store, held so it can be
   /// removed in teardown — the store is a process-wide singleton, so a session
   /// that forgot to detach would keep announcing after its call had ended.
   VoidCallback? _recordingListener;
+
   /// [CALL-NETHUD-1] Live network health for the in-call HUD. Updated on every
   /// media-watchdog tick from the same getStats() poll (no second poller).
   final ValueNotifier<CallNetStats> netStats =
       ValueNotifier<CallNetStats>(CallNetStats.empty);
+
   /// Generic "session changed" tick so a view can rebuild on anything (e.g. the
   /// receptionist duo appearing). Bumped whenever notable non-notifier state moves.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
@@ -598,7 +645,11 @@ class CallSession {
   // the sole owner (default single-session behaviour, unchanged).
   bool Function()? anotherLiveSessionOwnsRoom;
   bool get _anotherOwns {
-    try { return anotherLiveSessionOwnsRoom?.call() ?? false; } catch (_) { return false; }
+    try {
+      return anotherLiveSessionOwnsRoom?.call() ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ── Internal call state (ex-_CallScreenState fields, verbatim) ──────────────
@@ -666,7 +717,8 @@ class CallSession {
   /// live read of the borrower's own ownership flag, never a captured constant.
   void loanCaptureStream(bool Function() borrowerStillOwns) {
     _captureLoanCheck = borrowerStillOwns;
-    Analytics.capture('addcall_capture_stream_loaned', {'call_id': config.room});
+    Analytics.capture(
+        'addcall_capture_stream_loaned', {'call_id': config.room});
   }
 
   /// Take disposal responsibility back (escalation rolled back). The borrower
@@ -674,7 +726,8 @@ class CallSession {
   void endCaptureStreamLoan() {
     if (_captureLoanCheck == null) return;
     _captureLoanCheck = null;
-    Analytics.capture('addcall_capture_stream_returned', {'call_id': config.room});
+    Analytics.capture(
+        'addcall_capture_stream_returned', {'call_id': config.room});
   }
 
   /// [ADDCALL-2-UI] Re-establish this call's native audio session after an
@@ -780,6 +833,16 @@ class CallSession {
   bool _teardownStarted = false; // [CALL-MENU-TEARDOWN-1] closes the async race
   Future<void>? _teardownFuture;
   bool _started = false; // guard: start() runs exactly once (re-attach safe)
+  // [STREAM-CALL-PILOT-2] Optimistic mounts must not open a Cloudflare
+  // RTCPeerConnection before the placement response identifies the provider.
+  // The decision is immutable for this session; a Stream decision never falls
+  // back to Cloudflare after the server has selected/rung Stream.
+  CallProviderDecision? _providerDecision;
+  bool _mediaBooted = false;
+  bool _mediaBootStarting = false;
+  bool _setupReadyForMedia = false;
+  bool _mediaStartRequested = false;
+  bool _prejoinRequestedBeforeMedia = false;
   String? _remoteId;
   List<Map<String, dynamic>> _ice = kIceServers;
   Timer? _timer;
@@ -818,6 +881,25 @@ class CallSession {
   // records the order the ladder actually ran in.
   final Map<String, int> _setupStages = <String, int>{};
   int _setupT0 = 0;
+  int? _answerAtMs;
+  int _lastSetupStageAtMs = 0;
+  bool _setupSummaryReported = false;
+
+  String get _performanceProvider => config.mediaProvider.wire;
+  String get _performanceRole => config.outgoing ? 'caller' : 'callee';
+
+  void _noteAnswerBoundary(String source) {
+    if (_answerAtMs != null) return;
+    _answerAtMs = DateTime.now().millisecondsSinceEpoch;
+    Analytics.capture('call_answer_observed', {
+      'call_id': config.room,
+      'call_trace_id': _traceId,
+      'provider': _performanceProvider,
+      'role': _performanceRole,
+      'source': source,
+      'ms_from_session_start': _setupT0 == 0 ? -1 : _answerAtMs! - _setupT0,
+    });
+  }
 
   /// Record that setup stage [name] just completed. First writer wins: a stage
   /// that legitimately repeats (an SFU reconnect re-runs the whole ladder) must
@@ -825,8 +907,46 @@ class CallSession {
   /// one this issue is about.
   void _stage(String name) {
     if (_setupT0 == 0) return;
-    _setupStages.putIfAbsent(
-        name, () => DateTime.now().millisecondsSinceEpoch - _setupT0);
+    if (_setupStages.containsKey(name)) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final elapsed = now - _setupT0;
+    _setupStages[name] = elapsed;
+    final delta =
+        _lastSetupStageAtMs == 0 ? elapsed : now - _lastSetupStageAtMs;
+    _lastSetupStageAtMs = now;
+    Analytics.capture('call_setup_stage', {
+      'call_id': config.room,
+      'call_trace_id': _traceId,
+      'provider': _performanceProvider,
+      'media_mode': config.video ? 'video' : 'audio',
+      'role': _performanceRole,
+      'stage': name,
+      'elapsed_from_start_ms': elapsed,
+      'stage_delta_ms': delta,
+      if (_answerAtMs != null) 'elapsed_from_answer_ms': now - _answerAtMs!,
+    });
+  }
+
+  void _emitSetupSummary(String outcome) {
+    if (_setupSummaryReported || _setupT0 == 0) return;
+    _setupSummaryReported = true;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final props = <String, Object>{
+      'call_id': config.room,
+      'call_trace_id': _traceId,
+      'provider': _performanceProvider,
+      'media_mode': config.video ? 'video' : 'audio',
+      'role': _performanceRole,
+      'outcome': outcome,
+      'elapsed_from_start_ms': now - _setupT0,
+      if (_answerAtMs != null) 'elapsed_from_answer_ms': now - _answerAtMs!,
+      'connected': _connected,
+      'first_audio_received': _firstAudioReported && audioFlowing.value,
+      'audible_ready': audibleReady.value,
+      'stages_seen': _setupStages.keys.join(','),
+    };
+    _setupStages.forEach((stage, ms) => props['stage_$stage'] = ms);
+    Analytics.capture('call_setup_summary', props);
   }
 
   CallSfuTransport? _sfu;
@@ -835,6 +955,7 @@ class CallSession {
   bool _sfuAborted = false;
   bool _sfuDecider = false;
   bool _sfuReconnectInFlight = false;
+
   /// True while `_stream` is the empty protocol-silence stream used by an
   /// incoming prewarmed SFU call. Cleared only after the real mic replaces the
   /// retained SFU sender or the call falls back to a cold transport.
@@ -848,11 +969,13 @@ class CallSession {
   // or the call ending while still ringing). Never touched by the callee path
   // or by `reconnect()`.
   CallSfuTransport? _prejoinedSfu;
+
   /// The in-flight (or already-completed) `connectPublish()` call on
   /// [_prejoinedSfu] — `null` on success, a failed [CallSfuResult] otherwise.
   /// `_startSfuMedia` awaits this before adopting, in case accept happens
   /// before the ring-time publish has actually finished.
   Future<CallSfuResult?>? _prejoinPublishFuture;
+
   /// Guards [_maybeStartCallerPrejoin] to at most one attempt per call —
   /// idempotent against being reachable from more than one signalling frame.
   bool _prejoinStarted = false;
@@ -900,6 +1023,13 @@ class CallSession {
   // `remoteTrackEvents`, so subscribing to both would deliver `trackAdded`
   // twice.
   StreamSubscription<RtcSessionEvent>? _rtkEvents;
+  // [STREAM-CALL-PILOT-3] Stream's 1:1 audio leg is intentionally separate
+  // from RealtimeKit and the legacy PeerConnection. Provider selection is
+  // sticky for the whole call, so there is no hidden mid-call fallback.
+  RtcSession? _streamRtc;
+  StreamSubscription<RtcSessionEvent>? _streamRtcEvents;
+  bool _streamRtcActive = false;
+  bool _streamRtcStarting = false;
   // [CALL-SURVIVE-3] Best-effort local/remote network-class flags used to
   // gate the conservative cellular resolution/bitrate preset. Refreshed by
   // [_refreshAndAnnounceNetClass] / [_isLikelyCellular]; remote value arrives
@@ -922,9 +1052,11 @@ class CallSession {
   // instead of waiting for a delayed FCM backstop or the full ring timeout.
   Timer? _handoffAuthorityPoll;
   bool _handoffAuthorityPollInFlight = false;
+
   /// [CALL-CONNECT-WATCHDOG-1] Direction-agnostic backstop against an infinite
   /// "Connecting…". Armed in [start], cancelled on connect and in [_teardown].
   Timer? _connectWatchdog;
+
   /// [AVACALL-WATCHDOG-2] FAST connect-timeout for the accepted (callee) side.
   /// The 45s [_connectWatchdog] above is the last-resort backstop, but a callee
   /// who accepted a call whose caller had ALREADY cancelled (2026-07-20 incident)
@@ -954,13 +1086,14 @@ class CallSession {
   // proxy for first-audio). Until then we stay 'receptionist-connecting'
   // ("Connecting you to Ava…"). Backward-compatible: if no ack ever arrives the
   // watchdog retries once, then surfaces an honest 'receptionist-unavailable'.
-  bool _avaLiveGateOpen = false;      // true once the ava-live ack has been seen
-  bool _avaLiveConnecting = false;    // true while we're waiting for the ack
-  int _avaLiveConnectAtMs = 0;        // when we entered receptionist-connecting
-  int _avaLiveAttempt = 0;            // 1 on first wait, 2 after the single retry
-  Timer? _avaLiveWatchdog;            // fires if no ack within the timeout window
-  VoidCallback? _avaLevelListener;    // listens to ReceptionistCall.avaLevel
-  ReceptionistCall? _avaLevelSource;  // the call we attached _avaLevelListener to
+  bool _avaLiveGateOpen = false; // true once the ava-live ack has been seen
+  bool _avaLiveConnecting = false; // true while we're waiting for the ack
+  int _avaLiveConnectAtMs = 0; // when we entered receptionist-connecting
+  int _avaLiveAttempt = 0; // 1 on first wait, 2 after the single retry
+  Timer? _avaLiveWatchdog; // fires if no ack within the timeout window
+  VoidCallback? _avaLevelListener; // listens to ReceptionistCall.avaLevel
+  ReceptionistCall?
+      _avaLevelSource; // the call we attached _avaLevelListener to
   // Fallback window only — the primary gate is now the explicit 'live' status
   // (ReceptionistCall's first inbound audio frame). Widened from 4000ms because
   // the unreachable path's dial + Gemini-connect + first-audio latency routinely
@@ -1022,13 +1155,15 @@ class CallSession {
   // Populated from the 'busy' call-status only when the server sends it; null /
   // false ⇒ old cold "User is busy" behaviour (the card never renders). See
   // Specs/CALL-MESSAGING-RECEPTIONIST-REMEDIATION-PLAN.md §3.1.
-  String? _busyReason;                 // active_call | receptionist | do_not_disturb
-  bool _busyReceptionistEnabled = false; // gates the "Leave a message for Ava" button
-  String _busyPronoun = 'they';        // he | she | they (best-effort, defaults neutral)
-  bool _busyNotifyInFlight = false;    // "Notify me" register POST in flight
-  bool _busyNotifyRegistered = false;  // "Notify me" succeeded (button flips)
-  bool _busyCardShownLogged = false;   // one-shot busy_card_shown telemetry guard
-  Timer? _busyCardTimeout;             // abandons an untouched busy card after 60s
+  String? _busyReason; // active_call | receptionist | do_not_disturb
+  bool _busyReceptionistEnabled =
+      false; // gates the "Leave a message for Ava" button
+  String _busyPronoun =
+      'they'; // he | she | they (best-effort, defaults neutral)
+  bool _busyNotifyInFlight = false; // "Notify me" register POST in flight
+  bool _busyNotifyRegistered = false; // "Notify me" succeeded (button flips)
+  bool _busyCardShownLogged = false; // one-shot busy_card_shown telemetry guard
+  Timer? _busyCardTimeout; // abandons an untouched busy card after 60s
   StreamSubscription? _statusSub;
   bool _takeoverGuard = false;
   bool _silentTransportPrewarming = false;
@@ -1134,7 +1269,8 @@ class CallSession {
   /// Emit the transport rung of the accept → transport → media funnel exactly
   /// once. Deliberately NOT guarded on `_connected` or `_ended`: the whole point
   /// is to observe calls that never reach either.
-  void _noteTransportConnected(RTCPeerConnectionState s, {bool postMigration = false}) {
+  void _noteTransportConnected(RTCPeerConnectionState s,
+      {bool postMigration = false}) {
     if (_transportConnectedLogged) return;
     if (s != RTCPeerConnectionState.RTCPeerConnectionStateConnected) return;
     _transportConnectedLogged = true;
@@ -1151,6 +1287,7 @@ class CallSession {
       });
     } catch (_) {/* telemetry must never affect a call */}
   }
+
   bool _weOffered = false;
   int _iceRestarts = 0;
   Timer? _failTimer;
@@ -1200,6 +1337,7 @@ class CallSession {
   int _sfuRetries = 0;
   Timer? _sfuRetryTimer;
   bool _sfuRetryPending = false;
+
   /// [CALL-SFU-REPULL-1 2026-08-06] A peer `sfu-rejoined` that arrived while we
   /// were mid-rejoin ourselves, to be drained once our own session is up.
   bool _sfuPeerRepullPending = false;
@@ -1305,7 +1443,8 @@ class CallSession {
         );
         if (result != null) {
           activeRoute = result.active.name;
-          routeConfirmed = result.exact && result.fallbackReason != 'invoke_failed';
+          routeConfirmed =
+              result.exact && result.fallbackReason != 'invoke_failed';
         }
       } else if (RemoteConfig.callAudioControllerV2) {
         final result = await NativeVoiceAudio.instance.selectRoute(
@@ -1313,7 +1452,8 @@ class CallSession {
           source: attempt == 1 ? 'focus_$reason' : 'focus_${reason}_retry',
         );
         activeRoute = result.active.name;
-        routeConfirmed = result.exact && result.fallbackReason != 'invoke_failed';
+        routeConfirmed =
+            result.exact && result.fallbackReason != 'invoke_failed';
       } else {
         await Helper.setSpeakerphoneOn(_speaker);
         if (NativeVoiceAudio.isSupported) {
@@ -1448,6 +1588,7 @@ class CallSession {
   Timer? _reconnectRetryTimer;
   Timer? _reconnectGiveUpTimer;
   Timer? _pingTimer;
+
   /// [CALL-DEADPEER-1 2026-08-03] (audit H3) Keepalive pings sent with no
   /// inbound traffic seen since. Reset by ANY frame from the server, not only by
   /// a pong — any traffic at all proves the socket is alive, and counting a busy
@@ -1495,7 +1636,8 @@ class CallSession {
     _lastInboundAudioBytes = null;
     _mediaStalledFlagged = false;
     _mediaStallStartMs = null;
-    _mediaWatchTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollMediaWatchdog());
+    _mediaWatchTimer =
+        Timer.periodic(const Duration(seconds: 5), (_) => _pollMediaWatchdog());
   }
 
   void _stopMediaWatchdog() {
@@ -1566,8 +1708,10 @@ class CallSession {
           // Prefer the nominated/selected pair's RTT (seconds → ms).
           final selected = v['selected'] == true || v['nominated'] == true;
           final rtt = v['currentRoundTripTime'];
-          if (selected && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
-          else if (rttMs < 0 && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
+          if (selected && rtt is num)
+            rttMs = (rtt.toDouble() * 1000).round();
+          else if (rttMs < 0 && rtt is num)
+            rttMs = (rtt.toDouble() * 1000).round();
           // [CALL-VIDEO-LOSS-1] Only the SELECTED pair's bandwidth estimate is
           // meaningful. This used to be last-one-wins across every pair, so on a
           // multi-pair connection the BWE could come from a pair carrying no
@@ -1597,7 +1741,9 @@ class CallSession {
           availableOutgoingKbps: availableOutgoingKbps,
           lossPct: inboundPacketsRecv + inboundPacketsLost == 0
               ? null
-              : inboundPacketsLost * 100.0 / (inboundPacketsRecv + inboundPacketsLost),
+              : inboundPacketsLost *
+                  100.0 /
+                  (inboundPacketsRecv + inboundPacketsLost),
           rttMs: rttMs,
         ));
       }
@@ -1638,7 +1784,8 @@ class CallSession {
           _lastOutVideoPacketsSent = outVideoPacketsSent;
           _lastOutVideoPacketsLost = outVideoPacketsLost;
         }
-        unawaited(_adaptVideoForNetwork(lossPct: sendVideoLossPct, rttMs: rttMs));
+        unawaited(
+            _adaptVideoForNetwork(lossPct: sendVideoLossPct, rttMs: rttMs));
       }
       if (!sawInboundAudio) return; // no inbound audio stat yet — don't judge
       final prev = _lastInboundAudioBytes;
@@ -1654,7 +1801,9 @@ class CallSession {
           // Recovered.
           final stalledForS = _mediaStallStartMs == null
               ? 0
-              : ((DateTime.now().millisecondsSinceEpoch - _mediaStallStartMs!) / 1000).round();
+              : ((DateTime.now().millisecondsSinceEpoch - _mediaStallStartMs!) /
+                      1000)
+                  .round();
           Analytics.capture('call_media_recovered', {
             'call_id': config.room,
             'stalled_for_s': stalledForS,
@@ -1665,7 +1814,8 @@ class CallSession {
         }
         _telemetry.mediaFlowState(
           state: prev == null ? 'rtp_observed' : 'rtp_flowing',
-          inboundAudioBytesDelta: prev == null ? null : inboundAudioBytes - prev,
+          inboundAudioBytesDelta:
+              prev == null ? null : inboundAudioBytes - prev,
         );
         _mediaStaleCount = 0;
         _mediaStalledFlagged = false;
@@ -1821,6 +1971,7 @@ class CallSession {
   // sampler, which would pay that cost forever.
   Timer? _firstAudioProbe;
   bool _firstAudioReported = false;
+  bool _firstOutboundAudioReported = false;
   int _firstAudioProbeStartMs = 0;
   static const Duration _kFirstAudioProbeInterval = Duration(milliseconds: 200);
 
@@ -1867,10 +2018,28 @@ class CallSession {
     try {
       final stats = await pc.getStats();
       for (final s in stats) {
-        if (s.type != 'inbound-rtp') continue;
         final v = s.values;
         final kind = (v['kind'] ?? v['mediaType'])?.toString();
         if (kind != 'audio') continue;
+        if (s.type == 'outbound-rtp' && !_firstOutboundAudioReported) {
+          final sent = v['bytesSent'];
+          if (sent is num && sent > 0) {
+            _firstOutboundAudioReported = true;
+            final now = DateTime.now().millisecondsSinceEpoch;
+            Analytics.capture('call_local_first_audio_published', {
+              'call_id': config.room,
+              'call_trace_id': _traceId,
+              'provider': _performanceProvider,
+              'role': _performanceRole,
+              'media_mode': config.video ? 'video' : 'audio',
+              'bytes_sent': sent.toInt(),
+              'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
+              if (_answerAtMs != null) 'ms_from_answer': now - _answerAtMs!,
+            });
+          }
+          continue;
+        }
+        if (s.type != 'inbound-rtp') continue;
         found = true;
         final b = v['bytesReceived'];
         if (b is num && b.toInt() > bytes) bytes = b.toInt();
@@ -1904,11 +2073,16 @@ class CallSession {
     }
     final props = <String, Object>{
       'call_id': config.room,
+      'call_trace_id': _traceId,
+      'provider': _performanceProvider,
+      'role': _performanceRole,
+      'media_mode': config.video ? 'video' : 'audio',
       'outcome': outcome, // 'audio' | 'timeout' | 'ended'
       'got_audio': outcome == 'audio',
       'bytes_received': bytes,
       'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
       'ms_from_connected': _connectedAtMs == 0 ? -1 : now - _connectedAtMs,
+      if (_answerAtMs != null) 'ms_from_answer': now - _answerAtMs!,
       // [CALL-RTK-4] 'rtk' is checked FIRST: an RTK call has no `_pc` at all, so
       // without this arm it would report as 'none'/'direct' — a media path that
       // is not the one carrying the audio.
@@ -2005,7 +2179,8 @@ class CallSession {
   // must still reach [audibleReady]; a flat-zero level is legitimate silence,
   // not "not audible".
   Timer? _audiblePlayoutProbe;
-  static const Duration _kAudiblePlayoutProbeInterval = Duration(milliseconds: 200);
+  static const Duration _kAudiblePlayoutProbeInterval =
+      Duration(milliseconds: 200);
   int? _lastPlayoutSamples;
   int _audiblePlayoutAttempts = 0;
 
@@ -2058,7 +2233,8 @@ class CallSession {
         final kind = (v['kind'] ?? v['mediaType'])?.toString();
         if (kind != 'audio') continue;
         sawAudioRow = true;
-        final samplesRaw = v['totalSamplesReceived'] ?? v['jitterBufferEmittedCount'];
+        final samplesRaw =
+            v['totalSamplesReceived'] ?? v['jitterBufferEmittedCount'];
         if (samplesRaw is num) {
           _playoutCountersSupported = true;
           final samples = samplesRaw.toInt();
@@ -2121,7 +2297,8 @@ class CallSession {
       _audibleSafetyTimer?.cancel();
       _audibleSafetyTimer = Timer(_kAudibleSafetyTimeout, () {
         if (_ended || audibleReady.value) return;
-        _markAudibleReady(viaTimeout: true, flagOff: false, evidence: 'timeout');
+        _markAudibleReady(
+            viaTimeout: true, flagOff: false, evidence: 'timeout');
       });
     } else {
       // [CALL-AUDIBLE-2] SFU/P2P `_pc` path: playout evidence is the ground
@@ -2140,7 +2317,8 @@ class CallSession {
     if (!audioFlowing.value) return;
     final noStatsPath = _rtkActive || _pc == null;
     if (noStatsPath) {
-      _markAudibleReady(viaTimeout: false, flagOff: false, evidence: 'rtk_track');
+      _markAudibleReady(
+          viaTimeout: false, flagOff: false, evidence: 'rtk_track');
       return;
     }
     // pc path: only accept bytes evidence once the playout probe has
@@ -2155,7 +2333,8 @@ class CallSession {
   void _markAudibleReady({
     required bool viaTimeout,
     required bool flagOff,
-    required String evidence, // 'playout' | 'bytes_fallback' | 'rtk_track' | 'timeout' | 'flag_off'
+    required String
+        evidence, // 'playout' | 'bytes_fallback' | 'rtk_track' | 'timeout' | 'flag_off'
   }) {
     if (audibleReady.value) return;
     audibleReady.value = true;
@@ -2170,8 +2349,13 @@ class CallSession {
       final now = DateTime.now().millisecondsSinceEpoch;
       final props = <String, Object>{
         'call_id': config.room,
+        'call_trace_id': _traceId,
+        'provider': _performanceProvider,
+        'role': _performanceRole,
+        'media_mode': config.video ? 'video' : 'audio',
         'ms_from_connected': _connectedAtMs == 0 ? -1 : now - _connectedAtMs,
         'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
+        if (_answerAtMs != null) 'ms_from_answer': now - _answerAtMs!,
         'media_path': _rtkActive
             ? 'rtk'
             : (_sfuActive
@@ -2184,7 +2368,9 @@ class CallSession {
         // arrived" (ship-gate rule 3).
         'evidence': evidence,
       };
-      Analytics.capture(viaTimeout ? 'call_audible_timeout' : 'call_audible_ready', props);
+      Analytics.capture(
+          viaTimeout ? 'call_audible_timeout' : 'call_audible_ready', props);
+      _emitSetupSummary(viaTimeout ? 'audible_timeout' : 'audible_ready');
     }
     // [CALL-AUDIBLE-1] The connection haptic moves here from the `_connected`
     // block(s) — it is UI feedback, not one of the load-bearing side effects
@@ -2265,7 +2451,8 @@ class CallSession {
               // track id when several exist: keep the one whose framesDecoded
               // moved (this loop may see a dead m-section first).
               final ti = (v['trackIdentifier'] ?? v['trackId'])?.toString();
-              if (ti != null && ti.isNotEmpty &&
+              if (ti != null &&
+                  ti.isNotEmpty &&
                   (videoTrackIdentifier == null ||
                       (fd is num && fd.toInt() > 0))) {
                 videoTrackIdentifier = ti;
@@ -2378,10 +2565,12 @@ class CallSession {
       if (config.video) {
         if (foundInboundVideo) {
           if (_phVideoFramesDecoded != null && videoFramesDecoded != null) {
-            videoFramesDecodedDelta = videoFramesDecoded - _phVideoFramesDecoded!;
+            videoFramesDecodedDelta =
+                videoFramesDecoded - _phVideoFramesDecoded!;
           }
           if (_phVideoFramesDropped != null && videoFramesDropped != null) {
-            videoFramesDroppedDelta = videoFramesDropped - _phVideoFramesDropped!;
+            videoFramesDroppedDelta =
+                videoFramesDropped - _phVideoFramesDropped!;
           }
           if (videoFramesDecodedDelta != null) {
             videoDecodeProgressing = videoFramesDecodedDelta > 0;
@@ -2405,7 +2594,8 @@ class CallSession {
         }
         try {
           final remoteStream = remoteRenderer.srcObject;
-          rendererBound = remoteStream != null && remoteStream.getVideoTracks().isNotEmpty;
+          rendererBound =
+              remoteStream != null && remoteStream.getVideoTracks().isNotEmpty;
           // ── [CALL-VIDEO-RENDER-WATCH-1] frozen-picture self-heal ──────────
           //
           // Prod 2026-08-08 (avatok-b403ba59): the receiver decoded the peer's
@@ -2426,8 +2616,8 @@ class CallSession {
               _renderStallStreak++;
               if (_renderStallStreak >= 2) {
                 _renderStallStreak = 0;
-                unawaited(_healFrozenRemoteVideo(
-                    pc, videoTrackIdentifier!, boundId));
+                unawaited(
+                    _healFrozenRemoteVideo(pc, videoTrackIdentifier!, boundId));
               }
             } else {
               _renderStallStreak = 0;
@@ -2456,7 +2646,8 @@ class CallSession {
         _phPacketsSent = audioPacketsSent;
       }
       if (_phOutboundAudioEnergy != null && outboundTotalAudioEnergy != null) {
-        outboundEnergyDelta = outboundTotalAudioEnergy - _phOutboundAudioEnergy!;
+        outboundEnergyDelta =
+            outboundTotalAudioEnergy - _phOutboundAudioEnergy!;
       }
       _phOutboundAudioEnergy = outboundTotalAudioEnergy;
 
@@ -2481,13 +2672,18 @@ class CallSession {
       }
 
       int? bytesDelta, packetsDelta, lostDelta, jbufEmittedDelta;
-      double? concealedDelta, silentConcealedDelta, totalSamplesDelta, energyDelta;
+      double? concealedDelta,
+          silentConcealedDelta,
+          totalSamplesDelta,
+          energyDelta;
       double? jbufDelayMsAvg, lossPctInterval, concealmentPctInterval;
-      if (_phBytes != null && bytesReceived != null) bytesDelta = bytesReceived - _phBytes!;
+      if (_phBytes != null && bytesReceived != null)
+        bytesDelta = bytesReceived - _phBytes!;
       if (_phPackets != null && packetsReceived != null) {
         packetsDelta = packetsReceived - _phPackets!;
       }
-      if (_phLost != null && packetsLost != null) lostDelta = packetsLost - _phLost!;
+      if (_phLost != null && packetsLost != null)
+        lostDelta = packetsLost - _phLost!;
       if (_phJbufEmitted != null && jbufEmitted != null) {
         jbufEmittedDelta = jbufEmitted - _phJbufEmitted!;
       }
@@ -2535,12 +2731,17 @@ class CallSession {
           jbufDelaySec != null &&
           jbufEmittedDelta != null &&
           jbufEmittedDelta > 0) {
-        jbufDelayMsAvg = 1000.0 * (jbufDelaySec - _phJbufDelaySec!) / jbufEmittedDelta;
+        jbufDelayMsAvg =
+            1000.0 * (jbufDelaySec - _phJbufDelaySec!) / jbufEmittedDelta;
       }
-      if (lostDelta != null && packetsDelta != null && (lostDelta + packetsDelta) > 0) {
+      if (lostDelta != null &&
+          packetsDelta != null &&
+          (lostDelta + packetsDelta) > 0) {
         lossPctInterval = 100.0 * lostDelta / (lostDelta + packetsDelta);
       }
-      if (concealedDelta != null && totalSamplesDelta != null && totalSamplesDelta > 0) {
+      if (concealedDelta != null &&
+          totalSamplesDelta != null &&
+          totalSamplesDelta > 0) {
         concealmentPctInterval = 100.0 * concealedDelta / totalSamplesDelta;
       }
 
@@ -2584,9 +2785,11 @@ class CallSession {
       } else {
         _noRtpStreak = 0;
         _noPlayoutStreak = 0;
-        final degraded = (lossPctInterval != null && lossPctInterval >= lossWarn) ||
-            (concealmentPctInterval != null && concealmentPctInterval >= concealWarn) ||
-            (jitterMs != null && jitterMs >= jitterWarnMs);
+        final degraded =
+            (lossPctInterval != null && lossPctInterval >= lossWarn) ||
+                (concealmentPctInterval != null &&
+                    concealmentPctInterval >= concealWarn) ||
+                (jitterMs != null && jitterMs >= jitterWarnMs);
         if (degraded) {
           cls = MediaHealthClass.networkDegraded;
         } else if (audioLevel != null && audioLevel < 0.01) {
@@ -2634,7 +2837,8 @@ class CallSession {
         // [CALL-REL-6] This sample is for the migration's NEW pc — feed the
         // migration coordinator only (never the direct-path recovery one,
         // which reasons about the OLD `_pc`).
-        if (RemoteConfig.callRelayMigrationV1) _onPlayoutHealthForMigration(cls);
+        if (RemoteConfig.callRelayMigrationV1)
+          _onPlayoutHealthForMigration(cls);
       } else {
         // [CALL-REL-5] Feed the recovery coordinator with this classification.
         // No-op (and no recovery side effects) unless callIceRecoveryV2 is on
@@ -2699,7 +2903,9 @@ class CallSession {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     int upKbps = 0, downKbps = 0;
     final prevTs = _lastNetTs;
-    if (prevTs != null && _lastNetSentBytes != null && _lastNetRecvBytes != null) {
+    if (prevTs != null &&
+        _lastNetSentBytes != null &&
+        _lastNetRecvBytes != null) {
       final dtSec = (nowMs - prevTs) / 1000.0;
       if (dtSec > 0.1) {
         final dSent = (totalSentBytes - _lastNetSentBytes!).clamp(0, 1 << 62);
@@ -2707,8 +2913,12 @@ class CallSession {
         upKbps = ((dSent * 8) / dtSec / 1000).round();
         downKbps = ((dRecv * 8) / dtSec / 1000).round();
         // Light EMA smoothing so the HUD doesn't jitter between polls.
-        _emaUpKbps = _emaUpKbps == 0 ? upKbps.toDouble() : (_emaUpKbps * 0.5 + upKbps * 0.5);
-        _emaDownKbps = _emaDownKbps == 0 ? downKbps.toDouble() : (_emaDownKbps * 0.5 + downKbps * 0.5);
+        _emaUpKbps = _emaUpKbps == 0
+            ? upKbps.toDouble()
+            : (_emaUpKbps * 0.5 + upKbps * 0.5);
+        _emaDownKbps = _emaDownKbps == 0
+            ? downKbps.toDouble()
+            : (_emaDownKbps * 0.5 + downKbps * 0.5);
       }
     }
     _lastNetSentBytes = totalSentBytes;
@@ -2722,16 +2932,22 @@ class CallSession {
     // Quality bucket 0–4 from rtt + loss (worst of the two dominates).
     int q = 4;
     if (rttMs >= 0) {
-      if (rttMs > 500) q = 0;
-      else if (rttMs > 300) q = 1;
-      else if (rttMs > 180) q = 2;
+      if (rttMs > 500)
+        q = 0;
+      else if (rttMs > 300)
+        q = 1;
+      else if (rttMs > 180)
+        q = 2;
       else if (rttMs > 90) q = 3;
     }
     if (lossPct >= 0) {
       int lq = 4;
-      if (lossPct > 8) lq = 0;
-      else if (lossPct > 4) lq = 1;
-      else if (lossPct > 2) lq = 2;
+      if (lossPct > 8)
+        lq = 0;
+      else if (lossPct > 4)
+        lq = 1;
+      else if (lossPct > 2)
+        lq = 2;
       else if (lossPct > 0.5) lq = 3;
       if (lq < q) q = lq;
     }
@@ -2798,9 +3014,13 @@ class CallSession {
       }
       return;
     }
-    final stable = (lossPct == null || lossPct < RemoteConfig.callQosStableLossPct) &&
-        (rttMs < 0 || rttMs <= RemoteConfig.callQosStableRttMs);
-    if (!stable) { _qosStableSamples = 0; return; }
+    final stable =
+        (lossPct == null || lossPct < RemoteConfig.callQosStableLossPct) &&
+            (rttMs < 0 || rttMs <= RemoteConfig.callQosStableRttMs);
+    if (!stable) {
+      _qosStableSamples = 0;
+      return;
+    }
     if (++_qosStableSamples < RemoteConfig.callQosStableSamples) return;
     _qosStableSamples = 0;
     final next = _qosAudioBitrateBps < 32000 ? 32000 : 40000;
@@ -2828,7 +3048,9 @@ class CallSession {
         final params = sender.parameters;
         final encodings = params.encodings;
         if (encodings == null || encodings.isEmpty) {
-          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: wireCapBps)];
+          params.encodings = [
+            RTCRtpEncoding(active: true, maxBitrate: wireCapBps)
+          ];
         } else {
           for (final encoding in encodings) encoding.maxBitrate = wireCapBps;
         }
@@ -2845,17 +3067,22 @@ class CallSession {
         'available_out_kbps': _qosLastAvailableOutKbps ?? -1,
       });
     } catch (e, st) {
-      _telemetry.runtimeError(stage: 'audio_qos_parameters_failed', error: e, stack: st);
+      _telemetry.runtimeError(
+          stage: 'audio_qos_parameters_failed', error: e, stack: st);
     }
   }
 
-  Future<void> _adaptVideoForNetwork({required double? lossPct, required int rttMs}) async {
+  Future<void> _adaptVideoForNetwork(
+      {required double? lossPct, required int rttMs}) async {
     if (_ended || !_connected || !config.video) return;
-    final severe = lossPct != null && lossPct >= RemoteConfig.callVideoLossPausePct;
-    final degraded = severe || (lossPct != null && lossPct >= RemoteConfig.callVideoLossDegradePct);
+    final severe =
+        lossPct != null && lossPct >= RemoteConfig.callVideoLossPausePct;
+    final degraded = severe ||
+        (lossPct != null && lossPct >= RemoteConfig.callVideoLossDegradePct);
     if (degraded || rttMs >= 500) {
       _videoStableSamples = 0;
-      final next = severe ? 2 : (_videoDegradeLevel < 1 ? 1 : _videoDegradeLevel);
+      final next =
+          severe ? 2 : (_videoDegradeLevel < 1 ? 1 : _videoDegradeLevel);
       if (next != _videoDegradeLevel) {
         _videoDegradeLevel = next;
         await _applyVideoDegradeLevel(next);
@@ -2894,7 +3121,9 @@ class CallSession {
           degradeLevel: level,
         );
         if (encodings == null || encodings.isEmpty) {
-          params.encodings = [RTCRtpEncoding(active: true, maxBitrate: maxBitrate)];
+          params.encodings = [
+            RTCRtpEncoding(active: true, maxBitrate: maxBitrate)
+          ];
         } else {
           for (final encoding in encodings) encoding.maxBitrate = maxBitrate;
         }
@@ -2914,7 +3143,8 @@ class CallSession {
         'audio_preserved': true,
       });
     } catch (e, st) {
-      _telemetry.runtimeError(stage: 'video_degrade_parameters_failed', error: e, stack: st);
+      _telemetry.runtimeError(
+          stage: 'video_degrade_parameters_failed', error: e, stack: st);
     }
   }
 
@@ -2963,7 +3193,9 @@ class CallSession {
       'outgoing': config.outgoing,
     });
     // Keep the device awake for the whole call (released in _teardown).
-    try { WakelockPlus.enable(); } catch (_) {}
+    try {
+      WakelockPlus.enable();
+    } catch (_) {}
     // [CALLREC-PEER-1] Watch the recording store so the peer is told, for the
     // life of this call, whenever we start or stop recording. Detached in
     // teardown. Purely additive — nothing below depends on it.
@@ -2974,18 +3206,42 @@ class CallSession {
     // window gated on the placement result. Otherwise a guard-off prod would play
     // ringback into a callee we haven't even confirmed is reachable yet.
     _takeoverGuard = RemoteConfig.receptTakeoverGuard || config.deferRing;
-    _telemetry = CallTelemetry(callId: config.room, video: config.video, outgoing: config.outgoing);
+    _telemetry = CallTelemetry(
+      callId: config.room,
+      callTraceId: _traceId,
+      video: config.video,
+      outgoing: config.outgoing,
+      provider: config.mediaProvider.wire,
+    );
     _telemetry.started();
     // [CALL-DEADAIR-1] Anchor the stage stopwatch to the SAME instant as
     // `call_started`, so every number on `call_first_audio_ms` can be compared
     // directly against that event's timestamp in PostHog.
     _setupT0 = DateTime.now().millisecondsSinceEpoch;
+    _lastSetupStageAtMs = _setupT0;
+    if (!config.outgoing) {
+      final acceptedAt = PushService.acceptedAtMsFor(config.room);
+      if (acceptedAt != null && acceptedAt > 0) {
+        _answerAtMs = acceptedAt;
+        Analytics.capture('call_answer_observed', {
+          'call_id': config.room,
+          'call_trace_id': _traceId,
+          'provider': _performanceProvider,
+          'role': _performanceRole,
+          'source': 'local_answer_tap',
+          'session_start_after_answer_ms':
+              (_setupT0 - acceptedAt).clamp(0, 300000),
+        });
+      }
+    }
     // My own profile (best-effort) for the receptionist duo's "You" icon.
     ProfileStore().load().then((p) {
       if (_ended) return;
       _myAvatar = p.avatarUrl;
       if (p.displayName.trim().isNotEmpty) _myName = p.displayName.trim();
-      _mySeed = p.handle.isNotEmpty ? p.handle : (p.displayName.isNotEmpty ? p.displayName : 'me');
+      _mySeed = p.handle.isNotEmpty
+          ? p.handle
+          : (p.displayName.isNotEmpty ? p.displayName : 'me');
       _bump();
     }).catchError((_) {});
     // Wi-Fi ⇆ cellular handoff → proactive ICE restart.
@@ -3050,7 +3306,8 @@ class CallSession {
           'call_id': config.room,
           'from': from,
           'to': confirmed,
-          'recovery_attempt_id': _activeRecovery?.id ?? _activeMigration?.id ?? 'none',
+          'recovery_attempt_id':
+              _activeRecovery?.id ?? _activeMigration?.id ?? 'none',
         });
         if (_ended || !_connected) return;
         if (RemoteConfig.callIceRecoveryV2) {
@@ -3248,7 +3505,8 @@ class CallSession {
         if (!config.deferRing) {
           _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
             if (!_ended && !_connected && !_deviceRinging) {
-              AvaLog.I.log('call', 'Device ringing timeout: callee unreachable.');
+              AvaLog.I
+                  .log('call', 'Device ringing timeout: callee unreachable.');
               _goUnreachable('device_wake_timeout');
             }
           });
@@ -3292,10 +3550,26 @@ class CallSession {
     }
     // Server-relayed call status (declined / busy / decline-to-Ava) for this call.
     _statusSub = callStatusBus.stream.listen((e) {
+      if (e.callId == config.room) {
+        Analytics.capture('call_terminal_session_received', {
+          'call_id': config.room,
+          'call_trace_id': _traceId,
+          'provider': _performanceProvider,
+          'role': _performanceRole,
+          'status': e.status,
+          'connected': _connected,
+          if (_answerAtMs != null)
+            'elapsed_from_answer_ms':
+                DateTime.now().millisecondsSinceEpoch - _answerAtMs!,
+        });
+      }
       if (_receptionistActive) {
         if (e.callId == config.room) {
-          Analytics.capture('ava_recept_signal_suppressed',
-              {'channel': 'call_status', 'status': e.status, 'call_id': config.room});
+          Analytics.capture('ava_recept_signal_suppressed', {
+            'channel': 'call_status',
+            'status': e.status,
+            'call_id': config.room
+          });
         }
         return;
       }
@@ -3304,7 +3578,8 @@ class CallSession {
         _endWith('ended', reason: 'glare-yield');
         return;
       }
-      if (e.callId == config.room && !_ended &&
+      if (e.callId == config.room &&
+          !_ended &&
           (e.status == 'ended' || e.status == 'cancel' || e.status == 'bye')) {
         _endWith('ended', reason: 'remote-ended-push');
         return;
@@ -3333,8 +3608,7 @@ class CallSession {
         }
         // [CALL-OUTCOME-MENU-1] Declines land on the unified menu (all call
         // kinds — video simply hides Talk to Ava) instead of auto-Ava/plain end.
-        if (_menuEnabled && !_ended &&
-            e.status == 'decline') {
+        if (_menuEnabled && !_ended && e.status == 'decline') {
           _ringTimeout?.cancel();
           _showOutcomeMenu('declined');
           return;
@@ -3360,7 +3634,8 @@ class CallSession {
           // busy, so _onBusy can decide whether to render the personalized card.
           _busyReason = e.busyReason;
           _busyReceptionistEnabled = e.receptionistEnabled;
-          if (e.pronoun != null && e.pronoun!.isNotEmpty) _busyPronoun = e.pronoun!;
+          if (e.pronoun != null && e.pronoun!.isNotEmpty)
+            _busyPronoun = e.pronoun!;
           // ignore: unawaited_futures
           _onBusy();
           return;
@@ -3401,8 +3676,14 @@ class CallSession {
         // middle of connecting. Only statuses that terminate the caller's leg
         // may fall through to _endWith.
         const terminal = {
-          'cancel', 'bye', 'hangup', 'ended', 'missed', 'no-answer',
-          'decline', 'declined',
+          'cancel',
+          'bye',
+          'hangup',
+          'ended',
+          'missed',
+          'no-answer',
+          'decline',
+          'declined',
         };
         if (!terminal.contains(e.status)) {
           Analytics.capture('call_status_ignored_nonterminal', {
@@ -3418,7 +3699,9 @@ class CallSession {
     // [AVACALL-CANCEL-1] Drain a pre-subscription cancel: the broadcast bus has no
     // replay, so a terminal status delivered between accept and the listen() above
     // would be lost. Re-check the last-terminal cache the instant we're subscribed.
-    if (!config.outgoing && !_ended && PushService.wasCallTerminated(config.room)) {
+    if (!config.outgoing &&
+        !_ended &&
+        PushService.wasCallTerminated(config.room)) {
       _endPreAcceptCancelled('drain-on-subscribe');
       return;
     }
@@ -3431,14 +3714,199 @@ class CallSession {
     // within milliseconds would otherwise race the secure-storage write and
     // find no id to patch.
     _callLogAdd = CallLogStore().add(CallEntry(
-      name: config.title, seed: config.seed, video: config.video,
+      name: config.title,
+      seed: config.seed,
+      video: config.video,
       dir: config.outgoing ? CallDir.outgoing : CallDir.incoming,
       ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     ));
     // Nothing awaits this future on the happy path; swallow a storage failure so
     // it can't surface as an unhandled async error.
     unawaited(_callLogAdd!.then((_) {}).catchError((Object _) {}));
-    await _bootMedia();
+    // [STREAM-CALL-PILOT-2] `deferRing` is the optimistic CallScreen mount.
+    // Only a build with the Stream pilot gate enabled waits for the placement
+    // response. When the gate is off (the default), preserve the old startup
+    // timing exactly: boot Cloudflare media immediately. Missing/old provider
+    // data is explicitly treated as the legacy Cloudflare decision.
+    _setupReadyForMedia = true;
+    _providerDecision ??= config.mediaProvider == CallMediaProvider.stream &&
+            config.streamTicket != null
+        ? CallProviderDecision.stream(config.streamTicket!)
+        : const CallProviderDecision.cloudflare(reason: 'legacy_call_session');
+    if (config.deferRing && StreamCallPilot.enabled) {
+      if (_mediaStartRequested && !_ended) {
+        unawaited(_startSelectedMedia());
+      }
+      return;
+    }
+    if (!_ended) await _startSelectedMedia();
+  }
+
+  /// Feed the server's provider decision into an optimistically-mounted live
+  /// session. Must be called before [notePlaceResult]. A duplicate/late
+  /// decision is ignored once media has started, keeping provider selection
+  /// sticky for the entire call.
+  void noteProviderDecision(CallProviderDecision decision) {
+    if (_ended || _mediaBooted || _mediaBootStarting) {
+      Analytics.capture('call_provider_decision_ignored', {
+        'call_id': config.room,
+        'provider': decision.provider.wire,
+        'media_started': _mediaBooted || _mediaBootStarting,
+      });
+      return;
+    }
+    _providerDecision = decision;
+    Analytics.capture('call_provider_selected', {
+      'call_id': config.room,
+      'provider': decision.provider.wire,
+      'reason': decision.reason,
+      'optimistic_mount': config.deferRing,
+    });
+  }
+
+  Future<void> _startSelectedMedia() async {
+    if (!_setupReadyForMedia || _ended || _mediaBooted || _mediaBootStarting)
+      return;
+    _mediaBootStarting = true;
+    _mediaStartRequested = false;
+    final decision = _providerDecision ??=
+        const CallProviderDecision.cloudflare(
+            reason: 'missing_provider_defaults_cloudflare');
+    if (decision.usesStream) {
+      await _startStreamMedia(decision.streamTicket);
+      _mediaBootStarting = false;
+      return;
+    }
+    try {
+      await _bootMedia();
+      _mediaBooted = true;
+    } finally {
+      _mediaBootStarting = false;
+    }
+    if (_prejoinRequestedBeforeMedia && _mediaBooted && !_ended) {
+      _prejoinRequestedBeforeMedia = false;
+      _maybeStartCallerPrejoin();
+    }
+  }
+
+  Future<void> _startStreamMedia(StreamCallJoinTicket? ticket) async {
+    if (_ended || _streamRtcActive || _streamRtcStarting) return;
+    if (ticket == null || config.video) {
+      _endWith('network-error', reason: 'stream-ticket-invalid');
+      return;
+    }
+    _streamRtcStarting = true;
+    _stage('stream_join_begin');
+    final startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final session = await StreamRtcProvider().joinStream(
+        ticket,
+        mode: RtcMode.audio,
+        outgoing: config.outgoing,
+      );
+      if (_ended) {
+        await session.leave();
+        return;
+      }
+      _streamRtc = session;
+      _streamRtcEvents = session.events.listen(_onStreamRtcEvent);
+      _streamRtcActive = true;
+      _mediaBooted = true;
+      _telemetry.setMediaPath('stream');
+      _stage('stream_join_armed');
+      Analytics.capture('stream_call_media_armed', {
+        'call_id': config.room,
+        'role': config.outgoing ? 'caller' : 'callee',
+        'latency_ms': DateTime.now().millisecondsSinceEpoch - startedAtMs,
+      });
+    } catch (e, st) {
+      await Analytics.captureException(
+        e,
+        st,
+        screen: 'call_session',
+        handled: true,
+        extra: {'op': 'stream_join', 'call_id': config.room},
+      );
+      if (!_ended) {
+        _endWith('network-error',
+            reason: e is StreamCallUnavailable
+                ? 'stream-${e.reason}'
+                : 'stream-join-failed');
+      }
+    } finally {
+      _streamRtcStarting = false;
+    }
+  }
+
+  void _onStreamRtcEvent(RtcSessionEvent event) {
+    if (_ended || !_streamRtcActive) return;
+    switch (event) {
+      case RtcSessionEvent.audioTrackAdded:
+        _markStreamConnected('remote_audio');
+        break;
+      case RtcSessionEvent.firstAudioPlayout:
+        _markStreamConnected('first_audio_playout');
+        if (RemoteConfig.callFirstAudioProbeV1 && !_firstAudioReported) {
+          _reportFirstAudio(bytes: -1, outcome: 'audio');
+        }
+        break;
+      case RtcSessionEvent.rejected:
+        _endWith('declined', reason: 'stream-remote-declined');
+        break;
+      case RtcSessionEvent.remoteJoin:
+        _markStreamConnected('remote_join');
+        break;
+      case RtcSessionEvent.reconnecting:
+        Analytics.capture('call_network_handover', {
+          'call_id': config.room,
+          'provider': 'stream',
+          'outcome': 'started',
+        });
+        break;
+      case RtcSessionEvent.disconnected:
+      case RtcSessionEvent.remoteLeave:
+        _endWith('ended', reason: 'stream-remote-left');
+        break;
+      case RtcSessionEvent.error:
+        if (!_connected) {
+          _endWith('network-error', reason: 'stream-provider-error');
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _markStreamConnected(String via) {
+    if (_ended || _connected || !_streamRtcActive) return;
+    _ringTimeout?.cancel();
+    _connectWatchdog?.cancel();
+    _connectWatchdogFast?.cancel();
+    _failTimer?.cancel();
+    _ringback.stop();
+    if (_prewarmCall != null) unawaited(_abortPrewarm('callee_answered'));
+    _telemetry.connected(null);
+    _telemetry.setMediaPath('stream');
+    if (gOutgoingCallId == config.room) {
+      gOutgoingCallTo = null;
+      gOutgoingCallId = null;
+      gOutgoingSince = 0;
+    }
+    _connected = true;
+    if (_connectedAtMs == 0) {
+      _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
+    }
+    peerAway.value = false;
+    _setPhase('connected');
+    _stage('stream_connected');
+    Analytics.capture('stream_call_connected', {
+      'call_id': config.room,
+      'via': via,
+      'role': config.outgoing ? 'caller' : 'callee',
+      'ms_from_start':
+          _setupT0 == 0 ? -1 : DateTime.now().millisecondsSinceEpoch - _setupT0,
+    });
+    _armAudibleGate();
   }
 
   /// Sync the coarse enum + fine label + view tick from a fine phase string.
@@ -3532,8 +4000,9 @@ class CallSession {
     _callLogFinished = true;
     final pending = _callLogAdd;
     if (pending == null) return;
-    final talkedMs =
-        _connectedAtMs == 0 ? 0 : DateTime.now().millisecondsSinceEpoch - _connectedAtMs;
+    final talkedMs = _connectedAtMs == 0
+        ? 0
+        : DateTime.now().millisecondsSinceEpoch - _connectedAtMs;
     // Round, don't truncate: a 1.6s call is "2s", not "1s". Sub-second connects
     // floor to 1s so a genuinely-connected call never renders as an outcome.
     var durationSec = 0;
@@ -3541,9 +4010,11 @@ class CallSession {
       durationSec = (talkedMs + 500) ~/ 1000;
       if (durationSec < 1) durationSec = 1;
     }
-    final outcome = durationSec > 0 ? CallOutcome.connected : _outcomeForPhase(phase);
+    final outcome =
+        durationSec > 0 ? CallOutcome.connected : _outcomeForPhase(phase);
     unawaited(pending
-        .then((e) => CallLogStore().finish(e.id, durationSec: durationSec, outcome: outcome))
+        .then((e) => CallLogStore()
+            .finish(e.id, durationSec: durationSec, outcome: outcome))
         .catchError((Object _) {/* history is best-effort */}));
   }
 
@@ -3553,7 +4024,8 @@ class CallSession {
     // [CALL-LOG-TIME-1] Record duration/outcome before any teardown runs.
     _finishCallLog(phase);
     _ringback.stop();
-    final busy = phase == 'busy' && config.outgoing && RemoteConfig.ringbackEnabled;
+    final busy =
+        phase == 'busy' && config.outgoing && RemoteConfig.ringbackEnabled;
     if (busy) {
       // ignore: unawaited_futures
       _ringback.playBusyTone(speakerOn: _speaker);
@@ -3565,6 +4037,17 @@ class CallSession {
     // ignore: unawaited_futures
     _teardown(reason: reason ?? phase);
     _setPhase(phase);
+    Analytics.capture('call_terminal_ui_applied', {
+      'call_id': config.room,
+      'call_trace_id': _traceId,
+      'provider': _performanceProvider,
+      'role': _performanceRole,
+      'phase': phase,
+      'reason': reason ?? phase,
+      if (_answerAtMs != null)
+        'elapsed_from_answer_ms':
+            DateTime.now().millisecondsSinceEpoch - _answerAtMs!,
+    });
     // Give the busy tone time to be heard before the view pops; other states 1.4s.
     Future.delayed(Duration(milliseconds: busy ? 2600 : 1400), () {
       onRequestPop?.call();
@@ -3673,8 +4156,10 @@ class CallSession {
       cellFuture = config.video
           ? _isLikelyCellular().catchError((Object _) => false)
           : null;
-      await Future.wait(
-          <Future<void>>[localRenderer.initialize(), remoteRenderer.initialize()]);
+      await Future.wait(<Future<void>>[
+        localRenderer.initialize(),
+        remoteRenderer.initialize()
+      ]);
     } else {
       await localRenderer.initialize();
       await remoteRenderer.initialize();
@@ -3701,9 +4186,8 @@ class CallSession {
     // camera — cheaper than capturing high-res then downscaling, and the
     // sender-side bitrate cap in [_preferResolutionOnVideo] uses the same
     // network-class check so capture and encoding bounds agree.
-    final cellularCapture = config.video
-        ? await (cellFuture ?? _isLikelyCellular())
-        : false;
+    final cellularCapture =
+        config.video ? await (cellFuture ?? _isLikelyCellular()) : false;
     // [CALL-PREROLL-1 2026-08-17] The callee may already have a fully
     // pre-rolled mic stream — acquired, SILENT, during the ring by
     // `CallPrewarm` (gated on `callPrewarmOnRingV1` + `callPrerollV1`).
@@ -3721,11 +4205,13 @@ class CallSession {
     // local stream, then replaces the retained sender after the SFU PC is
     // adopted. This is protocol silence, never a captured/muted mic.
     MediaStream? protocolSilenceStream;
-    if (!config.outgoing && !config.video &&
+    if (!config.outgoing &&
+        !config.video &&
         RemoteConfig.callSilentTransportPrewarmV1 &&
         CallPrewarm.instance.hasPrepublishedAudio(config.room)) {
       try {
-        protocolSilenceStream = await createLocalMediaStream('prewarm-${config.room}');
+        protocolSilenceStream =
+            await createLocalMediaStream('prewarm-${config.room}');
         _prewarmAudioPending = true;
         Analytics.capture('call_preaccept_audio_slot', {
           'call_id': config.room,
@@ -3750,80 +4236,86 @@ class CallSession {
       // genuinely being answered. See `_startSfuMedia`'s `hasFullPreroll`
       // branch for the matching remote-track unmute.
       for (final t in prerolledStream.getAudioTracks()) {
-        try { t.enabled = true; } catch (_) {/* one bad track must not abort accept */}
+        try {
+          t.enabled = true;
+        } catch (_) {/* one bad track must not abort accept */}
       }
     } else {
-    try {
-      var mediaTimedOut = false;
-      final mediaFuture = navigator.mediaDevices.getUserMedia({
-        // [CALL-SURVIVE-1] de-dup: the shared capture-DSP constraints
-        // (AEC/NS/AGC/high-pass) are defined ONCE in core/audio_tuning.dart.
-        'audio': audio_tuning.avaMicConstraints(),
-        // [CF-CALL-P2P-1] Explicit, bounded capture constraints (proposal
-        // Phase 5 "camera constraints"): 960x540@30 max on wifi/unknown,
-        // 640x360@24 on a detected cellular network. `ideal` lets the camera
-        // pick a supported mode near this; `max` is the hard ceiling so a
-        // high-end camera never captures (and encodes) far above what a 1:1
-        // call needs.
-        'video': config.video
-            ? audio_tuning.avaVideoConstraints(cellular: cellularCapture)
-            : false,
-      });
-      // Future.timeout cannot cancel the platform acquisition. If Android
-      // returns a stream after our deadline, stop and dispose it immediately so
-      // an ended call cannot leave the microphone/camera active invisibly.
-      unawaited(mediaFuture.then((lateStream) async {
-        if (!mediaTimedOut) return;
-        for (final track in lateStream.getTracks()) {
-          try { await track.stop(); } catch (_) {}
-        }
-        try { await lateStream.dispose(); } catch (_) {}
-        Analytics.capture('call_media_late_stream_disposed', {
-          'call_id': config.room,
-          'video': config.video,
+      try {
+        var mediaTimedOut = false;
+        final mediaFuture = navigator.mediaDevices.getUserMedia({
+          // [CALL-SURVIVE-1] de-dup: the shared capture-DSP constraints
+          // (AEC/NS/AGC/high-pass) are defined ONCE in core/audio_tuning.dart.
+          'audio': audio_tuning.avaMicConstraints(),
+          // [CF-CALL-P2P-1] Explicit, bounded capture constraints (proposal
+          // Phase 5 "camera constraints"): 960x540@30 max on wifi/unknown,
+          // 640x360@24 on a detected cellular network. `ideal` lets the camera
+          // pick a supported mode near this; `max` is the hard ceiling so a
+          // high-end camera never captures (and encodes) far above what a 1:1
+          // call needs.
+          'video': config.video
+              ? audio_tuning.avaVideoConstraints(cellular: cellularCapture)
+              : false,
         });
-      }).catchError((_) {}));
-      _stream = await mediaFuture
-          // ── [CALL-MEDIA-TIMEOUT-1 2026-08-03] (audit M3) ──────────────────
-          //
-          // `getUserMedia` had no timeout. A REFUSAL was already handled well by
-          // the catch below — but a HANG was not handled at all. On Android 12+
-          // a mic acquisition made while the app is in the background can simply
-          // never return: no permission dialog, no error, no completion. The
-          // Future stayed pending and the only thing that eventually ended the
-          // call was a generic 10–45 s connect watchdog, which reports "could
-          // not connect" — the wrong diagnosis, and one that sends the user
-          // looking at their network instead of at a microphone the OS refused
-          // to open.
-          //
-          // 8 s is comfortably longer than a real capture (tens of ms) or a
-          // human tapping through a permission prompt, and well inside the
-          // connect watchdogs so this surfaces FIRST and names the actual cause.
-          // The throw lands in the existing catch, so failure handling and
-          // teardown are unchanged — only the diagnosis improves.
-          .timeout(const Duration(seconds: 8), onTimeout: () {
-        mediaTimedOut = true;
-        throw TimeoutException(
-            'getUserMedia did not return within 8s (mic/camera acquisition hung)');
-      });
-    } catch (e, st) {
-      Analytics.error(
-        domain: 'call_setup',
-        code: e is TimeoutException ? 'media_timeout' : 'media_denied',
-        message: e.toString(),
-        action: config.video ? 'getUserMedia_av' : 'getUserMedia_audio',
-        extra: {'call_id': config.room, 'video': config.video},
-      );
-      _telemetry.runtimeError(
-        stage: 'get_user_media_failed',
-        error: e,
-        stack: st,
-        extra: {'video_requested': config.video},
-      );
-      _mediaDeniedNotice?.call();
-      _endWith('ended', reason: 'media-denied');
-      return;
-    }
+        // Future.timeout cannot cancel the platform acquisition. If Android
+        // returns a stream after our deadline, stop and dispose it immediately so
+        // an ended call cannot leave the microphone/camera active invisibly.
+        unawaited(mediaFuture.then((lateStream) async {
+          if (!mediaTimedOut) return;
+          for (final track in lateStream.getTracks()) {
+            try {
+              await track.stop();
+            } catch (_) {}
+          }
+          try {
+            await lateStream.dispose();
+          } catch (_) {}
+          Analytics.capture('call_media_late_stream_disposed', {
+            'call_id': config.room,
+            'video': config.video,
+          });
+        }).catchError((_) {}));
+        _stream = await mediaFuture
+            // ── [CALL-MEDIA-TIMEOUT-1 2026-08-03] (audit M3) ──────────────────
+            //
+            // `getUserMedia` had no timeout. A REFUSAL was already handled well by
+            // the catch below — but a HANG was not handled at all. On Android 12+
+            // a mic acquisition made while the app is in the background can simply
+            // never return: no permission dialog, no error, no completion. The
+            // Future stayed pending and the only thing that eventually ended the
+            // call was a generic 10–45 s connect watchdog, which reports "could
+            // not connect" — the wrong diagnosis, and one that sends the user
+            // looking at their network instead of at a microphone the OS refused
+            // to open.
+            //
+            // 8 s is comfortably longer than a real capture (tens of ms) or a
+            // human tapping through a permission prompt, and well inside the
+            // connect watchdogs so this surfaces FIRST and names the actual cause.
+            // The throw lands in the existing catch, so failure handling and
+            // teardown are unchanged — only the diagnosis improves.
+            .timeout(const Duration(seconds: 8), onTimeout: () {
+          mediaTimedOut = true;
+          throw TimeoutException(
+              'getUserMedia did not return within 8s (mic/camera acquisition hung)');
+        });
+      } catch (e, st) {
+        Analytics.error(
+          domain: 'call_setup',
+          code: e is TimeoutException ? 'media_timeout' : 'media_denied',
+          message: e.toString(),
+          action: config.video ? 'getUserMedia_av' : 'getUserMedia_audio',
+          extra: {'call_id': config.room, 'video': config.video},
+        );
+        _telemetry.runtimeError(
+          stage: 'get_user_media_failed',
+          error: e,
+          stack: st,
+          extra: {'video_requested': config.video},
+        );
+        _mediaDeniedNotice?.call();
+        _endWith('ended', reason: 'media-denied');
+        return;
+      }
     } // [CALL-PREROLL-1] end of the `prerolledStream == null` cold-getUserMedia branch
     _stage(_prewarmAudioPending ? 'protocol_silence_ready' : 'mic_ready');
     // [CALL-DEADAIR-1] Join the ICE fetch back in. By here it has almost always
@@ -3872,11 +4364,11 @@ class CallSession {
           'auto': true,
         });
       }
-    // CALL-REL-1: when callAudioControllerV2 is on, NativeVoiceAudio.instance
-    // is the ONLY thing that starts the P2P audio session / picks the route —
-    // CallSession no longer calls Helper.setSpeakerphoneOn, startBluetoothSco,
-    // or the proximity sensor directly. Flag off preserves the exact prior
-    // behavior below.
+      // CALL-REL-1: when callAudioControllerV2 is on, NativeVoiceAudio.instance
+      // is the ONLY thing that starts the P2P audio session / picks the route —
+      // CallSession no longer calls Helper.setSpeakerphoneOn, startBluetoothSco,
+      // or the proximity sensor directly. Flag off preserves the exact prior
+      // behavior below.
     } else if (RemoteConfig.callAudioControllerV2) {
       await NativeVoiceAudio.instance
           .beginP2pSession(callId: config.room, video: config.video);
@@ -3891,14 +4383,23 @@ class CallSession {
         'auto': true,
       });
     } else {
-      try { await NativeVoiceAudio().startP2pAudioMode(); } catch (_) {}
-      try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
-      try { await NativeVoiceAudio().startBluetoothSco(); } catch (_) {}
+      try {
+        await NativeVoiceAudio().startP2pAudioMode();
+      } catch (_) {}
+      try {
+        await Helper.setSpeakerphoneOn(_speaker);
+      } catch (_) {}
+      try {
+        await NativeVoiceAudio().startBluetoothSco();
+      } catch (_) {}
       if (NativeVoiceAudio.isSupported) {
         final route = (await NativeVoiceAudio().getAudioRoute()) ?? 'unknown';
         if (route == 'earpiece') {
-          Analytics.capture('call_audio_route', {'route': 'earpiece', 'auto': true});
-          try { await NativeVoiceAudio().startProximitySensor(); } catch (_) {}
+          Analytics.capture(
+              'call_audio_route', {'route': 'earpiece', 'auto': true});
+          try {
+            await NativeVoiceAudio().startProximitySensor();
+          } catch (_) {}
         } else {
           Analytics.capture('call_audio_route', {'route': route, 'auto': true});
         }
@@ -3927,7 +4428,8 @@ class CallSession {
           'call_id': config.room,
           'native_event': name,
           if (event['route'] != null) 'route': event['route'].toString(),
-          if (event['change'] != null) 'focus_change': event['change'].toString(),
+          if (event['change'] != null)
+            'focus_change': event['change'].toString(),
         };
         Analytics.capture('call_native_audio_event', context);
         if (name == 'audio_route_changed' && event['route'] != null) {
@@ -3974,7 +4476,8 @@ class CallSession {
         // A permanent AUDIOFOCUS_LOSS never produces a regain callback, so
         // without this the mute below is forever.
         _focusHoldWatchdog?.cancel();
-        _focusHoldWatchdog = Timer(_kFocusHoldMaxDuration, _releaseStuckFocusHold);
+        _focusHoldWatchdog =
+            Timer(_kFocusHoldMaxDuration, _releaseStuckFocusHold);
       };
       NativeVoiceAudio.instance.onAudioFocusRegained = () {
         _focusHoldWatchdog?.cancel();
@@ -4027,7 +4530,8 @@ class CallSession {
               _send({'type': 'mute', 'muted': false});
             }
             _syncRecorderHold(); // [CALLHOLD-1]
-            Analytics.capture('call_cellular_resumed', {'call_id': config.room});
+            Analytics.capture(
+                'call_cellular_resumed', {'call_id': config.room});
           }
         });
       } catch (_) {}
@@ -4059,7 +4563,8 @@ class CallSession {
     // ladder cannot begin until `welcome`/`sfu-start` arrives on it. Timing it
     // separates "we were slow to get to the wire" from "the wire was slow".
     _stage('ws_open');
-    _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+    _ws!.stream.listen(_onSignal,
+        onError: (_) => _onSocketLost(), onDone: _onSocketLost);
     _startPingTimer();
     if (config.outgoing) {
       _placeCallTimeout = Timer(const Duration(seconds: 8), () {
@@ -4186,10 +4691,14 @@ class CallSession {
     }
     _relayForced = true;
     _telemetry.onIceRestart();
-    _telemetry.setMediaPath('relay'); // [CALL-REL-4/5] amends call_progress/call_media_health
-    Analytics.capture('call_relay_fallback', {'call_id': config.room, 'video': config.video});
+    _telemetry.setMediaPath(
+        'relay'); // [CALL-REL-4/5] amends call_progress/call_media_health
+    Analytics.capture(
+        'call_relay_fallback', {'call_id': config.room, 'video': config.video});
     try {
-      try { await _pc?.close(); } catch (_) {}
+      try {
+        await _pc?.close();
+      } catch (_) {}
       _pc = null;
       _remoteSet = false;
       _pendingCandidates.clear();
@@ -4221,8 +4730,11 @@ class CallSession {
       return;
     }
     if ((_phase == 'ringing' || _phase == 'connecting') && _wsReconnects < 3) {
-      Analytics.capture('call_ws_reconnect_preconnect',
-          {'call_id': config.room, 'phase': _phase, 'attempt': _wsReconnects + 1});
+      Analytics.capture('call_ws_reconnect_preconnect', {
+        'call_id': config.room,
+        'phase': _phase,
+        'attempt': _wsReconnects + 1
+      });
       _reconnectSignaling(isConnected: false);
       return;
     }
@@ -4242,12 +4754,16 @@ class CallSession {
     _wsReconnectTimer = Timer(Duration(milliseconds: delayMs), () {
       if (_ended) return;
       if (isConnected && !_connected) return;
-      if (!isConnected && (_phase != 'ringing' && _phase != 'connecting')) return;
-      try { _ws?.sink.close(); } catch (_) {}
+      if (!isConnected && (_phase != 'ringing' && _phase != 'connecting'))
+        return;
+      try {
+        _ws?.sink.close();
+      } catch (_) {}
       final url = _signalingUrl(); // [CALL-WS-AUTH-1] carries ?t= on reconnect
       try {
         _ws = WebSocketChannel.connect(Uri.parse(url));
-        _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+        _ws!.stream.listen(_onSignal,
+            onError: (_) => _onSocketLost(), onDone: _onSocketLost);
       } catch (_) {
         _onSocketLost();
       }
@@ -4273,7 +4789,8 @@ class CallSession {
       _setPhase('reconnecting');
       // peerAway is a separate signal (the OTHER peer's socket state, driven
       // by peer-away/peer-rejoined below); our own drop doesn't imply theirs.
-      Analytics.capture('call_reconnect_start', {'call_id': config.room, 'video': config.video});
+      Analytics.capture('call_reconnect_start',
+          {'call_id': config.room, 'video': config.video});
       _reconnectGiveUpTimer?.cancel();
       _reconnectGiveUpTimer = Timer(_kReconnectGiveUp, () {
         // ignore: unawaited_futures
@@ -4300,7 +4817,8 @@ class CallSession {
     if (mediaAlive) {
       Analytics.capture('call_ws_down_media_alive', {
         'call_id': config.room,
-        'elapsed_ms': DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
+        'elapsed_ms':
+            DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
         'attempts': _reconnectAttempt,
       });
       _reconnectGiveUpTimer = Timer(_kReconnectGiveUp, () {
@@ -4311,7 +4829,8 @@ class CallSession {
     }
     Analytics.capture('call_reconnect_fail', {
       'call_id': config.room,
-      'elapsed_ms': DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
+      'elapsed_ms':
+          DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
       'attempts': _reconnectAttempt,
     });
     _endWith('ended', reason: 'reconnect_failed');
@@ -4335,6 +4854,7 @@ class CallSession {
         }
         return b;
       }
+
       final before = await readBytes();
       await Future.delayed(const Duration(seconds: 2));
       if (_ended) return false;
@@ -4348,7 +4868,8 @@ class CallSession {
     if (_ended || !_reconnecting) return;
     _reconnectRetryTimer?.cancel();
     final idx = _reconnectAttempt.clamp(0, _kReconnectBackoffSec.length - 1);
-    final delay = Duration(milliseconds: (_kReconnectBackoffSec[idx] * 1000).round());
+    final delay =
+        Duration(milliseconds: (_kReconnectBackoffSec[idx] * 1000).round());
     _reconnectAttempt++;
     _reconnectRetryTimer = Timer(delay, _attemptReconnect);
   }
@@ -4356,11 +4877,14 @@ class CallSession {
   void _attemptReconnect() {
     if (_ended || !_reconnecting) return;
     // Give-up timer is the source of truth for the 30s cap; just try again.
-    try { _ws?.sink.close(); } catch (_) {}
+    try {
+      _ws?.sink.close();
+    } catch (_) {}
     final url = _signalingUrl(); // [CALL-WS-AUTH-1] carries ?t= on reconnect
     try {
       _ws = WebSocketChannel.connect(Uri.parse(url));
-      _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+      _ws!.stream.listen(_onSignal,
+          onError: (_) => _onSocketLost(), onDone: _onSocketLost);
     } catch (_) {
       // Connection attempt itself threw synchronously — schedule the next retry.
       _scheduleReconnectAttempt();
@@ -4380,7 +4904,8 @@ class CallSession {
     _reconnecting = false;
     _reconnectRetryTimer?.cancel();
     _reconnectGiveUpTimer?.cancel();
-    final ms = DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? DateTime.now().millisecondsSinceEpoch);
+    final ms = DateTime.now().millisecondsSinceEpoch -
+        (_reconnectStartMs ?? DateTime.now().millisecondsSinceEpoch);
     Analytics.capture('call_reconnect_ok', {
       'call_id': config.room,
       'ms': ms,
@@ -4499,7 +5024,9 @@ class CallSession {
     // with a gen (old server / pre-connect) — an old server ignores the field and
     // an old client never sees it, so this is fully backward compatible.
     if (_gen != null && !o.containsKey('gen')) o['gen'] = _gen;
-    try { _ws?.sink.add(jsonEncode(o)); } catch (_) {/* socket closed / gone */}
+    try {
+      _ws?.sink.add(jsonEncode(o));
+    } catch (_) {/* socket closed / gone */}
   }
 
   // ── [CALLREC-PEER-1] Peer-visible recording state ───────────────────────────
@@ -4604,6 +5131,7 @@ class CallSession {
         } catch (_) {}
       }
     }
+
     _recordingListener = onChange;
     try {
       CallRecordingStore.I.phase.addListener(onChange);
@@ -4826,7 +5354,8 @@ class CallSession {
   ///    a detected cellular network — previously unbounded, so a strong link
   ///    could push an outbound bitrate the callee's link (or ours, on the way
   ///    back down after a network change) couldn't sustain.
-  Future<void> _preferResolutionOnVideo(RTCPeerConnection pc, {bool cellular = false}) async {
+  Future<void> _preferResolutionOnVideo(RTCPeerConnection pc,
+      {bool cellular = false}) async {
     try {
       final senders = await pc.getSenders();
       // [CALL-MEDIA-540P-1] Shared with the degrade ladder's level-0 rung so a
@@ -4854,7 +5383,8 @@ class CallSession {
         final svc = RemoteConfig.callVideoCodecPrefV1 ? 'L1T3' : null;
         if (encodings == null || encodings.isEmpty) {
           params.encodings = [
-            RTCRtpEncoding(active: true, maxBitrate: maxBitrateBps, scalabilityMode: svc),
+            RTCRtpEncoding(
+                active: true, maxBitrate: maxBitrateBps, scalabilityMode: svc),
           ];
         } else {
           for (final e in encodings) {
@@ -4911,6 +5441,7 @@ class CallSession {
         if (m.endsWith('h264')) return 3;
         return 4; // rtx / red / ulpfec / unknown — keep after the real codecs
       }
+
       final sorted = [...codecs]
         ..sort((a, b) => rank(a.mimeType).compareTo(rank(b.mimeType)));
       final transceivers = await pc.getTransceivers();
@@ -5010,6 +5541,7 @@ class CallSession {
   Future<RTCPeerConnection> _newPC({
     bool forceRelay = false,
     List<Map<String, dynamic>>? sfuIce,
+
     /// [CALL-PREJOIN-ISOLATE-1 2026-08-17] Build a peer connection that does
     /// NOT speak for the session until it is deliberately promoted.
     ///
@@ -5045,7 +5577,8 @@ class CallSession {
       _localCellular = await _isLikelyCellular();
       _announceNetClass();
     }
-    final cellPair = RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
+    final cellPair =
+        RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
     final pc = await createPeerConnection({
       'iceServers': sfuIce ?? _ice,
       'iceCandidatePoolSize': 2,
@@ -5147,7 +5680,8 @@ class CallSession {
         // `_bootMedia`) reports the gap from this timestamp to actual
         // decoded pixels.
         _remoteVideoAttachedAtMs = DateTime.now().millisecondsSinceEpoch;
-        Analytics.capture('remote_video_track_attached', {'call_id': config.room});
+        Analytics.capture(
+            'remote_video_track_attached', {'call_id': config.room});
         if (!_firstRemoteVideoTrackReported) {
           _firstRemoteVideoTrackReported = true;
           Analytics.capture('call_first_remote_video_track', {
@@ -5176,20 +5710,25 @@ class CallSession {
       }
       _telemetry.connected(pc);
       _telemetry.setMediaPath(
-        _sfuActive || _sfuStarting ? 'sfu' : (_relayForced ? 'relay' : 'direct'),
+        _sfuActive || _sfuStarting
+            ? 'sfu'
+            : (_relayForced ? 'relay' : 'direct'),
       ); // [CALL-REL-4/5]
       // [CALL-AUDIBLE-1] Haptic moved to `_markAudibleReady` — see that
       // method's doc comment. Everything else in this block (ringback stop,
       // talk-time start, timers, watchdogs, receptionist abort, glare clear,
       // phase) is untouched.
       if (gOutgoingCallId == config.room) {
-        gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+        gOutgoingCallTo = null;
+        gOutgoingCallId = null;
+        gOutgoingSince = 0;
       }
       _connected = true;
       // [CALL-LOG-TIME-1] Talk time starts at FIRST REMOTE MEDIA, not at dial:
       // the ringing seconds are not part of the call's duration. Set once —
       // this branch is already guarded so it only runs on the first track.
-      if (_connectedAtMs == 0) _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
+      if (_connectedAtMs == 0)
+        _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
       peerAway.value = false;
       _setPhase('connected');
       // [CALL-MEDIA-WATCH-1] arm the media-flow watchdog now that we're live.
@@ -5275,7 +5814,7 @@ class CallSession {
       );
       _endWith('ended');
     } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-               s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
       if (_sfuActive || _sfuStarting) {
         _telemetry.runtimeError(
           stage: 'sfu_pc_disconnected',
@@ -5299,7 +5838,8 @@ class CallSession {
       if (isFailed && !canRestart) {
         _telemetry.runtimeError(
           stage: 'pc_failed_no_restart',
-          error: StateError('Peer connection failed and no ICE restart was available'),
+          error: StateError(
+              'Peer connection failed and no ICE restart was available'),
           extra: {
             'transport_state': s.toString(),
             'ice_restarts': _iceRestarts,
@@ -5313,17 +5853,20 @@ class CallSession {
       _failTimer?.cancel();
       _failTimer = Timer(const Duration(seconds: 10), () {
         final st = _pc?.connectionState;
-        if (!_ended && _connected &&
+        if (!_ended &&
+            _connected &&
             st != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           _telemetry.runtimeError(
             stage: 'pc_reconnect_timeout',
-            error: StateError('Peer connection did not recover within 10 seconds'),
+            error:
+                StateError('Peer connection did not recover within 10 seconds'),
             extra: {
               'transport_state': st.toString(),
               'restart_attempted': true,
             },
           );
-          _endWith('ended', reason: isFailed ? 'rtc-failed' : 'rtc-disconnected');
+          _endWith('ended',
+              reason: isFailed ? 'rtc-failed' : 'rtc-disconnected');
         }
       });
     } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
@@ -5346,7 +5889,8 @@ class CallSession {
   /// ladder a live `onTrack` would have driven, just run manually because no
   /// `onTrack` ever fired on this connection to drive it. Called at most once
   /// per call, from `_startSfuMedia`'s `hasFullPreroll` branch.
-  void _promotePrerollPc(RTCPeerConnection pc, List<RTCTrackEvent> earlyTracks) {
+  void _promotePrerollPc(
+      RTCPeerConnection pc, List<RTCTrackEvent> earlyTracks) {
     final myPcGen = ++_pcGeneration;
     _resetPlayoutHealthBaselines();
     _pc = pc;
@@ -5426,11 +5970,13 @@ class CallSession {
   /// worse off than before this existed, so we log and continue to the restart.
   Future<void> _pushRefreshedIceToPc(RTCPeerConnection pc, String why) async {
     try {
-      final cellPair = RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
+      final cellPair =
+          RemoteConfig.callCellPresetV1 && _localCellular && _peerCellular;
       await pc.setConfiguration({
         'iceServers': _ice,
         'iceCandidatePoolSize': 2,
-        if (CallDiag.turnOnly || _relayForced || cellPair) 'iceTransportPolicy': 'relay',
+        if (CallDiag.turnOnly || _relayForced || cellPair)
+          'iceTransportPolicy': 'relay',
         'audioJitterBufferMaxPackets': 50,
         'audioJitterBufferFastAccelerate': true,
       });
@@ -5520,7 +6066,8 @@ class CallSession {
       attempt: _recoveryAttemptCount,
     );
     _activeRecovery = attempt;
-    _telemetry.setRecoveryState('recovering_ice', attemptCount: _recoveryAttemptCount);
+    _telemetry.setRecoveryState('recovering_ice',
+        attemptCount: _recoveryAttemptCount);
     if (!_ended && _connected) _setPhase('reconnecting');
     Analytics.capture('call_recovery_started', {
       'call_id': config.room,
@@ -5544,7 +6091,8 @@ class CallSession {
     // fixed 30s AND terminal; now remote-config (default 12s) and expiry
     // feeds the retry ladder instead of ending the call.
     _recoveryDeadlineTimer?.cancel();
-    _recoveryDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callRecoveryDeadlineSec), () {
+    _recoveryDeadlineTimer =
+        Timer(Duration(seconds: RemoteConfig.callRecoveryDeadlineSec), () {
       if (_activeRecovery?.id == id && !_activeRecovery!.completed) {
         _failRecovery('recovery_timeout_no_playout');
       }
@@ -5568,16 +6116,20 @@ class CallSession {
       attempt = RecoveryAttempt(
         id: id,
         reason: reason,
-        targetPath: (d['path']?.toString() == 'relay') ? 'relay' : (_relayForced ? 'relay' : 'direct'),
+        targetPath: (d['path']?.toString() == 'relay')
+            ? 'relay'
+            : (_relayForced ? 'relay' : 'direct'),
         startedAtMs: DateTime.now().millisecondsSinceEpoch,
         attempt: _recoveryAttemptCount,
       );
       _activeRecovery = attempt;
-      _telemetry.setRecoveryState('recovering_ice', attemptCount: _recoveryAttemptCount);
+      _telemetry.setRecoveryState('recovering_ice',
+          attemptCount: _recoveryAttemptCount);
       if (!_ended && _connected) _setPhase('reconnecting');
       _recoveryDeadlineTimer?.cancel();
       // [CALL-SURVIVE-1] remote-config deadline (default 12s), non-terminal.
-      _recoveryDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callRecoveryDeadlineSec), () {
+      _recoveryDeadlineTimer =
+          Timer(Duration(seconds: RemoteConfig.callRecoveryDeadlineSec), () {
         if (_activeRecovery?.id == id && !_activeRecovery!.completed) {
           _failRecovery('recovery_timeout_no_playout');
         }
@@ -5665,7 +6217,8 @@ class CallSession {
   void _onPlayoutHealthForRecovery(MediaHealthClass cls) {
     final a = _activeRecovery;
     if (a == null || a.completed) return;
-    final playoutOk = cls == MediaHealthClass.healthy || cls == MediaHealthClass.remoteQuiet;
+    final playoutOk =
+        cls == MediaHealthClass.healthy || cls == MediaHealthClass.remoteQuiet;
     if (a.isOfferer) {
       if (playoutOk) {
         a.healthySamplesSinceStart++;
@@ -5706,7 +6259,8 @@ class CallSession {
     if (attempt.completed) return;
     attempt.completed = true;
     _recoveryDeadlineTimer?.cancel();
-    final elapsedMs = DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs;
+    final elapsedMs =
+        DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs;
     Analytics.capture('call_recovery_completed', {
       'call_id': config.room,
       'attempt_id': attempt.id,
@@ -5738,7 +6292,8 @@ class CallSession {
     if (attempt.completed) return;
     attempt.completed = true;
     _recoveryDeadlineTimer?.cancel();
-    final elapsedMs = DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs;
+    final elapsedMs =
+        DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs;
     Analytics.capture('call_recovery_completed', {
       'call_id': config.room,
       'attempt_id': attempt.id,
@@ -5826,7 +6381,8 @@ class CallSession {
     final idx = _survivalRetries.clamp(0, _kSurvivalBackoffSec.length - 1);
     _survivalRetries++;
     _survivalRetryTimer?.cancel();
-    _survivalRetryTimer = Timer(Duration(seconds: _kSurvivalBackoffSec[idx]), () {
+    _survivalRetryTimer =
+        Timer(Duration(seconds: _kSurvivalBackoffSec[idx]), () {
       if (_ended || !_connected) return;
       if (_sfuActive || _sfuStarting || _sfuReconnectInFlight) return;
       if (_activeRecovery != null || _activeMigration != null) return;
@@ -5879,7 +6435,9 @@ class CallSession {
     final pending = List<RTCIceCandidate>.of(_pendingCandidates);
     _pendingCandidates.clear();
     for (final c in pending) {
-      try { await pc.addCandidate(c); } catch (_) {}
+      try {
+        await pc.addCandidate(c);
+      } catch (_) {}
     }
   }
 
@@ -5903,9 +6461,11 @@ class CallSession {
   /// out their independent 20s deadlines. Electing a single initiator up
   /// front avoids the race instead of only cleaning up after it.
   bool get _isMigrationInitiator {
-    if (_weOffered) return true; // we are the original offerer — not "away" from our own view.
+    if (_weOffered)
+      return true; // we are the original offerer — not "away" from our own view.
     final remote = _remoteId;
-    if (remote == null) return true; // no peer id known yet; safe local default.
+    if (remote == null)
+      return true; // no peer id known yet; safe local default.
     if (peerAway.value) {
       // The original offerer (the peer, since we didn't offer) is away —
       // fall back to the lexicographically-lower stable id, same as §7.3.3.
@@ -5924,7 +6484,8 @@ class CallSession {
     if (_migrationAttempted || _activeMigration != null) return;
     final remoteId = _remoteId;
     if (remoteId == null) return;
-    _send({'type': 'relay-migrate-request', 'to': remoteId, 'reason': why.wire});
+    _send(
+        {'type': 'relay-migrate-request', 'to': remoteId, 'reason': why.wire});
   }
 
   /// [BLOCKER-2 fix] The deterministic initiator's side of
@@ -5958,7 +6519,9 @@ class CallSession {
       _activeMigration = null;
       _migrationDeadlineTimer?.cancel();
     }
-    try { attempt.newPc?.close(); } catch (_) {}
+    try {
+      attempt.newPc?.close();
+    } catch (_) {}
   }
 
   /// Initiator side: fresh TURN creds, brand-new relay-only PC, existing
@@ -5996,7 +6559,8 @@ class CallSession {
     final attempt = RelayMigrationAttempt(
         id: id, startedAtMs: DateTime.now().millisecondsSinceEpoch);
     _activeMigration = attempt;
-    _telemetry.setRecoveryState('migrating_relay', attemptCount: _recoveryAttemptCount);
+    _telemetry.setRecoveryState('migrating_relay',
+        attemptCount: _recoveryAttemptCount);
     Analytics.capture('call_recovery_started', {
       'call_id': config.room,
       'attempt_id': id,
@@ -6021,7 +6585,8 @@ class CallSession {
       // encoding as the primary PC — a relay migration is already on the
       // constrained TURN-relay path, so an unbounded video sender here is
       // even more likely to starve the link than on the direct path.
-      await _addStreamTracks(newPc, _stream!, stage: 'migration_add_track_failed');
+      await _addStreamTracks(newPc, _stream!,
+          stage: 'migration_add_track_failed');
       if (config.video) {
         // [CALL-VIDEO-LOSS-1 2026-08-05] Was hardcoded `cellular: true`, which
         // pinned every recovery/migration PC to the 800 kbps cap even for a user
@@ -6029,7 +6594,8 @@ class CallSession {
         // by one network blip. Ask the device instead; `_isLikelyCellular()`
         // already falls back to `false` (the higher cap) on any error, so this
         // can still only ever be as conservative as before, never less.
-        await _preferResolutionOnVideo(newPc, cellular: await _isLikelyCellular());
+        await _preferResolutionOnVideo(newPc,
+            cellular: await _isLikelyCellular());
       }
       newPc.onIceCandidate = (c) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
@@ -6069,7 +6635,8 @@ class CallSession {
     }
     _migrationDeadlineTimer?.cancel();
     // [CALL-SURVIVE-1] remote-config deadline (default 8s), non-terminal.
-    _migrationDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callMigrationDeadlineSec), () {
+    _migrationDeadlineTimer =
+        Timer(Duration(seconds: RemoteConfig.callMigrationDeadlineSec), () {
       if (identical(_activeMigration, attempt) && !attempt.completed) {
         _failMigration(attempt, 'relay_migration_timeout');
       }
@@ -6083,7 +6650,8 @@ class CallSession {
     if (!RemoteConfig.callRelayMigrationV1 || _ended || !_connected) return;
     final id = d['attemptId']?.toString();
     if (id == null || id.isEmpty) return;
-    if (_migrationAttempted) return; // cap already used by a terminal migration this call.
+    if (_migrationAttempted)
+      return; // cap already used by a terminal migration this call.
     final existing = _activeMigration;
     if (existing != null && existing.id != id) {
       // [BLOCKER-2 fix] We already started (or answered) our OWN attempt,
@@ -6102,7 +6670,8 @@ class CallSession {
     final attempt = RelayMigrationAttempt(
         id: id, startedAtMs: DateTime.now().millisecondsSinceEpoch);
     _activeMigration = attempt;
-    _telemetry.setRecoveryState('migrating_relay', attemptCount: _recoveryAttemptCount);
+    _telemetry.setRecoveryState('migrating_relay',
+        attemptCount: _recoveryAttemptCount);
     try {
       _ice = await IceCache.get(forceRefresh: true);
       final newPc = await createPeerConnection({
@@ -6118,7 +6687,8 @@ class CallSession {
       // encoding as the primary PC — a relay migration is already on the
       // constrained TURN-relay path, so an unbounded video sender here is
       // even more likely to starve the link than on the direct path.
-      await _addStreamTracks(newPc, _stream!, stage: 'migration_add_track_failed');
+      await _addStreamTracks(newPc, _stream!,
+          stage: 'migration_add_track_failed');
       if (config.video) {
         // [CALL-VIDEO-LOSS-1 2026-08-05] Was hardcoded `cellular: true`, which
         // pinned every recovery/migration PC to the 800 kbps cap even for a user
@@ -6126,7 +6696,8 @@ class CallSession {
         // by one network blip. Ask the device instead; `_isLikelyCellular()`
         // already falls back to `false` (the higher cap) on any error, so this
         // can still only ever be as conservative as before, never less.
-        await _preferResolutionOnVideo(newPc, cellular: await _isLikelyCellular());
+        await _preferResolutionOnVideo(newPc,
+            cellular: await _isLikelyCellular());
       }
       newPc.onIceCandidate = (c) {
         if (!identical(_activeMigration, attempt) || attempt.completed) return;
@@ -6168,7 +6739,8 @@ class CallSession {
     }
     _migrationDeadlineTimer?.cancel();
     // [CALL-SURVIVE-1] remote-config deadline (default 8s), non-terminal.
-    _migrationDeadlineTimer = Timer(Duration(seconds: RemoteConfig.callMigrationDeadlineSec), () {
+    _migrationDeadlineTimer =
+        Timer(Duration(seconds: RemoteConfig.callMigrationDeadlineSec), () {
       if (identical(_activeMigration, attempt) && !attempt.completed) {
         _failMigration(attempt, 'relay_migration_timeout');
       }
@@ -6182,7 +6754,8 @@ class CallSession {
     final pc = a.newPc;
     if (pc == null) return;
     try {
-      await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+      await pc.setRemoteDescription(
+          RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
     } catch (e, st) {
       _telemetry.runtimeError(
         stage: 'relay_migration_set_answer_failed',
@@ -6202,7 +6775,8 @@ class CallSession {
     if (pc == null) return;
     try {
       final c = d['candidate'];
-      await pc.addCandidate(RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']));
+      await pc.addCandidate(
+          RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']));
     } catch (_) {/* best-effort, matches the existing candidate-add pattern */}
   }
 
@@ -6219,7 +6793,8 @@ class CallSession {
     if (a == null || a.completed) return;
     if (d['attemptId']?.toString() != a.id) return;
     final reason = d['reason']?.toString() ?? 'relay_migration_rejected';
-    if (reason == 'migration_already_used' || reason == 'migration_in_progress') {
+    if (reason == 'migration_already_used' ||
+        reason == 'migration_in_progress') {
       // [BLOCKER-2 fix] The DO already granted the OTHER peer's offer — this
       // is glare, not a real failure. The winner's migration may still
       // succeed, so abandon quietly (no cap burn, no call-ending) and wait
@@ -6239,13 +6814,18 @@ class CallSession {
   void _onPlayoutHealthForMigration(MediaHealthClass cls) {
     final a = _activeMigration;
     if (a == null || a.completed || !a.remoteTrackSeen) return;
-    final ok = cls == MediaHealthClass.healthy || cls == MediaHealthClass.remoteQuiet;
+    final ok =
+        cls == MediaHealthClass.healthy || cls == MediaHealthClass.remoteQuiet;
     if (ok) {
       a.healthySamplesOnNewPc++;
       if (a.healthySamplesOnNewPc >= 2 && !a.readySent) {
         a.readySent = true;
         if (_remoteId != null) {
-          _send({'type': 'relay-migrate-ready', 'to': _remoteId, 'attemptId': a.id});
+          _send({
+            'type': 'relay-migrate-ready',
+            'to': _remoteId,
+            'attemptId': a.id
+          });
         }
         _maybeCompleteMigration(a);
       }
@@ -6386,7 +6966,8 @@ class CallSession {
     // replacing can no longer bind the renderer after this point.
     final myPcGen = ++_pcGeneration;
     pc.onIceCandidate = (c) {
-      if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
+      if (_remoteId != null)
+        _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
     };
     pc.onTrack = (e) {
       if (myPcGen != _pcGeneration) return;
@@ -6445,18 +7026,24 @@ class CallSession {
       'terminal_reason': reason,
       'elapsed_ms': elapsedMs,
     });
-    try { a.newPc?.close(); } catch (_) {}
+    try {
+      a.newPc?.close();
+    } catch (_) {}
     if (identical(_activeMigration, a)) _activeMigration = null;
     final oldPc = _pc;
     final oldPcAlive = oldPc != null &&
-        oldPc.connectionState != RTCPeerConnectionState.RTCPeerConnectionStateClosed &&
-        oldPc.connectionState != RTCPeerConnectionState.RTCPeerConnectionStateFailed;
-    _telemetry.setRecoveryState(oldPcAlive ? 'none' : 'failed', attemptCount: _recoveryAttemptCount);
+        oldPc.connectionState !=
+            RTCPeerConnectionState.RTCPeerConnectionStateClosed &&
+        oldPc.connectionState !=
+            RTCPeerConnectionState.RTCPeerConnectionStateFailed;
+    _telemetry.setRecoveryState(oldPcAlive ? 'none' : 'failed',
+        attemptCount: _recoveryAttemptCount);
     if (!oldPcAlive) {
       // [CALL-SURVIVE-1] Old PC dead + migration failed used to END the call
       // here (`relay_migration_timeout`). Now: stay in `reconnecting` and
       // retry — termination belongs to hangup / the WS ladder only.
-      _scheduleSurvivalRetry(RecoveryReason.transportDisconnected, from: reason);
+      _scheduleSurvivalRetry(RecoveryReason.transportDisconnected,
+          from: reason);
     } else if (!_ended && _connected) {
       // Old PC still has playout — a failed upgrade must not create an outage.
       _setPhase('connected');
@@ -6484,16 +7071,21 @@ class CallSession {
       unawaited(mediaFuture.then((lateStream) async {
         if (!mediaTimedOut) return;
         for (final t in lateStream.getTracks()) {
-          try { await t.stop(); } catch (_) {}
+          try {
+            await t.stop();
+          } catch (_) {}
         }
-        try { await lateStream.dispose(); } catch (_) {}
+        try {
+          await lateStream.dispose();
+        } catch (_) {}
         Analytics.capture('call_media_late_stream_disposed', {
           'call_id': config.room,
           'video': false,
           'stage': 'accepted_audio',
         });
       }).catchError((_) {}));
-      media = await mediaFuture.timeout(const Duration(seconds: 8), onTimeout: () {
+      media =
+          await mediaFuture.timeout(const Duration(seconds: 8), onTimeout: () {
         mediaTimedOut = true;
         throw TimeoutException(
           'accepted getUserMedia did not return within 8s',
@@ -6502,18 +7094,27 @@ class CallSession {
       // The call may have ended while native capture was opening. Never attach
       // a newly returned microphone to a torn-down SFU sender.
       if (_ended) {
-        for (final t in media.getTracks()) { try { await t.stop(); } catch (_) {} }
+        for (final t in media.getTracks()) {
+          try {
+            await t.stop();
+          } catch (_) {}
+        }
         await media.dispose();
         return false;
       }
       final audioTracks = media.getAudioTracks();
       final track = audioTracks.isEmpty ? null : audioTracks.first;
       if (track == null) throw StateError('accepted_audio_track_missing');
-      if (transport != null && !await transport.replacePublishedAudioTrack(track)) {
+      if (transport != null &&
+          !await transport.replacePublishedAudioTrack(track)) {
         throw StateError('prewarm_audio_replace_failed');
       }
       if (_ended) {
-        for (final t in media.getTracks()) { try { await t.stop(); } catch (_) {} }
+        for (final t in media.getTracks()) {
+          try {
+            await t.stop();
+          } catch (_) {}
+        }
         await media.dispose();
         return false;
       }
@@ -6521,7 +7122,9 @@ class CallSession {
       _prewarmAudioPending = false;
       localRenderer.srcObject = media;
       if (current != null && !identical(current, media)) {
-        try { await current.dispose(); } catch (_) {}
+        try {
+          await current.dispose();
+        } catch (_) {}
       }
       _stage(transport == null ? 'mic_ready_fallback' : 'mic_replaced');
       Analytics.capture('call_preaccept_audio_replaced', {
@@ -6532,8 +7135,14 @@ class CallSession {
       return true;
     } catch (e, st) {
       if (media != null) {
-        for (final t in media.getTracks()) { try { await t.stop(); } catch (_) {} }
-        try { await media.dispose(); } catch (_) {}
+        for (final t in media.getTracks()) {
+          try {
+            await t.stop();
+          } catch (_) {}
+        }
+        try {
+          await media.dispose();
+        } catch (_) {}
       }
       Analytics.error(
         domain: 'call_setup',
@@ -6598,7 +7207,8 @@ class CallSession {
   /// once. The join deadline is [RemoteConfig.callRtkJoinDeadlineSec] so a slow
   /// or wedged join self-aborts to P2P instead of stranding the call.
   Future<void> _startRtkMedia() async {
-    if (_ended || _connected || _rtkStarting || _rtkActive || _rtkAborted) return;
+    if (_ended || _connected || _rtkStarting || _rtkActive || _rtkAborted)
+      return;
     // [CALL-PREJOIN-1 2026-08-16] The election landed on RealtimeKit, not the
     // raw SFU — the caller's ring-time pre-join seat (if any) is now dead
     // weight. See [_discardPrejoinedSfu].
@@ -6657,7 +7267,8 @@ class CallSession {
       _rtkStarting = false;
       _rtkAborted = true;
       await Analytics.captureException(e, s,
-          screen: 'call_session', handled: true,
+          screen: 'call_session',
+          handled: true,
           extra: {'op': 'rtk_start', 'call_id': config.room});
       Analytics.capture('call_rtk_fallback', {
         'call_id': config.room,
@@ -6787,11 +7398,14 @@ class CallSession {
     // [CALL-AUDIBLE-1] Haptic moved to `_markAudibleReady` — see that
     // method's doc comment. Everything else in this block is untouched.
     if (gOutgoingCallId == config.room) {
-      gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+      gOutgoingCallTo = null;
+      gOutgoingCallId = null;
+      gOutgoingSince = 0;
     }
     _connected = true;
     // [CALL-LOG-TIME-1] Talk time starts at first remote media, not at dial.
-    if (_connectedAtMs == 0) _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
+    if (_connectedAtMs == 0)
+      _connectedAtMs = DateTime.now().millisecondsSinceEpoch;
     peerAway.value = false;
     _setPhase('connected');
     _stage('rtk_connected');
@@ -6809,9 +7423,8 @@ class CallSession {
       'via': via, // 'remote_track' | 'remote_join'
       'outgoing': config.outgoing,
       'video': config.video,
-      'ms_from_start': _setupT0 == 0
-          ? -1
-          : DateTime.now().millisecondsSinceEpoch - _setupT0,
+      'ms_from_start':
+          _setupT0 == 0 ? -1 : DateTime.now().millisecondsSinceEpoch - _setupT0,
     });
     _armAudibleGate(); // [CALL-AUDIBLE-1]
   }
@@ -6952,7 +7565,8 @@ class CallSession {
     if (!RemoteConfig.callSfuV1 || !RemoteConfig.callerPrejoinOnRingV1) return;
     final stream = _stream;
     if (stream == null) return;
-    if (_prejoinedSfu != null || _sfu != null || _sfuStarting || _sfuActive) return;
+    if (_prejoinedSfu != null || _sfu != null || _sfuStarting || _sfuActive)
+      return;
     _prejoinStarted = true;
     final callId = config.room;
     final swStart = DateTime.now().millisecondsSinceEpoch;
@@ -6990,7 +7604,8 @@ class CallSession {
       } catch (_) {/* telemetry must never affect the ring path */}
     }).catchError((Object e) {
       try {
-        Analytics.capture('call_prejoin_failed', {'call_id': callId, 'detail': e.toString()});
+        Analytics.capture(
+            'call_prejoin_failed', {'call_id': callId, 'detail': e.toString()});
       } catch (_) {/* telemetry must never affect the ring path */}
     });
   }
@@ -7019,7 +7634,8 @@ class CallSession {
     _prejoinedSfu = null;
     _prejoinPublishFuture = null;
     try {
-      Analytics.capture('call_prejoin_discarded', {'call_id': config.room, 'reason': reason});
+      Analytics.capture(
+          'call_prejoin_discarded', {'call_id': config.room, 'reason': reason});
     } catch (_) {/* telemetry must never affect call setup */}
     // [CALL-PREJOIN-ISOLATE-1 2026-08-17] Retire the PRE-JOIN's connection, by
     // identity — never `_pc`. Before isolation `_pc` WAS the pre-join's PC (the
@@ -7036,7 +7652,8 @@ class CallSession {
   }
 
   Future<void> _startSfuMedia() async {
-    if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted) return;
+    if (_ended || _connected || _sfuStarting || _sfuActive || _sfuAborted)
+      return;
     final stream = _stream;
     if (stream == null) return;
     _connectWatchdogFast?.cancel();
@@ -7057,9 +7674,11 @@ class CallSession {
       final pre = _prejoinedSfu!;
       CallSfuResult? publishFailure;
       try {
-        publishFailure = await (_prejoinPublishFuture ?? Future<CallSfuResult?>.value(null));
+        publishFailure =
+            await (_prejoinPublishFuture ?? Future<CallSfuResult?>.value(null));
       } catch (e) {
-        publishFailure = CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
+        publishFailure =
+            CallSfuResult.failed(SfuFailure.unknown, detail: e.toString());
       }
       // Only claim ownership if nothing else raced us to it while awaiting.
       if (identical(_prejoinedSfu, pre)) {
@@ -7096,7 +7715,8 @@ class CallSession {
     // CALLEE's incoming-push handler, never on an outgoing call.
     CallPrewarmedData? prewarmed;
     if (adoptedPrejoin == null &&
-        (RemoteConfig.callPrewarmOnRingV1 || RemoteConfig.callSilentTransportPrewarmV1)) {
+        (RemoteConfig.callPrewarmOnRingV1 ||
+            RemoteConfig.callSilentTransportPrewarmV1)) {
       try {
         // [CALL-PREROLL-1 2026-08-17] `currentStream` lets `adopt` compare it,
         // by identity, against whatever `CallPrewarm` itself pre-rolled — the
@@ -7114,7 +7734,8 @@ class CallSession {
         );
       } catch (_) {/* prewarm must never affect call setup */}
     }
-    final prewarmedIce = prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
+    final prewarmedIce =
+        prewarmed?.iceServers ?? const <Map<String, dynamic>>[];
     // [CALL-PREROLL-1] True only when `CallPrewarm` pre-rolled THIS exact
     // stream all the way through publish+pull during the ring. A video call
     // never qualifies (the boot sequence never peeks a preroll stream for
@@ -7124,8 +7745,8 @@ class CallSession {
     final hasFullPreroll = adoptedPrejoin == null &&
         RemoteConfig.callPrerollV1 &&
         (prewarmed?.hasFullPreroll ?? false);
-    final hasPrepublishedAudio = adoptedPrejoin == null &&
-        (prewarmed?.hasPrepublishedAudio ?? false);
+    final hasPrepublishedAudio =
+        adoptedPrejoin == null && (prewarmed?.hasPrepublishedAudio ?? false);
     final transport = adoptedPrejoin ??
         (hasFullPreroll ? prewarmed!.prerollTransport! : _buildSfuTransport());
     _sfu = transport;
@@ -7208,7 +7829,8 @@ class CallSession {
         'failure': 'transport_exception',
         'detail': e.toString(),
       });
-      _telemetry.runtimeError(stage: 'sfu_transport_exception', error: e, stack: st);
+      _telemetry.runtimeError(
+          stage: 'sfu_transport_exception', error: e, stack: st);
       if (_remoteId != null) _send({'type': 'sfu-abort', 'to': _remoteId});
       if (_sfuDecider) await _startP2pOffer();
       return;
@@ -7248,12 +7870,15 @@ class CallSession {
       // (`_enableSfuVideo` → `CallSfuTransport.publishVideo`), just triggered
       // by adoption instead of a user tap. `_stream` already carries the
       // video track for an outgoing video call (acquired in `_bootMedia`).
-      if (adoptedPrejoin != null && config.video && !RemoteConfig.callSfuAudioOnly) {
+      if (adoptedPrejoin != null &&
+          config.video &&
+          !RemoteConfig.callSfuAudioOnly) {
         final cam = stream.getVideoTracks();
         if (cam.isNotEmpty) {
           final ok = await transport.publishVideo(cam.first, stream);
           if (ok) {
-            if (_remoteId != null) _send({'type': 'sfu-video', 'to': _remoteId});
+            if (_remoteId != null)
+              _send({'type': 'sfu-video', 'to': _remoteId});
             Analytics.capture('call_sfu_video_upgraded', {
               'call_id': config.room,
               'via': 'prejoin_adopt',
@@ -7303,7 +7928,8 @@ class CallSession {
   /// by [CALL-SFU-SURVIVE-1] would be inert — the same shape of bug as the
   /// [CALL-RED-1] empty `if` body.
   Future<void> _reconnectSfu({bool retry = false}) async {
-    if (_ended || _sfuReconnectInFlight || _sfu == null || _stream == null) return;
+    if (_ended || _sfuReconnectInFlight || _sfu == null || _stream == null)
+      return;
     if (!_sfuActive && !retry) return;
     _sfuReconnectInFlight = true;
     _sfuStarting = true;
@@ -7420,7 +8046,8 @@ class CallSession {
       // `reconnecting` with a dead PC and nothing scheduled — a silent hang
       // rather than a recoverable failure. Treat a throw exactly as a failed
       // result.
-      _telemetry.runtimeError(stage: 'sfu_reconnect_threw', error: e, stack: st);
+      _telemetry.runtimeError(
+          stage: 'sfu_reconnect_threw', error: e, stack: st);
       // Snapshot before awaiting — see the `_ended` branch above.
       final failedPc = identical(_pc, oldPc) ? null : _pc;
       await _retirePc(oldPc);
@@ -7597,7 +8224,9 @@ class CallSession {
         // dropped). Nothing was ever attached to the stream or published —
         // just release the camera we just opened.
         for (final t in v.getVideoTracks()) {
-          try { t.stop(); } catch (_) {}
+          try {
+            t.stop();
+          } catch (_) {}
         }
         return;
       }
@@ -7607,12 +8236,15 @@ class CallSession {
       final ok = await _sfu!.publishVideo(track, _stream!);
       if (!ok) {
         track.stop();
-        try { await _stream?.removeTrack(track); } catch (_) {}
+        try {
+          await _stream?.removeTrack(track);
+        } catch (_) {}
         track = null;
         // Nothing was set to true above, so there is nothing to roll back on
         // `_video`/`_camOn`/`videoActive`/`cameraOn` — they are exactly what
         // they were before this call started.
-        Analytics.capture('call_sfu_video_publish_failed', {'call_id': config.room});
+        Analytics.capture(
+            'call_sfu_video_publish_failed', {'call_id': config.room});
         Analytics.capture('call_video_upgrade_failed', {
           'call_id': config.room,
           'reason': 'sfu_publish_failed',
@@ -7637,14 +8269,19 @@ class CallSession {
       // renderer's first-frame callback.
       Analytics.capture('local_video_published', {'call_id': config.room});
     } catch (e, st) {
-      _telemetry.runtimeError(stage: 'sfu_video_upgrade_failed', error: e, stack: st);
+      _telemetry.runtimeError(
+          stage: 'sfu_video_upgrade_failed', error: e, stack: st);
       Analytics.capture('call_video_upgrade_failed', {
         'call_id': config.room,
         'reason': 'exception',
       });
       if (track != null) {
-        try { track.stop(); } catch (_) {}
-        try { await _stream?.removeTrack(track); } catch (_) {}
+        try {
+          track.stop();
+        } catch (_) {}
+        try {
+          await _stream?.removeTrack(track);
+        } catch (_) {}
       }
     } finally {
       videoUpgrading.value = false;
@@ -7654,9 +8291,14 @@ class CallSession {
   Future<void> _onSignal(dynamic raw) async {
     if (_receptionistActive) {
       String? t;
-      try { t = (jsonDecode(raw as String) as Map)['type']?.toString(); } catch (_) {}
-      Analytics.capture('ava_recept_signal_suppressed',
-          {'channel': 'signaling', if (t != null) 'type': t, 'call_id': config.room});
+      try {
+        t = (jsonDecode(raw as String) as Map)['type']?.toString();
+      } catch (_) {}
+      Analytics.capture('ava_recept_signal_suppressed', {
+        'channel': 'signaling',
+        if (t != null) 'type': t,
+        'call_id': config.room
+      });
       return;
     }
     if (_ended) return;
@@ -7699,7 +8341,9 @@ class CallSession {
     if ((d['src'] ?? '').toString() == 'do') {
       final st = (d['type'] ?? '').toString();
       final cid = (d['callId'] ?? config.room).toString();
-      final seq = d['seq'] is int ? d['seq'] as int : int.tryParse((d['seq'] ?? '').toString());
+      final seq = d['seq'] is int
+          ? d['seq'] as int
+          : int.tryParse((d['seq'] ?? '').toString());
       unawaited(applyRingTransition(cid, st, seq: seq, source: 'do_socket'));
     }
     // CALL-GEN-2: drop stale-generation inbound frames PER SENDER. The DO re-stamps
@@ -7759,12 +8403,14 @@ class CallSession {
     // offer/answer/candidate come from the peer's live device; restrict to those.
     // (The explicit `case 'device-ringing':` below stays the real receipt path.)
     final String frameType = d['type']?.toString() ?? '';
-    final bool isPeerSignal =
-        frameType == 'offer' || frameType == 'answer' || frameType == 'candidate';
+    final bool isPeerSignal = frameType == 'offer' ||
+        frameType == 'answer' ||
+        frameType == 'candidate';
     if (config.outgoing && frameFrom.isNotEmpty && isPeerSignal) {
       _onDeviceRinging();
     }
-    if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
+    if (d['country'] is String)
+      _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
       case 'welcome':
         _gotWelcome = true;
@@ -7853,8 +8499,8 @@ class CallSession {
           if (config.seed.isNotEmpty) 'peer_uid': config.seed,
         });
         if (peerRec != peerRecording.value) {
-          AvaLog.I.log('call',
-              'peer recording indicator ${peerRec ? 'ON' : 'OFF'}');
+          AvaLog.I.log(
+              'call', 'peer recording indicator ${peerRec ? 'ON' : 'OFF'}');
         }
         peerRecording.value = peerRec;
         break;
@@ -7897,7 +8543,8 @@ class CallSession {
             await _startRtkMedia();
           } else {
             _rtkAborted = true;
-            if (_remoteId != null) _send({'type': 'rtk-abort', 'to': _remoteId});
+            if (_remoteId != null)
+              _send({'type': 'rtk-abort', 'to': _remoteId});
           }
         }
         break;
@@ -8039,7 +8686,8 @@ class CallSession {
         try {
           _remoteId = d['from'] as String;
           final pc = _pc ?? await _newPC();
-          await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+          await pc.setRemoteDescription(
+              RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
           await _flushCandidates();
           final ans = _tuned(await pc.createAnswer());
           await pc.setLocalDescription(ans);
@@ -8062,18 +8710,23 @@ class CallSession {
         // [CALL-TELEMETRY-1] Mark that SDP answer arrived — never_connected
         // failures split into "ring never landed" vs "answered but ICE failed".
         _gotSdpAnswer = true;
+        _noteAnswerBoundary('remote_sdp_answer');
         try {
-          await _pc?.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+          await _pc?.setRemoteDescription(
+              RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
           await _flushCandidates();
         } catch (_) {}
         break;
       case 'candidate':
         final c = d['candidate'];
-        final cand = RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']);
+        final cand =
+            RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']);
         if (_pc == null || !_remoteSet) {
           _pendingCandidates.add(cand);
         } else {
-          try { await _pc!.addCandidate(cand); } catch (_) {}
+          try {
+            await _pc!.addCandidate(cand);
+          } catch (_) {}
         }
         break;
       case 'device-ringing':
@@ -8119,7 +8772,8 @@ class CallSession {
       case 'decline_agent':
         // [DIALPAD-BIZ-CALLS Phase C] Fast-WS "Send to Ava AI Agent" signal.
         if (_receptionistActive) break;
-        if (!_connected && !_ended) businessAgentHandoff('manual_send_to_agent');
+        if (!_connected && !_ended)
+          businessAgentHandoff('manual_send_to_agent');
         break;
       case 'decline_ava':
         // Fast-WS twin of the durable call-status branch. Keep the explicit
@@ -8311,7 +8965,8 @@ class CallSession {
   /// call command reducer. The native WebRTC plugin reports unsupported sender
   /// state as a normal failed feasibility result instead of crashing the call.
   Future<bool> sendDtmf(String tone) async {
-    if (_ended || !_connected || !RegExp(r'^[0-9A-D#*]$').hasMatch(tone)) return false;
+    if (_ended || !_connected || !RegExp(r'^[0-9A-D#*]$').hasMatch(tone))
+      return false;
     try {
       final senders = await _pc?.getSenders();
       RTCDTMFSender? dtmf;
@@ -8323,10 +8978,14 @@ class CallSession {
       }
       if (dtmf == null || !await dtmf.canInsertDtmf()) return false;
       await dtmf.insertDTMF(tone, duration: 100, interToneGap: 70);
-      Analytics.capture('call_dtmf_sent', {'call_id': config.room, 'tone': tone});
+      Analytics.capture(
+          'call_dtmf_sent', {'call_id': config.room, 'tone': tone});
       return true;
     } catch (e, st) {
-      _telemetry.runtimeError(stage: 'dtmf_send_failed', error: e, stack: st,
+      _telemetry.runtimeError(
+          stage: 'dtmf_send_failed',
+          error: e,
+          stack: st,
           extra: {'call_id': config.room});
       return false;
     }
@@ -8341,7 +9000,8 @@ class CallSession {
       // actually updates `_speaker`/`speakerOn`/the tone player/the
       // receptionist once native confirms the route — never optimistically
       // here, so the UI always reflects the CONFIRMED route.
-      final target = _speaker ? CallAudioRoute.earpiece : CallAudioRoute.speaker;
+      final target =
+          _speaker ? CallAudioRoute.earpiece : CallAudioRoute.speaker;
       CallAudioController.instance.setIntent(target);
       // ignore: unawaited_futures
       CallAudioController.instance.apply(source: 'user_toggle');
@@ -8353,9 +9013,12 @@ class CallSession {
       // the route event confirms the ACTUAL active route (never merely the
       // last button press). UI may optimistically show the pending intent —
       // it does not do so here to avoid a second, possibly wrong, UI update.
-      final target = _speaker ? CallAudioRoute.earpiece : CallAudioRoute.speaker;
+      final target =
+          _speaker ? CallAudioRoute.earpiece : CallAudioRoute.speaker;
       // ignore: unawaited_futures
-      NativeVoiceAudio.instance.selectRoute(target, source: 'user').then((result) {
+      NativeVoiceAudio.instance
+          .selectRoute(target, source: 'user')
+          .then((result) {
         _speaker = result.active == CallAudioRoute.speaker;
         speakerOn.value = _speaker;
         // ignore: unawaited_futures
@@ -8442,8 +9105,12 @@ class CallSession {
         config.room,
         timeout: const Duration(milliseconds: 1200),
       );
-      if (status == 'decline_ava' && !_ended && !_connected &&
-          !_receptionistActive && !_avaCountingDown && !config.video) {
+      if (status == 'decline_ava' &&
+          !_ended &&
+          !_connected &&
+          !_receptionistActive &&
+          !_avaCountingDown &&
+          !config.video) {
         _handoffAuthorityPoll?.cancel();
         _ringTimeout?.cancel();
         Analytics.capture('call_handoff_recovered_authority_poll', {
@@ -8471,7 +9138,8 @@ class CallSession {
       return;
     }
     ApiAuth.postJson(kCallCommandUrl, {
-      'callId': config.room, 'command': 'cancel_call',
+      'callId': config.room,
+      'command': 'cancel_call',
     }).ignore();
     Analytics.capture('call_cancel_sent', {'call_id': config.room});
   }
@@ -8497,8 +9165,12 @@ class CallSession {
         return;
       }
       // P2P path: unchanged — optimistic UI, fire-and-forget renegotiation.
-      _video = true; _camOn = true; _speaker = true;
-      videoActive.value = true; cameraOn.value = true; speakerOn.value = true;
+      _video = true;
+      _camOn = true;
+      _speaker = true;
+      videoActive.value = true;
+      cameraOn.value = true;
+      speakerOn.value = true;
       // ignore: unawaited_futures
       _restartWithVideo();
       return;
@@ -8555,7 +9227,8 @@ class CallSession {
       if (_activeRecovery != null || _activeMigration != null) {
         _telemetry.runtimeError(
           stage: 'video_upgrade_deferred_negotiation_busy',
-          error: StateError('recovery/relay-migration still active after 4s wait'),
+          error:
+              StateError('recovery/relay-migration still active after 4s wait'),
         );
         return;
       }
@@ -8568,15 +9241,18 @@ class CallSession {
           'audio': false,
         });
       } catch (e, st) {
-        _telemetry.runtimeError(stage: 'video_upgrade_get_user_media_failed', error: e, stack: st);
+        _telemetry.runtimeError(
+            stage: 'video_upgrade_get_user_media_failed', error: e, stack: st);
         return;
       }
-      if (_ended || !identical(_pc, pcAtStart)) return; // superseded mid-capture
+      if (_ended || !identical(_pc, pcAtStart))
+        return; // superseded mid-capture
       final track = v.getVideoTracks().first;
       try {
         await _stream?.addTrack(track);
       } catch (e, st) {
-        _telemetry.runtimeError(stage: 'video_upgrade_add_local_track_failed', error: e, stack: st);
+        _telemetry.runtimeError(
+            stage: 'video_upgrade_add_local_track_failed', error: e, stack: st);
       }
       if (_ended) return;
       localRenderer.srcObject = _stream;
@@ -8584,7 +9260,8 @@ class CallSession {
         try {
           await _pc!.addTrack(track, _stream!);
         } catch (e, st) {
-          _telemetry.runtimeError(stage: 'video_upgrade_add_track_failed', error: e, stack: st);
+          _telemetry.runtimeError(
+              stage: 'video_upgrade_add_track_failed', error: e, stack: st);
         }
       }
       if (_pc != null) {
@@ -8595,14 +9272,18 @@ class CallSession {
         await _applyVideoCodecPreference(_pc!);
         await _preferResolutionOnVideo(_pc!, cellular: cellular);
       }
-      if (!_ended && _pc != null && identical(_pc, pcAtStart) && _remoteId != null) {
+      if (!_ended &&
+          _pc != null &&
+          identical(_pc, pcAtStart) &&
+          _remoteId != null) {
         final offer = _tuned(await _pc!.createOffer());
         await _pc!.setLocalDescription(offer);
         _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
         Analytics.capture('call_video_upgraded', {'call_id': config.room});
       }
     } catch (e, st) {
-      _telemetry.runtimeError(stage: 'video_upgrade_failed', error: e, stack: st);
+      _telemetry.runtimeError(
+          stage: 'video_upgrade_failed', error: e, stack: st);
     } finally {
       _videoRenegoInFlight = false;
     }
@@ -8657,7 +9338,8 @@ class CallSession {
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
     if (config.seed.isNotEmpty) {
       ApiAuth.postJson(kCallCommandUrl, {
-        'callId': config.room, 'command': 'end_call',
+        'callId': config.room,
+        'command': 'end_call',
       }).ignore();
     }
     _telemetry.ended('local-hangup');
@@ -8669,9 +9351,9 @@ class CallSession {
 
   /// A terminal UI that is allowed to remain mounted for follow-up actions.
   /// It is safe to reap; an active human/receptionist leg is never included.
-  bool get isOutcomeSurface => !_ended &&
-      (_phase == 'outcome-menu' || _phase == 'no-answer' ||
-       _phase == 'busy');
+  bool get isOutcomeSurface =>
+      !_ended &&
+      (_phase == 'outcome-menu' || _phase == 'no-answer' || _phase == 'busy');
 
   /// [CALL-EXCL-1] Single-audio-authority yield: the device owner just accepted a
   /// real incoming call. If THIS session is a live receptionist leg, end it via
@@ -8680,7 +9362,9 @@ class CallSession {
   Future<bool> yieldReceptionistToOwner() async {
     final r = _receptionist;
     if (r == null || _ended) return false;
-    try { await r.yieldToOwner(); } catch (_) {}
+    try {
+      await r.yieldToOwner();
+    } catch (_) {}
     // The receptionist's done future normally ends the session; end it directly
     // here too so the accept path can proceed deterministically without waiting.
     if (!_ended) await hangup('owner-answered-yield');
@@ -8696,7 +9380,8 @@ class CallSession {
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
     if (config.seed.isNotEmpty) {
       ApiAuth.postJson(kCallCommandUrl, {
-        'callId': config.room, 'command': 'end_call',
+        'callId': config.room,
+        'command': 'end_call',
       }).ignore();
     }
     Analytics.capture('call_ended_for_accept', {
@@ -8792,7 +9477,8 @@ class CallSession {
   Future<void> _onNoAnswer() async {
     // [AVA-RING-BLEED-1] A stale no-answer timer firing while Ava is live must
     // not end the call under her ("no-answer"/timeout-ringing).
-    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (_receptionistActive || _receptionist != null || _avaCountingDown)
+      return;
     // [DIALPAD-BIZ-CALLS Phase C] Same protection for a live agent hand-off.
     if (_phase == 'agent-handoff') return;
     // [NOANSWER-LEAVE-NOTE-1] The persistent leave-a-note card is already up
@@ -8834,7 +9520,8 @@ class CallSession {
           activationMode: _callUnreachable
               ? 'unreachable'
               : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'));
-      if (started) return; // tone keeps playing — stops at the live gate or its own timeout
+      if (started)
+        return; // tone keeps playing — stops at the live gate or its own timeout
       await _stopToneOnHandoffFailure('receptionist_failed');
     } else {
       // Receptionist not attempted at all (video / not allowed for this
@@ -8955,7 +9642,10 @@ class CallSession {
   // plan-§3 after-ring flow, not the generic outcome menu (see
   // CallSessionConfig.business).
   bool get _businessFlow =>
-      config.business && config.outgoing && !config.video && RemoteConfig.businessCallUx;
+      config.business &&
+      config.outgoing &&
+      !config.video &&
+      RemoteConfig.businessCallUx;
 
   bool get _menuEnabled => RemoteConfig.callMenuEnabled && !_businessFlow;
 
@@ -8984,7 +9674,10 @@ class CallSession {
     if (_phase == 'agent-handoff') return;
     if (!_businessFlow || !RemoteConfig.voiceAgent) {
       // Not eligible — behave exactly like a plain decline did before.
-      if (_menuEnabled) { _showOutcomeMenu('declined'); return; }
+      if (_menuEnabled) {
+        _showOutcomeMenu('declined');
+        return;
+      }
       _endWith('declined', reason: 'decline');
       return;
     }
@@ -8992,15 +9685,22 @@ class CallSession {
     _ringback.stop();
     // Tear down the dialing leg (stops any other callee device ringing, frees
     // the mic for the agent bridge) — same teardown _showOutcomeMenu performs.
-    try { _send({'type': 'bye'}); } catch (_) {}
-    try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
-    try { _pc?.close(); } catch (_) {}
+    try {
+      _send({'type': 'bye'});
+    } catch (_) {}
+    try {
+      _stream?.getTracks().forEach((t) => t.stop());
+    } catch (_) {}
+    try {
+      _pc?.close();
+    } catch (_) {}
     _pc = null;
     _notifyCalleeCanceled();
     agentHandoffOutcome = outcome;
     _setPhase('agent-handoff');
     Analytics.capture('agent_handoff_started', {
-      'call_id': config.room, 'outcome': outcome,
+      'call_id': config.room,
+      'outcome': outcome,
     });
   }
 
@@ -9014,16 +9714,24 @@ class CallSession {
     // Tear down the dialing leg (stops the callee's phone ringing, frees the
     // mic) — same teardown _tryReceptionist performs before handing off. The
     // menu is the caller's follow-up surface; Talk to Ava re-uses the session.
-    try { _send({'type': 'bye'}); } catch (_) {}
-    try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    try {
+      _send({'type': 'bye'});
+    } catch (_) {}
+    try {
+      _stream?.getTracks().forEach((t) => t.stop());
+    } catch (_) {}
     // ignore: unawaited_futures
-    try { _pc?.close(); } catch (_) {}
+    try {
+      _pc?.close();
+    } catch (_) {}
     _pc = null;
     _notifyCalleeCanceled();
     _menuScenario = scenario;
     _setPhase('outcome-menu');
     Analytics.capture('call_menu_shown', {
-      'call_id': config.room, 'scenario': scenario, 'video': config.video,
+      'call_id': config.room,
+      'scenario': scenario,
+      'video': config.video,
     });
     // An abandoned menu must not hold the session forever (mirror of the busy
     // card's 60s guard, longer here because notes take time to record/type).
@@ -9041,7 +9749,9 @@ class CallSession {
   Future<void> menuTalkToAva() async {
     if (_ended || _receptionistActive) return;
     Analytics.capture('call_menu_option_selected', {
-      'call_id': config.room, 'option': 'talk_to_ava', 'scenario': _menuScenario ?? '',
+      'call_id': config.room,
+      'option': 'talk_to_ava',
+      'scenario': _menuScenario ?? '',
     });
     _menuTimeout?.cancel();
     await _handoffToAva('menu');
@@ -9073,8 +9783,13 @@ class CallSession {
         try {
           await f;
         } catch (e, st) {
-          Analytics.captureException(e, st, handled: true,
-              screen: 'call_session', extra: {'stage': 'dismiss_outcome_already_ended', 'reason': reason});
+          Analytics.captureException(e, st,
+              handled: true,
+              screen: 'call_session',
+              extra: {
+                'stage': 'dismiss_outcome_already_ended',
+                'reason': reason
+              });
         }
       }
       return;
@@ -9091,8 +9806,10 @@ class CallSession {
       // active stream to cancel" double EventChannel teardown class).
       await _teardown(reason: reason);
     } catch (e, st) {
-      Analytics.captureException(e, st, handled: true,
-          screen: 'call_session', extra: {'stage': 'dismiss_outcome_teardown', 'reason': reason});
+      Analytics.captureException(e, st,
+          handled: true,
+          screen: 'call_session',
+          extra: {'stage': 'dismiss_outcome_teardown', 'reason': reason});
     }
     if (_phase != 'ended') _setPhase('ended');
   }
@@ -9100,7 +9817,9 @@ class CallSession {
   /// The widget logs option taps that it handles itself (notes).
   void menuLogOption(String option) {
     Analytics.capture('call_menu_option_selected', {
-      'call_id': config.room, 'option': option, 'scenario': _menuScenario ?? '',
+      'call_id': config.room,
+      'option': option,
+      'scenario': _menuScenario ?? '',
     });
   }
 
@@ -9172,7 +9891,8 @@ class CallSession {
     _bump();
     final ok = await _registerNowFreeWaiter();
     _busyNotifyInFlight = false;
-    _busyNotifyRegistered = true; // confirmed locally regardless of server state
+    _busyNotifyRegistered =
+        true; // confirmed locally regardless of server state
     _bump();
     Analytics.capture('busy_notify_registered', {
       'call_id': config.room,
@@ -9225,7 +9945,8 @@ class CallSession {
     }
     final started = await _tryReceptionist(activationMode: 'busy');
     if (!started && !_connected && !_ended) {
-      _endWith('receptionist-unavailable', reason: 'busy-receptionist-unavailable');
+      _endWith('receptionist-unavailable',
+          reason: 'busy-receptionist-unavailable');
     }
   }
 
@@ -9290,7 +10011,10 @@ class CallSession {
       _pendingRingWindow = window;
       return;
     }
-    if (!_takeoverGuard) { _startRingWindow(window); return; }
+    if (!_takeoverGuard) {
+      _startRingWindow(window);
+      return;
+    }
     _pendingRingWindow = window;
     if (_deviceRinging) {
       _startRingWindow(window);
@@ -9336,10 +10060,12 @@ class CallSession {
     if (_silentTransportPrewarming) return;
     // [AVA-RING-BLEED-1] Never (re)arm a no-answer window once Ava owns the call —
     // its _onNoAnswer would tear down the live receptionist session.
-    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (_receptionistActive || _receptionist != null || _avaCountingDown)
+      return;
     _ringTimeout?.cancel();
-    _ringTimeout = Timer(_serverAlignedRingWindow(window),
-        () { if (!_ended && !_connected) _onNoAnswer(); });
+    _ringTimeout = Timer(_serverAlignedRingWindow(window), () {
+      if (!_ended && !_connected) _onNoAnswer();
+    });
   }
 
   /// [CALL-ONE-DEADLINE-1 2026-08-03] Prefer the server's absolute ring deadline
@@ -9373,7 +10099,8 @@ class CallSession {
   }
 
   void _onRingAck(bool ok) {
-    if (!_takeoverGuard || _connected || _ended || _silentTransportPrewarming) return;
+    if (!_takeoverGuard || _connected || _ended || _silentTransportPrewarming)
+      return;
     // [ISSUE-VIDEO-RINGACK-1] (2026-07-14) VIDEO never runs _probeReceptionist
     // (there is no receptionist on video), so _armNoAnswerWindow is never
     // reached and _pendingRingWindow stays null FOREVER on a video call. The
@@ -9399,8 +10126,14 @@ class CallSession {
     // "unreachable" (_callUnreachable is never set on the ok=true path). That
     // is the honest label — the push WAS accepted, so we don't know the device
     // is off — and it matches what audio already does.
-    if (_pendingRingWindow == null && config.video) { _applyRingAck(ok); return; }
-    if (_pendingRingWindow == null) { _pendingAckResult = ok; return; }
+    if (_pendingRingWindow == null && config.video) {
+      _applyRingAck(ok);
+      return;
+    }
+    if (_pendingRingWindow == null) {
+      _pendingAckResult = ok;
+      return;
+    }
     _applyRingAck(ok);
   }
 
@@ -9451,14 +10184,19 @@ class CallSession {
         // real ring narration/tone comes only from a device-ringing receipt.
         _setDialStage("Reaching $_peerFirst's phone…");
       }
-      Analytics.capture('call_ring_ack',
-          {'call_id': config.room, 'ok': ok, 'source': 'server', 'window_extended': true});
+      Analytics.capture('call_ring_ack', {
+        'call_id': config.room,
+        'ok': ok,
+        'source': 'server',
+        'window_extended': true
+      });
       return;
     }
     _ringAckHandled = true;
     _ringAckFallback?.cancel();
     _deviceRingingTimer?.cancel();
-    Analytics.capture('call_ring_ack', {'call_id': config.room, 'ok': ok, 'source': 'server'});
+    Analytics.capture('call_ring_ack',
+        {'call_id': config.room, 'ok': ok, 'source': 'server'});
     if (!_connected) {
       _goUnreachable('ring_ack_false');
     }
@@ -9535,11 +10273,29 @@ class CallSession {
     }
   }
 
-  void notePlaceResult(bool reachable, {bool prewarming = false, int? prewarmDeadlineMs}) {
+  void notePlaceResult(bool reachable,
+      {bool prewarming = false, int? prewarmDeadlineMs}) {
     if (_ended || _connected) return;
     if (!reachable) {
       _onRingAck(false);
       return;
+    }
+    // [STREAM-CALL-PILOT-2] A provider decision is required before an
+    // optimistic session can acquire media. Old workers do not send one, so
+    // the documented compatibility default is Cloudflare. A Stream decision
+    // is terminal for this call until Stream's native bridge is available —
+    // never open the legacy room as a hidden mid-call fallback.
+    _providerDecision ??= const CallProviderDecision.cloudflare(
+        reason: 'missing_provider_defaults_cloudflare');
+    if (_providerDecision!.usesStream) {
+      _mediaStartRequested = true;
+      unawaited(_startSelectedMedia());
+      return;
+    }
+    if (!_mediaBooted && config.deferRing && StreamCallPilot.enabled) {
+      _mediaStartRequested = true;
+      _prejoinRequestedBeforeMedia = true;
+      unawaited(_startSelectedMedia());
     }
     if (prewarming) {
       notePrewarming(deadlineMs: prewarmDeadlineMs);
@@ -9554,7 +10310,11 @@ class CallSession {
     // online callee — who may accept before the ack ever lands, which is
     // exactly the case where publishing early matters most. Ring-ack keeps
     // owning reachability and the no-answer window; it no longer gates media.
-    _maybeStartCallerPrejoin();
+    if (_mediaBooted) {
+      _maybeStartCallerPrejoin();
+    } else if (config.deferRing && StreamCallPilot.enabled) {
+      _prejoinRequestedBeforeMedia = true;
+    }
     // A 200 from /api/call proves placement completed, not that FCM found a
     // live token or that the phone rang. Do not latch `_ringAckHandled`: the
     // consumer's later ok=false must still be able to fast-fail honestly, and
@@ -9565,7 +10325,8 @@ class CallSession {
     _deviceRingingTimer?.cancel();
     _deviceRingingTimer = Timer(const Duration(seconds: 12), () {
       if (_ended || _connected || _deviceRinging || _ringAckHandled) return;
-      AvaLog.I.log('call', 'Post-placement device ringing timeout: callee unreachable.');
+      AvaLog.I.log(
+          'call', 'Post-placement device ringing timeout: callee unreachable.');
       _goUnreachable('post_placement_wake_timeout');
     });
     Analytics.capture('call_device_wake_guard_armed', {
@@ -9614,7 +10375,8 @@ class CallSession {
   /// supersede — or fight with — the real receipt once it lands.
   void _onRingDelivered() {
     if (_ended || _connected || _deviceRinging) return;
-    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (_receptionistActive || _receptionist != null || _avaCountingDown)
+      return;
     _setDialStage("Ringing $_peerFirst's phone…");
     Analytics.capture('call_ring_delivered_copy_applied', {
       'call_id': config.room,
@@ -9678,7 +10440,9 @@ class CallSession {
     // [DIAL-NARRATION-1] The phone is genuinely ringing — say so with delight,
     // then settle into the classic 'Ringing…' after a few seconds.
     _dialStage = "Ah — it's ringing!";
-    for (final t in _dialStageTimers) { t.cancel(); }
+    for (final t in _dialStageTimers) {
+      t.cancel();
+    }
     _dialStageTimers.clear();
     _dialStageTimers.add(Timer(const Duration(seconds: 4), () {
       if (_ended || _connected) return;
@@ -9723,9 +10487,13 @@ class CallSession {
   ///    from it the first time a silent ring arrived, and then the caption would
   ///    be confidently wrong.
   void _onRepeatRing(Map<String, dynamic>? frame) {
-    if (frame == null || _receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (frame == null ||
+        _receptionistActive ||
+        _receptionist != null ||
+        _avaCountingDown) return;
     final count = (frame['ringCount'] as num?)?.toInt() ?? 0;
-    final required = (frame['ringsRequired'] as num?)?.toInt() ?? _ringCyclesRequired;
+    final required =
+        (frame['ringsRequired'] as num?)?.toInt() ?? _ringCyclesRequired;
     // Stale or duplicate frame (the DO broadcasts to every socket, and a
     // reconnect can replay). Monotonic or nothing.
     if (count <= _ringCyclesHeard) return;
@@ -9780,7 +10548,8 @@ class CallSession {
     if (!RemoteConfig.avaPrewarmEnabled) return;
     final deadline = _serverRingDeadlineMs;
     if (deadline == null) return;
-    final delay = (deadline - _prewarmLeadMs) - DateTime.now().millisecondsSinceEpoch;
+    final delay =
+        (deadline - _prewarmLeadMs) - DateTime.now().millisecondsSinceEpoch;
     // Too close to the deadline (or already past it) for a head start to be
     // worth the extra receptionist session — let the normal cold path handle
     // the handoff exactly as before.
@@ -9800,15 +10569,20 @@ class CallSession {
   /// its normal cold start with no user-visible effect.
   Future<void> _beginPrewarm() async {
     if (_ended || _connected) return;
-    if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
+    if (_receptionistActive || _receptionist != null || _avaCountingDown)
+      return;
     if (_prewarmCall != null) return; // already running
-    if (!_receptionistAllowedFor(_callUnreachable ? 'unreachable' : 'missed')) return;
+    if (!_receptionistAllowedFor(_callUnreachable ? 'unreachable' : 'missed'))
+      return;
     final call = ReceptionistCall(
-        calleeUid: config.seed, callId: config.room,
+        calleeUid: config.seed,
+        callId: config.room,
         activationMode: _callUnreachable
             ? 'unreachable'
             : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'),
-        speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+        speaker: _speaker,
+        teamId: config.teamId,
+        teamSlot: config.teamSlot);
     _armDeferredReceptAudio(call);
     _prewarmCall = call;
     _prewarmStartedAtMs = DateTime.now().millisecondsSinceEpoch;
@@ -9838,11 +10612,13 @@ class CallSession {
     final fut = call.start();
     _prewarmStartFuture = fut;
     final ok = await fut;
-    if (!identical(_prewarmCall, call)) return; // adopted/aborted/superseded already
+    if (!identical(_prewarmCall, call))
+      return; // adopted/aborted/superseded already
     if (!ok) {
       _prewarmCall = null;
       _prewarmStartFuture = null;
-      Analytics.capture('ava_prewarm_aborted', {'call_id': config.room, 'reason': 'failed'});
+      Analytics.capture(
+          'ava_prewarm_aborted', {'call_id': config.room, 'reason': 'failed'});
     }
   }
 
@@ -9880,8 +10656,11 @@ class CallSession {
     _prewarmCall = null;
     _prewarmStartFuture = null;
     _prewarmTimer?.cancel();
-    Analytics.capture('ava_prewarm_aborted', {'call_id': config.room, 'reason': reason});
-    try { await call.abortPrewarm(); } catch (_) {}
+    Analytics.capture(
+        'ava_prewarm_aborted', {'call_id': config.room, 'reason': reason});
+    try {
+      await call.abortPrewarm();
+    } catch (_) {}
   }
 
   /// Stop the ringback tone on a receptionist-handoff FAILURE path (start()
@@ -9891,7 +10670,8 @@ class CallSession {
   Future<void> _stopToneOnHandoffFailure(String reason) async {
     if (_avaLiveGateOpen) return;
     await _ringback.stop(reason: reason);
-    Analytics.capture('call_tone_stopped', {'call_id': config.room, 'reason': reason});
+    Analytics.capture(
+        'call_tone_stopped', {'call_id': config.room, 'reason': reason});
   }
 
   Future<void> _handoffToAva(String activationMode) async {
@@ -9935,7 +10715,8 @@ class CallSession {
     // 'bye'/cancel over the shared room and hand the caller to Ava mid-call,
     // killing the genuine connected call. Refuse without side effects.
     if (_anotherOwns) {
-      Analytics.capture('ava_recept_suppressed_dup_session', {'call_id': config.room});
+      Analytics.capture(
+          'ava_recept_suppressed_dup_session', {'call_id': config.room});
       return false;
     }
     if (_receptionistActive || _receptionist != null || _avaCountingDown) {
@@ -9970,15 +10751,23 @@ class CallSession {
     }
     _handoffWasWarm = isWarm;
     try {
-      try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
-      try { await _pc?.close(); } catch (_) {}
+      try {
+        _stream?.getTracks().forEach((t) => t.stop());
+      } catch (_) {}
+      try {
+        await _pc?.close();
+      } catch (_) {}
       _pc = null;
 
       final call = isWarm
           ? warm!
           : ReceptionistCall(
-              calleeUid: config.seed, callId: config.room, activationMode: activationMode,
-              speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
+              calleeUid: config.seed,
+              callId: config.room,
+              activationMode: activationMode,
+              speaker: _speaker,
+              teamId: config.teamId,
+              teamSlot: config.teamSlot);
       // [CALL-RING-AUDIBLE-3] Cold start gets the same deferral as a pre-warm
       // (a warm one was already armed in [_beginPrewarm]; re-arming is
       // idempotent and just refreshes the gate probe onto this session).
@@ -10032,7 +10821,9 @@ class CallSession {
             // [CALL-REL-7] Socket reattached — resume whichever receptionist
             // phase we were honestly showing before the drop.
             if (_phase == 'reconnecting') {
-              _setPhase(_avaLiveGateOpen ? 'receptionist' : 'receptionist-connecting');
+              _setPhase(_avaLiveGateOpen
+                  ? 'receptionist'
+                  : 'receptionist-connecting');
             }
             break;
           case 'wrapup':
@@ -10126,7 +10917,9 @@ class CallSession {
       });
       return true;
     } catch (_) {
-      try { await _receptionist?.hangup(); } catch (_) {}
+      try {
+        await _receptionist?.hangup();
+      } catch (_) {}
       _receptionist = null;
       _receptionistActive = false;
       _avaCountingDown = false;
@@ -10172,11 +10965,14 @@ class CallSession {
       // Guard the race where audio already arrived before we attached (this is
       // exactly how an already-live pre-warmed session is caught on adoption).
       // ignore: unawaited_futures
-      if (call.avaLevel.value > 0.02) { _openAvaLiveGate(); return; }
+      if (call.avaLevel.value > 0.02) {
+        _openAvaLiveGate();
+        return;
+      }
     }
     _avaLiveWatchdog?.cancel();
-    _avaLiveWatchdog = Timer(
-        const Duration(milliseconds: _avaLiveTimeoutMs), () => _onAvaLiveTimeout(call));
+    _avaLiveWatchdog = Timer(const Duration(milliseconds: _avaLiveTimeoutMs),
+        () => _onAvaLiveTimeout(call));
   }
 
   /// The ava-live ack arrived (first Ava audio / ready frame). Open the gate:
@@ -10258,8 +11054,8 @@ class CallSession {
         'reason': 'no_ava_live_ack',
       });
       _avaLiveWatchdog?.cancel();
-      _avaLiveWatchdog = Timer(
-          const Duration(milliseconds: _avaLiveTimeoutMs), () => _onAvaLiveTimeout(call));
+      _avaLiveWatchdog = Timer(const Duration(milliseconds: _avaLiveTimeoutMs),
+          () => _onAvaLiveTimeout(call));
       return;
     }
     // Second miss → the receptionist connected but never produced audio
@@ -10288,8 +11084,10 @@ class CallSession {
         call.requestVoicemailFallback('live_timeout')) {
       _avaVmFallbackActive = true;
       _avaVmFallbackAtMs = DateTime.now().millisecondsSinceEpoch;
-      call.onVmFallbackResult = (stored, recordedMs) =>
-          _emitAvaVmFallback('live_timeout', stored: stored, recordedMs: recordedMs);
+      call.onVmFallbackResult = (stored, recordedMs) => _emitAvaVmFallback(
+          'live_timeout',
+          stored: stored,
+          recordedMs: recordedMs);
       // Re-arm on a LONGER window pointed at a DIFFERENT handler. The
       // deterministic greeting is a cached R2 render and the beep is generated
       // locally with no dependency at all, so if nothing arrives inside this
@@ -10310,7 +11108,9 @@ class CallSession {
     // the ringback forever.
     await _stopToneOnHandoffFailure('receptionist_failed');
     // Tear down the dead receptionist leg so it can't linger under the fallback.
-    try { call.hangup(); } catch (_) {}
+    try {
+      call.hangup();
+    } catch (_) {}
     _receptionist = null;
     _receptionistActive = false;
     // [RECEPT-SETTINGS-1] voicemail removed — when the receptionist can't go live
@@ -10365,7 +11165,9 @@ class CallSession {
     _emitAvaVmFallback('live_timeout', stored: false, recordedMs: 0);
     _clearAvaLiveGate();
     await _stopToneOnHandoffFailure('receptionist_failed');
-    try { call.hangup(); } catch (_) {}
+    try {
+      call.hangup();
+    } catch (_) {}
     _receptionist = null;
     _receptionistActive = false;
     if (!_ended && !_connected) {
@@ -10380,7 +11182,9 @@ class CallSession {
     _avaLiveConnecting = false;
     final l = _avaLevelListener;
     if (l != null) {
-      try { _avaLevelSource?.avaLevel.removeListener(l); } catch (_) {}
+      try {
+        _avaLevelSource?.avaLevel.removeListener(l);
+      } catch (_) {}
       _avaLevelListener = null;
       _avaLevelSource = null;
     }
@@ -10507,7 +11311,8 @@ class CallSession {
     // (which does reach it via the DO socket) is unaffected.
     unawaited(() async {
       try {
-        await applyRingTransition(config.room, 'ended', source: 'local_teardown');
+        await applyRingTransition(config.room, 'ended',
+            source: 'local_teardown');
       } catch (_) {/* never let cleanup bookkeeping block a hangup */}
     }());
     // [CALL-GHOST-RING-1] Both of these were UNBOUNDED awaits sitting directly
@@ -10525,7 +11330,9 @@ class CallSession {
     if (_prewarmCall != null) {
       await _safeAwait(() => _abortPrewarm('call_ended'));
     }
-    try { WakelockPlus.disable(); } catch (_) {}
+    try {
+      WakelockPlus.disable();
+    } catch (_) {}
     // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
     // when the controller owns the session. It is safe even if setup only
     // partially completed. Flag off keeps the exact prior teardown sequence.
@@ -10538,7 +11345,8 @@ class CallSession {
     // just-ended call can never reach into whatever call comes next.
     CallAudioController.instance.release(config.room);
     if (RemoteConfig.callAudioOwnerV1 || RemoteConfig.callAudioControllerV2) {
-      await _safeAwait(() => NativeVoiceAudio.instance.endP2pSession(callId: config.room));
+      await _safeAwait(
+          () => NativeVoiceAudio.instance.endP2pSession(callId: config.room));
     } else {
       await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());
       await _safeAwait(() => NativeVoiceAudio().stopBluetoothSco());
@@ -10571,7 +11379,9 @@ class CallSession {
       gInCallSince = 0;
     }
     if (gOutgoingCallId == config.room) {
-      gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+      gOutgoingCallTo = null;
+      gOutgoingCallId = null;
+      gOutgoingSince = 0;
     }
     // [RECEPT-CALLBACK-PREEMPT-1] Clear the receptionist target when THIS
     // session's own receptionist leg is the one that set it (guards against
@@ -10606,7 +11416,9 @@ class CallSession {
     _handoffAuthorityPoll?.cancel();
     _ringAckFallback?.cancel();
     _deviceRingingTimer?.cancel();
-    for (final t in _dialStageTimers) { t.cancel(); } // [DIAL-NARRATION-1]
+    for (final t in _dialStageTimers) {
+      t.cancel();
+    } // [DIAL-NARRATION-1]
     _dialStageTimers.clear();
     _failTimer?.cancel();
     _wsReconnectTimer?.cancel();
@@ -10635,6 +11447,7 @@ class CallSession {
     if (_firstAudioProbeStartMs > 0 && !_firstAudioReported) {
       _reportFirstAudio(bytes: 0, outcome: 'ended');
     }
+    _emitSetupSummary(reason ?? (_connected ? 'ended' : _phase));
     // [CALL-AUDIBLE-1] A call that ends before audibility ever flipped must
     // not leak the listener or the 4s safety timer past teardown.
     _audibleSafetyTimer?.cancel();
@@ -10682,6 +11495,13 @@ class CallSession {
     _rtk = null;
     _rtkActive = false;
     _rtkStarting = false;
+    final streamEvents = _streamRtcEvents;
+    _streamRtcEvents = null;
+    if (streamEvents != null) await _safeAwait(() => streamEvents.cancel());
+    await _safeAwait(() => _streamRtc?.leave());
+    _streamRtc = null;
+    _streamRtcActive = false;
+    _streamRtcStarting = false;
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     // [ADDCALL-2-UI] The ONE place the capture stream survives this teardown.
     //
@@ -10701,12 +11521,18 @@ class CallSession {
         'reason': reason ?? 'hangup',
       });
     } else {
-      try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+      try {
+        _stream?.getTracks().forEach((t) => t.stop());
+      } catch (_) {}
     }
     await _safeAwait(() => _pc?.close(), ms: 3000);
     await _safeAwait(() => _ws?.sink.close());
-    try { localRenderer.srcObject = null; } catch (_) {}
-    try { remoteRenderer.srcObject = null; } catch (_) {}
+    try {
+      localRenderer.srcObject = null;
+    } catch (_) {}
+    try {
+      remoteRenderer.srcObject = null;
+    } catch (_) {}
     remoteVideoActive.value = false;
     remoteVideoStatus.value = 'idle';
     if (!loanedOut) await _safeAwait(() => _stream?.dispose());
@@ -10729,6 +11555,7 @@ class CallSession {
     // once the call is fully torn down — but only if it's still ours (a newer
     // action may already have taken the global).
     if (Analytics.currentTraceId == _traceId) Analytics.currentTraceId = null;
+    PushService.clearAcceptedAtMsFor(config.room);
     _bump();
   }
 
@@ -10741,7 +11568,9 @@ class CallSession {
         // [DIAL-NARRATION-1] Fresh device-ringing shows the delighted line once,
         // then settles into the classic 'Ringing…'.
         'ringing' => _dialStage ?? 'Ringing…',
-        'connected' => _onCellularHold ? 'On hold — cellular call' : 'Connected · end-to-end encrypted',
+        'connected' => _onCellularHold
+            ? 'On hold — cellular call'
+            : 'Connected · end-to-end encrypted',
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
@@ -10750,22 +11579,23 @@ class CallSession {
         'agent-handoff' => "Connecting you to $_peerFirst's Ava AI agent…",
         // [CALL-OUTCOME-MENU-1] honest per-scenario status header (spec §1).
         'outcome-menu' => switch (_menuScenario) {
-          'busy' => '$_peerFirst is busy on another call',
-          'unreachable' => "$_peerFirst's phone appears to be off or unreachable",
-          'declined' => "$_peerFirst can't take your call right now",
-          'no-answer' => 'User is not answering. Please try after sometime.',
-          _ => "$_peerFirst isn't answering",
-        },
+            'busy' => '$_peerFirst is busy on another call',
+            'unreachable' =>
+              "$_peerFirst's phone appears to be off or unreachable",
+            'declined' => "$_peerFirst can't take your call right now",
+            'no-answer' => 'User is not answering. Please try after sometime.',
+            _ => "$_peerFirst isn't answering",
+          },
         // [CALL-DIAL-FAIL-1]
         'network-error' => "Can't reach the network — check your connection",
         // [AVA-COUNTDOWN-COPY-1] Warm, honest connecting lines while the 3-2-1
         // ring settles — no cold "isn't picking up" framing, and no premature
         // "taking your call" claim (that stays gated to the confirmed phase).
         'ava-countdown' => switch (_avaCount) {
-          3 => 'Getting hold of Ava…',
-          2 => 'She’ll be online any second…',
-          _ => 'Almost there — connecting you…',
-        },
+            3 => 'Getting hold of Ava…',
+            2 => 'She’ll be online any second…',
+            _ => 'Almost there — connecting you…',
+          },
         'receptionist-connecting' => 'Ava is picking up…',
         'receptionist' => 'Ava is taking a message',
         'receptionist-wrapup' => 'Ava is wrapping up…',

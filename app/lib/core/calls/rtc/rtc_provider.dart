@@ -73,6 +73,15 @@ enum RtcSessionEvent {
   /// currently branches on it, so there is no risk of the same mixup.
   audioTrackAdded,
 
+  /// The provider observed decoded remote audio with a non-zero level. This is
+  /// deliberately later than [audioTrackAdded] and is the honest approximation
+  /// of "the user can hear the other person" used by instant-answer telemetry.
+  firstAudioPlayout,
+
+  /// The remote party rejected the call (decline/cancel). Kept distinct from a
+  /// transport error so the caller can close immediately with the right result.
+  rejected,
+
   /// A remote VIDEO track was added. Carries NO audio-audibility meaning —
   /// a consumer must not treat this as evidence that anything is audible.
   videoTrackAdded,
@@ -117,7 +126,7 @@ class RtcJoinTicket {
   });
 
   /// Which concrete provider this ticket is for (`cloudflare · jitsi ·
-  /// livekit · mock`, per the `rtc_provider` enum in §8B.3). The client
+  /// livekit · stream · mock`, per the `rtc_provider` enum in §8B.3). The client
   /// looks this up to pick the matching [RtcProvider] implementation; it
   /// never has to parse [url]/[token] to figure out the provider.
   final String provider;
@@ -328,7 +337,7 @@ abstract class RtcSession {
 
 /// The provider-agnostic entry point: given a server-issued [RtcJoinTicket],
 /// produce a connected [RtcSession]. Exactly one concrete implementation
-/// exists per provider (Cloudflare Realtime, Jitsi, LiveKit, `mock` for
+/// exists per provider (Cloudflare Realtime, Jitsi, LiveKit, Stream, `mock` for
 /// tests); which one is selected is a config flip (`rtc_provider` per
 /// account/room), never a client code change, per §4.7's design goal.
 ///
@@ -337,7 +346,7 @@ abstract class RtcSession {
 /// already-active call never changes mid-call.
 abstract class RtcProvider {
   /// Provider identifier matching the `rtc_provider` telemetry enum in
-  /// §8B.3 (`cloudflare · jitsi · livekit · mock`). Used only for
+  /// §8B.3 (`cloudflare · jitsi · livekit · stream · mock`). Used only for
   /// telemetry/logging/config selection — callers must never branch UI or
   /// enforcement logic on this value; use [capabilities] instead.
   String get name;

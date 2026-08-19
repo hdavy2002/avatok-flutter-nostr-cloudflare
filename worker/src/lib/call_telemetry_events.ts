@@ -103,7 +103,7 @@ export const RTC_ERROR_STAGES = [
 ] as const;
 export type RtcErrorStage = (typeof RTC_ERROR_STAGES)[number];
 
-export const RTC_PROVIDERS = ["cloudflare", "jitsi", "livekit", "mock", "unknown"] as const;
+export const RTC_PROVIDERS = ["cloudflare", "stream", "jitsi", "livekit", "mock", "unknown"] as const;
 export type RtcProvider = (typeof RTC_PROVIDERS)[number];
 
 export const RTC_MODES = ["p2p", "sfu"] as const;

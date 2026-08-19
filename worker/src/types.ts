@@ -223,6 +223,13 @@ export interface Env {
   FCM_SERVICE_ACCOUNT?: string;
   // Cloudflare Stream webhook HMAC secret (AvaLive). Gated.
   STREAM_WEBHOOK_SECRET?: string;
+  // GetStream Video pilot. API key is public-safe; API secret is a wrangler
+  // secret and is never committed. Both are unused while the pilot flag is off.
+  STREAM_VIDEO_API_KEY?: string;
+  STREAM_VIDEO_API_SECRET?: string;
+  // Comma-separated staging account ids allowed into the dark Stream pilot.
+  // Unset/empty means nobody can use the pilot even if its config flag is on.
+  STREAM_VIDEO_PILOT_UIDS?: string;
 
   // AvaID — AWS Rekognition Face Liveness (Phase 1). Flag-gated: unset → 503.
   AWS_ACCESS_KEY_ID?: string;

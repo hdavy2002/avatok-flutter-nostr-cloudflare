@@ -23,6 +23,7 @@ import '../../core/calls/call_telemetry_events.dart'; // [ADDCALL-1-UI]
 import '../../core/disk_cache.dart'; // [CALLREC-UI-1] per-account consent store
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
+import '../../core/calls/rtc/stream_call_provider.dart';
 import '../conference/add_to_call_ring.dart'; // [ADDCALL-3-UI]
 import '../conference/call_escalation_service.dart'; // [ADDCALL-2-UI]
 import '../conference/cloudflare_conference_controller.dart'; // [ADDCALL-1-UI]
@@ -252,6 +253,10 @@ class CallScreen extends StatefulWidget {
   final String prewarmNonce;
   final int? prewarmGeneration;
   final String prewarmNetworkIdentity;
+  /// Server-selected provider, immutable for this call. Defaults to the
+  /// existing Cloudflare/P2P session so every current launch site is unchanged.
+  final CallMediaProvider mediaProvider;
+  final StreamCallJoinTicket? streamTicket;
   const CallScreen({
     super.key,
     required this.room,
@@ -273,6 +278,8 @@ class CallScreen extends StatefulWidget {
     this.prewarmNonce = '',
     this.prewarmGeneration,
     this.prewarmNetworkIdentity = '',
+    this.mediaProvider = CallMediaProvider.cloudflare,
+    this.streamTicket,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -620,6 +627,8 @@ class _CallScreenState extends State<CallScreen> {
       prewarmNonce: widget.prewarmNonce,
       prewarmGeneration: widget.prewarmGeneration,
       prewarmNetworkIdentity: widget.prewarmNetworkIdentity,
+      mediaProvider: widget.mediaProvider,
+      streamTicket: widget.streamTicket,
     ));
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.
@@ -702,7 +711,10 @@ class _CallScreenState extends State<CallScreen> {
   String _connectedLabel(CallSession s, bool connected, bool audible) {
     if (s.videoUpgrading.value) return 'Adding video…';
     if (connected && audible) return s.clock;
-    if (connected && !audible) return 'Connecting audio…';
+    if (connected && !audible) return 'AvaTOK audio call';
+    if (!widget.outgoing && s.uiPhase.value == 'connecting') {
+      return 'AvaTOK audio call';
+    }
     return s.statusText;
   }
 

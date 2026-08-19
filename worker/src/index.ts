@@ -11,6 +11,7 @@ import * as api from "./routes/api";
 import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead, sweepAvaReadableCopies } from "./routes/media";
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
+import { streamVideoToken, streamVideoPrepare, streamVideoWebhook } from "./routes/stream_video_calls";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
@@ -1310,6 +1311,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
       // --- Stream webhook (Cloudflare Stream Live events) ---
       if (p === "/webhooks/stream" && req.method === "POST") return await streamWebhook(req, env, ctx);
+      // --- GetStream Video pilot (independent from Cloudflare Stream Live) ---
+      if (p === "/webhooks/stream-video" && req.method === "POST") return await streamVideoWebhook(req, env, ctx);
+      if (p === "/api/stream-video/token" && req.method === "GET") return await streamVideoToken(req, env);
+      if (p === "/api/stream-video/prepare" && req.method === "POST") return await streamVideoPrepare(req, env, ctx);
 
       // --- Phase 7: AvaLive delivery (Stream Live + interaction room) ---
       {

@@ -16,6 +16,10 @@
 -keep class org.webrtc.** { *; }
 -dontwarn org.webrtc.**
 -keep class com.cloudwebrtc.webrtc.** { *; }
+# The Application/MainActivity call these two pilot entry points by reflection
+# so the normal build can use the same code with a fail-closed stub.
+-keep class ai.avatok.streamcall.StreamCallBridgePlugin { public static *; }
+-keep class ai.avatok.streamcall.AvaTokStreamFirebaseMessagingService { *; }
 -keep class io.livekit.** { *; }
 -dontwarn io.livekit.**
 -keep class com.stripe.** { *; }

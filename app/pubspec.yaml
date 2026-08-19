@@ -7,6 +7,13 @@ environment:
   sdk: '>=3.6.0 <4.0.0'
 
 dependencies:
+  # [STREAM-CALL-PILOT-4] Local Android bridge. Normal builds compile a tiny
+  # fail-closed stub; only an explicit STREAM_CALL_SDK=1 build pulls the
+  # Stream SDK and its newer WebRTC binary. This keeps the Cloudflare rollback
+  # dependency graph unchanged and makes killed/background Flutter engines
+  # register the same channels automatically.
+  stream_call_bridge:
+    path: packages/stream_call_bridge
   ava_diagnostics:
     path: ../ava_diagnostics
   flutter_chat_ui: ^1.6.15

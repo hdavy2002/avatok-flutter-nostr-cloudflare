@@ -238,6 +238,22 @@ export interface PlatformConfig {
    */
   callAudibleStateV1: boolean;
   /**
+   * GetStream Video 1:1 calling pilot. Ships FALSE and is intentionally
+   * independent from every Cloudflare CallRoom/SFU flag, so rollback is one
+   * config flip and the existing paths remain untouched.
+   */
+  streamCallPilotEnabled: boolean;
+  /**
+   * Deterministic percentage of allowlisted staging calls sent to Stream.
+   *
+   * The provider decision is made from the call id, so retries for one call
+   * remain on the same provider. `0` is the safe default and `100` sends every
+   * allowlisted call to Stream. The existing Cloudflare call path reads this
+   * only after an explicit `stream_capable` opt-in; old clients remain
+   * unchanged.
+   */
+  streamCallPilotPercent: number;
+  /**
    * [CALL-RING-FASTPATH-1 2026-08-07] Trim the pre-ring critical path of
    * POST /api/call.
    *
@@ -1022,7 +1038,7 @@ export interface PlatformConfig {
   notifQuickActions: boolean; // [NOTIF-ACTIONS-1 2026-08-17] Attach Reply (RemoteInput, allowGeneratedReplies) / Mark as read / Mute actions to message notifications. Also what makes Android's on-device Smart Reply offer its "Okay/Thanks" chips, since it only does so for a MessagingStyle notification carrying a RemoteInput reply action. The reply is sent from a headless Dart isolate (bootstrapBackgroundIsolate re-establishes the Clerk bearer, without which the POST 401s), so this is the brake if that path misbehaves in the field. Default TRUE; false renders the same stacked cards with no buttons. Client mirror: RemoteConfig.notifQuickActions.
   notifReactions: boolean; // [NOTIF-REACT-1 2026-08-17] Push "X reacted <emoji> to your message" to the AUTHOR of the reacted-to message. Owner decision 2026-08-17: every reaction, 1:1 and groups, foreground and background, no throttling; Mute (NOTIF-ACTIONS-1) is the escape hatch. Before this, reactions were a TRANSIENT InboxDO frame only - never persisted client-side (the client never called POST /api/msg/react at all, despite kMsgReactUrl existing) and never pushed, so a reaction to a sleeping phone did not exist. Recipient is validated as a conversation member and never the reactor themselves; an unresolvable author means NO push rather than a guess. Default TRUE. Client mirror: RemoteConfig.notifReactions.
   voicemailBot: boolean;      // Phase B: server-side voice-prompt + 25s recording bot in the call room
-  paidCalls: boolean;         // Legacy compatibility key; permanently forced false by the free-communication policy.
+  paidCalls: boolean;         // Retired per-recipient escrow compatibility key; forced false. Pooled call usage uses a separate authority.
   voiceAgent: boolean;        // Phase C: Ava AI Voice Agent (Grok realtime session)
   serviceNumbers: boolean;    // Phase C: Mode-B-only additional AvaTOK numbers
   // Home · AvaDial · AvaTalk · Services 4-root shell (Specs/PLAN-2026-07-12-home-
@@ -1132,8 +1148,12 @@ export interface PlatformConfig {
   agentConcurrencyA: number;       // AGENT_CONCURRENCY_A — Mode A concurrent calls per primary number (1)
   agentConcurrencyB: number;       // AGENT_CONCURRENCY_B — Mode B concurrent escrowed sessions per service number (5)
   networkReconnectWindowSec: number; // NETWORK_RECONNECT_WINDOW — drop-past-this settles+refunds, seconds (20)
-  conferenceBillingEnabled: boolean;     // Legacy compatibility key; permanently forced false.
+  conferenceBillingEnabled: boolean;     // Retired host/conference compatibility key; forced false. Participant usage uses a separate authority.
   conferenceVideoTokensPerHour: number;  // Legacy compatibility key; permanently forced to zero.
+  /** [HUMAN-CALL-POOL-1] Explicit opt-in for the new pooled participant-minute
+   * meter. Independent from the retired paidCalls/conferenceBillingEnabled
+   * keys, so existing call paths remain free and dark until staged. */
+  humanCallParticipantBillingEnabled: boolean;
 
   // PSTN voicemail platform — Canonical Architecture v1.0 (Specs/PLAN-2026-07-16-
   // ava-receptionist-guardian-FINAL.md, "Rollout inversion": V1 SHIPS VOICEMAIL FOR
@@ -1503,6 +1523,8 @@ const DEFAULTS: PlatformConfig = {
   // audio…" until real inbound audio is confirmed; false is an instant,
   // no-rebuild rollback to today's (early) "Connected" label.
   callAudibleStateV1: false,
+  streamCallPilotEnabled: false,
+  streamCallPilotPercent: 0,
   // [CALL-RING-FASTPATH-1] ON: only admission → glare → participants → ring stay
   // on the pre-ring await chain. Flip false in KV to restore the old fully-serial
   // order (3.6-4.8s to call_ws_ring_sent) with no rebuild.
@@ -1782,7 +1804,7 @@ const DEFAULTS: PlatformConfig = {
   notifQuickActions: true,           // [NOTIF-ACTIONS-1] Reply / Mark as read / Mute on message notifications (and the Smart Reply chips that ride on the reply action); false = cards with no buttons
   notifReactions: true,              // [NOTIF-REACT-1] notify the message author when someone reacts; false = reactions stay silent (still persisted + live)
   voicemailBot: false,
-  paidCalls: false,                    // PERMANENT: human 1:1 audio/video calls are free.
+  paidCalls: false,                    // Retired recipient-rate/escrow model stays disabled.
   voiceAgent: false,
   serviceNumbers: false,
   // 4-root shell (Home/AvaDial/AvaTalk/Services) — DARK. While false the client
@@ -1837,8 +1859,9 @@ const DEFAULTS: PlatformConfig = {
   agentConcurrencyA: 1,
   agentConcurrencyB: 5,
   networkReconnectWindowSec: 20,
-  conferenceBillingEnabled: false,     // PERMANENT: group audio/video calls are free.
+  conferenceBillingEnabled: false,     // Retired host-paid conference model stays disabled.
   conferenceVideoTokensPerHour: 0,
+  humanCallParticipantBillingEnabled: false, // [HUMAN-CALL-POOL-1] dark by default.
   // PSTN voicemail platform — DARK. While false, worker/src/routes/pstn.ts runs
   // pure-probe mode only (capture + orphan voicemail, no owner inbox delivery).
   // Flip ON in KV (staging first) once Phase 0 carrier verification passes.
@@ -1962,7 +1985,7 @@ const DEFAULTS: PlatformConfig = {
 
 /**
  * Owner decision 2026-08-02: ordinary human messaging and audio/video calls are
- * permanently free. Keep the old config keys for wire compatibility with
+ * no longer used. Keep the old config keys for wire compatibility with
  * installed clients, but never allow stale KV overrides to resurrect charging.
  */
 export const PERMANENT_FREE_COMMUNICATION = Object.freeze({
@@ -2131,6 +2154,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // or `flags.sh set callRtkJoinDeadlineSec=15` 400s `bad type`.
     // (`callRealtimeKitV1` / `groupRealtimeKitV1` are BOOLEANS — not listed.)
     "callRtkJoinDeadlineSec", "callSilentPrewarmDeadlineMs",
+    // GetStream Video pilot rollout percentage. The provider selector clamps
+    // this defensively to 0..100; keep it numeric so flags.sh can flip rollout
+    // without a Worker/client rebuild.
+    "streamCallPilotPercent",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
@@ -2149,10 +2176,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if ((k === "paidCalls" || k === "conferenceBillingEnabled") && v !== false) {
-      return json({ error: `${k} is permanently disabled: human communication is free` }, 409);
+      return json({ error: `${k} is retired; use humanCallParticipantBillingEnabled` }, 409);
     }
     if (k === "conferenceVideoTokensPerHour" && v !== 0) {
-      return json({ error: "conferenceVideoTokensPerHour is permanently zero: human communication is free" }, 409);
+      return json({ error: "conferenceVideoTokensPerHour is retired; pooled participant billing owns rates" }, 409);
     }
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
       return json({ error: `bad type for ${k}` }, 400);

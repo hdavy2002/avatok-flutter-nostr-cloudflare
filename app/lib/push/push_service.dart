@@ -19,9 +19,14 @@ import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/avatar_cache.dart'; // [NOTIF-STYLE-1] sender photo for the MessagingStyle Person
-import '../core/background_tasks.dart' show bootstrapBackgroundIsolate; // [NOTIF-ACTIONS-1] headless auth + account scope
+import '../core/background_tasks.dart'
+    show
+        bootstrapBackgroundIsolate; // [NOTIF-ACTIONS-1] headless auth + account scope
 import '../core/badge_service.dart';
-import '../core/chat_state.dart' show ChatFlagsStore, ReadStateStore; // [NOTIF-ACTIONS-1] mute + mark-as-read stores
+import '../core/chat_state.dart'
+    show
+        ChatFlagsStore,
+        ReadStateStore; // [NOTIF-ACTIONS-1] mute + mark-as-read stores
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
 import '../core/calls/call_prewarm.dart' show CallPrewarm; // [CALL-PREWARM-1]
@@ -35,6 +40,13 @@ import '../core/calls/call_session_manager.dart';
 import '../core/calls/call_session.dart'
     show rememberCallRoomTokenDurable, roomTokenFor;
 import '../core/calls/call_telemetry_events.dart' show CallEvents;
+import '../core/calls/rtc/stream_call_api.dart';
+import '../core/calls/rtc/stream_call_provider.dart'
+    show
+        StreamCallClient,
+        StreamCallPilot,
+        StreamCallTokenStore,
+        StreamCallUnavailable;
 import '../core/config.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
@@ -58,7 +70,8 @@ import '../features/conference/cloudflare_conference_controller.dart'
     show CloudflareConferenceController;
 import '../features/conference/cloudflare_conference_screen.dart'
     show CloudflareConferenceScreen;
-import '../identity/identity.dart' show AccountScope; // [AVANOTIF-VM-3] name-cache account namespacing
+import '../identity/identity.dart'
+    show AccountScope; // [AVANOTIF-VM-3] name-cache account namespacing
 import '../sync/group_api.dart' show GroupApi; // [GRP-W3-RESYNC]
 import '../sync/sync_hub.dart';
 import 'call_ttl_gate.dart';
@@ -140,9 +153,12 @@ const Color _kNotifAccent = Color(0xFFFFD400);
 // screen with sound + vibration (importance high alone is necessary but the
 // explicit flags remove any ambiguity across OEM skins).
 const _msgChannel = AndroidNotificationChannel(
-  'avatok_messages', 'Messages',
-  description: 'New message notifications', importance: Importance.high,
-  playSound: true, enableVibration: true,
+  'avatok_messages',
+  'Messages',
+  description: 'New message notifications',
+  importance: Importance.high,
+  playSound: true,
+  enableVibration: true,
 );
 
 // Calls channel — missed calls and receptionist ("Ava took a message") banners.
@@ -150,9 +166,12 @@ const _msgChannel = AndroidNotificationChannel(
 // and so a missed-call banner reads distinctly from a chat message. Also high
 // importance with sound + vibration so it wakes the screen.
 const _callsChannel = AndroidNotificationChannel(
-  'avatok_calls', 'Calls',
-  description: 'Missed calls and receptionist messages', importance: Importance.high,
-  playSound: true, enableVibration: true,
+  'avatok_calls',
+  'Calls',
+  description: 'Missed calls and receptionist messages',
+  importance: Importance.high,
+  playSound: true,
+  enableVibration: true,
 );
 
 // [AVACALL-INUI-2] Incoming-call channel for the BRANDED full-screen-intent
@@ -163,9 +182,12 @@ const _callsChannel = AndroidNotificationChannel(
 // notification is only the branded full-screen UI trigger, so we never
 // double-ring. Distinct id so the user can tune it separately.
 const _incomingCallChannel = AndroidNotificationChannel(
-  'avatok_incoming_calls', 'Incoming calls',
-  description: 'Branded incoming-call screen', importance: Importance.max,
-  playSound: false, enableVibration: false,
+  'avatok_incoming_calls',
+  'Incoming calls',
+  description: 'Branded incoming-call screen',
+  importance: Importance.max,
+  playSound: false,
+  enableVibration: false,
 );
 // [AVA-UPDATE-PUSH-1] App-update channel — the low-key "A new version is
 // available" banner posted when an `app_update` push arrives while the app is
@@ -174,10 +196,12 @@ const _incomingCallChannel = AndroidNotificationChannel(
 // urgent like a call or message, so it must never wake the screen or ring. A
 // distinct id so the user can mute updates independently.
 const _updatesChannel = AndroidNotificationChannel(
-  'avatok_updates', 'App updates',
+  'avatok_updates',
+  'App updates',
   description: 'A new version of AvaTOK is available',
   importance: Importance.defaultImportance,
-  playSound: false, enableVibration: false,
+  playSound: false,
+  enableVibration: false,
 );
 // [NOTIF-ACTIONS-1 2026-08-17] Muted-conversation channel.
 //
@@ -191,10 +215,12 @@ const _updatesChannel = AndroidNotificationChannel(
 // Distinct id also means the user can retune "muted" chats separately, and
 // changing it can never reset their overrides on the main Messages channel.
 const AndroidNotificationChannel _msgMutedChannel = AndroidNotificationChannel(
-  'avatok_messages_muted', 'Muted chats',
+  'avatok_messages_muted',
+  'Muted chats',
   description: 'Messages from conversations you have muted',
   importance: Importance.low,
-  playSound: false, enableVibration: false,
+  playSound: false,
+  enableVibration: false,
 );
 
 // [NOTIF-ACTIONS-1] Action ids carried back in NotificationResponse.actionId.
@@ -238,13 +264,16 @@ Future<void> _ensureLocalInit() async {
       // running — i.e. in exactly the case where the user did not need them.
       onDidReceiveBackgroundNotificationResponse: notificationActionBackground,
     );
-    final android = _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final android = _local.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     await android?.createNotificationChannel(_msgChannel);
     await android?.createNotificationChannel(_callsChannel);
-    await android?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
-    await android?.createNotificationChannel(_updatesChannel); // [AVA-UPDATE-PUSH-1]
-    await android?.createNotificationChannel(_msgMutedChannel); // [NOTIF-ACTIONS-1]
+    await android
+        ?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
+    await android
+        ?.createNotificationChannel(_updatesChannel); // [AVA-UPDATE-PUSH-1]
+    await android
+        ?.createNotificationChannel(_msgMutedChannel); // [NOTIF-ACTIONS-1]
     _localReady = true;
   } catch (_) {/* leave false so the next push retries init */}
 }
@@ -253,9 +282,15 @@ const _kPendingBgTelemetry = 'pending_bg_telemetry';
 Future<void> _bgTrack(String event, Map<String, dynamic> props) async {
   try {
     final raw = await DiskCache.readGlobal(_kPendingBgTelemetry);
-    final list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
-    list.add({'event': event, 'props': props, 'ts': DateTime.now().millisecondsSinceEpoch});
-    if (list.length > 60) list.removeRange(0, list.length - 60); // cap the queue
+    final list =
+        (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+    list.add({
+      'event': event,
+      'props': props,
+      'ts': DateTime.now().millisecondsSinceEpoch
+    });
+    if (list.length > 60)
+      list.removeRange(0, list.length - 60); // cap the queue
     await DiskCache.writeGlobal(_kPendingBgTelemetry, jsonEncode(list));
   } catch (_) {/* best-effort; telemetry must never itself crash the handler */}
 }
@@ -351,7 +386,8 @@ void _onNotifTap(String? payload) {
   // sending that verbatim would put an unbounded set of conversation ids into a
   // PostHog property that until now held a handful of fixed strings — unusable
   // for grouping, and a needless identifier in analytics.
-  final payloadKind = payload.contains(':') ? '${payload.split(':').first}:' : payload;
+  final payloadKind =
+      payload.contains(':') ? '${payload.split(':').first}:' : payload;
   Analytics.capture('push_notif_tapped', {'payload_kind': payloadKind});
   // Group-invite tap → open the app; the Groups tab + notification bell surface
   // the pending invite (opening the exact thread from a cold tap is a refinement).
@@ -408,7 +444,8 @@ void _onNotifTap(String? payload) {
   // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
   _clearBadge('chat_notif_tap');
-  navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
+  navigatorKey.currentState
+      ?.popUntil((r) => r.isFirst); // back to shell/chat list
 }
 
 /// [NOTIF-STYLE-1] Deep link for a tap on one conversation's message
@@ -432,7 +469,8 @@ Future<void> _openChatThread(String conv) async {
     }
     final found = match;
     if (found == null) {
-      Analytics.capture('push_notif_open', {'ok': false, 'reason': 'no_thread', 'dest': 'thread'});
+      Analytics.capture('push_notif_open',
+          {'ok': false, 'reason': 'no_thread', 'dest': 'thread'});
       return;
     }
     navigatorKey.currentState?.push(MaterialPageRoute<void>(
@@ -473,7 +511,8 @@ Future<void> _openCallRecordingThread(String conv) async {
     }
     final found = match;
     if (found == null) {
-      Analytics.capture('callrec_notif_open', {'ok': false, 'reason': 'no_thread'});
+      Analytics.capture(
+          'callrec_notif_open', {'ok': false, 'reason': 'no_thread'});
       return;
     }
     navigatorKey.currentState?.push(MaterialPageRoute<void>(
@@ -516,7 +555,8 @@ Future<void> _showCallRecordingNotif(Map<String, dynamic> d) async {
     ),
     payload: conv.isNotEmpty ? 'callrec:$conv' : 'chat',
   );
-  await _bgTrack('push_shown', {'channel': 'messages', 'type': 'call_recording'});
+  await _bgTrack(
+      'push_shown', {'channel': 'messages', 'type': 'call_recording'});
 }
 
 /// Local banner for "X added you to <group>" (Phase D — owner request
@@ -564,9 +604,11 @@ Future<void> _showUpdateNotif(Map<String, dynamic> d) async {
         _updatesChannel.id, _updatesChannel.name,
         channelDescription: _updatesChannel.description,
         icon: _kNotifIcon, // [NOTIF-ICON-1]
-        importance: Importance.defaultImportance, priority: Priority.defaultPriority,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
         category: AndroidNotificationCategory.recommendation,
-        onlyAlertOnce: true, // updating the banner for a newer build must not re-alert
+        onlyAlertOnce:
+            true, // updating the banner for a newer build must not re-alert
         ticker: 'AvaTOK update available',
       ),
     ),
@@ -589,7 +631,8 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) =>
     // recompute short-circuited to the last persisted value and the badge froze
     // for the process lifetime — the very bug we're fixing. runInBackgroundIsolate
     // clears the flag in a `finally`, throw or not.
-    BadgeService.runInBackgroundIsolate(() => _handleBackgroundMessage(message));
+    BadgeService.runInBackgroundIsolate(
+        () => _handleBackgroundMessage(message));
 
 Future<void> _handleBackgroundMessage(RemoteMessage message) async {
   final d = message.data;
@@ -602,6 +645,17 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
     'callId': (d['callId'] ?? '').toString(),
     'keys': d.keys.toList(),
   });
+  // Stream's native Firebase service owns Stream ringing. FlutterFire can also
+  // deliver the same FCM to this isolate; returning here prevents a duplicate
+  // AvaTOK/CallKit ring while retaining arrival telemetry.
+  if ((d['sender'] ?? '').toString() == 'stream.video') {
+    await _bgTrack('stream_fcm_dart_ignored', {
+      'type': type,
+      'callId': (d['callId'] ?? d['call_cid'] ?? '').toString(),
+      'ring_owner': 'stream_native',
+    });
+    return;
+  }
   // Whole-handler guard: a throw in the bg isolate used to look like a hard app
   // crash (and take down any co-processing). Now it's caught + reported, never fatal.
   try {
@@ -616,13 +670,15 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // snapshot, so all this wake has to do is make sure that sync happens —
       // which it will on next foreground. Explicitly a no-op here rather than
       // falling through to `_showIncoming`, which is for calls.
-      await _bgTrack('thread_clear_push', {'conv': (d['conv'] ?? '').toString()});
+      await _bgTrack(
+          'thread_clear_push', {'conv': (d['conv'] ?? '').toString()});
     } else if (type == 'notif_clear') {
       // [NOTIF-SYNC-1] This conversation was read on another of MY devices —
       // take its card out of this device's shade and re-count the summary.
       // Silent: nothing is drawn, so there is no banner to suppress.
       await _clearShadeThread((d['conv'] ?? '').toString());
-      await _track('notif_cleared_remote', {'had_conv': (d['conv'] ?? '').toString().isNotEmpty});
+      await _track('notif_cleared_remote',
+          {'had_conv': (d['conv'] ?? '').toString().isNotEmpty});
     } else if (type == 'group_invite') {
       await _showGroupInviteNotif(d);
     } else if (type == 'call_recording') {
@@ -667,6 +723,7 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
         (d['callId'] ?? '').toString(),
         status,
         seq: int.tryParse((d['seq'] ?? '').toString()),
+        serverSentAtMs: int.tryParse((d['ts'] ?? '').toString()),
         source: 'fcm_bg',
       );
     } else if (type == 'now_free' || type == 'call_now_free') {
@@ -700,7 +757,9 @@ Future<void> _queuePendingDelete(Map<String, dynamic> d) async {
     final raw = await DiskCache.readGlobal(SyncHub.pendingDeletesKey);
     List<dynamic> list;
     try {
-      list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+      list = (raw == null || raw.isEmpty)
+          ? <dynamic>[]
+          : (jsonDecode(raw) as List);
     } catch (_) {
       list = <dynamic>[];
     }
@@ -725,7 +784,9 @@ Future<void> _queuePendingHide(Map<String, dynamic> d) async {
     final raw = await DiskCache.readGlobal(SyncHub.pendingHidesKey);
     List<dynamic> list;
     try {
-      list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+      list = (raw == null || raw.isEmpty)
+          ? <dynamic>[]
+          : (jsonDecode(raw) as List);
     } catch (_) {
       list = <dynamic>[];
     }
@@ -754,7 +815,9 @@ Future<void> _queuePendingCallOp(Map<String, dynamic> d) async {
     final raw = await DiskCache.readGlobal(SyncHub.pendingCallOpsKey);
     List<dynamic> list;
     try {
-      list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+      list = (raw == null || raw.isEmpty)
+          ? <dynamic>[]
+          : (jsonDecode(raw) as List);
     } catch (_) {
       list = <dynamic>[];
     }
@@ -779,10 +842,16 @@ Future<void> _queuePendingCallOp(Map<String, dynamic> d) async {
 ///
 /// This is the RING lifecycle, not the CALL lifecycle. Keep the two apart.
 bool _terminalCallStatus(String s) =>
-    s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer' ||
-    s == 'bye' || s == 'hangup' ||
-    s == 'decline' || s == 'declined' ||
-    s == 'decline_ava' || s == 'decline_agent' ||
+    s == 'cancel' ||
+    s == 'ended' ||
+    s == 'missed' ||
+    s == 'no-answer' ||
+    s == 'bye' ||
+    s == 'hangup' ||
+    s == 'decline' ||
+    s == 'declined' ||
+    s == 'decline_ava' ||
+    s == 'decline_agent' ||
     s == 'answered_elsewhere';
 
 /// A call-status that means the CALLER's own CallSession is over.
@@ -793,8 +862,14 @@ bool _terminalCallStatus(String s) =>
 /// them as terminal here would kill the receptionist before it ever connected.
 // ignore: unused_element
 bool _callerSessionTerminal(String s) =>
-    s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer' ||
-    s == 'bye' || s == 'hangup' || s == 'decline' || s == 'declined';
+    s == 'cancel' ||
+    s == 'ended' ||
+    s == 'missed' ||
+    s == 'no-answer' ||
+    s == 'bye' ||
+    s == 'hangup' ||
+    s == 'decline' ||
+    s == 'declined';
 
 /// [AVACALL-CANCEL-1] Last-terminal-status cache keyed by callId. The
 /// `callStatusBus` is a plain broadcast Stream with NO replay, so a cancel/bye/
@@ -808,6 +883,12 @@ bool _callerSessionTerminal(String s) =>
 final Map<String, int> _terminalCallAt = <String, int>{};
 const int _kTerminalCallTtlMs = 90 * 1000;
 
+// The instant the human pressed Answer, kept only for the short accept/setup
+// window. CallSession reads this synchronously so every setup rung can report
+// the product's primary latency: Answer -> first audible playout. This is
+// deliberately memory-only and call-id keyed; no cross-account data is stored.
+final Map<String, int> _acceptedCallAt = <String, int>{};
+
 // [CALL-ONE-LANE-1 2026-08-15] A foreground Dart isolate and the FCM
 // background isolate do not share heap state. Without a device-level marker,
 // a late copy of the same invite can recreate the native ring after Accept:
@@ -820,10 +901,12 @@ const int _kAcceptedIncomingCallTtlMs = 5 * 60 * 1000;
 Future<void> _markIncomingCallAcceptedDurably(String callId) async {
   if (callId.isEmpty) return;
   try {
-    await DiskCache.writeGlobal(_kAcceptedIncomingCallGlobal, jsonEncode({
-      'call_id': callId,
-      'at_ms': DateTime.now().millisecondsSinceEpoch,
-    }));
+    await DiskCache.writeGlobal(
+        _kAcceptedIncomingCallGlobal,
+        jsonEncode({
+          'call_id': callId,
+          'at_ms': DateTime.now().millisecondsSinceEpoch,
+        }));
   } catch (_) {/* the in-memory gate remains the fast-path authority */}
 }
 
@@ -870,7 +953,9 @@ Future<void> _clearNativeRingScreen(String callId) async {
   try {
     await const MethodChannel('avatok/incoming_call_tap')
         .invokeMethod('clearNativeRingScreen', {'callId': callId});
-  } catch (_) {/* native bridge unavailable on an older build, or not Android */}
+  } catch (_) {
+    /* native bridge unavailable on an older build, or not Android */
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -985,7 +1070,9 @@ class _AppFrontTracker with WidgetsBindingObserver {
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
         _lastResumedAtMs = DateTime.now().millisecondsSinceEpoch;
       }
-    } catch (_) {/* no binding (bg isolate) — stays unregistered, reports "never" */}
+    } catch (_) {
+      /* no binding (bg isolate) — stays unregistered, reports "never" */
+    }
   }
 
   @override
@@ -1086,6 +1173,7 @@ Future<void> _verifyForegroundRingOrFallback({
 /// wedged.
 Future<void> _finishAcceptedRing(String callId) async {
   if (callId.isEmpty) return;
+  final startedAtMs = DateTime.now().millisecondsSinceEpoch;
   _programmaticCallkitEnd.mark(callId);
   try {
     await FlutterCallkitIncoming.endCall(callId)
@@ -1113,6 +1201,10 @@ Future<void> _finishAcceptedRing(String callId) async {
     gIncomingRingingFrom = null;
     gIncomingRingingCallId = null;
   }
+  Analytics.capture('call_answer_ring_cleanup_completed', {
+    'call_id': callId,
+    'cleanup_ms': DateTime.now().millisecondsSinceEpoch - startedAtMs,
+  });
 }
 
 /// The authoritative ring-state reducer.
@@ -1134,10 +1226,20 @@ Future<void> applyRingTransition(
   String callId,
   String status, {
   int? seq,
+  int? serverSentAtMs,
   required String source,
 }) async {
   if (callId.isEmpty) return;
   if (!_terminalCallStatus(status)) return; // not a ring-ending transition
+  final receivedAtMs = DateTime.now().millisecondsSinceEpoch;
+  Analytics.capture('call_terminal_received', {
+    'call_id': callId,
+    'status': status,
+    'source': source,
+    if (seq != null) 'seq': seq,
+    if (serverSentAtMs != null && serverSentAtMs > 0)
+      'delivery_ms': (receivedAtMs - serverSentAtMs).clamp(0, 300000),
+  });
 
   final prior = _ringApplied[callId];
   // [CALL-CALLEE-SEQ-1] The ring's own sequence is the floor for this call. A
@@ -1148,8 +1250,12 @@ Future<void> applyRingTransition(
   final baseline = _ringBaselineSeq[callId];
   if (seq != null && baseline != null && seq <= baseline) {
     Analytics.capture('call_transition_dropped', {
-      'call_id': callId, 'status': status, 'source': source,
-      'seq': seq, 'ring_seq': baseline, 'reason': 'stale_vs_ring',
+      'call_id': callId,
+      'status': status,
+      'source': source,
+      'seq': seq,
+      'ring_seq': baseline,
+      'reason': 'stale_vs_ring',
     });
     return;
   }
@@ -1159,8 +1265,12 @@ Future<void> applyRingTransition(
     // message harmless instead of a source of UI flicker.
     if (seq != null && seq <= prior.seq) {
       Analytics.capture('call_transition_dropped', {
-        'call_id': callId, 'status': status, 'source': source,
-        'seq': seq, 'applied_seq': prior.seq, 'reason': 'stale_seq',
+        'call_id': callId,
+        'status': status,
+        'source': source,
+        'seq': seq,
+        'applied_seq': prior.seq,
+        'reason': 'stale_seq',
       });
       return;
     }
@@ -1171,8 +1281,8 @@ Future<void> applyRingTransition(
   // A local tap carries no sequence — it is an INTENT, not an authoritative
   // transition. Record the ring's floor rather than 0 so a later stale server
   // transition still loses to it.
-  _ringApplied[callId] = _RingTransition(
-    seq ?? (prior?.seq ?? baseline ?? 0), DateTime.now().millisecondsSinceEpoch);
+  _ringApplied[callId] = _RingTransition(seq ?? (prior?.seq ?? baseline ?? 0),
+      DateTime.now().millisecondsSinceEpoch);
   if (_ringApplied.length > 64) {
     final cutoff = DateTime.now().millisecondsSinceEpoch - _kTerminalCallTtlMs;
     _ringApplied.removeWhere((_, t) => t.appliedAtMs < cutoff);
@@ -1198,9 +1308,15 @@ Future<void> applyRingTransition(
   // Set this BEFORE crossing the platform bridge. On affected Motorola builds
   // the synthetic actionCallDecline can arrive synchronously from endCall().
   _programmaticCallkitEnd.mark(callId);
-  try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {/* already ended */}
-  try { await _dismissBrandedFsi(); } catch (_) {/* no FSI posted */}
-  try { await _stopRingtoneFallback(callId); } catch (_) {/* not playing */}
+  try {
+    await FlutterCallkitIncoming.endCall(callId);
+  } catch (_) {/* already ended */}
+  try {
+    await _dismissBrandedFsi();
+  } catch (_) {/* no FSI posted */}
+  try {
+    await _stopRingtoneFallback(callId);
+  } catch (_) {/* not playing */}
   if (gIncomingRingingCallId == callId) {
     gIncomingRingingFrom = null;
     gIncomingRingingCallId = null;
@@ -1244,6 +1360,9 @@ Future<void> applyRingTransition(
     'status': status,
     'source': source,
     'seq': seq ?? -1, // -1 = local optimistic tap, no server sequence yet
+    'cleanup_ms': DateTime.now().millisecondsSinceEpoch - receivedAtMs,
+    if (serverSentAtMs != null && serverSentAtMs > 0)
+      'delivery_ms': (receivedAtMs - serverSentAtMs).clamp(0, 300000),
   });
 }
 
@@ -1291,15 +1410,18 @@ Future<void> _rebuildNameCache() async {
   if (BadgeService.inBackgroundIsolate) return;
   try {
     final acctId = AccountScope.id;
-    if (acctId == null || acctId.isEmpty) return; // no account yet — nothing to cache
+    if (acctId == null || acctId.isEmpty)
+      return; // no account yet — nothing to cache
     final byUid = <String, String>{};
     final byPhone = <String, Map<String, String>>{}; // normKey -> {name, tier}
 
     // Lowest priority first — later writers below overwrite on key collision.
     try {
-      final permStatus = await Permission.contacts.status; // READ-ONLY — never prompts
+      final permStatus =
+          await Permission.contacts.status; // READ-ONLY — never prompts
       if (permStatus.isGranted) {
-        final device = await DeviceContacts.I.load(); // cached in-memory if already loaded
+        final device =
+            await DeviceContacts.I.load(); // cached in-memory if already loaded
         for (final c in device) {
           final name = (c.name ?? '').trim();
           if (name.isEmpty) continue;
@@ -1318,7 +1440,8 @@ Future<void> _rebuildNameCache() async {
         final phoneLike = c.phone.isNotEmpty ? c.phone : c.number;
         if (phoneLike.isNotEmpty) {
           final key = DeviceContacts.normKey(phoneLike);
-          if (key.isNotEmpty) byPhone[key] = {'name': c.name, 'tier': 'contact'};
+          if (key.isNotEmpty)
+            byPhone[key] = {'name': c.name, 'tier': 'contact'};
         }
       }
     } catch (_) {/* best-effort */}
@@ -1330,18 +1453,25 @@ Future<void> _rebuildNameCache() async {
         if (name.isEmpty || o.hidden) continue;
         final key = DeviceContacts.normKey(o.number);
         if (key.isEmpty) continue;
-        byPhone[key] = {'name': name, 'tier': 'override'}; // highest priority — always wins
+        byPhone[key] = {
+          'name': name,
+          'tier': 'override'
+        }; // highest priority — always wins
       }
     } catch (_) {/* best-effort */}
 
     final raw = await DiskCache.readGlobal(_kNameCacheKey);
     Map<String, dynamic> all = {};
     if (raw != null && raw.isNotEmpty) {
-      try { all = jsonDecode(raw) as Map<String, dynamic>; } catch (_) {/* start fresh */}
+      try {
+        all = jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {/* start fresh */}
     }
     all[acctId] = {'uid': byUid, 'phone': byPhone};
     await DiskCache.writeGlobal(_kNameCacheKey, jsonEncode(all));
-  } catch (_) {/* best-effort — a failed rebuild just leaves the last-good cache in place */}
+  } catch (_) {
+    /* best-effort — a failed rebuild just leaves the last-good cache in place */
+  }
 }
 
 /// Resolve a display name + which fallback TIER won (for telemetry — proves in
@@ -1376,7 +1506,10 @@ Future<({String name, String tier})> _resolveDisplayName({
             if (hit is Map) {
               final name = (hit['name'] ?? '').toString();
               if (name.isNotEmpty) {
-                return (name: name, tier: (hit['tier'] ?? 'contact').toString());
+                return (
+                  name: name,
+                  tier: (hit['tier'] ?? 'contact').toString()
+                );
               }
             }
           }
@@ -1407,7 +1540,8 @@ String _formatPhoneDisplay(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) return 'Unknown number';
   final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
-  if (digits.isEmpty) return trimmed; // alphanumeric sender id (e.g. 'VM-HDFCBK') — show as-is
+  if (digits.isEmpty)
+    return trimmed; // alphanumeric sender id (e.g. 'VM-HDFCBK') — show as-is
   if (digits.length <= 6) return '+$digits';
   var cc = '';
   var rest = digits;
@@ -1430,7 +1564,8 @@ String _formatPhoneDisplay(String raw) {
 // 8002 id for continuity) that Android collapses the group under.
 const String _kMissedCallsGroupKey = 'avatok_calls_missed';
 const int _kMissedCallsSummaryId = 8002;
-const String _kMissedCallsLogKey = 'push_missed_calls_log_v1'; // GLOBAL, keyed by account id
+const String _kMissedCallsLogKey =
+    'push_missed_calls_log_v1'; // GLOBAL, keyed by account id
 
 int _missedCallNotifId(String key) {
   if (key.isEmpty) return 8010;
@@ -1444,14 +1579,18 @@ int _missedCallNotifId(String key) {
 Future<void> _updateMissedCallsSummary(String line) async {
   try {
     var acctId = AccountScope.id ?? '';
-    if (acctId.isEmpty) acctId = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
+    if (acctId.isEmpty)
+      acctId = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
     if (acctId.isEmpty) return;
     final raw = await DiskCache.readGlobal(_kMissedCallsLogKey);
     Map<String, dynamic> all = {};
     if (raw != null && raw.isNotEmpty) {
-      try { all = jsonDecode(raw) as Map<String, dynamic>; } catch (_) {/* start fresh */}
+      try {
+        all = jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {/* start fresh */}
     }
-    final list = ((all[acctId] as List?) ?? const []).map((e) => e.toString()).toList();
+    final list =
+        ((all[acctId] as List?) ?? const []).map((e) => e.toString()).toList();
     list.insert(0, line);
     if (list.length > 8) list.removeRange(8, list.length);
     all[acctId] = list;
@@ -1472,13 +1611,17 @@ Future<void> _updateMissedCallsSummary(String line) async {
           setAsGroupSummary: true,
           category: AndroidNotificationCategory.missedCall,
           styleInformation: InboxStyleInformation(
-            list, contentTitle: n > 1 ? '$n missed calls' : line, summaryText: 'AvaTOK',
+            list,
+            contentTitle: n > 1 ? '$n missed calls' : line,
+            summaryText: 'AvaTOK',
           ),
         ),
       ),
       payload: 'chat',
     );
-  } catch (_) {/* best-effort — grouping is cosmetic, the per-caller banner already shown */}
+  } catch (_) {
+    /* best-effort — grouping is cosmetic, the per-caller banner already shown */
+  }
 }
 
 // ── [NOTIF-STYLE-1 2026-08-17] Per-conversation message stacking ────────────
@@ -1545,7 +1688,8 @@ Future<Map<String, dynamic>> _readShadeBlob() async {
   try {
     return jsonDecode(raw) as Map<String, dynamic>;
   } catch (_) {
-    return <String, dynamic>{}; // corrupt blob → start fresh, never throw at a push
+    return <String,
+        dynamic>{}; // corrupt blob → start fresh, never throw at a push
   }
 }
 
@@ -1608,10 +1752,12 @@ Future<_ShadeUpdate?> _buildShadeUpdate({
   String convKey = '',
 }) async {
   final all = await _readShadeBlob();
-  var byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+  var byConv = Map<String, dynamic>.from(
+      (all[acct] as Map?) ?? const <String, dynamic>{});
   // Drop conversations the user has already dismissed from the shade by hand.
   byConv = await _pruneDismissed(byConv, keep: conv);
-  final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+  final t = Map<String, dynamic>.from(
+      (byConv[conv] as Map?) ?? const <String, dynamic>{});
   final msgs = ((t['m'] as List?) ?? const <dynamic>[])
       .map((e) => Map<String, dynamic>.from(e as Map))
       .toList();
@@ -1626,9 +1772,9 @@ Future<_ShadeUpdate?> _buildShadeUpdate({
   t['m'] = msgs;
   t['g'] = isGroup;
   if (groupName.isNotEmpty) t['n'] = groupName;
-  if (who.isNotEmpty) t['who'] = who;          // [NOTIF-ACTIONS-1] title when redrawing
-  if (peerUid.isNotEmpty) t['to'] = peerUid;   // [NOTIF-ACTIONS-1]
-  if (convKey.isNotEmpty) t['k'] = convKey;    // [NOTIF-ACTIONS-1]
+  if (who.isNotEmpty) t['who'] = who; // [NOTIF-ACTIONS-1] title when redrawing
+  if (peerUid.isNotEmpty) t['to'] = peerUid; // [NOTIF-ACTIONS-1]
+  if (convKey.isNotEmpty) t['k'] = convKey; // [NOTIF-ACTIONS-1]
   t['last'] = ts;
   // [NOTIF-ACTIONS-1] Is this conversation muted? Read from the SAME store the
   // in-app Mute switch writes (ChatFlagsStore, account-scoped 'avatok_chatflags'),
@@ -1679,8 +1825,8 @@ Future<Map<String, dynamic>> _pruneDismissed(
 }) async {
   try {
     if (byConv.length <= 1) return byConv;
-    final android = _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final android = _local.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return byConv;
     final active = await android.getActiveNotifications();
     if (active.isEmpty) return byConv; // treat "can't tell" as "don't prune"
@@ -1704,7 +1850,8 @@ Future<void> _clearShadeThread(String conv) async {
     final acct = await _shadeAccountId();
     if (acct.isEmpty || conv.isEmpty) return;
     final all = await _readShadeBlob();
-    final byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
+    final byConv = Map<String, dynamic>.from(
+        (all[acct] as Map?) ?? const <String, dynamic>{});
     byConv.remove(conv);
     all[acct] = byConv;
     await DiskCache.writeGlobal(_kMsgThreadsKey, jsonEncode(all));
@@ -1728,7 +1875,8 @@ Future<String> _shadeAvatarPath(String url, String version) async {
   if (url.isEmpty) return '';
   try {
     final f = await AvatarCache.getAny(
-      url, 128,
+      url,
+      128,
       cacheKey: version.isEmpty ? null : 'notifava:$version',
     );
     return f?.path ?? '';
@@ -1791,7 +1939,9 @@ Future<void> _renderShadeSummary(Map<String, dynamic> byConv) async {
           // every message in an active group — the same sound twice per message.
           onlyAlertOnce: true,
           styleInformation: InboxStyleInformation(
-            lines, contentTitle: headline, summaryText: 'AvaTOK',
+            lines,
+            contentTitle: headline,
+            summaryText: 'AvaTOK',
           ),
         ),
       ),
@@ -1821,7 +1971,8 @@ Future<bool> _renderConvNotification({
   required int count,
   required String ticker,
 }) async {
-  final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+  final t = Map<String, dynamic>.from(
+      (byConv[conv] as Map?) ?? const <String, dynamic>{});
   final msgs = ((t['m'] as List?) ?? const <dynamic>[])
       .map((e) => Map<String, dynamic>.from(e as Map))
       .toList();
@@ -1872,7 +2023,9 @@ Future<bool> _renderConvNotification({
   // because the reply handler redraws through this function from a headless
   // isolate where nothing has loaded config — the getter would otherwise always
   // return its compile-time default on that path.
-  try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults apply */}
+  try {
+    await RemoteConfig.hydrateFromDisk();
+  } catch (_) {/* defaults apply */}
   final withActions = RemoteConfig.notifQuickActions;
   await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
   await _local.show(
@@ -1933,11 +2086,13 @@ List<AndroidNotificationAction> _msgActions() => <AndroidNotificationAction>[
         ],
       ),
       const AndroidNotificationAction(
-        _kActRead, 'Mark as read',
+        _kActRead,
+        'Mark as read',
         showsUserInterface: false,
       ),
       const AndroidNotificationAction(
-        _kActMute, 'Mute',
+        _kActMute,
+        'Mute',
         showsUserInterface: false,
       ),
     ];
@@ -1971,7 +2126,8 @@ void notificationActionBackground(NotificationResponse resp) {
 /// Guessing a number would be worse than being briefly stale, so the honest
 /// count is left to the next foreground recompute.
 Future<void> _markConvRead(String conv, String convKey) async {
-  final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000; // server wants SECONDS
+  final sec =
+      DateTime.now().millisecondsSinceEpoch ~/ 1000; // server wants SECONDS
   try {
     await ApiAuth.postJson(kMsgReadUrl, {'conv': conv, 'read_ts': sec});
   } catch (_) {/* best-effort; local state below still moves */}
@@ -1986,7 +2142,8 @@ Future<void> _markConvRead(String conv, String convKey) async {
 /// isolate it was invoked from.
 Future<void> _runNotifAction(NotificationResponse resp) async {
   final action = resp.actionId ?? '';
-  if (action != _kActReply && action != _kActRead && action != _kActMute) return;
+  if (action != _kActReply && action != _kActRead && action != _kActMute)
+    return;
   final payload = resp.payload ?? '';
   if (!payload.startsWith('chat:')) return;
   final conv = payload.substring('chat:'.length);
@@ -2001,15 +2158,18 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
     // the main isolate and it is all set up already.
     if ((AccountScope.id ?? '').isEmpty || ApiAuth.clerkBearer == null) {
       if (!await bootstrapBackgroundIsolate(tag: 'notifaction')) {
-        await _track('notif_action', {'action': action, 'ok': false, 'reason': 'no_account'});
+        await _track('notif_action',
+            {'action': action, 'ok': false, 'reason': 'no_account'});
         return;
       }
     }
     final acct = await _shadeAccountId();
     if (acct.isEmpty) return;
     final all = await _readShadeBlob();
-    final byConv = Map<String, dynamic>.from((all[acct] as Map?) ?? const <String, dynamic>{});
-    final t = Map<String, dynamic>.from((byConv[conv] as Map?) ?? const <String, dynamic>{});
+    final byConv = Map<String, dynamic>.from(
+        (all[acct] as Map?) ?? const <String, dynamic>{});
+    final t = Map<String, dynamic>.from(
+        (byConv[conv] as Map?) ?? const <String, dynamic>{});
     // Stored when the notification was drawn — the bg isolate cannot re-derive
     // either of these from the conv id alone.
     final convKey = (t['k'] ?? '').toString();
@@ -2020,13 +2180,15 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
     if (action == _kActRead) {
       await _markConvRead(conv, convKey);
       await _clearShadeThread(conv);
-      await _track('notif_action', {'action': 'read', 'ok': true, 'had_key': convKey.isNotEmpty});
+      await _track('notif_action',
+          {'action': 'read', 'ok': true, 'had_key': convKey.isNotEmpty});
       return;
     }
 
     if (action == _kActMute) {
       if (convKey.isEmpty) {
-        await _track('notif_action', {'action': 'mute', 'ok': false, 'reason': 'no_key'});
+        await _track('notif_action',
+            {'action': 'mute', 'ok': false, 'reason': 'no_key'});
         return;
       }
       // ChatFlagsStore only exposes a TOGGLE, and this button always says
@@ -2037,17 +2199,20 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
         await ChatFlagsStore().toggle('muted', convKey);
       }
       await _clearShadeThread(conv);
-      await _track('notif_action', {'action': 'mute', 'ok': true, 'muted': true});
+      await _track(
+          'notif_action', {'action': 'mute', 'ok': true, 'muted': true});
       return;
     }
 
     // ── Reply ───────────────────────────────────────────────────────────────
     if (input.isEmpty) {
-      await _track('notif_action', {'action': 'reply', 'ok': false, 'reason': 'empty'});
+      await _track(
+          'notif_action', {'action': 'reply', 'ok': false, 'reason': 'empty'});
       return;
     }
     if (!isGroup && peerUid.isEmpty) {
-      await _track('notif_action', {'action': 'reply', 'ok': false, 'reason': 'no_peer'});
+      await _track('notif_action',
+          {'action': 'reply', 'ok': false, 'reason': 'no_peer'});
       return;
     }
     // Deliberately a DIRECT post, NOT Outbox.enqueue. The outbox is a singleton
@@ -2101,8 +2266,12 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
       msgs.add({
-        'id': clientId, 'who': 'You', 'text': input,
-        'ts': DateTime.now().millisecondsSinceEpoch, 'ava': '', 'self': true,
+        'id': clientId,
+        'who': 'You',
+        'text': input,
+        'ts': DateTime.now().millisecondsSinceEpoch,
+        'ava': '',
+        'self': true,
       });
       if (msgs.length > _kMaxShadeMsgs) {
         msgs.removeRange(0, msgs.length - _kMaxShadeMsgs);
@@ -2112,9 +2281,11 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
       all[acct] = byConv;
       await _persistShade(all);
       await _renderConvNotification(
-        conv: conv, byConv: byConv,
+        conv: conv,
+        byConv: byConv,
         fallbackTitle: (t['who'] ?? 'AvaTOK').toString(),
-        count: 0, ticker: 'Reply sent',
+        count: 0,
+        ticker: 'Reply sent',
       );
       // Answering a message is reading it — WhatsApp clears the unread state on
       // an inline reply too.
@@ -2130,9 +2301,11 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
       // un-sent, and the retry stamp above means pressing Reply again reuses the
       // same client_id rather than risking a double-send.
       await _renderConvNotification(
-        conv: conv, byConv: byConv,
+        conv: conv,
+        byConv: byConv,
         fallbackTitle: (t['who'] ?? 'AvaTOK').toString(),
-        count: 0, ticker: 'Reply not sent',
+        count: 0,
+        ticker: 'Reply not sent',
       );
     }
     await _track('notif_action', {
@@ -2170,7 +2343,9 @@ Future<void> _runNotifAction(NotificationResponse resp) async {
 /// message, and inflating the count would make the badge lie.
 Future<void> _showReactionNotif(Map<String, dynamic> d) async {
   try {
-    try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults apply */}
+    try {
+      await RemoteConfig.hydrateFromDisk();
+    } catch (_) {/* defaults apply */}
     if (!RemoteConfig.notifReactions) return;
     final conv = (d['conv'] ?? '').toString();
     if (conv.isEmpty) return;
@@ -2208,12 +2383,16 @@ Future<void> _showReactionNotif(Map<String, dynamic> d) async {
       text: 'Reacted $emoji',
       ts: ts, isGroup: isGroup, groupName: groupName, avatarPath: avatarPath,
       peerUid: rawFromUid,
-      convKey: isGroup ? 'g:$conv' : (rawFromUid.isEmpty ? '' : '1:$rawFromUid'),
+      convKey:
+          isGroup ? 'g:$conv' : (rawFromUid.isEmpty ? '' : '1:$rawFromUid'),
     );
     if (upd == null) return; // already in the shade
     final drawn = await _renderConvNotification(
-      conv: conv, byConv: upd.byConv, fallbackTitle: who,
-      count: 0, ticker: '$who reacted $emoji',
+      conv: conv,
+      byConv: upd.byConv,
+      fallbackTitle: who,
+      count: 0,
+      ticker: '$who reacted $emoji',
     );
     if (!drawn) return;
     await _persistShade(upd.all);
@@ -2299,7 +2478,8 @@ Future<bool> _showStackedMessageNotif(
     // Duplicate delivery — the shade is already correct. Returning true stops the
     // caller re-drawing anything.
     if (upd == null) {
-      await _track('push_shown_duplicate', {'type': 'message', 'had_mid': mid.isNotEmpty});
+      await _track('push_shown_duplicate',
+          {'type': 'message', 'had_mid': mid.isNotEmpty});
       return true;
     }
     final byConv = upd.byConv;
@@ -2308,7 +2488,11 @@ Future<bool> _showStackedMessageNotif(
     // the SAME card with the sent message appended, instead of a second copy of
     // this logic drifting away from it.
     final drawn = await _renderConvNotification(
-      conv: conv, byConv: byConv, fallbackTitle: who, count: count, ticker: 'Message from $who',
+      conv: conv,
+      byConv: byConv,
+      fallbackTitle: who,
+      count: count,
+      ticker: 'Message from $who',
     );
     if (!drawn) return false;
     // Persist ONLY now that the render has actually succeeded — see
@@ -2337,7 +2521,10 @@ Future<bool> _showStackedMessageNotif(
       'style': 'messaging',
       'grouped': true,
       'is_group': isGroup,
-      'thread_msgs': (((byConv[conv] as Map?) ?? const <String, dynamic>{})['m'] as List?)?.length ?? 0,
+      'thread_msgs':
+          (((byConv[conv] as Map?) ?? const <String, dynamic>{})['m'] as List?)
+                  ?.length ??
+              0,
       'has_avatar': avatarPath.isNotEmpty,
     });
     return true;
@@ -2352,7 +2539,9 @@ Future<bool> _showStackedMessageNotif(
         'error': e.toString(),
         'stack': st.toString().split('\n').take(4).join(' | '),
       });
-    } catch (_) {/* telemetry must never be the thing that breaks a notification */}
+    } catch (_) {
+      /* telemetry must never be the thing that breaks a notification */
+    }
     return false; // caller redraws the legacy banner — never leave the user silent
   }
 }
@@ -2387,7 +2576,8 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     fromUid: rawFromUid.isEmpty ? null : rawFromUid,
     fromPhone: rawFromPhone.isEmpty ? null : rawFromPhone,
     fromName: rawFromName.isEmpty ? null : rawFromName,
-    unknownFallback: 'AvaTOK', // unchanged historical fallback for chat messages
+    unknownFallback:
+        'AvaTOK', // unchanged historical fallback for chat messages
   );
   final who = resolved.name;
   await _track('name_resolution', {
@@ -2423,7 +2613,9 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     // compile-time default on precisely the code path that matters most (a push
     // arriving while the app is asleep). Cheap, idempotent, and memoised behind
     // `_hydrated`.
-    try { await RemoteConfig.hydrateFromDisk(); } catch (_) {/* defaults apply */}
+    try {
+      await RemoteConfig.hydrateFromDisk();
+    } catch (_) {/* defaults apply */}
     if (RemoteConfig.notifMessagingStyle) {
       // true  → drawn, or deliberately skipped as a duplicate. Done.
       // false → the stacked render FAILED. Fall through to the legacy banner
@@ -2431,7 +2623,11 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
       //         instead of to silence. A missed message notification is a much
       //         worse outcome than an unstyled one.
       final handled = await _showStackedMessageNotif(
-        d, conv: conv, who: who, preview: preview, count: count,
+        d,
+        conv: conv,
+        who: who,
+        preview: preview,
+        count: count,
       );
       if (handled) return;
     }
@@ -2476,7 +2672,8 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     // only ever come from the bg isolate — so a `path:'foreground'` row is the
     // direct proof that the silent-with-screen-off bug is fixed.
     'path': BadgeService.inBackgroundIsolate ? 'background' : 'foreground',
-    'has_preview': (d['preview'] ?? d['body'] ?? '').toString().trim().isNotEmpty,
+    'has_preview':
+        (d['preview'] ?? d['body'] ?? '').toString().trim().isNotEmpty,
     // [NOTIF-ICON-1] Which status-bar glyph this banner was drawn with. The
     // pre-fix value was the launcher mipmap, which Android silhouettes into a
     // white blob; `icon:'ic_notification'` on a build is the proof the
@@ -2557,8 +2754,10 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   // nothing left. Drives the body copy (owner's own phrasing: "Check your
   // AvaTOK inbox for a voice message" / spec's "Left you a voice message").
   final subKind = (d['subKind'] ?? '').toString().toLowerCase();
-  final hasVoicemail = subKind == 'voicemail' || subKind == 'receptionist' ||
-      d['recept']?.toString() == '1' || (d['fromName'] ?? '') == 'Ava';
+  final hasVoicemail = subKind == 'voicemail' ||
+      subKind == 'receptionist' ||
+      d['recept']?.toString() == '1' ||
+      (d['fromName'] ?? '') == 'Ava';
   final title = 'Missed call from $who';
   final body = preview.isNotEmpty
       ? preview // e.g. a transcript snippet — WhatsApp-style preview
@@ -2585,7 +2784,8 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   // [AVANOTIF-VM-1] Stable per-caller id (phone, else uid, else the resolved
   // name) so a second missed call from a DIFFERENT person gets its OWN banner
   // instead of silently overwriting the first — grouped under one summary.
-  final callerKey = fromPhone.isNotEmpty ? fromPhone : (fromUid.isNotEmpty ? fromUid : who);
+  final callerKey =
+      fromPhone.isNotEmpty ? fromPhone : (fromUid.isNotEmpty ? fromUid : who);
   final notifId = _missedCallNotifId(callerKey);
   final androidDetails = AndroidNotificationDetails(
     _callsChannel.id, _callsChannel.name,
@@ -2597,14 +2797,16 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
     category: AndroidNotificationCategory.missedCall,
     styleInformation: styleInfo,
     groupKey: _kMissedCallsGroupKey,
-    actions: hasCallbackAction ? [
-      AndroidNotificationAction(
-        'callback',
-        'Call back',
-        titleColor: const Color.fromARGB(255, 76, 175, 80),
-        cancelNotification: false,
-      ),
-    ] : [],
+    actions: hasCallbackAction
+        ? [
+            AndroidNotificationAction(
+              'callback',
+              'Call back',
+              titleColor: const Color.fromARGB(255, 76, 175, 80),
+              cancelNotification: false,
+            ),
+          ]
+        : [],
   );
   // CALLFIX-R7: Main payload is always 'chat' (to open inbox on tap).
   // The callback action is handled separately via actionId='callback' in onDidReceiveNotificationResponse.
@@ -2615,10 +2817,14 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
     NotificationDetails(android: androidDetails),
     payload: 'chat',
   );
-  await _updateMissedCallsSummary('$title — ${hasVoicemail ? "voicemail" : "no voicemail"}');
+  await _updateMissedCallsSummary(
+      '$title — ${hasVoicemail ? "voicemail" : "no voicemail"}');
   await _bgTrack('push_shown', {
-    'channel': 'calls', 'type': 'missed', 'has_callback': hasCallbackAction,
-    'has_voicemail': hasVoicemail, 'name_tier': resolved.tier,
+    'channel': 'calls',
+    'type': 'missed',
+    'has_callback': hasCallbackAction,
+    'has_voicemail': hasVoicemail,
+    'name_tier': resolved.tier,
   });
 }
 
@@ -2630,8 +2836,9 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
 /// fromPub|callee_uid, fromName|callerName (the callee's display name),
 /// generation}. Rendered on the dedicated Calls channel so it reads distinctly.
 Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
-  final who = (d['fromName'] ?? d['calleeName'] ?? d['callerName'] ?? 'Your contact')
-      .toString();
+  final who =
+      (d['fromName'] ?? d['calleeName'] ?? d['callerName'] ?? 'Your contact')
+          .toString();
   // The callee's dial id — same field the missed-call callback uses (fromPub).
   final peerId = (d['fromPub'] ?? d['callee_uid'] ?? '').toString();
   final title = '$who is now free';
@@ -2651,14 +2858,16 @@ Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
     number: count,
     ticker: title,
     category: AndroidNotificationCategory.call,
-    actions: peerId.isNotEmpty ? [
-      AndroidNotificationAction(
-        'now_free_call',
-        'Call',
-        titleColor: const Color.fromARGB(255, 76, 175, 80),
-        cancelNotification: false,
-      ),
-    ] : [],
+    actions: peerId.isNotEmpty
+        ? [
+            AndroidNotificationAction(
+              'now_free_call',
+              'Call',
+              titleColor: const Color.fromARGB(255, 76, 175, 80),
+              cancelNotification: false,
+            ),
+          ]
+        : [],
   );
   // Payload distinguishes a now-free tap from a plain chat tap so the tap handler
   // can emit now_free_callback_started and route to redial.
@@ -2694,7 +2903,9 @@ Future<void> _handleNowFreeCallback(String? payload) async {
 /// answered / declined / caller cancelled), so it can't linger over the lock
 /// screen. Best-effort and safe to call more than once.
 Future<void> _dismissBrandedFsi() async {
-  try { await _local.cancel(_kBrandedIncomingNotifId); } catch (_) {}
+  try {
+    await _local.cancel(_kBrandedIncomingNotifId);
+  } catch (_) {}
 }
 
 /// [AVACALL-INUI-2] If [payload] is a branded-incoming full-screen-intent JSON
@@ -2725,14 +2936,15 @@ bool _maybeRouteBrandedIncoming(String? payload) {
 /// and the faster InboxDO WS ring carry the same key, so the fast path and the
 /// slow path paint the same thing and there is no flicker.
 String callerAvatarFromPayload(Map<String, dynamic> d) =>
-    (d['callerAvatarUrl'] ?? d['avatarUrl'] ?? d['fromAvatar'] ?? '').toString().trim();
+    (d['callerAvatarUrl'] ?? d['avatarUrl'] ?? d['fromAvatar'] ?? '')
+        .toString()
+        .trim();
 
 /// [AVACALL-INUI-2] Push the branded IncomingBusinessCallScreen from a decoded
 /// FSI payload. Retries briefly: on a COLD start (the FSI just launched us over
 /// the lock screen) the root navigator may not be mounted the instant the
 /// payload is delivered. Bounded so it never spins forever.
-final CallTtlGate _brandedRouteGate =
-    CallTtlGate(ttlMs: _kTerminalCallTtlMs);
+final CallTtlGate _brandedRouteGate = CallTtlGate(ttlMs: _kTerminalCallTtlMs);
 
 Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   final callId = (d['callId'] ?? '').toString();
@@ -2764,10 +2976,12 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
     });
     return;
   }
-  for (var i = 0; i < 40; i++) { // ~10s max (40 × 250ms)
+  for (var i = 0; i < 40; i++) {
+    // ~10s max (40 × 250ms)
     final nav = navigatorKey.currentState;
     if (nav != null) {
-      if (PushService.wasCallTerminated(callId)) return; // re-check after the wait
+      if (PushService.wasCallTerminated(callId))
+        return; // re-check after the wait
       nav.push(MaterialPageRoute(
         builder: (_) => IncomingBusinessCallScreen(
           callId: callId,
@@ -2777,8 +2991,10 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
           avatarVersion: (d['callerAvatarVersion'] ?? '').toString(),
           video: (d['kind'] ?? '') == 'video',
           prewarmNonce: (d['prewarmNonce'] ?? '').toString(),
-          prewarmGeneration: int.tryParse((d['prewarmGeneration'] ?? '').toString()),
-          prewarmNetworkIdentity: (d['prewarmNetworkIdentity'] ?? '').toString(),
+          prewarmGeneration:
+              int.tryParse((d['prewarmGeneration'] ?? '').toString()),
+          prewarmNetworkIdentity:
+              (d['prewarmNetworkIdentity'] ?? '').toString(),
         ),
       ));
       Analytics.capture('call_branded_fsi_routed', {
@@ -2890,6 +3106,9 @@ Future<void> _handleNativeRingAction(Map<String, dynamic> args) async {
     'from': (args['from'] ?? '').toString(),
     'fromName': (args['fromName'] ?? '').toString(),
     'kind': (args['kind'] ?? 'audio').toString(),
+    if ((args['provider'] ?? '').toString().isNotEmpty)
+      'provider': (args['provider'] ?? '').toString(),
+    if (args['streamNativeAccepted'] == true) 'streamNativeAccepted': true,
   };
   switch (action) {
     case 'accept':
@@ -2898,7 +3117,11 @@ Future<void> _handleNativeRingAction(Map<String, dynamic> args) async {
         'ms_from_screen_shown': args['msFromScreenShown'],
         'cold': args['cold'] == true,
       });
-      unawaited(PushService.acceptRingingCall(callId, fallbackExtra: extra));
+      unawaited(PushService.acceptRingingCall(
+        callId,
+        fallbackExtra: extra,
+        source: 'native_tap',
+      ));
       break;
     case 'decline':
       Analytics.capture('call_native_answer_decline', {'call_id': callId});
@@ -2922,7 +3145,8 @@ Future<void> _handleNativeRingAction(Map<String, dynamic> args) async {
 // [NativeVoiceAudio] / AvaVoiceAudioPlugin.kt's `canUseFullScreenIntent`)
 // rather than adding a new plugin — this file only needs one extra method on
 // an existing, already-attached channel, not a new MainActivity registration.
-const MethodChannel _ringAudibilityChannel = MethodChannel('avatok/voice_audio');
+const MethodChannel _ringAudibilityChannel =
+    MethodChannel('avatok/voice_audio');
 
 /// Native probe: ringer mode, DND/interruption-filter state, ring-stream
 /// volume + max, and the incoming-call channel's importance — AT RING TIME
@@ -2980,7 +3204,8 @@ String? _fallbackRingtoneCallId;
 /// audibility-conditional behaviour the old string implied remains UNBUILT.
 /// If it is ever built, `callRingAudibilityV1` is the flag to gate it behind.
 Future<void> _startRingtoneFallback(String callId) async {
-  if (_fallbackRingtonePlayer != null) return; // already running for this or another call
+  if (_fallbackRingtonePlayer != null)
+    return; // already running for this or another call
   // [CALL-GHOST-RING-1] Never ring for a call that has already ended. Cheap, and
   // the terminal marker is now actually set on local hang-up, so unlike before
   // this guard can really fire.
@@ -3027,7 +3252,9 @@ Future<void> _stopRingtoneFallback([String? callId]) async {
   _RingCycleReporter.I.stop(callId);
   final player = _fallbackRingtonePlayer;
   if (player == null) return;
-  if (callId != null && _fallbackRingtoneCallId != null && callId != _fallbackRingtoneCallId) {
+  if (callId != null &&
+      _fallbackRingtoneCallId != null &&
+      callId != _fallbackRingtoneCallId) {
     return;
   }
   _fallbackRingtonePlayer = null;
@@ -3090,7 +3317,8 @@ class _RingCycleReporter {
   void start(String callId, String token, {required String route}) {
     if (!RemoteConfig.callRealRingCount) return;
     if (callId.isEmpty || token.isEmpty) return;
-    if (_callId == callId && _timer != null) return; // already reporting this call
+    if (_callId == callId && _timer != null)
+      return; // already reporting this call
     stop(); // a new ring supersedes any previous one (glare)
     _callId = callId;
     _token = token;
@@ -3138,7 +3366,8 @@ class _RingCycleReporter {
       return;
     }
     if (_index >= _maxCycles ||
-        DateTime.now().millisecondsSinceEpoch - _startedAtMs > _maxDuration.inMilliseconds) {
+        DateTime.now().millisecondsSinceEpoch - _startedAtMs >
+            _maxDuration.inMilliseconds) {
       stop(callId);
       return;
     }
@@ -3153,7 +3382,8 @@ class _RingCycleReporter {
       final ok = info['ok'] == true;
       final ringerMode = (info['ringer_mode'] ?? 'unknown').toString();
       final dndBlocking = info['dnd_blocking'] == true;
-      final ringVolume = info['ring_volume'] is int ? info['ring_volume'] as int : -1;
+      final ringVolume =
+          info['ring_volume'] is int ? info['ring_volume'] as int : -1;
       final ringVolumeMax =
           info['ring_volume_max'] is int ? info['ring_volume_max'] as int : -1;
       final silentOrVibrate = ringerMode == 'silent' || ringerMode == 'vibrate';
@@ -3219,7 +3449,8 @@ class _RingCycleReporter {
         'ringer_mode': ringerMode,
         'dnd_blocking': dndBlocking,
         'route': _route,
-        'ms_since_first_ring': DateTime.now().millisecondsSinceEpoch - _startedAtMs,
+        'ms_since_first_ring':
+            DateTime.now().millisecondsSinceEpoch - _startedAtMs,
         'cycle_ms': nextIntervalMs,
       });
       if (_callId == callId) _arm(nextIntervalMs);
@@ -3260,11 +3491,15 @@ Future<void> _emitRingAudibilityAndMaybeFallback(
   final info = await _probeRingAudibility();
   final ok = info['ok'] == true;
   final ringerMode = (info['ringer_mode'] ?? 'unknown').toString();
-  final interruptionFilter = (info['interruption_filter'] ?? 'unknown').toString();
+  final interruptionFilter =
+      (info['interruption_filter'] ?? 'unknown').toString();
   final dndBlocking = info['dnd_blocking'] == true;
-  final ringVolume = info['ring_volume'] is int ? info['ring_volume'] as int : -1;
-  final ringVolumeMax = info['ring_volume_max'] is int ? info['ring_volume_max'] as int : -1;
-  final channelImportance = (info['channel_importance'] ?? 'unknown').toString();
+  final ringVolume =
+      info['ring_volume'] is int ? info['ring_volume'] as int : -1;
+  final ringVolumeMax =
+      info['ring_volume_max'] is int ? info['ring_volume_max'] as int : -1;
+  final channelImportance =
+      (info['channel_importance'] ?? 'unknown').toString();
   // What Android actually granted at ring time — the same signal the branded
   // FSI decision in [_showIncoming] uses (`lifecycle == 'resumed'` → a live
   // navigator in-app; else FSI vs the plain native CallKit fallback screen).
@@ -3345,7 +3580,8 @@ Future<void> _emitRingAudibilityAndMaybeFallback(
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
 /// which rings and wakes the screen even when locked or the app is killed.
-Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) async {
+Future<void> _showIncoming(Map<String, dynamic> d,
+    {String route = 'unknown'}) async {
   if (d['type'] != 'call') {
     AvaLog.I.log('call', 'incoming skipped (type=${d['type']})');
     // [CALL-RING-OBS-1] Even the skip is worth a row — a ring that never
@@ -3361,6 +3597,59 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   }
   final ringCallId = (d['callId'] ?? '').toString();
   final ringCaller = (d['fromPub'] ?? d['from'] ?? '').toString();
+  // [STREAM-CALL-PILOT-1] Stream's native incoming-call surface is the sole
+  // ring owner for a Stream-selected call. The legacy FCM/CallKit path must
+  // return before it raises its own UI, otherwise the recipient sees two
+  // incoming calls. Missing provider fields remain legacy. An explicit Stream
+  // provider is either owned by Stream or rejected when this build is not
+  // enabled; it is never silently reinterpreted as Cloudflare.
+  final explicitStreamRing = StreamCallPilot.isExplicitStreamPayload(d);
+  if (explicitStreamRing && !StreamCallPilot.enabled) {
+    // Provider selection is sticky and authoritative. A client that was not
+    // compiled/enabled for Stream must fail closed here; showing the legacy
+    // Cloudflare ring would be a silent provider switch after the server chose
+    // Stream. The coordinated server flag keeps this path staging-only.
+    StreamCallPilot.record('stream_incoming_ring_rejected', ringCallId,
+        outcome: 'pilot_disabled');
+    return;
+  }
+  if (StreamCallPilot.streamRingShouldHandle(d)) {
+    final decision = StreamCallApi.fromIncomingPayload(d);
+    if (decision.usesStream) {
+      final ticket = decision.streamTicket;
+      if (ticket != null) {
+        // The background FCM isolate can be torn down as soon as its handler
+        // returns. Await the token write before giving ownership to Stream so a
+        // killed-app Accept can still recover the short-lived credential.
+        await StreamCallTokenStore.write(
+          ticket.callId,
+          ticket.token,
+          accountId: ticket.userId,
+          expiresAtMs: ticket.expiresAtMs,
+        );
+        try {
+          await StreamCallClient.shared.showIncoming(ticket);
+        } catch (e) {
+          // Stream owns this ring even when the isolated native bridge is not
+          // present. Never fall through to legacy CallKit after this point.
+          StreamCallPilot.record('stream_incoming_ring_rejected', ringCallId,
+              outcome: e is StreamCallUnavailable
+                  ? e.reason
+                  : 'native_bridge_error');
+          return;
+        }
+      }
+      StreamCallPilot.record('stream_incoming_ring_owned', ringCallId,
+          outcome: route);
+      return;
+    }
+    // The server explicitly selected Stream but the ring lacks a usable typed
+    // ticket. Do not reinterpret that call as legacy Cloudflare: it would
+    // create a second provider/ring and violate sticky selection.
+    StreamCallPilot.record('stream_incoming_ring_rejected', ringCallId,
+        outcome: 'incomplete_ticket');
+    return;
+  }
   // All incoming transports converge here. A late FCM delivery from the
   // background isolate must not resurrect the ring after the user accepted
   // the same call on the foreground isolate.
@@ -3370,7 +3659,9 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       'route': route,
       'reason': 'accepted_lease',
     });
-    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    try {
+      await FlutterCallkitIncoming.endCall(ringCallId);
+    } catch (_) {}
     await _track(CallEvents.callIncomingShown, {
       'call_id': ringCallId,
       'route': route,
@@ -3384,11 +3675,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // `PushService._signalStatus` call on the next line already does. Unqualified,
   // this is `Method not found: '_suppressSameCallerRetry'` and it broke the
   // compile gate on run 31062575013.
-  if (route != 'ws' && route != 'fcm_fg' &&
+  if (route != 'ws' &&
+      route != 'fcm_fg' &&
       PushService._suppressSameCallerRetry(ringCallId, ringCaller)) {
     PushService._signalStatus(ringCallId, 'busy', ringCaller,
         busyReason: 'active_call', receptionistEnabled: true);
-    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    try {
+      await FlutterCallkitIncoming.endCall(ringCallId);
+    } catch (_) {}
     return;
   }
   // [CALL-CALLEE-SEQ-1 2026-08-03] Seed the callee's ordering baseline from the
@@ -3442,7 +3736,9 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       'shown': false,
       'skip_reason': 'expired',
     });
-    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    try {
+      await FlutterCallkitIncoming.endCall(ringCallId);
+    } catch (_) {}
     return;
   }
   // [AVACALL-RING-CANCEL-1] Don't surface a ring for a call whose caller already
@@ -3461,7 +3757,9 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       'shown': false,
       'skip_reason': 'already_cancelled',
     });
-    try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+    try {
+      await FlutterCallkitIncoming.endCall(ringCallId);
+    } catch (_) {}
     return;
   }
   final receivedAtMs = DateTime.now().millisecondsSinceEpoch;
@@ -3477,8 +3775,10 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // check only for materially delayed FCM delivery: the normal WS/fast FCM ring
   // remains latency-free, while a stale queue item cannot resurrect a dead call.
   const lateRingGuardMs = 3000;
-  if (route != 'ws' && ringCallId.isNotEmpty &&
-      deliveryAgeMs != null && deliveryAgeMs >= lateRingGuardMs) {
+  if (route != 'ws' &&
+      ringCallId.isNotEmpty &&
+      deliveryAgeMs != null &&
+      deliveryAgeMs >= lateRingGuardMs) {
     final durableStatus = await PushService.fetchDurableCallStatus(
       ringCallId,
       timeout: const Duration(milliseconds: 900),
@@ -3498,11 +3798,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
         'skip_reason': 'durable_terminal',
         'delivery_age_ms': deliveryAgeMs,
       });
-      try { await FlutterCallkitIncoming.endCall(ringCallId); } catch (_) {}
+      try {
+        await FlutterCallkitIncoming.endCall(ringCallId);
+      } catch (_) {}
       return;
     }
   }
-  AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
+  AvaLog.I.log('call',
+      'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
   // [CALL-4RINGS-1 2026-08-08] `callRingLifetimeMaxMs`, not `callRingLifetimeMs`.
   // The ring lease is per-call now (see ringInviteRemainingMs); a hard 20 000
   // ceiling here would end the native ring partway through the fourth cycle —
@@ -3563,7 +3866,8 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
       Analytics.capture(CallEvents.groupcallInviteReceived, {
         'call_id': ringCallId,
         'gid_hash': inviteGid.hashCode.toString(),
-        'escalation_id': (d['escalation_id'] ?? 'addcall:$inviteGid').toString(),
+        'escalation_id':
+            (d['escalation_id'] ?? 'addcall:$inviteGid').toString(),
         'from_uid': (d['fromPub'] ?? '').toString(),
         'kind': (d['kind'] ?? 'audio').toString(),
         'route': route,
@@ -3587,7 +3891,8 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     textDecline: 'Decline',
     avatar: callerAvatarFromPayload(d),
     extra: {
-      'from': d['fromPub'] ?? '', // server sends 'fromPub' (FCM reserves 'from')
+      'from':
+          d['fromPub'] ?? '', // server sends 'fromPub' (FCM reserves 'from')
       'kind': d['kind'] ?? 'audio',
       'callId': d['callId'] ?? '',
       'fromName': d['fromName'] ?? 'AvaTOK',
@@ -3714,7 +4019,9 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
     // Worst case is a slightly late OS ring; never a silent one.
     if (relaxedFront) {
       unawaited(_verifyForegroundRingOrFallback(
-        callId: ringCallId, params: params, route: route,
+        callId: ringCallId,
+        params: params,
+        route: route,
         frontReason: appFrontReason,
       ));
     }
@@ -3781,7 +4088,8 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
   // foreground FCM and background FCM from reporting different semantics.
   final receiptToken = (d['ringReceiptToken'] ?? '').toString();
   if (receiptToken.isNotEmpty) {
-    unawaited(PushService.reportRinging(ringCallId, receiptToken, route: route));
+    unawaited(
+        PushService.reportRinging(ringCallId, receiptToken, route: route));
   }
   // [CALL-REL-9] REL-10: capture ring-audibility signals AT RING TIME and,
   // gated by callRingAudibilityV1, start the in-app fallback ringtone.
@@ -3852,6 +4160,14 @@ Future<void> _showIncoming(Map<String, dynamic> d, {String route = 'unknown'}) a
 }
 
 class PushService {
+  /// Earliest local Answer tap for this call. Used only to calculate setup
+  /// latency; callers must treat null as "not an incoming accepted call".
+  static int? acceptedAtMsFor(String callId) => _acceptedCallAt[callId];
+
+  static void clearAcceptedAtMsFor(String callId) {
+    _acceptedCallAt.remove(callId);
+  }
+
   /// [CALL-STATUS-WSLANE-1 2026-08-14] Terminal call-status (cancel / bye /
   /// decline / …) delivered over the live InboxDO WebSocket — the same fast
   /// lane the RING already uses ([WS-RING-1]), closing a delivery asymmetry:
@@ -3874,7 +4190,13 @@ class PushService {
     if (status == 'answered_elsewhere') {
       final winner = (f['winner_device_id'] ?? '').toString();
       if (winner.isNotEmpty && winner == await DeviceId.get()) return;
-      await applyRingTransition(callId, status, seq: seq, source: 'inbox_ws');
+      await applyRingTransition(
+        callId,
+        status,
+        seq: seq,
+        serverSentAtMs: int.tryParse((f['ts'] ?? '').toString()),
+        source: 'inbox_ws',
+      );
       return;
     }
     Analytics.capture('call_status_ws_received', {
@@ -3892,8 +4214,10 @@ class PushService {
       noAnswerReason: null,
     ));
     await applyRingTransition(
-      callId, status,
+      callId,
+      status,
       seq: int.tryParse((f['seq'] ?? '').toString()),
+      serverSentAtMs: int.tryParse((f['ts'] ?? '').toString()),
       source: 'inbox_ws',
     );
   }
@@ -3908,8 +4232,11 @@ class PushService {
     final generation = int.tryParse(
         (f['prewarmGeneration'] ?? f['generation'] ?? '').toString());
     final deviceId = await DeviceId.get();
-    CallPrewarm.instance.start(callId, nonce: nonce, generation: generation,
-        transportOnly: true, deviceId: deviceId);
+    CallPrewarm.instance.start(callId,
+        nonce: nonce,
+        generation: generation,
+        transportOnly: true,
+        deviceId: deviceId);
     await CallPrewarm.instance.startForegroundTransport(callId,
         nonce: nonce, generation: generation, deviceId: deviceId);
     Analytics.capture('call_prewarm_foreground_requested', {
@@ -3917,7 +4244,8 @@ class PushService {
       'transport': 'flutter_datachannel_only',
       'source': f['type'] == 'call-prewarm' ? 'fcm_foreground' : 'inbox_live',
       if (f['seq'] != null) 'seq': f['seq'],
-      if (f['prewarmDeadlineMs'] != null) 'prewarm_deadline_ms': f['prewarmDeadlineMs'],
+      if (f['prewarmDeadlineMs'] != null)
+        'prewarm_deadline_ms': f['prewarmDeadlineMs'],
     });
   }
 
@@ -3950,8 +4278,10 @@ class PushService {
       return;
     }
     // [CALL-GLARE-3] mutual dial → symmetric busy, same as the FCM branch.
-    if (fromPub.isNotEmpty && hasPendingOutgoingTo(fromPub) &&
-        gOutgoingCallId != null && incomingId != gOutgoingCallId) {
+    if (fromPub.isNotEmpty &&
+        hasPendingOutgoingTo(fromPub) &&
+        gOutgoingCallId != null &&
+        incomingId != gOutgoingCallId) {
       Analytics.capture('call_glare_detected', {
         'call_id_in': incomingId,
         'call_id_out': gOutgoingCallId ?? '',
@@ -3967,8 +4297,11 @@ class PushService {
     if (callIsGenuinelyActive()) {
       _signalStatus(incomingId, 'busy', fromPub,
           busyReason: 'active_call', receptionistEnabled: true);
-      Analytics.capture('call_incoming_autobusy',
-          {'call_id': incomingId, 'kind': kind, 'busy_reason': 'on_another_call'});
+      Analytics.capture('call_incoming_autobusy', {
+        'call_id': incomingId,
+        'kind': kind,
+        'busy_reason': 'on_another_call'
+      });
       return;
     }
     // [GCALL-W4-BUSY] Being in a GROUP call counts as being on a call. The busy
@@ -3978,8 +4311,11 @@ class PushService {
     if (CloudflareConferenceController.activeGid != null) {
       _signalStatus(incomingId, 'busy', fromPub,
           busyReason: 'active_call', receptionistEnabled: true);
-      Analytics.capture('call_incoming_autobusy',
-          {'call_id': incomingId, 'kind': kind, 'busy_reason': 'in_group_call'});
+      Analytics.capture('call_incoming_autobusy', {
+        'call_id': incomingId,
+        'kind': kind,
+        'busy_reason': 'in_group_call'
+      });
       return;
     }
     if (gInCall) {
@@ -4020,9 +4356,11 @@ class PushService {
   static bool _suppressSameCallerRetry(String callId, String caller) {
     if (caller.isEmpty) return false;
     final now = DateTime.now().millisecondsSinceEpoch;
-    _recentIncomingByCaller.removeWhere((_, t) => now - t > _sameCallerRetryWindowMs);
+    _recentIncomingByCaller
+        .removeWhere((_, t) => now - t > _sameCallerRetryWindowMs);
     final active = CallSessionManager.instance.current;
-    final activePeer = active != null && !active.isEnded ? active.config.seed : '';
+    final activePeer =
+        active != null && !active.isEnded ? active.config.seed : '';
     final sameLiveCaller = callIsGenuinelyActive() && activePeer == caller;
     final previous = _recentIncomingByCaller[caller];
     _recentIncomingByCaller[caller] = now;
@@ -4172,11 +4510,13 @@ class PushService {
   // records. Keyed "<callId>:<accepted|declined|missed>".
   static final Map<String, int> _emittedCallEvents = {};
   static bool _onceCallEvent(String callId, String kind) {
-    if (callId.isEmpty) return true; // no id → can't dedupe; let it through once
+    if (callId.isEmpty)
+      return true; // no id → can't dedupe; let it through once
     final now = DateTime.now().millisecondsSinceEpoch;
     _emittedCallEvents.removeWhere((_, t) => now - t > 120000);
     final key = '$callId:$kind';
-    if (_emittedCallEvents.containsKey(key)) return false; // already emitted → skip
+    if (_emittedCallEvents.containsKey(key))
+      return false; // already emitted → skip
     _emittedCallEvents[key] = now;
     return true;
   }
@@ -4200,7 +4540,8 @@ class PushService {
       bool notifEnabled = false;
       try {
         notifEnabled = await _local
-                .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+                .resolvePlatformSpecificImplementation<
+                    AndroidFlutterLocalNotificationsPlugin>()
                 ?.areNotificationsEnabled() ??
             false;
       } catch (_) {}
@@ -4208,8 +4549,8 @@ class PushService {
       // Check if Calls channel exists and is properly configured
       bool callsChannelOk = false;
       try {
-        final androidLocal = _local
-            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        final androidLocal = _local.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
         // If createNotificationChannel succeeded in init(), this is true
         callsChannelOk = _localReady;
       } catch (_) {}
@@ -4222,8 +4563,8 @@ class PushService {
       dynamic fsiOk;
       try {
         // Attempt to call if available; if the method doesn't exist, skip it
-        final androidLocal = _local
-            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        final androidLocal = _local.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
         // canScheduleExactNotifications is available in flutter_local_notifications ^17
         fsiOk = await androidLocal?.canScheduleExactNotifications() ?? null;
       } catch (_) {
@@ -4259,7 +4600,8 @@ class PushService {
       final raw = await DiskCache.readGlobal(_kPendingBgTelemetry);
       if (raw == null || raw.isEmpty) return;
       final list = (jsonDecode(raw) as List);
-      await DiskCache.writeGlobal(_kPendingBgTelemetry, '[]'); // clear before send
+      await DiskCache.writeGlobal(
+          _kPendingBgTelemetry, '[]'); // clear before send
       for (final e in list) {
         final m = (e as Map);
         Analytics.capture((m['event'] ?? 'fcm_bg').toString(), {
@@ -4322,7 +4664,8 @@ class PushService {
       final response = await request.close();
       await response.drain();
       client.close();
-      AvaLog.I.log('push', 'Reported ringing for callId=$callId: HTTP ${response.statusCode}');
+      AvaLog.I.log('push',
+          'Reported ringing for callId=$callId: HTTP ${response.statusCode}');
     } catch (e) {
       AvaLog.I.log('push', 'Failed to report ringing for callId=$callId: $e');
     }
@@ -4332,7 +4675,9 @@ class PushService {
   /// post-first-frame (PERF-1), so consumers that need Firebase messaging ready
   /// (e.g. [registerToken]) wait on this instead of racing a late init.
   static final Completer<void> ready = Completer<void>();
-  static void _markReady() { if (!ready.isCompleted) ready.complete(); }
+  static void _markReady() {
+    if (!ready.isCompleted) ready.complete();
+  }
 
   static Future<void> init() async {
     try {
@@ -4359,10 +4704,12 @@ class PushService {
     // (flutter_callkit_incoming is mobile-only). Skip push/CallKit wiring so the
     // app runs cleanly; messaging still works over the live socket while open.
     if (!Platform.isAndroid && !Platform.isIOS) {
-      AvaLog.I.log('app', 'push/CallKit disabled on desktop (${Platform.operatingSystem})');
+      AvaLog.I.log('app',
+          'push/CallKit disabled on desktop (${Platform.operatingSystem})');
       return;
     }
-    AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
+    AvaLog.I.log('app',
+        'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
     // [CALL-REL-R4-B] Start tracking when we were last actually in front. The
     // ring path needs "how long ago were we resumed", which the point-in-time
     // `lifecycleState` cannot answer, and an observer only sees transitions that
@@ -4386,7 +4733,8 @@ class PushService {
               Map<String, dynamic>.from(call.arguments as Map));
           return;
         }
-        if (call.method != 'incomingCallTapped' || call.arguments is! Map) return;
+        if (call.method != 'incomingCallTapped' || call.arguments is! Map)
+          return;
         await _routeToBrandedIncoming(
             Map<String, dynamic>.from(call.arguments as Map));
       });
@@ -4401,7 +4749,8 @@ class PushService {
         // side clears it once returned, so this can only ever fire once per tap.
         final pendingAction = await tapChannel
             .invokeMapMethod<String, dynamic>('getPendingRingAction');
-        if (pendingAction != null) unawaited(_handleNativeRingAction(pendingAction));
+        if (pendingAction != null)
+          unawaited(_handleNativeRingAction(pendingAction));
       } catch (_) {/* native bridge unavailable on an older build */}
     }
     // ── Notification-permission ordering contract (AVA-ONBOARD-1) ─────────────
@@ -4432,7 +4781,8 @@ class PushService {
     // got the push" is queryable instead of invisible. `requested` distinguishes
     // an actual ask from a pre-onboarding status read.
     Analytics.capture('push_permission', {
-      'status': perm.authorizationStatus.name, // authorized|denied|notDetermined|provisional
+      'status': perm.authorizationStatus
+          .name, // authorized|denied|notDetermined|provisional
       'requested': onboardingDone,
     });
     await _local.initialize(
@@ -4456,7 +4806,8 @@ class PushService {
         // CALLFIX-R7: Handle action IDs (e.g., 'callback' on missed-call notification)
         if (resp.actionId == 'callback') {
           _handleMissedCallCallback(resp.payload);
-        } else if (resp.actionId == 'now_free_call' || resp.payload == 'now_free') {
+        } else if (resp.actionId == 'now_free_call' ||
+            resp.payload == 'now_free') {
           // [BUSY-CARD-1] "Call" action OR a body-tap on the now-free banner.
           _handleNowFreeCallback(resp.payload);
         } else {
@@ -4476,19 +4827,22 @@ class PushService {
     // group, voicemail) — see chat_thread/setup.dart `_markRead`. The inbox
     // screen prefixes its key with 'inbox:', so strip that to recover the conv.
     ActiveThread.onEnter = (key) {
-      final conv = key.startsWith('inbox:') ? key.substring('inbox:'.length) : key;
+      final conv =
+          key.startsWith('inbox:') ? key.substring('inbox:'.length) : key;
       unawaited(_clearShadeThread(conv));
     };
-    final androidLocal = _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidLocal = _local.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     await androidLocal?.createNotificationChannel(_msgChannel);
     await androidLocal?.createNotificationChannel(_callsChannel);
-    await androidLocal?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
+    await androidLocal
+        ?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
     // [NOTIF-ACTIONS-1] The quiet channel muted conversations post to. Created in
     // BOTH isolates because whichever one draws a banner first must find it —
     // posting to a channel that does not exist yet is silently dropped by Android.
     await androidLocal?.createNotificationChannel(_msgMutedChannel);
-    _localReady = true; // main isolate is now initialized → _ensureLocalInit no-ops
+    _localReady =
+        true; // main isolate is now initialized → _ensureLocalInit no-ops
     // Ship any telemetry the BACKGROUND isolate parked (incl. bg crashes) now that
     // Analytics is live — so background failures stop being invisible.
     await drainPendingBgTelemetry();
@@ -4509,11 +4863,22 @@ class PushService {
     }
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
-      AvaLog.I.log('push', 'FCM received (foreground) type=${d['type']} callId=${d['callId'] ?? ''}');
+      AvaLog.I.log('push',
+          'FCM received (foreground) type=${d['type']} callId=${d['callId'] ?? ''}');
       Analytics.capture('fcm_fg_received', {
         'type': (d['type'] ?? '').toString(),
         'callId': (d['callId'] ?? '').toString(),
       });
+      // The native Stream delegate is the sole owner of Stream call pushes.
+      // Never let the legacy CallKit route render a second incoming screen.
+      if ((d['sender'] ?? '').toString() == 'stream.video') {
+        Analytics.capture('stream_fcm_dart_ignored', {
+          'type': (d['type'] ?? '').toString(),
+          'callId': (d['callId'] ?? d['call_cid'] ?? '').toString(),
+          'ring_owner': 'stream_native',
+        });
+        return;
+      }
       // [CALL-PRESENCE-1 2026-08-07] An FCM message reaching the Dart isolate is
       // PROOF this device is awake and reachable right now — the single best
       // evidence we ever get, and the one the previous design threw away. It is
@@ -4543,8 +4908,10 @@ class PushService {
           unawaited(() async {
             if (winner.isNotEmpty && winner == await DeviceId.get()) return;
             await applyRingTransition(
-              callId, status,
+              callId,
+              status,
               seq: int.tryParse((d['seq'] ?? '').toString()),
+              serverSentAtMs: int.tryParse((d['ts'] ?? '').toString()),
               source: 'fcm_fg',
             );
           }());
@@ -4564,8 +4931,8 @@ class PushService {
           callId: callId,
           status: status,
           busyReason: busyReason,
-          receptionistEnabled:
-              status == 'busy' && (d['receptionist_enabled']?.toString() == '1' ||
+          receptionistEnabled: status == 'busy' &&
+              (d['receptionist_enabled']?.toString() == '1' ||
                   d['receptionist_enabled'] == true),
           pronoun: status == 'busy'
               ? (d['pronoun']?.toString().trim().isNotEmpty == true
@@ -4580,8 +4947,10 @@ class PushService {
         // late/duplicate FCM redelivery can't re-run teardown or undo a newer
         // transition. `seq` is the server's monotonic transition_sequence.
         unawaited(applyRingTransition(
-          callId, status,
+          callId,
+          status,
           seq: int.tryParse((d['seq'] ?? '').toString()),
+          serverSentAtMs: int.tryParse((d['ts'] ?? '').toString()),
           source: 'fcm_fg',
         ));
         return;
@@ -4642,7 +5011,8 @@ class PushService {
         // that thread), then still sync so the voicemail thread updates.
         if (_isReceptionistPush(d)) {
           _showMissedCallNotif(d);
-          Analytics.capture('push_shown', {'channel': 'calls', 'type': 'missed'});
+          Analytics.capture(
+              'push_shown', {'channel': 'calls', 'type': 'missed'});
         } else {
           // [PUSH-FG-BANNER-1 2026-07-14] Show a banner unless the user is
           // DEMONSTRABLY looking at this exact thread.
@@ -4676,8 +5046,7 @@ class PushService {
           final lifecycle = WidgetsBinding.instance.lifecycleState;
           final resumed = lifecycle == AppLifecycleState.resumed;
           final conv = (d['conv'] ?? '').toString();
-          final onThisThread =
-              conv.isNotEmpty && conv == ActiveThread.convKey;
+          final onThisThread = conv.isNotEmpty && conv == ActiveThread.convKey;
           final suppress = resumed && onThisThread;
           if (suppress) {
             Analytics.capture('push_fg_banner_suppressed', {
@@ -4735,10 +5104,11 @@ class PushService {
         // redaction in realtime (durable tombstone + live thread update).
         final target = (d['target'] ?? '').toString();
         Analytics.capture('chat_delete_push', {
-          'delete_id': target, 'state': 'foreground',
+          'delete_id': target,
+          'state': 'foreground',
         });
-        SyncHub.I.applyRemoteDelete(
-            target, conv: (d['conv'] ?? '').toString(), source: 'push_fg');
+        SyncHub.I.applyRemoteDelete(target,
+            conv: (d['conv'] ?? '').toString(), source: 'push_fg');
         return;
       }
       if (d['type'] == 'hide') {
@@ -4747,10 +5117,12 @@ class PushService {
         final target = (d['target'] ?? '').toString();
         final hidden = (d['hidden'] ?? '0').toString() == '1';
         Analytics.capture('chat_hide_push', {
-          'target': target, 'hidden': hidden, 'state': 'foreground',
+          'target': target,
+          'hidden': hidden,
+          'state': 'foreground',
         });
-        SyncHub.I.applyRemoteHide(
-            target, hidden, conv: (d['conv'] ?? '').toString(), source: 'push_fg');
+        SyncHub.I.applyRemoteHide(target, hidden,
+            conv: (d['conv'] ?? '').toString(), source: 'push_fg');
         return;
       }
       if (d['type'] == 'call_del' || d['type'] == 'call_clear') {
@@ -4759,7 +5131,8 @@ class PushService {
         // /sync snapshot reconciles anything missed.
         final clear = d['type'] == 'call_clear';
         Analytics.capture('call_log_op_push', {
-          'op': clear ? 'clear' : 'del', 'state': 'foreground',
+          'op': clear ? 'clear' : 'del',
+          'state': 'foreground',
         });
         if (clear) {
           CallLogStore().applyRemoteClear();
@@ -4777,7 +5150,8 @@ class PushService {
         final kind = (d['kind'] == 'video') ? 'video' : 'audio';
         // Duplicate/echo push for the call already on screen → ignore.
         if (incomingId.isNotEmpty && incomingId == gActiveCallId) {
-          Analytics.capture('call_duplicate_push_ignored', {'call_id': incomingId});
+          Analytics.capture(
+              'call_duplicate_push_ignored', {'call_id': incomingId});
           return;
         }
         // Duplicate push that arrives BEFORE any CallScreen mounts (so the
@@ -4802,8 +5176,10 @@ class PushService {
         // each device busy-replies the crossing incoming push and keeps its own
         // outgoing dial, so each caller sees the other as busy and chooses.
         final glareFrom = (d['from'] ?? '').toString();
-        if (glareFrom.isNotEmpty && hasPendingOutgoingTo(glareFrom) &&
-            gOutgoingCallId != null && incomingId.isNotEmpty &&
+        if (glareFrom.isNotEmpty &&
+            hasPendingOutgoingTo(glareFrom) &&
+            gOutgoingCallId != null &&
+            incomingId.isNotEmpty &&
             incomingId != gOutgoingCallId) {
           Analytics.capture('call_glare_detected', {
             'call_id_in': incomingId,
@@ -4813,7 +5189,9 @@ class PushService {
           _signalStatus(incomingId, 'busy', (d['fromPub'] ?? '').toString(),
               busyReason: 'active_call', receptionistEnabled: true);
           Analytics.capture('call_incoming_autobusy', {
-            'call_id': incomingId, 'kind': kind, 'busy_reason': 'mutual_dial',
+            'call_id': incomingId,
+            'kind': kind,
+            'busy_reason': 'mutual_dial',
           });
           return;
         }
@@ -4833,13 +5211,16 @@ class PushService {
             try {
               final v = await DiskCache.read('receptionist_enabled');
               if (v != null && v.isNotEmpty) re = v == '1';
-              re = true; // ALWAYS-ON override — kept for one release of telemetry
+              re =
+                  true; // ALWAYS-ON override — kept for one release of telemetry
             } catch (_) {}
             _signalStatus(incomingId, 'busy', fromPub,
                 busyReason: 'active_call', receptionistEnabled: re);
           })();
           Analytics.capture('call_incoming_autobusy', {
-            'call_id': incomingId, 'kind': kind, 'busy_reason': 'on_another_call',
+            'call_id': incomingId,
+            'kind': kind,
+            'busy_reason': 'on_another_call',
           });
           return;
         }
@@ -4902,10 +5283,12 @@ class PushService {
         final accepted = m['isAccepted'] == true || m['accepted'] == true;
         final extra = m['extra'];
         if (accepted && extra is Map && !gInCall) {
-          AvaLog.I.log('call', 'recovering accepted call after cold start callId=${extra['callId']}');
+          AvaLog.I.log('call',
+              'recovering accepted call after cold start callId=${extra['callId']}');
           IceCache.prefetch();
           // Give the navigator one frame to exist.
-          WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_openCall(extra))); // CALLFIX-15
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => unawaited(_openCall(extra))); // CALLFIX-15
           return;
         }
       }
@@ -4933,7 +5316,8 @@ class PushService {
     final p = (preview ?? '').trim();
     // Include a short preview so the recipient can read the message from the
     // notification shade (WhatsApp-style). Capped server-side too.
-    if (p.isNotEmpty) body['preview'] = p.length > 140 ? p.substring(0, 140) : p;
+    if (p.isNotEmpty)
+      body['preview'] = p.length > 140 ? p.substring(0, 140) : p;
     final c = (conv ?? '').trim();
     if (c.isNotEmpty) body['conv'] = c;
     ApiAuth.postJson(kNotifyUrl, body).ignore();
@@ -4977,9 +5361,13 @@ class PushService {
   /// across every retry of THAT tap; callers that omit it get a per-call-stable
   /// value, which preserves the old collapse-retries behaviour for paths where
   /// only one such action is possible.
-  static Future<bool> _signalStatus(String callId, String status, String callerNpub,
-      {String? busyReason, bool receptionistEnabled = false, String? pronoun,
-      String? intent, String? actionInstance}) {
+  static Future<bool> _signalStatus(
+      String callId, String status, String callerNpub,
+      {String? busyReason,
+      bool receptionistEnabled = false,
+      String? pronoun,
+      String? intent,
+      String? actionInstance}) {
     if (callId.isEmpty) return Future<bool>.value(false);
     final actionInstanceId = actionInstance ?? 'single';
     // [BUSY-CARD-1] When we auto-busy a caller, attach why we're busy + whether Ava
@@ -4995,7 +5383,9 @@ class PushService {
       // No caller uid = nothing to signal to. Record it: previously the ctl- socket
       // masked this case, so a decline could vanish with no trace at all.
       Analytics.capture('call_status_signal_skipped', {
-        'call_id': callId, 'status': status, 'reason': 'no_caller_uid',
+        'call_id': callId,
+        'status': status,
+        'reason': 'no_caller_uid',
       });
       return Future<bool>.value(false);
     }
@@ -5028,11 +5418,16 @@ class PushService {
     };
     final future = command != null
         ? ApiAuth.postJson(kCallCommandUrl, {
-            'callId': callId, 'command': command, 'commandId': commandId,
+            'callId': callId,
+            'command': command,
+            'commandId': commandId,
           })
         : ApiAuth.postJson(kCallStatusUrl, {
-            'to': callerNpub, 'callId': callId, 'status': status,
-            'commandId': commandId, ...extra,
+            'to': callerNpub,
+            'callId': callId,
+            'status': status,
+            'commandId': commandId,
+            ...extra,
           });
     return future.then((res) {
       // Telemetry for the ONE remaining path, split by leg so a regression is
@@ -5060,7 +5455,9 @@ class PushService {
       return res.statusCode >= 200 && res.statusCode < 300;
     }).catchError((Object e) {
       Analytics.capture('call_status_signal_failed', {
-        'call_id': callId, 'status': status, 'to_uid': callerNpub,
+        'call_id': callId,
+        'status': status,
+        'to_uid': callerNpub,
         'error': e.toString(),
         'ms': DateTime.now().millisecondsSinceEpoch - t0,
       });
@@ -5078,7 +5475,8 @@ class PushService {
           // the native action must clear it too or it remains tappable after the
           // call has already moved on.
           unawaited(_dismissBrandedFsi());
-          IceCache.prefetch(); // accept tapped → call screen is next; warm TURN now
+          IceCache
+              .prefetch(); // accept tapped → call screen is next; warm TURN now
           final acc = event.body['extra'];
           var accId = '';
           if (acc is Map) {
@@ -5115,6 +5513,7 @@ class PushService {
             unawaited(acceptRingingCall(
               accId,
               fallbackExtra: acc is Map ? acc : null,
+              source: 'callkit_native',
             ));
           } else {
             // No callId to route through the shared helper — fall back to the
@@ -5149,7 +5548,8 @@ class PushService {
             // site is what makes phantom declines countable.
             _declineRouting(extra, origin: 'callkit_native');
             // [CALL-REL-9] Stop the in-app ringtone fallback (if it was playing).
-            unawaited(_stopRingtoneFallback((extra['callId'] ?? '').toString()));
+            unawaited(
+                _stopRingtoneFallback((extra['callId'] ?? '').toString()));
           }
           // CALLFIX-R6: Clear glare state when decline is tapped
           gIncomingRingingFrom = null;
@@ -5166,7 +5566,8 @@ class PushService {
             // full-screen ring survived a timeout exactly the way it survived a
             // decline. Same root cause, same one-line fix.
             unawaited(applyRingTransition(
-              (ex['callId'] ?? '').toString(), 'missed',
+              (ex['callId'] ?? '').toString(),
+              'missed',
               source: 'callkit_timeout',
             ));
           }
@@ -5210,7 +5611,8 @@ class PushService {
   /// clients that don't know `decline_agent` end the ring like a plain
   /// decline-shaped status; they never dead-end.
   static Future<void> sendToAgentIncomingCall(Map extra) async {
-    unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
+    unawaited(
+        _dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
     // [CALL-REL-9] This branded-screen action ends the ring but never routes
@@ -5264,8 +5666,10 @@ class PushService {
   ///                      Motorola builds this ALSO fires for a programmatic
   ///                      `endCall()` on an accepted call, which is the bug.
   ///   `os_timeout`     — nobody answered.
-  static Future<void> _declineRouting(Map extra, {required String origin}) async {
-    unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
+  static Future<void> _declineRouting(Map extra,
+      {required String origin}) async {
+    unawaited(
+        _dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     final callId = (extra['callId'] ?? '').toString();
     final from = (extra['from'] ?? '').toString();
     // [CALL-REL-9] Covers both the native CallKit decline (which also stops it
@@ -5285,7 +5689,8 @@ class PushService {
     // underneath is a SEPARATE surface from the notification's own buttons.
     // Idempotent, so the in-app screen calling this after its own
     // `applyRingTransition` is a no-op.
-    unawaited(applyRingTransition(callId, 'decline', source: 'decline_routing'));
+    unawaited(
+        applyRingTransition(callId, 'decline', source: 'decline_routing'));
     _signalStatus(callId, 'decline', from);
     // CALL-GLARE-1: dedupe duplicate decline events for the same call.
     if (_onceCallEvent(callId, 'declined')) {
@@ -5332,7 +5737,8 @@ class PushService {
     // Terminal for the caller — Message ends the call, it does not park it.
     // [CALL-CMD-IDEMPOTENT-2] Distinct intent: a quick reply and a plain
     // decline both ride the `decline` status and must not collapse together.
-    final declined = await _signalStatus(callId, 'decline', from, intent: 'quick_reply');
+    final declined =
+        await _signalStatus(callId, 'decline', from, intent: 'quick_reply');
     if (_onceCallEvent(callId, 'declined')) {
       Analytics.capture('call_incoming_declined', {
         'call_id': callId,
@@ -5352,12 +5758,17 @@ class PushService {
         'fallbackText': fallbackText,
       });
       Analytics.capture('call_quick_reply_sent', {
-        'call_id': callId, 'to_uid': from, 'quick_reply_id': quickReplyId,
-        'http_status': res.statusCode, 'ok': res.statusCode == 200,
+        'call_id': callId,
+        'to_uid': from,
+        'quick_reply_id': quickReplyId,
+        'http_status': res.statusCode,
+        'ok': res.statusCode == 200,
       });
     } catch (e) {
       Analytics.capture('call_quick_reply_failed', {
-        'call_id': callId, 'to_uid': from, 'quick_reply_id': quickReplyId,
+        'call_id': callId,
+        'to_uid': from,
+        'quick_reply_id': quickReplyId,
         'error': e.toString(),
       });
     }
@@ -5431,12 +5842,17 @@ class PushService {
         if (ringDurationMs != null) 'ringDurationMs': ringDurationMs,
       });
       Analytics.capture('call_spam_report_sent', {
-        'call_id': callId, 'reported_uid': from, 'also_block': alsoBlock,
-        'http_status': res.statusCode, 'ok': res.statusCode == 200,
+        'call_id': callId,
+        'reported_uid': from,
+        'also_block': alsoBlock,
+        'http_status': res.statusCode,
+        'ok': res.statusCode == 200,
       });
     } catch (e) {
       Analytics.capture('call_spam_report_failed', {
-        'call_id': callId, 'reported_uid': from, 'error': e.toString(),
+        'call_id': callId,
+        'reported_uid': from,
+        'error': e.toString(),
       });
     }
   }
@@ -5488,10 +5904,15 @@ class PushService {
   /// this fix is about.
   static void _logMissed(Map extra, {required String origin}) {
     final missedId = (extra['callId'] ?? '').toString();
-    const noDecisionByCallee = {'os_timeout', 'unreachable', 'caller_cancelled'};
+    const noDecisionByCallee = {
+      'os_timeout',
+      'unreachable',
+      'caller_cancelled'
+    };
     // CALL-GLARE-1: dedupe duplicate missed events for the same call (CallKit
     // can fire timeout more than once).
-    if (noDecisionByCallee.contains(origin) && _onceCallEvent(missedId, 'missed')) {
+    if (noDecisionByCallee.contains(origin) &&
+        _onceCallEvent(missedId, 'missed')) {
       Analytics.capture('call_incoming_missed', {
         'call_id': missedId,
         'kind': extra['kind'] == 'video' ? 'video' : 'audio',
@@ -5519,10 +5940,13 @@ class PushService {
   /// sets it back to 1 — the dedupe guard was silently skipping exactly that
   /// POST (token unchanged), leaving the account permanently unreachable
   /// (token_count=0, mapped_inactive=1 → every call fell to the Ava agent).
-  static Future<void> registerToken(String uid, {bool force = false, String trigger = 'app_open'}) async {
+  static Future<void> registerToken(String uid,
+      {bool force = false, String trigger = 'app_open'}) async {
     // init() is deferred to post-first-frame (PERF-1): wait for it (bounded)
     // so getToken() isn't called before Firebase messaging is set up.
-    try { await ready.future.timeout(const Duration(seconds: 15)); } catch (_) {}
+    try {
+      await ready.future.timeout(const Duration(seconds: 15));
+    } catch (_) {}
     try {
       var token = await FirebaseMessaging.instance.getToken();
       if (token == null) {
@@ -5531,12 +5955,14 @@ class PushService {
         token = await FirebaseMessaging.instance.getToken();
       }
       if (token == null) {
-        AvaLog.I.log('push', 'FCM token STILL NULL — device cannot receive calls/pushes');
+        AvaLog.I.log('push',
+            'FCM token STILL NULL — device cannot receive calls/pushes');
         // Telemetry: a null FCM token means /api/register is never reached, so the
         // server stores 0 push tokens and CALLERS hit the "no device registered"
         // 404. Previously this was only in the local diag log (invisible in
         // PostHog) — emit a discrete, per-user event so it is queryable.
-        Analytics.capture('push_register_failed', {'reason': 'fcm_token_null', 'trigger': trigger});
+        Analytics.capture('push_register_failed',
+            {'reason': 'fcm_token_null', 'trigger': trigger});
         return;
       }
       await _postToken(token, force: force, trigger: trigger);
@@ -5566,7 +5992,8 @@ class PushService {
   static Future<void> mapDevice({required bool active}) async {
     try {
       final deviceId = await DeviceId.get();
-      await ApiAuth.postJson(kAccountDeviceUrl, {'device_id': deviceId, 'active': active});
+      await ApiAuth.postJson(
+          kAccountDeviceUrl, {'device_id': deviceId, 'active': active});
       // [PUSH-DEVICE-OBS-1] Emit `device_id` so this row JOINS against D1
       // `account_devices` / `device_tokens` and against the consumer's
       // `push_fanout_result`. Without it, `mapped_active_no_token:2` /
@@ -5593,7 +6020,8 @@ class PushService {
   /// token), while a plain relaunch on the same account with the same token is a
   /// no-op. Only a SUCCESSFUL (HTTP 200) registration updates it, so a failed
   /// POST is retried on the next open rather than masked.
-  static const String _kLastRegisteredTokenKey = 'push_last_registered_token_v1';
+  static const String _kLastRegisteredTokenKey =
+      'push_last_registered_token_v1';
 
   /// [CALL-REACH-1] When the last SUCCESSFUL registration happened (per-account
   /// scoped, ms since epoch). The dedupe guard is now a TTL, not a permanent
@@ -5616,7 +6044,8 @@ class PushService {
   /// [force] bypasses the [FCM-DEDUPE] unchanged-token guard — the token-ROTATION
   /// callback (onTokenRefresh) and any future server-driven invalidation pass it
   /// so a fresh/rotated credential is always pushed immediately.
-  static Future<void> _postToken(String token, {bool force = false, String trigger = 'app_open'}) async {
+  static Future<void> _postToken(String token,
+      {bool force = false, String trigger = 'app_open'}) async {
     // [MULTIACCT-2] Send the stable per-device id so the server keys the token by
     // DEVICE (device_tokens) and maps the ACTIVE account to it (account_devices).
     // A token refresh updates the single device row; a login/switch flips the
@@ -5655,9 +6084,10 @@ class PushService {
         }
       } catch (_) {/* best-effort — on any read error, fall through and POST */}
     }
-    final res = await ApiAuth.postJson(
-        kRegisterUrl, {'token': token, 'platform': 'fcm', 'device_id': deviceId});
-    AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
+    final res = await ApiAuth.postJson(kRegisterUrl,
+        {'token': token, 'platform': 'fcm', 'device_id': deviceId});
+    AvaLog.I.log('push',
+        'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
     // Telemetry: distinguish a real registration (HTTP 200) from a server-side
     // failure (401/5xx). A non-200 here also means the device ends up with no
     // usable token row, so don't log it as "ok" — that masked the problem before.
@@ -5676,7 +6106,8 @@ class PushService {
     if (ok) {
       try {
         final body = jsonDecode(res.body);
-        if (body is Map && body['devices'] is num) serverDevices = (body['devices'] as num).toInt();
+        if (body is Map && body['devices'] is num)
+          serverDevices = (body['devices'] as num).toInt();
       } catch (_) {/* best-effort */}
     }
     Analytics.capture(ok ? 'push_register_ok' : 'push_register_failed', {
@@ -5702,7 +6133,8 @@ class PushService {
       // [CALL-REACH-1] …and WHEN, so the skip expires (TTL) instead of lasting forever.
       try {
         await DiskCache.write(_kLastRegisteredTokenKey, token);
-        await DiskCache.write(_kLastRegisteredAtKey, DateTime.now().millisecondsSinceEpoch.toString());
+        await DiskCache.write(_kLastRegisteredAtKey,
+            DateTime.now().millisecondsSinceEpoch.toString());
       } catch (_) {/* best-effort */}
       Analytics.capture('push_token_registered', {
         'platform': 'fcm',
@@ -5752,7 +6184,8 @@ class PushService {
         return _terminalCallStatus(terminal) ? terminal : 'ended';
       }
       final ringStatus = (j['ring_status'] ?? '').toString();
-      if (ringStatus == 'decline_ava' || ringStatus == 'decline_vm' ||
+      if (ringStatus == 'decline_ava' ||
+          ringStatus == 'decline_vm' ||
           ringStatus == 'decline_agent') {
         return ringStatus;
       }
@@ -5782,8 +6215,27 @@ class PushService {
   /// stays the source of truth whenever it HAS the call — `fallbackExtra` is
   /// consulted only when the lookup finds nothing, so every existing path
   /// behaves exactly as before.
-  static Future<void> acceptRingingCall(String callId, {Map? fallbackExtra}) async {
-    unawaited(_dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
+  static Future<void> acceptRingingCall(
+    String callId, {
+    Map? fallbackExtra,
+    String source = 'unknown',
+  }) async {
+    final answerAtMs = DateTime.now().millisecondsSinceEpoch;
+    _acceptedCallAt.putIfAbsent(callId, () => answerAtMs);
+    if (_acceptedCallAt.length > 64) {
+      final cutoff = answerAtMs - _kTerminalCallTtlMs;
+      _acceptedCallAt.removeWhere((_, at) => at < cutoff);
+    }
+    final initialTrace = (fallbackExtra?['trace_id'] ?? '').toString();
+    if (initialTrace.isNotEmpty) Analytics.currentTraceId = initialTrace;
+    Analytics.capture('call_answer_tapped', {
+      'call_id': callId,
+      'source': source,
+      'answer_at_ms': _acceptedCallAt[callId]!,
+      'duplicate_action': _acceptedCallAt[callId] != answerAtMs,
+    });
+    unawaited(
+        _dismissBrandedFsi()); // [AVACALL-INUI-2] clear the lock-screen FSI banner
     // [AVACALL-CANCEL-1] Don't answer into a call the caller already cancelled.
     if (wasCallTerminated(callId)) {
       Analytics.capture('call_accepted_dead', {
@@ -5824,6 +6276,16 @@ class PushService {
         }
       }
     }
+
+    final resolvedTrace = (openExtra?['trace_id'] ?? '').toString();
+    if (resolvedTrace.isNotEmpty) Analytics.currentTraceId = resolvedTrace;
+    Analytics.capture('call_answer_payload_resolved', {
+      'call_id': callId,
+      'source': source,
+      'payload_found': openExtra != null,
+      'ms_from_answer':
+          DateTime.now().millisecondsSinceEpoch - _acceptedCallAt[callId]!,
+    });
 
     // Accept is user intent: publish the device-level lease before removing
     // every ring surface. The awaited write closes the foreground/background
@@ -5993,6 +6455,9 @@ class PushService {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      final providerDecision = await StreamCallApi.resolveIncoming(
+        Map<String, dynamic>.from(e),
+      );
       // [CALL-REL-R4-3] Cold-start credential recovery. Every accept route —
       // native CallKit, branded screen, lock-screen tap — funnels through here,
       // and `extra` is the one carrier that provably survived process death. If
@@ -6090,7 +6555,9 @@ class PushService {
           'reason': 'manager_live_session',
         });
         // Re-present the existing call screen if it was minimized.
-        try { returnToActiveCall(); } catch (_) {}
+        try {
+          returnToActiveCall();
+        } catch (_) {}
         return;
       }
       // [CALL-DUP-SESSION-2] The (_openedCallId, _openedAt) reservation is now
@@ -6211,6 +6678,8 @@ class PushService {
           seed: (e['from'] ?? 'caller').toString(),
           video: e['kind'] == 'video',
           outgoing: false,
+          mediaProvider: providerDecision.provider,
+          streamTicket: providerDecision.streamTicket,
           // [CALL-IDENTITY-SNAPSHOT-1] Without this CallScreen always fell
           // back to an initials tile even when the caller's real photo was
           // right there in the ring payload — a jarring identity swap the
@@ -6219,11 +6688,18 @@ class PushService {
           avatarUrl: callerAvatarFromPayload(Map<String, dynamic>.from(e)),
           traceId: (e['trace_id'] ?? '').toString(), // [TRACE-ID-1]
           prewarmNonce: (e['prewarmNonce'] ?? '').toString(),
-          prewarmGeneration: int.tryParse((e['prewarmGeneration'] ?? '').toString()),
-          prewarmNetworkIdentity: (e['prewarmNetworkIdentity'] ?? '').toString(),
+          prewarmGeneration:
+              int.tryParse((e['prewarmGeneration'] ?? '').toString()),
+          prewarmNetworkIdentity:
+              (e['prewarmNetworkIdentity'] ?? '').toString(),
         ),
       ));
-      Analytics.capture('call_accept_screen_opened', {'call_id': room});
+      Analytics.capture('call_accept_screen_opened', {
+        'call_id': room,
+        if (_acceptedCallAt[room] != null)
+          'ms_from_answer':
+              DateTime.now().millisecondsSinceEpoch - _acceptedCallAt[room]!,
+      });
     } catch (e, st) {
       Analytics.captureException(
         e,
@@ -6247,15 +6723,18 @@ class PushService {
     if (!_onceCallEvent(callId, 'group_ring_cancelled')) return;
     _programmaticCallkitEnd.mark(callId);
     unawaited(_stopRingtoneFallback(callId));
-    unawaited(FlutterCallkitIncoming.endCall(callId).catchError((_) {/* already gone */}));
-    unawaited(CallLogStore().add(CallEntry(
+    unawaited(FlutterCallkitIncoming.endCall(callId)
+        .catchError((_) {/* already gone */}));
+    unawaited(CallLogStore()
+        .add(CallEntry(
       name: _groupRingNames.remove(callId) ?? 'Group call',
       seed: gid.isEmpty ? 'group' : gid,
       video: false,
       dir: CallDir.missed,
       ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       outcome: CallOutcome.missed, // [CALL-LOG-TIME-1]
-    )).catchError((_) {/* log is best-effort */}));
+    ))
+        .catchError((_) {/* log is best-effort */}));
     Analytics.capture('group_call_ring_cancelled',
         {'call_id': callId, 'gid_hash': gid.hashCode.toString()});
   }
@@ -6277,7 +6756,9 @@ class PushService {
     final gid = (e['gid'] ?? '').toString();
     final callId = (e['callId'] ?? '').toString();
     if (gid.isEmpty) return;
-    try { await FlutterCallkitIncoming.endAllCalls(); } catch (_) {/* ring already gone */}
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (_) {/* ring already gone */}
     if (CloudflareConferenceController.activeGid != null) {
       Analytics.capture('group_call_accept_ignored',
           {'call_id': callId, 'reason': 'already_in_call'});

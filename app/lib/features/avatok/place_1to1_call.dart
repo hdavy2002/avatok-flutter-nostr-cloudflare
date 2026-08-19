@@ -9,6 +9,8 @@ import '../../core/api_auth.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/calls/call_session_manager.dart'; // [INSTANT-CALL-MOUNT-1]
 import '../../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
+import '../../core/calls/rtc/stream_call_api.dart';
+import '../../core/calls/rtc/stream_call_provider.dart' show StreamCallPilot;
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart'; // [INSTANT-CALL-MOUNT-1] kill switch
@@ -51,7 +53,8 @@ Future<void> place1to1Call(
   // their original generic UX instead of inheriting that older default.
   bool business = true,
   // Optional pre-minted room id used by launch sites that create the call
-  // identity before navigation. Human calls are always free.
+  // identity before navigation. Billing remains server-authoritative and does
+  // not change this UI entry point.
   String? roomOverride,
 }) async {
   if (uid.isEmpty) return;
@@ -63,6 +66,16 @@ Future<void> place1to1Call(
   // heard a ring". The callee's identity already travels via `seed:`/`to:`, so
   // the room id never needed to carry it. See core/calls/call_room_id.dart.
   final room = roomOverride ?? CallRoomId.newRoomId();
+  final callTraceId = TraceContext.mint();
+  Analytics.currentTraceId = callTraceId;
+  Analytics.capture('call_attempt_started', {
+    'call_id': room,
+    'call_trace_id': callTraceId,
+    'provider': 'pending',
+    'role': 'caller',
+    'media_mode': video ? 'video' : 'audio',
+    'entrypoint': dialer ? 'dialer' : 'chat',
+  });
   // [INSTANT-CALL-MOUNT-1] Optimistic mount FIRST — BEFORE any `await` — so the
   // CallScreen appears the instant the user taps. POST /api/call (and even the
   // local profile-name load for the ring push) run in the BACKGROUND inside
@@ -84,13 +97,14 @@ Future<void> place1to1Call(
         business: business,
         dialer: dialer,
         deferRing: true, // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
+        traceId: callTraceId,
       ),
     ));
     // Place the call (and load the caller name) off the critical path, then keep
     // this function alive until the call screen pops (same await semantics as the
     // classic path below).
     // ignore: unawaited_futures
-    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, video: video, avatarUrl: avatarUrl, dialer: dialer, business: business);
+    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, video: video, avatarUrl: avatarUrl, dialer: dialer, business: business, traceId: callTraceId);
     await nav;
     return;
   }
@@ -111,6 +125,8 @@ Future<void> place1to1Call(
   // no-answer card already knows the right affordance without a second probe.
   String? routed;
   Map<String, dynamic>? routingStart;
+  var providerDecision = const CallProviderDecision.cloudflare(
+      reason: 'legacy_response_pending');
   // [DIALPAD-BIZ-CALLS] routed:'busy' (plan §11/§15.1, owner decision
   // 2026-07-11): a PAID (Mode B) line whose agents are all full or whose
   // human callee is already on a call. Never a normal call outcome — set only
@@ -119,17 +135,34 @@ Future<void> place1to1Call(
   String? busyMessage;
   String? busyKind;
   try {
+    final placementStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     final res = await ApiAuth.postJsonH(kCallUrl, {
       'to': uid,
       'fromName': myName,
       'callId': room,
       'kind': video ? 'video' : 'audio',
+      // Only a build containing the isolated Stream bridge may enter the
+      // Stream lane. With either gate off this is false and the existing
+      // Cloudflare path is unchanged.
+      'stream_capable': StreamCallPilot.enabled,
       // [DIALPAD-BIZ-CALLS] Marks this as a business-channel (dialpad) dial.
       // Harmless extra field today; ready for the server to thread through to
       // the callee's ring push once the routing work lands, so the callee's
       // named incoming-business-call screen (businessCallUx) knows to show.
       'via': 'dialpad',
-    }, const <String, String>{});
+    }, <String, String>{'X-Trace-Id': callTraceId});
+    // [STREAM-CALL-PILOT-2] Parse provider selection before the call screen is
+    // opened. Missing provider fields are the compatibility Cloudflare choice.
+    providerDecision = StreamCallApi.fromPlacementResponse(room, res.body);
+    Analytics.capture('call_placement_completed', {
+      'call_id': room,
+      'call_trace_id': callTraceId,
+      'provider': providerDecision.provider.wire,
+      'role': 'caller',
+      'media_mode': video ? 'video' : 'audio',
+      'http_status': res.statusCode,
+      'latency_ms': DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
+    });
     if (res.statusCode == 200) {
       try {
         final j = jsonDecode(res.body) as Map<String, dynamic>;
@@ -227,6 +260,9 @@ Future<void> place1to1Call(
       avatarUrl: avatarUrl,
       initialRouted: routed,
       initialRoutingStart: routingStart,
+      mediaProvider: providerDecision.provider,
+      streamTicket: providerDecision.streamTicket,
+      traceId: callTraceId,
       // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
       // (agent hand-off, post-ring busy) instead of the generic outcome menu.
       business: business,
@@ -239,7 +275,8 @@ Future<void> place1to1Call(
 /// [INSTANT-CALL-MOUNT-1] Runs POST /api/call AFTER the dialer CallScreen is
 /// already on screen (optimistic mount) and feeds the outcome to the live
 /// session — the same POST the awaited path did, just off the critical path.
-/// Human dialer calls are free, so there is no escrow prompt to gate here. Outcomes match
+/// Human-call allowance and metering are server-authoritative, so there is no
+/// escrow prompt in this unchanged UI. Outcomes match
 /// chat_thread._placeCallInBackground: reachable → full ring window; unreachable
 /// → Ava (no fake ringback); glare → supersede with the deterministic winner;
 /// identity gate → tear down; hard network fail → 'network-error' + Retry.
@@ -252,6 +289,7 @@ Future<void> _dialerPlaceInBackground(
   required String avatarUrl,
   required bool dialer,
   required bool business,
+  required String traceId,
 }) async {
   final callKind = video ? 'video' : 'audio';
   // Caller display name for the callee's incoming-call push (cosmetic). Loaded
@@ -262,13 +300,32 @@ Future<void> _dialerPlaceInBackground(
     if (p.displayName.isNotEmpty) myName = p.displayName;
   } catch (_) {/* fall back to 'AvaTOK' */}
   try {
+    final placementStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     final res = await ApiAuth.postJsonH(kCallUrl, {
       'to': uid,
       'fromName': myName,
       'callId': room,
       'kind': callKind,
+      'stream_capable': StreamCallPilot.enabled,
       'via': 'dialpad',
-    }, const <String, String>{});
+    }, <String, String>{'X-Trace-Id': traceId});
+
+    // [STREAM-CALL-PILOT-2] The optimistic CallScreen is already visible, but
+    // its session is deliberately media-idle until this decision is supplied.
+    // Older `/api/call` responses omit provider fields and remain Cloudflare.
+    final providerDecision =
+        StreamCallApi.fromPlacementResponse(room, res.body);
+    Analytics.capture('call_placement_completed', {
+      'call_id': room,
+      'call_trace_id': traceId,
+      'provider': providerDecision.provider.wire,
+      'role': 'caller',
+      'media_mode': video ? 'video' : 'audio',
+      'http_status': res.statusCode,
+      'latency_ms': DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
+    });
+    final session = CallSessionManager.instance.liveSessionFor(room);
+    session?.noteProviderDecision(providerDecision);
 
     // [CALL-GLARE-2] Server folded a simultaneous mutual dial into one winning
     // room. If it isn't ours, supersede: end our (peer-less) session and open
@@ -293,6 +350,7 @@ Future<void> _dialerPlaceInBackground(
           builder: (_) => CallScreen(
             room: glareJoin, title: name.isNotEmpty ? name : uid, seed: uid, video: video,
             outgoing: false, avatarUrl: avatarUrl, business: business, dialer: dialer,
+            traceId: traceId,
           ),
         ));
       });
@@ -339,7 +397,6 @@ Future<void> _dialerPlaceInBackground(
       final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
       if (rt.isNotEmpty) rememberCallRoomToken(room, rt);
     } catch (_) {/* older server: no token, join stays un-credentialed */}
-    final session = CallSessionManager.instance.liveSessionFor(room);
     session?.noteServerRingDeadline(ringDeadlineMs);
     session?.noteCalleeLive(calleeLive);
     // [CALL-PRESENCE-1 2026-08-07] Copy only — never a ringback, never a phase

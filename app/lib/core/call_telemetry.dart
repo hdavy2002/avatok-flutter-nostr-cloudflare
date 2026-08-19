@@ -233,8 +233,10 @@ class MediaHealthSnapshot {
 /// MOS p50 ≥ 3.6 ("good"). All best-effort: telemetry must never break a call.
 class CallTelemetry {
   final String callId;
+  final String callTraceId;
   final bool video;
   final bool outgoing;
+  final String provider;
   double? get latestEstimatedMos => _mos.isEmpty ? null : _mos.last;
   /// Media topology: 'p2p' (direct), 'relay' (via TURN), or 'sfu' (a group
   /// conference routed through the Cloudflare Realtime SFU). 1:1 calls pass
@@ -341,6 +343,8 @@ class CallTelemetry {
   // ── rolling quality samples ────────────────────────────────────────────────
   Timer? _sampler;
   int _heartbeats = 0;
+  int _statsTicks = 0;
+  bool _heartbeatInFlight = false;
   final List<double> _rttMs = [];
   final List<double> _jitterMs = [];
   final List<double> _recvKbps = [];
@@ -383,8 +387,10 @@ class CallTelemetry {
 
   CallTelemetry({
     required this.callId,
+    this.callTraceId = '',
     required this.video,
     required this.outgoing,
+    this.provider = 'cloudflare',
     this.transportMode = 'p2p',
   });
 
@@ -444,6 +450,10 @@ class CallTelemetry {
     _startedEmitted = true;
     Analytics.capture('call_started', {
       'call_id': callId,
+      if (callTraceId.isNotEmpty) 'call_trace_id': callTraceId,
+      'provider': provider,
+      'role': outgoing ? 'caller' : 'callee',
+      'media_mode': video ? 'video' : 'audio',
       'call_id_hash': callId.hashCode.toString(),
       'video': video,
       'outgoing': outgoing,
@@ -490,6 +500,10 @@ class CallTelemetry {
       Analytics.capture('call_connected', {
         // call_id = room id, shared by BOTH sides so their events join (A4.5).
         'call_id': callId,
+        if (callTraceId.isNotEmpty) 'call_trace_id': callTraceId,
+        'provider': provider,
+        'role': outgoing ? 'caller' : 'callee',
+        'media_mode': video ? 'video' : 'audio',
         'call_id_hash': callId.hashCode.toString(),
         'setup_ms': setupMs,
         // P13-C: dial-tap → first remote frame. For outgoing calls _t0 is the
@@ -524,7 +538,18 @@ class CallTelemetry {
       AvaLog.I.log('call', 'connected in ${setupMs}ms via $_iceType'
           '${_relayProtocol.isNotEmpty ? "/$_relayProtocol" : ""}');
     });
-    _sampler = Timer.periodic(const Duration(seconds: 30), (_) => _heartbeat(pc));
+    // Rich setup window: the first 30 seconds are where dead air, bad routes,
+    // codec startup and weak-network adaptation happen. Sample every 2s there,
+    // every 10s until two minutes, then every 30s for long stable calls.
+    unawaited(_heartbeat(pc));
+    _sampler = Timer.periodic(const Duration(seconds: 2), (_) {
+      _statsTicks++;
+      final connectedSeconds = _statsTicks * 2;
+      final shouldEmit = connectedSeconds <= 30 ||
+          (connectedSeconds <= 120 && _statsTicks % 5 == 0) ||
+          (connectedSeconds > 120 && _statsTicks % 15 == 0);
+      if (shouldEmit && !_heartbeatInFlight) unawaited(_heartbeat(pc));
+    });
   }
 
   /// Which candidate types won, the relay transport, and negotiated codecs.
@@ -739,12 +764,19 @@ class CallTelemetry {
   }
 
   Future<void> _heartbeat(RTCPeerConnection? pc) async {
-    await _sample(pc);
-    if (_reported) return;
-    _heartbeats++;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    Analytics.capture('call_progress', {
-      'call_id': callId,
+    if (_heartbeatInFlight) return;
+    _heartbeatInFlight = true;
+    try {
+      await _sample(pc);
+      if (_reported) return;
+      _heartbeats++;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      Analytics.capture('call_progress', {
+        'call_id': callId,
+        if (callTraceId.isNotEmpty) 'call_trace_id': callTraceId,
+        'provider': provider,
+        'role': outgoing ? 'caller' : 'callee',
+        'media_mode': video ? 'video' : 'audio',
       'call_id_hash': callId.hashCode.toString(),
       'beat': _heartbeats,
       'elapsed_s': _tConnected == null ? 0 : ((now - _tConnected!) / 1000).round(),
@@ -789,7 +821,10 @@ class CallTelemetry {
       // riding the heartbeat means a dead mic is visible on every call, not
       // just the ones that happen to change class.
       'mic_audio_level': _micAudioLevel ?? 'unknown',
-    });
+      });
+    } finally {
+      _heartbeatInFlight = false;
+    }
   }
 
   void onIceRestart() => iceRestarts++;
@@ -846,6 +881,10 @@ class CallTelemetry {
     _lastHealthClass = snapshot.cls;
     Analytics.capture('call_media_health', {
       'call_id': callId,
+      if (callTraceId.isNotEmpty) 'call_trace_id': callTraceId,
+      'provider': provider,
+      'role': outgoing ? 'caller' : 'callee',
+      'media_mode': video ? 'video' : 'audio',
       'video': video,
       'outgoing': outgoing,
       'media_path': _mediaPath,
@@ -879,6 +918,7 @@ class CallTelemetry {
     _lastMediaFlowState = state;
     Analytics.capture('call_media_flow_state', {
       'call_id': callId,
+      if (callTraceId.isNotEmpty) 'call_trace_id': callTraceId,
       'from_state': prior,
       'to_state': state,
       if (inboundAudioBytesDelta != null) 'inbound_audio_bytes_delta': inboundAudioBytesDelta,
@@ -927,6 +967,10 @@ class CallTelemetry {
     final avgMos = _avg(_mos);
     Analytics.capture('call_ended', {
       'call_id': callId,
+      if (callTraceId.isNotEmpty) 'call_trace_id': callTraceId,
+      'provider': provider,
+      'role': outgoing ? 'caller' : 'callee',
+      'media_mode': video ? 'video' : 'audio',
       'call_id_hash': callId.hashCode.toString(),
       // [CALL-ID-SHAPE-OBS-1] Repeated on the OUTCOME event (not just
       // `call_started`) so "setup-failure rate by call_id convention" is a

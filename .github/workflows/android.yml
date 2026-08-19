@@ -61,6 +61,11 @@ on:
         default: alpha
         type: choice
         options: [alpha, internal, beta, none]
+      stream_pilot:
+        description: 'Compile staging Stream 1:1 audio pilot (Cloudflare is the default)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   # [BUILD-WIDGET-1] The environment is now an explicit dispatch INPUT, not an
@@ -73,6 +78,10 @@ env:
   # [AVA-UPDATE-AUTO] '' / 'none' => no Play upload. Empty inputs (push trigger)
   # therefore publish nothing, exactly as before.
   PLAY_TRACK: ${{ inputs.play_track || 'none' }}
+  # [STREAM-CALL-PILOT-4] Both switches move together. False produces the
+  # existing Cloudflare dependency graph; true is allowed only on staging.
+  STREAM_CALL_SDK: ${{ inputs.stream_pilot && '1' || '0' }}
+  STREAM_CALL_PILOT_COMPILED: ${{ inputs.stream_pilot && 'true' || 'false' }}
 
 permissions:
   contents: write
@@ -123,6 +132,9 @@ jobs:
             echo "::error::STAGING build requested from branch '$REF'. Re-run this workflow with the 'staging' branch selected."
             exit 1
           fi
+          # Stream is an explicit build variant in both environments. Runtime
+          # routing remains protected by the server flag/percentage, so the
+          # same production APK can be returned to Cloudflare immediately.
           # [AVA-UPDATE-AUTO] Validate the Play combination HERE, not 15 minutes
           # later next to the upload. The old late-only guard meant a bad pairing
           # burned a full Gradle build before saying so.
@@ -293,7 +305,7 @@ jobs:
       - name: Build release APK (arm64 only, side-load)
         if: env.BUILD_APK == 'true'
         working-directory: app
-        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }} --dart-define=STREAM_CALL_PILOT_COMPILED=$STREAM_CALL_PILOT_COMPILED
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
@@ -341,7 +353,7 @@ jobs:
       - name: Build release App Bundle (.aab) for Play Store
         if: env.BUILD_AAB == 'true'
         working-directory: app
-        run: flutter build appbundle --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        run: flutter build appbundle --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }} --dart-define=STREAM_CALL_PILOT_COMPILED=$STREAM_CALL_PILOT_COMPILED
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}

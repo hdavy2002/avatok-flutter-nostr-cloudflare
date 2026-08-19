@@ -83,6 +83,11 @@ def patch_manifest() -> None:
     if new != text:
         text = new
         print(f'manifest: android:label="{APP_LABEL}"')
+    # Killed-app Stream pushes need the optional bridge to restore its encrypted
+    # account credentials before Firebase dispatches the message. The class uses
+    # reflection and is therefore equally safe with the normal fail-closed stub.
+    text = re.sub(r'android:name="\$\{applicationName\}"',
+                  'android:name=".AvaTokApplication"', text, count=1)
     # Use the round icon variant where the launcher supports it.
     if "android:roundIcon" not in text:
         text = re.sub(r'(android:icon="@mipmap/ic_launcher")',
@@ -352,6 +357,47 @@ def patch_desugaring() -> None:
     print("desugaring enabled (flutter_local_notifications)")
 
 
+def patch_stream_call_pilot() -> None:
+    """Keep Stream's WebRTC fork out of ordinary builds.
+
+    The Stream pilot and flutter_webrtc both publish org.webrtc classes. A
+    pilot build deliberately selects Stream's M125-compatible fork for the APK;
+    every normal build retains the existing pinned Cloudflare dependency.
+    """
+    kts = APP / "android/app/build.gradle.kts"
+    if not kts.exists():
+        return
+    t = kts.read_text()
+    marker = "STREAM-CALL-PILOT-4"
+    if marker not in t:
+        anchor = 'flutter {\n    source = "../.."\n}\n'
+        block = '''
+
+// [STREAM-CALL-PILOT-4] Build-time media-engine selection. Never package both
+// WebRTC binaries: they export the same org.webrtc classes.
+val streamCallSdk = System.getenv("STREAM_CALL_SDK") == "1"
+
+configurations.all {
+    if (streamCallSdk) {
+        exclude(group = "io.github.webrtc-sdk", module = "android")
+    }
+}
+'''
+        if anchor not in t:
+            print("!! could not inject Stream pilot selector"); sys.exit(1)
+        t = t.replace(anchor, anchor + block, 1)
+    legacy = 'implementation("io.github.webrtc-sdk:android:125.6422.03")'
+    conditional = '''if (streamCallSdk) {
+        implementation("io.getstream:stream-webrtc-android:1.3.8")
+    } else {
+        implementation("io.github.webrtc-sdk:android:125.6422.03")
+    }'''
+    if legacy in t and conditional not in t:
+        t = t.replace(legacy, conditional, 1)
+    kts.write_text(t)
+    print("Stream call pilot: conditional WebRTC dependency installed")
+
+
 def patch_kotlin_langver() -> None:
     """posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin
     2.x compiler rejects ('Language version 1.6 is no longer supported; use 2.0
@@ -566,6 +612,7 @@ if __name__ == "__main__":
     patch_root_compile_sdk()
     patch_firebase()
     patch_desugaring()
+    patch_stream_call_pilot()
     patch_kotlin_langver()
     patch_signing()
     print("postcreate: done")

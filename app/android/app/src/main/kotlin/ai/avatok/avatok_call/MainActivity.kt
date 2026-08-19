@@ -291,13 +291,50 @@ class MainActivity : FlutterFragmentActivity() {
     /// so both arm the overlay and the tap→first-frame measurement.
     private fun isNativeAcceptLaunch(intent: Intent?): Boolean =
         intent?.action == CallkitConstants.ACTION_CALL_ACCEPT ||
-            intent?.action == INCOMING_TAP_ACTION
+            intent?.action == INCOMING_TAP_ACTION ||
+            intent?.action == STREAM_ACCEPT_ACTION
 
     /// [CALL-ACCEPT-FRAME-2] The action this repo's own CallKit patch uses for
     /// FSI / notification-body taps. Kept as one constant because the string is
     /// asserted in three places (here, the route handler below, and
     /// scripts/patch_callkit_native_decline.py's generated intent).
     private val INCOMING_TAP_ACTION = "avatok.incoming_call_tap"
+    private val STREAM_ACCEPT_ACTION = "io.getstream.video.android.action.ACCEPT_CALL"
+
+    /// The bridge has a fail-closed stub in normal builds, so the main activity
+    /// can forward this before Flutter starts without linking Stream SDK types.
+    private fun forwardStreamNotificationIntent(intent: Intent?) {
+        val handledByStream = try {
+            val bridge = Class.forName("ai.avatok.streamcall.StreamCallBridgePlugin")
+            bridge.getMethod(
+                "handleIntent",
+                android.content.Context::class.java,
+                Intent::class.java,
+            ).invoke(null, applicationContext, intent) == true
+        } catch (_: Throwable) {
+            // Normal Cloudflare build or malformed provider intent: fail closed.
+            false
+        }
+        if (handledByStream && intent?.action == STREAM_ACCEPT_ACTION) {
+            val cid = intent.getStringExtra("io.getstream.video.android.intent-extra.call_cid")
+            val callId = cid?.substringAfter(':', "").orEmpty()
+            if (callId.isNotEmpty()) {
+                // Native media is already accepting/joining. This durable action
+                // tells the existing Dart call controller to reconcile AvaTOK's
+                // server state and open the unchanged in-call UI; the bridge's
+                // joined-call latch makes its later join command idempotent.
+                recordNativeRingAction(mapOf(
+                    "action" to "accept",
+                    "callId" to callId,
+                    "from" to "",
+                    "fromName" to "AvaTOK",
+                    "kind" to "audio",
+                    "provider" to "stream",
+                    "streamNativeAccepted" to true,
+                ))
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // [CALL-ACCEPT-FRAME-1] Capture t0 before super.onCreate() inflates
@@ -306,6 +343,7 @@ class MainActivity : FlutterFragmentActivity() {
         // (engine/activity already up) can only ever reach onNewIntent below,
         // never a fresh onCreate.
         val launchedAtElapsedMs = SystemClock.elapsedRealtime()
+        forwardStreamNotificationIntent(intent)
         if (isNativeAcceptLaunch(intent)) {
             acceptTapAtElapsedMs = launchedAtElapsedMs
         }
@@ -330,6 +368,10 @@ class MainActivity : FlutterFragmentActivity() {
     /// showConnectingOverlay()` checks it replaces.
     private fun maybeShowNativeAnswerSurface(intent: Intent?, launchedAtElapsedMs: Long) {
         if (flutterUiDisplayed) return
+        // Stream already starts accept+media natively before Flutter boots.
+        // Showing AvaTOK's legacy "Connecting…" overlay here would cover the
+        // real call UI and recreate the exact waiting state this pilot removes.
+        if (intent?.action == STREAM_ACCEPT_ACTION) return
         if (intent?.action == INCOMING_TAP_ACTION && isCallNativeAnswerV1Enabled(this)) {
             val payload = parseIncomingTapExtra(intent)
             if (payload != null) {
@@ -1118,6 +1160,7 @@ class MainActivity : FlutterFragmentActivity() {
         // narrow window) fall back to the same overlay + onFlutterUiDisplayed
         // path onCreate uses.
         val launchedAtElapsedMs = SystemClock.elapsedRealtime()
+        forwardStreamNotificationIntent(intent)
         if (isNativeAcceptLaunch(intent)) {
             acceptTapAtElapsedMs = launchedAtElapsedMs
             if (flutterUiDisplayed) {

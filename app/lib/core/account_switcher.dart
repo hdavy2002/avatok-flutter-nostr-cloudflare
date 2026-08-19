@@ -12,6 +12,7 @@ import 'ava_log.dart';
 import 'db.dart';
 import 'disk_cache.dart';
 import 'remote_config.dart';
+import 'calls/rtc/stream_call_api.dart';
 
 /// [MULTIACCT-3] Single, idempotent orchestrator for changing the ACTIVE account
 /// on a shared device (parent + kids log out/in constantly). EVERY login /
@@ -64,7 +65,10 @@ class AccountSwitcher {
     if (from == to) {
       // No-op switch (already on the target) — still re-map the push token so a
       // stale server mapping from a prior crash is healed. Cheap + idempotent.
-      if (to != null) unawaited(_reRegisterPush(to));
+      if (to != null) {
+        unawaited(_reRegisterPush(to));
+        unawaited(StreamCallApi.warmForAccount(to));
+      }
       return;
     }
     final sw = DateTime.now().millisecondsSinceEpoch;
@@ -73,20 +77,42 @@ class AccountSwitcher {
 
     // 1. Clear any in-flight call leg + native ring BEFORE anything else, so a
     //    call from the previous account can't auto-busy the next one.
-    try { await clearCallState(); } catch (e) { failed.add('call:$e'); }
+    try {
+      await StreamCallApi.disconnect(
+          reason: to == null ? 'logout' : 'account_switch');
+    } catch (e) {
+      failed.add('stream:$e');
+    }
+    try {
+      await clearCallState();
+    } catch (e) {
+      failed.add('call:$e');
+    }
 
     // 2. Mark the DEPARTING account inactive on this device (token untouched).
     //    Must run while `from`'s auth is still valid — callers invoke switchTo
     //    BEFORE signing the old Clerk session out.
     if (from != null && from.isNotEmpty) {
-      try { await PushService.mapDevice(active: false); } catch (e) { failed.add('unmap:$e'); }
+      try {
+        await PushService.mapDevice(active: false);
+      } catch (e) {
+        failed.add('unmap:$e');
+      }
     }
 
     // 3. Stop the per-account hub socket (no reconnect; clears old in-memory state).
-    try { SyncHub.I.stop(); } catch (e) { failed.add('hub:$e'); }
+    try {
+      SyncHub.I.stop();
+    } catch (e) {
+      failed.add('hub:$e');
+    }
 
     // 4. Close the drift DB handle so the next Db.I reopens the target's file.
-    try { await Db.reset(); } catch (e) { failed.add('db:$e'); }
+    try {
+      await Db.reset();
+    } catch (e) {
+      failed.add('db:$e');
+    }
 
     // 4b. Drop OS-derived in-memory caches (device contacts — the device CALL LOG
     //     cache is gone as of [PLAY-SCOPE-1 2026-08-05], READ_CALL_LOG is no longer
@@ -95,8 +121,16 @@ class AccountSwitcher {
     //     immediately clears in-memory OS-derived data"). These stores also
     //     self-guard by AccountScope on every read, so this is defense-in-depth:
     //     without it the departing account's data lingers in RAM until next use.
-    try { DeviceContacts.I.clear(); } catch (e) { failed.add('devcontacts:$e'); }
-    try { HomeCardsApi.clear(); } catch (e) { failed.add('homecards:$e'); }
+    try {
+      DeviceContacts.I.clear();
+    } catch (e) {
+      failed.add('devcontacts:$e');
+    }
+    try {
+      HomeCardsApi.clear();
+    } catch (e) {
+      failed.add('homecards:$e');
+    }
 
     // 5. Flip the scope — DiskCache, media cache and IdentityStore all re-scope
     //    on their next access because every key derives from AccountScope.id.
@@ -108,7 +142,11 @@ class AccountSwitcher {
     //     flag kept the DEPARTING account's value, so switching from the admin
     //     operator to a non-admin child on the same phone briefly showed
     //     admin-only surfaces (e.g. the Marketplace menu) to the child.
-    try { await RemoteConfig.onAccountSwitched(); } catch (e) { failed.add('admin:$e'); }
+    try {
+      await RemoteConfig.onAccountSwitched();
+    } catch (e) {
+      failed.add('admin:$e');
+    }
 
     // 5c. [AVADIAL-BACKUP-OWNER] Drop the cached contact-backup role. It is
     //     per-account (master owns this phone's address book, subs back up only
@@ -117,7 +155,11 @@ class AccountSwitcher {
     //     phone book — or, far worse, make a master upload a sub-sized book, which
     //     on a latest-wins server DELETES their phone-book backup. Same class of
     //     bug as the admin-flag leak above, with data loss instead of a stray menu.
-    try { ContactBackupRoles.I.onAccountSwitched(); } catch (e) { failed.add('cbrole:$e'); }
+    try {
+      ContactBackupRoles.I.onAccountSwitched();
+    } catch (e) {
+      failed.add('cbrole:$e');
+    }
 
     // 6. Persist / clear the cold-boot pointer.
     try {
@@ -126,22 +168,29 @@ class AccountSwitcher {
       } else {
         await DiskCache.deleteGlobal(_kAcct);
       }
-    } catch (e) { failed.add('pointer:$e'); }
+    } catch (e) {
+      failed.add('pointer:$e');
+    }
 
     // 7. Re-register + map THIS device's push token to the TARGET account, so the
     //    server can route calls/pushes to it immediately (the fix for "callee
     //    never rang after re-login"). Skipped on logout.
     if (to != null && to.isNotEmpty) {
       unawaited(_reRegisterPush(to));
+      // Best-effort and unawaited: login stays fast, while enabled pilot
+      // accounts get a warm Stream socket before any incoming Answer tap.
+      unawaited(StreamCallApi.warmForAccount(to));
     }
 
     Analytics.capture('account_switch', {
-      'from': from ?? '', 'to': to ?? '',
+      'from': from ?? '',
+      'to': to ?? '',
       'duration_ms': DateTime.now().millisecondsSinceEpoch - sw,
       'steps_failed': failed,
       'logout': to == null,
     });
-    AvaLog.I.log('acct', 'switchTo done (${failed.isEmpty ? "clean" : failed.join(",")})');
+    AvaLog.I.log('acct',
+        'switchTo done (${failed.isEmpty ? "clean" : failed.join(",")})');
   }
 
   /// registerToken re-mints the device→account mapping with active=1 for the
@@ -165,7 +214,8 @@ class AccountSwitcher {
       AvaLog.I.log('acct', 'reactivate device mapping failed for $uid: $e');
     }
     try {
-      await PushService.registerToken(uid, force: true, trigger: 'account_switch_in');
+      await PushService.registerToken(uid,
+          force: true, trigger: 'account_switch_in');
     } catch (e) {
       AvaLog.I.log('acct', 're-register push failed for $uid: $e');
     }

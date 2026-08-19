@@ -1,0 +1,59 @@
+group 'ai.avatok.streamcall'
+version '1.0'
+
+buildscript {
+    ext.kotlin_version = '2.2.20'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+def streamPilot = System.getenv('STREAM_CALL_SDK') == '1'
+
+android {
+    namespace 'ai.avatok.streamcall'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_11.toString()
+    }
+
+    // Both variants export the same Flutter plugin class. The ordinary build
+    // sees only the stub and therefore cannot accidentally package Stream.
+    sourceSets {
+        main.java.srcDirs = [streamPilot ? 'src/pilot/kotlin' : 'src/stub/kotlin']
+        main.manifest.srcFile(streamPilot ? 'src/pilot/AndroidManifest.xml' : 'src/stub/AndroidManifest.xml')
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    if (streamPilot) {
+        // 1.9.2 uses Stream WebRTC 1.3.8, whose public org.webrtc ABI matches
+        // AvaTOK's current M125 flutter_webrtc bridge. Stream 1.30 uses M145
+        // and breaks the Cloudflare group/recording rollback in the same APK.
+        implementation platform('io.getstream:stream-video-android-bom:1.9.2')
+        implementation 'io.getstream:stream-video-android-core'
+        implementation 'io.getstream:stream-android-push-firebase:1.3.1'
+        implementation 'androidx.security:security-crypto:1.1.0'
+    }
+}
