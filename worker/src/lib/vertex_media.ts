@@ -91,7 +91,7 @@ async function imageInstance(url?: string): Promise<any | undefined> {
   return { bytesBase64Encoded: btoa(binary), mimeType };
 }
 
-async function runVertexVideo(env: Env, a: RunVertexVideoArgs): Promise<RunVertexMediaResult> {
+export async function runVertexVideo(env: Env, a: RunVertexVideoArgs): Promise<RunVertexMediaResult> {
   const cfg = await readConfig(env);
   if (cfg.aiEnabled === false || cfg.generativeEnabled === false) return { ok: false, message: "Video generation is currently turned off." };
   const prompt = await craftVideoPrompt(env, a.prompt, a.durationSeconds);
@@ -128,7 +128,7 @@ async function runVertexVideo(env: Env, a: RunVertexVideoArgs): Promise<RunVerte
   }
 }
 
-async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<RunVertexMediaResult> {
+export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<RunVertexMediaResult> {
   const cfg = await readConfig(env);
   if (cfg.aiEnabled === false || cfg.generativeEnabled === false) return { ok: false, message: "Music generation is currently turned off." };
   const prompt = String(a.prompt || "").trim();
