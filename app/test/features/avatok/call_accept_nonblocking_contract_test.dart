@@ -56,12 +56,14 @@ void main() {
       reason: "status must be non-terminal, or accepting plants the terminal marker (PIV-3)",
     );
 
-    // And while held it must SAY something, not sit there greyed out.
+    // The accepted surface stays visually continuous with the ring surface.
+    // Internal connection stages belong in telemetry, not in a progress screen.
     expect(
       source,
-      contains("'Connecting…'"),
-      reason: 'a held ring screen must show a connecting state, not a frozen one',
+      isNot(contains("'Connecting…'")),
+      reason: 'accept must not expose an intermediate connecting screen',
     );
+    expect(source, contains("? 'AvaTOK audio call'"));
   });
 
   test('native accept bridges are time-boxed and synthetic decline is guarded',
@@ -79,11 +81,18 @@ void main() {
     expect(acceptStart, greaterThanOrEqualTo(0));
     expect(acceptEnd, greaterThan(acceptStart));
     final acceptFlow = source.substring(acceptStart, acceptEnd);
-    expect(
-      acceptFlow.indexOf('unawaited(_finishAcceptedRing(callId))'),
-      lessThan(acceptFlow.indexOf('await _claimHumanAccept(callId)')),
-      reason: 'the Android ring must close before the accept network claim',
+    final finishRing =
+        acceptFlow.indexOf('unawaited(_finishAcceptedRing(callId))');
+    final openCall = acceptFlow.indexOf(
+      'await _openCall(openExtra, claimPending: true)',
     );
+    final trackClaim =
+        acceptFlow.indexOf('unawaited(_trackClaimAfterOpen(callId))');
+    expect(finishRing, greaterThanOrEqualTo(0));
+    expect(openCall, greaterThan(finishRing),
+        reason: 'the Android ring must close before CallScreen opens');
+    expect(trackClaim, greaterThan(openCall),
+        reason: 'CallScreen must open before the network claim is tracked');
     expect(
       acceptFlow,
       contains('if (openExtra == null)'),
