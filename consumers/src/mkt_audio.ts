@@ -35,6 +35,16 @@ function buyerVoiceOr(v?: string | null): string {
   return v && GEMINI_VOICES.has(v) ? v : "Aoede";
 }
 
+/** Must match worker/src/lib/delivery.ts marketplaceMessageId(..., "audio"). */
+export function mktAudioMessageId(artifactId: string): string {
+  return `${artifactId}:audio`;
+}
+
+/** Stable logical row shared by buyer and seller. Audio enriches this row. */
+export function mktResultMessageId(artifactId: string): string {
+  return `${artifactId}:result`;
+}
+
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -104,14 +114,56 @@ async function renderNegotiationWav(
   return pcmToWav(b64ToBytes(data));
 }
 
-/** Append a message to a user's InboxDO (cross-script DO binding to avatok-api). */
-async function inboxAppend(env: Env, recipient: string, sender: string, conv: string, envelope: string, mediaRef: string | null): Promise<void> {
-  const INBOX = env.INBOX!;
+/** Append a deterministic message to a user's InboxDO. */
+async function inboxAppend(
+  env: Env, recipient: string, sender: string, conv: string, envelope: string,
+  mediaRef: string | null, clientId: string, mid: string, createdAt: number,
+): Promise<{ id: number; live: boolean; alreadyProcessed: boolean }> {
+  const INBOX = env.INBOX;
+  if (!INBOX) throw new Error("mkt_audio_inbox_unbound");
   const stub = INBOX.get(INBOX.idFromName(recipient));
-  await stub.fetch("https://inbox/append", {
+  const res = await stub.fetch("https://inbox/append", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, created_at: Date.now(), owner: recipient }),
+    body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, client_id: clientId, mid, created_at: createdAt, owner: recipient }),
   });
+  const out = await res.json().catch(() => ({})) as { id?: number; live?: boolean; already_processed?: boolean; error?: string };
+  if (!res.ok || out.error) throw new Error(`mkt_audio_inbox_append_failed:${res.status}:${out.error || "unknown"}`);
+  return { id: Number(out.id || 0), live: out.live === true, alreadyProcessed: out.already_processed === true };
+}
+
+async function inboxPatch(env: Env, recipient: string, clientId: string, envelope: string): Promise<{ found: boolean; live: boolean }> {
+  const INBOX = env.INBOX;
+  if (!INBOX) throw new Error("mkt_audio_inbox_unbound");
+  const stub = INBOX.get(INBOX.idFromName(recipient));
+  const res = await stub.fetch("https://inbox/msg_body", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_id: clientId, body: envelope }),
+  });
+  const out = await res.json().catch(() => ({})) as { found?: boolean; live?: boolean; error?: string };
+  if (!res.ok || out.error) throw new Error(`mkt_audio_inbox_patch_failed:${res.status}:${out.error || "unknown"}`);
+  return { found: out.found === true, live: out.live === true };
+}
+
+/** Patch the durable result row, append only for a legacy/partial inbox. */
+async function upsertResult(
+  env: Env,
+  m: MktAudioMsg,
+  envelope: string,
+  clientId: string,
+  mid: string,
+  mediaRef: string,
+): Promise<{ buyer: { found: boolean; live: boolean }; seller: { found: boolean; live: boolean } }> {
+  const [buyerPatch, sellerPatch] = await Promise.all([
+    inboxPatch(env, m.buyerUid, clientId, envelope),
+    inboxPatch(env, m.sellerUid, clientId, envelope),
+  ]);
+  const createdAt = Date.now();
+  const buyer = buyerPatch.found ? buyerPatch : await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, envelope, mediaRef, clientId, mid, createdAt);
+  const seller = sellerPatch.found ? sellerPatch : await inboxAppend(env, m.sellerUid, m.buyerUid, m.conv, envelope, mediaRef, clientId, mid, createdAt);
+  return {
+    buyer: { found: true, live: buyer.live },
+    seller: { found: true, live: seller.live },
+  };
 }
 
 /** Nudge the live thread room so an open chat pulls the new voice card instantly. */
@@ -137,9 +189,29 @@ async function track(env: Env, uid: string, event: string, props: Record<string,
 
 export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
   const t0 = Date.now();
-  console.log(`[mkt-audio] start listing=${m.listingId} conv=${m.conv} lines=${(m.transcript || []).length}`);
-  await track(env, m.buyerUid, "mkt_audio_start", { listing_id: m.listingId, conv: m.conv, lines: (m.transcript || []).length, lang: m.lang || "en", buyer_voice: buyerVoiceOr(m.buyerVoice) });
+  console.log(`[mkt-audio] start listing=${m.listingId} negotiation=${m.negotiationId} conv=${m.conv} lines=${(m.transcript || []).length}`);
+  await track(env, m.buyerUid, "mkt_audio_start", { listing_id: m.listingId, negotiation_id: m.negotiationId, conv: m.conv, lines: (m.transcript || []).length, lang: m.lang || "en", buyer_voice: buyerVoiceOr(m.buyerVoice) });
   try {
+    if (!m.negotiationId || !m.artifactId) throw new Error("mkt_audio_identity_missing");
+    const artifact = await env.DB_META.prepare(
+      `SELECT a.negotiation_id, a.buyer_id, a.seller_id, a.listing_id, a.audio_key,
+              a.outcome, a.approval_status, a.agreed_price, a.currency,
+              a.transcript_en, a.transcript_i18n, a.summary,
+              a.render_status, a.render_claimed_at,
+              a.result_buyer_delivered_at, a.result_seller_delivered_at,
+              a.seller_push_sent_at,
+              r.approval_status AS run_approval_status,
+              r.outcome AS run_outcome, r.agreed_price AS run_agreed_price,
+              r.currency AS run_currency
+         FROM mkt_negotiation_artifacts a
+         LEFT JOIN mkt_negotiation_runs r ON r.negotiation_id=a.negotiation_id
+        WHERE a.negotiation_id=?1 LIMIT 1`,
+    ).bind(m.negotiationId).first<any>();
+    if (!artifact) throw new Error("mkt_audio_artifact_missing");
+    if (String(artifact.buyer_id) !== m.buyerUid || String(artifact.seller_id) !== m.sellerUid || String(artifact.listing_id) !== m.listingId) {
+      throw new Error("mkt_audio_participants_mismatch");
+    }
+
     // ETA (owner ask): if this render sat in a BACKLOG before we picked it up,
     // post a reassuring interim note so the buyer doesn't give up. The message's
     // age in the queue is the backlog signal (deep queue → long wait).
@@ -147,54 +219,134 @@ export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
     if (waitedMs > 45000) {
       const etaMin = Math.max(1, Math.round(waitedMs / 60000));
       const note = JSON.stringify({ t: "text", body: `🕐 Your agents are busy right now — the voice conversation is taking a little longer than usual. It should arrive in about ${etaMin} minute${etaMin > 1 ? "s" : ""}. Feel free to leave and come back; it'll be waiting here.` });
-      try { await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, note, null); } catch { /* best-effort */ }
+      const etaId = `${m.artifactId}:eta`;
+      await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, note, null, etaId, etaId, Date.now());
       await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "eta", listing_id: m.listingId, conv: m.conv });
-      await track(env, m.buyerUid, "mkt_audio_eta_sent", { listing_id: m.listingId, conv: m.conv, waited_ms: waitedMs });
+      await track(env, m.buyerUid, "mkt_audio_eta_sent", { listing_id: m.listingId, negotiation_id: m.negotiationId, conv: m.conv, waited_ms: waitedMs });
     }
-    // Render inside a US-PINNED PartyDO. Gemini's preview TTS returns audio from a
-    // US egress but finishReason=OTHER (no audio) from Cloudflare's default egress;
-    // a DO created with locationHint 'wnam' runs in the US so its request to Gemini
-    // egresses from there. Fresh id per render → in-region + parallel at scale. The
-    // DO renders AND uploads the WAV to R2, returning the key.
-    const PARTY = env.PARTY!;
-    const stub = PARTY.get(PARTY.idFromName("ttsr-" + crypto.randomUUID()), { locationHint: "wnam" });
-    // MKT-LANG-4: pass buyer language + buyer voice so the DO's render adds the
-    // "Speak in <language>." preamble and voices the Buyer with the buyer's pick.
-    // (party.ts /render-tts must read `lang`/`buyerVoice` — see the report.)
-    const rr = await stub.fetch("https://party/render-tts", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        transcript: m.transcript || [], persona: m.persona, listingId: m.listingId,
-        lang: m.lang || "en", buyerVoice: buyerVoiceOr(m.buyerVoice),
-      }),
-    });
-    const rj = (await rr.json().catch(() => ({}))) as { audio_key?: string | null; bytes?: number };
-    if (!rj.audio_key) {
-      console.log(`[mkt-audio] US-DO render returned no audio listing=${m.listingId} status=${rr.status}`);
-      await track(env, m.buyerUid, "mkt_audio_render_failed", { listing_id: m.listingId, conv: m.conv, reason: "do_null", status: rr.status });
-      return;
+    // Approval may have changed while this queue item was waiting. Reread the
+    // durable run/artifact state and never publish a stale pending-approval card.
+    const approvalStatus = String(artifact.run_approval_status || artifact.approval_status || "not_required");
+    const currentOutcome = String(artifact.run_outcome || artifact.outcome || m.outcome);
+    const currentAgreed = Number(artifact.run_agreed_price ?? artifact.agreed_price ?? m.agreed ?? 0);
+    const currentCurrency = String(artifact.run_currency || artifact.currency || m.currency || "USD");
+    const currentTranscriptEn = artifact.transcript_en ? JSON.parse(String(artifact.transcript_en)) : (m.transcriptEn || m.transcript || []);
+    const currentI18n = artifact.transcript_i18n ? JSON.parse(String(artifact.transcript_i18n)) : (m.transcriptI18n || undefined);
+    const currentTranscript = Array.isArray(currentI18n?.[m.lang || ""])
+      ? currentI18n[m.lang || ""]
+      : (Array.isArray(currentI18n?.en) ? currentI18n.en : m.transcript);
+    const currentSummary = String(artifact.summary || m.summary || "");
+
+    let audioKey = artifact.audio_key as string | null;
+    let renderedBytes = 0;
+    if (!audioKey) {
+      const claimAt = Date.now();
+      const claim = await env.DB_META.prepare(
+        `UPDATE mkt_negotiation_artifacts
+            SET render_status='rendering', render_claimed_at=?2,
+                render_attempts=COALESCE(render_attempts,0)+1, last_error=NULL, updated_at=?2
+          WHERE negotiation_id=?1 AND audio_key IS NULL
+            AND (render_status IN ('queued','retryable')
+              OR (render_status='rendering' AND (render_claimed_at IS NULL OR render_claimed_at < ?2 - 900000)))`,
+      ).bind(m.negotiationId, claimAt).run();
+      if ((claim.meta?.changes ?? 0) !== 1) {
+        // Another delivery is actively rendering this artifact. It owns the
+        // provider call; this duplicate can safely ack and let that invocation
+        // perform the patch.
+        const fresh = await env.DB_META.prepare(
+          "SELECT audio_key, render_status FROM mkt_negotiation_artifacts WHERE negotiation_id=?1 LIMIT 1",
+        ).bind(m.negotiationId).first<any>();
+        if (fresh?.audio_key) audioKey = String(fresh.audio_key);
+        else if (String(fresh?.render_status) === "rendering") return;
+        else throw new Error("mkt_audio_render_claim_unavailable");
+      }
     }
-    const audioKey = rj.audio_key;
+    if (!audioKey) {
+      // Render inside a US-PINNED PartyDO. Redeliveries reuse the persisted
+      // audio_key, so only an unfinished render calls TTS again.
+      const PARTY = env.PARTY;
+      if (!PARTY) throw new Error("mkt_audio_party_unbound");
+      const stub = PARTY.get(PARTY.idFromName("ttsr-" + m.negotiationId), { locationHint: "wnam" });
+      const rr = await stub.fetch("https://party/render-tts", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          transcript: m.transcript || [], persona: m.persona, listingId: m.listingId,
+          lang: m.lang || "en", buyerVoice: buyerVoiceOr(m.buyerVoice),
+        }),
+      });
+      const rj = (await rr.json().catch(() => ({}))) as { audio_key?: string | null; bytes?: number };
+      if (!rr.ok || !rj.audio_key) {
+        await track(env, m.buyerUid, "mkt_audio_render_failed", { listing_id: m.listingId, negotiation_id: m.negotiationId, conv: m.conv, reason: "do_null", status: rr.status });
+        await env.DB_META.prepare(
+          "UPDATE mkt_negotiation_artifacts SET render_status='retryable', render_claimed_at=NULL, last_error=?2, updated_at=?3 WHERE negotiation_id=?1",
+        ).bind(m.negotiationId, `mkt_audio_render_failed:${rr.status}`, Date.now()).run();
+        throw new Error(`mkt_audio_render_failed:${rr.status}`);
+      }
+      audioKey = rj.audio_key;
+      renderedBytes = Number(rj.bytes || 0);
+      await env.DB_META.prepare(
+        `UPDATE mkt_negotiation_artifacts
+            SET audio_key=?2, audio_bytes=?3, render_status='rendered', render_claimed_at=NULL, last_error=NULL, updated_at=?4
+          WHERE negotiation_id=?1`,
+      ).bind(m.negotiationId, audioKey, renderedBytes, Date.now()).run();
+    }
+    if (!audioKey) throw new Error("mkt_audio_key_missing");
     const envelope = JSON.stringify({
-      t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: m.outcome, bubble: m.bubble,
-      agreed_price: m.agreed, currency: m.currency, listing_id: m.listingId, transcript: m.transcript,
+      t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: currentOutcome,
+      bubble: currentOutcome === "deal" ? "green" : "pale_yellow",
+      agreed_price: currentAgreed, currency: currentCurrency, listing_id: m.listingId, transcript: currentTranscript,
+      negotiation_id: m.negotiationId, artifact_id: m.artifactId,
+      buyer_id: m.buyerUid, seller_id: m.sellerUid,
       has_audio: true, audio_key: audioKey,
       // MKT-LANG: buyer language + i18n cache (so a reopen renders the right text
       // WITHOUT re-translating) + English canonical + owner-approval flag.
       lang: m.lang || "en",
-      transcript_en: m.transcriptEn,
-      transcript_i18n: m.transcriptI18n,
-      summary: m.summary,
-      pending_owner_approval: m.pendingOwnerApproval === true,
+      transcript_en: currentTranscriptEn,
+      transcript_i18n: currentI18n,
+      summary: currentSummary,
+      pending_owner_approval: approvalStatus === "pending",
     });
-    // Buyer-only for now (owner decision 2026-07-01): only the initiator sees the
-    // voice conversation. (Sender=seller so it renders as an incoming card.)
-    await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, envelope, audioKey);
+    const clientId = mktResultMessageId(m.artifactId);
+    const mid = clientId;
+    const result = await upsertResult(env, m, envelope, clientId, mid, audioKey);
+    await env.DB_META.prepare(
+      `UPDATE mkt_negotiation_artifacts
+          SET result_buyer_message_id=?2, result_seller_message_id=?2,
+              result_buyer_delivered_at=?3, result_seller_delivered_at=?3,
+              delivery_attempts=COALESCE(delivery_attempts,0)+1,
+              delivery_status='complete', last_error=NULL, updated_at=?3
+        WHERE negotiation_id=?1`,
+    ).bind(m.negotiationId, clientId, Date.now()).run();
+    console.log(`[mkt-audio] result enrichment buyer_live=${result.buyer.live} seller_live=${result.seller.live}`);
+    // Seller did not initiate the negotiation, so wake that account using the
+    // existing normal chat-notify queue. The buyer converges silently on the
+    // durable InboxDO row during the next Messenger sync.
+    if (env.Q_PUSH && artifact.seller_push_sent_at == null) {
+      await env.Q_PUSH.send({
+        kind: "notify", to: m.sellerUid, from: m.buyerUid, fromName: "AvaMarketplace",
+        title: "Marketplace negotiation ready", body: "A new agent conversation is ready in Messenger.",
+        preview: "A new marketplace negotiation replay is ready.", conv: m.conv, mid,
+        data: { type: "marketplace_deal", listing_id: m.listingId, negotiation_id: m.negotiationId },
+      });
+      await env.DB_META.prepare(
+        "UPDATE mkt_negotiation_artifacts SET seller_push_sent_at=?2, updated_at=?2 WHERE negotiation_id=?1",
+      ).bind(m.negotiationId, Date.now()).run();
+    }
     await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "audio", listing_id: m.listingId, conv: m.conv });
-    console.log(`[mkt-audio] delivered via US-DO listing=${m.listingId} bytes=${rj.bytes} ms=${Date.now() - t0}`);
-    await track(env, m.buyerUid, "mkt_audio_delivered", { listing_id: m.listingId, conv: m.conv, bytes: rj.bytes ?? 0, ms: Date.now() - t0, lang: m.lang || "en", buyer_voice: buyerVoiceOr(m.buyerVoice) });
+    console.log(`[mkt-audio] delivered both sides listing=${m.listingId} negotiation=${m.negotiationId} bytes=${renderedBytes} ms=${Date.now() - t0}`);
+    await track(env, m.buyerUid, "mkt_audio_delivered", { listing_id: m.listingId, conv: m.conv, negotiation_id: m.negotiationId, buyer_delivered: true, seller_delivered: true, bytes: renderedBytes, ms: Date.now() - t0, lang: m.lang || "en", buyer_voice: buyerVoiceOr(m.buyerVoice) });
   } catch (e) {
     console.error(`[mkt-audio] ERROR listing=${m.listingId}: ${String(e)}`);
-    await track(env, m.buyerUid, "mkt_audio_error", { listing_id: m.listingId, conv: m.conv, error: String(e).slice(0, 300), ms: Date.now() - t0 });
+    await track(env, m.buyerUid, "mkt_audio_error", { listing_id: m.listingId, negotiation_id: m.negotiationId, conv: m.conv, error: String(e).slice(0, 300), ms: Date.now() - t0 });
+    try {
+      await env.DB_META.prepare(
+        `UPDATE mkt_negotiation_artifacts
+            SET render_status=CASE WHEN audio_key IS NULL AND render_status='rendering' THEN 'retryable' ELSE render_status END,
+                render_claimed_at=CASE WHEN audio_key IS NULL THEN NULL ELSE render_claimed_at END,
+                last_error=?2, updated_at=?3
+          WHERE negotiation_id=?1`,
+      ).bind(m.negotiationId, String(e).slice(0, 500), Date.now()).run();
+    } catch { /* preserve the original queue failure */ }
+    throw e;
   }
 }

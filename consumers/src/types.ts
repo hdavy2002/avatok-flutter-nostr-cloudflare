@@ -97,11 +97,12 @@ export interface Env {
   FAULT_INJECT?: string;
 }
 
-// Marketplace voice-render message (producer: avatok-api runNegotiationJob). The
-// text deal card is already delivered synchronously; this renders the FULL
-// transcript to a WAV async and appends the voice card to both InboxDOs.
+// Marketplace voice-render message (producer: avatok-api runNegotiationJob).
+// negotiationId/artifactId are durable identities shared by both recipient
+// copies; retries must never mint a second card or a second audio artifact.
 export interface MktAudioMsg {
-  conv: string; sellerUid: string; buyerUid: string; listingId: string;
+  negotiationId: string; artifactId: string; conv: string;
+  sellerUid: string; buyerUid: string; listingId: string; contentVersion: number;
   outcome: string; bubble: string; agreed: number; currency: string;
   // `transcript` is the BUYER-LANGUAGE transcript (already translated + capped by
   // avatok-api). The consumer TTS's it verbatim with a "Speak in <language>." preamble.

@@ -437,6 +437,20 @@ queue = "chat-archive-dlq-staging"
 max_batch_size = 10
 max_retries = 3
 
+# Marketplace negotiation voice replay. One message renders one persisted
+# artifact and idempotently fills the buyer and seller InboxDO copies.
+[[env.staging.queues.consumers]]
+queue = "mkt-audio-staging"
+max_batch_size = 1
+max_batch_timeout = 2
+max_retries = 3
+dead_letter_queue = "mkt-audio-dlq-staging"
+
+[[env.staging.queues.consumers]]
+queue = "mkt-audio-dlq-staging"
+max_batch_size = 10
+max_retries = 2
+
 # STREAM F — away auto-responder + digest (staging).
 [[env.staging.queues.consumers]]
 queue = "auto-reply-staging"
@@ -458,6 +472,11 @@ script_name = "avatok-api-staging"
 [[env.staging.durable_objects.bindings]]
 name = "INBOX"
 class_name = "InboxDO"
+script_name = "avatok-api-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "PARTY"
+class_name = "PartyDO"
 script_name = "avatok-api-staging"
 
 [[env.staging.durable_objects.bindings]]
