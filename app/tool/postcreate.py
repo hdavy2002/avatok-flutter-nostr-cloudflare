@@ -3,8 +3,8 @@
 
 Run AFTER `flutter create --platforms=android .` in CI. Idempotent.
 - Adds camera/mic/network permissions to the main AndroidManifest.xml
-- minSdk 24, compileSdk 35, targetSdk 35 (flutter_webrtc androidx deps need 35)
-- Forces compileSdk 35 on plugin subprojects (flutter_webrtc pins a lower one)
+- minSdk 24, compileSdk 36, targetSdk 36 (Android 16 / Play requirement)
+- Forces compileSdk 36 on plugin subprojects (flutter_webrtc pins a lower one)
 """
 import base64
 import os
@@ -222,23 +222,23 @@ def patch_sdks() -> None:
         t = kts.read_text()
         t = re.sub(r"minSdk\s*=\s*(flutter\.minSdkVersion|\d+)", "minSdk = 24", t)
         t = re.sub(r"compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)", "compileSdk = 36", t)
-        t = re.sub(r"targetSdk\s*=\s*(flutter\.targetSdkVersion|\d+)", "targetSdk = 35", t)
+        t = re.sub(r"targetSdk\s*=\s*(flutter\.targetSdkVersion|\d+)", "targetSdk = 36", t)
         kts.write_text(t)
-        print("build.gradle.kts: minSdk=24, compileSdk=36, targetSdk=35")
+        print("build.gradle.kts: minSdk=24, compileSdk=36, targetSdk=36")
     elif groovy.exists():
         t = groovy.read_text()
         t = re.sub(r"minSdkVersion\s+(flutter\.minSdkVersion|\d+)", "minSdkVersion 24", t)
-        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 35", t)
-        t = re.sub(r"targetSdkVersion\s+(flutter\.targetSdkVersion|\d+)", "targetSdkVersion 35", t)
+        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 36", t)
+        t = re.sub(r"targetSdkVersion\s+(flutter\.targetSdkVersion|\d+)", "targetSdkVersion 36", t)
         groovy.write_text(t)
-        print("build.gradle: minSdk=24, compileSdk=36, targetSdk=35")
+        print("build.gradle: minSdk=24, compileSdk=36, targetSdk=36")
     else:
         print("!! no android app build.gradle(.kts) found")
         sys.exit(1)
 
 
 def patch_root_compile_sdk() -> None:
-    """flutter_webrtc pins a low compileSdk; override every subproject to 35."""
+    """flutter_webrtc pins a low compileSdk; override every subproject to 36."""
     root_kts = APP / "android/build.gradle.kts"
     root_g = APP / "android/build.gradle"
     marker = "AVATOK_FORCE_COMPILE_SDK"
@@ -260,7 +260,7 @@ subprojects {{
 }}
 '''
             root_kts.write_text(t)
-            print("root build.gradle.kts: forced subproject compileSdk 35")
+            print("root build.gradle.kts: forced subproject compileSdk 36")
     elif root_g.exists():
         t = root_g.read_text()
         if marker not in t:
@@ -275,7 +275,7 @@ subprojects {{
 }}
 '''
             root_g.write_text(t)
-            print("root build.gradle: forced subproject compileSdk 35")
+            print("root build.gradle: forced subproject compileSdk 36")
 
 
 def patch_firebase() -> None:

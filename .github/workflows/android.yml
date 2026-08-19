@@ -188,6 +188,19 @@ jobs:
         working-directory: app
         run: python3 tool/postcreate.py
 
+      # flutter create regenerates build.gradle before postcreate.py patches it.
+      # Fail closed here so Play can never receive another Android 15 bundle if
+      # that patch regresses or Flutter changes its generated Gradle syntax.
+      - name: Guard — Play bundle must target Android 16
+        working-directory: app
+        run: |
+          if ! grep -Eq 'targetSdk([[:space:]]*=[[:space:]]*|Version[[:space:]]+)36' android/app/build.gradle.kts android/app/build.gradle 2>/dev/null; then
+            echo "::error::Generated Android project does not target API 36. Refusing to build or publish."
+            grep -nE 'compileSdk|targetSdk' android/app/build.gradle.kts android/app/build.gradle 2>/dev/null || true
+            exit 1
+          fi
+          echo "Verified generated Android project targets API 36."
+
       # CI runner hardening: the GitHub-hosted runner (4 vCPU / 16 GB) was being
       # killed (SIGTERM / exit 143) mid-`assembleRelease` because the default
       # Gradle + Kotlin JVMs over-commit memory on this heavy app (WebRTC/LiveKit
