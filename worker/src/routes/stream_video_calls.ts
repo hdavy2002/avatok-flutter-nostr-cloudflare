@@ -573,7 +573,9 @@ function telemetryForEvent(type: string): { event: typeof CallEvent[keyof typeof
 
 /** POST /webhooks/stream-video — signed, retry-safe Stream Video events. */
 export async function streamVideoWebhook(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
-  if (env.ENVIRONMENT_NAME !== "staging") return json({ error: "stream webhook unavailable" }, 404);
+  if (env.ENVIRONMENT_NAME !== "staging" && env.ENVIRONMENT_NAME !== "prod") {
+    return json({ error: "stream webhook unavailable" }, 404);
+  }
   if (!env.STREAM_VIDEO_API_KEY || !env.STREAM_VIDEO_API_SECRET) return json({ error: "stream webhook unavailable" }, 503);
   const apiKey = req.headers.get("x-api-key") ?? "";
   if (!fixedTimeEqual(apiKey, env.STREAM_VIDEO_API_KEY)) return json({ error: "unauthorized" }, 401);

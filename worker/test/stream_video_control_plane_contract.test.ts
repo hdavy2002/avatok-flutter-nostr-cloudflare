@@ -21,6 +21,7 @@ describe("GetStream Video pilot control plane contract", () => {
   it("allows production, keeps staging allowlisted, stays audio-only, and uses server auth", () => {
     expect(route).toContain('env.ENVIRONMENT_NAME === "prod"');
     expect(route).toContain('env.ENVIRONMENT_NAME !== "staging"');
+    expect(route).toContain('env.ENVIRONMENT_NAME !== "staging" && env.ENVIRONMENT_NAME !== "prod"');
     expect(route).toContain("STREAM_VIDEO_PILOT_UIDS");
     expect(route).toContain('(args.media ?? "audio") === "audio"');
     expect(route).toContain("server: true");
