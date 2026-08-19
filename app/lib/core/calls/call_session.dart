@@ -1269,7 +1269,96 @@ class CallSession {
   // 18.5 kB / 245 packets per 5 s interval. A hold that can never be released
   // is worse than no hold at all, so this watchdog releases it.
   Timer? _focusHoldWatchdog;
+  Timer? _focusRouteRecoveryTimer;
   static const Duration _kFocusHoldMaxDuration = Duration(seconds: 6);
+
+  /// Re-acquire Android's communication mode/focus and confirm the route after
+  /// a focus hold is released. A route request by itself is not recovery: the
+  /// production failure kept reporting `route_confirmed=false` after the old
+  /// watchdog unmuted. This performs one bounded retry and emits the confirmed
+  /// native result (or an explicit terminal unconfirmed event).
+  Future<void> _recoverAudioAfterFocusRelease({
+    required String reason,
+    required int heldMs,
+    int attempt = 1,
+  }) async {
+    if (_ended) return;
+    _focusRouteRecoveryTimer?.cancel();
+    _focusRouteRecoveryTimer = null;
+    final requested = RemoteConfig.callAudioOwnerV1
+        ? CallAudioController.instance.intent
+        : (_speaker ? CallAudioRoute.speaker : CallAudioRoute.earpiece);
+    var activeRoute = 'unknown';
+    var routeConfirmed = false;
+    String? recoveryError;
+    final startedMs = DateTime.now().millisecondsSinceEpoch;
+    try {
+      // `beginP2pSession` is idempotent for the current call and therefore does
+      // not request focus again. Re-running audio mode is the native operation
+      // that actually re-acquires focus before the route is applied.
+      if (NativeVoiceAudio.isSupported) {
+        await NativeVoiceAudio.instance.startP2pAudioMode();
+      }
+      if (RemoteConfig.callAudioOwnerV1) {
+        final result = await CallAudioController.instance.apply(
+          source: attempt == 1 ? 'focus_$reason' : 'focus_${reason}_retry',
+        );
+        if (result != null) {
+          activeRoute = result.active.name;
+          routeConfirmed = result.exact && result.fallbackReason != 'invoke_failed';
+        }
+      } else if (RemoteConfig.callAudioControllerV2) {
+        final result = await NativeVoiceAudio.instance.selectRoute(
+          requested,
+          source: attempt == 1 ? 'focus_$reason' : 'focus_${reason}_retry',
+        );
+        activeRoute = result.active.name;
+        routeConfirmed = result.exact && result.fallbackReason != 'invoke_failed';
+      } else {
+        await Helper.setSpeakerphoneOn(_speaker);
+        if (NativeVoiceAudio.isSupported) {
+          await NativeVoiceAudio.instance.setSpeaker(_speaker);
+          activeRoute =
+              (await NativeVoiceAudio.instance.getAudioRoute()) ?? 'unknown';
+          routeConfirmed = activeRoute == requested.name;
+        }
+      }
+    } catch (e) {
+      recoveryError = e.toString();
+    }
+    Analytics.capture('call_audio_focus_recovery_result', {
+      'call_id': config.room,
+      'reason': reason,
+      'held_ms': heldMs,
+      'attempt': attempt,
+      'requested_route': requested.name,
+      'active_route': activeRoute,
+      'route_confirmed': routeConfirmed,
+      'focus_reacquire_requested': NativeVoiceAudio.isSupported,
+      'elapsed_ms': DateTime.now().millisecondsSinceEpoch - startedMs,
+      if (recoveryError != null) 'error': recoveryError,
+    });
+    if (_ended || routeConfirmed) return;
+    if (attempt == 1) {
+      _focusRouteRecoveryTimer = Timer(const Duration(milliseconds: 1200), () {
+        _focusRouteRecoveryTimer = null;
+        unawaited(_recoverAudioAfterFocusRelease(
+          reason: reason,
+          heldMs: heldMs,
+          attempt: 2,
+        ));
+      });
+      return;
+    }
+    Analytics.capture('call_audio_focus_recovery_unconfirmed', {
+      'call_id': config.room,
+      'reason': reason,
+      'held_ms': heldMs,
+      'requested_route': requested.name,
+      'active_route': activeRoute,
+      'attempts': attempt,
+    });
+  }
 
   /// [CALL-FOCUS-DEADLOCK-1] Release a focus hold the platform is never going
   /// to lift on its own.
@@ -1308,8 +1397,8 @@ class CallSession {
     // recording could stay paused for the rest of the call — the same
     // never-released latch this watchdog exists to break.
     _syncRecorderHold();
-    // [CALL-FOCUS-REASSERT-1 2026-08-06] Un-muting is not enough — re-assert the
-    // ROUTE too.
+    // [CALL-FOCUS-REASSERT-1 2026-08-06] Un-muting is not enough — re-acquire
+    // communication focus/mode and confirm the route too.
     //
     // The field doc above reasons that after a permanent AUDIOFOCUS_LOSS "the
     // route was never reassigned at all and audio simply comes back". That holds
@@ -1324,31 +1413,19 @@ class CallSession {
     // any kind. That is invisible to every recovery ladder we have, because
     // nothing is broken at the transport layer.
     //
-    // This is the same pair of calls `toggleSpeaker` makes, and for the same
-    // reason ([CALL-SPEAKER-RAMP]): the native `setSpeaker` re-asserts
-    // MODE_IN_COMMUNICATION together with the route, which is the half that
-    // actually recovers the session. Best-effort — a platform that refuses
-    // leaves us exactly where we already were.
-    // Both calls return Futures. A plain try/catch around them would catch
-    // nothing — the failure arrives asynchronously, long after the block exits —
-    // so the errors are attached to the futures themselves. `route_reasserted`
-    // below therefore means "requested", not "confirmed"; the confirmation is
-    // the existing `call_native_audio_event` route callback.
-    unawaited(Helper.setSpeakerphoneOn(_speaker).catchError((Object e) {
-      AvaLog.I.log('call', 'speakerphone re-assert after focus watchdog failed: $e');
-    }));
-    if (NativeVoiceAudio.isSupported) {
-      unawaited(NativeVoiceAudio.instance.setSpeaker(_speaker).catchError((Object e) {
-        AvaLog.I.log('call', 'native route re-assert after focus watchdog failed: $e');
-      }));
-    }
+    // The recovery helper reads the native result, retries once when it is not
+    // confirmed, and emits an explicit terminal failure rather than leaving
+    // subsequent `route_confirmed=false` health samples unexplained.
+    unawaited(_recoverAudioAfterFocusRelease(
+      reason: 'watchdog_no_regain',
+      heldMs: heldMs,
+    ));
     Analytics.capture('call_audio_focus_hold_released', {
       'call_id': config.room,
       'held_ms': heldMs,
       'reason': 'watchdog_no_regain',
-      // Lets "we released the hold" be separated from "and we asked for the
-      // route back", so a future silence report can rule this line in or out.
       'route_reasserted': true,
+      'route_recovery_started': true,
       'requested_route': _speaker ? 'speaker' : 'earpiece',
     });
     AvaLog.I.log('call',
@@ -2425,6 +2502,7 @@ class CallSession {
       if (_phTotalAudioEnergy != null && totalAudioEnergy != null) {
         energyDelta = totalAudioEnergy - _phTotalAudioEnergy!;
       }
+
       if (_phJbufDelaySec != null &&
           jbufDelaySec != null &&
           jbufEmittedDelta != null &&
@@ -3852,6 +3930,8 @@ class CallSession {
     if (NativeVoiceAudio.isSupported) {
       NativeVoiceAudio.instance.onAudioFocusLost = () {
         if (_ended || _onFocusHold) return;
+        _focusRouteRecoveryTimer?.cancel();
+        _focusRouteRecoveryTimer = null;
         _onFocusHold = true;
         _focusLostMs = DateTime.now().millisecondsSinceEpoch;
         onCellularHold.value = true; // reuse the "on hold" UI signal
@@ -3889,6 +3969,10 @@ class CallSession {
           'call_id': config.room,
           'held_ms': heldMs,
         });
+        unawaited(_recoverAudioAfterFocusRelease(
+          reason: 'platform_regained',
+          heldMs: heldMs,
+        ));
       };
     }
     if (NativeVoiceAudio.isSupported) {
@@ -10417,6 +10501,10 @@ class CallSession {
     // CALL-REL-1: one `endP2pSession` call replaces the scattered stop calls
     // when the controller owns the session. It is safe even if setup only
     // partially completed. Flag off keeps the exact prior teardown sequence.
+    // Stop a queued focus-route retry before releasing audio ownership; a
+    // teardown can await several native calls before `_ended` flips true.
+    _focusRouteRecoveryTimer?.cancel();
+    _focusRouteRecoveryTimer = null;
     // [CALL-AUDIO-OWNER-1] Release the controller's ownership of this call's
     // route before/with the session teardown, so a straggling apply from a
     // just-ended call can never reach into whatever call comes next.
