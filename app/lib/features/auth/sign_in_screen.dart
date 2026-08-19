@@ -61,6 +61,21 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _busy = false;
   bool _done = false;
   String? _error;
+  DateTime? _lastOtpRequestAt;
+
+  static const _otpResendCooldown = Duration(seconds: 60);
+
+  bool _allowOtpRequest() {
+    final last = _lastOtpRequestAt;
+    if (last != null && DateTime.now().difference(last) < _otpResendCooldown) {
+      final remaining = _otpResendCooldown.inSeconds -
+          DateTime.now().difference(last).inSeconds;
+      setState(() => _error = 'Please wait ${remaining.clamp(1, 60)} seconds before requesting another code.');
+      return false;
+    }
+    _lastOtpRequestAt = DateTime.now();
+    return true;
+  }
 
   @override
   void dispose() {
@@ -74,6 +89,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   // ── Google ──────────────────────────────────────────────────────────────────
   Future<void> _continueWithGoogle() async {
+    if (_busy) return;
     _provider = 'google';
     setState(() { _busy = true; _error = null; });
     unawaited(Analytics.capture('signup_attempt', {'provider': 'google'}));
@@ -87,10 +103,12 @@ class _SignInScreenState extends State<SignInScreen> {
   // ([AVA-AUTH-OTP]). It is a deliberate user tap, and it lands on _Mode.verify,
   // so a code is never sent without a code field on screen to receive it.
   Future<void> _emailCode() async {
+    if (_busy) return;
     if (_email.text.trim().isEmpty) {
       setState(() => _error = 'Enter your email');
       return;
     }
+    if (!_allowOtpRequest()) return;
     setState(() { _busy = true; _error = null; });
     _provider = 'email_code';
     unawaited(Analytics.capture('email_otp_requested', {'mode': 'signin'}));
@@ -100,6 +118,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
   // ── Email + password ─────────────────────────────────────────────────────────
   Future<void> _submit() async {
+    // onSubmitted (keyboard Enter) bypasses the button's disabled state. This
+    // guard prevents duplicate Clerk requests, especially duplicate OTP/reset
+    // sends when a user taps or presses Enter repeatedly.
+    if (_busy) return;
     setState(() { _busy = true; _error = null; });
     switch (_mode) {
       case _Mode.signIn:
@@ -163,6 +185,11 @@ class _SignInScreenState extends State<SignInScreen> {
           setState(() { _busy = false; _error = 'Enter your email to reset your password'; });
           return;
         }
+        if (!_allowOtpRequest()) {
+          setState(() => _busy = false);
+          return;
+        }
+        unawaited(Analytics.capture('password_reset_requested', const {}));
         final step = await widget.clerk.startPasswordReset(_email.text);
         if (!mounted) return;
         if (step.needsCode) {
