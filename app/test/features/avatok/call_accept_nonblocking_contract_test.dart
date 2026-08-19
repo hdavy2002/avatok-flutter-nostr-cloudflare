@@ -72,7 +72,7 @@ void main() {
 
     expect(source, contains('_programmaticCallkitEnd.mark(callId)'));
     final acceptStart = source.indexOf(
-      'static Future<void> acceptRingingCall(String callId',
+      'static Future<void> acceptRingingCall(',
     );
     final acceptEnd = source.indexOf(
       'static Future<String?> _claimHumanAccept',
