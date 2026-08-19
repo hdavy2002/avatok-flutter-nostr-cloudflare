@@ -1,34 +1,86 @@
 import 'dart:convert';
-import 'dart:io';
-
-import 'package:path_provider/path_provider.dart';
 
 import 'api_auth.dart';
 import 'config.dart';
+import 'disk_cache.dart';
 
 /// Tiny disk cache for marketplace browse results so the grid shows instantly
 /// on reopen instead of reloading blank every time. Entries expire after a TTL
 /// (pic 3); pull-to-refresh forces a fresh fetch.
 class _MarketCache {
-  static Future<File> _file(String key) async {
-    final base = await getApplicationSupportDirectory();
-    final d = Directory('${base.path}/mktcache');
-    if (!await d.exists()) await d.create(recursive: true);
-    final safe = key.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
-    return File('${d.path}/$safe.json');
-  }
-
   static Future<List<dynamic>?> readFresh(String key, Duration ttl) async {
     try {
-      final f = await _file(key);
-      if (!await f.exists()) return null;
-      if (DateTime.now().difference(await f.lastModified()) > ttl) return null;
-      return jsonDecode(await f.readAsString()) as List<dynamic>;
+      final raw = await DiskCache.read('marketplace_browse_$key');
+      if (raw == null) return null;
+      final envelope = jsonDecode(raw);
+      if (envelope is! Map) return null;
+      final savedAt = (envelope['saved_at'] as num?)?.toInt() ?? 0;
+      if (savedAt <= 0 ||
+          DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(savedAt)) > ttl) {
+        return null;
+      }
+      return envelope['items'] as List<dynamic>?;
     } catch (_) { return null; }
   }
 
   static Future<void> write(String key, List<dynamic> raw) async {
-    try { await (await _file(key)).writeAsString(jsonEncode(raw)); } catch (_) {/* best-effort */}
+    await DiskCache.write('marketplace_browse_$key', jsonEncode({
+      'saved_at': DateTime.now().millisecondsSinceEpoch,
+      'items': raw,
+    }));
+  }
+}
+
+/// Fee metadata returned by the listing quote endpoint. Pricing remains
+/// server-owned; callers must not invent a fallback amount when this is absent.
+class ListingFeeQuote {
+  final int amount;
+  final String source;
+  final int? balance;
+  final int? freeRemaining;
+  /// Server-assigned entitlement period ordinal (1, 2, ...), not a duration.
+  final int period;
+  final int periodDays;
+  final String? entitlementExpiresAt;
+  final String? reason;
+
+  const ListingFeeQuote({
+    required this.amount,
+    required this.source,
+    this.balance,
+    this.freeRemaining,
+    this.period = 1,
+    this.periodDays = 30,
+    this.entitlementExpiresAt,
+    this.reason,
+  });
+
+  bool get isFree => amount <= 0 || source == 'free_entitlement';
+  bool get insufficient =>
+      amount > 0 && balance != null && balance! < amount;
+
+  factory ListingFeeQuote.fromJson(Map<String, dynamic> j) {
+    int? intValue(List<String> keys) {
+      for (final key in keys) {
+        final value = j[key];
+        if (value is num) return value.toInt();
+        final parsed = int.tryParse('$value');
+        if (parsed != null) return parsed;
+      }
+      return null;
+    }
+
+    return ListingFeeQuote(
+      amount: intValue(['amount', 'fee_tokens', 'fee', 'price']) ?? 0,
+      source: (j['source'] ?? j['funding_source'] ?? 'paid').toString(),
+      balance: intValue(['balance', 'paid_balance', 'eligible_balance', 'wallet_balance']),
+      freeRemaining: intValue(['free_remaining', 'free_slots_remaining']),
+      period: intValue(['period']) ?? 1,
+      periodDays: intValue(['period_days']) ?? 30,
+      entitlementExpiresAt:
+          (j['entitlement_expires_at'] ?? j['expires_at'])?.toString(),
+      reason: j['reason']?.toString(),
+    );
   }
 }
 
@@ -324,6 +376,24 @@ class ListingsApi {
     return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
   }
 
+  /// Best-effort fee quote for the review screen. A missing quote is an
+  /// unavailable pricing state, never permission to invent a client price.
+  static Future<ListingFeeQuote?> feeQuote({String? listingId}) async {
+    try {
+      final suffix = listingId == null || listingId.isEmpty
+          ? ''
+          : '?listing_id=${Uri.encodeQueryComponent(listingId)}';
+      final r = await ApiAuth.getSigned('$_base/marketplace/listing-quote$suffix');
+      if (r.statusCode != 200) return null;
+      final root = _j(r.body);
+      final quote = root['quote'];
+      return ListingFeeQuote.fromJson(
+          (quote is Map ? quote : root).cast<String, dynamic>());
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<List<ListingCard>> liveNow() async {
     final r = await ApiAuth.getSigned('$_base/explore/live-now');
     return _cards(_j(r.body));
@@ -399,11 +469,12 @@ class ListingsApi {
   static Future<bool> update(String id, Map<String, dynamic> fields) async =>
       (await ApiAuth.putJson('$_base/listings/$id', fields)).statusCode == 200;
 
-  /// Returns {} on success, or {error, conflictWith?/reason?} on failure.
+  /// Returns fee/status metadata on success, or {error, conflictWith?/reason?}
+  /// on failure.
   static Future<Map<String, dynamic>> publish(String id) async {
     final r = await ApiAuth.postJson('$_base/listings/$id/publish', {});
     final j = _j(r.body);
-    return r.statusCode == 200 ? {} : {...j, 'status': r.statusCode};
+    return {...j, 'status': r.statusCode, 'ok': r.statusCode == 200};
   }
 
   static Future<Map<String, dynamic>> setStatus(String id, String status) async {

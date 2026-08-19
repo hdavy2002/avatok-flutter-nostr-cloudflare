@@ -29,6 +29,7 @@ import '../../core/account_storage.dart';
 import '../../core/active_thread.dart'; // [PUSH-FG-BANNER-1]
 import '../../core/ai_media_jobs.dart'; // [AVA-MEDIA-JOB-2] durable image/doc/audio job repository
 import '../../core/api_auth.dart';
+import '../../core/marketplace_api.dart';
 import '../../core/audio_playback_service.dart'; // [AVAVM-PLAYER-1]
 import '../../core/avatar_cache.dart';
 import '../../core/badge_service.dart'; // [ISSUE-BADGE-UNREAD-1]

@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/remote_config.dart';
 import '../shell_v2.dart';
 import 'root_order_store.dart';
 
@@ -40,8 +41,8 @@ class AppOrderScreen extends StatelessWidget {
     ),
     RootId.services: (
       PhosphorIcons.storefront(PhosphorIconsStyle.regular),
-      'Services',
-      'Marketplace, wallet & more',
+      'Marketplace',
+      'Buy, sell, manage listings & wallet',
       AD.danger
     ),
   };
@@ -119,7 +120,9 @@ class AppOrderScreen extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m.$2, style: ADText.rowName()),
+              Text(root == RootId.services && !RemoteConfig.marketplaceVisible
+                  ? 'Services'
+                  : m.$2, style: ADText.rowName()),
               const SizedBox(height: 1),
               Text(m.$3, style: ADText.statCaption()),
             ]),

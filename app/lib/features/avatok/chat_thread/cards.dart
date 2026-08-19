@@ -18,13 +18,35 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
   bool _playing = false;
   bool _sharing = false;
   bool _expanded = false;
-  Uint8List? _bytes; // cached downloaded audio (play + share reuse it)
+  Uint8List? _bytes; // in-memory hot path; MediaService is the durable cache
+  bool _decisionBusy = false;
+  String? _decision;
+  late final String _decisionRequestId;
 
   Map<String, dynamic> get _e => widget.extra;
   bool get _isDeal => _e['outcome'] == 'deal';
   String get _audioKey => (_e['audio_key'] ?? '').toString();
   bool get _isMp3 => _audioKey.toLowerCase().endsWith('.mp3');
   String get _mime => _isMp3 ? 'audio/mpeg' : 'audio/wav';
+  String get _negotiationId =>
+      (_e['negotiation_id'] ?? _e['negotiationId'] ?? _e['id'] ?? '').toString();
+  String get _cacheKey =>
+      'mkt_deal_audio_${_negotiationId.isNotEmpty ? _negotiationId : _audioKey}';
+  bool get _pendingApproval =>
+      _e['pending_owner_approval'] == true ||
+      _e['approval_status'] == 'pending_owner_approval' ||
+      _e['approval_status'] == 'pending';
+  bool get _isSeller =>
+      _e['viewer_role'] == 'seller' ||
+      (_e['seller_id']?.toString().isNotEmpty == true &&
+          _e['seller_id'].toString() == AccountScope.id);
+
+  @override
+  void initState() {
+    super.initState();
+    _decisionRequestId = const Uuid().v4();
+    _decision = _e['approval_status']?.toString();
+  }
 
   @override
   void dispose() { _player.dispose(); super.dispose(); }
@@ -33,11 +55,45 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
   Future<Uint8List?> _fetchBytes() async {
     if (_bytes != null) return _bytes;
     if (_audioKey.isEmpty) return null;
+    final cached = await MediaService.cachedBlob(_cacheKey);
+    if (cached != null && cached.isNotEmpty) {
+      _bytes = cached;
+      Analytics.capture('negotiation_audio_cache', {'hit': true});
+      return _bytes;
+    }
     final url = 'https://$kSignalingHost/api/marketplace/audio?key=${Uri.encodeQueryComponent(_audioKey)}';
     final r = await ApiAuth.getBytes(url);
-    if (r.statusCode != 200 || r.bodyBytes.isEmpty) return null;
+    if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
+      Analytics.capture('negotiation_audio_played', {'ok': false, 'status': r.statusCode});
+      return null;
+    }
     _bytes = r.bodyBytes;
+    await MediaService.writeBlob(_cacheKey, _bytes!);
+    Analytics.capture('negotiation_audio_cache', {'hit': false, 'bytes': _bytes!.length});
     return _bytes;
+  }
+
+  Future<void> _decide(String decision) async {
+    if (_decisionBusy || _negotiationId.isEmpty || !_isSeller || !_pendingApproval) return;
+    setState(() => _decisionBusy = true);
+    final res = await MarketplaceApi.decideNegotiation(
+      negotiationId: _negotiationId,
+      decision: decision,
+      requestId: _decisionRequestId,
+    );
+    if (!mounted) return;
+    setState(() => _decisionBusy = false);
+    if (res['ok'] == true) {
+      setState(() => _decision = decision == 'approve' ? 'approved' : 'rejected');
+      Analytics.capture('negotiation_${decision}d', {'negotiation_id': _negotiationId});
+      return;
+    }
+    final status = (res['status'] as num?)?.toInt() ?? 0;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(status == 404 || status == 405
+          ? 'Seller approval is not available on this server yet.'
+          : 'That decision could not be saved. Try again.'),
+    ));
   }
 
   Future<void> _toggle() async {
@@ -79,6 +135,7 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
     final bg = _isDeal ? const Color(0xFFD7F5DD) : const Color(0xFFFFF6CC); // green / pale yellow
     final transcript = (_e['transcript'] as List?) ?? const [];
     final text = (_e['text'] ?? (_isDeal ? 'Your agents reached a deal.' : 'Your agents finished negotiating.')).toString();
+    final decision = _decision;
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(10),
@@ -148,9 +205,56 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
                     style: ADText.bubbleBody(c: AD.bubbleInInk)),
               )),
         ],
+        if (_pendingApproval && _isSeller && decision != 'approved' && decision != 'rejected') ...[
+          const SizedBox(height: 10),
+          Text('This deal is waiting for your approval.',
+              style: ADText.bubbleMeta(c: AD.bubbleInInk)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, children: [
+            GestureDetector(
+              onTap: _decisionBusy ? null : () => _decide('approve'),
+              child: _decisionButton('Approve', AD.online,
+                  PhosphorIcons.check(PhosphorIconsStyle.bold)),
+            ),
+            GestureDetector(
+              onTap: _decisionBusy ? null : () => _decide('reject'),
+              child: _decisionButton('Reject', AD.danger,
+                  PhosphorIcons.x(PhosphorIconsStyle.bold)),
+            ),
+          ]),
+        ],
+        if (decision == 'approved' || decision == 'rejected') ...[
+          const SizedBox(height: 8),
+          Text(decision == 'approved' ? 'Approved' : 'Rejected',
+              style: ADText.bubbleMeta(
+                  c: decision == 'approved' ? AD.online : AD.danger)),
+        ],
       ]),
     );
   }
+
+  Widget _decisionButton(String label, Color color, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(Msg.rSm),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _decisionBusy
+              ? const SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 5),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+        ]),
+      );
 }
 
 /// Ava Receptionist message card (special kind 'recept', v2). Renders inside a

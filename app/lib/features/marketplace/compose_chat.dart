@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/cached_image.dart';
 import '../../core/marketplace_api.dart';
+import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../identity/identity_screen.dart';
@@ -785,7 +786,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Your listing is live.')));
+          SnackBar(content: Text(_publishSuccessText(res))));
       Navigator.of(context).maybePop(id);
       return;
     }
@@ -794,9 +795,36 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
 
   int _statusOf(Map<String, dynamic> res) => (res['status'] as num?)?.toInt() ?? 0;
 
+  String _publishSuccessText(Map<String, dynamic> res) {
+    final raw = res['fee'] ?? res['fee_quote'] ?? res['quote'];
+    final fee = raw is Map
+        ? ListingFeeQuote.fromJson(raw.cast<String, dynamic>())
+        : (res.containsKey('fee_tokens') || res.containsKey('amount')
+            ? ListingFeeQuote.fromJson(res)
+            : null);
+    if (fee == null) return 'Your listing is live.';
+    if (fee.isFree) return 'Your listing is live — free entitlement used.';
+    final balance = fee.balance == null ? '' : ' Balance: ${fee.balance} Tokens.';
+    return 'Your listing is live — ${fee.amount} Tokens deducted.$balance';
+  }
+
   void _onPublishFailure(int status, Map<String, dynamic> res) {
     final err = res['error']?.toString();
     final msg = res['message']?.toString();
+
+    if (status == 402 ||
+        err == 'insufficient_tokens' ||
+        err == 'insufficient_balance' ||
+        res['reason'] == 'insufficient_tokens' ||
+        res['reason'] == 'insufficient_balance') {
+      Analytics.capture('listing_publish_insufficient_funds', {
+        'session_id': _sessionId ?? '',
+        'status': status,
+      });
+      _add(_Msg(_Role.notice,
+          msg ?? 'You need more Tokens to publish. Your draft is safe — top up and try again.'));
+      return;
+    }
 
     if (err == 'moderation_unavailable') {
       // §7.1 — moderation fails CLOSED here, deliberately. Nothing is lost: the
@@ -1132,6 +1160,7 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           if (floor != null) _fact('Floor $currency $floor'),
           if (hasPrivate) _fact('1 note kept back'),
         ]),
+        _composeFeePanel(card),
         if (_missing.isNotEmpty) ...[
           const SizedBox(height: Msg.s3),
           Text('Still needed: ${_missing.join(', ')}',
@@ -1142,9 +1171,25 @@ class _ComposeChatScreenState extends State<ComposeChatScreen> {
           _publishing ? 'Publishing…' : 'Publish it',
           _publishing ? AD.card : _avaGreen,
           _publishing ? AD.textTertiary : AD.sendActiveInk,
-          _publishing ? null : _publish,
+          _publishing || card['fee_quote'] is! Map ? null : _publish,
         ),
       ]),
+    );
+  }
+
+  Widget _composeFeePanel(Map<String, dynamic> card) {
+    final raw = card['fee_quote'];
+    final quote = raw is Map
+        ? ListingFeeQuote.fromJson(raw.cast<String, dynamic>())
+        : null;
+    final copy = quote == null
+        ? 'Live publishing fee is unavailable. Refresh this review before publishing.'
+        : quote.isFree
+            ? 'Fee: free ${quote.periodDays}-day entitlement${quote.freeRemaining == null ? '' : ' · ${quote.freeRemaining} free slot(s) available'}.'
+            : 'Publishing costs ${quote.amount} Tokens for ${quote.periodDays} days${quote.balance == null ? '' : ' · balance ${quote.balance}'}.';
+    return Padding(
+      padding: const EdgeInsets.only(top: Msg.s3),
+      child: Text(copy, style: ADText.preview(c: AD.textSecondary)),
     );
   }
 

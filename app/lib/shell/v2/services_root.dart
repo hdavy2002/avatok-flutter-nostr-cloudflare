@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/remote_config.dart';
 import '../../features/marketplace/marketplace_browse.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
@@ -27,11 +28,11 @@ class ServicesRoot extends StatelessWidget {
       drawer: ShellSidebar(
         current: RootId.services,
         extra: [
-          Padding(
+          if (RemoteConfig.marketplaceVisible) Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s1),
-            child: Text('SERVICES', style: ADText.sectionLabel()),
+            child: Text('MARKETPLACE', style: ADText.sectionLabel()),
           ),
-          ShellMenuRow(
+          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
             icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
             color: AD.danger,
             title: 'Browse',
@@ -40,7 +41,7 @@ class ServicesRoot extends StatelessWidget {
               openShellDestination(context, 'marketplace');
             },
           ),
-          ShellMenuRow(
+          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
             icon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
             color: AD.iconSearch,
             title: 'My listings',
@@ -49,7 +50,7 @@ class ServicesRoot extends StatelessWidget {
               openShellDestination(context, 'mylistings');
             },
           ),
-          ShellMenuRow(
+          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
             icon: PhosphorIcons.plusCircle(PhosphorIconsStyle.bold),
             color: AD.primaryBadge,
             title: 'Sell',
@@ -58,7 +59,7 @@ class ServicesRoot extends StatelessWidget {
               openShellDestination(context, 'createlisting');
             },
           ),
-          ShellMenuRow(
+          if (RemoteConfig.marketplaceVisible) ShellMenuRow(
             icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
             color: AD.iconVideo,
             title: 'Archived',
@@ -103,7 +104,8 @@ class ServicesRoot extends StatelessWidget {
             onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        title: Text('Services', style: ADText.appTitle()),
+        title: Text(RemoteConfig.marketplaceVisible ? 'Marketplace' : 'Services',
+            style: ADText.appTitle()),
       ),
       body: const MarketplaceBrowse(),
     );

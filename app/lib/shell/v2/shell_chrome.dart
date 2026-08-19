@@ -3,6 +3,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/remote_config.dart';
 import '../../core/update_service.dart';
 import '../shell_v2.dart';
 import 'app_order_screen.dart';
@@ -163,7 +164,9 @@ class ShellSidebar extends StatelessWidget {
               // app_switcher_bar `_meta`.
               appRow(RootId.avaDial, 'Calls', 'AvaTOK calls, contacts & voicemail',
                   PhosphorIcons.phone(PhosphorIconsStyle.bold), AD.iconSearch),
-              appRow(RootId.services, 'Services', 'Marketplace, wallet & more',
+              appRow(RootId.services,
+                  RemoteConfig.marketplaceVisible ? 'Marketplace' : 'Services',
+                  'Buy, sell, manage listings & wallet',
                   PhosphorIcons.storefront(PhosphorIconsStyle.bold), AD.danger),
               _SidebarRow(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),

@@ -112,7 +112,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   }
 
   // icon · selectedIcon · label per root.
-  // 2026-07-24 product rebrand: the third root is Services, not Marketplace.
+  // 2026-08-19: the third root is displayed as Marketplace when the server
+  // flag is on. The persisted RootId remains `services` because that stable
+  // route also carries Wallet/Payout entries in its drawer.
   // AvaBrain is a fixed global action so it is reachable in one tap from every
   // root; it is deliberately not draggable because it is not a root navigator.
   // These are DISPLAY-ONLY — `RootId.key` ('avatalk'/'avadial'/'services') still
@@ -145,7 +147,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   /// ServicesRoot navigator stays mounted in the shell's IndexedStack, and the
   /// ShellSidebar's "Services" row (shell_chrome.dart) still switches to it.
   /// Re-enabling the footer icon is one flag flip back to false.
-  bool get _affiliateTakesServicesSlot => RemoteConfig.avaAffiliateEnabled;
+  bool get _affiliateTakesServicesSlot =>
+      RemoteConfig.avaAffiliateEnabled && !RemoteConfig.marketplaceVisible;
 
   Color get _indicator => widget.indicatorColor ?? AD.primaryBadge;
 
@@ -372,7 +375,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     return _labelledIcon(
       icon: m.$1,
       selectedIcon: m.$2,
-      label: m.$3,
+      label: root == RootId.services && RemoteConfig.marketplaceVisible
+          ? 'Marketplace'
+          : m.$3,
       selected: selected,
     );
   }

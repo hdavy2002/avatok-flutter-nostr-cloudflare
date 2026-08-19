@@ -14,6 +14,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../identity/public_action_gate.dart' show isIdentityRequired;
+import '../wallet/wallet_screen.dart';
 
 /// AvaMarketplace P2 — buy/sell/social listing pipeline with the agent-mandate
 /// + language step (Specs/AVAMARKETPLACE-FINAL-PROPOSAL.md). Self-contained so
@@ -101,6 +102,10 @@ class _SellListingFlowState extends State<SellListingFlow> {
   bool _busy = false;
   bool _aiBusy = false;
   String? _error;
+  String? _draftId;
+  ListingFeeQuote? _feeQuote;
+  bool _feeLoading = false;
+  bool _needsTopUp = false;
 
   Future<void> _pickCover() async {
     if (_coverUrls.length >= 5 || _uploading) return;
@@ -216,13 +221,98 @@ class _SellListingFlowState extends State<SellListingFlow> {
     }
   }
 
-  /// `ListingsApi.publish` hands back a decoded Map ({} on success, else the
-  /// parsed body + a 'status' key) rather than the raw response, so adapt it to
+  Future<void> _prepareReview() async {
+    if (_draftId == null) {
+      _draftId = await ListingsApi.createDraft(_type, _fields());
+    } else {
+      await ListingsApi.update(_draftId!, _fields());
+    }
+    if (_draftId != null) await _refreshFeeQuote();
+  }
+
+  Future<void> _refreshFeeQuote() async {
+    setState(() => _feeLoading = true);
+    final quote = await ListingsApi.feeQuote(listingId: _draftId);
+    if (!mounted) return;
+    setState(() {
+      _feeQuote = quote;
+      _feeLoading = false;
+    });
+    Analytics.capture('listing_fee_quote_viewed', {
+      'has_quote': quote != null,
+      'listing_id': _draftId ?? '',
+    });
+  }
+
+  Future<void> _openWallet() async {
+    await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const WalletScreen()));
+    if (!mounted) return;
+    setState(() => _needsTopUp = false);
+    await _refreshFeeQuote();
+  }
+
+  ListingFeeQuote? _feeFromResponse(Map<String, dynamic> res) {
+    final raw = res['fee'] ?? res['fee_quote'] ?? res['quote'];
+    if (raw is Map) return ListingFeeQuote.fromJson(raw.cast<String, dynamic>());
+    if (res.containsKey('fee_tokens') || res.containsKey('amount')) {
+      return ListingFeeQuote.fromJson(res);
+    }
+    return null;
+  }
+
+  String _successFeeText(Map<String, dynamic> res) {
+    final fee = _feeFromResponse(res) ?? _feeQuote;
+    if (fee == null || fee.isFree) return 'Listing submitted for review.';
+    final balance = fee.balance == null ? '' : ' Balance: ${fee.balance} Tokens.';
+    return 'Listing submitted for review — ${fee.amount} Tokens deducted.$balance';
+  }
+
+  Widget _feePanel() {
+    final quote = _feeQuote;
+    final insufficient = _needsTopUp || quote?.insufficient == true;
+    final copy = quote == null
+        ? 'Live publishing fee is unavailable. Pricing is confirmed by the server before any Tokens are taken.'
+        : quote.isFree
+            ? 'Free 30-day entitlement available${quote.freeRemaining == null ? '' : ' · ${quote.freeRemaining} free slot(s) remaining'}.'
+            : 'Publishing fee: ${quote.amount} Tokens${quote.balance == null ? '' : ' · balance ${quote.balance}'}.';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: Msg.s3),
+      padding: const EdgeInsets.all(Msg.s3),
+      decoration: BoxDecoration(
+        color: insufficient ? AD.danger.withOpacity(.08) : AD.bg,
+        border: Border.all(color: insufficient ? AD.danger : AD.borderControl),
+        borderRadius: Msg.brMd,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(copy, style: ADText.preview(c: AD.textSecondary))),
+          if (_feeLoading)
+            const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+        ]),
+        if (insufficient) ...[
+          const SizedBox(height: Msg.s2),
+          Text('Your balance is too low to publish this listing.',
+              style: ADText.preview(c: AD.danger)),
+          const SizedBox(height: Msg.s2),
+          TextButton(onPressed: _openWallet, child: const Text('Open wallet')),
+        ],
+      ]),
+    );
+  }
+
+  /// `ListingsApi.publish` response includes fee/status metadata on success or
+  /// a decoded error body on failure; adapt it to
   /// `isIdentityRequired(statusCode, body)` instead of re-implementing the match.
   int _statusOf(Map<String, dynamic> res) => (res['status'] as num?)?.toInt() ?? 0;
 
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
+    _needsTopUp = false;
     final sw = Stopwatch()..start();
     Analytics.capture('listing_submitted', {
       'type': _type, 'category': _category,
@@ -237,11 +327,13 @@ class _SellListingFlowState extends State<SellListingFlow> {
     }
     final cleaned = pc['cleaned_description']?.toString();
     if (cleaned != null && cleaned.isNotEmpty) _desc.text = cleaned;
-    final id = await ListingsApi.createDraft(_type, _fields());
+    final id = _draftId ?? await ListingsApi.createDraft(_type, _fields());
     if (id == null) {
       setState(() { _busy = false; _error = 'Could not save your listing.'; });
       return;
     }
+    _draftId = id;
+    await ListingsApi.update(id, _fields());
     var res = await ListingsApi.publish(id);
     // Fallback: the server gate returns 403 {error:'identity_required'} when the
     // seller has no valid (<90 day) liveness pass. The old 'phone_required' /
@@ -264,11 +356,11 @@ class _SellListingFlowState extends State<SellListingFlow> {
     }
     if (!mounted) return;
     setState(() => _busy = false);
-    if (res.isEmpty) {
+    if (res['ok'] == true) {
       Analytics.capture('listing_published', {'type': _type, 'submit_ms': sw.elapsedMilliseconds});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Listing submitted for review.')));
+          SnackBar(content: Text(_successFeeText(res))));
         Navigator.of(context).maybePop();
       }
     } else if (isIdentityRequired(_statusOf(res), jsonEncode(res))) {
@@ -276,7 +368,18 @@ class _SellListingFlowState extends State<SellListingFlow> {
       setState(() => _error = 'You need to verify you\'re a real person to publish a listing.');
     } else {
       // Identity gate (eligibility) / moderation / daily-cap rejections surface here.
-      setState(() => _error = res['error']?.toString() ?? res['reason']?.toString() ?? 'Could not publish.');
+      final reason = res['error']?.toString() ?? res['reason']?.toString();
+      if (_statusOf(res) == 402 ||
+          reason == 'insufficient_tokens' ||
+          reason == 'insufficient_balance') {
+        _feeQuote = _feeFromResponse(res) ?? _feeQuote;
+        setState(() {
+          _needsTopUp = true;
+          _error = 'You need more Tokens to publish. Your draft is safe.';
+        });
+      } else {
+        setState(() => _error = reason ?? 'Could not publish.');
+      }
     }
   }
 
@@ -298,7 +401,9 @@ class _SellListingFlowState extends State<SellListingFlow> {
         currentStep: _step,
         onStepContinue: () {
           if (_step < 5) {
-            setState(() => _step++);
+            final next = _step + 1;
+            setState(() => _step = next);
+            if (next == 5) _prepareReview();
           } else {
             _submit();
           }
@@ -509,7 +614,13 @@ class _SellListingFlowState extends State<SellListingFlow> {
                         color: _expiryDays == d ? Colors.white : AD.textSecondary),
                     selected: _expiryDays == d,
                     showCheckmark: false,
-                    onSelected: (_) => setState(() => _expiryDays = d),
+                    onSelected: (_) async {
+                      setState(() => _expiryDays = d);
+                      if (_draftId != null) {
+                        await ListingsApi.update(_draftId!, _fields());
+                        await _refreshFeeQuote();
+                      }
+                    },
                     shape: RoundedRectangleBorder(
                         borderRadius: Msg.brPill,
                         side: BorderSide(color: AD.borderControl, width: 1)),
@@ -517,6 +628,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
                     selectedColor: AD.primaryBadge,
                   ),
               ]),
+              _feePanel(),
               const SizedBox(height: Msg.s3),
               if (_error != null)
                 Padding(padding: const EdgeInsets.only(top: Msg.s2),

@@ -75,6 +75,33 @@ class MarketplaceApi {
     return _j(r.body)['already_talked'] == true;
   }
 
+  /// Seller decision for a negotiation held at `pending_owner_approval`.
+  /// The server remains authoritative for ownership, terminal state and the
+  /// resulting Messenger event. Older Workers may return 404/405 until this
+  /// rollout contract is deployed.
+  static Future<Map<String, dynamic>> decideNegotiation({
+    required String negotiationId,
+    required String decision,
+    String? requestId,
+  }) async {
+    if (negotiationId.trim().isEmpty ||
+        (decision != 'approve' && decision != 'reject')) {
+      return const {'ok': false, 'status': 400, 'reason': 'invalid_request'};
+    }
+    try {
+      final id = requestId ?? newIdemKey();
+      final r = await ApiAuth.postJsonH(
+        '$_base/negotiate/${Uri.encodeComponent(negotiationId)}/decision',
+        {'decision': decision, 'request_id': id},
+        {'Idempotency-Key': 'mkt-decision-$id'},
+        timeout: const Duration(seconds: 15),
+      );
+      return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode == 200};
+    } catch (_) {
+      return const {'ok': false, 'status': 0, 'reason': 'network'};
+    }
+  }
+
   /// MKT-LANG-1 — fetch the user's Marketplace Agent settings (defaults if none).
   /// Returns the `settings` map, or null on failure (caller falls back to local).
   static Future<Map<String, dynamic>?> getAgentSettings() async {
