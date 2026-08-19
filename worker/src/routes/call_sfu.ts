@@ -58,7 +58,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
-import { trackUser } from "../hooks";
+import { trackException, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { mintIceServersWithStatus } from "./media";
@@ -140,6 +140,60 @@ function sfuConfigured(env: Env): boolean {
 }
 
 type SfuResult = { ok: boolean; status: number; data: Record<string, unknown> };
+
+export type SfuDependency = "call_room" | "provider";
+export type SfuDependencyAttempt<T> =
+  | { ok: true; value: T }
+  | { ok: false; dependency: SfuDependency; error: unknown };
+
+/** Keep dependency exceptions inside the SFU route so clients can fall back. */
+export async function attemptSfuDependency<T>(
+  dependency: SfuDependency,
+  operation: () => Promise<T>,
+): Promise<SfuDependencyAttempt<T>> {
+  try {
+    return { ok: true, value: await operation() };
+  } catch (error) {
+    return { ok: false, dependency, error };
+  }
+}
+
+export function sfuUnavailableBody(dependency: SfuDependency): Record<string, unknown> {
+  return {
+    error: "sfu_unavailable",
+    reason: dependency === "call_room" ? "call_room_unavailable" : "provider_unavailable",
+    fallback: true,
+    retry: false,
+  };
+}
+
+function dependencyUnavailable(
+  env: Env,
+  ctx: ExecutionContext,
+  uid: string,
+  room: string,
+  stage: string,
+  failure: Extract<SfuDependencyAttempt<never>, { ok: false }>,
+): Response {
+  const telemetry = {
+    call_id: room,
+    stage,
+    status: 503,
+    error_category: failure.dependency === "call_room" ? "call_room_do" : "sfu_provider",
+    dependency: failure.dependency,
+  };
+  ctx.waitUntil(sfuTrack(env, uid, "call_sfu_error", APP, telemetry));
+  ctx.waitUntil(trackException(env, failure.error, {
+    uid,
+    route: `/api/callsfu/:room/${stage}`,
+    method: "DEPENDENCY",
+    handled: true,
+    app_name: APP,
+    extra: telemetry,
+  }));
+  // Never expose exception text, provider bodies, session ids, or credentials.
+  return json(sfuUnavailableBody(failure.dependency), 503);
+}
 
 /** A prewarm offer must not be able to smuggle media into the transport-only path. */
 export function isDataChannelOnlySdp(sdp: string): boolean {
@@ -261,15 +315,20 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
   // /join alone (client stage sfu_begin→sfu_join) — this and the phase timings
   // below are that finding turned into code.
   const sfuStart = Date.now();
-  const [s, ice] = await Promise.all([
-    sfu(env, "/sessions/new", { method: "POST" }),
-    mintIceServersWithStatus(env, ICE_TTL_S),
+  const [sAttempt, iceAttempt] = await Promise.all([
+    attemptSfuDependency("provider", () => sfu(env, "/sessions/new", { method: "POST" })),
+    attemptSfuDependency("provider", () => mintIceServersWithStatus(env, ICE_TTL_S)),
   ]);
+  if (!sAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "session_new", sAttempt);
+  if (!iceAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "ice_mint", iceAttempt);
+  const s = sAttempt.value;
+  const ice = iceAttempt.value;
   const sfuMs = Date.now() - sfuStart;
   const sessionId = typeof s.data.sessionId === "string" ? s.data.sessionId : "";
   if (!s.ok || !sessionId) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "session_new", status: s.status,
+      error_category: "sfu_provider", dependency: "provider",
     }));
     return json({ error: "sfu_session_failed", status: s.status }, 502);
   }
@@ -279,7 +338,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
   // — the worst possible failure shape. Better to fail the join and let the
   // client fall back to P2P while it still can.
   const seatStart = Date.now();
-  const seatRes = await roomFetch(env, room, "/sfu-seat", {
+  const seatAttempt = await attemptSfuDependency("call_room", () => roomFetch(env, room, "/sfu-seat", {
     method: "POST",
     body: JSON.stringify({
       callId: room, uid: g.uid, sessionId,
@@ -289,10 +348,13 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
         prewarmGeneration,
       } : {}),
     }),
-  });
+  }));
+  if (!seatAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "seat_register", seatAttempt);
+  const seatRes = seatAttempt.value;
   if (!seatRes.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "seat_register", status: seatRes.status,
+      error_category: "call_room_do", dependency: "call_room",
     }));
     return json({ error: "sfu_seat_failed", status: seatRes.status }, seatRes.status === 403 ? 403 : 502);
   }
@@ -349,17 +411,22 @@ export async function callSfuPrepare(req: Request, env: Env, room: string, ctx: 
   if (!isDataChannelOnlySdp(offerSdp)) {
     return json({ error: "datachannel_only_offer_required" }, 400);
   }
-  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+  const ownership = await attemptSfuDependency("call_room", () => ownsSession(env, room, g.uid, sessionId));
+  if (!ownership.ok) return dependencyUnavailable(env, ctx, g.uid, room, "prepare_ownership", ownership);
+  if (!ownership.value) {
     return json({ error: "session_not_owned" }, 403);
   }
 
-  const r = await sfu(env, `/sessions/${encodeURIComponent(sessionId)}/datachannels/establish`, {
+  const providerAttempt = await attemptSfuDependency("provider", () => sfu(env, `/sessions/${encodeURIComponent(sessionId)}/datachannels/establish`, {
     method: "POST",
     body: JSON.stringify(buildSfuPrepareBody(offerSdp)),
-  });
+  }));
+  if (!providerAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "prepare", providerAttempt);
+  const r = providerAttempt.value;
   if (!r.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, session_id: sessionId, stage: "prepare", status: r.status,
+      error_category: "sfu_provider", dependency: "provider",
     }));
     return json({ error: "prepare_failed", status: r.status }, 502);
   }
@@ -375,13 +442,16 @@ export async function callSfuPrepare(req: Request, env: Env, room: string, ctx: 
 
   // The marker is intentionally a separate DO operation: generic seat writes
   // from media publish must not be able to claim transport readiness.
-  const marked = await roomFetch(env, room, "/sfu-seat-prepare", {
+  const markerAttempt = await attemptSfuDependency("call_room", () => roomFetch(env, room, "/sfu-seat-prepare", {
     method: "POST",
     body: JSON.stringify({ callId: room, uid: g.uid, sessionId }),
-  });
+  }));
+  if (!markerAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "prepare_marker", markerAttempt);
+  const marked = markerAttempt.value;
   if (!marked.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, session_id: sessionId, stage: "prepare_marker", status: marked.status,
+      error_category: "call_room_do", dependency: "call_room",
     }));
     return json({ error: "sfu_prepare_marker_failed", status: marked.status }, 502);
   }
@@ -422,7 +492,9 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
   if (preacceptMedia && (!preacceptNonce || !preacceptDeviceId || preacceptGeneration == null)) {
     return json({ error: "preaccept_identity_required" }, 400);
   }
-  if (!(await ownsSession(env, room, g.uid, sessionId))) {
+  const ownership = await attemptSfuDependency("call_room", () => ownsSession(env, room, g.uid, sessionId));
+  if (!ownership.ok) return dependencyUnavailable(env, ctx, g.uid, room, "publish_ownership", ownership);
+  if (!ownership.value) {
     return json({ error: "session_not_owned" }, 403);
   }
 
@@ -430,7 +502,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
     // Authorize against the live, serialized CallRoom lease immediately before
     // the provider operation. A self-seat read can be stale if another device
     // accepted or the prewarm deadline elapsed after that read.
-    const authRes = await roomFetch(env, room, "/sfu-preaccept-authorize", {
+    const authAttempt = await attemptSfuDependency("call_room", () => roomFetch(env, room, "/sfu-preaccept-authorize", {
       method: "POST",
       body: JSON.stringify({
         callId: room, uid: g.uid, sessionId,
@@ -438,7 +510,9 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
         prewarmNonce: preacceptNonce,
         prewarmGeneration: preacceptGeneration,
       }),
-    });
+    }));
+    if (!authAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "preaccept_authorize", authAttempt);
+    const authRes = authAttempt.value;
     const authBody = (await authRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     if (!authRes.ok || authBody.ok !== true) {
       ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
@@ -468,14 +542,17 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
   }
 
   const sfuStart = Date.now(); // [CALL-SFU-LAT-1]
-  const r = await sfu(env, `/sessions/${sessionId}/tracks/new`, {
+  const providerAttempt = await attemptSfuDependency("provider", () => sfu(env, `/sessions/${sessionId}/tracks/new`, {
     method: "POST",
     body: JSON.stringify({ sessionDescription: { type: "offer", sdp: offerSdp }, tracks }),
-  });
+  }));
+  if (!providerAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "publish", providerAttempt);
+  const r = providerAttempt.value;
   const sfuMs = Date.now() - sfuStart;
   if (!r.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "publish", status: r.status,
+      error_category: "sfu_provider", dependency: "provider",
     }));
     return json({ error: "publish_failed", status: r.status }, 502);
   }
@@ -497,7 +574,7 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
       names.audioMid = String(t.mid);
     }
   }
-  const seatWrite = await roomFetch(env, room, "/sfu-seat", {
+  const seatAttempt = await attemptSfuDependency("call_room", () => roomFetch(env, room, "/sfu-seat", {
     method: "POST",
     body: JSON.stringify({
       callId: room, uid: g.uid, sessionId, ...names,
@@ -508,13 +585,22 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
         preacceptMedia: true,
       } : {}),
     }),
-  }).catch(() => null);
-  if (preacceptMedia && (!seatWrite || !seatWrite.ok)) {
+  }));
+  if (!seatAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "publish_marker", seatAttempt);
+  const seatWrite = seatAttempt.value;
+  if (preacceptMedia && !seatWrite.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
       call_id: room, session_id: sessionId, reason: "media_marker_failed",
-      status: seatWrite?.status ?? 0,
+      status: seatWrite.status,
     }));
     return json({ error: "preaccept_media_marker_failed", retry: true }, 502);
+  }
+  if (!seatWrite.ok) {
+    ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
+      call_id: room, stage: "publish_marker", status: seatWrite.status,
+      error_category: "call_room_do", dependency: "call_room",
+    }));
+    return json(sfuUnavailableBody("call_room"), 503);
   }
 
   ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_published", APP, {
@@ -538,7 +624,10 @@ export async function callSfuPublish(req: Request, env: Env, room: string, ctx: 
 export async function callSfuPeer(req: Request, env: Env, room: string, ctx: ExecutionContext): Promise<Response> {
   const g = await guard(req, env, ctx);
   if (g instanceof Response) return g;
-  const r = await roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`);
+  const peerAttempt = await attemptSfuDependency("call_room", () =>
+    roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`));
+  if (!peerAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "peer_read", peerAttempt);
+  const r = peerAttempt.value;
   const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (body.media_access === "blocked_callee_not_accepted") {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_preaccept_blocked", APP, {
@@ -590,11 +679,15 @@ export async function callSfuPull(req: Request, env: Env, room: string, ctx: Exe
   // results are still enforced before anything is sent to the SFU, so the
   // authorization semantics are unchanged — the peer read is merely discarded
   // when ownership fails.
-  const [owns, peerRes] = await Promise.all([
-    ownsSession(env, room, g.uid, sessionId),
-    roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`),
+  const [ownership, peerAttempt] = await Promise.all([
+    attemptSfuDependency("call_room", () => ownsSession(env, room, g.uid, sessionId)),
+    attemptSfuDependency("call_room", () =>
+      roomFetch(env, room, `/sfu-peer?callId=${encodeURIComponent(room)}&uid=${encodeURIComponent(g.uid)}`)),
   ]);
-  if (!owns) return json({ error: "session_not_owned" }, 403);
+  if (!ownership.ok) return dependencyUnavailable(env, ctx, g.uid, room, "pull_ownership", ownership);
+  if (!peerAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "pull_peer_read", peerAttempt);
+  if (!ownership.value) return json({ error: "session_not_owned" }, 403);
+  const peerRes = peerAttempt.value;
   const peer = (await peerRes.json().catch(() => ({}))) as {
     seat?: { session_id?: string; audio_track?: string | null; video_track?: string | null } | null;
     media_access?: string;
@@ -612,13 +705,16 @@ export async function callSfuPull(req: Request, env: Env, room: string, ctx: Exe
   if (!trackName) return json({ error: "peer_track_not_published", retry: true, kind }, 409);
 
   const sfuStart = Date.now(); // [CALL-SFU-LAT-1]
-  const r = await sfu(env, `/sessions/${sessionId}/tracks/new`, {
+  const providerAttempt = await attemptSfuDependency("provider", () => sfu(env, `/sessions/${sessionId}/tracks/new`, {
     method: "POST",
     body: JSON.stringify({ tracks: [{ location: "remote", sessionId: seat.session_id, trackName }] }),
-  });
+  }));
+  if (!providerAttempt.ok) return dependencyUnavailable(env, ctx, g.uid, room, "pull", providerAttempt);
+  const r = providerAttempt.value;
   if (!r.ok) {
     ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_error", APP, {
       call_id: room, stage: "pull", status: r.status, kind,
+      error_category: "sfu_provider", dependency: "provider",
     }));
     return json({ error: "pull_failed", status: r.status }, 502);
   }
