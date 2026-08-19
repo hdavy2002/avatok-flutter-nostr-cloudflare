@@ -84,7 +84,19 @@ import { readConfig } from "../routes/config";
 import { track, trackException } from "../hooks";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
-const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
+const OPS_TTL_MS = 48 * 3_600_000; // generic dedupe window for op_id replays
+/**
+ * Marketplace listing charges have a durable D1 operation record and may be
+ * retried long after the generic wallet replay cache would normally expire.
+ * Keep only this namespaced class of wallet operation forever; every other
+ * wallet operation retains the bounded cache so the DO cannot grow without
+ * limit for unrelated callers.
+ */
+export const PERMANENT_WALLET_OP_PREFIX = "listing:";
+
+export function isPermanentWalletOpId(opId: string | undefined): boolean {
+  return typeof opId === "string" && opId.startsWith(PERMANENT_WALLET_OP_PREFIX);
+}
 // [TOKENS-100-GRANT-1] (owner decision 2026-07-23): the daily renewable free-coin
 // grant is RETIRED. New users now get a SINGLE, one-time, non-renewable 100-token
 // "join and explore" grant — the persistent welcome bonus (`acct.bonus`, credited
@@ -314,8 +326,11 @@ export class WalletDO {
   private recordOp(opId: string | undefined, result: object): void {
     if (!opId) return;
     this.sql.exec("INSERT OR IGNORE INTO ops (op_id, result, ts) VALUES (?1,?2,?3)", opId, JSON.stringify(result), Date.now());
-    // Lazy prune of old dedupe rows.
-    this.sql.exec("DELETE FROM ops WHERE ts < ?1", Date.now() - OPS_TTL_MS);
+    // Lazy prune of old generic dedupe rows. Listing operations are deliberately
+    // excluded: listing_billing stores the same namespaced operation in D1 so a
+    // publish retry months later must replay the original debit result rather
+    // than risk issuing a second debit after this cache was pruned.
+    this.sql.exec("DELETE FROM ops WHERE ts < ?1 AND op_id NOT LIKE 'listing:%'", Date.now() - OPS_TTL_MS);
   }
 
   private bal(): { balance: number; held: number } {

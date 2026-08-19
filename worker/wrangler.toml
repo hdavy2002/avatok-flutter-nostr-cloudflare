@@ -805,6 +805,10 @@ binding = "Q_ARCHIVE"
 queue = "chat-archive-staging"
 
 [[env.staging.queues.producers]]
+binding = "Q_MKT_AUDIO"
+queue = "mkt-audio-staging"
+
+[[env.staging.queues.producers]]
 binding = "Q_AUTO_REPLY"
 queue = "auto-reply-staging"
 

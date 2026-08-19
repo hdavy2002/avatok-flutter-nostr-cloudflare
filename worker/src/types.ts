@@ -483,3 +483,28 @@ export interface Env {
   VOBIZ_AUTH_ID?: string;
   VOBIZ_AUTH_TOKEN?: string;
 }
+
+/** Stable async marketplace replay job.  The negotiation id is the durable
+ * identity; listing/version remains as a human/debugging lookup only. */
+export interface MktAudioMsg {
+  negotiationId: string;
+  artifactId: string;
+  conv: string;
+  sellerUid: string;
+  buyerUid: string;
+  listingId: string;
+  contentVersion: number;
+  outcome: string;
+  bubble: string;
+  agreed: number;
+  currency: string;
+  transcript: Array<{ speaker: string; text: string }>;
+  persona?: string;
+  lang?: string;
+  buyerVoice?: string | null;
+  transcriptEn?: Array<{ speaker: string; text: string }>;
+  transcriptI18n?: Record<string, Array<{ speaker: string; text: string }>>;
+  summary?: string;
+  pendingOwnerApproval?: boolean;
+  enqueuedAt?: number;
+}

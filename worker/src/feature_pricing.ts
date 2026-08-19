@@ -278,6 +278,11 @@ export interface ChargeMeta {
 
 export interface ChargeOpts {
   forceMeter?: boolean;
+  /**
+   * Whether daily free/bonus tokens may fund this charge. Feature/AI work keeps
+   * the historical default; real marketplace fees pass false explicitly.
+   */
+  allowFree?: boolean;
   meta?: ChargeMeta;
 }
 
@@ -338,9 +343,10 @@ export async function chargeAmount(
   // spent); only the payer changes. Non-members resolve to themselves (no-op).
   const payer = await billingUidFor(env, uid).catch(() => uid);
   const r = await walletOp(env, payer, {
-    // allow_free: feature/AI costs may be paid with the daily FREE coins first
-    // (then paid coins). Real marketplace spends omit this → paid-only.
-    op: "spend", uid: payer, amount: cost, type: "spend", app_name: featureKey, op_id: opId, allow_free: true,
+    // Feature/AI costs may use daily FREE/bonus coins by default. Real marketplace
+    // fees pass allowFree:false and therefore draw only from paid wallet balance.
+    op: "spend", uid: payer, amount: cost, type: "spend", app_name: featureKey, op_id: opId,
+    allow_free: opts?.allowFree !== false,
     // [WALLET-TXMETA-1] descriptive only — WalletDO forwards these onto the Q_WALLET
     // message; they take no part in the balance math above or the ledger below.
     ...metaWire(opts?.meta),

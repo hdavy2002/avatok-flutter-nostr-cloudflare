@@ -10,7 +10,7 @@
 // a DEAL. Everything here is dark until the marketplaceEnabled kill switch is on.
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, isFail, dmConvId } from "../authz";
+import { requireUser, isFail } from "../authz";
 import { track, trackUserContact } from "../hooks";
 import { metaDb } from "../db/shard";
 import { notifyUser } from "../notify";
@@ -22,9 +22,57 @@ import { generateContentVia } from "../lib/vertex"; // [VERTEX-1]
 import { readConfig } from "./config"; // P5: agentDailyCap
 import { getAgentSettings, type AgentSettings } from "./agent_settings"; // MKT-LANG: buyer/seller lang, floor, tone, guardrails
 import { contactFor } from "../lib/identity"; // MKT-LANG-5: stamp email on translation telemetry
+import {
+  deliverMarketplaceMessage,
+  ensureMarketplaceDm,
+  marketplaceArtifactId,
+  upsertMarketplaceMessage,
+} from "../lib/delivery";
+import { ensureListingBillingSchema } from "../lib/listing_billing";
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
+const MARKETPLACE_NEGOTIATION_KINDS = new Set(["sell", "buy", "social"]);
+
+export function isNegotiableListing(listing: any, requestedVersion: number, now = Date.now()): boolean {
+  return !!listing
+    && MARKETPLACE_NEGOTIATION_KINDS.has(String(listing.kind))
+    && new Set(["published", "live"]).has(String(listing.status))
+    && (listing.expires_at == null || Number(listing.expires_at) > now)
+    && Number.isInteger(requestedVersion)
+    && requestedVersion >= 0
+    && requestedVersion === Number(listing.content_version ?? 0);
+}
+
+async function marketplaceOn(env: Env): Promise<boolean> {
+  try { return (await readConfig(env)).marketplaceEnabled === true; }
+  catch { return false; }
+}
+
+async function marketplaceNegotiationOn(env: Env): Promise<boolean> {
+  try {
+    const cfg = await readConfig(env);
+    return cfg.marketplaceEnabled === true && cfg.marketplaceNegotiationEnabled === true;
+  } catch { return false; }
+}
+
+async function marketplaceDealDeliveryV2On(env: Env): Promise<boolean> {
+  try {
+    const cfg = await readConfig(env);
+    return cfg.marketplaceEnabled === true && cfg.marketplaceNegotiationEnabled === true && cfg.marketplaceDealDeliveryV2 === true;
+  } catch { return false; }
+}
+
+async function marketplacePublishOn(env: Env): Promise<boolean> {
+  try {
+    const cfg = await readConfig(env);
+    return cfg.marketplaceEnabled === true && cfg.marketplacePublishEnabled === true;
+  } catch { return false; }
+}
+
+function marketplaceDisabled(capability = "marketplace"): Response {
+  return json({ error: `${capability}_disabled`, reason: "flag_off" }, 503);
+}
 
 /**
  * One-shot OpenRouter chat call (Sonnet). Returns trimmed text or "" on error.
@@ -143,57 +191,6 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
 }
 
 /**
- * Create the DM thread (conversations + conversation_members rows) for both
- * parties. WITHOUT this the chat list — which is driven by
- * `conversations JOIN conversation_members` (GET /api/conversations) — never
- * shows the thread, even though the message is in the InboxDO. This mirrors
- * messaging.ts `ensureDm`, which every normal DM calls before appending.
- */
-async function ensureDmThread(env: Env, a: string, b: string, context: string | null): Promise<void> {
-  const conv = dmConvId(a, b);
-  const now = Date.now();
-  const db = metaDb(env);
-  try {
-    await db.batch([
-      db.prepare("INSERT OR IGNORE INTO conversations (id, kind, created_by, created_at, updated_at, context) VALUES (?1,'dm',?2,?3,?3,?4)").bind(conv, a, now, context),
-      db.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, a, now),
-      db.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, b, now),
-    ]);
-  } catch { /* best-effort — InboxDO append still carries the message */ }
-}
-
-/** Append a marketplace voice/text message into a user's InboxDO thread.
- *  kind is "text": the app's sync/ingest layer surfaces normal text messages and
- *  the chat_thread renderer special-cases the BODY envelope's {t:'marketplace_deal'}
- *  to draw the deal card (this is how every body-envelope special — card/poll/
- *  sticker/recept-ack — is delivered; a CUSTOM kind like 'marketplace_deal' was
- *  NOT surfaced as a message, so the thread looked empty). */
-async function inboxAppend(env: Env, recipient: string, sender: string, conv: string, envelope: string, mediaRef: string | null): Promise<void> {
-  const stub = (env as any).INBOX.get((env as any).INBOX.idFromName(recipient));
-  // No `scope` → thread-scoped (audience null), i.e. a NORMAL DM message. We already
-  // write a separate copy to each party's own InboxDO, so per-recipient privacy
-  // scoping isn't needed — and an unscoped message is what the app's sync/chat-list
-  // reliably surfaces (a `to:<uid>` private scope was an extra failure surface).
-  try {
-    const res = await stub.fetch("https://inbox/append", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, created_at: Date.now(), owner: recipient }),
-    });
-    const out: any = await res.json().catch(() => ({}));
-    // Definitive proof the row landed in the recipient's InboxDO (msg_id) vs a
-    // silent failure — distinguishes "delivery broken" from "app didn't render".
-    // `live` (from the InboxDO append) = was the recipient's socket connected at
-    // delivery, i.e. did the deal get broadcast in realtime. false ⇒ it only
-    // sits in storage until a resync pulls it — the exact case the client-side
-    // bounded forceResync() after Contact-agent now covers (no FCM).
-    track(env, recipient, "mkt_inbox_appended", "avamarketplace", { ok: res.ok, status: res.status, msg_id: out?.id ?? null, live: out?.live ?? null, recipient, sender, conv });
-  } catch (e) {
-    track(env, recipient, "mkt_inbox_append_error", "avamarketplace", { recipient, conv, error: String((e as any)?.message ?? e).slice(0, 160) });
-    throw e;
-  }
-}
-
-/**
  * Render the deal audio (both outcomes) and drop the voice note into BOTH the
  * seller's and buyer's chat threads, colour-coded by outcome, then FCM-push both.
  * Best-effort: if TTS fails, still delivers a text message carrying the outcome.
@@ -292,7 +289,7 @@ function capTranscriptForSpeech(transcript: Array<{ speaker: string; text: strin
 }
 
 async function deliverDealAudio(env: Env, a: {
-  sellerUid: string; buyerUid: string; listingId: string; listingTitle: string;
+  negotiationId: string; artifactId: string; sellerUid: string; buyerUid: string; listingId: string; contentVersion: number; listingTitle: string;
   outcome: string; bubble: string; agreed: number; currency: string;
   transcript: Array<{ speaker: string; text: string }>;
   persona?: string;
@@ -306,17 +303,56 @@ async function deliverDealAudio(env: Env, a: {
   transcriptI18n?: Record<string, Array<{ speaker: string; text: string }>>;
   summary?: string; pendingOwnerApproval?: boolean;
 }): Promise<{ audioKey: string | null; bytes: number; queued?: boolean }> {
-  const conv = dmConvId(a.sellerUid, a.buyerUid);
-  // CREATE the DM thread so it appears in the buyer's chat list.
-  await ensureDmThread(env, a.sellerUid, a.buyerUid, `event:${a.listingId}`);
-  // TWO-MESSAGE FLOW (owner decision 2026-07-01): NO "No audio" text card. Message
-  // 1 is the buyer's optimistic "your agents are negotiating (may take up to an
-  // hour)" bubble (client-side). Message 2 is the VOICE card only, delivered by the
-  // avatok-consumers render (buyer-only for now). So here we do NOT deliver a text
-  // result card — we only enqueue the voice render below.
+  const conv = await ensureMarketplaceDm(env, {
+    sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId, negotiationId: a.negotiationId,
+  });
+  if (!(await marketplaceDealDeliveryV2On(env))) throw new Error("marketplace_deal_delivery_v2_disabled");
+
+  // The result is the durable logical Messenger message. It must land before
+  // TTS is even queued, so a provider outage still leaves both parties with a
+  // replayable text transcript/outcome in the same DM thread.
+  const resultEnvelope = JSON.stringify({
+    t: "marketplace_deal",
+    text: a.summary || (a.outcome === "deal" ? "The agents reached a deal." : "The agents did not reach a deal."),
+    outcome: a.outcome,
+    bubble: a.bubble,
+    agreed_price: a.agreed,
+    currency: a.currency,
+    listing_id: a.listingId,
+    transcript: a.transcript,
+    transcript_en: a.transcriptEn,
+    transcript_i18n: a.transcriptI18n,
+    summary: a.summary,
+    negotiation_id: a.negotiationId,
+    artifact_id: a.artifactId,
+    buyer_id: a.buyerUid,
+    seller_id: a.sellerUid,
+    has_audio: false,
+    audio_key: null,
+    lang: a.lang || "en",
+    pending_owner_approval: a.pendingOwnerApproval === true,
+  });
+  const result = await deliverMarketplaceMessage(
+    env,
+    { sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId, negotiationId: a.negotiationId },
+    resultEnvelope,
+    a.artifactId,
+    "result",
+    null,
+  );
+  const deliveredAt = Date.now();
+  await metaDb(env).prepare(
+    `UPDATE mkt_negotiation_artifacts
+        SET result_buyer_message_id=?2, result_seller_message_id=?3,
+            result_buyer_delivered_at=?4, result_seller_delivered_at=?4,
+            delivery_status='text_ready', last_error=NULL, updated_at=?4
+      WHERE negotiation_id=?1`,
+  ).bind(a.negotiationId, result.clientId, result.clientId, deliveredAt).run();
   track(env, a.buyerUid, "deal_reached", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome });
 
-  // ── PHASE 2: ENQUEUE the voice render (async → avatok-consumers `mkt-audio`).
+  // ── PHASE 2: ENQUEUE the voice enrichment (async → avatok-consumers
+  // `mkt-audio`). The consumer patches this same result row; it never appends a
+  // second logical marketplace message.
   // The Gemini multi-speaker TTS of a FULL multi-round transcript takes 30-60s,
   // which does NOT fit this request's background budget — running it inline got
   // the job reaped → "No audio". The consumer renders the FULL transcript with
@@ -324,25 +360,25 @@ async function deliverDealAudio(env: Env, a: {
   // both InboxDOs + nudges the live thread. Robust at scale: renders fan out over
   // the queue instead of hanging request paths. The text card (phase 1) already
   // landed, so a slow/failed replay is never fatal.
-  let queued = false;
-  try {
-    await (env as any).Q_MKT_AUDIO?.send({
-      conv, sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId,
+  if (!env.Q_MKT_AUDIO) throw new Error("marketplace_audio_queue_unbound");
+  await env.Q_MKT_AUDIO.send({
+      negotiationId: a.negotiationId, artifactId: a.artifactId, conv,
+      sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId,
+      contentVersion: a.contentVersion,
       outcome: a.outcome, bubble: a.bubble, agreed: a.agreed, currency: a.currency,
       transcript: a.transcript, persona: a.persona, enqueuedAt: Date.now(),
       // MKT-LANG-4: buyer language + buyer voice + i18n cache + English canonical.
       lang: a.lang || "en", buyerVoice: a.buyerVoice || null,
       transcriptEn: a.transcriptEn, transcriptI18n: a.transcriptI18n,
       summary: a.summary, pendingOwnerApproval: a.pendingOwnerApproval === true,
-    });
-    queued = true;
-  } catch { /* best-effort; text card already delivered */ }
-  return { audioKey: null as string | null, bytes: 0, queued };
+  });
+  return { audioKey: null as string | null, bytes: 0, queued: true };
 }
 
 // ── P3: AI writing help ──────────────────────────────────────────────────────
 // want = instructions | title | description. `fields` carries the form so far.
 export async function marketplaceAiAssist(req: Request, env: Env): Promise<Response> {
+  if (!(await marketplaceOn(env))) return marketplaceDisabled();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -381,7 +417,8 @@ export async function marketplaceAiAssist(req: Request, env: Env): Promise<Respo
 // Idempotent ledger so a buyer can negotiate a listing only once PER CONTENT
 // VERSION (an owner edit bumps the version and reopens the door — Specs §3 B).
 async function ensureLedger(env: Env): Promise<void> {
-  await metaDb(env).prepare(
+  const db = metaDb(env);
+  await db.prepare(
     `CREATE TABLE IF NOT EXISTS mkt_negotiations (
        buyer_id TEXT, listing_id TEXT, content_version INTEGER,
        outcome TEXT, agreed_price INTEGER, currency TEXT, created_at INTEGER,
@@ -389,9 +426,61 @@ async function ensureLedger(env: Env): Promise<void> {
      )`,
   ).run();
   // P5: index the daily-cap count query (per buyer, by day).
-  await metaDb(env).prepare(
+  await db.prepare(
     "CREATE INDEX IF NOT EXISTS idx_mkt_neg_buyer_created ON mkt_negotiations (buyer_id, created_at)",
   ).run();
+  // Runtime safety net for the dated production migration. The Worker binding
+  // can apply idempotent DDL even when a local Wrangler token is read/deploy-only.
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS mkt_negotiation_runs (
+      negotiation_id TEXT PRIMARY KEY, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL,
+      listing_id TEXT NOT NULL, content_version INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+      outcome TEXT, agreed_price INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL,
+      approval_status TEXT NOT NULL DEFAULT 'not_required', buyer_max INTEGER NOT NULL DEFAULT 0,
+      must_haves TEXT NOT NULL DEFAULT '', retry_count INTEGER NOT NULL DEFAULT 0,
+      next_retry_at INTEGER, last_error TEXT, created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL, UNIQUE (buyer_id, listing_id, content_version)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS mkt_negotiation_artifacts (
+      negotiation_id TEXT PRIMARY KEY, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL,
+      listing_id TEXT NOT NULL, content_version INTEGER NOT NULL, artifact_version INTEGER NOT NULL DEFAULT 1,
+      outcome TEXT NOT NULL, approval_status TEXT NOT NULL DEFAULT 'not_required',
+      agreed_price INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL, transcript_en TEXT,
+      transcript_i18n TEXT, summary TEXT, audio_key TEXT UNIQUE, audio_sha256 TEXT, audio_bytes INTEGER,
+      render_status TEXT NOT NULL DEFAULT 'queued', delivery_status TEXT NOT NULL DEFAULT 'pending',
+      buyer_message_id TEXT, seller_message_id TEXT, result_buyer_message_id TEXT,
+      result_seller_message_id TEXT, seller_push_sent_at INTEGER,
+      result_buyer_delivered_at INTEGER, result_seller_delivered_at INTEGER,
+      buyer_delivered_at INTEGER, seller_delivered_at INTEGER, render_attempts INTEGER NOT NULL DEFAULT 0,
+      render_claimed_at INTEGER, delivery_attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT, created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mkt_runs_buyer_created ON mkt_negotiation_runs (buyer_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mkt_runs_listing ON mkt_negotiation_runs (listing_id, content_version)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mkt_runs_seller_status ON mkt_negotiation_runs (seller_id, status, updated_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mkt_artifacts_audio_key ON mkt_negotiation_artifacts (audio_key)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mkt_artifacts_participants ON mkt_negotiation_artifacts (buyer_id, seller_id, listing_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mkt_artifacts_delivery ON mkt_negotiation_artifacts (delivery_status, updated_at)"),
+  ]);
+  // Additive compatibility for environments that created the V2 tables before
+  // the final retry/result columns landed. D1 has no IF NOT EXISTS form for an
+  // ADD COLUMN, so tolerate only the expected duplicate-column error.
+  for (const sql of [
+    "ALTER TABLE mkt_negotiation_runs ADD COLUMN buyer_max INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE mkt_negotiation_runs ADD COLUMN must_haves TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE mkt_negotiation_runs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE mkt_negotiation_runs ADD COLUMN next_retry_at INTEGER",
+    "ALTER TABLE mkt_negotiation_runs ADD COLUMN last_error TEXT",
+    "ALTER TABLE mkt_negotiation_artifacts ADD COLUMN result_buyer_message_id TEXT",
+    "ALTER TABLE mkt_negotiation_artifacts ADD COLUMN result_seller_message_id TEXT",
+    "ALTER TABLE mkt_negotiation_artifacts ADD COLUMN result_buyer_delivered_at INTEGER",
+    "ALTER TABLE mkt_negotiation_artifacts ADD COLUMN result_seller_delivered_at INTEGER",
+    "ALTER TABLE mkt_negotiation_artifacts ADD COLUMN render_claimed_at INTEGER",
+  ]) {
+    try { await db.prepare(sql).run(); }
+    catch (e) { if (!/duplicate column|already exists/i.test(String(e))) throw e; }
+  }
 }
 
 export async function marketplaceNegotiateState(req: Request, env: Env): Promise<Response> {
@@ -408,6 +497,8 @@ export async function marketplaceNegotiateState(req: Request, env: Env): Promise
 }
 
 export async function marketplaceNegotiate(req: Request, env: Env, exctx?: ExecutionContext): Promise<Response> {
+  if (!(await marketplaceNegotiationOn(env))) return marketplaceDisabled("marketplace_negotiation");
+  if (!(await marketplaceDealDeliveryV2On(env))) return marketplaceDisabled("marketplace_deal_delivery");
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -422,10 +513,16 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
     // `kind` is REQUIRED here: runNegotiationJob feeds it to negotiationProfile(),
     // which caps the spoken transcript length. Omitting it silently degrades every
     // negotiation to the default profile.
-    "SELECT id, creator_id, kind, title, description, price, currency_display, status, agent_instructions, agent_lang, agent_voice_persona FROM listings WHERE id=?1",
+    "SELECT id, creator_id, kind, title, description, price, currency_display, status, expires_at, content_version, agent_instructions, agent_lang, agent_voice_persona FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!listing) return json({ error: "not found" }, 404);
   if (listing.creator_id === ctx.uid) return json({ error: "own_listing" }, 400);
+  if (!MARKETPLACE_NEGOTIATION_KINDS.has(String(listing.kind))) return json({ error: "not_marketplace_listing" }, 400);
+  if (!new Set(["published", "live"]).has(String(listing.status))) return json({ error: "listing_not_published" }, 409);
+  if (listing.expires_at != null && Number(listing.expires_at) <= Date.now()) return json({ error: "listing_expired" }, 410);
+  if (!isNegotiableListing(listing, version)) {
+    return json({ error: "content_version_mismatch", current_version: Number(listing.content_version ?? 0) }, 409);
+  }
 
   // MKT-LANG-3: quiet-hours guardrail. If the BUYER has quiet hours set and we're
   // inside that window, defer — do NOT start the agent call. The client renders a
@@ -447,10 +544,34 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
   }
 
   await ensureLedger(env);
-  const seen = await metaDb(env).prepare(
-    "SELECT 1 FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3",
+  const existingRun = await metaDb(env).prepare(
+    `SELECT negotiation_id, status, next_retry_at, buyer_max, must_haves
+       FROM mkt_negotiation_runs
+      WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3 LIMIT 1`,
   ).bind(ctx.uid, listingId, version).first<any>();
-  if (seen) {
+  if (existingRun) {
+    const retryAt = Number(existingRun.next_retry_at || 0);
+    if (String(existingRun.status) === "retryable" && retryAt <= Date.now()) {
+      const retryWork = runNegotiationJob(env, {
+        listing,
+        buyerUid: ctx.uid,
+        listingId,
+        version,
+        buyerMax: Math.max(0, Math.trunc(Number(existingRun.buyer_max) || buyerMax)),
+        currency,
+        mustHaves: String(existingRun.must_haves || mustHaves),
+        negotiationId: String(existingRun.negotiation_id),
+      });
+      if (exctx && typeof exctx.waitUntil === "function") exctx.waitUntil(retryWork);
+      else await retryWork;
+      return json({ ok: true, queued: true, retry: true, negotiation_id: existingRun.negotiation_id });
+    }
+    return json({ ok: false, already_talked: true, status: existingRun.status, retry_at: retryAt || null }, 200);
+  }
+  const legacySeen = await metaDb(env).prepare(
+    "SELECT 1 FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3 LIMIT 1",
+  ).bind(ctx.uid, listingId, version).first<any>();
+  if (legacySeen) {
     track(env, ctx.uid, "agent_call_blocked_already_talked", "avamarketplace", { listing_id: listingId, content_version: version });
     return json({ ok: false, already_talked: true }, 200);
   }
@@ -474,12 +595,25 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
     }
   }
 
-  // Reserve the talk-once slot NOW (outcome 'pending') so repeat taps are blocked
-  // immediately — even while the slow negotiation runs in the background.
+  // Reserve a stable run identity NOW (outcome 'pending') so repeat taps and
+  // concurrent requests converge on one negotiation/artifact/queue message.
+  const negotiationId = crypto.randomUUID();
+  const reservedAt = Date.now();
+  const claim = await metaDb(env).prepare(
+    `INSERT OR IGNORE INTO mkt_negotiation_runs
+       (negotiation_id, buyer_id, seller_id, listing_id, content_version, status, outcome,
+        agreed_price, currency, approval_status, buyer_max, must_haves, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,'queued','pending',0,?6,'not_required',?7,?8,?9,?9)`,
+  ).bind(negotiationId, ctx.uid, String(listing.creator_id), listingId, version, currency, buyerMax, mustHaves, reservedAt).run();
+  if ((claim.meta?.changes ?? 0) !== 1) {
+    track(env, ctx.uid, "agent_call_blocked_already_talked", "avamarketplace", { listing_id: listingId, content_version: version, race: true });
+    return json({ ok: false, already_talked: true }, 200);
+  }
+  // Keep the legacy ledger row for existing readers and daily-cap history.
   await metaDb(env).prepare(
     "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,'pending',0,?4,?5)",
-  ).bind(ctx.uid, listingId, version, currency, Date.now()).run();
-  track(env, ctx.uid, "negotiation_started", "avamarketplace", { listing_id: listingId });
+  ).bind(ctx.uid, listingId, version, currency, reservedAt).run();
+  track(env, ctx.uid, "negotiation_started", "avamarketplace", { listing_id: listingId, negotiation_id: negotiationId });
 
   // The negotiation (Sonnet ~8s) + voice render (Gemini TTS ~up to 30s) + delivery
   // is SLOW. If we ran it inline, a client disconnect (the app sends the user back
@@ -487,7 +621,7 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
   // exactly the "no negotiation appeared" bug. Run it in the background via
   // waitUntil so it always completes and lands in both threads. Respond instantly.
   const work = runNegotiationJob(env, {
-    listing, buyerUid: ctx.uid, listingId, version, buyerMax, currency, mustHaves,
+    listing, buyerUid: ctx.uid, listingId, version, buyerMax, currency, mustHaves, negotiationId,
   });
   if (exctx && typeof exctx.waitUntil === "function") exctx.waitUntil(work);
   else await work; // fallback: no ctx (e.g. tests) → run inline
@@ -497,10 +631,51 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
 /** The heavy negotiation job — runs in the background (waitUntil). */
 async function runNegotiationJob(env: Env, a: {
   listing: any; buyerUid: string; listingId: string; version: number;
-  buyerMax: number; currency: string; mustHaves: string;
+  buyerMax: number; currency: string; mustHaves: string; negotiationId: string;
 }): Promise<void> {
-  const { listing, buyerUid, listingId, version, buyerMax, currency, mustHaves } = a;
+  const { listing, buyerUid, listingId, version, buyerMax, currency, mustHaves, negotiationId } = a;
   try {
+    // A retry after transcript/artifact persistence is a delivery recovery, not
+    // a new LLM negotiation. Reuse the durable artifact and its stable identity
+    // so provider work and Messenger rows remain convergent.
+    const existingArtifact = await metaDb(env).prepare(
+      `SELECT seller_id, outcome, approval_status, agreed_price, currency,
+              transcript_en, transcript_i18n, summary
+         FROM mkt_negotiation_artifacts WHERE negotiation_id=?1 LIMIT 1`,
+    ).bind(negotiationId).first<any>();
+    if (existingArtifact?.transcript_en) {
+      const transcriptEn = JSON.parse(String(existingArtifact.transcript_en));
+      const transcriptI18n = existingArtifact.transcript_i18n ? JSON.parse(String(existingArtifact.transcript_i18n)) : { en: transcriptEn };
+      const transcript = Array.isArray(transcriptI18n.en) ? transcriptI18n.en : transcriptEn;
+      const artifactId = marketplaceArtifactId(negotiationId, 1);
+      await deliverDealAudio(env, {
+        negotiationId,
+        artifactId,
+        sellerUid: String(existingArtifact.seller_id || listing.creator_id),
+        buyerUid,
+        listingId,
+        contentVersion: version,
+        listingTitle: String(listing.title || "your listing"),
+        outcome: String(existingArtifact.outcome || "impasse"),
+        bubble: String(existingArtifact.outcome || "impasse") === "deal" ? "green" : "pale_yellow",
+        agreed: Number(existingArtifact.agreed_price || 0),
+        currency: String(existingArtifact.currency || currency),
+        transcript,
+        transcriptEn,
+        transcriptI18n,
+        summary: String(existingArtifact.summary || ""),
+        pendingOwnerApproval: String(existingArtifact.approval_status || "") === "pending",
+        lang: "en",
+      });
+      await metaDb(env).prepare(
+        `UPDATE mkt_negotiation_runs
+            SET status=CASE WHEN approval_status='pending' THEN 'awaiting_approval' ELSE 'completed' END,
+                next_retry_at=NULL, last_error=NULL, updated_at=?2
+          WHERE negotiation_id=?1`,
+      ).bind(negotiationId, Date.now()).run();
+      return;
+    }
+
     const asking = Math.trunc(Number(listing.price) || 0);
     const mandate = String(listing.agent_instructions || "").slice(0, 1200);
 
@@ -590,6 +765,18 @@ async function runNegotiationJob(env: Env, a: {
     await metaDb(env).prepare(
       "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
     ).bind(buyerUid, listingId, version, pendingOwnerApproval ? "pending_owner_approval" : outcome, agreed, currency, Date.now()).run();
+    await metaDb(env).prepare(
+      `UPDATE mkt_negotiation_runs
+          SET status=?2, outcome=?3, agreed_price=?4, approval_status=?5, updated_at=?6
+        WHERE negotiation_id=?1`,
+    ).bind(
+      negotiationId,
+      pendingOwnerApproval ? "awaiting_approval" : "completed",
+      outcome,
+      agreed,
+      pendingOwnerApproval ? "pending" : "not_required",
+      Date.now(),
+    ).run();
 
     track(env, buyerUid, "negotiation_outcome", "avamarketplace", {
       listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: cappedEn.length,
@@ -635,6 +822,23 @@ async function runNegotiationJob(env: Env, a: {
       });
     }
 
+    const artifactId = marketplaceArtifactId(negotiationId, 1);
+    const artifactCreatedAt = Date.now();
+    await metaDb(env).prepare(
+      `INSERT OR IGNORE INTO mkt_negotiation_artifacts
+         (negotiation_id, buyer_id, seller_id, listing_id, content_version,
+          artifact_version, outcome, approval_status, agreed_price, currency,
+          transcript_en, transcript_i18n, summary, render_status, delivery_status,
+          created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,1,?6,?7,?8,?9,?10,?11,?12,'queued','pending',?13,?13)`,
+    ).bind(
+      negotiationId, buyerUid, sellerUid, listingId, version,
+      outcome,
+      pendingOwnerApproval ? "pending" : "not_required",
+      agreed, currency,
+      JSON.stringify(cappedEn), JSON.stringify(transcriptI18n), summaryEn, artifactCreatedAt,
+    ).run();
+
     // RULE (owner 2026-06-30): render the deal-audio voice note for BOTH outcomes
     // and drop it into both chat threads, colour-coded — DEAL = green, IMPASSE =
     // pale yellow. Gemini 2.5 multi-speaker TTS → WAV in R2 → voice message in each
@@ -643,7 +847,7 @@ async function runNegotiationJob(env: Env, a: {
     // the buyer's chosen voice drives the buyer speaker.
     const bubble = outcome === "deal" ? "green" : "pale_yellow";
     const delivery = await deliverDealAudio(env, {
-      sellerUid, buyerUid, listingId,
+      negotiationId, artifactId, sellerUid, buyerUid, listingId, contentVersion: version,
       listingTitle: String(listing.title || "your listing"),
       outcome, bubble, agreed, currency,
       transcript: buyerTranscript,
@@ -656,7 +860,8 @@ async function runNegotiationJob(env: Env, a: {
     // records that the render was enqueued. The consumer emits mkt_audio_delivered
     // / mkt_audio_render_failed with the actual result + bytes.
     track(env, buyerUid, "deal_audio_queued", "avamarketplace", {
-      listing_id: listingId, outcome, bubble, queued: (delivery as any).queued === true,
+      listing_id: listingId, negotiation_id: negotiationId, artifact_id: artifactId,
+      outcome, bubble, queued: (delivery as any).queued === true,
     });
     // Also a bell notification so it shows in the notifications list, not just the
     // thread. Bodies use each party's language summary (MKT-LANG-3). When the deal
@@ -670,16 +875,169 @@ async function runNegotiationJob(env: Env, a: {
       await notifyUser(env, buyerUid, { type: "marketplace_deal", title: outcome === "deal" ? (pendingOwnerApproval ? "Deal reached — awaiting the seller" : "Your agent reached a deal") : "Your agent finished negotiating", body: buyerSummary, data: { listing_id: listingId, outcome, bubble, pending_owner_approval: pendingOwnerApproval } }, { push: false });
     } catch { /* notify best-effort */ }
   } catch (e) {
-    // A rare failure shouldn't burn the buyer's single chance — release the slot
-    // (only if it's still 'pending', i.e. never produced an outcome) so they can retry.
+    // Preserve the reservation as retryable. The next client retry converges on
+    // the same negotiation/artifact; no terminal loss and no duplicate logical
+    // Messenger card. Backoff is durable in D1 because waitUntil is not.
     try {
+      const failedAt = Date.now();
+      const retryRow = await metaDb(env).prepare(
+        "SELECT retry_count FROM mkt_negotiation_runs WHERE negotiation_id=?1 LIMIT 1",
+      ).bind(negotiationId).first<any>();
+      const retryCount = Math.max(0, Number(retryRow?.retry_count || 0));
+      const nextRetryAt = failedAt + Math.min(3_600_000, 30_000 * Math.pow(2, Math.min(6, retryCount)));
       await metaDb(env).prepare(
-        "DELETE FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3 AND outcome='pending'",
-      ).bind(buyerUid, listingId, version).run();
-    } catch { /* ignore */ }
+        `UPDATE mkt_negotiation_runs
+            SET status='retryable', retry_count=COALESCE(retry_count,0)+1,
+                next_retry_at=?2, last_error=?3, updated_at=?2
+          WHERE negotiation_id=?1`,
+      ).bind(negotiationId, nextRetryAt, String((e as any)?.message ?? e).slice(0, 500)).run();
+    } catch (persistError) {
+      console.error("[marketplace] retry state persistence failed", String(persistError));
+    }
     track(env, buyerUid, "negotiation_failed", "avamarketplace", { listing_id: listingId, error: String((e as any)?.message ?? e).slice(0, 200) });
+    throw e;
   }
 }
+
+/**
+ * Seller decision for an ask-before-commit deal.  The decision is durable
+ * before the Messenger append, and a repeated request replays the same
+ * deterministic decision message rather than creating another card.
+ */
+export async function marketplaceDealDecision(
+  req: Request,
+  env: Env,
+  routeDecision?: "approve" | "reject",
+  routeNegotiationId?: string,
+): Promise<Response> {
+  if (!(await marketplaceDealDeliveryV2On(env))) return marketplaceDisabled("marketplace_deal_delivery");
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const negotiationId = String(routeNegotiationId || b.negotiation_id || "").trim();
+  if (!negotiationId) return json({ error: "negotiation_id required" }, 400);
+  const decision = routeDecision ?? (b.decision === "approve" || b.decision === "reject" ? b.decision : null);
+  if (!decision) return json({ error: "decision must be approve or reject" }, 400);
+
+  const db = metaDb(env);
+  const run = await db.prepare(
+    `SELECT negotiation_id, buyer_id, seller_id, listing_id, content_version,
+            outcome, agreed_price, currency, approval_status, status
+       FROM mkt_negotiation_runs WHERE negotiation_id=?1 LIMIT 1`,
+  ).bind(negotiationId).first<any>();
+  if (!run) return json({ error: "negotiation_not_found" }, 404);
+  if (String(run.seller_id) !== ctx.uid) return json({ error: "forbidden" }, 403);
+
+  const targetApproval = decision === "approve" ? "approved" : "rejected";
+  const targetOutcome = decision === "approve" ? "deal" : "rejected";
+  const artifact = await db.prepare(
+    `SELECT buyer_id, seller_id, listing_id, outcome, agreed_price, currency,
+            transcript_en, transcript_i18n, summary, audio_key, approval_status
+       FROM mkt_negotiation_artifacts WHERE negotiation_id=?1 LIMIT 1`,
+  ).bind(negotiationId).first<any>();
+  if (!artifact) return json({ error: "negotiation_artifact_missing" }, 409);
+
+  // Parse all persisted approval payloads before mutating any state. A corrupt
+  // transcript must remain retryable and must never leave a half-committed
+  // seller decision that cannot be rendered into Messenger.
+  let transcriptEn: Array<{ speaker: string; text: string }> = [];
+  let transcriptI18n: Record<string, Array<{ speaker: string; text: string }>> | undefined;
+  try {
+    transcriptEn = artifact.transcript_en ? JSON.parse(String(artifact.transcript_en)) : [];
+    transcriptI18n = artifact.transcript_i18n ? JSON.parse(String(artifact.transcript_i18n)) : undefined;
+    if (!Array.isArray(transcriptEn)) throw new Error("transcript_not_array");
+  } catch {
+    return json({ error: "negotiation_artifact_invalid" }, 409);
+  }
+  const updatedAt = Date.now();
+  const changed = await db.prepare(
+    `UPDATE mkt_negotiation_runs
+        SET approval_status=?2, outcome=?3, status=?4, updated_at=?5
+      WHERE negotiation_id=?1 AND approval_status='pending' AND status='awaiting_approval'`,
+  ).bind(negotiationId, targetApproval, targetOutcome, decision === "approve" ? "completed" : "rejected", updatedAt).run();
+  const alreadySame = String(run.approval_status) === targetApproval;
+  if ((changed.meta?.changes ?? 0) !== 1 && !alreadySame) {
+    return json({ error: "decision_already_made", approval_status: run.approval_status }, 409);
+  }
+
+  await db.prepare(
+    `UPDATE mkt_negotiation_artifacts
+        SET approval_status=?2, outcome=?3, updated_at=?4
+      WHERE negotiation_id=?1`,
+  ).bind(negotiationId, targetApproval, targetOutcome, updatedAt).run();
+  await db.prepare(
+    `UPDATE mkt_negotiations
+        SET outcome=?4, agreed_price=?5, created_at=created_at
+      WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3`,
+  ).bind(String(run.buyer_id), String(run.listing_id), Number(run.content_version), targetOutcome, Number(artifact.agreed_price || run.agreed_price || 0)).run();
+
+  const artifactId = marketplaceArtifactId(negotiationId, 1);
+  const envelope = JSON.stringify({
+    t: "marketplace_deal",
+    text: decision === "approve" ? "✅ Seller approved the marketplace deal" : "❌ Seller rejected the marketplace deal",
+    outcome: targetOutcome,
+    bubble: decision === "approve" ? "green" : "pale_yellow",
+    decision,
+    agreed_price: Number(artifact.agreed_price || run.agreed_price || 0),
+    currency: String(artifact.currency || run.currency || "USD"),
+    listing_id: String(artifact.listing_id || run.listing_id),
+    negotiation_id: negotiationId,
+    buyer_id: String(run.buyer_id),
+    seller_id: String(run.seller_id),
+    transcript: transcriptEn,
+    transcript_en: transcriptEn,
+    transcript_i18n: transcriptI18n,
+    summary: artifact.summary || null,
+    has_audio: !!artifact.audio_key,
+    audio_key: artifact.audio_key || null,
+    pending_owner_approval: false,
+  });
+  let delivery: Awaited<ReturnType<typeof upsertMarketplaceMessage>>;
+  try {
+    delivery = await upsertMarketplaceMessage(
+      env,
+      { sellerUid: String(run.seller_id), buyerUid: String(run.buyer_id), listingId: String(run.listing_id), negotiationId },
+      envelope,
+      artifactId,
+      "result",
+      artifact.audio_key || null,
+    );
+  } catch (e) {
+    // The decision is already authoritative, but its Messenger projection is
+    // explicitly retryable. A repeated identical request enters this same
+    // branch and patches/creates the stable result row without a second card.
+    await db.prepare(
+      `UPDATE mkt_negotiation_artifacts
+          SET delivery_status='retryable', last_error=?2, updated_at=?3
+        WHERE negotiation_id=?1`,
+    ).bind(negotiationId, String(e).slice(0, 500), Date.now()).run();
+    return json({ error: "decision_delivery_retryable", retryable: true, negotiation_id: negotiationId }, 503);
+  }
+  await db.prepare(
+    `UPDATE mkt_negotiation_artifacts
+        SET result_buyer_message_id=?2, result_seller_message_id=?2,
+            result_buyer_delivered_at=?3, result_seller_delivered_at=?3,
+            delivery_status='text_ready', updated_at=?3, last_error=NULL
+      WHERE negotiation_id=?1`,
+  ).bind(negotiationId, delivery.clientId, Date.now()).run();
+
+  track(env, ctx.uid, `negotiation_${decision}`, "avamarketplace", {
+    negotiation_id: negotiationId, listing_id: run.listing_id,
+    buyer_id: run.buyer_id, seller_id: run.seller_id,
+  });
+  return json({
+    ok: true,
+    negotiation_id: negotiationId,
+    approval_status: targetApproval,
+    conv: delivery.conv,
+    client_id: delivery.clientId,
+    already_processed: "alreadyProcessed" in delivery.buyer
+      && "alreadyProcessed" in delivery.seller
+      && delivery.buyer.alreadyProcessed
+      && delivery.seller.alreadyProcessed,
+  });
+}
+
 // ── P6: AI search over active listings ────────────────────────────────────────
 // ONE shared marketplace index (owner rule: no per-user AI Search instances).
 // Today this delegates to the single shared FTS5 index behind /api/explore/search
@@ -687,6 +1045,10 @@ async function runNegotiationJob(env: Env, a: {
 // AI Search index (env.AI_SEARCH binding) for semantic ranking without changing
 // the client contract.
 export async function marketplaceSearch(req: Request, env: Env): Promise<Response> {
+  if (!(await marketplaceOn(env))) return marketplaceDisabled();
+  // Public read also acts as the safe post-deploy schema bootstrap. Both calls
+  // are idempotent CREATE IF NOT EXISTS operations and cached per isolate.
+  await Promise.all([ensureLedger(env), ensureListingBillingSchema(env)]);
   const u = new URL(req.url);
   const q = (u.searchParams.get("q") ?? "").trim();
   // AI query expansion (Sonnet) → synonyms/brands/category, OR'd into the FTS
@@ -719,6 +1081,7 @@ export async function marketplaceSearch(req: Request, env: Env): Promise<Respons
 // AvaTOK. Image NSFW screening runs in the upload path (vision classifier);
 // CSAM hash-matching is the deferred P8 hard gate. Reject-with-reason here.
 export async function marketplacePrecheck(req: Request, env: Env): Promise<Response> {
+  if (!(await marketplacePublishOn(env))) return marketplaceDisabled("marketplace_publish");
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -772,6 +1135,28 @@ export async function marketplaceAudio(req: Request, env: Env): Promise<Response
   if (isFail(ctx)) return new Response("unauthorized", { status: 401 });
   const key = new URL(req.url).searchParams.get("key") || "";
   if (!key.startsWith("mkt/deal/")) return new Response("bad key", { status: 400 });
+  // R2 keys are bearer-like values.  A leaked chat envelope must not grant an
+  // unrelated authenticated account access, so authorize against the durable
+  // artifact participants before reading the object.
+  let owner = await metaDb(env).prepare(
+    `SELECT 1 FROM mkt_negotiation_artifacts
+      WHERE audio_key=?1 AND (buyer_id=?2 OR seller_id=?2) LIMIT 1`,
+  ).bind(key, ctx.uid).first();
+  // Legacy cards predate the artifact table and their random key cannot be
+  // mapped safely to one buyer's negotiation. Permit the listing owner (the
+  // seller) to replay old history, but deny buyer-side legacy replay rather
+  // than exposing another buyer's audio to every historical participant.
+  if (!owner) {
+    const listingId = key.split("/")[2] || "";
+    if (listingId) {
+      owner = await metaDb(env).prepare(
+        `SELECT 1
+           FROM listings l
+          WHERE l.id=?1 AND l.creator_id=?2 LIMIT 1`,
+      ).bind(listingId, ctx.uid).first();
+    }
+  }
+  if (!owner) return new Response("forbidden", { status: 403 });
   const obj = await (env as any).BLOBS.get(key);
   if (!obj) return new Response("not found", { status: 404 });
   // Serve the object's stored type (new deals are .mp3, older ones .wav).

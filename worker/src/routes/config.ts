@@ -1233,6 +1233,13 @@ export interface PlatformConfig {
   // inAppUpdateEnabled, found 2026-07-15). Default OFF per FREE LAUNCH (marketplace
   // hidden); flip ON in KV (staging first) when the marketplace goes public.
   marketplaceEnabled: boolean;
+  // Independent server-side brakes. UI visibility is never a rollback or
+  // authorization mechanism; stop new writes while existing content stays readable.
+  marketplacePublishEnabled: boolean;
+  marketplaceNegotiationEnabled: boolean;
+  // Independent rollback gate for the V2 Messenger result/audio delivery
+  // contract. UI visibility and negotiation admission must not be its brake.
+  marketplaceDealDeliveryV2: boolean;
   // Master kill switch for /api/olx/*. Until now olx.ts was LIVE in production gated
   // by nothing — no flag anywhere. Default OFF so the routes ship dark and can be
   // turned on deliberately in KV (staging first). Read side lives in routes/olx.ts.
@@ -1853,6 +1860,9 @@ const DEFAULTS: PlatformConfig = {
   // Creator marketplace (/api/marketplace/*) — DARK, per FREE LAUNCH. The kill switch
   // marketplace.ts always claimed to have; it did not exist until now.
   marketplaceEnabled: false,
+  marketplacePublishEnabled: false,
+  marketplaceNegotiationEnabled: false,
+  marketplaceDealDeliveryV2: false,
   // OLX surface (/api/olx/*) — DARK. Was previously ungated in production; flip ON in
   // KV (staging first) when it should be reachable.
   olxEnabled: false,

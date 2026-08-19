@@ -51,7 +51,14 @@ import { gatePublicAction, emailOf, type PublicAction } from "../lib/identity_ga
 import { DEFAULT_VERTICAL, resolveCategoryVersion, validateAttrs } from "./categories";
 // [AVA-MKT-ENTITLEMENTS-1] §5 quota + §1.3 token charge, consumed inside the publish
 // keyed on listing_id (§3.3c). Same helper the compose publish path calls.
-import { consumeListingEntitlement } from "../lib/listing_billing";
+import {
+  consumeListingEntitlement,
+  finalizeListingPublication,
+  markListingEntitlementPublished,
+  quoteListingEntitlement,
+  type ListingEntitlementOk,
+} from "../lib/listing_billing";
+import { readConfig } from "./config";
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -60,6 +67,20 @@ const MARKET_KINDS = new Set(["sell", "buy", "social"]);
 const CAPACITIES = new Set([1, 10, 20]);
 const FANOUT_DAILY_CAP = 2;       // A2 anti-spam
 const FANOUT_MAX_FOLLOWERS = 500;
+
+async function marketplacePublishOn(env: Env): Promise<boolean> {
+  try {
+    const cfg = await readConfig(env);
+    return cfg.marketplaceEnabled === true && cfg.marketplacePublishEnabled === true;
+  } catch { return false; }
+}
+
+function marketplaceOff(): Response {
+  return json({
+    error: "marketplace_publish_disabled",
+    message: "Marketplace publishing is temporarily unavailable.",
+  }, 503);
+}
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -529,6 +550,7 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = String(b.kind || "");
   if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult|sell|buy|social" }, 400);
+  if (MARKET_KINDS.has(kind) && !(await marketplacePublishOn(env))) return marketplaceOff();
   // Marketplace listing gate (2026-07-10): a Didit LIVENESS pass, valid 90 days.
   // Creating a listing is a public action, so it is gated exactly like posts,
   // going live and DMs to strangers. There is no phone check here (none anywhere).
@@ -612,6 +634,7 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
     "SELECT creator_id, status, kind, content_version, title, description, price, currency_display, category, attrs, cat_version FROM listings WHERE id=?1",
   ).bind(id).first<any>();
   if (!row || row.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  if (MARKET_KINDS.has(String(row.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
   if (row.status === "cancelled" || row.status === "completed") return json({ error: "listing closed" }, 409);
   const b = (await req.json().catch(() => ({}))) as any;
   const f = normFields(b);
@@ -676,6 +699,13 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   if (row.status !== "draft" && row.kind === "live_event" && ("starts_at" in f || "duration_min" in f)) {
     return json({ error: "cannot move a published event — cancel and re-create" }, 409);
   }
+  // A marketplace expiry is a paid/free 30-day entitlement. Updating expiry_days
+  // on an already-published listing must not extend the live window for free; the
+  // next period is obtained by restoring to draft and publishing again, which
+  // consumes the next deterministic entitlement period.
+  if ("expiry_days" in f && MARKET_KINDS.has(String(row.kind)) && row.status !== "draft") {
+    return json({ error: "renewal_required", message: "Restore this listing and publish a new 30-day period." }, 409);
+  }
   // [AVA-MKT-CVER-1] Bump content_version ONLY on a real delta to a MATERIAL field.
   // Submitting title unchanged (the client PUTs the whole form) must NOT reopen every
   // buyer's paid negotiation — hence the value comparison, not an `in f` check.
@@ -703,18 +733,39 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   // #8: live listing update — nudge anyone viewing this listing to refresh
   // (price / details changed). Ephemeral, best-effort.
   void partyEmit(env, `listing:${id}`, { t: "listing_update" });
-  // Renewing the expiry on a published/live marketplace listing recomputes the
-  // absolute expires_at from "now" so the renewed window actually takes effect.
-  if ("expiry_days" in f && Number(f.expiry_days) > 0 && MARKET_KINDS.has(String(row.kind)) && row.status !== "draft") {
-    await metaDb(env).prepare("UPDATE listings SET expires_at=?2 WHERE id=?1")
-      .bind(id, Date.now() + Number(f.expiry_days) * 86_400_000).run();
-  }
   if (row.status !== "draft") await ftsSync(env, id);
   // content_version is additive in this response: the client can refresh its copy of
   // the reopen key without re-fetching the card.
   // [AVA-MKT-VERT-1] attrs_missing is the compose loop's "what must I still ask before
   // this can publish" (§2.2 min_required) — reported, never enforced, on a draft save.
   return json({ ok: true, content_version: version, attrs_missing: attrsMissing });
+}
+
+// GET /api/marketplace/listing-quote?listing_id=... — authoritative fee preview.
+// The listing must already be the caller's draft so a client cannot probe another
+// account's quota/balance or manufacture a period identity.
+export async function listingFeeQuote(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (!(await marketplacePublishOn(env))) return marketplaceOff();
+  const listingId = (new URL(req.url).searchParams.get("listing_id") || "").trim();
+  if (!listingId) return json({ error: "listing_id required" }, 400);
+  const listing = await metaDb(env).prepare(
+    "SELECT creator_id, kind, vertical, status FROM listings WHERE id=?1",
+  ).bind(listingId).first<any>();
+  if (!listing || String(listing.creator_id) !== ctx.uid) return json({ error: "not found" }, 404);
+  if (!MARKET_KINDS.has(String(listing.kind))) return json({ error: "not a marketplace listing" }, 400);
+  if (String(listing.status) !== "draft") return json({ error: "listing_not_draft", status_now: listing.status }, 409);
+  try {
+    const quote = await quoteListingEntitlement(env, {
+      uid: ctx.uid,
+      listingId,
+      vertical: String(listing.vertical ?? DEFAULT_VERTICAL),
+    });
+    return json({ ok: true, quote });
+  } catch {
+    return json({ error: "billing_unavailable", message: "Listing pricing is temporarily unavailable." }, 503);
+  }
 }
 
 // POST /api/listings/:id/publish — KYC gate + slot claim (live) / rules check (consult).
@@ -724,7 +775,17 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   const db = metaDb(env);
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
-  if (l.status !== "draft") return json({ error: "already published", status_now: l.status }, 409);
+  if (l.status !== "draft") {
+    // A prior request may have committed the listing and lost its response
+    // after the D1 batch. Reconcile the operation before reporting a conflict
+    // so a retry cannot strand an entitled listing in an ambiguous state.
+    if (MARKET_KINDS.has(String(l.kind)) && String(l.status) === "published") {
+      const reconciled = await markListingEntitlementPublished(env, { listingId: id });
+      if (reconciled) return json({ ok: true, status: "published", reconciled: true });
+    }
+    return json({ error: "already published", status_now: l.status }, 409);
+  }
+  if (MARKET_KINDS.has(String(l.kind)) && !(await marketplacePublishOn(env))) return marketplaceOff();
 
   // Marketplace listing gate (2026-07-10): a Didit LIVENESS pass, valid 90 days.
   // Covers publish AND edit-to-republish (a re-publish always funnels back through
@@ -784,34 +845,54 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   //   • insufficient funds → we return 402 and DO NOT flip status (nothing published,
   //     nothing charged, no entitlement row written — the draft is untouched).
   //   • ok → the flip proceeds; a charged listing always goes live.
-  // IDEMPOTENCY: keyed on (l.id, period=1). A re-publish of an already-live listing is
-  // rejected at the l.status !== "draft" guard above (409) before reaching here; and an
-  // archive→restore→republish re-enters with the SAME listing id → the (listing_id, 1) PK
-  // row already exists → consumeListingEntitlement returns it as-is, NO second charge.
+  // IDEMPOTENCY: the helper resumes an interrupted operation for the same
+  // (listing, period), while a completed restore advances to period 2+ so archive→
+  // restore→republish cannot reuse period 1.
+  let feeQuote: Awaited<ReturnType<typeof quoteListingEntitlement>> | null = null;
+  let feeEntitlement: ListingEntitlementOk | null = null;
   if (isMarket) {
+    try {
+      feeQuote = await quoteListingEntitlement(env, {
+        uid: ctx.uid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL),
+      });
+    } catch {
+      return json({ error: "billing_unavailable", message: "Listing pricing is temporarily unavailable. Try again in a minute." }, 503);
+    }
     const ent = await consumeListingEntitlement(env, {
-      uid: ctx.uid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL), period: 1,
+      uid: ctx.uid, listingId: id, vertical: String(l.vertical ?? DEFAULT_VERTICAL), period: feeQuote.period,
     });
     if (!ent.ok) {
       if (ent.error === "insufficient_funds") {
-        track(env, ctx.uid, "listing_publish_insufficient_funds", APP, { listing_id: id, needed: ent.needed });
-        return json({ error: "insufficient_funds", needed: ent.needed, feature: "listing_post" }, 402);
+        track(env, ctx.uid, "listing_publish_insufficient_funds", APP, { listing_id: id, needed: ent.needed, period: feeQuote.period });
+        return json({ error: "insufficient_funds", needed: ent.needed, feature: "listing_post", fee: feeQuote }, 402);
       }
       // charge_failed — wallet unreachable/errored. Fail closed like moderation: nothing
       // charged, nothing published, safe to retry.
-      track(env, ctx.uid, "listing_publish_charge_failed", APP, { listing_id: id });
+      track(env, ctx.uid, "listing_publish_charge_failed", APP, { listing_id: id, period: feeQuote.period, recovery_required: ent.error === "recovery_required" });
       return json({ error: "billing_unavailable", message: "Couldn't complete the listing charge right now, try again in a minute." }, 503);
     }
+    feeEntitlement = ent;
+    feeQuote = {
+      ...feeQuote,
+      source: ent.source,
+      amount: ent.amount,
+      expires_at: ent.expires_at,
+      paid_balance: ent.balance,
+    };
   }
 
   const pubNow = Date.now();
   if (isMarket) {
-    // Marketplace listings carry an expiry (the user picked 1/5/10/20/30 days);
-    // expired listings drop out of browse and land in Archived. Re-publishing
-    // from a restored draft sets a fresh expiry here.
-    const expDays = Number(l.expiry_days) > 0 ? Number(l.expiry_days) : 30;
-    await db.prepare("UPDATE listings SET status='published', expires_at=?2, updated_at=?3 WHERE id=?1")
-      .bind(id, pubNow + expDays * 86_400_000, pubNow).run();
+    const finalized = await finalizeListingPublication(env, {
+      listingId: id,
+      period: feeQuote?.period ?? 0,
+      expiresAt: feeQuote?.expires_at ?? (pubNow + 30 * 86_400_000),
+      now: pubNow,
+    });
+    if (!finalized) {
+      track(env, ctx.uid, "listing_publish_finalize_failed", APP, { listing_id: id, period: feeQuote?.period ?? null });
+      return json({ error: "billing_unavailable", message: "The listing charge completed, but publication could not be finalized. Please retry." }, 503);
+    }
   } else {
     await db.prepare("UPDATE listings SET status='published', updated_at=?2 WHERE id=?1").bind(id, pubNow).run();
   }
@@ -823,8 +904,22 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   const fo = await fanout(env, ctx.uid, `${who} just scheduled: ${String(l.title).slice(0, 40)}`,
     l.kind === "live_event" ? "New live event — book your spot" : "New session offering", `/explore/listing/${id}`);
   void brainIngest(env, { uid: ctx.uid, domain: "listings", kind: "listing_published", sourceId: id, text: `Published listing "${l.title}" (${l.kind})`, meta: { kind: l.kind, title: l.title, price: l.price } });
-  track(env, ctx.uid, "listing_published", APP, { kind: l.kind, price: l.price, fanout: fo.sent });
-  return json({ ok: true, status: "published", fanout: fo });
+  track(env, ctx.uid, "listing_published", APP, {
+    kind: l.kind, price: l.price, fanout: fo.sent,
+    fee_source: feeEntitlement?.source ?? feeQuote?.source ?? null, fee_charged: feeEntitlement?.charged ?? 0,
+    fee_period: feeQuote?.period ?? null,
+  });
+  return json({
+    ok: true, status: "published", fanout: fo,
+    ...(feeQuote ? {
+      fee: {
+        source: feeEntitlement?.source ?? feeQuote.source, charged: feeEntitlement?.charged ?? 0, amount: feeQuote.amount,
+        funding_policy: feeQuote.funding_policy, period: feeQuote.period,
+        free_used: feeQuote.free_used, free_remaining: feeQuote.free_remaining,
+        paid_balance: feeQuote.paid_balance, entitlement_expires_at: feeQuote.expires_at,
+      },
+    } : {}),
+  });
 }
 
 // POST /api/listings/:id/status {status} — owner glue for live|completed|cancelled.
@@ -839,6 +934,10 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (to === "draft") {
     // RESTORE from Archived → back to an editable draft (clear expiry, drop from search).
+    if (MARKET_KINDS.has(String(l.kind))) {
+      const reconciled = await markListingEntitlementPublished(env, { listingId: id });
+      if (!reconciled) return json({ error: "billing_unavailable", message: "The listing entitlement could not be reconciled. Try again shortly." }, 503);
+    }
     await db.prepare("UPDATE listings SET status='draft', expires_at=NULL, updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
     await ftsSync(env, id, true);
     track(env, ctx.uid, "listing_restored", APP, {});

@@ -168,11 +168,12 @@ import {
   myListings, listingPromotions, deletePromotion, exploreBrowse, exploreLiveNow, exploreSearch,
   exploreCategories, getListing, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing, createReview,
+  listingFeeQuote,
 } from "./routes/listings";
 import { listingStats, creatorStats } from "./routes/insights";
 import {
   marketplaceAiAssist, marketplaceNegotiate, marketplaceNegotiateState,
-  marketplaceSearch, marketplacePrecheck, marketplaceAudio,
+  marketplaceSearch, marketplacePrecheck, marketplaceAudio, marketplaceDealDecision,
 } from "./routes/marketplace";
 import { marketplaceCategories, proposedCategories } from "./routes/categories";
 import { composeSession, composeTurn, composePublish } from "./routes/compose";
@@ -1492,11 +1493,18 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/marketplace/compose/turn" && req.method === "POST") return await composeTurn(req, env);
       if (p === "/api/marketplace/compose/publish" && req.method === "POST") return await composePublish(req, env);
       if (p === "/api/marketplace/ai-assist" && req.method === "POST") return await marketplaceAiAssist(req, env);
+      if (p === "/api/marketplace/listing-quote" && req.method === "GET") return await listingFeeQuote(req, env);
       if (p === "/api/marketplace/negotiate" && req.method === "POST") return await marketplaceNegotiate(req, env, ctx);
       if (p === "/api/marketplace/negotiate/state" && req.method === "GET") return await marketplaceNegotiateState(req, env);
       if (p === "/api/marketplace/search" && req.method === "GET") return await marketplaceSearch(req, env);
       if (p === "/api/marketplace/precheck" && req.method === "POST") return await marketplacePrecheck(req, env);
       if (p === "/api/marketplace/audio" && req.method === "GET") return await marketplaceAudio(req, env);
+      if (p === "/api/marketplace/deal/approve" && req.method === "POST") return await marketplaceDealDecision(req, env, "approve");
+      if (p === "/api/marketplace/deal/reject" && req.method === "POST") return await marketplaceDealDecision(req, env, "reject");
+      {
+        const md = p.match(/^\/api\/marketplace\/negotiate\/([A-Za-z0-9-]{1,96})\/decision$/);
+        if (md && req.method === "POST") return await marketplaceDealDecision(req, env, undefined, md[1]);
+      }
       if (p === "/api/report" && req.method === "POST") return await report(req, env);
       if (p === "/api/creators/me" && req.method === "PUT") return await updateMyChannel(req, env);
       // Creator insights dashboards (owner-gated).

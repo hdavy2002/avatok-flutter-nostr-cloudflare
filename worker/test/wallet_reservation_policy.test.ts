@@ -83,9 +83,9 @@ class FakeSql {
       if (!this.ops.has(id)) this.ops.set(id, { result: String(b[1]), ts: Number(b[2]) });
       return [];
     }
-    if (s === "DELETE FROM ops WHERE ts < ?1") {
+    if (s === "DELETE FROM ops WHERE ts < ?1 AND op_id NOT LIKE 'listing:%'") {
       const cutoff = Number(b[0]);
-      for (const [k, v] of this.ops) if (v.ts < cutoff) this.ops.delete(k);
+      for (const [k, v] of this.ops) if (v.ts < cutoff && !k.startsWith("listing:")) this.ops.delete(k);
       return [];
     }
 
@@ -358,6 +358,29 @@ describe("idempotent replay — reserve and settle_ai_cost", () => {
     const bal = await op(ctx.wallet, { op: "balance", uid: "u1" });
     expect(bal.body.bonus).toBe(8); // 10 - 2, NOT 10 - 4
     expect(bal.body.debt_micro_usd).toBe(5_000); // NOT 10_000 (double-counted)
+  });
+});
+
+describe("marketplace listing op retention beyond the generic 48-hour cache", () => {
+  it("replays a stale listing debit while pruning unrelated stale operations", async () => {
+    const first = await op(ctx.wallet, {
+      op: "credit", uid: "u1", amount: 10, op_id: "listing:seller-1:1",
+    });
+    expect(first.status).toBe(200);
+    ctx.sql.ops.set("generic:old", { result: JSON.stringify({ ok: true }), ts: Date.now() - 49 * 3_600_000 });
+    const listing = ctx.sql.ops.get("listing:seller-1:1");
+    if (!listing) throw new Error("listing operation was not recorded");
+    listing.ts = Date.now() - 49 * 3_600_000;
+
+    await op(ctx.wallet, { op: "credit", uid: "u1", amount: 1, op_id: "generic:new" });
+    expect(ctx.sql.ops.has("generic:old")).toBe(false);
+    expect(ctx.sql.ops.has("listing:seller-1:1")).toBe(true);
+
+    const replay = await op(ctx.wallet, {
+      op: "credit", uid: "u1", amount: 10, op_id: "listing:seller-1:1",
+    });
+    expect(replay.body.duplicate).toBe(true);
+    expect((await op(ctx.wallet, { op: "balance", uid: "u1" })).body.balance).toBe(11);
   });
 });
 
