@@ -64,18 +64,21 @@ asking the environment/format widgets above. Follow this fixed flow:
 
    ```bash
    gh workflow run android.yml --ref main \\
-     -f environment=prod -f artifact=aab -f play_track=internal
+     -f environment=prod -f artifact=aab -f play_track=alpha
    ```
 
 3. The workflow creates only the signed Play-upload AAB (no APK), uploads it as
    the GitHub artifact/release asset, publishes the AAB to Google Play
-   Internal testing, updates the app's `latestAppBuild` pointer, and sends the
+   Closed testing (Alpha), updates the app's `latestAppBuild` pointer, and sends the
    matching quiet FCM `app_update` notification to registered devices. The run
    MUST verify both `update_broadcast_last_build` and
    `update_broadcast_completed_build` equal the new build before it is successful.
    **Owner decision 2026-08-15:** this FCM notice is a permanent, required part
    of every exact **“ship it” / “SHIP IT”** release; never omit it or treat it as
-   best-effort. It fires only after the Play Internal publication succeeds.
+   best-effort. It fires only after the Play Closed Alpha publication succeeds.
+   **Owner decision 2026-08-19:** Closed Alpha is the canonical tester update
+   source. Internal testing is no longer used by **“ship it”** or by the app's
+   `latestAppBuild` update pointer.
 4. Wait for the production GitHub Environment approval gate and approve the exact
    requested run. Report the workflow URL, run result, build number, artifact
    links, Play track, pointer-update result, and FCM fan-out completion result.

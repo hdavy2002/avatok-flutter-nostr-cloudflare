@@ -3,7 +3,7 @@ name: Android build
 # All app builds run on GitHub Actions — never on a local machine.
 # Builds the app under app/ as a signed Play-upload AAB by default. Production
 # "ship it" runs are AAB-only: no side-load APK task or artifact is created.
-# The workflow publishes to Google Play Internal testing, updates latestAppBuild,
+# The workflow publishes to Google Play Closed testing (Alpha), updates latestAppBuild,
 # and verifies the matching FCM update notification reached the fan-out worker.
 
 # Staging lane (creator-marketplace Phase 1, A1): pushes to the `staging`
@@ -45,24 +45,23 @@ on:
         # updater) for installs IT owns. A side-loaded APK can never be updated by
         # either mechanism, no matter what the app code does.
         #
-        # DEFAULT IS `internal`, and that default is the feature. It shipped as
+        # DEFAULT IS `alpha`, and that default is the feature. It shipped as
         # `none` for one day and the owner immediately hit the thing it causes: he
         # ran a build, the publish step silently skipped because he'd left the
         # dropdown alone, and he was back to downloading the .aab and uploading it
         # to Play by hand — the exact manual work this automation exists to remove.
         # A safe-looking default that makes the common path fail silently is not
-        # safe. Internal testing is testers-only and needs no Google review, so
-        # auto-publishing there is cheap and reversible; pick `none` explicitly if
-        # you want a build artifact without touching Play.
+        # safe. Closed Alpha is the owner's canonical tester release track; pick
+        # `none` explicitly if you want a build artifact without touching Play.
         #
         # `production` is deliberately NOT an option: it makes a build live for real
         # users once review passes, and that belongs to a deliberate click in the
         # Play Console, not a dropdown on a build. Promote from a testing track.
-        description: 'Publish the .aab to a Play track (internal = auto-publish + update prompt)'
+        description: 'Publish the .aab to a Play track (alpha = canonical tester release + update prompt)'
         required: false
-        default: internal
+        default: alpha
         type: choice
-        options: [internal, alpha, beta, none]
+        options: [alpha, internal, beta, none]
 
 env:
   # [BUILD-WIDGET-1] The environment is now an explicit dispatch INPUT, not an
@@ -367,21 +366,17 @@ jobs:
       # shipped at 10000+, so the "new version available" popup NEVER fired for
       # anyone. Doing it here makes the release and the update signal atomic.
       #
-      # INTERNAL TRACK ONLY, and that restriction is the whole point. Internal
-      # testing serves a release immediately, so "published" == "installable" and
-      # the bump is honest. Closed/open/production go through Google review first
-      # — bumping there would tell every device a build exists that they cannot
-      # download yet, which is a popup leading nowhere: precisely the dead end
-      # this feature was built to kill. For those tracks, bump by hand once the
-      # release is actually live:
-      #     ALLOW_PROD=1 scripts/flags.sh set latestAppBuild=<build>
+      # CLOSED ALPHA ONLY. This is the owner's canonical tester release track as
+      # of 2026-08-19, so the app update pointer must follow Alpha rather than the
+      # now-inactive Internal track. The Play upload above must succeed before
+      # this production pointer and its matching notification are advanced.
       #
       # Reuses scripts/flags.sh rather than calling wrangler directly, so the CI
       # write gets the same protections as a human one: KV holds OVERRIDES ONLY
       # (it merges, never re-materializes the blob) and it refuses to write an
       # empty/invalid config over live flags.
-      - name: Point the update check at this build (internal track only)
-        if: env.PLAY_TRACK == 'internal'
+      - name: Point the update check at this build (Closed Alpha only)
+        if: env.PLAY_TRACK == 'alpha'
         env:
           # Prod is fail-closed behind ALLOW_PROD=1 to stop a human writing live
           # flags by accident. Setting it here is deliberate, not a bypass: a prod
@@ -418,8 +413,8 @@ jobs:
       # push. The consumer now writes two durable KV markers: STARTED after the
       # broadcast is queued, COMPLETED after both modern + legacy token tables
       # have been paged. Do not report a successful SHIP IT without both.
-      - name: Send and verify the update FCM notification (internal track only)
-        if: env.PLAY_TRACK == 'internal'
+      - name: Send and verify the update FCM notification (Closed Alpha only)
+        if: env.PLAY_TRACK == 'alpha'
         env:
           ALLOW_PROD: '1'
           AVATOK_TARGET: ${{ env.AVATOK_ENV }}
@@ -443,7 +438,7 @@ jobs:
             fi
             sleep 10
           done
-          echo "::error::Build $BUILD_NO reached Play Internal, but its FCM update fan-out did not complete within 420 seconds. Do not report this SHIP IT as successful."
+          echo "::error::Build $BUILD_NO reached Play Closed Alpha, but its FCM update fan-out did not complete within 420 seconds. Do not report this SHIP IT as successful."
           exit 1
 
       # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every

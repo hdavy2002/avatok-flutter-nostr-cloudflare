@@ -138,12 +138,12 @@ const String kInviteBase = 'https://avatok.ai/i/';
 /// Public download / join page shared in invite messages.
 const String kDownloadUrl = 'https://avatok.ai/download';
 
-/// Closed (internal) testing-track install link shared by the AvaDialer contacts
-/// "invite" / share button (owner spec 2026-07-20). The Google Play Download
-/// button only appears once the tester is signed into Play with an email that is
-/// registered in our internal test group — the invite copy tells them so.
-const String kInternalTestUrl =
-    'https://play.google.com/apps/internaltest/4700515298862250296';
+/// Closed Alpha testing-track opt-in link shared by the AvaDialer contacts
+/// "invite" / share button (owner spec updated 2026-08-19). The Google Play
+/// Download button only appears once the tester is signed into Play with an
+/// email registered in the selected Closed Alpha tester list.
+const String kClosedTestUrl =
+    'https://play.google.com/apps/testing/ai.avatok.avatok_call';
 
 /// Device address-book sync + "who's on AvaTok" matching (NIP-98).
 const String kContactsSyncUrl = 'https://$kSignalingHost/api/contacts/sync';   // POST

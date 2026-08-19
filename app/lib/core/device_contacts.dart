@@ -483,13 +483,13 @@ class DeviceContactsService {
     await Share.share(_inviteMessage('there', handle: myHandle), subject: 'Join me on AvaTok');
   }
 
-  /// Invite copy for the CLOSED (internal) testing track (owner spec 2026-07-20).
-  /// Points at [kInternalTestUrl] and spells out the tester-email requirement —
+  /// Invite copy for the Closed Alpha testing track (owner spec 2026-08-19).
+  /// Points at [kClosedTestUrl] and spells out the tester-email requirement —
   /// Google Play only shows the Download button once the recipient is signed in
-  /// with an email registered in our internal test group.
+  /// with an email registered in the selected Closed Alpha tester list.
   static String testingInviteMessage(String who) =>
       'Hey $who, join me on AvaTOK 👋\n\n'
-      'Download it here: $kInternalTestUrl\n\n'
+      'Download it here: $kClosedTestUrl\n\n'
       'Important: open that link on your Android phone and make sure you\'re signed '
       'into the Google Play Store with the email you gave me for the AvaTOK test '
       'group — the "Download" button only shows once you\'re logged in with a '
