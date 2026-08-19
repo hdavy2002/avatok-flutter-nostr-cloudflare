@@ -38,6 +38,31 @@ enum _UpdatePath {
   store,
 }
 
+/// Why a concrete update path was (or was not) selected. Keeping this separate
+/// from [_UpdatePath] prevents a temporarily-unavailable Play release from being
+/// mislabelled as a side-loaded install that must be reinstalled.
+enum _UpdateResolutionReason {
+  playUpdate,
+  downloaded,
+  confirmedSideload,
+  playNotReady,
+  transientFailure,
+}
+
+class _UpdateResolution {
+  const _UpdateResolution(this.reason, [this.path]);
+
+  final _UpdateResolutionReason reason;
+  final _UpdatePath? path;
+}
+
+class _PlayProbe {
+  const _PlayProbe({this.info, this.confirmedSideload = false});
+
+  final AppUpdateInfo? info;
+  final bool confirmedSideload;
+}
+
 /// In-app app updates for AvaTOK (Android/Play).
 ///
 /// [AVA-UPDATE-FLOW] Owner-requested flow (2026-07-17), replacing the old
@@ -75,8 +100,20 @@ class UpdateService {
   /// owned. While recent we skip the Play check entirely (no -10 spam).
   static const String _kSideloadAtMs = 'update_sideloaded_at_ms';
 
+  /// `build:epochMs` until which automatic prompts for that exact target are
+  /// snoozed. Device-global because the installed APK is device-global.
+  static const String _kPromptCooldown = 'update_prompt_cooldown';
+
+  /// `build:epochMs` for the first FCM notice of a release. Play's client-side
+  /// catalogue can lag a successful Developer API upload, so Store fallbacks
+  /// receive a short propagation grace instead of opening an "Open" listing.
+  static const String _kReleasePushSeen = 'update_release_push_seen';
+
   /// Re-probe a known side-loaded install at most weekly.
   static const int _sideloadReprobeMs = 7 * 24 * 60 * 60 * 1000;
+
+  static const int _promptCooldownMs = 24 * 60 * 60 * 1000;
+  static const int _playPropagationGraceMs = 45 * 60 * 1000;
 
   // ── session state ─────────────────────────────────────────────────────────
   static bool _ranLaunchThisSession = false;
@@ -94,6 +131,41 @@ class UpdateService {
 
   /// Play's full-screen immediate update is running.
   static bool _immediateInFlight = false;
+
+  /// Covers the async work before [_promptOpen] becomes true. Without this,
+  /// launch + resume + FCM can all pass the prompt guard and race into dialogs.
+  static bool _detectInFlight = false;
+
+  /// A release push received during detection gets one fresh pass afterward.
+  static bool _pendingPushDetection = false;
+
+  static void _queuePendingPushDetection(String busyReason) {
+    _pendingPushDetection = true; // bool coalesces any number of duplicate pushes
+    unawaited(Analytics.capture('update_detection_suppressed', {
+      'trigger': 'push',
+      'reason': '${busyReason}_rerun_queued',
+    }));
+  }
+
+  static void _drainPendingPushDetection() {
+    if (!_pendingPushDetection ||
+        _detectInFlight ||
+        _promptOpen ||
+        _immediateInFlight ||
+        _downloadInFlight) {
+      return;
+    }
+    _pendingPushDetection = false;
+    // A release arrived after the previous decision began. Re-run with fresh
+    // config; the call guard and per-build disk cooldown still apply normally.
+    _dismissedThisSession = false;
+    _lastPromptAtMs = 0;
+    unawaited(Analytics.capture('update_detection_rerun_started', {
+      'trigger': 'push',
+      'reason': 'push_arrived_while_update_busy',
+    }));
+    unawaited(_maybeDetect(trigger: 'push'));
+  }
 
   /// Epoch-ms the last popup was shown — throttles automatic prompts.
   static int _lastPromptAtMs = 0;
@@ -135,7 +207,8 @@ class UpdateService {
 
   // ── stable UI handles (survive the drawer opening/closing) ────────────────
   static BuildContext? get _dialogCtx =>
-      navigatorKey.currentState?.overlay?.context ?? navigatorKey.currentContext;
+      navigatorKey.currentState?.overlay?.context ??
+      navigatorKey.currentContext;
   static ScaffoldMessengerState? get _messenger {
     final c = navigatorKey.currentContext;
     return c == null ? null : ScaffoldMessenger.maybeOf(c);
@@ -213,8 +286,24 @@ class UpdateService {
     final current = await _currentBuild();
     final latest = RemoteConfig.latestAppBuild;
 
-    // Config is the source of truth for "newer exists". If it says we're current,
-    // NEVER open the Play Store — just reassure the user.
+    // Manual tap re-probes Play even for a remembered side-loaded install (force).
+    final resolution = await _resolvePath(force: true);
+    final path = resolution.path;
+
+    // A flexible update may already be downloaded even when the remote pointer
+    // says this APK is current (or is temporarily unset). Completing that local
+    // Play state must take precedence over the config-only up-to-date shortcut.
+    if (path == _UpdatePath.downloaded) {
+      await _act(
+        path: path,
+        trigger: 'manual',
+        available: latest > 0 ? latest : (current ?? 0),
+      );
+      return;
+    }
+
+    // Config is the source of truth for "newer exists" after the pending local
+    // install check above. If it says we're current, never open the Store.
     if (current != null && current > 0 && latest > 0 && latest <= current) {
       Analytics.capture('update_check_result', {
         'source': 'manual',
@@ -226,20 +315,31 @@ class UpdateService {
       return;
     }
 
-    // Manual tap re-probes Play even for a remembered side-loaded install (force).
-    final path = await _resolvePath(force: true);
+    if (path == null) {
+      final notReady =
+          resolution.reason == _UpdateResolutionReason.playNotReady;
+      Analytics.capture('update_manual_unavailable', {
+        'reason': resolution.reason.name,
+        'installed_build': current ?? 0,
+        'available_build': latest,
+      });
+      if (latest <= 0 && notReady) {
+        _snack("You're on the latest version"
+            "${current != null && current > 0 ? ' (build $current)' : ''}.");
+      } else if (notReady) {
+        _snack('The update is still reaching Google Play. Try again shortly.');
+      } else {
+        _snack("Couldn't check Google Play right now. Please try again later.");
+      }
+      return;
+    }
 
     // If config has no target (latest<=0) and Play offers nothing installable,
     // treat as up to date rather than dumping the user in the store.
-    if (path == _UpdatePath.store && (latest <= 0)) {
-      final info = await _playCheck(); // one probe already happened; cheap here
-      final playHasUpdate = info != null &&
-          info.updateAvailability == UpdateAvailability.updateAvailable;
-      if (!playHasUpdate) {
-        _snack("You're on the latest version"
-            "${current != null && current > 0 ? ' (build $current)' : ''}.");
-        return;
-      }
+    if (latest <= 0 && path == _UpdatePath.store) {
+      _snack("You're on the latest version"
+          "${current != null && current > 0 ? ' (build $current)' : ''}.");
+      return;
     }
 
     await _act(
@@ -281,32 +381,94 @@ class UpdateService {
       }));
       return;
     }
-    if (_dismissedThisSession) return; // no re-prompt after "Not now" this session
-    if (_promptOpen || _immediateInFlight || _downloadInFlight) return;
+    if (_dismissedThisSession)
+      return; // no re-prompt after "Not now" this session
+    if (_promptOpen || _immediateInFlight || _downloadInFlight) {
+      if (trigger == 'push') {
+        final reason = _promptOpen
+            ? 'prompt_open'
+            : (_immediateInFlight
+                ? 'immediate_in_flight'
+                : 'download_in_flight');
+        _queuePendingPushDetection(reason);
+      }
+      return;
+    }
+    if (_detectInFlight) {
+      if (trigger == 'push') {
+        _queuePendingPushDetection('detection_in_flight');
+      } else {
+        unawaited(Analytics.capture('update_detection_suppressed', {
+          'trigger': trigger,
+          'reason': 'detection_in_flight',
+        }));
+      }
+      return;
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastPromptAtMs < _minPromptGapMs) return;
 
-    // Refresh config on resume/timer so latestAppBuild is fresh; the launch pass
-    // rides on RemoteConfig.start()'s fetch and skips a redundant call.
-    if (trigger != 'launch') {
-      try {
-        await RemoteConfig.refresh();
-      } catch (_) {/* best-effort */}
+    _detectInFlight = true;
+    try {
+      // Refresh config on resume/timer so latestAppBuild is fresh; the launch
+      // pass rides on RemoteConfig.start()'s fetch and skips a redundant call.
+      if (trigger != 'launch') {
+        try {
+          await RemoteConfig.refresh();
+        } catch (_) {/* best-effort */}
+      }
+
+      final current = await _currentBuild();
+      final latest = RemoteConfig.latestAppBuild;
+      if (current == null || current <= 0) return;
+      if (latest <= 0 || latest <= current) return; // no target, or up to date
+
+      if (await _promptCooldownActive(latest)) {
+        Analytics.capture('update_prompt_suppressed', {
+          'trigger': trigger,
+          'reason': 'same_build_cooldown',
+          'available_build': latest,
+          'installed_build': current,
+        });
+        return;
+      }
+
+      final resolution = await _resolvePath(force: false);
+      final path = resolution.path;
+      if (path == null) {
+        Analytics.capture('update_prompt_suppressed', {
+          'trigger': trigger,
+          'reason': resolution.reason.name,
+          'available_build': latest,
+          'installed_build': current,
+        });
+        return;
+      }
+
+      // A successful Play upload is not proof that every tester's Play client
+      // can see it yet. Delay only the Store fallback; a real in-app Play update
+      // remains immediate.
+      if (path == _UpdatePath.store && await _releaseGraceActive(latest)) {
+        Analytics.capture('update_prompt_suppressed', {
+          'trigger': trigger,
+          'reason': 'play_propagation_grace',
+          'available_build': latest,
+          'installed_build': current,
+        });
+        return;
+      }
+
+      await _showPrompt(
+        path: path,
+        trigger: trigger,
+        available: latest,
+        installed: current,
+      );
+    } finally {
+      _detectInFlight = false;
+      _drainPendingPushDetection();
     }
-
-    final current = await _currentBuild();
-    final latest = RemoteConfig.latestAppBuild;
-    if (current == null || current <= 0) return;
-    if (latest <= 0 || latest <= current) return; // no target, or up to date
-
-    final path = await _resolvePath(force: false);
-    await _showPrompt(
-      path: path,
-      trigger: trigger,
-      available: latest,
-      installed: current,
-    );
   }
 
   /// Resolve how THIS install can be updated right now.
@@ -314,32 +476,60 @@ class UpdateService {
   /// When [force] is false a recently-remembered side-loaded install returns
   /// [_UpdatePath.store] WITHOUT calling Play — that is what stops the -10
   /// "app is not owned" probe (and its error log) from firing every launch.
-  static Future<_UpdatePath> _resolvePath({required bool force}) async {
-    if (!force && await _sideloadedRecently()) return _UpdatePath.store;
+  static Future<_UpdateResolution> _resolvePath({required bool force}) async {
+    if (!force && await _sideloadedRecently()) {
+      return const _UpdateResolution(
+        _UpdateResolutionReason.confirmedSideload,
+        _UpdatePath.store,
+      );
+    }
 
-    final info = await _playCheck();
-    if (info == null) return _UpdatePath.store; // Play can't serve this install
+    final probe = await _playCheck();
+    final info = probe.info;
+    if (probe.confirmedSideload) {
+      return const _UpdateResolution(
+        _UpdateResolutionReason.confirmedSideload,
+        _UpdatePath.store,
+      );
+    }
+    if (info == null) {
+      return const _UpdateResolution(_UpdateResolutionReason.transientFailure);
+    }
 
     if (info.installStatus == InstallStatus.downloaded) {
-      return _UpdatePath.downloaded;
+      return const _UpdateResolution(
+        _UpdateResolutionReason.downloaded,
+        _UpdatePath.downloaded,
+      );
     }
     if (info.updateAvailability == UpdateAvailability.updateAvailable) {
-      if (info.immediateUpdateAllowed) return _UpdatePath.immediate;
-      if (info.flexibleUpdateAllowed) return _UpdatePath.flexible;
+      if (info.immediateUpdateAllowed) {
+        return const _UpdateResolution(
+          _UpdateResolutionReason.playUpdate,
+          _UpdatePath.immediate,
+        );
+      }
+      if (info.flexibleUpdateAllowed) {
+        return const _UpdateResolution(
+          _UpdateResolutionReason.playUpdate,
+          _UpdatePath.flexible,
+        );
+      }
     }
-    // Play knows of no installable update but config said newer exists → this
-    // install is one Play can't update. The listing is the only honest route.
-    return _UpdatePath.store;
+    // Config can advance seconds after upload while Play's per-device catalogue
+    // still says no update. That is not evidence of a sideload; stay silent and
+    // retry later rather than sending the user to a listing that only says Open.
+    return const _UpdateResolution(_UpdateResolutionReason.playNotReady);
   }
 
-  /// Ask Play about this install. Returns null when the check throws — the
-  /// overwhelmingly common cause is a side-loaded install (ERROR_APP_NOT_OWNED /
-  /// -10 / ERROR_API_NOT_AVAILABLE), which we remember persistently so we stop
-  /// re-checking every launch. Both the log and the telemetry are deduped per
-  /// session so a repeated known condition never spams.
-  static Future<AppUpdateInfo?> _playCheck() async {
+  /// Ask Play about this install. The result keeps a confirmed side-load
+  /// separate from a transient failure; callers must never turn a network/API
+  /// failure into a misleading reinstall instruction. Confirmed side-loads
+  /// (ERROR_APP_NOT_OWNED / -10 / ERROR_API_NOT_AVAILABLE) are remembered so we
+  /// stop re-checking every launch. Logs and telemetry are deduped per session.
+  static Future<_PlayProbe> _playCheck() async {
     try {
-      return await InAppUpdate.checkForUpdate();
+      return _PlayProbe(info: await InAppUpdate.checkForUpdate());
     } catch (e) {
       final s = e.toString();
       if (_looksSideloaded(s)) {
@@ -347,11 +537,13 @@ class UpdateService {
           await DiskCache.writeGlobal(
               _kSideloadAtMs, '${DateTime.now().millisecondsSinceEpoch}');
         } catch (_) {/* best-effort */}
-        _logOnce('sideload',
+        _logOnce(
+            'sideload',
             'play check: install is not Play-owned (side-loaded); '
-            'suppressing further probes for a week');
+                'suppressing further probes for a week');
         if (_loggedThisSession.add('sideload_event')) {
-          Analytics.capture('update_play_unavailable', {'reason': 'sideloaded'});
+          Analytics.capture(
+              'update_play_unavailable', {'reason': 'sideloaded'});
         }
       } else {
         _logOnce('playcheck', 'play checkForUpdate failed: $s');
@@ -359,7 +551,71 @@ class UpdateService {
           Analytics.capture('update_play_check_failed', {'reason': s});
         }
       }
-      return null;
+      return _PlayProbe(confirmedSideload: _looksSideloaded(s));
+    }
+  }
+
+  static (int, int)? _parseBuildTimestamp(String? raw) {
+    if (raw == null) return null;
+    final parts = raw.split(':');
+    if (parts.length != 2) return null;
+    final build = int.tryParse(parts[0]);
+    final timestamp = int.tryParse(parts[1]);
+    if (build == null || timestamp == null) return null;
+    return (build, timestamp);
+  }
+
+  static Future<bool> _promptCooldownActive(int build) async {
+    try {
+      final state =
+          _parseBuildTimestamp(await DiskCache.readGlobal(_kPromptCooldown));
+      return state != null &&
+          state.$1 == build &&
+          DateTime.now().millisecondsSinceEpoch < state.$2;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> _snoozeAutomaticPrompt(
+    int build, {
+    required String reason,
+  }) async {
+    final until = DateTime.now().millisecondsSinceEpoch + _promptCooldownMs;
+    try {
+      await DiskCache.writeGlobal(_kPromptCooldown, '$build:$until');
+    } catch (_) {/* best-effort */}
+    Analytics.capture('update_prompt_snoozed', {
+      'reason': reason,
+      'available_build': build,
+      'cooldown_hours': _promptCooldownMs ~/ (60 * 60 * 1000),
+    });
+  }
+
+  static Future<void> _rememberReleasePush(int build) async {
+    if (build <= 0) return;
+    try {
+      final existing =
+          _parseBuildTimestamp(await DiskCache.readGlobal(_kReleasePushSeen));
+      // Duplicate delivery must not keep extending the propagation window.
+      if (existing?.$1 == build) return;
+      await DiskCache.writeGlobal(
+        _kReleasePushSeen,
+        '$build:${DateTime.now().millisecondsSinceEpoch}',
+      );
+    } catch (_) {/* best-effort */}
+  }
+
+  static Future<bool> _releaseGraceActive(int build) async {
+    try {
+      final state =
+          _parseBuildTimestamp(await DiskCache.readGlobal(_kReleasePushSeen));
+      return state != null &&
+          state.$1 == build &&
+          DateTime.now().millisecondsSinceEpoch - state.$2 <
+              _playPropagationGraceMs;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -419,15 +675,15 @@ class UpdateService {
       case _UpdatePath.store:
         title = 'A new version is available';
         body =
-            'A newer version of AvaTOK is available. Reinstall it from the Google '
-            'Play Store to get it — and to receive automatic updates from then on.';
+            'This copy was installed outside Google Play, so Play cannot update '
+            'it in place. Open the Play Store and, if it only shows Open, tap '
+            'Uninstall and then Install to move to automatic updates.';
         cta = 'Open Play Store';
         break;
       case _UpdatePath.immediate:
       case _UpdatePath.flexible:
         title = 'Update available';
-        body =
-            'A new version of AvaTOK is ready. Update now to get the latest '
+        body = 'A new version of AvaTOK is ready. Update now to get the latest '
             'features and fixes.';
         cta = 'Update';
         break;
@@ -456,6 +712,7 @@ class UpdateService {
 
     if (!go) {
       _dismissedThisSession = true;
+      await _snoozeAutomaticPrompt(available, reason: 'dismissed');
       Analytics.capture('update_prompt_dismissed', {
         'trigger': trigger,
         'path': pathName,
@@ -468,6 +725,11 @@ class UpdateService {
       'path': pathName,
       'available_build': available,
     });
+    if (path == _UpdatePath.store) {
+      // Returning from a Store listing that still says Open must not recreate
+      // the same modal on every cold launch.
+      await _snoozeAutomaticPrompt(available, reason: 'store_opened');
+    }
     await _act(path: path, trigger: trigger, available: available);
   }
 
@@ -541,6 +803,7 @@ class UpdateService {
       _snack("Couldn't update right now — we'll try again later.");
     } finally {
       _immediateInFlight = false;
+      _drainPendingPushDetection();
     }
   }
 
@@ -560,7 +823,6 @@ class UpdateService {
           'source': source,
           'result': result.toString(),
         });
-        _downloadInFlight = false;
         return false;
       }
       await InAppUpdate.installUpdateListener
@@ -574,8 +836,10 @@ class UpdateService {
       _logOnce('flexible', 'flexible update failed: $e');
       Analytics.capture(
           'update_flexible_failed', {'source': source, 'reason': e.toString()});
-      _downloadInFlight = false;
       return false;
+    } finally {
+      _downloadInFlight = false;
+      _drainPendingPushDetection();
     }
   }
 
@@ -589,8 +853,8 @@ class UpdateService {
       Analytics.capture('update_installed', {'source': 'resume'});
     } catch (e) {
       _logOnce('complete', 'complete pending install failed: $e');
-      Analytics.capture(
-          'update_complete_failed', {'trigger': trigger, 'reason': e.toString()});
+      Analytics.capture('update_complete_failed',
+          {'trigger': trigger, 'reason': e.toString()});
       _snack("Couldn't update right now — we'll try again later.");
     }
   }
@@ -599,7 +863,8 @@ class UpdateService {
   static Future<void> _openPlayStore({required String source}) async {
     final pkg = await _packageName();
     if (pkg == null) {
-      _snack("Couldn't open the Play Store. Please update from the Play Store app.");
+      _snack(
+          "Couldn't open the Play Store. Please update from the Play Store app.");
       return;
     }
     Analytics.capture('update_open_store', {'source': source, 'package': pkg});
@@ -613,9 +878,10 @@ class UpdateService {
       await launchUrl(web, mode: LaunchMode.externalApplication);
     } catch (e) {
       _logOnce('openstore', 'open play store failed: $e');
-      Analytics.capture(
-          'update_open_store_failed', {'source': source, 'reason': e.toString()});
-      _snack("Couldn't open the Play Store. Please update from the Play Store app.");
+      Analytics.capture('update_open_store_failed',
+          {'source': source, 'reason': e.toString()});
+      _snack(
+          "Couldn't open the Play Store. Please update from the Play Store app.");
     }
   }
 
@@ -674,12 +940,11 @@ class UpdateService {
   /// report 2026-07-24: "the popup only shows after I swipe the app out and back
   /// in, then hit the Update menu").
   ///
-  /// A real release IS the reason to re-ask, so this clears this session's "Not
-  /// now" latch and the inter-prompt throttle before detecting. It does NOT
-  /// bypass the honest guards inside [_maybeDetect] / [_resolvePath]: the kill
-  /// switch ([RemoteConfig.inAppUpdateEnabled]), the up-to-date short-circuit
-  /// (the device that just installed this very build gets the push too and must
-  /// stay silent), and the side-loaded suppression all still apply.
+  /// A real release clears the in-memory "Not now" latch and inter-prompt
+  /// throttle. The persisted cooldown is keyed by build, however, so a duplicate
+  /// push for the same release cannot restart the loop while a genuinely newer
+  /// release bypasses the old cooldown automatically. The kill switch, current-
+  /// build check, call guard, and Play propagation grace still apply.
   ///
   /// [build] is the freshly-published build number carried by the push, used for
   /// telemetry only — the authoritative "newer exists" decision is re-derived
@@ -689,8 +954,11 @@ class UpdateService {
     Analytics.capture('update_push_received', {'build': build ?? 0});
     if (!_supported) return;
     _ensureObservers();
-    _dismissedThisSession = false; // a new release overrides an earlier "Not now"
-    _lastPromptAtMs = 0; // this is an explicit, freshly-triggered check — don't throttle it
+    if (build != null && build > 0) await _rememberReleasePush(build);
+    _dismissedThisSession =
+        false; // a new release overrides an earlier "Not now"
+    _lastPromptAtMs =
+        0; // this is an explicit, freshly-triggered check — don't throttle it
     await _maybeDetect(trigger: 'push');
   }
 }
