@@ -1,8 +1,8 @@
 name: Android build
 
 # All app builds run on GitHub Actions — never on a local machine.
-# Builds the app under app/ as a signed Play-upload AAB by default. Production
-# "ship it" runs are AAB-only: no side-load APK task or artifact is created.
+# Builds the app under app/. Production "ship it" runs create the arm64 APK
+# first for immediate side-loading, then the signed AAB for Closed Alpha review.
 # The workflow publishes to Google Play Closed testing (Alpha), updates latestAppBuild,
 # and verifies the matching FCM update notification reached the fan-out worker.
 
@@ -31,10 +31,9 @@ on:
         type: choice
         options: [staging, prod]
       artifact:
-        # Play releases are AAB-only (owner decision 2026-08-18). APK remains an
-        # explicit option for a non-Play diagnostic build, but a Play track rejects
-        # apk/both so "ship it" can never spend time creating a side-load artifact.
-        description: 'Artifact format (Play publishing requires AAB)'
+        # Play receives only the AAB, but a `both` run may also create an APK for
+        # immediate side-loading while the Closed Alpha AAB waits for review.
+        description: 'Artifact format (Ship it uses Both: APK sideload + Play AAB)'
         required: true
         default: aab
         type: choice
@@ -68,8 +67,7 @@ env:
   # inference from the branch. The `|| (...)` keeps the old branch-derived value
   # as a fallback for the (currently disabled) push trigger, where inputs are ''.
   AVATOK_ENV: ${{ inputs.environment || (github.ref_name == 'staging' && 'staging' || 'prod') }}
-  # Play releases are AAB-only by default. APK/both remain available only for
-  # explicit non-Play diagnostic builds.
+  # A Play upload consumes only the AAB; `both` also creates the side-load APK.
   BUILD_APK: ${{ (inputs.artifact == 'aab') && 'false' || 'true' }}
   BUILD_AAB: ${{ (inputs.artifact == 'aab' || inputs.artifact == 'both') && 'true' || 'false' }}
   # [AVA-UPDATE-AUTO] '' / 'none' => no Play upload. Empty inputs (push trigger)
@@ -134,11 +132,7 @@ jobs:
               exit 1
             fi
             if [ "$BUILD_AAB" != "true" ]; then
-              echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab."
-              exit 1
-            fi
-            if [ "$BUILD_APK" = "true" ]; then
-              echo "::error::Play publishing is AAB-only. Re-run with artifact=aab; APK generation is intentionally disabled for faster releases."
+              echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab or artifact=both."
               exit 1
             fi
           fi
@@ -293,6 +287,55 @@ jobs:
           fi
           echo "Upload keystore present: ${{ steps.keystore.outputs.path }}"
 
+      # [SHIP-BOTH-1] Build and publish the side-load APK FIRST. Closed Alpha can
+      # spend hours or days in Play review; the owner needs this direct APK link
+      # as soon as compilation finishes so testing is not blocked by that review.
+      - name: Build release APK (arm64 only, side-load)
+        if: env.BUILD_APK == 'true'
+        working-directory: app
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
+      - name: Stage .apk with a per-build unique name
+        if: env.BUILD_APK == 'true'
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          mkdir -p dist
+          ls -la app/build/app/outputs/flutter-apk/
+          BUILD_NO=$((10000 + GITHUB_RUN_NUMBER))
+          APK_NAME="avatok-call-arm64-b${BUILD_NO}.apk"
+          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/${APK_NAME}"
+          echo "APK_NAME=${APK_NAME}" >> "$GITHUB_ENV"
+          echo "staged: ${APK_NAME}"; ls -lh dist/
+
+      - name: Upload .apk artifact (side-load)
+        if: env.BUILD_APK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: avatok-call-apk
+          path: dist/${{ env.APK_NAME }}
+
+      - name: Publish APK to Release (link available before Play review)
+        if: env.BUILD_APK == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
+          name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
+          files: dist/${{ env.APK_NAME }}
+          fail_on_unmatched_files: true
+          body: |
+            Built by CI from `app/` — environment: **${{ env.AVATOK_ENV }}**,
+            format: **${{ inputs.artifact || 'aab' }}**.
+
+            The versioned arm64 APK is ready for immediate side-loading. In a
+            Ship it run, the matching AAB continues to Google Play Closed Alpha.
+
       # Android App Bundle (.aab) — for the Play Store. Play splits per-ABI/density
       # server-side. Built only when the owner picks `aab` or `both`.
       - name: Build release App Bundle (.aab) for Play Store
@@ -338,11 +381,7 @@ jobs:
             exit 1
           fi
           if [ "$BUILD_AAB" != "true" ]; then
-            echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab."
-            exit 1
-          fi
-          if [ "$BUILD_APK" = "true" ]; then
-            echo "::error::Play publishing is AAB-only. Re-run with artifact=aab; APK generation is intentionally disabled for faster releases."
+            echo "::error::play_track=$PLAY_TRACK needs an .aab — Play does not accept the side-load APK. Re-run with artifact=aab or artifact=both."
             exit 1
           fi
           if [ "$HAS_PLAY_SA" != "true" ]; then
@@ -454,74 +493,21 @@ jobs:
           echo "::error::Build $BUILD_NO reached Play Closed Alpha, but its FCM update fan-out did not complete within 420 seconds. Do not report this SHIP IT as successful."
           exit 1
 
-      # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every
-      # native lib and grows to ~220MB, which Android's installer rejects as
-      # "package appears to be invalid." Splitting per ABI yields a lean ~80MB
-      # arm64 APK that installs cleanly (the format that worked before).
-      # arm64-ONLY (owner decision 2026-07-05: "I need arm64 apk and nothing else").
-      # --target-platform android-arm64 restricts the split build to a single ABI, so
-      # ONLY app-arm64-v8a-release.apk is produced (no armeabi-v7a, no x86). Faster too.
-      - name: Build release APK (arm64 only, side-load)
-        if: env.BUILD_APK == 'true'
-        working-directory: app
-        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
-        env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-          ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
-          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
-          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
-          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
-
-      - name: Stage .apk with a per-build unique name
-        if: env.BUILD_APK == 'true'
-        env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          mkdir -p dist
-          ls -la app/build/app/outputs/flutter-apk/
-          # [APK-NAME-1] Filename now carries the build number so EVERY build has a
-          # distinct name. Chrome (and most browsers) key their download cache on the
-          # filename — a stable name like avatok-call-arm64.apk meant re-downloading
-          # served the previously-cached file even after clearing the Downloads folder.
-          # Build number matches the in-app "build NNNNN" (10000 + run number) and the
-          # versionCode, so the filename, the About screen and the release all agree.
-          BUILD_NO=$((10000 + GITHUB_RUN_NUMBER))
-          APK_NAME="avatok-call-arm64-b${BUILD_NO}.apk"
-          # arm64-v8a is the ONLY asset (owner 2026-07-05: arm64 and nothing else).
-          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/${APK_NAME}"
-          echo "APK_NAME=${APK_NAME}" >> "$GITHUB_ENV"
-          echo "staged: ${APK_NAME}"; ls -lh dist/
-
-      - name: Upload .apk artifact (side-load)
-        if: env.BUILD_APK == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: avatok-call-apk
-          path: dist/${{ env.APK_NAME }}
-
-      - name: Publish to Release (stable link)
+      - name: Publish AAB to Release (stable link)
+        if: env.BUILD_AAB == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
-          # Non-Play diagnostic runs may still explicitly request an APK. The
-          # standard Play/ship path is AAB-only and leaves the APK glob empty.
-          # [APK-NAME-1] The .apk is matched by GLOB (dist/*.apk) because its name now
-          # carries the build number — a hardcoded name here would silently attach
-          # nothing (fail_on_unmatched_files:false). Old versioned APKs accumulate on
-          # the release, which is intentional: each build has a stable, distinct URL.
-          files: |
-            dist/*.apk
-            dist/avatok-call.aab
-          fail_on_unmatched_files: false
+          files: dist/avatok-call.aab
+          fail_on_unmatched_files: true
           body: |
             Built by CI from `app/` — environment: **${{ env.AVATOK_ENV }}**,
             format: **${{ inputs.artifact || 'aab' }}**.
 
-            `avatok-call.aab` is the signed Google Play App Bundle. Play publishing
-            runs are AAB-only and intentionally do not build or attach a side-load APK.
-
-            APK artifacts exist only for an explicit non-Play diagnostic run.
+            `avatok-call.aab` is the signed Google Play App Bundle submitted to
+            Closed Alpha. Ship it also publishes a versioned arm64 APK earlier in
+            the run so testing can begin without waiting for Play review.
 
       # Automatic build tracking: drop a PostHog annotation (commit SHA + message)
       # on the project timeline for every APK/AAB build, matching the `release`

@@ -64,12 +64,13 @@ asking the environment/format widgets above. Follow this fixed flow:
 
    ```bash
    gh workflow run android.yml --ref main \\
-     -f environment=prod -f artifact=aab -f play_track=alpha
+     -f environment=prod -f artifact=both -f play_track=alpha
    ```
 
-3. The workflow creates only the signed Play-upload AAB (no APK), uploads it as
-   the GitHub artifact/release asset, publishes the AAB to Google Play
-   Closed testing (Alpha), updates the app's `latestAppBuild` pointer, and sends the
+3. The workflow first creates the signed arm64 APK and publishes its direct
+   sideload link, then creates the signed Play-upload AAB and submits it to Google
+   Play Closed testing (Alpha). This lets the owner test immediately while Play
+   review continues. The workflow also updates the app's `latestAppBuild` pointer and sends the
    matching quiet FCM `app_update` notification to registered devices. The run
    MUST verify both `update_broadcast_last_build` and
    `update_broadcast_completed_build` equal the new build before it is successful.
@@ -79,6 +80,10 @@ asking the environment/format widgets above. Follow this fixed flow:
    **Owner decision 2026-08-19:** Closed Alpha is the canonical tester update
    source. Internal testing is no longer used by **“ship it”** or by the app's
    `latestAppBuild` update pointer.
+   **Owner decision 2026-08-19:** every **“ship it”** produces both artifacts.
+   Report the versioned arm64 APK link as soon as its release step completes;
+   do not wait for the AAB build, Play review, or the rest of the workflow before
+   giving the owner that sideload link.
 4. Wait for the production GitHub Environment approval gate and approve the exact
    requested run. Report the workflow URL, run result, build number, artifact
    links, Play track, pointer-update result, and FCM fan-out completion result.
