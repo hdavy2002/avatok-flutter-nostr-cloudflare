@@ -6826,11 +6826,13 @@ class CallSession {
   /// [_discardPrejoinedSfu] — see that method for why disposal must run
   /// BEFORE the P2P/RTK path builds anything of its own.
   ///
-  /// Hooked from the `'welcome'` handler, the instant OUR OWN room socket is
-  /// confirmed open with nobody else in the room yet (i.e. we are genuinely
-  /// ringing). If the callee is already present at that point the normal
-  /// election below runs immediately and pre-joining would just be a second,
-  /// redundant seat — so this deliberately only fires on the empty-room path.
+  /// Hooked only from authoritative placement completion
+  /// ([notePlaceResult]/[notePrewarming]) or a positive server ring ack
+  /// ([_applyRingAck]). A CallRoom `welcome` proves only that our signalling
+  /// socket opened; it does NOT prove `/api/call` has recorded the participants,
+  /// so starting from `welcome` can race placement and receive
+  /// `403 not_a_participant`. The placement trigger is intentionally earlier
+  /// than the ring-ack backstop, and [_prejoinStarted] keeps both idempotent.
   void _maybeStartCallerPrejoin() {
     if (_prejoinStarted) return;
     if (_ended || _connected) return;
@@ -7696,15 +7698,6 @@ class CallSession {
               await _startP2pOffer();
             }
           }
-        } else {
-          // [CALL-PREJOIN-1 2026-08-16] Nobody else in the room yet — our own
-          // socket is confirmed open and we are genuinely ringing (not racing
-          // an already-arrived callee, which the `peers.isNotEmpty` branch
-          // above already handles). This is the caller's cue to pre-join and
-          // publish audio to the SFU while the callee's phone is still
-          // ringing, per Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md P2.
-          // No-op unless outgoing + both flags are on; never throws.
-          _maybeStartCallerPrejoin();
         }
         // [CALLREC-PEER-1] We now know the peer id (fresh join OR our own
         // reconnect). Re-announce unconditionally: on a reconnect this is the
