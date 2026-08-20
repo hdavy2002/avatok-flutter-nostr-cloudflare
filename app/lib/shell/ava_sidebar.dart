@@ -580,7 +580,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
               width: 18, height: 18,
               decoration: BoxDecoration(
                 color: AD.primaryBadge, shape: BoxShape.circle,
-                border: Border.all(color: AD.borderAvatar, width: 2),
+                // [AVATAR-NORING-1] Was `AD.borderAvatar`, now transparent.
+                // This is the little camera BADGE that overlaps the sidebar
+                // avatar — it needs its outline to separate the pink disc from
+                // the photo underneath, so it takes `borderControl`.
+                border: Border.all(color: AD.borderControl, width: 2),
               ),
               child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.fill),
                   size: 9, color: Colors.white),

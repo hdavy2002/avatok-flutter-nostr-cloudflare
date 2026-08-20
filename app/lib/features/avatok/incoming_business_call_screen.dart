@@ -848,7 +848,11 @@ class _CallAction extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(
               color: filled
-                  ? AD.borderAvatar
+                  // [AVATAR-NORING-1] Was `AD.borderAvatar`, now transparent
+                  // app-wide. This is the accept/decline CALL BUTTON outline,
+                  // not an avatar — it must stay visible, so it takes the same
+                  // ink under its own name.
+                  ? AD.borderControl
                   : tint.withValues(alpha: dim ? 0.15 : 0.30),
               width: filled ? 2 : 1,
             ),

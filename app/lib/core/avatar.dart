@@ -34,7 +34,18 @@ class Avatar extends StatelessWidget {
         decoration: BoxDecoration(
           color: fill,
           shape: BoxShape.circle,
-          border: Border.all(color: AD.borderHairline, width: 2),
+          // [AVATAR-NORING-1 2026-08-21] Was `AD.borderHairline` — full ink.
+          // Every avatar in the app therefore carried its OWN black ring even
+          // before a caller wrapped it in one, so retiring only the ~36 caller
+          // rings would have left a black ring on every single avatar and
+          // looked like the change had not worked.
+          //
+          // Repointed to `AD.borderAvatar` (now transparent) rather than
+          // deleted: this Container has an explicit width/height of `size`, so
+          // the border is INSIDE the box. Keeping a 2px transparent border
+          // preserves the exact photo crop and circle size; removing it would
+          // let the photo grow 4px and re-crop every avatar in the app.
+          border: Border.all(color: AD.borderAvatar, width: 2),
         ),
         clipBehavior: Clip.antiAlias,
         alignment: Alignment.center,

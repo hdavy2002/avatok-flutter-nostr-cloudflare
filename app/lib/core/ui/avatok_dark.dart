@@ -85,7 +85,33 @@ class AD {
   static const borderHairline = Color(0xFF16110D);
   static const borderCard = Color(0xFF16110D);
   static const borderControl = Color(0xFF16110D);
-  static const borderAvatar = Color(0xFF16110D);
+  /// ⚠️ [AVATAR-NORING-1 2026-08-21] TRANSPARENT ON PURPOSE. NOT A MISTAKE.
+  ///
+  /// Owner request: "remove the black border on all profile icons, even the one
+  /// on header besides the wallet info."
+  ///
+  /// The ring was drawn in ~36 places — every chat row, the header status
+  /// button, contact info, group info, call screens, the dialer, the sidebar,
+  /// profile, invite and add-contact sheets. Retiring the TOKEN removes all of
+  /// them in one edit instead of 36 hand-edits across 23 files with no local
+  /// compiler to catch a typo, and it means the next screen that copies the
+  /// familiar `Border.all(color: AD.borderAvatar, width: 2)` idiom gets the new
+  /// behaviour for free instead of re-introducing the ring.
+  ///
+  /// WHY TRANSPARENT RATHER THAN DELETING THE BORDERS: a 2px transparent border
+  /// still insets its child by 2px, so every avatar keeps the exact size and
+  /// position it has today. Deleting the `Border` outright would shrink each
+  /// wrapper by 4px and nudge the adjacent text on every row in the app. This
+  /// change is invisible except for the ring itself.
+  ///
+  /// This token is now AVATARS ONLY. Three former call sites that were not
+  /// avatars — the accent swatch selection ring (home_appearance_screen), the
+  /// circular call-action button outline (incoming_business_call_screen) and
+  /// the sidebar badge outline (ava_sidebar) — were repointed to
+  /// [borderControl] in the same change, because they still need a visible
+  /// edge. If you need a black outline, use [borderControl]; do not "fix" this
+  /// back to ink.
+  static const borderAvatar = Colors.transparent;
   /// The faint rule BETWEEN rows — ink at 14%. Use for `Divider`, for a
   /// separator inside a card, for the cell rule in a bordered field. Never as
   /// the outline of a card.

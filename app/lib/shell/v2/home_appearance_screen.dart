@@ -112,7 +112,14 @@ class _HomeAppearanceScreenState extends State<HomeAppearanceScreen> {
                 color: e.value,
                 borderRadius: Msg.brMd,
                 border: Border.all(
-                    color: cur == e.key ? AD.borderAvatar : AD.borderControl,
+                    // [AVATAR-NORING-1] Was `AD.borderAvatar` when selected,
+                    // which is now TRANSPARENT (the avatar ring was retired
+                    // app-wide) — a selected swatch would have lost its ring
+                    // entirely. This is a colour swatch, not an avatar, so it
+                    // takes `borderControl`, the same ink `borderAvatar` used
+                    // to hold. Selection is still signalled by the width jump
+                    // (2.5 vs 1) plus the check glyph below.
+                    color: AD.borderControl,
                     width: cur == e.key ? 2.5 : 1),
               ),
               child: cur == e.key
