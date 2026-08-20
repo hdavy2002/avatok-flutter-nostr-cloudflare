@@ -221,13 +221,32 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   /// is not) on screen, plus the app build — because "which build is this person
   /// on" is the question that actually cost a session. Deduped by reason, capped
   /// per mount. Timings, flags and codes only; never anything audio-derived.
-  void _reportVisibility(String reason, {required bool visible}) {
+  /// [CALL-TRANSLATE-HOLE-1] `slotFilled` is separate from `visible` on
+  /// purpose, and the distinction is the whole success criterion of this fix.
+  ///
+  /// `visible` has always meant "the LIVE, tappable pill is on screen" — both
+  /// `_pendingTile` and `_unavailableTile` report `visible: false` even though
+  /// they draw something. So `visible` cannot answer the question the owner
+  /// actually reported (pic 1): "the button disappears mid-call and leaves a
+  /// space". `slotFilled` answers exactly that — false ONLY on the three
+  /// branches that render nothing at all, and all three of those are decided
+  /// before the first frame (wrong platform, either flag off), so they can
+  /// never produce a control that vanishes later.
+  ///
+  /// SUCCESS VALUE to assert after this ships (ship-gate rule 3): there must be
+  /// NO `call_translation_pill_visibility` event carrying
+  /// `slot_filled = false` together with `reason` in
+  /// {`native_unsupported`, `controller_unavailable`}. Those two were the
+  /// hole; if the pair ever reappears the fix regressed.
+  void _reportVisibility(String reason,
+      {required bool visible, bool slotFilled = true}) {
     if (reason == _lastVisibilityReason) return;
     _lastVisibilityReason = reason;
     if (_visibilityEvents >= _kMaxVisibilityEvents) return;
     _visibilityEvents++;
     unawaited(Analytics.capture('call_translation_pill_visibility', {
       'visible': visible,
+      'slot_filled': slotFilled,
       'reason': reason,
       'call_ref': widget.callRef,
       'app_build': Analytics.appBuild,
@@ -448,6 +467,81 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     ));
   }
 
+  /// [CALL-TRANSLATE-HOLE-1 2026-08-21] The tile for "this call cannot
+  /// translate", as opposed to "not ready yet".
+  ///
+  /// Owner report (pic 1): "when in call, the translation button gets hidden.
+  /// It is there when the call starts and then in the middle it disappears,
+  /// leaving a space in the middle." That is exactly this widget's contract
+  /// before today. [_pendingTile] fixed the FIRST two seconds of the call —
+  /// `callConnected == false` and `controller == null` both render a dimmed
+  /// tile — but the two PERMANENT hides below it (`native_unsupported` once the
+  /// probe backoff is exhausted, and `controller_unavailable`) still returned
+  /// `SizedBox.shrink()`. The control grid is a fixed 2x3 of `Expanded`
+  /// thirds that does not reflow, so collapsing the middle slot AFTER the tile
+  /// has already been on screen is seen as the button vanishing and leaving a
+  /// hole — which is precisely what the owner described.
+  ///
+  /// A control that is present and says why it is off is strictly better than a
+  /// hole, so the slot never empties mid-call again. Tappable, unlike
+  /// [_pendingTile], because here there IS something to say and the answer will
+  /// not change by waiting.
+  Widget _unavailableTile(String reason) {
+    if (!widget.tile) return const SizedBox.shrink();
+    return Semantics(
+      button: true,
+      enabled: false,
+      label: 'Translate, unavailable on this call',
+      child: Tooltip(
+        message: 'Live translation is not available on this call',
+        child: Opacity(
+          opacity: 0.45,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ZinePressable(
+                onTap: () {
+                  unawaited(Analytics.capture('call_translate_unavailable_tapped', {
+                    'reason': reason,
+                    'app_build': Analytics.appBuild,
+                  }));
+                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  messenger?.showSnackBar(const SnackBar(
+                    content: Text(
+                        'Live translation is not available on this call.'),
+                  ));
+                },
+                color: AD.cardHover,
+                pressedColor: AD.cardHover,
+                radius: Msg.brPill,
+                boxShadow: Msg.none,
+                borderWidth: 1,
+                borderColor: AD.borderControl,
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Center(
+                    child: PhosphorIcon(
+                      PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                      size: 27,
+                      color: AD.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: Msg.s1),
+              Text('Translate',
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: ADText.sectionLabel(c: AD.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// [CALL-TRANSLATE-SLOT-1 2026-08-05] The Translate control while it is still
   /// waking up: same 64px circle, same label, same slot — dimmed and inert.
   ///
@@ -460,6 +554,8 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
   ///
   /// Deliberately NOT tappable: `_pick()` needs a controller, and a tap that
   /// silently does nothing is worse than one that is visibly not ready yet.
+  /// (Contrast [_unavailableTile], which IS tappable — there the answer is
+  /// known and will not change by waiting.)
   Widget _pendingTile() {
     if (!widget.tile) return const SizedBox.shrink();
     return Semantics(
@@ -515,15 +611,15 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
     // has its own reason code and one event carries it (deduped; see
     // [_reportVisibility]).
     if (defaultTargetPlatform != TargetPlatform.android) {
-      _reportVisibility('not_android', visible: false);
+      _reportVisibility('not_android', visible: false, slotFilled: false);
       return const SizedBox.shrink();
     }
     if (!RemoteConfig.translationEnabled) {
-      _reportVisibility('flag_translation_off', visible: false);
+      _reportVisibility('flag_translation_off', visible: false, slotFilled: false);
       return const SizedBox.shrink();
     }
     if (!RemoteConfig.callTranslationEnabled) {
-      _reportVisibility('flag_call_translation_off', visible: false);
+      _reportVisibility('flag_call_translation_off', visible: false, slotFilled: false);
       return const SizedBox.shrink();
     }
     if (!widget.callConnected) {
@@ -555,14 +651,21 @@ class _CallTranslateOverlayState extends State<CallTranslateOverlay> {
         _reportVisibility('native_probing', visible: false);
         return _pendingTile();
       }
+      // [CALL-TRANSLATE-HOLE-1] Was `SizedBox.shrink()`. The probe backoff can
+      // still be running when the call connects, so this branch is commonly
+      // reached AFTER `_pendingTile` has already drawn the control — the tile
+      // then disappeared mid-call and left a hole between Keypad and End. It
+      // renders a disabled tile instead; see [_unavailableTile].
       _reportVisibility('native_unsupported', visible: false);
-      return const SizedBox.shrink();
+      return _unavailableTile('native_unsupported');
     }
     if (!controller.available) {
       // Same two flags read through the controller. Practically unreachable
       // given the checks above; kept so a future divergence is not silent.
+      // [CALL-TRANSLATE-HOLE-1] Same reasoning as `native_unsupported`: if this
+      // ever does fire it fires mid-call, so it must not empty the slot.
       _reportVisibility('controller_unavailable', visible: false);
-      return const SizedBox.shrink();
+      return _unavailableTile('controller_unavailable');
     }
     _reportVisibility('shown', visible: true);
     final active = controller.active;
