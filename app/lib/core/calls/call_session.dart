@@ -4389,9 +4389,16 @@ class CallSession {
     // local stream, then replaces the retained sender after the SFU PC is
     // adopted. This is protocol silence, never a captured/muted mic.
     MediaStream? protocolSilenceStream;
+    // [CALL-PREWARM-TRUTH-1 2026-08-21] `callSfuV1` is part of the condition on
+    // purpose, belt and braces with the same gate inside CallPrewarm. Deferring
+    // the microphone past Accept is only ever correct when there is a real
+    // published SFU sender waiting for `replaceTrack`. Taking this branch
+    // without one costs a full post-answer `getUserMedia` (~2.2s measured on
+    // 2026-08-20) and shipped silence to the peer for the whole call.
     if (!config.outgoing &&
         !config.video &&
         RemoteConfig.callSilentTransportPrewarmV1 &&
+        RemoteConfig.callSfuV1 &&
         CallPrewarm.instance.hasPrepublishedAudio(config.room)) {
       try {
         protocolSilenceStream =
@@ -7256,6 +7263,10 @@ class CallSession {
     if (!_prewarmAudioPending && current?.getAudioTracks().isNotEmpty == true) {
       return true;
     }
+    // [CALL-PREWARM-TRUTH-1] Read before the swap: `current` is disposed below
+    // and `_prewarmAudioPending` is cleared, so neither can be inspected by the
+    // assertion event at the end.
+    final fromProtocolSilence = _prewarmAudioPending;
     MediaStream? media;
     try {
       var mediaTimedOut = false;
@@ -7329,6 +7340,20 @@ class CallSession {
         'call_id': config.room,
         'path': transport == null ? 'fallback' : 'sfu_replace_track',
         'renegotiated': false,
+      });
+      // [CALL-PREWARM-TRUTH-1 2026-08-21] The success value for this fix, per
+      // the ship gate. On 2026-08-20 `call_preaccept_audio_replaced` fired on
+      // both broken calls, so its ARRIVAL proves nothing — what was missing was
+      // a live, enabled mic track on the answering side. Assert that here so a
+      // regression is one PostHog filter away instead of a phone call.
+      Analytics.capture('call_accept_mic_attached', {
+        'call_id': config.room,
+        'role': config.outgoing ? 'caller' : 'callee',
+        'path': transport == null ? 'fallback' : 'sfu_replace_track',
+        'track_enabled': track.enabled,
+        'track_kind': track.kind ?? '',
+        'audio_track_count': media.getAudioTracks().length,
+        'from_protocol_silence': fromProtocolSilence,
       });
       return true;
     } catch (e, st) {

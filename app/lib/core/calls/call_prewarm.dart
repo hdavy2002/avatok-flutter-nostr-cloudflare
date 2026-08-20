@@ -136,6 +136,15 @@ class _Entry {
   String? transportAudioTrackName;
   Future<void>? transportFuture;
   bool transportReady = false;
+  /// [CALL-PREWARM-TRUTH-1] True once `_prepareTransport` has FINISHED, however
+  /// it finished. `transportFuture != null` only says the attempt was started;
+  /// it stays non-null forever afterwards, including after a failure, so it
+  /// cannot be used to answer "is there a published sender to adopt?".
+  bool transportSettled = false;
+  /// [CALL-PREWARM-TRUTH-1] False when the SFU itself is switched off
+  /// (`callSfuV1`). The seat/publish half of the prewarm is skipped in that
+  /// case; only the ICE warm-up runs, and Accept must take the cold path.
+  bool sfuPrewarmEligible = true;
   bool readyPosted = false;
   bool discarded = false;
   CallPrewarmPhase phase = CallPrewarmPhase.prewarming;
@@ -158,9 +167,33 @@ class CallPrewarm {
   /// True while a foreground send-only audio prewarm is available or still
   /// completing. Accept may use an empty local stream during this window;
   /// [adopt] waits for the bounded transport future.
+  ///
+  /// [CALL-PREWARM-TRUTH-1 2026-08-21] This used to be
+  /// `e.transportFuture != null`, which is true from the moment the attempt
+  /// STARTS and stays true after it has completed by failing. Production runs
+  /// `callSilentTransportPrewarmV1 = true` with `callSfuV1 = false`, so every
+  /// incoming ring got `call_sfu_blocked reason=flag_off` /
+  /// `CallSfuException(sfu_unavailable, 503)` and then still reported a
+  /// published audio sender here. Accept believed it, installed the null-track
+  /// protocol-silence stream, deferred `getUserMedia` until after the answer,
+  /// and the answering phone transmitted silence for the whole call
+  /// (`mic_audio_level = 0.0`, `mic_energy_delta = 0`) while also paying ~2.2s
+  /// of post-accept mic acquisition — the exact opposite of instant pickup.
   bool hasPrepublishedAudio(String callId) {
     final e = _entry;
-    return e != null && e.callId == callId && !e.discarded && e.transportFuture != null;
+    if (e == null || e.callId != callId || e.discarded) return false;
+    if (!e.sfuPrewarmEligible) return false;
+    if (e.transportFuture == null) return false;
+    if (e.phase == CallPrewarmPhase.failed) return false;
+    // Still in flight is a legitimate claim: `adopt` awaits the bounded
+    // transport future, so Accept may hold the empty slot for that window.
+    if (!e.transportSettled) return true;
+    // Settled: the claim only survives if it is backed by a real sender.
+    return e.transportReady &&
+        e.transportPc != null &&
+        e.transportAudioSender != null &&
+        (e.transportAudioMid?.isNotEmpty ?? false) &&
+        (e.transportAudioTrackName?.isNotEmpty ?? false);
   }
 
   /// Fire-and-forget. Idempotent for one call generation/nonce, and always
@@ -199,13 +232,22 @@ class CallPrewarm {
       deviceId: deviceId,
     );
     _entry = e;
+    // [CALL-PREWARM-TRUTH-1] The SFU seat cannot be prewarmed while the SFU is
+    // off — `join` answers 503 every time. The ICE warm-up below is a separate
+    // thing and is what actually makes the P2P answer fast, so it ALWAYS runs;
+    // only the join/publish half is skipped.
+    final sfuEligible = RemoteConfig.callSfuV1;
+    e.sfuPrewarmEligible = sfuEligible;
     _capture('call_prewarm_started', {
       'call_id': callId,
       'trigger': 'fcm_background',
+      'sfu_eligible': sfuEligible,
+      'warms': sfuEligible ? 'ice_and_sfu_seat' : 'ice_only',
       if (nonce.isNotEmpty) 'nonce': nonce,
       if (generation != null) 'generation': generation,
     });
     e.iceFuture = IceCache.get().catchError((_) => <Map<String, dynamic>>[]);
+    if (!sfuEligible) return;
     e.joinFuture = _restoreOrJoin(e);
   }
 
@@ -242,6 +284,16 @@ class CallPrewarm {
     String deviceId = '',
   }) async {
     if (!RemoteConfig.callSilentTransportPrewarmV1) return;
+    // [CALL-PREWARM-TRUTH-1] Publishing a send-only section needs a live SFU.
+    // With `callSfuV1` off this is a guaranteed 503 that costs the ring a
+    // round trip AND leaves a phantom publish claim behind. Stop at the door.
+    if (!RemoteConfig.callSfuV1) {
+      _capture('call_prewarm_transport_skipped', {
+        'call_id': callId,
+        'reason': 'sfu_disabled',
+      });
+      return;
+    }
     var e = _entry;
     if (e == null || e.callId != callId || e.discarded) {
       start(callId, nonce: nonce, generation: generation,
@@ -292,7 +344,21 @@ class CallPrewarm {
     RTCPeerConnection? pc;
     try {
       final join = await _awaitJoin(e);
-      if (e.discarded || join == null || join.sessionId.isEmpty) return;
+      if (e.discarded || join == null || join.sessionId.isEmpty) {
+        // [CALL-PREWARM-TRUTH-1] This used to be a bare `return`: the future
+        // completed normally, nothing was recorded, and the entry kept looking
+        // like a prewarm in good standing. A join that never arrived is a
+        // failed transport and must say so, or Accept reads the silence.
+        if (!e.discarded) {
+          e.phase = CallPrewarmPhase.failed;
+          _capture('call_prewarm_transport_failed', {
+            'call_id': e.callId,
+            'failure':
+                join == null ? 'join_unavailable' : 'join_missing_session',
+          });
+        }
+        return;
+      }
       pc = await createPeerConnection({
         'iceServers': join.iceServers,
         'iceCandidatePoolSize': 2,
@@ -391,6 +457,7 @@ class CallPrewarm {
         'failure': error.toString(),
       });
       e.transportReady = false;
+      e.phase = CallPrewarmPhase.failed;
       final channel = e.transportChannel;
       e.transportChannel = null;
       try { await channel?.close(); } catch (_) {}
@@ -407,6 +474,11 @@ class CallPrewarm {
         try { await CallSfuApi.close(e.callId, failedJoin.sessionId, mids); } catch (_) {}
       }
       await _deleteHandoff(e);
+    } finally {
+      // [CALL-PREWARM-TRUTH-1] Every exit from this method — published,
+      // failed, or returned early — marks the attempt settled, so
+      // `hasPrepublishedAudio` can stop treating "started" as "succeeded".
+      e.transportSettled = true;
     }
   }
 
