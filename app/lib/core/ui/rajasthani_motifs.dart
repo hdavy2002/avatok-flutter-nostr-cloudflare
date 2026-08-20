@@ -15,6 +15,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'avatok_dark.dart';
+import 'breakpoints.dart'; // [RESP-SMALL-1] chromeScale
 
 // [RAJ-SEAMS-1] The handoff file declared these four as raw hex consts. They
 // are re-pointed at the AD tokens (identical values) because
@@ -97,17 +98,26 @@ class SquiggleSeam extends StatelessWidget {
   const SquiggleSeam({super.key, required this.bandColor, this.flip = false});
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        height: 26,
-        child: CustomPaint(painter: _SquigglePainter(bandColor, flip)),
-      );
+  Widget build(BuildContext context) {
+    // [RESP-SMALL-1] Seams are unscrollable chrome, and this app draws one at
+    // the top AND one at the bottom of nearly every screen. At full size that
+    // is 62px of a ~480dp-tall phone spent on decoration before a single row of
+    // content. The strip and the wave geometry inside it scale by the SAME
+    // factor so the wave keeps its proportions instead of being clipped.
+    final s = ZineBreakpoints.chromeScale(context);
+    return SizedBox(
+      width: double.infinity,
+      height: 26 * s,
+      child: CustomPaint(painter: _SquigglePainter(bandColor, flip, s)),
+    );
+  }
 }
 
 class _SquigglePainter extends CustomPainter {
   final Color bandColor;
   final bool flip;
-  _SquigglePainter(this.bandColor, this.flip);
+  final double scale;
+  _SquigglePainter(this.bandColor, this.flip, this.scale);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -115,7 +125,7 @@ class _SquigglePainter extends CustomPainter {
     if (w <= 0) return;
     canvas.save();
     _maybeFlip(canvas, size, flip);
-    const midY = 10.0, amp = 12.0;
+    final midY = 10.0 * scale, amp = 12.0 * scale;
     final n = math.max(2, (w / 50).round());
     final half = w / n;
 
@@ -145,13 +155,13 @@ class _SquigglePainter extends CustomPainter {
         Paint()
           ..color = _ink
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 3.4);
+          ..strokeWidth = 3.4 * scale);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _SquigglePainter old) =>
-      old.bandColor != bandColor || old.flip != flip;
+      old.bandColor != bandColor || old.flip != flip || old.scale != scale;
 }
 
 // ------------------------------------------------------------- 2C Double wave
@@ -165,18 +175,27 @@ class DoubleWaveSeam extends StatelessWidget {
       {super.key, required this.bandColor, this.backColor = _haldi, this.flip = false});
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        height: 36,
-        child: CustomPaint(painter: _DoubleWavePainter(bandColor, backColor, flip)),
-      );
+  Widget build(BuildContext context) {
+    // [RESP-SMALL-1] Same reasoning as SquiggleSeam — see the note there. This
+    // one is the taller of the two (36px) and, since [RAJ-SINGLEWAVE-1], it is
+    // the seam used at BOTH ends of the messenger, so it is the single biggest
+    // block of fixed chrome in the app.
+    final s = ZineBreakpoints.chromeScale(context);
+    return SizedBox(
+      width: double.infinity,
+      height: 36 * s,
+      child: CustomPaint(
+          painter: _DoubleWavePainter(bandColor, backColor, flip, s)),
+    );
+  }
 }
 
 class _DoubleWavePainter extends CustomPainter {
   final Color bandColor;
   final Color backColor;
   final bool flip;
-  _DoubleWavePainter(this.bandColor, this.backColor, this.flip);
+  final double scale;
+  _DoubleWavePainter(this.bandColor, this.backColor, this.flip, this.scale);
 
   Path _fill(double w, double midY, double amp, double startSign) {
     final n = math.max(2, (w / 60).round());
@@ -203,14 +222,17 @@ class _DoubleWavePainter extends CustomPainter {
     if (w <= 0) return;
     canvas.save();
     _maybeFlip(canvas, size, flip);
-    canvas.drawPath(_fill(w, 16, 12, 1), Paint()..color = backColor);
-    canvas.drawPath(_fill(w, 8, 12, 1), Paint()..color = bandColor);
+    canvas.drawPath(_fill(w, 16 * scale, 12 * scale, 1), Paint()..color = backColor);
+    canvas.drawPath(_fill(w, 8 * scale, 12 * scale, 1), Paint()..color = bandColor);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _DoubleWavePainter old) =>
-      old.bandColor != bandColor || old.backColor != backColor || old.flip != flip;
+      old.bandColor != bandColor ||
+      old.backColor != backColor ||
+      old.flip != flip ||
+      old.scale != scale;
 }
 
 // ------------------------------------------------------------ 2A Bubble cloud

@@ -460,9 +460,33 @@ class Analytics {
         'environment': kAvatokEnv,
         'net': _net,
         if (_deviceCountry.isNotEmpty) 'device_country': _deviceCountry,
+        // [RESP-SMALL-1 2026-08-21] Screen class + resolved text scale on EVERY
+        // event, set once from `main.dart`'s MaterialApp builder.
+        //
+        // These already existed, but only as properties of the one-per-session
+        // `screen_metrics` event — which means a small-screen bug report could
+        // not be sliced by device size at all: you could see THAT a phone was
+        // 320dp wide, but not filter the crashes, jank or dead taps that phone
+        // produced. A tester's "everything runs off my screen and I can't
+        // scroll" was undiagnosable for exactly this reason. Two cheap strings
+        // on the envelope turn every future report into a PostHog filter.
+        if (_widthClass != null) 'width_class': _widthClass!,
+        if (_resolvedTextScale != null) 'resolved_text_scale': _resolvedTextScale!,
         'session_seq': ++_seq,
         ...?p,
       };
+
+  /// [RESP-SMALL-1] Set once per size signature from `main.dart`. Nullable so a
+  /// pre-first-frame event (bootstrap, early exception) simply omits them
+  /// rather than reporting a fabricated default — a wrong width class is worse
+  /// than a missing one when the whole point is diagnosing a specific device.
+  static String? _widthClass;
+  static double? _resolvedTextScale;
+
+  static void setScreenClass(String widthClass, double resolvedTextScale) {
+    _widthClass = widthClass;
+    _resolvedTextScale = double.parse(resolvedTextScale.toStringAsFixed(3));
+  }
 
   /// Attach all subsequent events to this person (call when the uid exists).
   /// Pass [email]/[phone] when known so they become person properties + ride

@@ -54,4 +54,37 @@ class ZineBreakpoints {
         ZineWidthClass.regular => regular,
         ZineWidthClass.expanded => regular + 4,
       };
+
+  /// [RESP-SMALL-1 2026-08-21] The extra-small tier. `compactMax` (360) covers
+  /// "small phone"; this covers "very small phone" — the ~3x4 inch device a
+  /// tester reported, where content ran off screen with nothing to scroll.
+  ///
+  /// Deliberately NOT added to [ZineWidthClass]: that enum is exhaustively
+  /// switched on at ~20 call sites, and with no local Dart compiler a new
+  /// variant would surface as ~20 non-exhaustive-switch errors 40-80 minutes
+  /// later in CI. A fourth tier that only chrome cares about does not justify
+  /// that; [chromeScale] reads the width directly instead.
+  static const double xcompactMax = 320;
+
+  static bool isXCompact(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < xcompactMax;
+
+  /// Multiplier for FIXED-HEIGHT CHROME — seam strips, tab-strip heights,
+  /// header paddings. Chrome is the part of the screen the user cannot scroll,
+  /// so on a short device every pixel of it is taken straight out of the
+  /// content area.
+  ///
+  /// Scope note: this is for chrome only. Do NOT reach for it to shrink type —
+  /// text scaling is already handled once, app-wide, in `main.dart`'s
+  /// MaterialApp `builder` ([RESP-SMALL-1]), and multiplying the two would
+  /// compound into unreadably small text on exactly the device this is meant
+  /// to help. Body text, list rows and tap targets keep their full size; a
+  /// 44px tap target that shrinks to 33px fails accessibility and is harder to
+  /// hit on the smallest screen, which is precisely backwards.
+  static double chromeScale(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    if (w < xcompactMax) return 0.72;
+    if (w < compactMax) return 0.85;
+    return 1.0;
+  }
 }

@@ -336,6 +336,17 @@ void _reportScreenMetricsOnce(double w, double h, double dpr, double sysScale,
   if (sig == _lastScreenMetricSig) return;
   _lastScreenMetricSig = sig;
   final resolved = (sysScale * baseBump).clamp(0.85, ceil);
+  final widthClass = w < 320
+      ? 'xcompact'
+      : w < 360
+          ? 'compact'
+          : w < 600
+              ? 'regular'
+              : 'expanded';
+  // [RESP-SMALL-1] Push the class onto the event envelope BEFORE capturing, so
+  // this event and every event after it can be filtered by device size. See
+  // `Analytics.setScreenClass`.
+  Analytics.setScreenClass(widthClass, resolved);
   unawaited(Analytics.capture('screen_metrics', {
     'width_dp': w.round(),
     'height_dp': h.round(),
@@ -344,13 +355,7 @@ void _reportScreenMetricsOnce(double w, double h, double dpr, double sysScale,
     'base_bump': baseBump,
     'scale_ceiling': ceil,
     'resolved_text_scale': double.parse(resolved.toStringAsFixed(3)),
-    'width_class': w < 320
-        ? 'xcompact'
-        : w < 360
-            ? 'compact'
-            : w < 600
-                ? 'regular'
-                : 'expanded',
+    'width_class': widthClass,
   }));
 }
 
@@ -383,13 +388,41 @@ class AvaTalkApp extends StatelessWidget {
         // 1.10x still reads too small app-wide. Restore the clearly readable
         // 1.22x base while retaining width-aware ceilings; the swipe-menu title
         // has its own explicit 3x treatment in AppSwitcherBar.
+        //
+        // [RESP-SMALL-1 2026-08-21] ⚠️ `baseBump` IS NOW WIDTH-AWARE, AND THIS
+        // IS THE FIX FOR THE SMALL-SCREEN REPORT. Read before touching it.
+        //
+        // A tester on a ~3x4 inch phone reported that everything ran off the
+        // screen and she could not scroll down to reach it. The cause was here:
+        // `baseBump` was a flat 1.22 at EVERY width, so the app made type and
+        // every text-driven height 22% LARGER on the smallest devices — the
+        // exact opposite of what a small screen needs. The width-aware `ceil`
+        // below did not save her either: with `sys = 1.0` the resolved scale on
+        // a <320dp phone was `clamp(1.22, 0.85, 1.20)` = 1.20, i.e. still a 20%
+        // enlargement, because the ceiling was above the bump. The ceiling can
+        // only ever cap a LARGE OS font setting; it can't undo a bump the app
+        // applies itself.
+        //
+        // So the bump now ramps DOWN with width, and each ceiling sits at or
+        // just above its own bump so the two agree instead of fighting.
+        //
+        // ⚠️ THE >=360dp ROW IS DELIBERATELY UNCHANGED (1.22 bump, 1.45 ceil).
+        // That is the owner's own phone and every normal handset, and 1.22 is a
+        // standing owner decision — [APP-TYPE-SCALE-2], made after 1.10 was
+        // shipped and rejected as "still too small app-wide". Do NOT "simplify"
+        // this back to one number in either direction: 1.22 everywhere breaks
+        // her phone, 1.10 everywhere re-breaks his.
         final double w = mq.size.width;
-        const double baseBump = 1.22;
+        final double baseBump = w >= 360
+            ? 1.22
+            : w >= 320
+                ? 1.10
+                : 1.00;
         final double ceil = w >= 360
             ? 1.45
             : w >= 320
-                ? 1.30
-                : 1.20;
+                ? 1.20
+                : 1.10;
         _reportScreenMetricsOnce(w, mq.size.height, mq.devicePixelRatio,
             sys, baseBump, ceil);
         return ValueListenableBuilder<double>(
