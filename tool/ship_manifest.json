@@ -2588,5 +2588,73 @@
       }
     ],
     "_verified_at": "app/lib/main.dart:386-415 width-aware baseBump + ceilings, :339-350 widthClass + setScreenClass; app/lib/core/analytics.dart:464-489 envelope fields + setScreenClass; app/lib/core/ui/breakpoints.dart:59-92 xcompactMax/isXCompact/chromeScale; app/lib/core/ui/rajasthani_motifs.dart:104-118 SquiggleSeam scale, :176-190 DoubleWaveSeam scale; app/lib/features/avatok/chat_list.dart:2364 header padding, :2848 tab strip padding; app/lib/features/avatok/chat_thread.dart:1240 header height clamped 48-58"
+  },
+  "UPDATE-PLAY-LINK-1": {
+    "description": "Owner report 2026-08-21: 'when you ship it, it goes to closed testing alpha. I get an FCM notification, but when I go to my Update section it does not take me to Google Play Store — even after the app has passed review and is published. I still am not able to update. Last time I had to side-load an APK.' THREE independent causes, all fixed. (1) MISSING ANDROID 11+ PACKAGE VISIBILITY: AndroidManifest had no <queries> entry for the `market` scheme, no com.android.vending package, and no https VIEW intent, so canLaunchUrl('market://details?id=...') returned false and the https fallback had no browser to resolve to either — the button did nothing, silently. The package id in the intent was correct the whole time. (2) DEAD END IN runManual(): _resolvePath only returns _UpdatePath.store for an install it has CONFIRMED is side-loaded, so a genuinely Play-installed device whose Play client had not yet surfaced the closed-track release got 'The update is still reaching Google Play' with no button, indefinitely. It now falls back to opening the Store whenever latestAppBuild > the installed build, since that pointer is set by the same CI run that published the .aab. (3) _openPlayStore DISCARDED launchUrl's BOOLEAN RETURN, so the most common failure produced no store, no snack and no telemetry — which is why nothing was findable in PostHog. It now tries market -> public listing -> the closed-testing opt-in page (kClosedTestUrl, which already existed in config.dart and was never wired here), checks every result, and reports. Client + manifest only: no worker change, no schema change, no new flag.",
+    "shipped": "2026-08-21",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "inAppUpdateEnabled"
+    ],
+    "success": [
+      {
+        "event": "update_open_store_result",
+        "property": "result",
+        "equals": "launched",
+        "min_events": 1,
+        "note": "THE FIX. This event did not exist before, and its absence is unambiguous: either the Update row was never tapped, or all three launch targets failed. A 'launched' value is the first positive proof in this codebase that the Play Store actually opened — the pre-existing update_open_store fires BEFORE the launch and so only ever proved intent, which is exactly how a silently-failing button looked healthy."
+      },
+      {
+        "event": "update_open_store_result",
+        "property": "result",
+        "not_in": [
+          "failed"
+        ],
+        "min_events": 0,
+        "note": "All three targets failing means package visibility is still wrong or the device has no Play and no browser. The `attempts` property on the same event names which target returned false vs threw."
+      }
+    ],
+    "_verified_at": "app/android/app/src/main/AndroidManifest.xml:423-457 <queries> market + com.android.vending + https; app/lib/core/update_service.dart:318-380 runManual store fallback, :907-990 _openPlayStore chain, :20 kClosedTestUrl import; app/lib/core/config.dart:145 kClosedTestUrl"
+  },
+  "AVATAR-NORING-1": {
+    "description": "Owner request 2026-08-21 (pic 1): 'remove the black border on all profile icons, even the one on header besides the wallet info.' The 2px ink ring was drawn in ~36 places across 23 files, PLUS once inside the Avatar widget itself (avatar.dart used AD.borderHairline, so every avatar had a ring even with no caller decoration — removing only the caller wrappers would have left a black ring on every avatar and looked like the change failed). Retired by pointing AD.borderAvatar at Colors.transparent and repointing avatar.dart's internal ring at the same token. Transparent rather than deleted on purpose: a 2px transparent border still insets its child by 2px, so every avatar keeps its exact current size, crop and position and no adjacent text moves. Three former call sites that were not avatars — the appearance colour-swatch selection ring, the incoming-business-call action button outline and the sidebar camera badge — were repointed to AD.borderControl so they keep a visible edge. The green StatusRing and the header glow ring are untouched; they carry meaning. Client-only: no worker change, no schema change, no new flag.",
+    "shipped": "2026-08-21",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Pure presentation: one token changed value, no code path or branch changed, nothing gated, no event could carry a failure value. Success is VISUAL on the newest $app_build: (1) no black outline on any chat-list row avatar, on the small header avatar next to the wallet chip, in contact info, group info, the dialer, the sidebar, call screens or profile; (2) avatars are the SAME SIZE and in the same position as before — if anything shifted by ~4px the transparent-border trick was undone; (3) STILL PRESENT: the green status ring on people with a live status, the sidebar camera badge outline, the selected appearance swatch ring, and the accept/decline call button outlines. Those four are the regression to look for — losing them means AD.borderAvatar leaked back into a non-avatar site.",
+    "_verified_at": "app/lib/core/ui/avatok_dark.dart:88-114 borderAvatar=Colors.transparent; app/lib/core/avatar.dart:37-47 internal ring repointed; app/lib/shell/v2/home_appearance_screen.dart:115, app/lib/features/avatok/incoming_business_call_screen.dart:849, app/lib/shell/ava_sidebar.dart:583 repointed to borderControl; app/lib/features/status/status_ring.dart untouched"
+  },
+  "LIB-READABLE-1": {
+    "description": "Owner report 2026-08-21 with screenshots: every tile in AvaLibrary > Images rendered as a blank black square with just a JPG/PNG chip, and tapping one said 'Could not open this file'. ROOT CAUSE: both the thumbnail path (lib_thumbs._privateRoute) and the open path (MediaService.downloadLibraryItem) decided 'can I read these bytes?' by SNIFFING THE URL STRING for 'X-Amz-Signature'. The worker returns TWO valid signed-URL shapes for a private file: a real R2 SigV4 presign (has that parameter) and, whenever the R2 S3 keys are not configured, an HMAC fallback at /api/media/private-read?key&exp&sig (does not). A row that took the fallback was misfiled as unreadable E2E ciphertext; with no enc_blob — which the uploader never gets for their own row — the client drew the type tile and threw 'private file has no decryption material' on tap. Replaced with a structural LibraryItem.isDirectlyReadable used by BOTH paths, so the two can no longer be wrong in the same way while looking like separate bugs. Also fixed AvatarCache.transformUrl silently dropping the query string (it rebuilt scheme+host+path only), which stripped the signature off any private URL routed through sizedUrl and produced a 404 — a second, independent way the same tiles came back blank. Also instrumented the viewer's bare catch(_), which had made this failure completely invisible in PostHog. Client-only: no worker change, no schema change, no new flag.",
+    "shipped": "2026-08-21",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "lib_thumb_failed",
+        "where": {
+          "stage": "private_no_material"
+        },
+        "property": "reason",
+        "not_in": [
+          "not_cached_no_material"
+        ],
+        "min_events": 0,
+        "note": "THE BLANK TILE, as a value. Every tile in the owner's Images tab was emitting exactly this stage+reason pair before the fix: the item was private, the URL was not recognised as readable, there was no enc_blob, and the disk was cold. min_events is 0 because a healthy fleet emits none at all — absence is a pass. The pair reappearing on the new build means isDirectlyReadable still does not recognise the URL shape the worker is returning."
+      },
+      {
+        "event": "library_open_failed",
+        "property": "reason",
+        "not_in": [
+          "MediaUploadException: private file has no decryption material"
+        ],
+        "min_events": 0,
+        "note": "'Could not open this file', as a value. This event is NEW — the viewer previously swallowed the error in a bare catch(_) and emitted nothing, which is why there was nothing to query. This specific reason is the exact throw the misclassification produced. Other reasons appearing here are fine and informative (a genuine 404, a real E2E file with no key); this one coming back means the classification regressed."
+      }
+    ],
+    "_verified_at": "app/lib/core/library_api.dart:54-101 isDirectlyReadable; app/lib/features/library/lib_thumbs.dart:218-233; app/lib/features/avatok/media.dart:465-476; app/lib/core/avatar_cache.dart:181-200 query-string guard; app/lib/features/library/library_media_viewer.dart:65-92 telemetry; worker/src/routes/media.ts:756-812 the two URL shapes"
   }
 }
