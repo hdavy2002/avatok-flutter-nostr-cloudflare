@@ -56,8 +56,19 @@ the one case where you skip the two widget questions above, because the phrase
 already answers them. Run exactly:
 
 ```bash
-gh workflow run android.yml --ref main -f environment=prod -f artifact=both -f play_track=internal
+gh workflow run android.yml --ref main -f environment=prod -f artifact=both -f play_track=alpha
 ```
+
+⚠️ **The track is `alpha`, NOT `internal` — changed 2026-08-20.** Distribution moved
+to Closed Alpha (`[PLAY-ALPHA-36]`), and the two steps that make an update actually
+REACH the phone — "Point the update check at this build" and "Send and verify the
+update FCM notification" — are gated `if: env.PLAY_TRACK == 'alpha'` in
+`android.yml`. Ship to `internal` and both silently SKIP: the `.aab` publishes to
+Play and the run goes green, but `latestAppBuild` never moves, so the app compares
+the new build against a stale pointer and tells the owner *"you're on the latest
+version"* forever. That is exactly what happened on run #600 (build 10600 live on
+Play, KV still on 10597) and it cost a debugging session. A green run is NOT proof
+the update shipped — see step 4 below.
 
 **Then APPROVE the production gate yourself.** "ship it" means the whole thing;
 leaving the run parked on the gate and telling him to go and click a button in
@@ -91,23 +102,42 @@ A build carries the SHA it was triggered from. If a run is already waiting and
 identical — approve that run instead of cancelling and burning another ~30
 minutes. Only re-trigger when `app/` genuinely differs. Conversely, if a queued
 run PREDATES a client fix, cancel it: approving it ships stale code to the
-internal track.
+Closed Alpha track.
 
 CI does the rest with no further input:
 
 1. builds the `.aab` **and** the side-loadable arm64 `.apk`
-2. publishes the `.aab` to the Play **internal testing** track
-3. sets `latestAppBuild` in prod KV to that build number
-4. verifies the flag landed (cache-busted)
+2. publishes the `.aab` to the Play **Closed Alpha** track
+3. sets `latestAppBuild` in prod KV to that build number (`10000 + run_number`)
+4. verifies the flag landed (cache-busted) and sends the update FCM
 
 Then he opens AvaTOK, hits Update, and it updates. **Nothing is manual — he never
 downloads an .aab and never touches the Play Console.** If you find yourself telling
 him to upload something by hand, the automation has broken; fix it rather than
 routing around it.
 
-"ship it" ONLY means the internal track. Closed testing (`alpha`) is a different
-request and needs Google review, so `latestAppBuild` is NOT auto-bumped there (a
-build users can't download yet + an update prompt = a popup leading nowhere).
+**ALWAYS confirm steps 3 and 4 actually RAN before reporting a successful ship.**
+They are conditional steps, so a skip is silent and the run still goes green:
+
+```bash
+gh run view <RUN_ID> --json jobs \
+  --jq '[.jobs[].steps[] | {n:.number, name:.name, c:(.conclusion//"-")}] | .[] | "\(.n). \(.name) = \(.c)"'
+# "Point the update check at this build" MUST be `success`, not `skipped`.
+
+curl -s -H 'Cache-Control: no-cache' "https://api.avatok.ai/api/config?cb=$RANDOM" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['latestAppBuild'])"
+# MUST equal 10000 + the run NUMBER (not the run id). `gh run list` shows both.
+```
+
+If the number did not move, the owner will never see the update no matter what Play
+says. Fix it with `ALLOW_PROD=1 scripts/flags.sh set latestAppBuild=<n>` (a
+deliberate production write — say so plainly), and fix whatever made the step skip.
+
+Note `latestAppBuild` is a POINTER, not a fact about Play: the app compares its own
+`package_info` build number against it (`core/update_service.dart`), so the two can
+disagree in both directions. Bumping it for a build Play has not finished reviewing
+gives users an update prompt leading nowhere; leaving it stale after a successful
+publish gives them silence.
 
 Still true: **never** trigger a build he didn't ask for. "ship it" is the ask.
 
