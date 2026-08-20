@@ -33,9 +33,14 @@ class LiveTheme {
   static const inkSoft = AD.textSecondary;
   static const card = AD.card;
   /// Tape highlight — primaryBadge @30%.
-  static const tape = Color(0x4DE8833A);
+  ///
+  /// [RAJ-PHASE2-1] Was a literal 0x4DE8833A: the OLD orange accent at 30%.
+  /// That orange is not in the Rajasthani palette at all, so the comment
+  /// ("primaryBadge @30%") had quietly stopped being true. Now it derives from
+  /// the token, so it follows the accent instead of drifting from it.
+  static final tape = AD.primaryBadge.withValues(alpha: 0.30);
   /// Danger marker-highlight @34%.
-  static const coralMark = Color(0x57E5735C);
+  static final coralMark = AD.danger.withValues(alpha: 0.34);
 
   /// Muted sub-text on the dark stage.
   static const subPaper = AD.textSecondary;
@@ -340,7 +345,9 @@ class _DottedTexture extends StatelessWidget {
 class _DotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = const Color(0x0DF9F7ED); // paper @5%
+    // [RAJ-PHASE2-1] Was 0x0DF9F7ED — the OLD paper white at 5%. Derived from
+    // the palette token now so it can't drift from AD.bg again.
+    final p = Paint()..color = AD.bg.withValues(alpha: 0.05); // paper @5%
     const step = 18.0;
     for (var y = 0.0; y < size.height; y += step) {
       for (var x = 0.0; x < size.width; x += step) {
@@ -365,7 +372,8 @@ class _BracketPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xD9F9F7ED) // paper @85%
+      // [RAJ-PHASE2-1] Was 0xD9F9F7ED — the OLD paper white at 85%.
+      ..color = AD.bg.withValues(alpha: 0.85) // paper @85%
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;

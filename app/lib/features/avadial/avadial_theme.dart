@@ -28,19 +28,24 @@ class AvaDialTheme {
   static const textSoft = AD.textSecondary;
   static const textMute = AD.textTertiary;
 
-  // [AVADIAL-SEARCH-2] Search input — owner spec 2026-07-14: a WHITE pill with
-  // black text, deliberately breaking the dark palette above so the input reads
-  // as tappable/active against the near-black tabs. These are the ONLY light
-  // tokens in Calls; do not reuse them for anything but the search bars.
+  // [AVADIAL-SEARCH-2] Search input — owner spec 2026-07-14: a pill that reads
+  // as tappable/active against the surrounding chrome. These are the ONLY
+  // deliberately-contrasting tokens in Calls; do not reuse them for anything
+  // but the search bars.
+  //
+  // [RAJ-PHASE2-1] The original spec said "WHITE pill with black text",
+  // written when the app was near-black. The palette is now cream paper on
+  // ink, so raw white/black is off-palette and reads colder than everything
+  // around it. Same intent, palette values: the app's own input surface.
   //
   // There are five search inputs: the shared `_AvaDialSearchBar` (Call logs +
   // Block list), Contacts' and Messages' own inline pills, and the dialpad's
   // outlined field (dialpad_search_tab.dart — different shape, same colours).
   // They all style off these three, so keep them here rather than hardcoding
   // Colors.white in five places and letting them drift.
-  static const searchFill = Colors.white;
-  static const searchText = Colors.black;
-  static const searchHint = Colors.black54;
+  static const searchFill = AD.inputField;
+  static const searchText = AD.textOnInput;
+  static const searchHint = AD.placeholderOnWhite;
 
   // Accents reuse the AD dark v2 glyph/status tokens (contact/log row colors,
   // tab strip fills, PSTN caller-id colors) so Calls stays on-brand.
