@@ -9,6 +9,9 @@ import '../../core/brain_consent.dart';
 import '../../core/db.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avachat/discuss_seed.dart';
@@ -297,8 +300,12 @@ class _CompanionHomeState extends State<CompanionHome> {
         child: Padding(
           padding: const EdgeInsets.all(Msg.s5),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // [RAJ-SEAMS-1] 12-ava-companion-illo-1.svg, per
+            // illustrations/MANIFEST.md ("Adults only"). Decorative — replaces
+            // the shield badge; the title beside it carries the meaning.
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 38),
+              SvgPicture.asset(Illustrations.companionAdultsOnly,
+                  height: 56, fit: BoxFit.contain, excludeFromSemantics: true),
               const SizedBox(width: 12),
               Expanded(child: Text('Adults only', style: ADText.threadName(c: AD.textPrimary))),
             ]),
@@ -479,53 +486,63 @@ class _CompanionHomeState extends State<CompanionHome> {
             ),
       body: SafeArea(
         child: Column(children: [
-          _header(),
-          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
-          // at the header↔content seam (design/flutter-handoff, patches.md §6).
-          // bandColor is the band's ACTUAL fill (AD.headerFooter). HANDOFF's
-          // hue table wants rani pink here, but that describes what the header
-          // should BECOME in the later recolouring phase — until the band
-          // itself moves, a pink drape on a turquoise bar is just broken.
-          const TorranDivider(
-            bandColor: AD.headerFooter,
-            direction: TorranDirection.down,
-          ),
+          // [RAJ-SEAMS-1] TorranDivider is retired. Ava companion moves to a
+          // RANI PINK (dark) band per patches.md §6, seam is 2E FlowerChainSeam
+          // straddling the header's hard 3px ink bottom border — same Stack
+          // pattern as profile_screen.dart: a Column (header + 15px spacer)
+          // behind a Positioned seam anchored to the Stack's bottom, so exactly
+          // half of the 30px-tall seam lands on each side of the border
+          // regardless of the header's actual rendered height (SafeArea inset
+          // varies by device).
+          Builder(builder: (context) {
+            const band = AD.bandRani;
+            final onBand = AD.onBand(band);
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Column(mainAxisSize: MainAxisSize.min, children: [
+                  _header(band, onBand),
+                  const SizedBox(height: 15),
+                ]),
+                const Positioned(left: 0, right: 0, bottom: 0, child: FlowerChainSeam()),
+              ],
+            );
+          }),
           Expanded(child: _loading ? _loadingState() : (_sessions.isEmpty ? _emptyState() : _sessionList())),
         ]),
       ),
     );
   }
 
-  Widget _header() {
+  Widget _header(Color band, Color onBand) {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-      // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider added
-      // immediately below this header in the Scaffold body is the seam now.
-      decoration: const BoxDecoration(
-        color: AD.headerFooter,
+      decoration: BoxDecoration(
+        color: band,
+        border: const Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
       ),
       child: Row(children: [
-        const AdBackButton(),
+        AdBackButton(color: onBand),
         const SizedBox(width: 4),
         ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
         const SizedBox(width: Msg.s2),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Chat with Ava', style: ADText.threadName(c: AD.textPrimary)),
-            Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ADText.preview()),
+            Text('Chat with Ava', style: ADText.threadName(c: onBand)),
+            Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ADText.preview(c: onBand)),
           ]),
         ),
         if (!_showArchived) ...[
           IconButton(
             tooltip: 'AvaBrain Memory',
             icon: PhosphorIcon(PhosphorIcons.brain(PhosphorIconsStyle.bold),
-                color: AD.textSecondary, size: 22),
+                color: onBand, size: 22),
             onPressed: _openMemory,
           ),
           IconButton(
             tooltip: 'Discuss a chat',
             icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                color: AD.textSecondary, size: 22),
+                color: onBand, size: 22),
             onPressed: _discussAChat,
           ),
         ],
@@ -533,7 +550,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           tooltip: _showArchived ? 'Back to chats' : 'Archived',
           icon: PhosphorIcon(
               _showArchived ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold) : PhosphorIcons.archive(PhosphorIconsStyle.bold),
-              color: AD.textSecondary, size: 22),
+              color: onBand, size: 22),
           onPressed: () {
             setState(() {
               _showArchived = !_showArchived;

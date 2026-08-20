@@ -47,6 +47,38 @@ class AD {
   /// rule under it reads as two dividers stacked.
   static const borderBeadRule = Color(0x2416110D);
 
+  // ------------------------------------------------------------------ bands
+  //
+  // [RAJ-SEAMS-1] Header/footer band hues, named by ROLE so a screen's band can
+  // be read at a glance. These are aliases of existing tokens, not new colours:
+  // the seam handoff (design/seams/patches.md §6) assigns a band hue per screen
+  // by mood, and `bandTurquoise` is no longer the only answer — which is why
+  // `headerFooter` alone stopped being a useful name.
+  static const bandTurquoise = headerFooter;  // 0xFF5CB8A6 — light
+  static const bandHaldi = haldi;             // 0xFFE9A227 — light
+  static const bandIndigo = tabCalls;         // 0xFF2E4A8C — dark
+  static const bandRani = primaryBadge;       // 0xFFC9316E — dark
+
+  /// Cream for type/icons sitting ON a dark band.
+  static const onBandCream = bg;              // 0xFFFBF3E2
+  /// Ink for type/icons sitting ON a light band.
+  static const onBandInk = textPrimary;       // 0xFF16110D
+
+  /// The readable foreground for anything drawn ON a coloured band — the
+  /// contrast rule in design/seams/patches.md §6, in one place.
+  ///
+  /// Turquoise and haldi are LIGHT bands and take ink; indigo and rani pink are
+  /// DARK bands and take cream. This matters because every header in the app
+  /// used to be turquoise, so titles and icons are hardcoded to ink all over —
+  /// recolouring a band to indigo without routing its foreground through here
+  /// leaves ink-on-indigo, which is very nearly invisible.
+  ///
+  /// NOTE this deliberately does NOT reuse `_inkOn` in zine_widgets.dart, which
+  /// patches.md §6 points at: that one is private to its file and returns
+  /// `Colors.white`, not the cream the palette actually calls for.
+  static Color onBand(Color fill) =>
+      fill.computeLuminance() > 0.5 ? onBandInk : onBandCream;
+
   // ----------------------------------------------------------------- motifs
   /// [RAJ-PHASE3-1] Haldi (turmeric yellow) — the ornament accent. It already
   /// existed as `micIdleBg`, but that name means "the mic button is idle";
@@ -577,7 +609,15 @@ class AdSticker extends StatelessWidget {
 class AdBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final IconData? icon;
-  const AdBackButton({super.key, this.onTap, this.icon});
+  /// [RAJ-SEAMS-1] Foreground colour, for headers on a DARK band.
+  ///
+  /// Defaults to ink, which is right on turquoise and haldi and was the only
+  /// case that existed while every header in the app was turquoise. Screens
+  /// whose band moved to indigo or rani pink MUST pass `AD.onBand(band)` — an
+  /// ink arrow on indigo is very nearly invisible. Optional and defaulted on
+  /// purpose: this widget has call sites on many screens outside the retheme.
+  final Color? color;
+  const AdBackButton({super.key, this.onTap, this.icon, this.color});
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -588,7 +628,7 @@ class AdBackButton extends StatelessWidget {
         child: Center(
           child: PhosphorIcon(
             icon ?? PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
-            size: 20, color: AD.textPrimary,
+            size: 20, color: color ?? AD.textPrimary,
           ),
         ),
       ),

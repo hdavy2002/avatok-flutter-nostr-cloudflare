@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 156 156" width="156" height="156">
+                <g transform="translate(78 78)">
+                  <path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#5CB8A6" stroke="#16110D" stroke-width="3"></path>
+                  <g transform="rotate(45)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#E9A227" stroke="#16110D" stroke-width="3"></path></g>
+                  <g transform="rotate(90)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#5CB8A6" stroke="#16110D" stroke-width="3"></path></g>
+                  <g transform="rotate(135)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#E9A227" stroke="#16110D" stroke-width="3"></path></g>
+                  <g transform="rotate(180)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#5CB8A6" stroke="#16110D" stroke-width="3"></path></g>
+                  <g transform="rotate(225)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#E9A227" stroke="#16110D" stroke-width="3"></path></g>
+                  <g transform="rotate(270)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#5CB8A6" stroke="#16110D" stroke-width="3"></path></g>
+                  <g transform="rotate(315)"><path d="M0 -74 C 20 -58, 20 -40, 0 -30 C -20 -40, -20 -58, 0 -74 z" fill="#E9A227" stroke="#16110D" stroke-width="3"></path></g>
+                </g>
+              </svg>

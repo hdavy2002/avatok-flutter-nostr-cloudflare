@@ -555,16 +555,17 @@ class _SettingsDetail extends StatelessWidget {
 /// header bar, hairline bottom border, optional back button + Nunito title.
 PreferredSizeWidget _adHeader(String title,
     {bool showBack = true, VoidCallback? onBack, List<Widget> actions = const []}) {
+  // [RAJ-SEAMS-1] Settings moves to a HALDI (light) band — patches.md §6 —
+  // so ink foreground stays correct as-is, no AD.onBand flip needed. Seam is
+  // 2D PillMorseStrip, on paper 9px below a hard 3px ink bottom border.
   return PreferredSize(
-    // Height bumped to fit the TorranDivider welded below the band (its own
-    // height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
-    preferredSize: const Size.fromHeight(64 + 26),
+    // Height: header content 64 + 9px gap + 10px PillMorseStrip = +19.
+    preferredSize: const Size.fromHeight(64 + 19),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
-        // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
-        // immediately below is the seam now.
         decoration: const BoxDecoration(
-          color: AD.headerFooter,
+          color: AD.bandHaldi,
+          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
         ),
         child: SafeArea(
           bottom: false,
@@ -583,18 +584,12 @@ PreferredSizeWidget _adHeader(String title,
           ),
         ),
       ),
-      // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads at
-      // the header↔content seam (design/flutter-handoff, patches.md §6).
-      // Placed inside the PreferredSize (fixed appBar chrome) rather than as
-      // the first child of the scrolling body ListView below, so it stays
-      // welded to the header instead of scrolling away. Shared by both
-      // Settings and _SettingsDetail since both call _adHeader. bandColor
-      // matches the band's actual fill (AD.headerFooter), not the eventual
-      // per-area hue this screen will get in a later recolouring phase.
-      const TorranDivider(
-        bandColor: AD.headerFooter,
-        direction: TorranDirection.down,
-      ),
+      // [RAJ-SEAMS-1] Seam sits welded to the header (inside the fixed
+      // PreferredSize, not the scrolling body) but on paper, 9px below the
+      // band's hard ink border — per patches.md §6 2D usage note. Shared by
+      // both Settings and _SettingsDetail since both call _adHeader.
+      const SizedBox(height: 9),
+      const PillMorseStrip(),
     ]),
   );
 }

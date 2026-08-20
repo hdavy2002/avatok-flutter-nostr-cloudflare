@@ -1218,7 +1218,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             // Thread header — paper-2 band with ink bottom border (§8).
             Container(
               height: 58,
-              // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider
+              // [RAJ-SEAMS-1] Bottom hairline removed — the SquiggleSeam
               // below is the header↔content seam now (patches.md §6).
               decoration: const BoxDecoration(
                 color: AD.headerFooter,
@@ -1311,13 +1311,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: AD.iconVideo),
               ]),
             ),
-            // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging
-            // beads at the header↔content seam (design/flutter-handoff,
-            // patches.md §6). Thread header hue is turquoise (AD.headerFooter).
-            const TorranDivider(
-              bandColor: AD.headerFooter,
-              direction: TorranDirection.down,
-            ),
+            // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
+            // Squiggle seam on the turquoise band (design/seams/patches.md §6).
+            const SquiggleSeam(bandColor: AD.bandTurquoise),
             if (_pinned != null) _pinBanner(),
             // Unknown-number receptionist thread — invite the owner to save the
             // caller (dismissible). Hidden once saved or dismissed.

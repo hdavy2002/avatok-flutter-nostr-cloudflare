@@ -38,16 +38,21 @@ PreferredSizeWidget _darkHeader({
   // place of the back button when showBack is false.
   Widget? leading,
 }) {
+  // [RAJ-SEAMS-1] Wallet moves to an INDIGO (dark) band — patches.md §6 —
+  // so title/tag must flip to cream via AD.onBand, same shape as
+  // shellNavBar(). Seam is 2D PillMorseStrip, welded to the header but
+  // sitting on paper 9px BELOW a hard 3px ink bottom border (per-seam usage
+  // note), not flush like the 1B/2C/2A seams.
+  const band = AD.bandIndigo;
+  final onBand = AD.onBand(band);
   return PreferredSize(
-    // Height bumped to fit the TorranDivider welded below the band (its own
-    // height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
-    preferredSize: Size.fromHeight(tag == null ? 76 + 26 : 92 + 26),
+    // Height: header content (76/92) + 9px gap + 10px PillMorseStrip = +19.
+    preferredSize: Size.fromHeight(tag == null ? 76 + 19 : 92 + 19),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
-        // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
-        // immediately below is the seam now.
         decoration: const BoxDecoration(
-          color: AD.headerFooter,
+          color: band,
+          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
         ),
         child: SafeArea(
           bottom: false,
@@ -55,7 +60,8 @@ PreferredSizeWidget _darkHeader({
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
             child: Row(children: [
               if (showBack) ...[
-                const AdBackButton(),
+                // [RAJ-SEAMS-1] cream, not the ink default — this band is indigo.
+                AdBackButton(color: onBand),
                 const SizedBox(width: Msg.s2),
               ] else if (leading != null) ...[
                 leading,
@@ -66,11 +72,11 @@ PreferredSizeWidget _darkHeader({
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(title, style: ADText.appTitle(c: onBand), maxLines: 1, overflow: TextOverflow.ellipsis),
                     if (tag != null) ...[
                       const SizedBox(height: 2),
                       // [UI-DS-SWEEP-1] sentence case — the caps were shouting.
-                      Text(tag, style: ADText.sectionLabel()),
+                      Text(tag, style: ADText.sectionLabel(c: onBand)),
                     ],
                   ],
                 ),
@@ -80,17 +86,11 @@ PreferredSizeWidget _darkHeader({
           ),
         ),
       ),
-      // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads at
-      // the header↔content seam (design/flutter-handoff, patches.md §6).
-      // Placed inside the PreferredSize (fixed appBar chrome) rather than as
-      // the first child of the scrolling body ListView below, so it stays
-      // welded to the header instead of scrolling away. bandColor matches
-      // the band's actual fill (AD.headerFooter), not the eventual per-area
-      // hue this screen will get in a later recolouring phase.
-      const TorranDivider(
-        bandColor: AD.headerFooter,
-        direction: TorranDirection.down,
-      ),
+      // [RAJ-SEAMS-1] Seam sits welded to the header (inside the fixed
+      // PreferredSize, not the scrolling body) but on paper, 9px below the
+      // band's hard ink border — per patches.md §6 2D usage note.
+      const SizedBox(height: 9),
+      const PillMorseStrip(),
     ]),
   );
 }
@@ -994,6 +994,8 @@ class _WalletScreenState extends State<WalletScreen> {
         leading: shellScope == null
             ? null
             : AdBackButton(
+                // [RAJ-SEAMS-1] cream on the indigo band (see _darkHeader).
+                color: AD.onBand(AD.bandIndigo),
                 icon: PhosphorIcons.list(PhosphorIconsStyle.bold),
                 onTap: () {
                   Analytics.capture('wallet_menu_opened');
@@ -1008,6 +1010,8 @@ class _WalletScreenState extends State<WalletScreen> {
         actions: [
           if (_admin)
             AdBackButton(
+              // [RAJ-SEAMS-1] cream on the indigo band (see _darkHeader).
+              color: AD.onBand(AD.bandIndigo),
               icon: PhosphorIcons.shieldStar(PhosphorIconsStyle.bold),
               onTap: () {
                 Analytics.capture('wallet_admin_opened');

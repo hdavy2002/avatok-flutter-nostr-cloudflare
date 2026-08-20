@@ -11,6 +11,7 @@ import 'dart:typed_data';
 // can collide with a material symbol.
 import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
@@ -34,6 +35,7 @@ import '../../core/status_store.dart';
 import '../../core/update_service.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/onboarding_store.dart';
@@ -2402,15 +2404,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
             communityInvites: _groupInvites,
           ),
-          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
-          // at the header↔content seam (design/flutter-handoff, patches.md §6).
-          // AvaTOK's header hue is turquoise (AD.headerFooter) per HANDOFF's
-          // per-area hue table, and the tab strip is the last chrome band above
-          // the content, so the seam is here rather than under the title row.
-          const TorranDivider(
-            bandColor: AD.headerFooter,
-            direction: TorranDirection.down,
-          ),
+          // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
+          // Squiggle seam on the turquoise band (design/seams/patches.md §6).
+          // The tab strip is the last chrome band above the content, so the
+          // seam sits here rather than under the title row.
+          const SquiggleSeam(bandColor: AD.bandTurquoise),
           Expanded(
             child: IndexedStack(index: _tab, children: [
               // Chat tab body — search dock + the list; the header lives above,
@@ -2489,11 +2487,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       padding: const EdgeInsets.only(top: 80),
                       child: Center(
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          PhosphorIcon(
-                              searching
-                                  ? PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)
-                                  : PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
-                              size: 40, color: AD.textFaint),
+                          if (!searching && _filter == 'all')
+                            // Genuine "No chats yet" — the only branch of this
+                            // block that matches the illustration's empty-state
+                            // title; search/filter "no results" keep the icon.
+                            SvgPicture.asset(Illustrations.chatListEmpty,
+                                height: 120, fit: BoxFit.contain, excludeFromSemantics: true)
+                          else
+                            PhosphorIcon(
+                                searching
+                                    ? PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)
+                                    : PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                                size: 40, color: AD.textFaint),
                           const SizedBox(height: 14),
                           Text(
                               searching
@@ -2777,7 +2782,7 @@ class _AvaTokTabStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
+      // [RAJ-SEAMS-1] The bottom hairline is gone: the SquiggleSeam added
       // immediately below this strip in the Scaffold body IS the seam now, and
       // a straight rule sitting on top of the scallops reads as a mistake.
       decoration: const BoxDecoration(color: AD.headerFooter),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/contacts.dart';
 import '../avatok/invite_screen.dart';
@@ -226,7 +228,8 @@ class _DialpadSearchTabState extends State<DialpadSearchTab> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ZineIconBadge(icon: PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: AD.textTertiary, size: 48),
+            SvgPicture.asset(Illustrations.dialerNotOnAvatok,
+                height: 120, fit: BoxFit.contain, excludeFromSemantics: true),
             const SizedBox(height: Msg.s3),
             Text('Not on AvaTOK', style: AvaDialTheme.title(size: 16, color: AvaDialTheme.text)),
             const SizedBox(height: Msg.s1),

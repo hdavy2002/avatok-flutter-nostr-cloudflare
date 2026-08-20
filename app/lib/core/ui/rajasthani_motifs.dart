@@ -1,170 +1,323 @@
 // Destination in the repo: app/lib/core/ui/rajasthani_motifs.dart
 //
-// The four Phase-3 shared widgets from HANDOFF.md that the last theming pass
-// skipped: TorranDivider, BeadStudRule, LotusRosettePlate, GrainOverlay.
-// Ported 1:1 from the arithmetic in the mockup SVGs (see
-// "03 Chat list India.dc.html" header/footer seams and the "Ava" nav icon)
-// so there is nothing left to improvise.
+// Shared theme widgets. The toran drape was REPLACED (owner decision) by five
+// Gen-Z seam styles picked from the "Seam styles — GenZ picks" mockup:
+//   1B SquiggleSeam    2C DoubleWaveSeam    2A BubbleCloudSeam
+//   2D PillMorseStrip  2E FlowerChainSeam
+// Which screen gets which seam + band colour is in patches.md §5-6.
+// BeadStudRule, LotusRosettePlate and GrainOverlay are unchanged from the
+// earlier package. All geometry is ported 1:1 from the mockup SVGs.
 //
-// Wiring: see patches.md in this folder for the exact call sites
-// (shell_chrome.dart footer, main.dart grain layer, per-screen headers).
+// Every seam takes `flip: true` to mirror vertically for FOOTER use
+// (band below, seam pointing up into content).
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'avatok_dark.dart';
 
-/// Scalloped "toran" drape with hanging beads — the seam between a coloured
-/// header/footer band and the paper content next to it.
-///
-/// [TorranDirection.down]: a header band sits ABOVE this widget; the flat
-/// band continues for [bandDepth], then a row of semicircle scallops bulges
-/// DOWN into the content, with one bead hanging in each scallop's trough.
-/// [TorranDirection.up]: a footer band sits BELOW this widget; mirrors the
-/// above so scallops + beads lift UP into the content.
-///
-/// Scallop count is computed from the available width (mockups were fixed at
-/// 390px with radius 13 → 15 scallops; real screens vary, so the radius is
-/// nudged slightly to fit a whole number of scallops edge to edge).
-enum TorranDirection { down, up }
+// [RAJ-SEAMS-1] The handoff file declared these four as raw hex consts. They
+// are re-pointed at the AD tokens (identical values) because
+// tool/check_design_guard.py fails the build on any raw colour literal under
+// app/lib, and because a second copy of the palette is a second thing to drift.
+const _ink = AD.textPrimary;      // 0xFF16110D
+const _haldi = AD.haldi;          // 0xFFE9A227
+const _rani = AD.primaryBadge;    // 0xFFC9316E
+const _indigo = AD.tabCalls;      // 0xFF2E4A8C
+const _cream = AD.bg;             // 0xFFFBF3E2
 
-class TorranDivider extends StatelessWidget {
-  final Color bandColor;
-  final List<Color> beadColors;
-  final TorranDirection direction;
-  final double scallopRadius;
-  final double beadRadius;
-  final double bandDepth;
-
-  const TorranDivider({
-    super.key,
-    required this.bandColor,
-    this.beadColors = const [AD.haldi, AD.primaryBadge],
-    this.direction = TorranDirection.down,
-    this.scallopRadius = 13,
-    this.beadRadius = 3.6,
-    this.bandDepth = 5,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final height = bandDepth + scallopRadius + beadRadius * 2;
-    return SizedBox(
-      width: double.infinity,
-      height: height,
-      child: CustomPaint(
-        painter: _TorranPainter(
-          bandColor: bandColor,
-          beadColors: beadColors,
-          direction: direction,
-          scallopRadius: scallopRadius,
-          beadRadius: beadRadius,
-          bandDepth: bandDepth,
-        ),
-      ),
-    );
+void _maybeFlip(Canvas canvas, Size size, bool flip) {
+  if (flip) {
+    canvas.translate(0, size.height);
+    canvas.scale(1, -1);
   }
 }
 
-class _TorranPainter extends CustomPainter {
+// ---------------------------------------------------------------- 1B Squiggle
+/// Hand-drawn wave: band colour fills down to a wavy edge, a fat 3.4px ink
+/// stroke rides the wave. Half-period ~50px, amplitude 12, mid-line at y10.
+class SquiggleSeam extends StatelessWidget {
   final Color bandColor;
-  final List<Color> beadColors;
-  final TorranDirection direction;
-  final double scallopRadius;
-  final double beadRadius;
-  final double bandDepth;
+  final bool flip;
+  const SquiggleSeam({super.key, required this.bandColor, this.flip = false});
 
-  _TorranPainter({
-    required this.bandColor,
-    required this.beadColors,
-    required this.direction,
-    required this.scallopRadius,
-    required this.beadRadius,
-    required this.bandDepth,
-  });
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        height: 26,
+        child: CustomPaint(painter: _SquigglePainter(bandColor, flip)),
+      );
+}
+
+class _SquigglePainter extends CustomPainter {
+  final Color bandColor;
+  final bool flip;
+  _SquigglePainter(this.bandColor, this.flip);
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     if (w <= 0) return;
-    final targetSpan = scallopRadius * 2;
-    final count = math.max(1, (w / targetSpan).round());
-    final span = w / count;
-    final radius = span / 2;
-    final fill = Paint()..color = bandColor..style = PaintingStyle.fill;
-    final path = Path();
+    canvas.save();
+    _maybeFlip(canvas, size, flip);
+    const midY = 10.0, amp = 12.0;
+    final n = math.max(2, (w / 50).round());
+    final half = w / n;
 
-    // NOTE: the mockup SVG builds this with `a<r> <r> 0 0 <sweep> -<span> 0`
-    // arc commands walking right-to-left. `clockwise` below is a best guess
-    // at the equivalent bulge direction in Flutter's arcToPoint — check the
-    // rendered scallop against the mockup screenshot and flip it if the
-    // scallops bulge the wrong way.
-    if (direction == TorranDirection.down) {
-      path.moveTo(0, 0);
-      path.lineTo(w, 0);
-      path.lineTo(w, bandDepth);
+    Path wave() {
+      final p = Path()..moveTo(w, midY);
       var x = w;
-      for (var i = 0; i < count; i++) {
-        path.arcToPoint(Offset(x - span, bandDepth),
-            radius: Radius.circular(radius), clockwise: true);
-        x -= span;
+      var sign = 1.0;
+      for (var i = 0; i < n; i++) {
+        p.cubicTo(x - half * 0.3, midY + amp * sign, x - half * 0.7,
+            midY + amp * sign, x - half, midY);
+        x -= half;
+        sign = -sign;
       }
-      path.close();
-      canvas.drawPath(path, fill);
-      for (var i = 0; i < count; i++) {
-        final cx = radius + i * span;
-        final cy = bandDepth + radius + beadRadius * 0.7;
-        _drawBead(canvas, Offset(cx, cy), beadColors[i % beadColors.length]);
-      }
-    } else {
-      final bottom = size.height;
-      final crest = bottom - bandDepth;
-      path.moveTo(0, bottom);
-      path.lineTo(w, bottom);
-      path.lineTo(w, crest);
-      var x = w;
-      for (var i = 0; i < count; i++) {
-        path.arcToPoint(Offset(x - span, crest),
-            radius: Radius.circular(radius), clockwise: false);
-        x -= span;
-      }
-      path.close();
-      canvas.drawPath(path, fill);
-      for (var i = 0; i < count; i++) {
-        final cx = radius + i * span;
-        final cy = crest - radius - beadRadius * 0.7;
-        _drawBead(canvas, Offset(cx, cy), beadColors[i % beadColors.length]);
-      }
+      return p;
     }
-  }
 
-  void _drawBead(Canvas canvas, Offset center, Color color) {
-    canvas.drawCircle(center, beadRadius, Paint()..color = color);
-    canvas.drawCircle(
-        center,
-        beadRadius,
+    final fill = Path()
+      ..moveTo(0, 0)
+      ..lineTo(w, 0)
+      ..lineTo(w, midY)
+      ..addPath(wave(), Offset.zero)
+      ..lineTo(0, 0)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = bandColor);
+    canvas.drawPath(
+        wave(),
         Paint()
-          ..color = bandColor
+          ..color = _ink
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4);
+          ..strokeWidth = 3.4);
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _TorranPainter old) =>
-      old.bandColor != bandColor ||
-      old.beadColors != beadColors ||
-      old.direction != direction ||
-      old.scallopRadius != scallopRadius ||
-      old.beadRadius != beadRadius ||
-      old.bandDepth != bandDepth;
+  bool shouldRepaint(covariant _SquigglePainter old) =>
+      old.bandColor != bandColor || old.flip != flip;
 }
 
+// ------------------------------------------------------------- 2C Double wave
+/// Two stacked waves, offset phase: a deeper accent wave (default haldi)
+/// behind, the band-colour wave in front. No ink stroke.
+class DoubleWaveSeam extends StatelessWidget {
+  final Color bandColor;
+  final Color backColor;
+  final bool flip;
+  const DoubleWaveSeam(
+      {super.key, required this.bandColor, this.backColor = _haldi, this.flip = false});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        height: 36,
+        child: CustomPaint(painter: _DoubleWavePainter(bandColor, backColor, flip)),
+      );
+}
+
+class _DoubleWavePainter extends CustomPainter {
+  final Color bandColor;
+  final Color backColor;
+  final bool flip;
+  _DoubleWavePainter(this.bandColor, this.backColor, this.flip);
+
+  Path _fill(double w, double midY, double amp, double startSign) {
+    final n = math.max(2, (w / 60).round());
+    final half = w / n;
+    final p = Path()
+      ..moveTo(0, 0)
+      ..lineTo(w, 0)
+      ..lineTo(w, midY);
+    var x = w;
+    var sign = startSign;
+    for (var i = 0; i < n; i++) {
+      p.cubicTo(x - half * 0.3, midY + amp * sign, x - half * 0.7,
+          midY + amp * sign, x - half, midY);
+      x -= half;
+      sign = -sign;
+    }
+    p.close();
+    return p;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    if (w <= 0) return;
+    canvas.save();
+    _maybeFlip(canvas, size, flip);
+    canvas.drawPath(_fill(w, 16, 12, 1), Paint()..color = backColor);
+    canvas.drawPath(_fill(w, 8, 12, 1), Paint()..color = bandColor);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _DoubleWavePainter old) =>
+      old.bandColor != bandColor || old.backColor != backColor || old.flip != flip;
+}
+
+// ------------------------------------------------------------ 2A Bubble cloud
+/// Chunky uneven blobs: semicircle bumps of irregular radii hang off the
+/// band. Radii pattern from the mockup, scaled to the available width.
+class BubbleCloudSeam extends StatelessWidget {
+  final Color bandColor;
+  final bool flip;
+  const BubbleCloudSeam({super.key, required this.bandColor, this.flip = false});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        height: 32,
+        child: CustomPaint(painter: _BubbleCloudPainter(bandColor, flip)),
+      );
+}
+
+class _BubbleCloudPainter extends CustomPainter {
+  final Color bandColor;
+  final bool flip;
+  _BubbleCloudPainter(this.bandColor, this.flip);
+
+  // Mockup pattern (sum of diameters = 390).
+  static const _radii = [20.0, 14, 24, 12, 19, 25, 13, 22, 15, 17, 14];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    if (w <= 0) return;
+    canvas.save();
+    _maybeFlip(canvas, size, flip);
+    final scale = w / 390;
+    const edgeY = 6.0;
+    final p = Path()
+      ..moveTo(0, 0)
+      ..lineTo(w, 0)
+      ..lineTo(w, edgeY);
+    var x = w;
+    var i = 0;
+    while (x > 0.5) {
+      final r = math.min(_radii[i % _radii.length] * scale, x / 2);
+      p.arcToPoint(Offset(x - 2 * r, edgeY),
+          radius: Radius.circular(r), clockwise: true);
+      x -= 2 * r;
+      i++;
+    }
+    p.close();
+    canvas.drawPath(p, Paint()..color = bandColor);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleCloudPainter old) =>
+      old.bandColor != bandColor || old.flip != flip;
+}
+
+// -------------------------------------------------------------- 2D Pill morse
+/// Dash-dot strip of ink-outlined pills in the three accents, sitting on
+/// paper BELOW a hard-edged band. The band itself keeps a 3px ink bottom
+/// border (top border when used above a footer); this widget is just the
+/// strip — give it 9px vertical padding from the band edge.
+class PillMorseStrip extends StatelessWidget {
+  final List<Color> colors;
+  const PillMorseStrip({super.key, this.colors = const [_haldi, _rani, _indigo]});
+
+  static const _widths = [34.0, 10, 22, 10, 46, 10, 28, 10, 38, 10];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(children: [
+        for (var i = 0; i < _widths.length; i++) ...[
+          Container(
+            width: _widths[i],
+            height: 10,
+            decoration: BoxDecoration(
+              color: colors[i % colors.length],
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: _ink, width: 2),
+            ),
+          ),
+          const SizedBox(width: 7),
+        ],
+        Expanded(
+          child: Container(
+            height: 10,
+            constraints: const BoxConstraints(minWidth: 18),
+            decoration: BoxDecoration(
+              color: colors[_widths.length % colors.length],
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: _ink, width: 2),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ------------------------------------------------------------ 2E Flower chain
+/// Y2K daisies straddling a hard 3px ink seam — the band keeps its ink
+/// border; the flowers overlap it. Layer it, don't stack it:
+///   Stack(clipBehavior: Clip.none, children: [
+///     headerContainer, // with 3px ink bottom border
+///     Positioned(left: 0, right: 0, bottom: -15, child: FlowerChainSeam()),
+///   ])
+/// Petal pairs alternate haldi/rani per flower, centre is the opposite hue.
+class FlowerChainSeam extends StatelessWidget {
+  final Color petalA;
+  final Color petalB;
+  const FlowerChainSeam({super.key, this.petalA = _haldi, this.petalB = _rani});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        height: 30,
+        child: CustomPaint(painter: _FlowerChainPainter(petalA, petalB)),
+      );
+}
+
+class _FlowerChainPainter extends CustomPainter {
+  final Color petalA;
+  final Color petalB;
+  _FlowerChainPainter(this.petalA, this.petalB);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    if (w <= 0) return;
+    final n = math.max(2, (w / 100).round());
+    final spacing = w / n;
+    final midY = size.height / 2;
+    final stroke = Paint()
+      ..color = _ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    for (var i = 0; i < n; i++) {
+      final cx = spacing / 2 + i * spacing;
+      final petal = i.isEven ? petalA : petalB;
+      final centre = i.isEven ? petalB : petalA;
+      final petalFill = Paint()..color = petal;
+      for (final o in const [Offset(0, -7), Offset(7, 0), Offset(0, 7), Offset(-7, 0)]) {
+        canvas.drawCircle(Offset(cx, midY) + o, 5, petalFill);
+        canvas.drawCircle(Offset(cx, midY) + o, 5, stroke);
+      }
+      canvas.drawCircle(Offset(cx, midY), 4, Paint()..color = centre);
+      canvas.drawCircle(Offset(cx, midY), 4, stroke);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FlowerChainPainter old) =>
+      old.petalA != petalA || old.petalB != petalB;
+}
+
+// ----------------------------------------------------------- bead-stud rule
 /// Row/section divider — 1.2px hairline at 14% ink with one 4px bead
-/// (default haldi) centred, ink-outlined. Replaces every plain `Divider()`
-/// between list rows.
-///
-/// Pass [sectionLabel] for the section-header variant: a leading bead, the
-/// label in mono, then a hairline filling the remaining width.
+/// (default haldi) centred, ink-outlined. Replaces every plain `Divider()`.
+/// Pass [sectionLabel] for the header variant: leading bead + mono label +
+/// hairline filling the remaining width.
 class BeadStudRule extends StatelessWidget {
   final Color beadColor;
   final Color lineColor;
@@ -174,7 +327,7 @@ class BeadStudRule extends StatelessWidget {
 
   const BeadStudRule({
     super.key,
-    this.beadColor = AD.haldi,
+    this.beadColor = _haldi,
     this.lineColor = AD.borderBeadRule,
     this.beadRadius = 4,
     this.sectionLabel,
@@ -188,8 +341,7 @@ class BeadStudRule extends StatelessWidget {
         width: double.infinity,
         height: beadRadius * 2 + 2,
         child: CustomPaint(
-          painter: _CenteredBeadPainter(
-              beadColor: beadColor, lineColor: lineColor, beadRadius: beadRadius),
+          painter: _CenteredBeadPainter(beadColor, lineColor, beadRadius),
         ),
       );
     }
@@ -200,7 +352,7 @@ class BeadStudRule extends StatelessWidget {
         decoration: BoxDecoration(
           color: beadColor,
           shape: BoxShape.circle,
-          border: Border.all(color: AD.borderHairline, width: 1.4),
+          border: Border.all(color: _ink, width: 1.4),
         ),
       ),
       const SizedBox(width: 8),
@@ -215,8 +367,7 @@ class _CenteredBeadPainter extends CustomPainter {
   final Color beadColor;
   final Color lineColor;
   final double beadRadius;
-  _CenteredBeadPainter(
-      {required this.beadColor, required this.lineColor, required this.beadRadius});
+  _CenteredBeadPainter(this.beadColor, this.lineColor, this.beadRadius);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -229,7 +380,7 @@ class _CenteredBeadPainter extends CustomPainter {
         Offset(cx, midY),
         beadRadius,
         Paint()
-          ..color = AD.borderHairline
+          ..color = _ink
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.4);
   }
@@ -239,10 +390,9 @@ class _CenteredBeadPainter extends CustomPainter {
       old.beadColor != beadColor || old.lineColor != lineColor || old.beadRadius != beadRadius;
 }
 
-/// Round ornament plate — coloured disc, four cream petals in a compass
-/// rosette, one haldi centre dot. This is the exact "Ava" bottom-nav icon
-/// from the mockups generalised into a reusable plate; use it anywhere an
-/// icon needs a rosette frame (HANDOFF Phase 3: "lotus-rosette icon plate").
+// ------------------------------------------------------- lotus rosette plate
+/// Round ornament plate — coloured disc, four cream petals, haldi centre dot.
+/// The exact "Ava" bottom-nav icon from the mockups, generalised.
 class LotusRosettePlate extends StatelessWidget {
   final double size;
   final Color plateColor;
@@ -254,40 +404,27 @@ class LotusRosettePlate extends StatelessWidget {
     super.key,
     this.size = 24,
     this.plateColor = AD.headerFooter,
-    this.petalColor = AD.bg,
-    this.centerColor = AD.haldi,
-    this.ringColor = AD.bg,
+    this.petalColor = _cream,
+    this.centerColor = _haldi,
+    this.ringColor = _cream,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _LotusPainter(
-          plateColor: plateColor,
-          petalColor: petalColor,
-          centerColor: centerColor,
-          ringColor: ringColor),
-    );
-  }
+  Widget build(BuildContext context) => CustomPaint(
+        size: Size(size, size),
+        painter: _LotusPainter(plateColor, petalColor, centerColor, ringColor),
+      );
 }
 
 class _LotusPainter extends CustomPainter {
   final Color plateColor, petalColor, centerColor, ringColor;
-  _LotusPainter(
-      {required this.plateColor,
-      required this.petalColor,
-      required this.centerColor,
-      required this.ringColor});
+  _LotusPainter(this.plateColor, this.petalColor, this.centerColor, this.ringColor);
 
-  Path _petal() {
-    final p = Path();
-    p.moveTo(0, -6.5);
-    p.cubicTo(3, -4.5, 3, -1, 0, 1);
-    p.cubicTo(-3, -1, -3, -4.5, 0, -6.5);
-    p.close();
-    return p;
-  }
+  Path _petal() => Path()
+    ..moveTo(0, -6.5)
+    ..cubicTo(3, -4.5, 3, -1, 0, 1)
+    ..cubicTo(-3, -1, -3, -4.5, 0, -6.5)
+    ..close();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -323,13 +460,10 @@ class _LotusPainter extends CustomPainter {
       old.ringColor != ringColor;
 }
 
+// ------------------------------------------------------------- grain overlay
 /// Full-bleed print-grain layer, ~6-7% opacity, non-interactive, above
-/// content — HANDOFF Phase 3's "one widget, wrapped at the Scaffold body
-/// level." Wired once at the MaterialApp `builder` (see patches.md) it
-/// covers every screen without a per-screen edit.
-///
-/// Uses a bundled noise texture tiled at native size — register
-/// `assets/textures/grain_noise.png` in pubspec.yaml (see patches.md).
+/// content. Wire once at MaterialApp `builder` (patches.md §4). Register
+/// `assets/textures/grain_noise.png` in pubspec.yaml.
 class GrainOverlay extends StatelessWidget {
   final double opacity;
   final String assetPath;

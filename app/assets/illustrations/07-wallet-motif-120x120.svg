@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+              <g transform="translate(60 60)">
+                <path d="M0 -50 C 24 -34, 24 -10, 0 4 C -24 -10, -24 -34, 0 -50 z" fill="#16110D"></path>
+                <g transform="rotate(72)"><path d="M0 -50 C 24 -34, 24 -10, 0 4 C -24 -10, -24 -34, 0 -50 z" fill="#16110D"></path></g>
+                <g transform="rotate(144)"><path d="M0 -50 C 24 -34, 24 -10, 0 4 C -24 -10, -24 -34, 0 -50 z" fill="#16110D"></path></g>
+                <g transform="rotate(216)"><path d="M0 -50 C 24 -34, 24 -10, 0 4 C -24 -10, -24 -34, 0 -50 z" fill="#16110D"></path></g>
+                <g transform="rotate(288)"><path d="M0 -50 C 24 -34, 24 -10, 0 4 C -24 -10, -24 -34, 0 -50 z" fill="#16110D"></path></g>
+              </g>
+            </svg>

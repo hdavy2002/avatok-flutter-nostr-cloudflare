@@ -867,54 +867,55 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ),
           ),
         ),
-        // [RAJ-PHASE3-1] Header toran — this step's coloured band sits at the
-        // BOTTOM (the agree/CTA bar), so the toran is welded there, mirroring
-        // the footer-toran convention (band below, scallops lift UP into the
-        // scrollable content above; see shell_chrome.dart §5 of patches.md).
-        // Placed outside the SingleChildScrollView above, in this fixed outer
-        // Column, so it never scrolls away from the band. bandColor is the
-        // band's ACTUAL fill (AD.headerFooter); HANDOFF's table wants indigo
-        // for the terms step, but that is the later recolouring phase.
-        const TorranDivider(
-          bandColor: AD.headerFooter,
-          direction: TorranDirection.up,
-        ),
+        // [RAJ-SEAMS-1] TorranDivider is retired. This step's coloured band
+        // sits at the BOTTOM (the agree/CTA bar), so the seam is welded there,
+        // mirroring the footer-seam convention (band below, seam lifts UP into
+        // the scrollable content above; see shell_chrome.dart §5 of
+        // patches.md). Placed outside the SingleChildScrollView above, in
+        // this fixed outer Column, so it never scrolls away from the band.
+        // Band moved AD.headerFooter -> AD.bandIndigo (patches.md §6: terms
+        // step -> indigo, 2C Double wave, flipped since this is a
+        // bottom-anchored CTA bar, not a header).
+        const DoubleWaveSeam(bandColor: AD.bandIndigo, flip: true),
         Container(
           padding: EdgeInsets.fromLTRB(hPad, Msg.s4, hPad, Msg.s5),
-          // Top hairline removed — the TorranDivider immediately above is the
-          // seam now.
+          // Top hairline removed — the DoubleWaveSeam immediately above is
+          // the seam now.
           decoration: const BoxDecoration(
-            color: AD.headerFooter,
+            color: AD.bandIndigo,
           ),
-          child: Column(
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _agreedTerms = !_agreedTerms),
-                child: Row(children: [
-                  Container(
-                    width: 26, height: 26,
-                    decoration: BoxDecoration(
-                      color: _agreedTerms ? AD.primaryBadge : AD.card,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _agreedTerms ? AD.primaryBadge : AD.borderControl, width: 1),
+          child: Builder(builder: (context) {
+            final onBand = AD.onBand(AD.bandIndigo);
+            return Column(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _agreedTerms = !_agreedTerms),
+                  child: Row(children: [
+                    Container(
+                      width: 26, height: 26,
+                      decoration: BoxDecoration(
+                        color: _agreedTerms ? AD.primaryBadge : AD.card,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _agreedTerms ? AD.primaryBadge : AD.borderControl, width: 1),
+                      ),
+                      child: _agreedTerms
+                          ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                              size: 15, color: Colors.white)
+                          : null,
                     ),
-                    child: _agreedTerms
-                        ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
-                            size: 15, color: Colors.white)
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text('I have read and agree to the Terms & Conditions',
-                        style: ADText.rowName().copyWith(fontSize: 14)),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: Msg.s3),
-              _primary('Keep going', _agreedTerms ? _next : null),
-            ],
-          ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text('I have read and agree to the Terms & Conditions',
+                          style: ADText.rowName(c: onBand).copyWith(fontSize: 14)),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: Msg.s3),
+                _primary('Keep going', _agreedTerms ? _next : null),
+              ],
+            );
+          }),
         ),
       ],
     );

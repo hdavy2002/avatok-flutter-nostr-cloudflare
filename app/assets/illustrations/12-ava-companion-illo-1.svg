@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 190" width="210" height="190">
+                <path d="M105 12 L172 42 v44 c0 36-27 68-67 80 -40-12-67-44-67-80 V42 z" fill="rgba(201,49,110,0.14)" stroke="#C9316E" stroke-width="4.5" stroke-linejoin="round"></path>
+                <path d="M105 28 L158 52 v34 c0 28-21 53-53 62 -32-9-53-34-53-62 V52 z" fill="none" stroke="#16110D" stroke-width="3" stroke-dasharray="8 7"></path>
+                <text x="105" y="112" text-anchor="middle" font-family="'Archivo Black', sans-serif" font-size="40" fill="#16110D">18+</text>
+                <circle cx="24" cy="40" r="7" fill="#E9A227" stroke="#16110D" stroke-width="2.4"></circle>
+                <circle cx="188" cy="150" r="7" fill="#5CB8A6" stroke="#16110D" stroke-width="2.4"></circle>
+                <circle cx="188" cy="34" r="6" fill="#2E4A8C" stroke="#16110D" stroke-width="2.2"></circle>
+              </svg>

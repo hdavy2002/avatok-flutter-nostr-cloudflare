@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/zine_widgets.dart';
@@ -28,42 +29,49 @@ Widget shellNavBar({
   required ValueChanged<int> onSelected,
   Color? indicatorColor, // Home passes the user's accent (personalisation §D)
 }) {
-  // [RAJ-PHASE3-1] Footer toran — one hook covering every shell root, since
+  // [RAJ-SEAMS-1] Footer seam — one hook covering every shell root, since
   // `shellNavBar()` is the single function they all call for the bottom bar
-  // (design/flutter-handoff, patches.md §5). The top hairline is replaced by
-  // the scalloped seam.
+  // (design/seams/patches.md §5). The TorranDivider that used to be here is
+  // retired: the owner replaced the drape with five seam styles, and the
+  // footer's is always the flipped Double wave on an INDIGO band.
   //
-  // DEVIATION FROM THE PATCH, deliberate: patches.md §5 sets the band colour to
-  // `indicatorColor ?? AD.headerFooter`. `indicatorColor` here is the
-  // NavigationBar SELECTED-PILL accent (Home passes the user's personalisation
-  // accent and it defaults to AD.primaryBadge), not the band colour — feeding it
-  // to the toran paints the whole footer drape rani pink on the Home shell. The
-  // footer band is indigo/turquoise `AD.headerFooter` everywhere per HANDOFF's
-  // hue table, so the toran matches the band it hangs from.
+  // The band moved turquoise -> indigo, which is why every label and icon below
+  // is now routed through `AD.onBand`. Indigo is a DARK band, so ink type on it
+  // is nearly invisible; the nav's foreground was ink only because the footer
+  // used to be turquoise.
+  //
+  // DEVIATION FROM THE PATCH, deliberate and carried over: patches.md §5 writes
+  // the band as a raw `Color(0xFF2E4A8C)` literal, which the design guard fails
+  // on — `AD.bandIndigo` is that same value. `indicatorColor` is left alone: it
+  // is the SELECTED-PILL accent (Home passes the user's personalisation accent),
+  // not the band, so it must not be fed to the seam.
+  const band = AD.bandIndigo;
+  final onBand = AD.onBand(band);
   return Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      const TorranDivider(
-        bandColor: AD.headerFooter,
-        direction: TorranDirection.up,
-      ),
+      const DoubleWaveSeam(bandColor: band, flip: true),
       Container(
-    decoration: const BoxDecoration(color: AD.headerFooter),
-    child: NavigationBar(
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onSelected,
-      backgroundColor: AD.headerFooter,
-      surfaceTintColor: Colors.transparent,
-      indicatorColor: indicatorColor ?? AD.primaryBadge,
-      destinations: [
-        for (final it in items)
-          NavigationDestination(
-            icon: PhosphorIcon(it.icon),
-            selectedIcon: PhosphorIcon(it.selectedIcon),
-            label: it.label,
+        decoration: const BoxDecoration(color: band),
+        child: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: onSelected,
+          backgroundColor: band,
+          surfaceTintColor: Colors.transparent,
+          indicatorColor: indicatorColor ?? AD.primaryBadge,
+          labelTextStyle: WidgetStatePropertyAll(
+            ADText.sectionLabel(c: onBand),
           ),
-      ],
-    ),
+          iconTheme: WidgetStatePropertyAll(IconThemeData(color: onBand)),
+          destinations: [
+            for (final it in items)
+              NavigationDestination(
+                icon: PhosphorIcon(it.icon),
+                selectedIcon: PhosphorIcon(it.selectedIcon),
+                label: it.label,
+              ),
+          ],
+        ),
       ),
     ],
   );
@@ -76,12 +84,18 @@ class ShellEmptyState extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color color;
+  /// [RAJ-SEAMS-1] Optional illustration asset (see `core/ui/illustrations.dart`).
+  /// When set it replaces the icon badge; when null every existing call site
+  /// renders exactly as before. Decorative only — it always sits above the
+  /// title, so it is excluded from semantics.
+  final String? illustration;
   const ShellEmptyState({
     super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
     this.color = AD.iconSearch,
+    this.illustration,
   });
 
   @override
@@ -90,7 +104,11 @@ class ShellEmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ZineIconBadge(icon: icon, color: color, size: 56),
+          if (illustration != null)
+            SvgPicture.asset(illustration!,
+                height: 140, fit: BoxFit.contain, excludeFromSemantics: true)
+          else
+            ZineIconBadge(icon: icon, color: color, size: 56),
           const SizedBox(height: 16),
           Text(title, textAlign: TextAlign.center, style: ADText.threadName().copyWith(fontSize: 18)),
           const SizedBox(height: 8),

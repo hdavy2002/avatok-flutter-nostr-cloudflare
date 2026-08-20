@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'avatok_dark.dart';
@@ -19,6 +20,11 @@ class EmptyState extends StatelessWidget {
   final String subtitle;
   final String? ctaLabel;
   final VoidCallback? onCta;
+  /// Optional Rajasthani illustration asset path (e.g. from `Illustrations`
+  /// in `core/ui/illustrations.dart`). When set, this DECORATIVE svg replaces
+  /// the 72px icon-in-a-square tile below. When null (the ~40 existing call
+  /// sites), the icon tile renders exactly as before — strictly additive.
+  final String? illustration;
   const EmptyState({
     super.key,
     required this.icon,
@@ -26,6 +32,7 @@ class EmptyState extends StatelessWidget {
     required this.subtitle,
     this.ctaLabel,
     this.onCta,
+    this.illustration,
   });
 
   @override
@@ -34,15 +41,20 @@ class EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36, vertical: Msg.s5),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Outlined glyph tile: hairline border, no fill, no shadow.
-          Container(
-            width: 72, height: 72,
-            decoration: BoxDecoration(
-              borderRadius: Msg.brLg,
-              border: Border.all(color: AD.borderControl, width: 1),
+          if (illustration != null)
+            // Decorative — always sits beside the title/subtitle below, so a
+            // screen reader should announce only the text, never the art.
+            SvgPicture.asset(illustration!, height: 140, fit: BoxFit.contain, excludeFromSemantics: true)
+          else
+            // Outlined glyph tile: hairline border, no fill, no shadow.
+            Container(
+              width: 72, height: 72,
+              decoration: BoxDecoration(
+                borderRadius: Msg.brLg,
+                border: Border.all(color: AD.borderControl, width: 1),
+              ),
+              child: Icon(icon, color: AD.textTertiary, size: 32),
             ),
-            child: Icon(icon, color: AD.textTertiary, size: 32),
-          ),
           const SizedBox(height: Msg.s4),
           Text(title, textAlign: TextAlign.center,
               style: ADText.threadName().copyWith(fontSize: 19)),

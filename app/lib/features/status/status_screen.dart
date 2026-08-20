@@ -10,6 +10,9 @@ import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../identity/identity.dart';
 import '../../sync/dm.dart';
@@ -228,16 +231,16 @@ class _StatusScreenState extends State<StatusScreen> {
   /// replaces the light ZineAppBar this screen shipped with.
   PreferredSizeWidget _header() {
     final showBack = Navigator.of(context).canPop();
+    // [RAJ-SEAMS-1] Status moves to a HALDI (light) band — patches.md §6 —
+    // so ink foreground stays correct as-is. Seam is 2A BubbleCloudSeam,
+    // sitting flush under the header (no border between).
     return PreferredSize(
-      // Height bumped to fit the TorranDivider welded below the band (its
-      // own height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
-      preferredSize: const Size.fromHeight(72 + 26),
+      // Height: header content 72 + BubbleCloudSeam 32 = 104.
+      preferredSize: const Size.fromHeight(72 + 32),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
-          // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider added
-          // immediately below is the seam now.
           decoration: const BoxDecoration(
-            color: AD.headerFooter,
+            color: AD.bandHaldi,
           ),
           child: SafeArea(
             bottom: false,
@@ -279,18 +282,10 @@ class _StatusScreenState extends State<StatusScreen> {
             ),
           ),
         ),
-        // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads at
-        // the header↔content seam (design/flutter-handoff, patches.md §6).
-        // Placed inside the PreferredSize (fixed appBar chrome) rather than as
-        // the first child of the scrolling body ListView below, so it stays
-        // welded to the header instead of scrolling away. bandColor is the
-        // band's ACTUAL fill (AD.headerFooter); HANDOFF's table wants haldi
-        // here, but that is the later recolouring phase — a haldi drape on a
-        // turquoise bar would just look broken.
-        const TorranDivider(
-          bandColor: AD.headerFooter,
-          direction: TorranDirection.down,
-        ),
+        // [RAJ-SEAMS-1] Seam sits welded to the header (inside the fixed
+        // PreferredSize, not the scrolling body), flush against the band —
+        // no border between, per patches.md §6 2A usage note.
+        const BubbleCloudSeam(bandColor: AD.bandHaldi),
       ]),
     );
   }
@@ -351,18 +346,12 @@ class _StatusScreenState extends State<StatusScreen> {
               padding: const EdgeInsets.all(24),
               child: Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 72, height: 72,
-                    decoration: BoxDecoration(
-                      color: AD.card,
-                      borderRadius: BorderRadius.circular(Msg.rLg),
-                      border: Border.all(color: AD.borderControl, width: 1),
-                    ),
-                    child: Center(
-                      child: PhosphorIcon(PhosphorIcons.clockCountdown(PhosphorIconsStyle.bold),
-                          size: 30, color: AD.textTertiary),
-                    ),
-                  ),
+                  // [RAJ-SEAMS-1] 15-status-illo-1.svg replaces the icon tile,
+                  // per illustrations/MANIFEST.md ("No updates yet"). Decorative
+                  // — the title below carries the meaning, so it is excluded
+                  // from semantics.
+                  SvgPicture.asset(Illustrations.statusEmpty,
+                      height: 140, fit: BoxFit.contain, excludeFromSemantics: true),
                   const SizedBox(height: Msg.s3),
                   Text('No updates yet — share your first one.',
                       textAlign: TextAlign.center,

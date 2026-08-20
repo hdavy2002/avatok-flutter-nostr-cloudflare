@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/account_restore.dart';
 import '../../core/affiliate_bind_service.dart';
 import '../../core/analytics.dart';
+import '../../core/ui/illustrations.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/referral_service.dart';
@@ -395,7 +397,25 @@ class _SignInScreenState extends State<SignInScreen> {
                 padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 24),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     const SizedBox(height: Msg.s4),
-                    const Center(child: ZineCrest(size: 96)),
+                    // [RAJ-SEAMS-1] On the verify step ONLY, the crest gives way
+                    // to 02-sign-in-illo-1.svg — the envelope + 123456 card +
+                    // chai cup art the designer drew for exactly this screen
+                    // (illustrations/MANIFEST.md: "02 Sign in India", nearby
+                    // text "Verify"). Decorative: the "Verify email" title and
+                    // the 6-digit-code subtitle beside it carry the meaning, so
+                    // it is excluded from semantics. Sign-in and sign-up keep
+                    // the crest — the art is specific to the emailed code.
+                    if (_mode == _Mode.verify)
+                      Center(
+                        child: SvgPicture.asset(
+                          Illustrations.signInHero,
+                          height: 200,
+                          fit: BoxFit.contain,
+                          excludeFromSemantics: true,
+                        ),
+                      )
+                    else
+                      const Center(child: ZineCrest(size: 96)),
                     const SizedBox(height: Msg.s3),
                     ZineMarkTitle(pre: titlePre, mark: titleMark,
                         fontSize: ZineBreakpoints.heroTextSize(context)),

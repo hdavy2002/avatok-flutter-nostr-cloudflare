@@ -30,6 +30,7 @@ import '../../features/avatok/contacts.dart';
 import '../../features/avatok/invite_screen.dart';
 import '../../features/avatok/place_1to1_call.dart';
 import '../../core/ui/rajasthani_motifs.dart';
+import '../../core/ui/illustrations.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
@@ -134,16 +135,14 @@ class _AvaDialRootState extends State<AvaDialRoot> {
             selectedIndex: _tab,
             onSelected: (i) => setState(() => _tab = i),
           ),
-          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
-          // at the header↔content seam (design/flutter-handoff, patches.md §6).
-          // The tab strip is the last coloured chrome band above the tab
-          // content, so the seam is here — same placement as chat_list.dart's
-          // _AvaTokTabStrip. bandColor matches _CallsTabStrip's own fill
-          // (AvaDialTheme.surface, see _tab() below).
-          const TorranDivider(
-            bandColor: AvaDialTheme.surface,
-            direction: TorranDirection.down,
-          ),
+          // [RAJ-SEAMS-1] TorranDivider is retired. The tab strip is the last
+          // coloured chrome band above the tab content, so the seam is here —
+          // same placement as chat_list.dart's _AvaTokTabStrip. Per patches.md
+          // §6 the Calls tab strip is now an INDIGO band (2C Double wave),
+          // flush under the strip (no border between). Default backColor
+          // (haldi) is correct on an indigo band per the §6 usage note, so it
+          // is not overridden here.
+          const DoubleWaveSeam(bandColor: AD.bandIndigo),
           Expanded(
             // Rebuild when a config fetch lands so flipping `avaDialer` in KV
             // surfaces the live tabs without an app restart.
@@ -231,11 +230,16 @@ class _CallsTabStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // [RAJ-SEAMS-1] Band recolour, patches.md §6: this strip was
+    // `AvaDialTheme.surface` (a pale card colour) — now `AD.bandIndigo`, a
+    // DARK band, so the unselected-tab foreground must flip to cream via
+    // AD.onBand (see _tab below). The bottom hairline stays removed: the
+    // DoubleWaveSeam added immediately below this strip in the Scaffold body
+    // IS the seam now, and a straight rule on top of the waves would read as
+    // a mistake.
+    final onBand = AD.onBand(AD.bandIndigo);
     return Container(
-      // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
-      // immediately below this strip in the Scaffold body IS the seam now, and
-      // a straight rule sitting on top of the scallops reads as a mistake.
-      decoration: const BoxDecoration(color: AvaDialTheme.surface),
+      decoration: const BoxDecoration(color: AD.bandIndigo),
       padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -243,7 +247,7 @@ class _CallsTabStrip extends StatelessWidget {
           children: [
             for (var i = 0; i < items.length; i++) ...[
               if (i > 0) const SizedBox(width: 8),
-              _tab(items[i], i == selectedIndex, () => onSelected(i)),
+              _tab(items[i], i == selectedIndex, () => onSelected(i), onBand),
             ],
           ],
         ),
@@ -251,11 +255,11 @@ class _CallsTabStrip extends StatelessWidget {
     );
   }
 
-  Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap) {
+  Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap, Color onBand) {
     // White text/icons on the bright accent fill (dark v2's accent-fill +
-    // white-label convention, see AdChip's active state); light text on the
-    // dark, unselected surface.
-    final fg = selected ? Colors.white : AvaDialTheme.text;
+    // white-label convention, see AdChip's active state); cream (onBand) text
+    // on the unselected indigo band.
+    final fg = selected ? Colors.white : onBand;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -1820,6 +1824,8 @@ class _BlockTabState extends State<_BlockTab> {
             title: 'Nothing blocked',
             subtitle: 'AvaTOK contacts you block or report as spam show up here.',
             color: AD.danger,
+            // [RAJ-SEAMS-1] 11-dialer-illo-2.svg, per illustrations/MANIFEST.md.
+            illustration: Illustrations.dialerNothingBlocked,
           );
         }
         // Search is scoped to exactly this AvaTOK-only list — never falls

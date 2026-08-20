@@ -304,6 +304,9 @@ flutter:
     # Rajasthani retheme Phase 3: print-grain texture tiled by GrainOverlay
     # (core/ui/rajasthani_motifs.dart), wired once at MaterialApp.builder.
     - assets/textures/grain_noise.png
+    # Rajasthani illustration set (empty states + hero motifs) — shipped verbatim
+    # from the designer, rendered via flutter_svg. See core/ui/illustrations.dart.
+    - assets/illustrations/
     # STREAM E: built-in sticker packs (.webp) for the emoji/GIF/sticker panel.
     - assets/stickers/ava_hearts/
     - assets/stickers/ava_reactions/

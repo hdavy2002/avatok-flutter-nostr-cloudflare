@@ -565,51 +565,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: PreferredSize(
-        // Height bumped to fit the TorranDivider welded below the band (its
-        // own height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
-        preferredSize: const Size.fromHeight(84 + 26),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider
-            // added immediately below is the seam now.
-            decoration: const BoxDecoration(
-              color: AD.headerFooter,
-            ),
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s5, Msg.s3),
-                child: Row(children: [
-                  const AdBackButton(),
-                  const SizedBox(width: Msg.s3),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Profile', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2),
-                        Text('Your public card', style: ADText.sectionLabel()),
-                      ],
-                    ),
+        // [RAJ-SEAMS-1] Profile moves to a RANI PINK (dark) band —
+        // patches.md §6 — so title/subtitle flip to cream via AD.onBand.
+        // Seam is 2E FlowerChainSeam, straddling the header's hard 3px ink
+        // bottom border (15px above/into the header, 15px below into the
+        // body) per the widget's own doc comment. Header content is 84px;
+        // reserve the 15px overhang below it or the scrolling body paints
+        // over the seam's bottom half. 84 + 15 = 99.
+        preferredSize: const Size.fromHeight(84 + 15),
+        child: Builder(builder: (context) {
+          const band = AD.bandRani;
+          final onBand = AD.onBand(band);
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // The 15px spacer is what the seam's lower half hangs into; it
+              // is part of the Column so the seam can be anchored to the
+              // Column's own bottom rather than to a guessed pixel offset.
+              Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                decoration: const BoxDecoration(
+                  color: band,
+                  border: Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
+                ),
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s5, Msg.s3),
+                    child: Row(children: [
+                      AdBackButton(color: onBand),
+                      const SizedBox(width: Msg.s3),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Profile', style: ADText.appTitle(c: onBand), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 2),
+                            Text('Your public card', style: ADText.sectionLabel(c: onBand)),
+                          ],
+                        ),
+                      ),
+                    ]),
                   ),
-                ]),
+                ),
               ),
-            ),
-          ),
-          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
-          // at the header↔content seam (design/flutter-handoff, patches.md §6).
-          // Placed inside the PreferredSize (fixed appBar chrome) rather than
-          // as the first child of the scrolling body ListView below, so it
-          // stays welded to the header instead of scrolling away. bandColor
-          // matches the band's actual fill (AD.headerFooter), not the
-          // eventual per-area hue this screen will get in a later
-          // recolouring phase.
-          const TorranDivider(
-            bandColor: AD.headerFooter,
-            direction: TorranDirection.down,
-          ),
-        ]),
+                const SizedBox(height: 15),
+              ]),
+              // Straddles the header's bottom border, 15px either side of it.
+              //
+              // Anchored to the Stack's BOTTOM, not to a pixel offset from the
+              // top. The obvious `top: 84 - 15` is wrong: the header sizes
+              // itself from its content plus the device's status-bar inset via
+              // SafeArea, so its real bottom edge is not 84 on every phone and
+              // the flowers would drift off the border. The seam is 30 tall and
+              // the spacer above is 15, so bottom-aligning puts exactly half of
+              // it on each side of the border on any device.
+              const Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: FlowerChainSeam(),
+              ),
+            ],
+          );
+        }),
       ),
       // Generous bottom padding (plus the system nav-bar inset) so the Update
       // button always sits comfortably above the nav bar — never chopped.

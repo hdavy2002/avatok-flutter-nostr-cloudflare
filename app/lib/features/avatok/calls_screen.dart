@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
@@ -11,7 +12,9 @@ import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1] shared co
 import '../../core/ui/call_log_format.dart'; // [CALL-LOG-TIME-1] shared subtitle
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 
@@ -112,24 +115,32 @@ class _CallsScreenState extends State<CallsScreen> {
     final visible = _query.isEmpty
         ? _calls
         : _calls.where((c) => _matches(c, _query)).toList();
+    // [RAJ-SEAMS-1] Calls has a real coloured header band (patches.md §6:
+    // Calls list/Dialer/AvaDial -> indigo, 2C Double wave), so it gets the
+    // same treatment as avadial_root's tab strip. Indigo is a DARK band, so
+    // the title + trash icon flip to cream via AD.onBand.
+    const band = AD.bandIndigo;
+    final onBand = AD.onBand(band);
     return SafeArea(
       bottom: false,
       child: Column(children: [
-        // Appbar band (§8): paper-2 fill, ink bottom border, Nunito title.
+        // Appbar band (§8): now an indigo fill. The old 1px ink bottom
+        // hairline is removed — the DoubleWaveSeam added immediately below
+        // sits flush under the band (2C usage note: "no border between").
         Container(
           height: 60,
           padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
-          decoration: const BoxDecoration(
-            color: AD.headerFooter,
-            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-          ),
+          decoration: const BoxDecoration(color: band),
           child: Row(children: [
             Expanded(
-              child: Text('Calls', style: ADText.appTitle()),
+              child: Text('Calls', style: ADText.appTitle(c: onBand)),
             ),
             if (_calls.isNotEmpty)
               ZinePressable(
                 onTap: _confirmClearAll,
+                // Chip fill stays AD.card (paper), not the band, so its icon
+                // stays ink — the onBand flip is only for content drawn
+                // straight on the band fill (contrast rule, patches.md §6).
                 color: AD.card,
                 pressedColor: AD.destructiveBg,
                 radius: Msg.brPill,
@@ -143,6 +154,9 @@ class _CallsScreenState extends State<CallsScreen> {
               ),
           ]),
         ),
+        // 2C Double wave, flush under the band — default haldi back wave is
+        // correct on an indigo band per the §6 usage note.
+        const DoubleWaveSeam(bandColor: band),
         // [ISSUE-CALLS-SEARCH-1] Search dock, pinned directly under the tabs and
         // OUTSIDE the scrollable so it never scrolls away. Hidden while the log is
         // empty (nothing to search) and never autofocused — opening the tab must
@@ -163,8 +177,8 @@ class _CallsScreenState extends State<CallsScreen> {
                   ? Center(child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                            size: 40, color: AD.textFaint),
+                        SvgPicture.asset(Illustrations.callsListEmpty,
+                            height: 120, fit: BoxFit.contain, excludeFromSemantics: true),
                         const SizedBox(height: Msg.s3),
                         Text('No calls yet — start one from a chat',
                             textAlign: TextAlign.center,

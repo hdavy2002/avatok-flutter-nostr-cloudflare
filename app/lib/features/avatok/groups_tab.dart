@@ -142,8 +142,8 @@ class _GroupsTabState extends State<GroupsTab> {
         // Inline dark v2 header band: near-black header fill + hairline bottom
         // border (mirrors chat_list). Leading = menu (opens sidebar) or back.
         Container(
-          // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider below
-          // is the header↔content seam now (design/flutter-handoff, patches.md §6).
+          // [RAJ-SEAMS-1] Bottom hairline removed — the SquiggleSeam below
+          // is the header↔content seam now (design/seams/patches.md §6).
           decoration: const BoxDecoration(
             color: AD.headerFooter,
           ),
@@ -173,13 +173,9 @@ class _GroupsTabState extends State<GroupsTab> {
             ),
           ),
         ),
-        // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
-        // at the header↔content seam (design/flutter-handoff, patches.md §6).
-        // Groups tab header hue is turquoise (AD.headerFooter) per HANDOFF.
-        const TorranDivider(
-          bandColor: AD.headerFooter,
-          direction: TorranDirection.down,
-        ),
+        // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
+        // Squiggle seam on the turquoise band (design/seams/patches.md §6).
+        const SquiggleSeam(bandColor: AD.bandTurquoise),
         // [ISSUE-GROUPS-SEARCH-1] Search dock, pinned under the header and outside
         // the ListView so it stays put while the list scrolls. Hidden when there is
         // nothing to search; never autofocused (would pop the keyboard on tab open).

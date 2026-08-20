@@ -153,6 +153,12 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   Color get _indicator => widget.indicatorColor ?? AD.primaryBadge;
 
+  // [RAJ-SEAMS-1] patches.md §6: "App switcher / footer (all)" -> indigo, 2C
+  // Double wave (flip). Indigo is a DARK band, so every icon/label/badge
+  // backing drawn straight on the bar must flip to AD.onBand.
+  static const _band = AD.bandIndigo;
+  Color get _onBand => AD.onBand(_band);
+
   void _commitMove(int from, int to) {
     if (from == to) return;
     final next = List<RootId>.from(widget.order);
@@ -177,22 +183,16 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   @override
   Widget build(BuildContext context) {
-    // [RAJ-PHASE3-1] Footer toran — the scalloped drape + hanging beads,
-    // lifting UP into the content above this persistent bottom bar (mirrors
-    // shellNavBar() in shell_chrome.dart; design/flutter-handoff, patches.md
-    // §6). bandColor is the bar's ACTUAL fill (AD.headerFooter); HANDOFF's
-    // hue table wants indigo here, but that is the later recolouring phase.
-    // The top hairline is replaced by the scalloped seam.
+    // [RAJ-SEAMS-1] TorranDivider is retired. This is the FOOTER, so the seam
+    // sits ABOVE the bar, flipped — mirrors shellNavBar() in shell_chrome.dart
+    // (patches.md §5/§6). Band moved AD.headerFooter -> AD.bandIndigo.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const TorranDivider(
-          bandColor: AD.headerFooter,
-          direction: TorranDirection.up,
-        ),
+        const DoubleWaveSeam(bandColor: _band, flip: true),
         Container(
           decoration: const BoxDecoration(
-            color: AD.headerFooter,
+            color: _band,
           ),
           child: SafeArea(
         top: false,
@@ -216,11 +216,14 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
+                        // Pre-existing bare Material Icons.* (not ours to fix —
+                        // left as-is per the design-guard baseline); only the
+                        // colour flips for the new indigo band.
                         _expanded
                             ? Icons.keyboard_arrow_down_rounded
                             : Icons.keyboard_arrow_up_rounded,
                         size: 18,
-                        color: AD.textSecondary,
+                        color: _onBand,
                       ),
                       const SizedBox(width: Msg.s1),
                       DecoratedBox(
@@ -417,10 +420,10 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
         color: selected ? _indicator : Colors.transparent,
         borderRadius: BorderRadius.circular(Msg.rMd),
       ),
-      // Active icon sits on the orange pill (white glyph); inactive icons are
-      // white too (owner request 2026-07-13, pic 5) — not greyed.
-      child:
-          Icon(selected ? selectedIcon : icon, size: 22, color: AD.textPrimary),
+      // Active icon sits on the orange pill; inactive sits straight on the bar
+      // — both stay one colour (owner request 2026-07-13, pic 5: "not greyed"),
+      // now AD.onBand for the indigo band instead of ink.
+      child: Icon(selected ? selectedIcon : icon, size: 22, color: _onBand),
     );
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -438,8 +441,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
                   // Dark backing keeps the red digits readable over the orange
-                  // active pill and the dark bar alike.
-                  color: AD.headerFooter,
+                  // active pill and the dark bar alike — tracks the bar's own
+                  // fill, now AD.bandIndigo.
+                  color: _band,
                   borderRadius: BorderRadius.circular(Msg.rSm),
                   border: Border.all(
                       color: const Color(0xFFFF453A), width: 1),
@@ -462,10 +466,10 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           // Active label = bright green (indicates the active tab); inactive =
-          // white.
+          // AD.onBand for the indigo band.
           style: selected
               ? ADText.navLabelPrimary(c: const Color(0xFF7BE08C))
-              : ADText.navLabel(c: AD.textPrimary),
+              : ADText.navLabel(c: _onBand),
         ),
       ],
     );
