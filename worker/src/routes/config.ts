@@ -1495,15 +1495,16 @@ const DEFAULTS: PlatformConfig = {
   // flipping this back to false is a full, instant rollback with no rebuild.
   callSfuV1: false,
   callSfuAudioOnly: false,         // [CALL-SFU-1] owner 2026-08-06: video on the SFU too
-  // [CALL-PREWARM-1 2026-08-16] Instant-pickup plan P1/P2. Both ship FALSE: no
-  // client build implements the pre-warm seam yet. Flipping either back to
-  // false is a full, instant rollback with no rebuild.
-  callPrewarmOnRingV1: false,
-  callerPrejoinOnRingV1: false,
+  // [CALL-PREWARM-1 2026-08-16] Instant-pickup plan P1/P2. The client seam is
+  // implemented and must be the default for new environments. Existing
+  // production overrides remain authoritative, so rollout/rollback is still
+  // controlled through the normal config layer rather than a client rebuild.
+  callPrewarmOnRingV1: true,
+  callerPrejoinOnRingV1: true,
   // [CALL-PREROLL-RETIRE-1] Retired. New clients hard-disable pre-Accept
   // media acquisition; retain the false key only so older builds stay dark.
   callPrerollV1: false,
-  callSilentTransportPrewarmV1: false,
+  callSilentTransportPrewarmV1: true,
   callSilentPrewarmDeadlineMs: 12_000,
   // [CALL-RTK-2 2026-08-08] RealtimeKit migration, Phase 0. Both ship FALSE:
   // the worker route exists and the secrets may be set, but no user reaches it
@@ -1677,7 +1678,7 @@ const DEFAULTS: PlatformConfig = {
   // [CALL-WS-AUTH-1] OFF = observe-only. Flip ONLY after a build carrying the
   // client `?t=` half is in the field, or every installed app loses calling.
   callRoomAuthEnforced: false,
-  callNativeAnswerV1: false,       // [CALL-NATIVE-ANSWER-1] native ring screen — ships dark
+  callNativeAnswerV1: true,        // [CALL-NATIVE-ANSWER-1] native ring + instant connecting continuity
   betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)
