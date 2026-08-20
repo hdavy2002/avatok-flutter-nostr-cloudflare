@@ -8,12 +8,20 @@ import 'messenger_theme.dart';
 /// bubble kind (text, image, video, audio/voice note, file, link preview,
 /// youtube, sticker, poll, location, contact card, Ava).
 ///
-/// Stable chat visual direction (UI-WHATSAPP-STABLE-1):
-///   * Threads use a dark canvas with compact, low-noise bubbles.
-///   * Incoming messages use one neutral slate; outgoing messages use muted
-///     WhatsApp green.
+/// Current visual direction (RAJ-PHASE2-1 — this supersedes
+/// UI-WHATSAPP-STABLE-1, which described the dark build):
+///   * Threads use a CREAM PAPER canvas (`AD.bg`), not a dark one.
+///   * Outgoing messages are indigo with cream type. Incoming messages are
+///     raised paper cream with ink type and a load-bearing ink outline.
+///   * Ava has her own lane in rani pink; private Ava turns are haldi.
 ///   * Group identity comes from the sender label/avatar, never rainbow bubble
-///     fills. This makes a busy conversation calmer and easier to scan.
+///     fills. This keeps a busy conversation calm and scannable.
+///
+/// ⚠️ The paragraph above used to describe a dark canvas, a neutral slate for
+/// incoming and muted WhatsApp green for outgoing — months after the code below
+/// stopped doing that. That stale comment is exactly how this file drifted: an
+/// agent reads the contract, believes it, and "restores" the greens. If you
+/// change the colours, change this paragraph in the same commit.
 ///
 /// Why this file exists: before it, `AD.bubbleInBg` / `AD.bubbleInInk` /
 /// `AD.bubbleInMeta` were referenced *literally* at ~10 sites inside

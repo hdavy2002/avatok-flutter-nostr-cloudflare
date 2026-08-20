@@ -2,26 +2,41 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-/// AvaTOK Dark v2 design tokens.
+/// AvaTOK design tokens.
 ///
-/// Canonical source: `theme/avatok-tokens.json` (mirror of the design bundle
-/// `design/black-mobile/AvaTOK App Dark v2.dc.html`). This is the dark-black
-/// redesign language — near-black surfaces, hairline borders, soft (blurred)
-/// elevation, pale accent cards, multicolor glyphs, colored Chats/Groups/Calls
-/// tabs, and platform-native UI typography.
+/// [RAJ-PHASE1-2] ⚠️ THIS FILE IS NO LONGER A DARK PALETTE. The class doc used
+/// to describe "AvaTOK Dark v2 — near-black surfaces, hairline borders, soft
+/// (blurred) elevation, pale accent cards, multicolor glyphs". Every one of
+/// those clauses is now false, and leaving them here is how the wrong system
+/// gets restored by the next agent to read the file. What it actually is:
 ///
-/// Every re-skinned screen should pull colors, radii, spacing, type and avatar
-/// families from here so the whole app stays consistent as it migrates off the
-/// legacy light `Zine` system. Do NOT hard-code hex in screens.
+///   * cream paper surfaces (#FBF3E2 page, #FFFAF0 raised)
+///   * 2px INK outlines (`wBorder`) — not hairlines, not shadows
+///   * HARD offset ink shadows, never blurs
+///   * ONE neutral glyph colour plus one accent — not eight
+///   * four band hues (turquoise / haldi / indigo / rani) with a documented
+///     foreground rule, `onBand()`
+///   * platform-native UI type; no bundled display family has landed
+///
+/// The CLASS NAME `AD` and every token name are unchanged on purpose: ~285
+/// radius call sites and ~100 icon call sites, with no local compiler to catch
+/// a rename typo. Some names therefore lie about their value (`borderHairline`
+/// is full ink; `iconSearch` is neutral, not blue; `micIdleBg` is the haldi
+/// accent). Each of those carries a comment saying so. Renames are a separate,
+/// mechanical pass — do not mix them into a colour change.
+///
+/// Canonical source: the seam handoff (`design/seams/patches.md`) plus HANDOFF.md.
+/// Do NOT hard-code hex in screens.
 class AD {
   AD._();
 
   // ---------------------------------------------------------------- surfaces
-  /// App / page background — near-black.
+  /// App / page background — the warm CREAM paper. (Was near-black.)
   static const bg = Color(0xFFFBF3E2);
-  /// Header + footer bars.
+  /// Header + footer bars. See the band tokens below — this is the turquoise
+  /// one, kept under its old name for existing call sites.
   static const headerFooter = Color(0xFF5CB8A6);
-  /// Card / list-row surface.
+  /// Card / list-row surface — raised paper.
   static const card = Color(0xFFFFFAF0);
   /// Card hover / pressed.
   static const cardHover = Color(0xFFF4E8D2);
@@ -31,21 +46,61 @@ class AD {
   static const menu = Color(0xFFFFFAF0);
   /// Popover surface.
   static const popover = Color(0xFFFFFAF0);
-  /// White input field (search dock etc.).
+  /// Input field fill (search dock, composer, AdField). Raised paper — nothing
+  /// in this palette is #FFFFFF.
   static const inputField = Color(0xFFFFFAF0);
-  /// Modal scrim — black @65%.
+  /// Modal scrim — ink @65%.
   static const scrim = Color(0xA616110D);
 
   // ------------------------------------------------------------------ border
+  //
+  // [RAJ-PHASE1-2] THREE DISTINCT JOBS, and conflating two of them was a real
+  // app-wide regression. Read this before reusing one of these tokens.
+  //
+  //   OUTLINE  (`borderHairline` / `borderCard` / `borderControl` /
+  //            `borderAvatar`) — full ink, 2px (`wBorder`). This is the edge
+  //            that makes a shape read as a shape. HANDOFF rule 1.
+  //   DIVIDER  (`borderDivider`) — ink at 14%, 1px. A rule BETWEEN rows.
+  //   BEAD RULE (`borderBeadRule`) — the same faint value, used under a bead.
+  //
+  // `borderHairline` is named "hairline" but holds FULL INK: Phase 1 changed
+  // values without renaming tokens, and this token's dominant job was card
+  // outlines. The cost was that `DividerThemeData` pointed at it, so every
+  // `Divider()` in the app — settings, lists, sheets, menus — painted solid
+  // black where the design wants the faint rule. `borderDivider` exists so the
+  // two jobs can never share a value again. The stray rule under the AvaDial
+  // app bar was this token, not a one-off.
   static const borderHairline = Color(0xFF16110D);
   static const borderCard = Color(0xFF16110D);
   static const borderControl = Color(0xFF16110D);
   static const borderAvatar = Color(0xFF16110D);
+  /// The faint rule BETWEEN rows — ink at 14%. Use for `Divider`, for a
+  /// separator inside a card, for the cell rule in a bordered field. Never as
+  /// the outline of a card.
+  static const borderDivider = Color(0x2416110D);
   /// [RAJ-PHASE3-1] The bead-stud row rule (`BeadStudRule` in
-  /// rajasthani_motifs.dart) — ink at 14%, deliberately fainter than
-  /// `borderHairline`, because the bead carries the separation and a full-ink
-  /// rule under it reads as two dividers stacked.
+  /// rajasthani_motifs.dart) — ink at 14%, deliberately fainter than an
+  /// outline, because the bead carries the separation and a full-ink rule under
+  /// it reads as two dividers stacked. Same value as [borderDivider]; kept as
+  /// its own name because the motif and the plain rule are edited separately.
   static const borderBeadRule = Color(0x2416110D);
+
+  // ----------------------------------------------------------- border widths
+  /// [RAJ-PHASE1-2] HANDOFF rule 1: 2px ink on cards, rows, inputs, chips,
+  /// buttons and avatars. The re-skinned widgets in this file already drew 2px
+  /// by hand while everything inheriting from `ThemeData` drew 1px, so the two
+  /// weights sat side by side on the same screen. Route both through here.
+  static const double wBorder = 2;
+  /// 3px on hero elements — FABs, call buttons, big tiles.
+  static const double wHero = 3;
+
+  // -------------------------------------------------------------- ink states
+  /// [RAJ-PHASE4-1] Ripple / pressed / hover tints. Left unset these were
+  /// derived from `ThemeData.brightness`, which was still `dark` after the
+  /// recolour — so every ripple in the app was a pale wash that vanished on
+  /// cream. Ink at low alpha reads correctly on paper.
+  static const splashInk = Color(0x1416110D);
+  static const highlightInk = Color(0x0D16110D);
 
   // ------------------------------------------------------------------ bands
   //
@@ -72,6 +127,12 @@ class AD {
   /// used to be turquoise, so titles and icons are hardcoded to ink all over —
   /// recolouring a band to indigo without routing its foreground through here
   /// leaves ink-on-indigo, which is very nearly invisible.
+  ///
+  /// [RAJ-PHASE4-1] This is also the rule the global `ColorScheme` was breaking:
+  /// `onPrimary` was ink on rani pink (~3.5:1) on every FilledButton in the app,
+  /// while this method says cream (~4.7:1). Anything choosing a foreground for a
+  /// fill goes through here — including `AdButton`, `AdChip` and `AdSticker`
+  /// below, which used to hardcode `Colors.white`.
   ///
   /// NOTE this deliberately does NOT reuse `_inkOn` in zine_widgets.dart, which
   /// patches.md §6 points at: that one is private to its file and returns
@@ -125,13 +186,15 @@ class AD {
   // affordance, mic) keep the accent. New code should use `iconNeutral` /
   // `iconAccent` directly and NOT reach for the legacy names.
   static const iconNeutral = Color(0xFF16110D);
-  static const iconAccent = primaryBadge;       // the single accent, #E8833A
+  /// The single accent — rani pink #C9316E. (The comment here used to say
+  /// #E8833A, the pre-retheme orange; the value moved and the note didn't.)
+  static const iconAccent = primaryBadge;
 
   // NOTE `iconSearch` is NEUTRAL, not accent, despite the name. It is reused as
   // the read/unheard tick colour in the AvaDialer inbox (inbox_list_screen /
   // inbox_thread_screen, where the comments still call it "blue"), so pointing
-  // it at the accent turned those ticks orange on a pale-green card. Semantics
-  // beat the token's name here.
+  // it at the accent turned those ticks pink on a pale card. Semantics beat the
+  // token's name here.
   static const iconSearch = iconNeutral;
   static const iconBell = iconNeutral;
   static const iconShield = iconNeutral;
@@ -162,6 +225,11 @@ class AD {
   static const missedCall = Color(0xFFD33A2C);
   static const danger = Color(0xFFD33A2C);
   static const unreadAccent = Color(0xFFC9316E);
+
+  /// Money-in amounts. HANDOFF: `+` values need a green that stays legible on
+  /// cream, and `online` is that green — kept as its own name because a wallet
+  /// row is not a presence dot.
+  static const moneyIn = online;
 
   /// Muted-thread bell-slash glyph. Deliberately a BRIGHT red — not the softer
   /// coral `danger` — so a muted thread is unmissable in the list
@@ -299,6 +367,11 @@ class AD {
   static AvatarFamily familyByName(String name) =>
       _families[name] ?? _families['sky']!;
 
+  // [RAJ-PHASE2-1] The ten families now draw from the six-colour palette only —
+  // the pastel names (lilac/peach/butter…) are legacy KEYS, not descriptions of
+  // the hue any more. Each family's `chipInk` follows `onBand()`: ink on the
+  // light fills (turquoise, haldi), cream on the dark ones (indigo, rani, deep
+  // green, red). Do not add a hue here that is not in the palette.
   static const Map<String, AvatarFamily> _families = {
     'lilac':   AvatarFamily(chipBg: Color(0xFF2E4A8C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E4A8C)),
     'peach':   AvatarFamily(chipBg: Color(0xFFC9316E), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFC9316E)),
@@ -313,8 +386,9 @@ class AD {
   };
 }
 
-/// One avatar accent family: dark chip background + light ink (dark-mode chip),
-/// plus the saturated `solid` variant for filled avatar circles.
+/// One avatar accent family: a palette fill plus the foreground ink that is
+/// readable on it (per `AD.onBand`), and the saturated `solid` variant for
+/// filled avatar circles.
 class AvatarFamily {
   final Color chipBg;
   final Color chipInk;
@@ -322,12 +396,28 @@ class AvatarFamily {
   const AvatarFamily({required this.chipBg, required this.chipInk, required this.solid});
 }
 
-/// Native-platform type scale for the dark v2 system.
+/// Native-platform type scale.
 ///
 /// [UI-WHATSAPP-STABLE-1] The UI deliberately leaves [TextStyle.fontFamily]
 /// unset so Flutter selects the system face (Roboto on Android, SF on Apple
 /// platforms). This keeps dense chat text familiar and stable instead of using
-/// a rounded display face for every control.
+/// a display face for every control.
+///
+/// ⚠️ [RAJ-PHASE5-RISK] HANDOFF Phase 5 proposes bundling a display family
+/// (Archivo Black headings, Archivo w800 row titles, Space Mono meta). Three
+/// things have to be decided BEFORE that branch exists, because they conflict
+/// with what is written here:
+///   1. This scale tops out at w700 and `Msg`'s contract says "never 800/900".
+///      Phase 5 wants w800 row titles. Raise the ceiling deliberately or hold
+///      it — do not let a font swap decide it silently.
+///   2. `pubspec.yaml` already bundles Nunito at SIX weights (400–900) which
+///      nothing but `AvaTheme.wordmark` uses. Two more families is five type
+///      systems in one app and a real APK-size conversation.
+///   3. The overflow risk is the fixed pixel boxes in `Msg` (rowHeight 72,
+///      rowLeading 57, rowTrailing 64, composerMinHeight 44) plus AD's
+///      footerHeight 58, multiplied by a user-controlled FontScale — not the
+///      font file. Test those at max FontScale on a device, on auth,
+///      onboarding and every app bar, per HANDOFF.
 ///
 /// Hierarchy comes from contrast and a small Regular/Medium weight step, not
 /// from bold text throughout the conversation:
@@ -391,15 +481,19 @@ class ADText {
 }
 
 // =============================================================================
-// Dark v2 component recipes — the dark counterparts of the shared Zine* widgets.
-// Use these inside AvaTOK screens instead of ZineButton/ZineCard/etc. so the
-// dark re-skin is self-contained (the light Zine widgets stay untouched for the
-// apps that haven't migrated yet). Soft/flat elevation and hairline borders.
+// Component recipes — the shared Ad* widgets used across AvaTOK screens.
+//
+// [RAJ-PHASE1-2] This banner used to say "the dark counterparts of the shared
+// Zine* widgets … soft/flat elevation and hairline borders". Both halves are
+// obsolete: `Zine` is deleted, and these widgets draw 2px ink outlines with
+// hard offset shadows. Foregrounds route through `AD.onBand(fill)` rather than
+// hardcoding white — see the note on that method.
 // =============================================================================
 
 enum AdButtonVariant { primary, teal, danger, ghost }
 
-/// Pill button. primary = orange, teal = group actions, danger = red, ghost = outline.
+/// Pill button. primary = rani pink, teal = group actions, danger = red,
+/// ghost = outlined paper.
 class AdButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -427,29 +521,25 @@ class AdButton extends StatelessWidget {
         AdButtonVariant.danger => AD.destructiveBg,
         AdButtonVariant.ghost => AD.card,
       };
-  /// [UI-CONTRAST-1 2026-08-05] Foreground ink, chosen PER FILL rather than
-  /// "white unless ghost".
+
+  /// [UI-CONTRAST-1 2026-08-05, corrected RAJ-PHASE1-2] Foreground ink, chosen
+  /// PER FILL rather than "white unless ghost".
   ///
-  /// WHY: `primary` fills with `AD.primaryBadge` (#E8833A). White on that is
-  /// **2.5:1** — below the WCAG AA minimum of 4.5:1 for body text and below
-  /// even the 3:1 large-text floor. This is the app's main call-to-action, so
-  /// the single least accessible thing in the product was also the thing every
-  /// user is meant to press. `teal` (#2FA98C) is the same story at ~2.9:1.
+  /// The original note here reasoned about the PRE-RETHEME fills — orange
+  /// #E8833A, teal #2FA98C, coral #C0533F — and concluded dark ink was right for
+  /// primary and teal. The fills changed under it and the conclusion inverted
+  /// for primary:
+  ///   rani pink #C9316E + ink  ≈ 3.5:1  ✗   + cream ≈ 4.7:1  ✓
+  ///   turquoise #5CB8A6 + ink  ≈ 7.4:1  ✓   (still ink)
+  ///   red       #D33A2C + cream ≈ 4.4:1  ✓   (large/emphasis text only)
   ///
-  /// Dark ink fixes both without touching the fills, so the buttons keep their
-  /// colour identity:
-  ///   orange #E8833A + #17171B ink  ≈ 7.1:1
-  ///   teal   #2FA98C + #17171B ink  ≈ 6.2:1
-  /// `danger` (#C0533F) is a dark fill and genuinely needs white (~5.1:1);
-  /// `ghost` is a dark card and keeps `textPrimary`.
-  ///
-  /// Do NOT "simplify" this back to a single white — the whole point is that
-  /// the right ink depends on how light the fill is.
+  /// So it is no longer written out per variant at all — it delegates to
+  /// `AD.onBand(_fill)`, which is the palette's one documented rule for "what
+  /// colour goes on this fill". Change a fill and the foreground follows.
+  /// Do NOT "simplify" this back to a single white.
   Color get _fg => switch (variant) {
-        AdButtonVariant.primary => AD.textOnInput,
-        AdButtonVariant.teal => AD.textOnInput,
-        AdButtonVariant.danger => AD.destructiveInk,
         AdButtonVariant.ghost => AD.textPrimary,
+        _ => AD.onBand(_fill),
       };
 
   @override
@@ -494,7 +584,7 @@ class AdButton extends StatelessWidget {
           color: bg,
           borderRadius: BorderRadius.circular(100),
           border: variant == AdButtonVariant.ghost || disabled
-              ? Border.all(color: AD.borderControl, width: 2)
+              ? Border.all(color: AD.borderControl, width: AD.wBorder)
               : null,
         ),
         child: content,
@@ -503,7 +593,7 @@ class AdButton extends StatelessWidget {
   }
 }
 
-/// Dark card surface — hairline border, optional tap + soft shadow.
+/// Paper card surface — 2px ink outline, optional tap and hard offset shadow.
 class AdCard extends StatelessWidget {
   final Widget child;
   final Color color;
@@ -527,7 +617,7 @@ class AdCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: AD.borderControl, width: 2),
+        border: Border.all(color: AD.borderControl, width: AD.wBorder),
         boxShadow: boxShadow,
       ),
       child: child,
@@ -537,7 +627,7 @@ class AdCard extends StatelessWidget {
   }
 }
 
-/// Filter / action chip. Active = orange fill + check.
+/// Filter / action chip. Active = accent fill + check.
 class AdChip extends StatelessWidget {
   final String label;
   final bool active;
@@ -546,26 +636,33 @@ class AdChip extends StatelessWidget {
   const AdChip({super.key, required this.label, this.active = false, this.onTap, this.icon});
   @override
   Widget build(BuildContext context) {
+    // [RAJ-PHASE1-2] Was `Colors.white` for both the check glyph and the active
+    // label. White is not in this palette — the cream from `AD.onBand()` is, and
+    // it is the value every other foreground-on-fill decision uses.
+    final fill = active ? AD.primaryBadge : AD.card;
+    final fg = active ? AD.onBand(fill) : AD.textSecondary;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? AD.primaryBadge : AD.card,
+          color: fill,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: active ? AD.primaryBadge : AD.borderControl, width: 2),
+          border: Border.all(
+              color: active ? AD.primaryBadge : AD.borderControl,
+              width: AD.wBorder),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (active) ...[
-            PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 13, color: Colors.white),
+            PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 13, color: fg),
             const SizedBox(width: 8),
           ] else if (icon != null) ...[
             Icon(icon, size: 14, color: AD.textSecondary),
             const SizedBox(width: 8),
           ],
           Text(label, style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
-              fontSize: 13, color: active ? Colors.white : AD.textSecondary)),
+              fontSize: 13, color: fg)),
         ]),
       ),
     );
@@ -583,18 +680,26 @@ class AdSticker extends StatelessWidget {
   const AdSticker(this.text, {super.key, this.kind = AdStickerKind.plain, this.icon, this.onTap});
   @override
   Widget build(BuildContext context) {
-    final (fill, fg) = switch (kind) {
-      AdStickerKind.ok => (AD.online, Colors.white),
-      AdStickerKind.no => (AD.destructiveBg, Colors.white),
-      AdStickerKind.hint => (AD.card, AD.textSecondary),
-      AdStickerKind.plain => (AD.card, AD.textPrimary),
+    // [RAJ-PHASE1-2] `ok` and `no` were `Colors.white`. Routed through
+    // `AD.onBand()` so they use the palette's cream and stay correct if either
+    // fill is ever retuned.
+    final fill = switch (kind) {
+      AdStickerKind.ok => AD.online,
+      AdStickerKind.no => AD.destructiveBg,
+      AdStickerKind.hint => AD.card,
+      AdStickerKind.plain => AD.card,
+    };
+    final fg = switch (kind) {
+      AdStickerKind.ok || AdStickerKind.no => AD.onBand(fill),
+      AdStickerKind.hint => AD.textSecondary,
+      AdStickerKind.plain => AD.textPrimary,
     };
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: fill,
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: AD.borderControl, width: 2),
+        border: Border.all(color: AD.borderControl, width: AD.wBorder),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
@@ -614,7 +719,7 @@ class AdSticker extends StatelessWidget {
   }
 }
 
-/// Circular back / icon button — transparent on the dark header.
+/// Circular back / icon button — transparent on the header band.
 class AdBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final IconData? icon;
@@ -665,7 +770,7 @@ class AdErrorMsg extends StatelessWidget {
   }
 }
 
-/// White dark-v2 text field (dark ink on white), with optional lead/trailing cells.
+/// Paper text field (ink on raised cream), with optional lead/trailing cells.
 class AdField extends StatefulWidget {
   final TextEditingController? controller;
   final String? label;
@@ -742,7 +847,9 @@ class _AdFieldState extends State<AdField> {
         decoration: BoxDecoration(
           color: widget.enabled ? AD.inputField : AD.card,
           borderRadius: BorderRadius.circular(AD.rInput),
-          border: Border.all(color: widget.error ? AD.danger : AD.borderControl, width: 2),
+          border: Border.all(
+              color: widget.error ? AD.danger : AD.borderControl,
+              width: AD.wBorder),
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(
@@ -753,8 +860,12 @@ class _AdFieldState extends State<AdField> {
                 width: 46,
                 constraints: const BoxConstraints(minHeight: 50),
                 alignment: Alignment.center,
+                // [RAJ-PHASE1-2] Was a raw `Color(0x22000000)` — pure black at
+                // 13%, the last stray hex in this widget. `borderDivider` is the
+                // palette's warm ink at 14% and is the correct token for a rule
+                // INSIDE a bordered container.
                 decoration: const BoxDecoration(
-                  border: Border(right: BorderSide(color: Color(0x22000000), width: 1)),
+                  border: Border(right: BorderSide(color: AD.borderDivider, width: 1)),
                 ),
                 child: widget.leadText != null
                     ? Text(widget.leadText!, style: TextStyle(fontFamily: ADText.family,
@@ -777,11 +888,11 @@ class _AdFieldState extends State<AdField> {
                 textCapitalization: widget.textCapitalization,
                 autocorrect: widget.autocorrect,
                 inputFormatters: widget.inputFormatters,
-                cursorColor: AD.iconSearch,
+                cursorColor: AD.textPrimary,
                 // Locked identity fields must remain legible. Flutter applies
-                // the disabled theme color when enabled=false, which is black
-                // on the dark locked-card background. Use readOnly for fields
-                // that are known but immutable so the normal ink style remains.
+                // the disabled theme color when enabled=false. Use readOnly for
+                // fields that are known but immutable so the normal ink style
+                // remains.
                 // [UI-MSG-TYPE-1] What the user types is BODY copy → w400.
                 // It was w700, which made every input read like a headline.
                 style: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w400,
@@ -815,16 +926,21 @@ class _AdFieldState extends State<AdField> {
   }
 }
 
-/// White search dock — dark ink on white, the dark-v2 search idiom.
+/// Search dock — ink on raised paper, the app's one search idiom.
 ///
 /// Modelled on `search_screen.dart`'s private `_searchDock`, so the inline
 /// search bars on Chats / Groups / Calls all share ONE implementation
 /// ([ISSUE-INLINE-SEARCH-1], owner request 2026-07-14). Use this rather than
 /// hand-rolling another dock.
 ///
-/// NOTE: `search_screen.dart` and `invite_screen.dart` still carry their own
-/// private `_searchDock` copies — they predate this widget and were left alone
-/// to keep this change scoped. Migrating them here is a clean follow-up.
+/// [RAJ-PHASE1-2] ⚠️ JUDGEMENT CALL — flag if you disagree. This was the one
+/// input in the app with NO border at all, which was correct when it sat on a
+/// near-black header and the fill alone separated it. On cream it is
+/// paper-on-paper and has no edge, so it now takes the same 2px ink outline as
+/// `AdField` per HANDOFF rule 1. This does NOT contradict the AvaDial note in
+/// HANDOFF Phase 2 ("the search field becomes the one plain, ornament-free
+/// element on the screen") — ornament-free means no toran, no beads, no
+/// rosette; it still needs an edge. Set [outlined] false to opt out.
 ///
 /// Filtering is expected to be INSTANT — wire [onChanged] straight to a
 /// `setState` filter, no debounce. (Debounce belongs only on the full
@@ -841,6 +957,9 @@ class AdSearchDock extends StatefulWidget {
   /// Show the built-in "x" clear button once there is text.
   final bool showClear;
 
+  /// Draw the 2px ink outline. See the class note.
+  final bool outlined;
+
   const AdSearchDock({
     super.key,
     required this.controller,
@@ -849,6 +968,7 @@ class AdSearchDock extends StatefulWidget {
     this.autofocus = false,
     this.trailing,
     this.showClear = true,
+    this.outlined = true,
   });
 
   @override
@@ -896,6 +1016,9 @@ class _AdSearchDockState extends State<AdSearchDock> {
       decoration: BoxDecoration(
         color: AD.inputField,
         borderRadius: BorderRadius.circular(AD.rInput),
+        border: widget.outlined
+            ? Border.all(color: AD.borderControl, width: AD.wBorder)
+            : null,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(children: [
@@ -908,7 +1031,7 @@ class _AdSearchDockState extends State<AdSearchDock> {
             autofocus: widget.autofocus,
             onChanged: widget.onChanged,
             textInputAction: TextInputAction.search,
-            cursorColor: AD.iconSearch,
+            cursorColor: AD.textPrimary,
             style: ADText.rowName(c: AD.textOnInput),
             decoration: InputDecoration(
               isDense: true,

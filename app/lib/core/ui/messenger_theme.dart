@@ -17,10 +17,21 @@ import 'avatok_dark.dart' show AD;
 /// `Msg` is the fix. It is a thin, opinionated layer **on top of AD tokens** —
 /// it does not introduce a new palette, it constrains the existing one.
 ///
+/// [RAJ-PHASE2-2] That claim was ALMOST true and is now actually true. This file
+/// held one hardcoded hex — `input = Color(0xFF202C33)`, the WhatsApp dark slate
+/// — described as "aligned with the incoming-bubble family" long after the
+/// incoming bubble family became cream. It painted the chat composer, the
+/// single most-used control in the product, as a dark bar on a cream thread.
+///
+/// Phase 2's list was six feature palettes plus `bubble_theme.dart`; this file
+/// was never on it, because it presents itself as a layer over AD rather than a
+/// palette. That is precisely why it got missed. There is now ZERO hex below
+/// this line — every colour is an AD alias. Keep it that way.
+///
 /// ## The contract for chat screens
 ///
-/// * **Never** import `zine.dart`, `wallet_theme.dart`, or any feature palette
-///   into a chat file. If you need a value, add it here.
+/// * **Never** import a feature palette (`wallet_theme.dart`, `phone_theme.dart`,
+///   …) into a chat file. If you need a value, add it here as an AD alias.
 /// * Radii are **8 / 12 / 16 only**. Pills (`rPill`) are reserved for unread
 ///   badges, tags, status indicators and avatars — nothing else. The audit
 ///   counted 233 pill shapes app-wide; that single fact is most of why the
@@ -28,10 +39,12 @@ import 'avatok_dark.dart' show AD;
 /// * Spacing comes off a 4px grid. No 3s, 7s, 9s, 11s.
 /// * Motion is `fast` / `base` / `slow` and nothing else. No bounce, no
 ///   elastic, no overshoot, no glowing halos, no infinite decorative loops.
-/// * Colour is near-black + white + grey + ONE accent + red for errors.
-///   Colour must MEAN something (unread, error, live). It is not decoration.
+/// * Colour is paper + ink + ONE accent + red for errors. Colour must MEAN
+///   something (unread, error, live). It is not decoration.
 /// * Type comes from `ADText`: platform-native face, 400 body, 500 emphasis,
-///   700 titles, never 800/900.
+///   700 titles, never 800/900. **Phase 5 has not landed** — if a bundled
+///   display family arrives, this ceiling is the thing it has to renegotiate,
+///   not quietly exceed.
 class Msg {
   Msg._();
 
@@ -71,6 +84,13 @@ class Msg {
   // ------------------------------------------------------------------- rows
   /// Chat-list row height. Fixed so the list is uniform AND so the list view
   /// can use a cheap extent-based layout instead of measuring every child.
+  ///
+  /// ⚠️ [RAJ-PHASE5-RISK] This and the four constants below are FIXED PIXEL
+  /// boxes, and a user-controlled FontScale multiplies the type inside them.
+  /// They are the RenderFlex overflow surface for any type change — not the
+  /// font file itself. Anything that raises line height (a bundled display
+  /// face, a weight above 700, looser tracking) has to be tested against these
+  /// five numbers at the largest FontScale the app offers, on a device.
   static const double rowHeight = 72;
   /// Avatar diameter in a chat-list row.
   static const double rowAvatar = 48;
@@ -93,11 +113,11 @@ class Msg {
   /// (timestamp above, unread badge below).
   ///
   /// This is a MINIMUM, not a fixed width, and that is deliberate. The longest
-  /// string the list renders is 'Yesterday' — 9 glyphs of 12px Nunito 400,
-  /// about 56px — and the app applies a user-controlled FontScale on top, so a
-  /// hard width would clip or overflow for anyone running large text. Reserving
-  /// a floor is enough to stop the cold-start reflow (the real problem is '' at
-  /// 0px becoming '14:32' at ~40px) while still letting the column grow.
+  /// string the list renders is 'Yesterday' — 9 glyphs of 12px 400, about 56px
+  /// — and the app applies a user-controlled FontScale on top, so a hard width
+  /// would clip or overflow for anyone running large text. Reserving a floor is
+  /// enough to stop the cold-start reflow (the real problem is '' at 0px
+  /// becoming '14:32' at ~40px) while still letting the column grow.
   static const double rowTrailing = 64;
   /// Avatar diameter in a thread header / bubble gutter.
   static const double smallAvatar = 32;
@@ -140,12 +160,22 @@ class Msg {
   static const Curve curve = Curves.easeOutCubic;
 
   // ---------------------------------------------------------------- colours
-  // Restrained palette. Everything else on a chat screen is near-black,
-  // white, or grey — and comes from AD.
+  // Restrained palette. Everything else on a chat screen is paper, ink or a
+  // muted ink tint — and comes from AD.
   /// The single brand accent. Unread, active tab, send button, FAB.
   static const Color accent = AD.primaryBadge;
-  /// Stable dark chat input surface, aligned with the incoming-bubble family.
-  static const Color input = Color(0xFF202C33);
+
+  /// The chat composer / input surface — RAISED PAPER, the same tone as an
+  /// incoming bubble.
+  ///
+  /// [RAJ-PHASE2-2] Was `Color(0xFF202C33)`: WhatsApp's dark slate, hardcoded
+  /// here, with a comment claiming it was "aligned with the incoming-bubble
+  /// family" — which by then meant cream `AD.bubbleInBg`. The composer was a
+  /// dark bar under a cream thread on the app's most-used screen. It now
+  /// aliases `AD.inputField`, which IS that family, so the two cannot drift
+  /// apart again.
+  static const Color input = AD.inputField;
+
   /// Errors and destructive actions ONLY.
   static const Color error = AD.danger;
   /// Live/online presence.
@@ -153,7 +183,7 @@ class Msg {
 
   /// Neutral icon colour for the chat surface.
   ///
-  /// The dark system defines a different colour per glyph — search blue, bell
+  /// The old system defined a different colour per glyph — search blue, bell
   /// orange, shield green, phone teal, video purple, camera pink, emoji
   /// yellow, mic deep-purple. Eight colours in one toolbar means colour can no
   /// longer signal anything. On chat screens, icons are neutral; colour is
@@ -162,8 +192,8 @@ class Msg {
   static const Color iconActive = AD.textPrimary;
 
   // -------------------------------------------------------------- elevation
-  /// Chat surfaces are flat. Separation comes from hairline borders and
-  /// surface colour, not from drop shadows or glows.
+  /// Chat surfaces are flat. Separation comes from ink outlines and surface
+  /// colour, not from drop shadows or glows.
   ///
   /// Coloured glows (the orange halo under the FAB, the green ring around the
   /// status avatar) are removed on purpose — a coloured blur behind a control
@@ -177,10 +207,24 @@ class Msg {
   /// is hard offset shadows only — a blur is a screen-glow signal and reads
   /// wrong against block-printed ink outlines.
   static const List<BoxShadow> lift = [
-    BoxShadow(color: Color(0xFF16110D), offset: Offset(3, 4), blurRadius: 0),
+    BoxShadow(color: AD.textPrimary, offset: Offset(3, 4), blurRadius: 0),
   ];
 
-  /// Hairline divider between rows.
+  /// The 2px ink OUTLINE that HANDOFF rule 1 puts on cards, rows, inputs,
+  /// chips and buttons.
+  ///
+  /// [RAJ-PHASE1-2] Use this for an edge that defines a shape. Use [hairline]
+  /// only for a rule BETWEEN rows. Those were the same value for a while — full
+  /// ink at 1px — which is why some screens outline at 2px and others at 1px.
+  static const BorderSide border =
+      BorderSide(color: AD.borderCard, width: AD.wBorder);
+
+  /// Faint rule between rows. NOT an outline.
+  ///
+  /// [RAJ-PHASE1-2] Was `AD.borderHairline` at 1px, which Phase 1 refilled with
+  /// FULL INK because that token's other job is card outlines. A list of rows
+  /// separated by solid black 1px rules reads as a table grid. `borderDivider`
+  /// is ink at 14% — the same value the bead-stud rule uses.
   static const BorderSide hairline =
-      BorderSide(color: AD.borderHairline, width: 1);
+      BorderSide(color: AD.borderDivider, width: 1);
 }

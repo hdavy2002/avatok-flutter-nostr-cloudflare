@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- [UI-COLDSTART-1 2026-08-05] The Android launch window colour.
+    <!-- The Android launch window colour.
          MUST stay in step with AD.bg in app/lib/core/ui/avatok_dark.dart.
 
-         AvaTOK's UI is dark ALWAYS — it does not follow the system light/dark
-         setting. The launch splash did: values/styles.xml parented
-         Theme.Light.NoTitleBar and drawable/launch_background.xml hardcoded
-         @android:color/white. So on a phone in light mode every cold start
-         painted a WHITE window, then Flutter's first frame at #0B0B0D — a
-         full-screen white-to-black step that reads as a flash. -->
-    <color name="avatok_launch_bg">#FF0B0B0D</color>
+         [RAJ-PHASE4-1] Was #FF0B0B0D, the old near-black. The retheme made the
+         app CREAM, so every cold start painted a near-black window and then
+         Flutter's first frame at #FBF3E2 — the same full-screen step the
+         UI-COLDSTART fixes removed, just inverted. This is the value HANDOFF
+         Phase 4 asks for.
+
+         AvaTOK's UI does NOT follow the system light/dark setting: it is cream
+         always. That is why this is a single pinned colour and not a DayNight
+         reference. -->
+    <color name="avatok_launch_bg">#FFFBF3E2</color>
 </resources>

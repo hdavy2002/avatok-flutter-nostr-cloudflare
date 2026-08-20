@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
-    <!-- [UI-COLDSTART-1 2026-08-05] Theme.Light -> Theme.Black. AvaTOK's UI does
-         not follow the system light/dark setting; it is dark always. Parenting
-         the light-mode launch theme to Theme.Light meant a light-mode phone got
-         a white system window before Flutter's first dark frame. -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <!-- [UI-COLDSTART-1 2026-08-05] Theme.Light -> Theme.Black, because AvaTOK's
+         UI did not follow the system light/dark setting; it was dark always.
+         [RAJ-PHASE4-1] The app is now CREAM always, so Theme.Black is wrong for
+         the same reason Theme.Light was. Parent is now the neutral
+         Theme.NoTitleBar and the window colour comes only from
+         windowBackground below — one place, no DayNight resolution. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
@@ -26,9 +28,7 @@
          patched LaunchTheme and launch_background.xml, but MISSED this one —
          and NormalTheme is the window shown AFTER LaunchTheme and BEFORE
          Flutter's first frame. `?android:colorBackground` resolves against
-         DayNight, so on a phone in LIGHT mode it is WHITE, while AvaTOK is dark
-         on every surface regardless of the system setting. Result: dark splash
-         -> white window -> dark app, every single cold start.
+         DayNight, while AvaTOK looks the same regardless of the system setting.
 
          Keep the MaterialComponents parent: flutter_stripe's PaymentSheet needs
          an AppCompat/MaterialComponents-descended host activity theme. Only the
