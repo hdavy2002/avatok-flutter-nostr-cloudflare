@@ -9,7 +9,9 @@ import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
-import '../../core/ui/rajasthani_motifs.dart';
+// [RAJ-SINGLEWAVE-1] `core/ui/rajasthani_motifs.dart` import removed with the
+// header band — this file no longer draws a seam of its own. The one above it,
+// in chat_list, is now the only wave on the Groups tab.
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import 'chat_thread.dart';
@@ -27,8 +29,20 @@ import 'new_group_screen.dart';
 class GroupsTab extends StatefulWidget {
   final Identity? identity;
   final List<Contact> contacts;
-  /// Opens the app sidebar (the parent shell owns the Drawer). When provided, a
-  /// hamburger button is shown in the app bar in place of the back arrow.
+  /// ⚠️ [RAJ-SINGLEWAVE-1 2026-08-21] NO LONGER RENDERS ANYTHING.
+  ///
+  /// This used to put a hamburger (or a back arrow) in GroupsTab's own header
+  /// band. That whole band is gone — owner request, pic 1/2: "remove the
+  /// entire section with the hamburger menu also… once this area is removed
+  /// then we will get a single wave on top." GroupsTab is only ever a tab body
+  /// inside `chat_list.dart`, whose shared header already carries the
+  /// hamburger, so the second one was a duplicate control under a duplicate
+  /// wave.
+  ///
+  /// The parameter is KEPT rather than deleted because `chat_list.dart:2591`
+  /// still passes it and removing it is a separate, mechanical change with no
+  /// local compiler to catch a miss. If GroupsTab ever becomes a pushed route
+  /// again it will need its own back affordance and this is the hook for it.
   final VoidCallback? onMenu;
   const GroupsTab({super.key, this.identity, this.contacts = const [], this.onMenu});
 
@@ -127,7 +141,6 @@ class _GroupsTabState extends State<GroupsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop();
     // [ISSUE-GROUPS-SEARCH-1] Derived views; both sections narrow under a query.
     final visibleGroups = _groups.where((g) => _nameMatches(g.name)).toList();
     final visibleInvites = _invites.where((i) => _nameMatches(i.groupName)).toList();
@@ -140,48 +153,25 @@ class _GroupsTabState extends State<GroupsTab> {
         label: 'New group',
         onTap: _newGroup,
       ),
+      // [RAJ-SINGLEWAVE-1 2026-08-21] THE SECOND HEADER AND THE SECOND WAVE ARE
+      // GONE. Owner, pic 1/2: "see double waves — can you remove the second
+      // wave where it says Group chat. In fact remove the entire section with
+      // the hamburger menu also. Once this area is removed then we will get a
+      // single wave on top."
+      //
+      // What used to be here: a full band Container ("Groups / YOUR GROUP
+      // CHATS" + a hamburger) followed by its own `SquiggleSeam`. GroupsTab is
+      // ONLY ever a tab body inside `chat_list.dart`'s IndexedStack — never a
+      // pushed route (verified: one construction site, chat_list.dart:2591, and
+      // it passes `onMenu`) — so that band sat directly under chat_list's own
+      // header + tab strip + seam. Two headers, two hamburgers, two waves, on a
+      // screen that already told you it was the Groups tab.
+      //
+      // ⚠️ Do NOT "restore the Groups title for clarity". The tab strip
+      // immediately above is the title. If GroupsTab is ever pushed as a real
+      // route it needs a header again — see the note on `GroupsTab.onMenu` —
+      // but adding one back while it is a tab body re-creates the double wave.
       body: Column(children: [
-        // Inline dark v2 header band: near-black header fill + hairline bottom
-        // border (mirrors chat_list). Leading = menu (opens sidebar) or back.
-        Container(
-          // [RAJ-SEAMS-1] Bottom hairline removed — the SquiggleSeam below
-          // is the header↔content seam now (design/seams/patches.md §6).
-          decoration: const BoxDecoration(
-            color: AD.headerFooter,
-          ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
-              child: Row(children: [
-                if (widget.onMenu != null) ...[
-                  _hdrBtn(PhosphorIcons.list(PhosphorIconsStyle.bold), widget.onMenu!),
-                  const SizedBox(width: Msg.s3),
-                ] else if (canPop) ...[
-                  _hdrBtn(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
-                      () => Navigator.of(context).maybePop()),
-                  const SizedBox(width: Msg.s3),
-                ],
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // [RAJ-INDIGO-1] onBand — the band went from light
-                    // turquoise to dark indigo, so the default ink is invisible.
-                    Text('Groups', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
-                    const SizedBox(height: 2),
-                    Text('YOUR GROUP CHATS',
-                        style: ADText.sectionLabel(
-                            c: AD.onBand(AD.headerFooter).withValues(alpha: 0.75))),
-                  ],
-                ),
-              ]),
-            ),
-          ),
-        ),
-        // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
-        // Squiggle seam on the band (design/seams/patches.md §6).
-        const SquiggleSeam(bandColor: AD.bandJodhpur),
         // [ISSUE-GROUPS-SEARCH-1] Search dock, pinned under the header and outside
         // the ListView so it stays put while the list scrolls. Hidden when there is
         // nothing to search; never autofocused (would pop the keyboard on tab open).
@@ -231,19 +221,9 @@ class _GroupsTabState extends State<GroupsTab> {
     );
   }
 
-  /// Circular header icon button (card fill + hairline control border).
-  Widget _hdrBtn(IconData icon, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 42, height: 42,
-          decoration: BoxDecoration(
-            color: AD.card,
-            shape: BoxShape.circle,
-            border: Border.all(color: AD.borderControl, width: 1),
-          ),
-          child: Center(child: PhosphorIcon(icon, size: 20, color: AD.textPrimary)),
-        ),
-      );
+  // [RAJ-SINGLEWAVE-1] `_hdrBtn` (the circular hamburger/back button) was
+  // deleted with the header band above. It had no other call site, and
+  // `flutter analyze` fails the build on an unused private element.
 
   /// The primary teal pill (group actions) — replaces the light lime ZineButton.
   Widget _fab({required IconData icon, required String label, required VoidCallback onTap}) =>

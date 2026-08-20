@@ -115,60 +115,70 @@ class _CallsScreenState extends State<CallsScreen> {
     final visible = _query.isEmpty
         ? _calls
         : _calls.where((c) => _matches(c, _query)).toList();
-    // [RAJ-SEAMS-1] Calls has a real coloured header band (patches.md §6:
-    // Calls list/Dialer/AvaDial -> indigo, 2C Double wave), so it gets the
-    // same treatment as avadial_root's tab strip. Indigo is a DARK band, so
-    // the title + trash icon flip to cream via AD.onBand.
-    const band = AD.bandIndigo;
-    final onBand = AD.onBand(band);
-    return SafeArea(
-      bottom: false,
-      child: Column(children: [
-        // Appbar band (§8): now an indigo fill. The old 1px ink bottom
-        // hairline is removed — the DoubleWaveSeam added immediately below
-        // sits flush under the band (2C usage note: "no border between").
-        Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s5),
-          decoration: const BoxDecoration(color: band),
-          child: Row(children: [
-            Expanded(
-              child: Text('Calls', style: ADText.appTitle(c: onBand)),
-            ),
-            if (_calls.isNotEmpty)
+    // [RAJ-SINGLEWAVE-1 2026-08-21] THE "Calls" HEADER BAND AND ITS WAVE ARE
+    // GONE. Owner, pic 3/4: "same issue we have in the call section — remove
+    // the call area like in pic 4 and move the trash bin next to the search
+    // bar and reclaim the above space."
+    //
+    // What used to be here: a 60px indigo Container titled "Calls" with the
+    // clear-log trash button, followed by its own `DoubleWaveSeam`. Like
+    // GroupsTab, CallsScreen is ONLY ever a tab body inside `chat_list.dart`'s
+    // IndexedStack (verified: one construction site, chat_list.dart:2595, never
+    // pushed as a route), so that band sat directly beneath chat_list's own
+    // header + tab strip + seam — a second title under a second wave, on a
+    // screen whose selected tab already says "Calls".
+    //
+    // Roughly 96px of vertical chrome comes back (60 band + 36 seam), which
+    // matters twice: it is what the owner asked for, and it is a third of the
+    // chrome on the small-screen device from [RESP-SMALL-1].
+    //
+    // The outer `SafeArea` goes with it. The top inset belongs to chat_list's
+    // header, which paints its band behind the status bar; chat_list already
+    // wraps its tab bodies in `MediaQuery.removePadding(removeTop: true)`, so
+    // a SafeArea here would be a no-op at best and a duplicated inset if that
+    // ever changed.
+    return Column(children: [
+        // [ISSUE-CALLS-SEARCH-1] Search dock, pinned directly under the tabs and
+        // OUTSIDE the scrollable so it never scrolls away. Hidden while the log is
+        // empty (nothing to search) and never autofocused — opening the tab must
+        // not pop the keyboard.
+        //
+        // [RAJ-SINGLEWAVE-1] The clear-log trash button now rides in this row
+        // instead of the deleted band. Note this TIGHTENS its condition: the
+        // button used to appear on `_calls.isNotEmpty` alone and now also waits
+        // for `_loaded`, because it shares the dock's guard. That is correct —
+        // "clear the whole log" should not be offerable before the log has
+        // finished loading, or a mistimed tap clears a list the user cannot
+        // see yet.
+        if (_loaded && _calls.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: Row(children: [
+              Expanded(
+                child: AdSearchDock(
+                  controller: _searchCtl,
+                  hint: 'Search name or number',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              const SizedBox(width: Msg.s3),
               ZinePressable(
                 onTap: _confirmClearAll,
-                // Chip fill stays AD.card (paper), not the band, so its icon
-                // stays ink — the onBand flip is only for content drawn
-                // straight on the band fill (contrast rule, patches.md §6).
+                // Paper fill, ink glyph. It sits on the cream page now rather
+                // than on a dark band, so the old contrast note about AD.onBand
+                // no longer applies — ink on paper is the default and correct.
                 color: AD.card,
                 pressedColor: AD.destructiveBg,
                 radius: Msg.brPill,
                 boxShadow: const [],
                 child: SizedBox(
-                  width: 40, height: 40,
+                  width: 44, height: 44,
                   child: Center(child: PhosphorIcon(
                       PhosphorIcons.trash(PhosphorIconsStyle.bold),
                       size: 19, color: AD.textPrimary)),
                 ),
               ),
-          ]),
-        ),
-        // 2C Double wave, flush under the band — default haldi back wave is
-        // correct on an indigo band per the §6 usage note.
-        const DoubleWaveSeam(bandColor: band),
-        // [ISSUE-CALLS-SEARCH-1] Search dock, pinned directly under the tabs and
-        // OUTSIDE the scrollable so it never scrolls away. Hidden while the log is
-        // empty (nothing to search) and never autofocused — opening the tab must
-        // not pop the keyboard.
-        if (_loaded && _calls.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
-            child: AdSearchDock(
-              controller: _searchCtl,
-              hint: 'Search name or number',
-              onChanged: (v) => setState(() => _query = v),
-            ),
+            ]),
           ),
         Expanded(
           child: !_loaded
@@ -221,8 +231,7 @@ class _CallsScreenState extends State<CallsScreen> {
                             ),
                     ),
         ),
-      ]),
-    );
+      ]);
   }
 
   // Call-history row — zine card: ink border, bordered avatar, mono timestamp,

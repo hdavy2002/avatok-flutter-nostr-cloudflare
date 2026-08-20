@@ -35,6 +35,7 @@ import '../../core/status_store.dart';
 import '../../core/update_service.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart'; // [RESP-SMALL-1] chromeScale
 import '../../core/ui/illustrations.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
@@ -2358,7 +2359,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           // status avatar · filter dropdown · search · notifications. Persistent
           // across all 3 tabs (Chat/Community/Call log), unlike the tab bodies.
           Container(
-            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s3, Msg.s3),
+            // [RESP-SMALL-1] Only the VERTICAL padding scales. The horizontal
+            // gutters stay put: shrinking them on the narrowest phone pushes
+            // the wordmark and the trailing controls toward the screen edges,
+            // which is where they are already hardest to hit.
+            padding: EdgeInsets.fromLTRB(
+                Msg.s4,
+                Msg.s2 * ZineBreakpoints.chromeScale(context),
+                Msg.s3,
+                Msg.s3 * ZineBreakpoints.chromeScale(context)),
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
@@ -2441,9 +2450,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         // than a Column sibling above them (owner, pic 7 №2): as a sibling its
         // transparent half could only ever reveal the Scaffold's cream, which
         // is the "creamy part that hides the messages". See `SeamOverlay`.
+        // [RAJ-SINGLEWAVE-1 2026-08-21] Seam style changed 1B Squiggle -> 2C
+        // Double wave. Owner: "let the wave colour paint their band behind the
+        // status bar, like the Updates screen… use the one from the footer, I
+        // mean the same indigo colour with gold bands." The footer wave is
+        // `DoubleWaveSeam`, whose default `backColor` is haldi — that gold
+        // under-wave IS the thing being asked for, and the Squiggle has no
+        // second wave to give. Header and footer now mirror each other exactly.
         Expanded(
           child: SeamOverlay(
-            seam: const SquiggleSeam(bandColor: AD.bandJodhpur),
+            seam: const DoubleWaveSeam(bandColor: AD.bandJodhpur),
             child: MediaQuery.removePadding(
             context: context,
             removeTop: true,
@@ -2823,11 +2839,14 @@ class _AvaTokTabStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // [RAJ-SEAMS-1] The bottom hairline is gone: the SquiggleSeam added
+      // [RAJ-SEAMS-1] The bottom hairline is gone: the seam overlaid
       // immediately below this strip in the Scaffold body IS the seam now, and
       // a straight rule sitting on top of the scallops reads as a mistake.
       decoration: const BoxDecoration(color: AD.headerFooter),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      // [RESP-SMALL-1] Bottom padding scales; the chip's own 36px height does
+      // not (see `_tab`).
+      padding: EdgeInsets.fromLTRB(
+          16, 4, 16, 12 * ZineBreakpoints.chromeScale(context)),
       child: Row(
         children: [
           for (var i = 0; i < _items.length; i++) ...[

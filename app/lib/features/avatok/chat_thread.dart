@@ -70,6 +70,7 @@ import '../../core/local_brain/local_brain.dart';
 import '../../core/voice_brain_ingest.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart'; // [RESP-SMALL-1] chromeScale
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -1228,8 +1229,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
               color: AD.headerFooter,
               child: SafeArea(
                 bottom: false,
+                // [RESP-SMALL-1] 58px header, trimmed on narrow phones — but
+                // FLOORED AT 48, and the floor is the important half.
+                //
+                // A bare `58 * chromeScale` would give 41.8px on an xcompact
+                // device, and the Row inside this box contains `_headerAction`
+                // IconButtons carrying `BoxConstraints(minHeight: 46)`
+                // (chat_thread/guardian.dart:335) plus a 38px avatar. A 42px
+                // box around a 46px child is a RenderFlex overflow — i.e. the
+                // small-screen fix would itself break the small screen. 48
+                // clears the tallest child and still returns 10px.
+                //
+                // If those tap targets are ever shrunk, this floor can come
+                // down with them — not before.
                 child: SizedBox(
-              height: 58,
+              height: (58 * ZineBreakpoints.chromeScale(context)).clamp(48.0, 58.0),
               child: Padding(
               padding: const EdgeInsets.only(left: 4, right: 6),
               child: _searchMode ? _searchBar() : Row(children: [
@@ -1362,7 +1376,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             // visibly through the scallops.
             Expanded(
               child: SeamOverlay(
-                seam: const SquiggleSeam(bandColor: AD.bandJodhpur),
+                // [RAJ-SINGLEWAVE-1] 1B Squiggle -> 2C Double wave, matching
+                // chat_list and the shell footer. The owner asked for "the one
+                // from the footer — the same indigo colour with gold bands";
+                // the gold is `DoubleWaveSeam`'s default haldi back wave, which
+                // the Squiggle does not have. Every wave in the messenger is
+                // now the same shape in the same two colours.
+                seam: const DoubleWaveSeam(bandColor: AD.bandJodhpur),
                 child: DecoratedBox(
                 decoration: BoxDecoration(gradient: _threadGradient),
                 child: Builder(builder: (_) {
