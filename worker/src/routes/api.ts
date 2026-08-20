@@ -468,8 +468,21 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     rings: Number((callPolicyConfig as { receptionistRings?: number } | null)?.receptionistRings ?? 4),
     cycleMs: Number((callPolicyConfig as { ringCycleMs?: number } | null)?.ringCycleMs ?? 6000),
   };
+  // [CALL-RING-NODELAY-1 2026-08-21] The prewarm wait is only worth arming when
+  // the SFU it prewarms is actually on. The lease's ONLY early exit is
+  // /prewarm-ready, and that requires an SFU seat (`transport_prepared` is
+  // written by /sfu-seat-prepare, which sits behind call_sfu.ts guard() — a
+  // hard 503 while callSfuV1 is false). With callSfuV1 off, every callee with
+  // a live Inbox socket and fresh presence — precisely the ones who would ring
+  // in under a second on the WS fast lane — sat in PREWARMING for the full
+  // callSilentPrewarmDeadlineMs (12 s in prod) while the caller stared at
+  // "Waking their phone…". Measured on every call in the 2026-08-20 session:
+  // placed 18:21:29.65, ring shown 18:21:40.86. The spec's §9 invariant
+  // ("server flag rollback restores the existing ring path without a client
+  // release") was asserted but never encoded; this line encodes it.
   const silentTransportPrewarmConfigured =
-    (callPolicyConfig as { callSilentTransportPrewarmV1?: boolean } | null)?.callSilentTransportPrewarmV1 === true;
+    (callPolicyConfig as { callSilentTransportPrewarmV1?: boolean } | null)?.callSilentTransportPrewarmV1 === true &&
+    (callPolicyConfig as { callSfuV1?: boolean } | null)?.callSfuV1 === true;
   const silentPrewarmDeadlineMs = Math.max(2_000, Math.min(30_000,
     Number((callPolicyConfig as { callSilentPrewarmDeadlineMs?: number } | null)?.callSilentPrewarmDeadlineMs ?? 12_000)));
   // The ring lifetime this call will actually be given. Used for the ring-receipt
