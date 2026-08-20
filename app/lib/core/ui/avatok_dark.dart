@@ -248,6 +248,15 @@ class AD {
     bottomLeft: Radius.circular(12),
     bottomRight: Radius.circular(12),
   );
+  // [RAJ-PHASE2-1] The Ava lane needs a fill distinct from BOTH the outgoing
+  // indigo and the incoming cream, so an Ava reply is never mistaken for
+  // either party's message. Rani pink with cream type. Declared here rather
+  // than as a new hex inside `bubble_theme.dart` — a second palette drifting
+  // from this one is exactly how that file ended up still on WhatsApp greens.
+  static const bubbleAvaBg = primaryBadge;
+  static const bubbleAvaInk = bg;
+  static const bubbleAvaMeta = bg;
+
   static const bubbleInBg = Color(0xFFFFFAF0);
   static const bubbleInInk = Color(0xFF16110D);
   static const bubbleInMeta = Color(0xFF5C5148);

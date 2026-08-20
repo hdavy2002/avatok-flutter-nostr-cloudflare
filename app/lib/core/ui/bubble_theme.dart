@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'avatok_dark.dart';
 import 'messenger_theme.dart';
 
 /// Chat bubble theming contract — the SINGLE source of truth for what colour a
@@ -69,13 +70,25 @@ class BubbleTheme {
       );
 }
 
-/// The thread canvas. White, per owner decision 2026-07-17.
-const Color kChatCanvas = Color(0xFFFFFFFF);
+// [RAJ-PHASE2-1] This whole file was a SECOND palette. It still held
+// WhatsApp-derived hex (green #005C4B, slate #202C33, ink #E9EDEF, pure-white
+// canvas) long after Phase 1 put the correct bubble values in `AD` — so the two
+// had silently drifted, and the most-looked-at surface in the app was the one
+// still off-palette. Every colour below is now an ALIAS of an `AD` token. Keep
+// it that way: a colour defined here rather than in avatok_dark.dart is a
+// colour that will drift again.
+//
+// Shape is untouched — the 4px tail corner and the radii were already correct.
+
+/// The thread canvas — the warm cream, NOT paper-white. Nothing in this
+/// palette is #FFFFFF; `AD.card` (#FFFAF0) is the raised-paper tone and the
+/// canvas is the warmer `AD.bg`.
+const Color kChatCanvas = AD.bg;
 
 /// Faint separator / day-pill colours that read correctly on [kChatCanvas].
-const Color kChatCanvasInk = Color(0xFF1F2430);
-const Color kChatCanvasMeta = Color(0xFF6B7280);
-const Color kChatSysPillBg = Color(0xFFF1F2F5);
+const Color kChatCanvasInk = AD.textPrimary;
+const Color kChatCanvasMeta = AD.textSecondary;
+const Color kChatSysPillBg = AD.card;
 
 /// Tail-on-right (my messages).
 const BorderRadius kBubbleRadiusOut = BorderRadius.only(
@@ -93,47 +106,53 @@ const BorderRadius kBubbleRadiusIn = BorderRadius.only(
   bottomRight: Radius.circular(Msg.rMd),
 );
 
-/// My own bubbles — WhatsApp dark-mode inspired muted green.
+/// My own bubbles — indigo with cream type.
 const BubbleTheme kBubbleMine = BubbleTheme(
-  bg: Color(0xFF005C4B),
-  ink: Color(0xFFE9EDEF),
-  meta: Color(0xFFA6D6C9),
-  play: Color(0xFFD9FDD3),
-  border: Color(0xFF1A7462),
+  bg: AD.bubbleOutBg,
+  ink: AD.bubbleOutInk,
+  meta: AD.bubbleOutMeta,
+  play: AD.bubbleOutPlay,
+  border: AD.borderCard,
   radius: kBubbleRadiusOut,
 );
 
-/// Incoming bubbles in every human thread: a single quiet slate, including
-/// groups. Sender labels and avatars carry identity instead of colourful fills.
+/// Incoming bubbles in every human thread, including groups. Sender labels and
+/// avatars carry identity instead of colourful fills.
+///
+/// The ink border is load-bearing here, not decoration: paper-cream on cream
+/// canvas has almost no edge of its own, so the outline is what makes the
+/// bubble read as a shape at all.
 const BubbleTheme kBubbleTheirs = BubbleTheme(
-  bg: Color(0xFF202C33),
-  ink: Color(0xFFE9EDEF),
-  meta: Color(0xFFAEBAC1),
-  play: Color(0xFF53BDEB),
-  border: Color(0xFF3B4A54),
+  bg: AD.bubbleInBg,
+  ink: AD.bubbleInInk,
+  meta: AD.bubbleInMeta,
+  play: AD.bubbleInPlay,
+  border: AD.borderCard,
   radius: kBubbleRadiusIn,
 );
 
-/// Ava remains identifiable, but uses a restrained blue-slate rather than a
-/// pastel card so it belongs to the same stable chat system.
+/// The Ava lane — rani pink with cream type, deliberately distinct from BOTH
+/// the outgoing indigo and the incoming cream so an Ava reply is never mistaken
+/// for either party's message.
 const BubbleTheme kBubbleAva = BubbleTheme(
-  bg: Color(0xFF243542),
-  ink: Color(0xFFE9EDEF),
-  meta: Color(0xFFB6C7D5),
-  play: Color(0xFF7CC4FF),
-  border: Color(0xFF405767),
+  bg: AD.bubbleAvaBg,
+  ink: AD.bubbleAvaInk,
+  meta: AD.bubbleAvaMeta,
+  play: AD.haldi,
+  border: AD.borderCard,
   radius: kBubbleRadiusIn,
 );
 
-/// Private Ava turns — both the user's question and Ava's reply use the same
-/// soft lavender fill. The light treatment is intentionally unlike public Ava
-/// and ordinary human chat, so private content is recognizable at a glance.
+/// Private Ava turns — both the user's question and Ava's reply. Kept visibly
+/// unlike public Ava and ordinary human chat so private content is recognisable
+/// at a glance: the haldi fill is the one bubble in the set that is neither
+/// indigo, cream nor rani.
 const BubbleTheme kBubbleAvaPrivate = BubbleTheme(
-  bg: Color(0xFFEDE7FF),
-  ink: Color(0xFF211A35),
-  meta: Color(0xFF665C7A),
-  play: Color(0xFF6D4BD2),
-  border: Color(0xFFC6B8EE),
+  bg: AD.haldi,
+  ink: AD.onBandInk,
+  meta: AD.textSecondary,
+  play: AD.primaryBadge,
+  border: AD.borderCard,
   radius: kBubbleRadiusIn,
 );
 

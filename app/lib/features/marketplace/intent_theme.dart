@@ -46,21 +46,21 @@ ListingIntent parseIntent(String? raw) {
   }
 }
 
-/// The pale, dark-adapted palette for one intent.
+/// The palette for one intent — a thin alias over the 10-family avatar system
+/// in `avatok_dark.dart` (`AD.familyByName`), not a second palette.
 ///
-/// - [tint]      — the soft PALE accent (icons, small highlights). A low-lum
-///                 pastel readable on `AD.card`, never used as a large fill.
-/// - [tintBorder]— the pale-tinted HAIRLINE for the card edge. Same border
-///                 language as `AD.borderCard` (0xFF26262D) but nudged toward
-///                 the hue so the tint reads as a soft glow on the edge.
-/// - [chipBg]/[chipFg] — the intent chip: dark tinted background + pale ink,
-///                 exactly the `AvatarFamily` chip recipe.
+/// [RAJ-PHASE2-1]: `tint`/`tintBorder` (the "soft translucent wash + tinted
+/// border" idiom) are RETIRED — that idiom only reads on a near-black canvas,
+/// and the app canvas is cream paper now. Every intent chip/tag uses the same
+/// shape everything else in this theme uses: solid [chipBg] fill
+/// (`family.solid`), a 2px `AD.borderCard` ink border, [chipFg] text/icon
+/// (`family.chipInk`). No separate tinted variant.
+///
+/// - [chipBg]/[chipFg] — `AD.familyByName(name).solid` / `.chipInk`.
 /// - [icon]      — the Phosphor glyph for the intent.
 class IntentTheme {
   final ListingIntent intent;
   final String label;
-  final Color tint;
-  final Color tintBorder;
   final Color chipBg;
   final Color chipFg;
   final IconData icon;
@@ -68,8 +68,6 @@ class IntentTheme {
   const IntentTheme({
     required this.intent,
     required this.label,
-    required this.tint,
-    required this.tintBorder,
     required this.chipBg,
     required this.chipFg,
     required this.icon,
@@ -82,68 +80,56 @@ class IntentTheme {
   static IntentTheme parse(String? raw) => of(parseIntent(raw));
 
   // The five hues — each drawn from an `AvatarFamily` in `avatok_dark.dart` so
-  // they belong to the same pale-on-near-black family, not a rainbow. Reasoning
-  // per intent (chosen to be soft, distinguishable AND semantically apt):
+  // they belong to the same 10-family palette, not a rainbow. Reasoning per
+  // intent (chosen to be distinguishable AND semantically apt):
   //
-  //   SELL    → pale GOLD (butter family). Money / a price tag / the warmth of
-  //             "for sale". Gold reads as value without shouting.
-  //   RENT    → pale AQUA-TEAL (aqua family). Cool and cyclical — a recurring
-  //             per-month rate, calm and steady, distinct from SELL's warmth.
-  //   BOOK    → pale LILAC (lilac family). Calendar / appointment time; echoes
-  //             the app's own `AD.tabCalls` purple and `AD.iconMic` violet.
-  //   LEAD    → pale SKY BLUE (sky family). Outreach / questions / "ask me";
-  //             harmonises with `AD.iconSearch` (0xFF6FA8E8), the app's inquiry
-  //             blue.
-  //   PROFILE → pale ROSE (rose family). A person — human warmth, screening a
+  //   SELL    → butter (haldi/turmeric gold). Money / a price tag / the
+  //             warmth of "for sale". Gold reads as value without shouting.
+  //   RENT    → aqua (turquoise). Cool and cyclical — a recurring per-month
+  //             rate, calm and steady, distinct from SELL's warmth.
+  //   BOOK    → lilac (indigo). Calendar / appointment time.
+  //   LEAD    → sky (indigo). Outreach / questions / "ask me".
+  //   PROFILE → rose (rani pink). A person — human warmth, screening a
   //             candidate / freelancer / match.
   //
-  // Warm (SELL gold, PROFILE rose) and cool (RENT aqua, BOOK lilac, LEAD sky)
-  // are interleaved so adjacent intents in a grid never blur together, while
-  // every value sits at the same low luminance so the set reads as one family.
+  // Warm (SELL butter, PROFILE rose) and cool (RENT aqua, BOOK lilac, LEAD
+  // sky) are interleaved so adjacent intents in a grid never blur together.
+  // NOTE: `AD.familyByName` is a static method call, not a compile-time
+  // constant, so this map — and each entry below — cannot be `const`.
   static final Map<ListingIntent, IntentTheme> _all = {
     ListingIntent.sell: IntentTheme(
       intent: ListingIntent.sell,
       label: 'For sale',
-      tint: const Color(0xFFEBD48A), // butter chipInk — pale gold
-      tintBorder: const Color(0xFF3D361F), // gold-tinted hairline
-      chipBg: const Color(0xFF544625), // butter chipBg
-      chipFg: const Color(0xFFEBD48A),
+      chipBg: AD.familyByName('butter').solid,
+      chipFg: AD.familyByName('butter').chipInk,
       icon: PhosphorIcons.tag(PhosphorIconsStyle.fill),
     ),
     ListingIntent.rent: IntentTheme(
       intent: ListingIntent.rent,
       label: 'To rent',
-      tint: const Color(0xFF8AE3D6), // aqua chipInk — pale teal
-      tintBorder: const Color(0xFF20433D), // teal-tinted hairline
-      chipBg: const Color(0xFF1E4A44), // aqua chipBg
-      chipFg: const Color(0xFF8AE3D6),
+      chipBg: AD.familyByName('aqua').solid,
+      chipFg: AD.familyByName('aqua').chipInk,
       icon: PhosphorIcons.key(PhosphorIconsStyle.fill),
     ),
     ListingIntent.book: IntentTheme(
       intent: ListingIntent.book,
       label: 'Book',
-      tint: const Color(0xFFCBBCF2), // lilac chipInk — pale violet
-      tintBorder: const Color(0xFF2E2749), // lilac-tinted hairline
-      chipBg: const Color(0xFF3A2F63), // lilac chipBg
-      chipFg: const Color(0xFFCBBCF2),
+      chipBg: AD.familyByName('lilac').solid,
+      chipFg: AD.familyByName('lilac').chipInk,
       icon: PhosphorIcons.calendarCheck(PhosphorIconsStyle.fill),
     ),
     ListingIntent.lead: IntentTheme(
       intent: ListingIntent.lead,
       label: 'Enquire',
-      tint: const Color(0xFFA8CBEE), // sky chipInk — pale blue
-      tintBorder: const Color(0xFF25384D), // sky-tinted hairline
-      chipBg: const Color(0xFF2A425C), // sky chipBg
-      chipFg: const Color(0xFFA8CBEE),
+      chipBg: AD.familyByName('sky').solid,
+      chipFg: AD.familyByName('sky').chipInk,
       icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
     ),
     ListingIntent.profile: IntentTheme(
       intent: ListingIntent.profile,
       label: 'Profile',
-      tint: const Color(0xFFF0B3C9), // rose chipInk — pale rose
-      tintBorder: const Color(0xFF432936), // rose-tinted hairline
-      chipBg: const Color(0xFF553144), // rose chipBg
-      chipFg: const Color(0xFFF0B3C9),
+      chipBg: AD.familyByName('rose').solid,
+      chipFg: AD.familyByName('rose').chipInk,
       icon: PhosphorIcons.userCircle(PhosphorIconsStyle.fill),
     ),
   };
@@ -306,9 +292,9 @@ String priceLabel(
 /// API calls, no navigation, so browse and any grid can reuse it. All actions
 /// (tap, favourite) are callbacks the parent owns.
 ///
-/// Card face = `AD.card` (near-black) with the intent's [IntentTheme.tintBorder]
-/// pale-tinted edge; the tint also shows in the intent chip and the small accent
-/// glyphs — never as a bright fill (M-D6).
+/// Card face = `AD.card` with a 2px `AD.borderCard` ink edge; the intent's
+/// family colour ([IntentTheme.chipBg]/[chipFg]) shows in the intent chip and
+/// the small accent glyphs — never as a bright fill (M-D6).
 ///
 /// Intended for a fixed-extent grid cell (like `ListingCardTile`): the cover
 /// takes the flexible top space, so give the card a bounded height.
@@ -354,8 +340,8 @@ class MarketplaceCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: BorderRadius.circular(AD.rListCard),
-          // The pale tint reads as a soft glow on the edge.
-          border: Border.all(color: it.tintBorder, width: 1),
+          // Same shape as every chip/tag in this theme: 2px ink border.
+          border: Border.all(color: AD.borderCard, width: 2),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
@@ -384,7 +370,7 @@ class MarketplaceCard extends StatelessWidget {
                 ),
             ]),
           ),
-          Container(height: 1, color: it.tintBorder),
+          Container(height: 1, color: AD.borderCard),
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
             child: Column(
@@ -409,9 +395,10 @@ class MarketplaceCard extends StatelessWidget {
                       child: Text(label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          // Free → the app's online-green ink; else the pale
-                          // intent tint so price carries the family colour.
-                          style: ADText.rowName(c: free ? AD.online : it.tint)),
+                          // Free → the app's online-green ink; else the
+                          // family's chip ink so price carries the family
+                          // colour.
+                          style: ADText.rowName(c: free ? AD.online : it.chipFg)),
                     ),
                   const Spacer(),
                   RatingStars(rating: card.ratingAvg, count: reviewN, size: 13),
@@ -456,7 +443,7 @@ class _IntentChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.chipBg,
         borderRadius: Msg.brPill,
-        border: Border.all(color: theme.tintBorder, width: 1),
+        border: Border.all(color: AD.borderCard, width: 2),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         PhosphorIcon(theme.icon, size: 11, color: theme.chipFg),
@@ -477,11 +464,11 @@ class _NewBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 2),
       decoration: BoxDecoration(
-        color: AD.card,
+        color: theme.chipBg,
         borderRadius: Msg.brPill,
-        border: Border.all(color: theme.tintBorder, width: 1),
+        border: Border.all(color: AD.borderCard, width: 2),
       ),
-      child: Text('New', style: ADText.statCaption(c: theme.tint)),
+      child: Text('New', style: ADText.statCaption(c: theme.chipFg)),
     );
   }
 }

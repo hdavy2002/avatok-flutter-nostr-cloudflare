@@ -533,7 +533,8 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: t.border, width: 1.5),
+                // [RAJ-PHASE2-1] 1.5 -> 2, per HANDOFF rule 1 (avatars are 2px).
+                border: Border.all(color: t.border, width: 2),
               ),
               child: Avatar(
                 seed: _myNpub ?? 'me',
@@ -728,7 +729,9 @@ extension _ChatThreadBubbles on _ChatThreadScreenState {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: t.border, width: 1.5),
+        // [RAJ-PHASE2-1] 1.5 -> 2: HANDOFF rule 1 puts avatars on the 2px
+        // outline with cards, rows, inputs, chips and buttons.
+        border: Border.all(color: t.border, width: 2),
       ),
       child: inner,
     );

@@ -502,10 +502,10 @@ class ListingDetailView extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: card.price <= 0 ? AD.online : it.chipBg,
                   borderRadius: Msg.brPill,
-                  border: Border.all(color: it.tintBorder, width: 1),
+                  border: Border.all(color: AD.borderCard, width: 2),
                 ),
                 child: Text(priceStr,
-                    style: ADText.rowName(c: card.price <= 0 ? Colors.white : it.tint)),
+                    style: ADText.rowName(c: card.price <= 0 ? Colors.white : it.chipFg)),
               ),
             ],
           ]),
@@ -748,7 +748,7 @@ class _ListingHeroState extends State<_ListingHero> {
               // Intent-tinted placeholder (no photo, no video).
               ? Container(
                   color: widget.theme.chipBg,
-                  child: Center(child: PhosphorIcon(widget.theme.icon, size: 64, color: widget.theme.tint)),
+                  child: Center(child: PhosphorIcon(widget.theme.icon, size: 64, color: widget.theme.chipFg)),
                 )
               : PageView(
                   controller: _pc,
@@ -1050,7 +1050,7 @@ class _CategoryBlock extends StatelessWidget {
     if (rows.isEmpty && !bookHint) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        PhosphorIcon(theme.icon, size: 16, color: theme.tint),
+        PhosphorIcon(theme.icon, size: 16, color: theme.chipFg),
         const SizedBox(width: 8),
         Text(_heading, style: ADText.appTitle()),
       ]),
