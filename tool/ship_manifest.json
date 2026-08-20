@@ -2343,5 +2343,59 @@
         "note": "Positive proof the new gate ran. Absent, together with call_sfu_blocked reason=flag_off present, means the protocol-silence branch can be entered again."
       }
     ]
+  },
+  "CALL-ROUTE-AVAIL-1": {
+    "description": "call_audio_owner_conflict fired whenever the confirmed route differed from the intent, without asking whether the intent was reachable at all. A device with no built-in earpiece (every Android emulator, some tablets) can only ever answer 'speaker' to an earpiece request, so it emitted a conflict on every apply of every call - which is exactly what an emulator did on all three test calls on 2026-08-20 and it was read as a device bug. CallAudioController now consults the output-device inventory the Kotlin side already returns in getAudioDiagnostics (output_device_types, an AudioDeviceInfo type CSV; 1 = TYPE_BUILTIN_EARPIECE) and splits the two cases: an unreachable intent emits the new informational call_audio_route_unavailable, while a route that WAS present and still lost stays call_audio_owner_conflict and now carries intent_available and fallback_reason. When the platform reports no inventory (iOS today) the answer is null and the event stays a conflict, so this can never hide a real one. The availability read happens only on the rare apply that missed its intent.",
+    "shipped": "pending",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "callAudioOwnerV1"
+    ],
+    "success": [
+      {
+        "event": "call_audio_route_unavailable",
+        "property": "intent",
+        "equals": "earpiece",
+        "min_events": 1,
+        "where": {},
+        "note": "On a device with no earpiece the earpiece-to-speaker fallback must now land here, not on call_audio_owner_conflict. Verify on the emulator, which is the known-reproducing device."
+      },
+      {
+        "event": "call_audio_owner_conflict",
+        "property": "intent_available",
+        "not_in": [
+          false
+        ],
+        "min_events": 1,
+        "where": {},
+        "note": "Anything still called a conflict must have had its route available (true) or unknown (null). An intent_available=false here means the split did not take and the noise is back."
+      }
+    ]
+  },
+  "CALL-VOL-AUDIBLE-1": {
+    "description": "Nothing in the app ever looked at the Android STREAM_VOICE_CALL index during a call. push_service already does this check for the RINGER (ring_volume == 0 feeds a 'could not have rung audibly' determination) but the in-call stream had no equivalent, so a call played out at 3/15 was indistinguishable in telemetry from one at 15/15: healthy transport, RTP flowing, jitter buffer emitting 48000 samples/sec, and a user who hears nothing. On 2026-08-20 that ambiguity cost a debugging session. CallSession now emits call_volume_low once per call when voice_volume/voice_volume_max is at or below 0.2, carrying the route, speakerphone state and output_device_types so an emulator at its 3/15 default can be told apart from a real phone whose owner turned the rocker down. Observation only: the app deliberately contains no setStreamVolume or adjustStreamVolume anywhere, because silently overriding someone's call volume can deafen them.",
+    "shipped": "pending",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "call_volume_low",
+        "property": "ratio",
+        "lte": 0.2,
+        "min_events": 1,
+        "where": {},
+        "note": "Set the device call volume low, place a call, and confirm exactly ONE of these per call carrying the real ratio. More than one per call_id means the once-per-call latch broke and the 5s diagnostics cadence is spamming."
+      },
+      {
+        "event": "call_volume_low",
+        "property": "voice_volume_max",
+        "gt": 0,
+        "min_events": 1,
+        "where": {},
+        "note": "Guards against a divide-by-zero device reporting a bogus max and manufacturing a low-volume report on every call."
+      }
+    ]
   }
 }

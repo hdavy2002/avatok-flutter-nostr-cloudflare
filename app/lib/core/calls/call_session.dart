@@ -1964,6 +1964,16 @@ class CallSession {
     _playoutHealthTimer = null;
   }
 
+  /// [CALL-VOL-AUDIBLE-1] At or below this fraction of the device maximum, the
+  /// in-call stream is quiet enough that "I can't hear them" is expected. 0.2
+  /// is the Android emulator's own default (3 of 15).
+  static const double _lowCallVolumeRatio = 0.2;
+
+  /// [CALL-VOL-AUDIBLE-1] One report per call. The diagnostics that feed it
+  /// fire every 5s, and a user who never touches the rocker would otherwise
+  /// emit this on every sample for the whole call.
+  bool _lowCallVolumeReported = false;
+
   void _emitAudioDiagnostics(
     Map<String, dynamic>? native, {
     double? micAudioLevel,
@@ -2025,6 +2035,43 @@ class CallSession {
       if (value != null) props[key] = value as Object;
     }
     Analytics.capture('call_audio_diagnostics', props);
+    _reportLowCallVolume(props);
+  }
+
+  /// [CALL-VOL-AUDIBLE-1 2026-08-21] "I could not hear them" has one cause the
+  /// app already had the number for and never looked at: the Android
+  /// STREAM_VOICE_CALL index. `push_service` does exactly this check for the
+  /// RINGER (`ring_volume == 0` feeds a "could not have rung audibly"
+  /// determination) but nothing did it for the call itself, so a call played
+  /// out at 3/15 looked identical in telemetry to one at 15/15 — healthy
+  /// transport, RTP flowing, jitter buffer emitting, and a user who hears
+  /// nothing. On 2026-08-20 that cost a debugging session.
+  ///
+  /// The app never WRITES this stream (there is no `setStreamVolume` anywhere
+  /// in the repo, deliberately — silently overriding someone's call volume can
+  /// deafen them). So this only observes, once per call, and leaves the fix to
+  /// the person holding the volume rocker.
+  void _reportLowCallVolume(Map<String, Object> props) {
+    if (_lowCallVolumeReported) return;
+    final level = props['voice_volume'];
+    final max = props['voice_volume_max'];
+    if (level is! num || max is! num || max <= 0) return;
+    final ratio = level / max;
+    if (ratio > _lowCallVolumeRatio) return;
+    _lowCallVolumeReported = true;
+    Analytics.capture('call_volume_low', {
+      'call_id': config.room,
+      'role': _performanceRole,
+      'voice_volume': level,
+      'voice_volume_max': max,
+      'ratio': double.parse(ratio.toStringAsFixed(3)),
+      'silent': level == 0,
+      'confirmed_route': props['confirmed_route'] ?? 'unknown',
+      'speakerphone_on': props['speakerphone_on'] ?? false,
+      // An emulator ships at 3/15 with no earpiece; a real phone at 3/15 is a
+      // user who turned it down. Keep them apart or this event becomes noise.
+      'output_device_types': props['output_device_types'] ?? 'unknown',
+    });
   }
 
   // ── [CALL-DEADAIR-1 2026-08-08] first-audio probe ──────────────────────────
