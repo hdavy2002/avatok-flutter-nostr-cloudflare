@@ -222,9 +222,11 @@ class CallAudioController {
           'intent': requestedIntent.name,
           'confirmed_route': result.active.name,
           'source': source,
-          // null when the platform did not report an output-device inventory
-          // (iOS today), in which case this stays a conflict as before.
-          'intent_available': available,
+          // 'unknown' when the platform did not report an output-device
+          // inventory (iOS today), in which case this stays a conflict as
+          // before. Analytics maps are Map<String, Object>, so a raw bool?
+          // does not compile — same convention as fallback_reason below.
+          'intent_available': available ?? 'unknown',
           'fallback_reason': result.fallbackReason ?? 'none',
         });
       }
