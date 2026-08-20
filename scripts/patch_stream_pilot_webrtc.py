@@ -27,6 +27,11 @@ def replace_checked(path: Path, old: str, new: str, label: str) -> None:
     if not path.is_file():
         fail(f"{label}: expected file missing: {path}")
     text = path.read_text()
+    if new in text and old not in text:
+        # flutter-action restores PUB_CACHE between workflow runs. This script
+        # deliberately patches that cache, so a later run can legitimately see
+        # the exact verified post-patch source already in place.
+        return
     if old not in text:
         fail(f"{label}: expected source shape changed; refusing an unverified patch")
     path.write_text(text.replace(old, new, 1))
@@ -94,9 +99,16 @@ public final class PlaybackSamplesReadyCallbackAdapter {
     public void removeCallback(Object callback) {}
 }
 """
-    if adapter.read_text() != expected_adapter:
+    adapter_text = adapter.read_text()
+    if adapter_text == no_op_adapter:
+        # The shared CI pub cache may already contain our exact verified shell
+        # from an earlier Stream build. Treat only that byte-for-byte form as
+        # idempotent; every other source shape still fails closed.
+        pass
+    elif adapter_text == expected_adapter:
+        adapter.write_text(no_op_adapter)
+    else:
         fail("flutter_webrtc playback adapter source changed; refusing an unverified patch")
-    adapter.write_text(no_op_adapter)
 
     handler = java / "MethodCallHandlerImpl.java"
     replace_checked(
