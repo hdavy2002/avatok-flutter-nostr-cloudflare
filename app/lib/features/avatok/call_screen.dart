@@ -308,6 +308,66 @@ class _CallScreenState extends State<CallScreen> {
   /// live / when the ending was normal / when the reason isn't in the table.
   CallFailureMessage? _failure;
 
+  /// [CALL-AVATAR-FALLBACK-1 2026-08-21] Peer photo resolved from the LOCAL
+  /// contacts cache when the launch site did not pass one.
+  ///
+  /// Owner report (pic 1): "the caller's or callee's profile pic is not coming
+  /// in the middle" — the ring showed the "AC" initials tile for a contact
+  /// whose photo the app already had on disk and was rendering in the chat
+  /// list two taps away.
+  ///
+  /// The cause is that `CallScreen.avatarUrl` was the ONLY source: no lookup,
+  /// no fallback ('' -> null -> initials). Whether a photo appeared therefore
+  /// depended entirely on which of ~10 launch sites started the call, and
+  /// several of them pass nothing —`team_ivr_screen.dart:114` and
+  /// `team_inbox.dart:84` hardcode `avatarUrl: ''`, and an incoming push only
+  /// has one if `callerAvatarFromPayload` found it in the envelope
+  /// ([CALL-IDENTITY-SNAPSHOT-1]). Fixing them one at a time leaves the next
+  /// launch site to rediscover this, so the fallback lives here, at the one
+  /// place that renders the avatar.
+  ///
+  /// Local-cache read only — deliberately no network call. This is decoration
+  /// on a screen whose whole job is to set up media fast, and `ContactsStore`
+  /// is already per-account scoped (`load()` -> `AccountScope.id`), so it
+  /// cannot leak one account's photo into another's call.
+  String _resolvedAvatarUrl = '';
+
+  /// The photo to draw: whatever the launch site passed, else the local match.
+  String get _peerAvatarUrl =>
+      widget.avatarUrl.isNotEmpty ? widget.avatarUrl : _resolvedAvatarUrl;
+
+  Future<void> _resolvePeerAvatar() async {
+    if (widget.avatarUrl.isNotEmpty) return; // launch site already knew
+    final seed = widget.seed.trim();
+    if (seed.isEmpty) return;
+    try {
+      final contacts = await ContactsStore().load();
+      // Match on uid first (the seed IS the peer uid for an in-network call),
+      // then on the phone/AvaTOK number for a dialer-originated one. Digits are
+      // compared bare so "+1 786 436 3270" matches "17864363270".
+      final seedDigits = seed.replaceAll(RegExp(r'[^0-9]'), '');
+      Contact? hit;
+      for (final c in contacts) {
+        if (c.uid == seed) { hit = c; break; }
+        if (seedDigits.isNotEmpty) {
+          final cd = '${c.phone}${c.number}'.replaceAll(RegExp(r'[^0-9]'), '');
+          if (cd.isNotEmpty && cd.contains(seedDigits)) { hit = c; break; }
+        }
+      }
+      final url = hit?.avatarUrl ?? '';
+      if (url.isEmpty || !mounted) return;
+      setState(() => _resolvedAvatarUrl = url);
+      unawaited(Analytics.capture('call_avatar_resolved_locally', {
+        'source': hit!.uid == seed ? 'uid' : 'number',
+        'app_build': Analytics.appBuild,
+      }));
+    } catch (e, st) {
+      // Never let a decoration lookup take down a live call screen.
+      unawaited(Analytics.captureException(e, st,
+          extra: {'where': 'call_screen._resolvePeerAvatar'}));
+    }
+  }
+
   /// True once the screen has already granted itself the reading window below,
   /// so the second (real) pop attempt goes straight through and the red button
   /// on the terminal screen is never dead.
@@ -632,6 +692,9 @@ class _CallScreenState extends State<CallScreen> {
       mediaProvider: widget.mediaProvider,
       streamTicket: widget.streamTicket,
     ));
+    // [CALL-AVATAR-FALLBACK-1] Fire-and-forget; the ring renders initials until
+    // it lands, exactly as it does today, and swaps in place if it finds one.
+    unawaited(_resolvePeerAvatar());
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.
     // [CALL-HONEST-FAIL-1] Routed through `_autoPop`, which holds the screen for
@@ -1842,13 +1905,15 @@ class _CallScreenState extends State<CallScreen> {
                                               style: ADText.appTitle()
                                                   .copyWith(fontSize: 76))),
                                     )
+                                  // [CALL-AVATAR-FALLBACK-1] `_peerAvatarUrl`,
+                                  // not `widget.avatarUrl` — see the field.
                                   : Avatar(
                                       seed: widget.seed,
                                       name: widget.title,
                                       size: 132,
-                                      avatarUrl: widget.avatarUrl.isEmpty
+                                      avatarUrl: _peerAvatarUrl.isEmpty
                                           ? null
-                                          : widget.avatarUrl),
+                                          : _peerAvatarUrl),
                             ),
                           ],
                         ),
