@@ -18,44 +18,44 @@ class AD {
 
   // ---------------------------------------------------------------- surfaces
   /// App / page background — near-black.
-  static const bg = Color(0xFF0B0B0D);
+  static const bg = Color(0xFFFBF3E2);
   /// Header + footer bars.
-  static const headerFooter = Color(0xFF131316);
+  static const headerFooter = Color(0xFF5CB8A6);
   /// Card / list-row surface.
-  static const card = Color(0xFF17171B);
+  static const card = Color(0xFFFFFAF0);
   /// Card hover / pressed.
-  static const cardHover = Color(0xFF1D1D23);
+  static const cardHover = Color(0xFFF4E8D2);
   /// Bottom-sheet overlay surface.
-  static const overlaySheet = Color(0xFF141418);
+  static const overlaySheet = Color(0xFFFFFAF0);
   /// Dropdown menu surface.
-  static const menu = Color(0xFF17171B);
+  static const menu = Color(0xFFFFFAF0);
   /// Popover surface.
-  static const popover = Color(0xFF1B1B20);
+  static const popover = Color(0xFFFFFAF0);
   /// White input field (search dock etc.).
-  static const inputField = Color(0xFFFFFFFF);
+  static const inputField = Color(0xFFFFFAF0);
   /// Modal scrim — black @65%.
-  static const scrim = Color(0xA6000000);
+  static const scrim = Color(0xA616110D);
 
   // ------------------------------------------------------------------ border
-  static const borderHairline = Color(0xFF232329);
-  static const borderCard = Color(0xFF26262D);
-  static const borderControl = Color(0xFF2C2C33);
-  static const borderAvatar = Color(0xFFFFFFFF);
+  static const borderHairline = Color(0xFF16110D);
+  static const borderCard = Color(0xFF16110D);
+  static const borderControl = Color(0xFF16110D);
+  static const borderAvatar = Color(0xFF16110D);
 
   // -------------------------------------------------------------------- text
-  static const textPrimary = Color(0xFFFFFFFF);
-  static const textSecondary = Color(0x99FFFFFF); // white 60%
-  static const textTertiary = Color(0x73FFFFFF); // white 45%
-  static const textFaint = Color(0x4DFFFFFF); // white 30%
-  static const textOnInput = Color(0xFF17171B);
-  static const placeholderOnWhite = Color(0x73000000); // black 45%
+  static const textPrimary = Color(0xFF16110D);
+  static const textSecondary = Color(0x9916110D); // ink 60%
+  static const textTertiary = Color(0x7316110D); // ink 45%
+  static const textFaint = Color(0x4D16110D); // ink 30%
+  static const textOnInput = Color(0xFF16110D);
+  static const placeholderOnWhite = Color(0x7316110D); // ink 45%
 
   // -------------------------------------------------------------------- tabs
-  static const tabChats = Color(0xFFE8833A);
-  static const tabGroups = Color(0xFF2FA98C);
-  static const tabCalls = Color(0xFF8B6FD6);
+  static const tabChats = Color(0xFF5CB8A6);
+  static const tabGroups = Color(0xFFC9316E);
+  static const tabCalls = Color(0xFF2E4A8C);
   static const double tabInactiveTintAlpha = 0.22;
-  static const tabActiveLabel = Color(0xFFFFFFFF);
+  static const tabActiveLabel = Color(0xFFFBF3E2);
 
   /// Background fill for a colored tab pill given its accent + active state.
   /// Active = full accent; inactive = the accent at 22% over the header bar.
@@ -80,7 +80,7 @@ class AD {
   // that genuinely are the primary action on their surface (search field
   // affordance, mic) keep the accent. New code should use `iconNeutral` /
   // `iconAccent` directly and NOT reach for the legacy names.
-  static const iconNeutral = Color(0xFFB9BCC4); // == textSecondary family
+  static const iconNeutral = Color(0xFF16110D);
   static const iconAccent = primaryBadge;       // the single accent, #E8833A
 
   // NOTE `iconSearch` is NEUTRAL, not accent, despite the name. It is reused as
@@ -101,33 +101,33 @@ class AD {
   static const iconStar = iconNeutral;
 
   // ----------------------------------------------------------------- buttons
-  static const primaryBadge = Color(0xFFE8833A);
-  static const newGroup = Color(0xFF2FA98C);
-  static const sendActiveBg = Color(0xFF00A884);
-  static const sendActiveInk = Color(0xFFFFFFFF);
-  static const micIdleBg = Color(0xFFE4DDF7);
-  static const micIdleInk = Color(0xFF5B3FB8);
-  static const destructiveBg = Color(0xFFC0533F);
-  static const destructiveBgHover = Color(0xFFCE5C47);
-  static const destructiveInk = Color(0xFFFFFFFF);
+  static const primaryBadge = Color(0xFFC9316E);
+  static const newGroup = Color(0xFF5CB8A6);
+  static const sendActiveBg = Color(0xFFC9316E);
+  static const sendActiveInk = Color(0xFFFBF3E2);
+  static const micIdleBg = Color(0xFFE9A227);
+  static const micIdleInk = Color(0xFF16110D);
+  static const destructiveBg = Color(0xFFD33A2C);
+  static const destructiveBgHover = Color(0xFFD33A2C);
+  static const destructiveInk = Color(0xFFFBF3E2);
 
   // ------------------------------------------------------------------ status
-  static const online = Color(0xFF57B865);
-  static const outgoingCall = Color(0xFFF2A65A);
-  static const incomingCall = Color(0xFF6FCF97);
-  static const missedCall = Color(0xFFE5735C);
-  static const danger = Color(0xFFE5735C);
-  static const unreadAccent = Color(0xFFF2A65A);
+  static const online = Color(0xFF2E7D68);
+  static const outgoingCall = Color(0xFF2E4A8C);
+  static const incomingCall = Color(0xFF5CB8A6);
+  static const missedCall = Color(0xFFD33A2C);
+  static const danger = Color(0xFFD33A2C);
+  static const unreadAccent = Color(0xFFC9316E);
 
   /// Muted-thread bell-slash glyph. Deliberately a BRIGHT red — not the softer
   /// coral `danger` — so a muted thread is unmissable in the list
   /// (owner request 2026-07-14, [ISSUE-MUTE-ICON-RED-1]).
-  static const iconMuted = Color(0xFFFF3B30);
+  static const iconMuted = Color(0xFFD33A2C);
 
   // ------------------------------------------------------------------ brand
-  static const brandYoutube = Color(0xFFC7523F);
-  static const brandInstagram = Color(0xFFA94F6F);
-  static const brandFacebook = Color(0xFF3E6CA6);
+  static const brandYoutube = Color(0xFFD33A2C);
+  static const brandInstagram = Color(0xFFC9316E);
+  static const brandFacebook = Color(0xFF2E4A8C);
 
   // ------------------------------------------------------------------ radii
   //
@@ -188,10 +188,10 @@ class AD {
   ];
 
   // ---------------------------------------------------------- chat bubbles
-  static const bubbleOutBg = Color(0xFFCDEBD3);
-  static const bubbleOutInk = Color(0xFF1C3324);
-  static const bubbleOutMeta = Color(0xFF567E63);
-  static const bubbleOutPlay = Color(0xFF3E8E5A);
+  static const bubbleOutBg = Color(0xFF2E4A8C);
+  static const bubbleOutInk = Color(0xFFFBF3E2);
+  static const bubbleOutMeta = Color(0xFFFBF3E2);
+  static const bubbleOutPlay = Color(0xFFE9A227);
   // [UI-RADII-1 2026-08-05] 14 → 12 (Msg.rMd) so these match the already-
   // migrated `bubble_theme.dart`, which draws the same shape with `Msg.rMd`
   // plus the 4px tail corner. The tail stays at 4 — that IS the tail.
@@ -201,18 +201,18 @@ class AD {
     bottomLeft: Radius.circular(12),
     bottomRight: Radius.circular(12),
   );
-  static const bubbleInBg = Color(0xFFE6E3F6);
-  static const bubbleInInk = Color(0xFF2A2640);
-  static const bubbleInMeta = Color(0xFF7B76A0);
-  static const bubbleInPlay = Color(0xFF6A63B8);
+  static const bubbleInBg = Color(0xFFFFFAF0);
+  static const bubbleInInk = Color(0xFF16110D);
+  static const bubbleInMeta = Color(0xFF5C5148);
+  static const bubbleInPlay = Color(0xFFC9316E);
   static const BorderRadius bubbleInRadius = BorderRadius.only(
     topLeft: Radius.circular(4),
     topRight: Radius.circular(12),
     bottomLeft: Radius.circular(12),
     bottomRight: Radius.circular(12),
   );
-  static const mediaPlaceholderBg = Color(0xFFD9DCE6);
-  static const mediaPlaceholderLabel = Color(0xFF70778C);
+  static const mediaPlaceholderBg = Color(0xFFF0E3CC);
+  static const mediaPlaceholderLabel = Color(0xFF5C5148);
   /// [AVAGRP-CARDS-1] (owner decision 2026-07-17, pale-bubbles-on-white):
   /// checked, not replaced — these two were audited for use as a media
   /// LOADING-state fill (`ChatVideoCard`'s pre-thumbnail square) sitting
@@ -224,8 +224,8 @@ class AD {
   /// No new token added.
 
   // ----------------------------------------------------------- avatar self
-  static const selfAvatarBg = Color(0xFFE8833A);
-  static const selfAvatarInk = Color(0xFFFFFFFF);
+  static const selfAvatarBg = Color(0xFFC9316E);
+  static const selfAvatarInk = Color(0xFFFBF3E2);
 
   // ---------------------------------------------------- avatar families ----
   /// Deterministic accent family for a seed (name/uid) — mirrors the mockup's
@@ -244,16 +244,16 @@ class AD {
       _families[name] ?? _families['sky']!;
 
   static const Map<String, AvatarFamily> _families = {
-    'lilac':   AvatarFamily(chipBg: Color(0xFF3A2F63), chipInk: Color(0xFFCBBCF2), solid: Color(0xFF6E5BA8)),
-    'peach':   AvatarFamily(chipBg: Color(0xFF59392A), chipInk: Color(0xFFF2B98E), solid: Color(0xFFC07A4E)),
-    'mint':    AvatarFamily(chipBg: Color(0xFF274536), chipInk: Color(0xFFA5E3C2), solid: Color(0xFF4E9A6E)),
-    'butter':  AvatarFamily(chipBg: Color(0xFF544625), chipInk: Color(0xFFEBD48A), solid: Color(0xFFA98B34)),
-    'rose':    AvatarFamily(chipBg: Color(0xFF553144), chipInk: Color(0xFFF0B3C9), solid: Color(0xFFB76A85)),
-    'sky':     AvatarFamily(chipBg: Color(0xFF2A425C), chipInk: Color(0xFFA8CBEE), solid: Color(0xFF5583B0)),
-    'mustard': AvatarFamily(chipBg: Color(0xFF544625), chipInk: Color(0xFFEBC575), solid: Color(0xFFB08A34)),
-    'sage':    AvatarFamily(chipBg: Color(0xFF38462B), chipInk: Color(0xFFC2DBA0), solid: Color(0xFF7A9455)),
-    'aqua':    AvatarFamily(chipBg: Color(0xFF1E4A44), chipInk: Color(0xFF8AE3D6), solid: Color(0xFF3E9E90)),
-    'terra':   AvatarFamily(chipBg: Color(0xFF54332A), chipInk: Color(0xFFF0A886), solid: Color(0xFFB06A4A)),
+    'lilac':   AvatarFamily(chipBg: Color(0xFF2E4A8C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E4A8C)),
+    'peach':   AvatarFamily(chipBg: Color(0xFFC9316E), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFC9316E)),
+    'mint':    AvatarFamily(chipBg: Color(0xFF5CB8A6), chipInk: Color(0xFF16110D), solid: Color(0xFF5CB8A6)),
+    'butter':  AvatarFamily(chipBg: Color(0xFFE9A227), chipInk: Color(0xFF16110D), solid: Color(0xFFE9A227)),
+    'rose':    AvatarFamily(chipBg: Color(0xFFC9316E), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFC9316E)),
+    'sky':     AvatarFamily(chipBg: Color(0xFF2E4A8C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E4A8C)),
+    'mustard': AvatarFamily(chipBg: Color(0xFFE9A227), chipInk: Color(0xFF16110D), solid: Color(0xFFE9A227)),
+    'sage':    AvatarFamily(chipBg: Color(0xFF2E7D68), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E7D68)),
+    'aqua':    AvatarFamily(chipBg: Color(0xFF5CB8A6), chipInk: Color(0xFF16110D), solid: Color(0xFF5CB8A6)),
+    'terra':   AvatarFamily(chipBg: Color(0xFFD33A2C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFD33A2C)),
   };
 }
 
