@@ -16,6 +16,7 @@ import '../../core/config.dart';
 import '../../core/drive_service.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
@@ -555,28 +556,45 @@ class _SettingsDetail extends StatelessWidget {
 PreferredSizeWidget _adHeader(String title,
     {bool showBack = true, VoidCallback? onBack, List<Widget> actions = const []}) {
   return PreferredSize(
-    preferredSize: const Size.fromHeight(64),
-    child: Container(
-      decoration: const BoxDecoration(
-        color: AD.headerFooter,
-        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
-          child: Row(children: [
-            if (showBack) AdBackButton(onTap: onBack) else const SizedBox(width: 8),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(title,
-                  style: ADText.appTitle(),
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            ...actions,
-          ]),
+    // Height bumped to fit the TorranDivider welded below the band (its own
+    // height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
+    preferredSize: const Size.fromHeight(64 + 26),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
+        // immediately below is the seam now.
+        decoration: const BoxDecoration(
+          color: AD.headerFooter,
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
+            child: Row(children: [
+              if (showBack) AdBackButton(onTap: onBack) else const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(title,
+                    style: ADText.appTitle(),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              ...actions,
+            ]),
+          ),
         ),
       ),
-    ),
+      // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads at
+      // the header↔content seam (design/flutter-handoff, patches.md §6).
+      // Placed inside the PreferredSize (fixed appBar chrome) rather than as
+      // the first child of the scrolling body ListView below, so it stays
+      // welded to the header instead of scrolling away. Shared by both
+      // Settings and _SettingsDetail since both call _adHeader. bandColor
+      // matches the band's actual fill (AD.headerFooter), not the eventual
+      // per-area hue this screen will get in a later recolouring phase.
+      const TorranDivider(
+        bandColor: AD.headerFooter,
+        direction: TorranDirection.down,
+      ),
+    ]),
   );
 }

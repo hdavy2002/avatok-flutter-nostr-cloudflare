@@ -10,6 +10,7 @@ import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../identity/identity.dart';
 import '../../sync/dm.dart';
 import '../avatok/contacts.dart';
@@ -228,52 +229,69 @@ class _StatusScreenState extends State<StatusScreen> {
   PreferredSizeWidget _header() {
     final showBack = Navigator.of(context).canPop();
     return PreferredSize(
-      preferredSize: const Size.fromHeight(72),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AD.headerFooter,
-          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
-            child: Row(children: [
-              if (showBack) ...[
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).maybePop(),
-                  child: Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(
-                      color: AD.card,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AD.borderControl, width: 1),
-                    ),
-                    child: Center(
-                      child: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
-                          size: 20, color: AD.textPrimary),
+      // Height bumped to fit the TorranDivider welded below the band (its
+      // own height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
+      preferredSize: const Size.fromHeight(72 + 26),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider added
+          // immediately below is the seam now.
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s5, Msg.s3),
+              child: Row(children: [
+                if (showBack) ...[
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(context).maybePop(),
+                    child: Container(
+                      width: 42, height: 42,
+                      decoration: BoxDecoration(
+                        color: AD.card,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AD.borderControl, width: 1),
+                      ),
+                      child: Center(
+                        child: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
+                            size: 20, color: AD.textPrimary),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: Msg.s3),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Updates', style: ADText.appTitle(),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text('24H STATUS FROM YOUR PEOPLE', style: ADText.sectionLabel()),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: Msg.s3),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Updates', style: ADText.appTitle(),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text('24H STATUS FROM YOUR PEOPLE', style: ADText.sectionLabel()),
-                  ],
-                ),
-              ),
-            ]),
+              ]),
+            ),
           ),
         ),
-      ),
+        // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads at
+        // the header↔content seam (design/flutter-handoff, patches.md §6).
+        // Placed inside the PreferredSize (fixed appBar chrome) rather than as
+        // the first child of the scrolling body ListView below, so it stays
+        // welded to the header instead of scrolling away. bandColor is the
+        // band's ACTUAL fill (AD.headerFooter); HANDOFF's table wants haldi
+        // here, but that is the later recolouring phase — a haldi drape on a
+        // turquoise bar would just look broken.
+        const TorranDivider(
+          bandColor: AD.headerFooter,
+          direction: TorranDirection.down,
+        ),
+      ]),
     );
   }
 

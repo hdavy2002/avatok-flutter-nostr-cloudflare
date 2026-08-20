@@ -7,6 +7,7 @@ import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../identity/identity.dart';
 import '../../sync/group_api.dart';
 import 'chat_thread.dart';
@@ -141,9 +142,10 @@ class _GroupsTabState extends State<GroupsTab> {
         // Inline dark v2 header band: near-black header fill + hairline bottom
         // border (mirrors chat_list). Leading = menu (opens sidebar) or back.
         Container(
+          // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider below
+          // is the header↔content seam now (design/flutter-handoff, patches.md §6).
           decoration: const BoxDecoration(
             color: AD.headerFooter,
-            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
           ),
           child: SafeArea(
             bottom: false,
@@ -170,6 +172,13 @@ class _GroupsTabState extends State<GroupsTab> {
               ]),
             ),
           ),
+        ),
+        // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
+        // at the header↔content seam (design/flutter-handoff, patches.md §6).
+        // Groups tab header hue is turquoise (AD.headerFooter) per HANDOFF.
+        const TorranDivider(
+          bandColor: AD.headerFooter,
+          direction: TorranDirection.down,
         ),
         // [ISSUE-GROUPS-SEARCH-1] Search dock, pinned under the header and outside
         // the ListView so it stays put while the list scrolls. Hidden when there is

@@ -20,6 +20,7 @@ import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
@@ -866,11 +867,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             ),
           ),
         ),
+        // [RAJ-PHASE3-1] Header toran — this step's coloured band sits at the
+        // BOTTOM (the agree/CTA bar), so the toran is welded there, mirroring
+        // the footer-toran convention (band below, scallops lift UP into the
+        // scrollable content above; see shell_chrome.dart §5 of patches.md).
+        // Placed outside the SingleChildScrollView above, in this fixed outer
+        // Column, so it never scrolls away from the band. bandColor is the
+        // band's ACTUAL fill (AD.headerFooter); HANDOFF's table wants indigo
+        // for the terms step, but that is the later recolouring phase.
+        const TorranDivider(
+          bandColor: AD.headerFooter,
+          direction: TorranDirection.up,
+        ),
         Container(
           padding: EdgeInsets.fromLTRB(hPad, Msg.s4, hPad, Msg.s5),
+          // Top hairline removed — the TorranDivider immediately above is the
+          // seam now.
           decoration: const BoxDecoration(
             color: AD.headerFooter,
-            border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
           ),
           child: Column(
             children: [

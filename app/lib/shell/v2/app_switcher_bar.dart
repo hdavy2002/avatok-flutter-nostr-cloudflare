@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../features/avadial/inbox/inbox_list_screen.dart';
 import '../../features/avadial/sms/sms_unread_store.dart';
 import '../shell_v2.dart';
@@ -176,12 +177,24 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AD.headerFooter,
-        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
-      ),
-      child: SafeArea(
+    // [RAJ-PHASE3-1] Footer toran — the scalloped drape + hanging beads,
+    // lifting UP into the content above this persistent bottom bar (mirrors
+    // shellNavBar() in shell_chrome.dart; design/flutter-handoff, patches.md
+    // §6). bandColor is the bar's ACTUAL fill (AD.headerFooter); HANDOFF's
+    // hue table wants indigo here, but that is the later recolouring phase.
+    // The top hairline is replaced by the scalloped seam.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const TorranDivider(
+          bandColor: AD.headerFooter,
+          direction: TorranDirection.up,
+        ),
+        Container(
+          decoration: const BoxDecoration(
+            color: AD.headerFooter,
+          ),
+          child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -250,7 +263,9 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
               ),
           ],
         ),
-      ),
+          ),
+        ),
+      ],
     );
   }
 

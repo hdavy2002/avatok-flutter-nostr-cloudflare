@@ -406,10 +406,14 @@ class AvaTalkApp extends StatelessWidget {
             // here covers every screen with no per-screen edit
             // (design/flutter-handoff, patches.md §4). It is an IgnorePointer,
             // so it never takes a tap away from the call overlay under it.
+            // `Positioned.fill` on the grain layer is deliberate: GrainOverlay
+            // sizes its tiled Image with `double.infinity`, and a bare Stack
+            // child is laid out loose, so without this the layer's constraints
+            // depend on whatever CallOverlay happens to size to.
             child: Stack(
               children: [
                 CallOverlay(child: child!),
-                const GrainOverlay(),
+                const Positioned.fill(child: GrainOverlay()),
               ],
             ),
           ),

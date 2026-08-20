@@ -29,6 +29,7 @@ import '../../features/avatok/contact_profile_screen.dart';
 import '../../features/avatok/contacts.dart';
 import '../../features/avatok/invite_screen.dart';
 import '../../features/avatok/place_1to1_call.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../shell_v2.dart';
 import 'shell_chrome.dart';
 
@@ -133,6 +134,16 @@ class _AvaDialRootState extends State<AvaDialRoot> {
             selectedIndex: _tab,
             onSelected: (i) => setState(() => _tab = i),
           ),
+          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
+          // at the header↔content seam (design/flutter-handoff, patches.md §6).
+          // The tab strip is the last coloured chrome band above the tab
+          // content, so the seam is here — same placement as chat_list.dart's
+          // _AvaTokTabStrip. bandColor matches _CallsTabStrip's own fill
+          // (AvaDialTheme.surface, see _tab() below).
+          const TorranDivider(
+            bandColor: AvaDialTheme.surface,
+            direction: TorranDirection.down,
+          ),
           Expanded(
             // Rebuild when a config fetch lands so flipping `avaDialer` in KV
             // surfaces the live tabs without an app restart.
@@ -221,10 +232,10 @@ class _CallsTabStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AvaDialTheme.surface,
-        border: Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
-      ),
+      // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
+      // immediately below this strip in the Scaffold body IS the seam now, and
+      // a straight rule sitting on top of the scallops reads as a mistake.
+      decoration: const BoxDecoration(color: AvaDialTheme.surface),
       padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,

@@ -18,6 +18,7 @@ import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../shell/shell_v2.dart' show ShellScope;
 import '../../shell/v2/shell_chrome.dart' show ShellSidebar;
 import '../payout/payout_screen.dart';
@@ -38,43 +39,59 @@ PreferredSizeWidget _darkHeader({
   Widget? leading,
 }) {
   return PreferredSize(
-    preferredSize: Size.fromHeight(tag == null ? 76 : 92),
-    child: Container(
-      decoration: const BoxDecoration(
-        color: AD.headerFooter,
-        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
-          child: Row(children: [
-            if (showBack) ...[
-              const AdBackButton(),
-              const SizedBox(width: Msg.s2),
-            ] else if (leading != null) ...[
-              leading,
-              const SizedBox(width: Msg.s2),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  if (tag != null) ...[
-                    const SizedBox(height: 2),
-                    // [UI-DS-SWEEP-1] sentence case — the caps were shouting.
-                    Text(tag, style: ADText.sectionLabel()),
+    // Height bumped to fit the TorranDivider welded below the band (its own
+    // height: bandDepth 5 + scallopRadius 13 + beadRadius*2 7.2 ≈ 25.2).
+    preferredSize: Size.fromHeight(tag == null ? 76 + 26 : 92 + 26),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
+        // immediately below is the seam now.
+        decoration: const BoxDecoration(
+          color: AD.headerFooter,
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
+            child: Row(children: [
+              if (showBack) ...[
+                const AdBackButton(),
+                const SizedBox(width: Msg.s2),
+              ] else if (leading != null) ...[
+                leading,
+                const SizedBox(width: Msg.s2),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (tag != null) ...[
+                      const SizedBox(height: 2),
+                      // [UI-DS-SWEEP-1] sentence case — the caps were shouting.
+                      Text(tag, style: ADText.sectionLabel()),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            ...actions,
-          ]),
+              ...actions,
+            ]),
+          ),
         ),
       ),
-    ),
+      // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads at
+      // the header↔content seam (design/flutter-handoff, patches.md §6).
+      // Placed inside the PreferredSize (fixed appBar chrome) rather than as
+      // the first child of the scrolling body ListView below, so it stays
+      // welded to the header instead of scrolling away. bandColor matches
+      // the band's actual fill (AD.headerFooter), not the eventual per-area
+      // hue this screen will get in a later recolouring phase.
+      const TorranDivider(
+        bandColor: AD.headerFooter,
+        direction: TorranDirection.down,
+      ),
+    ]),
   );
 }
 

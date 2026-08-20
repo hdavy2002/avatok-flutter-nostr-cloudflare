@@ -9,6 +9,7 @@ import '../../core/brain_consent.dart';
 import '../../core/db.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avachat/discuss_seed.dart';
 import '../avachat/thread_context.dart';
@@ -479,6 +480,16 @@ class _CompanionHomeState extends State<CompanionHome> {
       body: SafeArea(
         child: Column(children: [
           _header(),
+          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
+          // at the header↔content seam (design/flutter-handoff, patches.md §6).
+          // bandColor is the band's ACTUAL fill (AD.headerFooter). HANDOFF's
+          // hue table wants rani pink here, but that describes what the header
+          // should BECOME in the later recolouring phase — until the band
+          // itself moves, a pink drape on a turquoise bar is just broken.
+          const TorranDivider(
+            bandColor: AD.headerFooter,
+            direction: TorranDirection.down,
+          ),
           Expanded(child: _loading ? _loadingState() : (_sessions.isEmpty ? _emptyState() : _sessionList())),
         ]),
       ),
@@ -488,9 +499,10 @@ class _CompanionHomeState extends State<CompanionHome> {
   Widget _header() {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider added
+      // immediately below this header in the Scaffold body is the seam now.
       decoration: const BoxDecoration(
         color: AD.headerFooter,
-        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(children: [
         const AdBackButton(),

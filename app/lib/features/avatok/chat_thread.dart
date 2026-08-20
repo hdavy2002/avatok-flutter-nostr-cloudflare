@@ -71,6 +71,7 @@ import '../../core/voice_brain_ingest.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/bubble_theme.dart'; // [AVAGRP-BUBBLE-1] per-sender pale bubble theming contract
 import '../../core/group_store.dart';
@@ -1217,9 +1218,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             // Thread header — paper-2 band with ink bottom border (§8).
             Container(
               height: 58,
+              // [RAJ-PHASE3-1] Bottom hairline removed — the TorranDivider
+              // below is the header↔content seam now (patches.md §6).
               decoration: const BoxDecoration(
                 color: AD.headerFooter,
-                border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
               ),
               padding: const EdgeInsets.only(left: 4, right: 6),
               child: _searchMode ? _searchBar() : Row(children: [
@@ -1308,6 +1310,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 ],
                 _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: AD.iconVideo),
               ]),
+            ),
+            // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging
+            // beads at the header↔content seam (design/flutter-handoff,
+            // patches.md §6). Thread header hue is turquoise (AD.headerFooter).
+            const TorranDivider(
+              bandColor: AD.headerFooter,
+              direction: TorranDirection.down,
             ),
             if (_pinned != null) _pinBanner(),
             // Unknown-number receptionist thread — invite the owner to save the
