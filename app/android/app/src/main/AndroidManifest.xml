@@ -419,5 +419,43 @@
         <package android:name="com.eyecon.global" />
         <package android:name="com.hiya.star" />
         <package android:name="gogolook.callgogolook2" />
+
+        <!-- [UPDATE-PLAY-LINK-1 2026-08-21] ⚠️ THE UPDATE BUTTON CANNOT REACH
+             THE PLAY STORE WITHOUT THESE THREE ENTRIES. Do not remove them.
+
+             Owner report: "I get the FCM notification, but when I go to my
+             Update section it does not take me to Google Play Store… I had to
+             side-load an APK."
+
+             `UpdateService._openPlayStore` does
+             `canLaunchUrl(Uri.parse('market://details?id=…'))` and, if that is
+             false, falls back to the https listing. On Android 11+ (targetSdk
+             >= 30) BOTH of those resolve through
+             `PackageManager.queryIntentActivities`, which returns only what
+             this <queries> block makes visible. With no `market` scheme entry
+             and no browser entry, `canLaunchUrl` returned false and the https
+             fallback then had nothing to resolve to either — so the button did
+             nothing at all, silently. It was never a wrong URL: the package id
+             `ai.avatok.avatok_call` in the intent was correct the whole time.
+
+             This is invisible in the IDE, invisible in `flutter analyze`, and
+             invisible on any Android 10 device or emulator. The only way it
+             shows up is a real Android 11+ phone tapping the button.
+
+             Package visibility only — grants no permission and shows no
+             prompt. `com.android.vending` is listed by name as well as by
+             intent because some OEM builds answer the by-name query when the
+             scheme query comes back empty. -->
+        <package android:name="com.android.vending" />
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="market"/>
+        </intent>
+        <!-- Browser fallback, for the https://play.google.com/... form used
+             when the Play Store app itself is absent or disabled. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

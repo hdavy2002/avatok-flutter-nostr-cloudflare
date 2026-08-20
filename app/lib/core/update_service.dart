@@ -17,6 +17,7 @@ import '../features/avatok/call_screen.dart'
     show callIsGenuinelyActive, gOutgoingCallId;
 import 'analytics.dart';
 import 'ava_log.dart';
+import 'config.dart' show kClosedTestUrl; // [UPDATE-PLAY-LINK-1] tester opt-in page
 import 'disk_cache.dart';
 import 'remote_config.dart';
 
@@ -326,7 +327,52 @@ class UpdateService {
       if (latest <= 0 && notReady) {
         _snack("You're on the latest version"
             "${current != null && current > 0 ? ' (build $current)' : ''}.");
-      } else if (notReady) {
+        return;
+      }
+
+      // [UPDATE-PLAY-LINK-1 2026-08-21] ⚠️ THE DEAD END. This branch is the
+      // one the owner kept hitting.
+      //
+      // He ships to the Play **Closed Alpha** track, gets the FCM, taps
+      // Update — and got "The update is still reaching Google Play. Try again
+      // shortly." forever, even after the release had passed review and was
+      // live. Last time he gave up and side-loaded an APK.
+      //
+      // Why: `_resolvePath` only ever returns `_UpdatePath.store` for an
+      // install it has CONFIRMED is side-loaded (`_looksSideloaded`). For a
+      // genuinely Play-installed device, when Play Core's `checkForUpdate()`
+      // says "no update available" it returns `playNotReady` with a null path,
+      // and this branch showed a snack and stopped. But Play Core reporting
+      // "nothing available" is NOT the same as "nothing exists": on a closed
+      // track the Play client can lag the published release by hours, and it
+      // reports `updateNotAvailable` that whole time. So the app kept telling
+      // him to wait for something that had already shipped, and offered him no
+      // way to go and look.
+      //
+      // `latestAppBuild` is the pointer CI sets from the same run that
+      // published the .aab, so `latest > current` here means a newer build
+      // demonstrably exists regardless of what the local Play client thinks.
+      // That is enough to hand the user the Store and let Play decide — which
+      // is exactly what the sideload path already does. Worst case the listing
+      // shows "Open" instead of "Update" and he closes it; that is strictly
+      // better than a dead end with no button.
+      //
+      // NOTE this deliberately does NOT go through `_act`/`_showPrompt`: there
+      // is no in-app update to offer, only a link out, so it opens the store
+      // directly rather than showing a dialog whose CTA claims more than it
+      // can do.
+      final newerExists = latest > 0 && current != null && latest > current;
+      if (newerExists) {
+        Analytics.capture('update_manual_store_fallback', {
+          'reason': resolution.reason.name,
+          'installed_build': current,
+          'available_build': latest,
+        });
+        await _openPlayStore(source: 'manual_play_not_ready');
+        return;
+      }
+
+      if (notReady) {
         _snack('The update is still reaching Google Play. Try again shortly.');
       } else {
         _snack("Couldn't check Google Play right now. Please try again later.");
@@ -860,6 +906,32 @@ class UpdateService {
   }
 
   /// Open the Google Play listing for the installed package. Best-effort.
+  ///
+  /// [UPDATE-PLAY-LINK-1 2026-08-21] Rewritten after the owner reported the
+  /// Update row doing nothing at all on a Closed Alpha build. Three things were
+  /// wrong here and each one could hide the other two:
+  ///
+  ///  1. `launchUrl`'s BOOLEAN RETURN WAS DISCARDED. It returns false when
+  ///     nothing handled the intent — no throw, no log, no event. The old
+  ///     `catch` only ever fired on a thrown exception, so the most common
+  ///     failure produced *complete silence*: no store, no snack, no
+  ///     telemetry. That is precisely what "it does not take me to Google Play
+  ///     Store" looked like from the outside, and why there was nothing in
+  ///     PostHog to find. Every launch is now checked and reported.
+  ///  2. `canLaunchUrl(market://…)` returns false on Android 11+ unless the
+  ///     manifest declares the `market` scheme under `<queries>`. It did not
+  ///     (fixed in the same change). We now still ATTEMPT the market URL when
+  ///     `canLaunchUrl` says no — the probe is advisory and can be wrong,
+  ///     while the launch itself is authoritative, and a failed attempt costs
+  ///     one round trip.
+  ///  3. NO CLOSED-TESTING FALLBACK. `details?id=` is the PUBLIC listing; for a
+  ///     closed-alpha tester whose Play client hasn't refreshed it can show
+  ///     "Item not found" or an Install/Open button with no update. The opt-in
+  ///     URL that always resolves for a tester already existed in
+  ///     `config.dart` as [kClosedTestUrl] and simply was not wired here.
+  ///
+  /// So: market → public listing → closed-testing page, first one that
+  /// actually launches wins, and if all three fail the user is told.
   static Future<void> _openPlayStore({required String source}) async {
     final pkg = await _packageName();
     if (pkg == null) {
@@ -868,21 +940,56 @@ class UpdateService {
       return;
     }
     Analytics.capture('update_open_store', {'source': source, 'package': pkg});
-    final market = Uri.parse('market://details?id=$pkg');
-    final web = Uri.parse('https://play.google.com/store/apps/details?id=$pkg');
-    try {
-      if (await canLaunchUrl(market)) {
-        await launchUrl(market, mode: LaunchMode.externalApplication);
-        return;
+
+    // Ordered by how likely each is to land the user somewhere useful.
+    final targets = <(String, Uri)>[
+      // The Play app itself, on this app's page. Correct for a tester: Play
+      // shows the alpha build here once it has refreshed.
+      ('market', Uri.parse('market://details?id=$pkg')),
+      // Play app absent/disabled → the web listing.
+      ('web_listing',
+          Uri.parse('https://play.google.com/store/apps/details?id=$pkg')),
+      // Last resort: the closed-testing opt-in page. Always resolves for an
+      // enrolled tester and carries a direct "Download it on Google Play" link
+      // even when the public listing is not visible to them yet.
+      ('closed_test', Uri.parse(kClosedTestUrl)),
+    ];
+
+    final attempts = <String>[];
+    for (final (name, uri) in targets) {
+      try {
+        // NOTE: no `canLaunchUrl` gate. It is a package-visibility probe, not a
+        // capability check, and a false answer from it is exactly how this
+        // silently skipped straight past the Play app before.
+        final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (ok) {
+          Analytics.capture('update_open_store_result', {
+            'source': source,
+            'target': name,
+            'result': 'launched',
+            'attempts': attempts.join(','),
+          });
+          return;
+        }
+        attempts.add('$name:false');
+      } catch (e) {
+        attempts.add('$name:threw');
+        _logOnce('openstore_$name', 'open $name failed: $e');
       }
-      await launchUrl(web, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      _logOnce('openstore', 'open play store failed: $e');
-      Analytics.capture('update_open_store_failed',
-          {'source': source, 'reason': e.toString()});
-      _snack(
-          "Couldn't open the Play Store. Please update from the Play Store app.");
     }
+
+    Analytics.capture('update_open_store_result', {
+      'source': source,
+      'target': 'none',
+      'result': 'failed',
+      'attempts': attempts.join(','),
+    });
+    Analytics.capture('update_open_store_failed', {
+      'source': source,
+      'reason': attempts.join(','),
+    });
+    _snack(
+        "Couldn't open the Play Store. Please update from the Play Store app.");
   }
 
   // ── post-update confirmation ──────────────────────────────────────────────
