@@ -2537,5 +2537,56 @@
         "note": "Read the gap between phase=waking and phase=ringing per call_id. Pre-fix it was ~12000ms on every call; post-fix waking should not appear at all with the SFU off, and ring latency returns to the sub-second WS fast lane."
       }
     ]
+  },
+  "RAJ-SINGLEWAVE-1": {
+    "description": "Owner report 2026-08-21 (pics 1-4): 'see double waves — remove the second wave where it says Group chat. In fact remove the entire section with the hamburger menu also. Once this area is removed then we will get a single wave on top.' Same for Calls: 'remove the call area and move the trash bin next to the search bar and reclaim the above space.' GroupsTab and CallsScreen each rendered their OWN header band + seam while being nothing but tab bodies inside chat_list's IndexedStack, which already draws a header, a tab strip and a seam above them — two titles, two hamburgers, two waves. Both inner bands and both inner seams are deleted (verified single construction site each, neither ever pushed as a route, so nothing is stranded); the Calls clear-log trash button moved into the search-dock Row. GroupsTab.onMenu is kept as a no-op hook for a future pushed-route use. Also per the owner ('use the one from the footer — the same indigo colour with gold bands') the messenger header seam changed 1B Squiggle -> 2C DoubleWaveSeam in chat_list and chat_thread, so header and footer are now the same shape in the same indigo+haldi pair. Roughly 96px of chrome returns on Calls and ~90px on Groups. Client-only: no worker change, no schema change, no new flag.",
+    "shipped": "2026-08-21",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Deletion of duplicated presentation chrome. No code path changed, nothing is gated, and no event could carry a failure value. Success is VISUAL, read off a device on the newest $app_build: (1) AvaTalk > Groups shows ONE wave, directly under the tab strip, with no second 'Groups / YOUR GROUP CHATS' band and no second hamburger; the search dock is the first thing under the wave. (2) AvaTalk > Calls shows ONE wave, no 'Calls' title band, and the trash button sits to the RIGHT of the search field. (3) The trash still clears the log (tap it, confirm the dialog, log empties) — it moved, it did not lose its handler — and it is absent while the log is empty or still loading. (4) Both header waves are indigo with a gold under-wave, matching the footer. (5) NOT REGRESSED: the Groups 'New group' FAB, group rows, invites, per-row call-back buttons, pull-to-refresh and the 'No calls match' state all behave as before.",
+    "_verified_at": "app/lib/features/avatok/groups_tab.dart:159-175 header+seam removed, :30-44 onMenu note, :226 _hdrBtn removed; app/lib/features/avatok/calls_screen.dart:118-181 band+seam removed and trash moved into the dock Row; app/lib/features/avatok/chat_list.dart:2462 DoubleWaveSeam, :2591/:2595 the two construction sites; app/lib/features/avatok/chat_thread.dart:1371 DoubleWaveSeam"
+  },
+  "RESP-SMALL-1": {
+    "description": "Owner report 2026-08-21: a tester on a ~3x4 inch phone cannot see or reach content — 'everything moves away from her screen and she is unable to scroll down.' ROOT CAUSE: main.dart's MaterialApp builder applied a FLAT baseBump of 1.22 at every width, so the app enlarged all type (and every text-driven height) by 22% on the smallest devices. The existing width-aware ceiling did not help because it sat ABOVE the bump — on a <320dp phone with a normal OS font setting the resolved scale was clamp(1.22, 0.85, 1.20) = 1.20, still a 20% enlargement. A ceiling can only cap a large OS font setting; it cannot undo a bump the app applies itself. FIX: baseBump now ramps with width (>=360 stays 1.22 per the standing [APP-TYPE-SCALE-2] owner decision; 320-360 -> 1.10; <320 -> 1.00) and each ceiling was lowered to sit at or just above its own bump. Second lever: a new ZineBreakpoints.chromeScale(context) (1.0 / 0.85 / 0.72) trims UNSCROLLABLE chrome only — SquiggleSeam and DoubleWaveSeam heights and their wave geometry, the AvaTalk header's vertical padding, the tab strip's bottom padding, and the chat-thread header height (floored at 48 so it cannot overflow the 46px IconButton constraints inside it). Type and tap targets are deliberately NOT scaled by it. Third: width_class and resolved_text_scale are now on the event envelope so any future report from a small device is filterable in PostHog. Client-only: no worker change, no schema change, no new flag.",
+    "shipped": "2026-08-21",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "screen_metrics",
+        "where": {
+          "width_class": "xcompact"
+        },
+        "property": "resolved_text_scale",
+        "lte": 1.1,
+        "min_events": 0,
+        "note": "THE FIX ITSELF, as a number. Before this change an xcompact device resolved to 1.20 with a normal OS font setting; the new ramp caps that class at 1.10. min_events is 0 because the owner's own fleet may contain no xcompact device at all — absence is a pass, a value above 1.10 is a regression. This is the assertion that would have caught the original bug, since screen_metrics was already reporting resolved_text_scale=1.2 for her phone and nobody read it."
+      },
+      {
+        "event": "screen_metrics",
+        "where": {
+          "width_class": "regular"
+        },
+        "property": "resolved_text_scale",
+        "gte": 1.22,
+        "min_events": 1,
+        "note": "THE GUARDRAIL, and the more important of the two. 1.22 on normal phones is an explicit owner decision made AFTER 1.10 was shipped and rejected as too small ([APP-TYPE-SCALE-2]). The obvious wrong fix for a small-screen report is to lower the bump everywhere, which would silently re-break every normal handset including the owner's. If this assertion fails, the small-screen fix leaked into the regular class."
+      },
+      {
+        "event": "$exception",
+        "where": {
+          "width_class": "xcompact"
+        },
+        "property": "$exception_message",
+        "not_in": [
+          "A RenderFlex overflowed"
+        ],
+        "min_events": 0,
+        "note": "Shrinking fixed-height chrome is exactly the change that causes overflow, and the chat-thread header is the known risk (46px IconButton constraints inside a scaled box, floored at 48 for this reason). width_class is on the envelope as of this change, so an overflow on a small device is now attributable to one instead of being lost in the general exception stream."
+      }
+    ],
+    "_verified_at": "app/lib/main.dart:386-415 width-aware baseBump + ceilings, :339-350 widthClass + setScreenClass; app/lib/core/analytics.dart:464-489 envelope fields + setScreenClass; app/lib/core/ui/breakpoints.dart:59-92 xcompactMax/isXCompact/chromeScale; app/lib/core/ui/rajasthani_motifs.dart:104-118 SquiggleSeam scale, :176-190 DoubleWaveSeam scale; app/lib/features/avatok/chat_list.dart:2364 header padding, :2848 tab strip padding; app/lib/features/avatok/chat_thread.dart:1240 header height clamped 48-58"
   }
 }
