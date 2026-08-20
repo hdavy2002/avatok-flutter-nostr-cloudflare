@@ -34,6 +34,7 @@ class CallAudioController {
   /// once a different call's [seed] has taken over, so a straggling await
   /// from a just-ended call can never reach into the next one's route.
   String? _callId;
+  int _generation = 0;
 
   /// The user's/current desired route. Seeded at call start from
   /// `config.video ? speaker : earpiece`; updated by every user toggle
@@ -42,6 +43,16 @@ class CallAudioController {
   CallAudioRoute intent = CallAudioRoute.earpiece;
 
   CallAudioRoute? _lastConfirmed;
+  CallAudioRouteResult? _lastResult;
+
+  /// Native confirmed an actual output device, even if Android had to use a
+  /// safe fallback (for example an emulator has no earpiece and uses speaker).
+  bool get hasUsableConfirmedRoute =>
+      _lastResult != null &&
+      _lastResult!.active != CallAudioRoute.unknown &&
+      _lastResult!.fallbackReason != 'invoke_failed';
+
+  String get confirmedRouteName => _lastResult?.active.name ?? 'unknown';
 
   /// Serializes [apply] calls so two callers (e.g. `boot_media` and a fast
   /// user tap) can never race each other into native writes out of order.
@@ -55,9 +66,11 @@ class CallAudioController {
   /// Begin owning [callId]'s audio. [route] is the call's starting intent
   /// (`config.video ? speaker : earpiece`).
   void seed({required String callId, required CallAudioRoute route}) {
+    _generation++;
     _callId = callId;
     intent = route;
     _lastConfirmed = null;
+    _lastResult = null;
   }
 
   /// Update the desired route — call this BEFORE `apply` so a fast repeat
@@ -72,9 +85,11 @@ class CallAudioController {
   /// a straggling teardown must never clear the NEW call's callback.
   void release(String callId) {
     if (_callId != callId) return;
+    _generation++;
     _callId = null;
     onRouteConfirmed = null;
     _lastConfirmed = null;
+    _lastResult = null;
   }
 
   /// Apply [intent] to the native route. Serialized, safe to call
@@ -93,7 +108,8 @@ class CallAudioController {
   Future<CallAudioRouteResult?> _applyInternal(String source) async {
     if (!RemoteConfig.callAudioOwnerV1) return null;
     final callId = _callId ?? '';
-    final requestedIntent = intent;
+    final generation = _generation;
+    var requestedIntent = intent;
     CallAudioRouteResult result;
     try {
       result = await NativeVoiceAudio.instance
@@ -111,8 +127,64 @@ class CallAudioController {
       });
       return null;
     }
+    if (_callId != callId || _generation != generation) {
+      Analytics.capture('call_audio_owner_stale_result_dropped', {
+        'call_id': callId,
+        'source': source,
+      });
+      return null;
+    }
+    if (result.active == CallAudioRoute.unknown ||
+        result.fallbackReason == 'invoke_failed') {
+      Analytics.capture('call_audio_route_recovery_started', {
+        'call_id': callId,
+        'intent': requestedIntent.name,
+        'source': source,
+        'first_active_route': result.active.name,
+        'first_fallback_reason': result.fallbackReason ?? 'unknown',
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      if (_callId != callId || _generation != generation) return null;
+      // A speaker toggle may have landed while the recovery delay was running.
+      // Retry the current intent, never the stale one captured above.
+      requestedIntent = intent;
+      try {
+        final retry = await NativeVoiceAudio.instance.selectRoute(
+          requestedIntent,
+          source: '${source}_recovery',
+        );
+        result = retry;
+        Analytics.capture('call_audio_route_recovery_result', {
+          'call_id': callId,
+          'intent': requestedIntent.name,
+          'source': source,
+          'active_route': retry.active.name,
+          'exact': retry.exact,
+          'usable': retry.active != CallAudioRoute.unknown &&
+              retry.fallbackReason != 'invoke_failed',
+          'backend': retry.backend,
+          'fallback_reason': retry.fallbackReason ?? 'none',
+          'attempts': 2,
+        });
+      } catch (e) {
+        Analytics.capture('call_audio_route_recovery_result', {
+          'call_id': callId,
+          'intent': requestedIntent.name,
+          'source': source,
+          'active_route': result.active.name,
+          'exact': false,
+          'usable': false,
+          'backend': result.backend,
+          'fallback_reason': 'retry_exception',
+          'attempts': 2,
+          'error': e.toString(),
+        });
+      }
+    }
+    if (_callId != callId || _generation != generation) return null;
     final changed = _lastConfirmed != result.active;
     _lastConfirmed = result.active;
+    _lastResult = result;
     onRouteConfirmed?.call(result.active == CallAudioRoute.speaker);
     Analytics.capture('call_audio_owner_apply', {
       'call_id': callId,
@@ -122,6 +194,9 @@ class CallAudioController {
       'backend': result.backend,
       'reason': source,
       'changed': changed,
+      'route_usable': hasUsableConfirmedRoute,
+      'exact': result.exact,
+      'fallback_reason': result.fallbackReason ?? 'none',
     });
     if (result.active != requestedIntent) {
       Analytics.capture('call_audio_owner_conflict', {

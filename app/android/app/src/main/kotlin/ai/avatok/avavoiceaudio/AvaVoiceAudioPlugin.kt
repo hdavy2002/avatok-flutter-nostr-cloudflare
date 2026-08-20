@@ -305,6 +305,11 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 // CALLFIX-18: return current audio route (earpiece|speaker|bluetooth|headset)
                 result.success(getCurrentRoute())
             }
+            "getAudioDiagnostics" -> {
+                // [CALL-AUDIO-DIAG-1] Scrubbed, call-safe native audio state.
+                // Device names/addresses are intentionally excluded.
+                result.success(getAudioDiagnostics())
+            }
             "setAudioRoute" -> {
                 // CALLFIX-18 / CALL-REL-2: set audio route by name; returns the
                 // CONFIRMED active route + backend + exact/fallback_reason so the
@@ -708,7 +713,7 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    // CALLFIX-16: Start P2P call audio mode with hardware AEC/NS/AGC + audio focus.
+    // CALLFIX-16: Start P2P call audio mode with hardware AEC/NS/AGC.
     // Called at P2P call start (after getUserMedia) to set the platform to
     // VOICE_COMMUNICATION mode and request audio focus so the platform applies
     // hardware echo cancellation, noise suppression, and automatic gain control.
@@ -717,27 +722,66 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             val am = audioManager() ?: return
             prevAudioMode = am.mode
             am.mode = AudioManager.MODE_IN_COMMUNICATION
-            // Request transient audio focus for voice communication (music/media
-            // pauses) WITH a change listener so we can hold/resume the call.
+            // [CALL-AUDIO-FOCUS-OWNER-1] flutter_webrtc and Stream both own an
+            // RTC audio engine which requests focus themselves. Requesting a
+            // second GAIN_TRANSIENT here steals focus from that engine: Android
+            // delivered LOSS_TRANSIENT to WebRTC at call start and only returned
+            // focus at hangup, while RTP continued into an inaudible AudioTrack.
+            // AvaTOK still owns MODE_IN_COMMUNICATION, routing, proximity and
+            // telephony interruption handling; the active RTC SDK is the sole
+            // audio-focus owner.
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val attrs = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                    val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                        .setAudioAttributes(attrs)
-                        .setOnAudioFocusChangeListener(focusListener, main)
-                        .build()
-                    focusRequest = req
-                    am.requestAudioFocus(req)
-                } else {
-                    @Suppress("DEPRECATION")
-                    am.requestAudioFocus(focusListener, AudioManager.STREAM_VOICE_CALL,
-                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                }
+                focusRequest?.let { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) am.abandonAudioFocusRequest(it) }
+                focusRequest = null
             } catch (_: Throwable) {}
         } catch (_: Throwable) {}
+    }
+
+    // [CALL-AUDIO-DIAG-1] Native truth used by PostHog media-health samples.
+    // Only device TYPES and scalar audio state are returned; no device names,
+    // Bluetooth addresses, or other user-identifying hardware details.
+    private fun getAudioDiagnostics(): Map<String, Any?> {
+        val am = audioManager() ?: return mapOf("available" to false)
+        val observedRoute = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                am.communicationDevice?.let { routeForDeviceType(it.type) } ?: "unknown"
+            } catch (_: Throwable) { "unknown" }
+        } else { currentRoute }
+        val outputTypes = try {
+            am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }.distinct().sorted().joinToString(",")
+        } catch (_: Throwable) { "unknown" }
+        val inputTypes = try {
+            am.getDevices(AudioManager.GET_DEVICES_INPUTS).map { it.type }.distinct().sorted().joinToString(",")
+        } catch (_: Throwable) { "unknown" }
+        val communicationType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try { am.communicationDevice?.type ?: -1 } catch (_: Throwable) { -1 }
+        } else { -1 }
+        val modeName = when (am.mode) {
+            AudioManager.MODE_IN_CALL -> "in_call"
+            AudioManager.MODE_IN_COMMUNICATION -> "in_communication"
+            AudioManager.MODE_RINGTONE -> "ringtone"
+            AudioManager.MODE_CALL_SCREENING -> "call_screening"
+            else -> "normal"
+        }
+        return mapOf(
+            "available" to true,
+            "audio_mode" to modeName,
+            "audio_mode_value" to am.mode,
+            "active_route" to observedRoute,
+            "communication_device_type" to communicationType,
+            "output_device_types" to outputTypes,
+            "input_device_types" to inputTypes,
+            "mic_muted" to am.isMicrophoneMute,
+            "speakerphone_on" to am.isSpeakerphoneOn,
+            "voice_volume" to am.getStreamVolume(AudioManager.STREAM_VOICE_CALL),
+            "voice_volume_max" to am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL),
+            "music_volume" to am.getStreamVolume(AudioManager.STREAM_MUSIC),
+            "music_volume_max" to am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            "native_output_sample_rate" to (am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE) ?: "unknown"),
+            "native_frames_per_buffer" to (am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER) ?: "unknown"),
+            "native_focus_owner_inferred" to "rtc_sdk",
+            "native_focus_requested_by_avatok" to false,
+        )
     }
 
     // CALLFIX-16: Stop P2P call audio mode and restore normal audio.

@@ -237,8 +237,8 @@ class StreamCallPilot {
     defaultValue: false,
   );
 
-  /// Safe-by-default gate. A staging build must opt in at compile time AND
-  /// receive the remote flag; production or a stale config remains legacy.
+  /// Safe-by-default gate. The release must compile the bridge AND receive the
+  /// remote flag. Turning the flag off immediately restores Cloudflare 1:1.
   static bool get enabled => _compiledIn && RemoteConfig.streamCallPilotEnabled;
 
   static CallRingOwner ringOwner(Map<String, dynamic> payload) {
@@ -429,8 +429,13 @@ class StreamCallClient {
     // Subscribe before native starts. A fast peer can publish audio during the
     // method call; constructing the Dart session afterwards would lose that
     // non-replayed EventChannel milestone and falsely show a silent call.
-    final session =
-        StreamCallSession._(this, ticket.callId, ticket.userId, mode);
+    final session = StreamCallSession._(
+      this,
+      ticket.callId,
+      ticket.userId,
+      mode,
+      outgoing: outgoing,
+    );
     try {
       await _invoke('join', {
         ...ticket.toBridgePayload(deviceId: await StreamDeviceIdentity.get()),
@@ -533,7 +538,13 @@ class _StreamNativeEvent {
 
 /// Provider-neutral Stream session backed by the isolated native bridge.
 class StreamCallSession implements RtcSession {
-  StreamCallSession._(this._client, this.callId, this._accountId, this._mode) {
+  StreamCallSession._(
+    this._client,
+    this.callId,
+    this._accountId,
+    this._mode, {
+    required bool outgoing,
+  }) : _outgoing = outgoing {
     _nativeSub =
         _client.events.where((e) => e.callId == callId).listen(_onNative);
   }
@@ -543,6 +554,8 @@ class StreamCallSession implements RtcSession {
   @override
   final String callId;
   RtcMode _mode;
+  final bool _outgoing;
+  bool _nativeJoined = false;
   StreamSubscription<_StreamNativeEvent>? _nativeSub;
   final StreamController<RtcSessionEvent> _events =
       StreamController<RtcSessionEvent>.broadcast();
@@ -590,8 +603,14 @@ class StreamCallSession implements RtcSession {
       'carrier',
       'audio_route',
       'audio_focus',
+      'audio_focus_owner_inferred',
+      'audio_diagnostics_available',
+      'audio_mode',
       'codec_audio',
       'sample_rate',
+      'codec_sample_rate',
+      'output_sample_rate',
+      'frames_per_buffer',
       'channels',
       'sfu',
       'sdk_version',
@@ -622,6 +641,9 @@ class StreamCallSession implements RtcSession {
       'bytes_sent',
       'total_samples_received',
       'jitter_buffer_emitted_count',
+      'concealed_samples',
+      'silent_concealed_samples',
+      'playout_underrun_observable',
       'interruption_count',
       'total_interruption_ms',
       'battery_level',
@@ -632,6 +654,21 @@ class StreamCallSession implements RtcSession {
       'mos',
       'first_playout_ms',
       'decoded_samples',
+      'sdk_mic_enabled',
+      'system_mic_muted',
+      'speakerphone_on',
+      'voice_volume',
+      'voice_volume_max',
+      'route_confirmed',
+      'output_device_types',
+      'input_device_types',
+      'sdk_speaker_enabled',
+      'noise_cancellation_requested',
+      'echo_cancellation_requested',
+      'auto_gain_control_requested',
+      'audio_tuning_owner',
+      'playout_evidence',
+      'packet_evidence',
     };
     final safe = <String, Object>{};
     for (final entry in event.data.entries) {
@@ -677,6 +714,7 @@ class StreamCallSession implements RtcSession {
       'remote_leave' => RtcSessionEvent.remoteLeave,
       'audio_track_added' => RtcSessionEvent.audioTrackAdded,
       'first_audio_playout' => RtcSessionEvent.firstAudioPlayout,
+      'first_audible_voice' => RtcSessionEvent.firstAudioPlayout,
       'rejected' => switch ((event.data['reason'] ?? '').toString()) {
           'cancel' || 'cancelled' => RtcSessionEvent.disconnected,
           _ => RtcSessionEvent.rejected,
@@ -693,6 +731,7 @@ class StreamCallSession implements RtcSession {
     };
     if (mapped == null) return;
     if (mapped == RtcSessionEvent.connected) {
+      _nativeJoined = true;
       _stats = const RtcStatsSnapshot(
         publishState: RtcTransportState.connected,
         subscribeState: RtcTransportState.connected,
@@ -719,6 +758,9 @@ class StreamCallSession implements RtcSession {
     return _client.command('set_camera', callId, {'enabled': enabled});
   }
 
+  Future<void> setSpeaker({required bool enabled}) =>
+      _client.command('set_speaker', callId, {'enabled': enabled});
+
   @override
   Future<void> setMode(RtcMode mode) async {
     _mode = mode;
@@ -737,7 +779,14 @@ class StreamCallSession implements RtcSession {
     if (_left) return;
     _left = true;
     try {
-      await _client.command('leave', callId);
+      if (_outgoing && !_nativeJoined) {
+        // A caller who cancels while Stream is still ringing must reject with
+        // Cancel. A plain local leave does not dismiss the recipient's native
+        // ringing notification or platform call screen.
+        await _client.command('reject', callId, {'role': 'caller'});
+      } else {
+        await _client.command('leave', callId);
+      }
     } finally {
       await _nativeSub?.cancel();
       _nativeSub = null;

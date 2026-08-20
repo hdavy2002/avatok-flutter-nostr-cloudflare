@@ -309,13 +309,16 @@ Future<void> _dialerPlaceInBackground(
       'kind': callKind,
       'stream_capable': StreamCallPilot.enabled,
       'via': 'dialpad',
-    }, <String, String>{'X-Trace-Id': traceId});
+    }, <String, String>{'X-Trace-Id': traceId})
+        .timeout(const Duration(seconds: 8));
 
     // [STREAM-CALL-PILOT-2] The optimistic CallScreen is already visible, but
     // its session is deliberately media-idle until this decision is supplied.
     // Older `/api/call` responses omit provider fields and remain Cloudflare.
-    final providerDecision =
-        StreamCallApi.fromPlacementResponse(room, res.body);
+    final providerDecision = res.statusCode == 200
+        ? StreamCallApi.fromPlacementResponse(room, res.body)
+        : const CallProviderDecision.cloudflare(
+            reason: 'placement_not_successful');
     Analytics.capture('call_placement_completed', {
       'call_id': room,
       'call_trace_id': traceId,
@@ -325,8 +328,28 @@ Future<void> _dialerPlaceInBackground(
       'http_status': res.statusCode,
       'latency_ms': DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
     });
-    final session = CallSessionManager.instance.liveSessionFor(room);
-    session?.noteProviderDecision(providerDecision);
+    var session = CallSessionManager.instance.liveSessionFor(room);
+    // Navigator attachment and a very fast placement response can cross by a
+    // frame. Give the optimistic screen a bounded chance to register before
+    // deciding the user already closed it.
+    for (var attempt = 0;
+        res.statusCode == 200 && session == null && attempt < 10;
+        attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      session = CallSessionManager.instance.liveSessionFor(room);
+    }
+    if (res.statusCode == 200 && (session == null || session.isEnded)) {
+      Analytics.capture('call_placement_cancelled_after_local_close', {
+        'call_id': room,
+        'call_trace_id': traceId,
+        'provider': providerDecision.provider.wire,
+      });
+      unawaited(_cancelLatePlacement(room, traceId));
+      return;
+    }
+    if (res.statusCode == 200) {
+      session?.noteProviderDecision(providerDecision);
+    }
 
     // [CALL-GLARE-2] Server folded a simultaneous mutual dial into one winning
     // room. If it isn't ours, supersede: end our (peer-less) session and open
@@ -460,8 +483,17 @@ Future<void> _dialerPlaceInBackground(
       Analytics.capture('call_blocked_identity', {'via': 'dialpad', 'mount': 'optimistic'});
       session?.hangup('identity-gate');
     } else {
-      Analytics.capture('call_place_failed', {'status': res.statusCode, 'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
-      session?.notePlaceResult(true);
+      Analytics.capture('call_place_failed', {
+        'call_id': room,
+        'status': res.statusCode,
+        'kind': callKind,
+        'via': 'dialpad',
+        'mount': 'optimistic',
+        'failure_class': res.statusCode == 403
+            ? 'forbidden'
+            : (res.statusCode >= 500 ? 'server' : 'unexpected_response'),
+      });
+      session?.notePlaceFailed();
     }
   } catch (e) {
     final err = e.toString();
@@ -473,7 +505,46 @@ Future<void> _dialerPlaceInBackground(
       'mount': 'optimistic',
     });
     CallSessionManager.instance.liveSessionFor(room)?.notePlaceFailed();
+    // Future.timeout cannot cancel the underlying HTTP request. If the Worker
+    // completes placement after the local screen has already closed, retry a
+    // room-scoped cancel so the recipient never receives a ghost ring.
+    unawaited(_cancelLatePlacement(room, traceId));
   }
+}
+
+Future<void> _cancelLatePlacement(String room, String traceId) async {
+  const delays = <Duration>[
+    Duration.zero,
+    Duration(milliseconds: 750),
+    Duration(seconds: 2),
+  ];
+  for (var attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] != Duration.zero) {
+      await Future<void>.delayed(delays[attempt]);
+    }
+    try {
+      final response = await ApiAuth.postJsonH(
+        kCallCommandUrl,
+        {'callId': room, 'command': 'cancel_call'},
+        <String, String>{'X-Trace-Id': traceId},
+      ).timeout(const Duration(seconds: 3));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        Analytics.capture('call_late_placement_cancelled', {
+          'call_id': room,
+          'call_trace_id': traceId,
+          'attempt': attempt + 1,
+        });
+        return;
+      }
+    } catch (_) {
+      // A later retry may land after the placement write becomes visible.
+    }
+  }
+  Analytics.capture('call_late_placement_cancel_exhausted', {
+    'call_id': room,
+    'call_trace_id': traceId,
+    'attempts': delays.length,
+  });
 }
 
 /// Local busy tone for [routed]:'busy' (plan §15.1) — no ring was ever sent by

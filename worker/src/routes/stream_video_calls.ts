@@ -355,6 +355,7 @@ export async function prepareStreamCall(args: {
     calleeUid,
     callId,
     scope,
+    media: args.media,
     clientSupportsStream,
   });
   let decision: StickyProviderRecord = existing ?? {

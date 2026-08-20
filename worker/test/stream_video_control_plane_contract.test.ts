@@ -179,6 +179,9 @@ describe("GetStream Video pilot control plane contract", () => {
     expect(route).toContain("stream_capable");
     expect(route).toContain("stream_video_provider_decisions");
     expect(route).toContain("persistStickyProvider");
+    // The preparation wrapper must forward media into the selector. Omitting
+    // it silently applies selectCallProvider's audio default to video calls.
+    expect(route).toContain("media: args.media");
   });
 
   it("branches the existing /api/call before any Cloudflare ring side effect", () => {

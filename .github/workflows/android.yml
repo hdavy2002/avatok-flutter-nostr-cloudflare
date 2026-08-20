@@ -62,9 +62,9 @@ on:
         type: choice
         options: [alpha, internal, beta, none]
       stream_pilot:
-        description: 'Compile staging Stream 1:1 audio pilot (Cloudflare is the default)'
+        description: 'Compile Stream-capable 1:1 audio (runtime flag selects Stream or Cloudflare)'
         required: false
-        default: false
+        default: true
         type: boolean
 
 env:
@@ -78,8 +78,9 @@ env:
   # [AVA-UPDATE-AUTO] '' / 'none' => no Play upload. Empty inputs (push trigger)
   # therefore publish nothing, exactly as before.
   PLAY_TRACK: ${{ inputs.play_track || 'none' }}
-  # [STREAM-CALL-PILOT-4] Both switches move together. False produces the
-  # existing Cloudflare dependency graph; true is allowed only on staging.
+  # [STREAM-CALL-PILOT-4] Compile both providers into release builds. Runtime
+  # config selects Stream or instantly rolls 1:1 calls back to Cloudflare;
+  # `false` remains an emergency build-time escape hatch.
   STREAM_CALL_SDK: ${{ inputs.stream_pilot && '1' || '0' }}
   STREAM_CALL_PILOT_COMPILED: ${{ inputs.stream_pilot && 'true' || 'false' }}
 

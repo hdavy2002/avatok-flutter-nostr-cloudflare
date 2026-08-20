@@ -30,5 +30,21 @@ class AvaTokStreamFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         StreamCallRuntime.bootstrap(applicationContext)
         runCatching { FirebaseMessagingDelegate.registerFirebaseToken(token, "firebase") }
+        // This service has the higher-priority MESSAGING_EVENT filter in a
+        // Stream-enabled build. Forward the refresh into FlutterFire's existing
+        // token LiveData so AvaTOK's Cloudflare messaging registration keeps
+        // receiving token rotations as well; never log or emit the token.
+        val flutterForwarded = runCatching {
+            val type = Class.forName(
+                "io.flutter.plugins.firebase.messaging.FlutterFirebaseTokenLiveData",
+            )
+            val instance = type.getMethod("getInstance").invoke(null)
+            type.getMethod("postToken", String::class.java).invoke(instance, token)
+        }.isSuccess
+        StreamCallRuntime.emit(
+            "__push__",
+            "fcm_token_refreshed",
+            mapOf("flutterfire_forwarded" to flutterForwarded),
+        )
     }
 }

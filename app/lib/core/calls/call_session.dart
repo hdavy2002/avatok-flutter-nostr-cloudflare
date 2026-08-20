@@ -838,6 +838,16 @@ class CallSession {
   // The decision is immutable for this session; a Stream decision never falls
   // back to Cloudflare after the server has selected/rung Stream.
   CallProviderDecision? _providerDecision;
+  // Optimistic call screens exist before POST /api/call completes. Nothing may
+  // poll or start a no-answer/receptionist clock until the server has recorded
+  // both participants; otherwise a failed placement looks like a live call and
+  // produces a storm of `not_a_call_participant` 403s.
+  bool _placementResolved = false;
+  bool _placementFeedbackReady = false;
+  bool? _pendingPlacementReachable;
+  bool _pendingPlacementPrewarming = false;
+  int? _pendingPlacementPrewarmDeadlineMs;
+  bool _pendingPlacementFailure = false;
   bool _mediaBooted = false;
   bool _mediaBootStarting = false;
   bool _setupReadyForMedia = false;
@@ -849,6 +859,8 @@ class CallSession {
   int _secs = 0;
   bool _video = true;
   bool _camOn = true;
+  // User intent only. System/focus/cellular holds are separate gates in
+  // `_applyLocalAudioEnabled`; they must never overwrite the user's mute.
   bool _muted = false;
   // [CF-CALL-P2P-1] Serializes mid-call video renegotiation (enabling video on
   // an audio call) so it never races a concurrent offer from another path.
@@ -1526,11 +1538,8 @@ class CallSession {
     _onFocusHold = false;
     _focusLostMs = null;
     onCellularHold.value = false;
-    if (_muted) {
-      _muted = false;
-      muted.value = false;
-      _send({'type': 'mute', 'muted': false});
-    }
+    _applyLocalAudioEnabled();
+    _send({'type': 'mute', 'muted': _muted});
     // [CALLHOLD-1] The watchdog is the ONLY release for a permanent
     // AUDIOFOCUS_LOSS (see the field doc above), so it is also the only thing
     // that can un-pause a recorder held by that focus hold. Without this line a
@@ -1955,6 +1964,69 @@ class CallSession {
     _playoutHealthTimer = null;
   }
 
+  void _emitAudioDiagnostics(
+    Map<String, dynamic>? native, {
+    double? micAudioLevel,
+    double? micEnergyDelta,
+    int? audioBytesSentDelta,
+    int? jitterBufferEmittedDelta,
+  }) {
+    final props = <String, Object>{
+      'call_id': config.room,
+      'provider': _performanceProvider,
+      'role': _performanceRole,
+      'media_mode': config.video ? 'video' : 'audio',
+      'user_muted': _muted,
+      'focus_held': _onFocusHold,
+      'cellular_held': _onCellularHold,
+      'user_hold': _userHold,
+      'effective_mic_enabled':
+          !_muted && !_userHold && !_onFocusHold && !_onCellularHold,
+      'route_usable': _streamRtcActive ||
+          _rtkActive ||
+          !RemoteConfig.callAudioOwnerV1 ||
+          CallAudioController.instance.hasUsableConfirmedRoute,
+      'confirmed_route': _streamRtcActive
+          ? 'stream_sdk'
+          : (_rtkActive
+              ? 'realtimekit_sdk'
+              : CallAudioController.instance.confirmedRouteName),
+      'playout_underrun_observable': false,
+      if (micAudioLevel != null) 'mic_audio_level': micAudioLevel,
+      if (micEnergyDelta != null) 'mic_energy_delta': micEnergyDelta,
+      if (audioBytesSentDelta != null)
+        'audio_bytes_sent_delta': audioBytesSentDelta,
+      if (jitterBufferEmittedDelta != null)
+        'jitter_buffer_emitted_delta': jitterBufferEmittedDelta,
+      if (jitterBufferEmittedDelta != null)
+        'playout_stall_observed': jitterBufferEmittedDelta <= 0,
+    };
+    const allowedNative = <String>{
+      'available',
+      'audio_mode',
+      'audio_mode_value',
+      'active_route',
+      'communication_device_type',
+      'output_device_types',
+      'input_device_types',
+      'mic_muted',
+      'speakerphone_on',
+      'voice_volume',
+      'voice_volume_max',
+      'music_volume',
+      'music_volume_max',
+      'native_output_sample_rate',
+      'native_frames_per_buffer',
+      'native_focus_owner_inferred',
+      'native_focus_requested_by_avatok',
+    };
+    for (final key in allowedNative) {
+      final value = native?[key];
+      if (value != null) props[key] = value as Object;
+    }
+    Analytics.capture('call_audio_diagnostics', props);
+  }
+
   // ── [CALL-DEADAIR-1 2026-08-08] first-audio probe ──────────────────────────
   //
   // WHY A SECOND SAMPLER EXISTS AT ALL. The playout health sampler above is a 5s
@@ -2086,11 +2158,15 @@ class CallSession {
       // [CALL-RTK-4] 'rtk' is checked FIRST: an RTK call has no `_pc` at all, so
       // without this arm it would report as 'none'/'direct' — a media path that
       // is not the one carrying the audio.
-      'media_path': _rtkActive
-          ? 'rtk'
-          : (_sfuActive
-              ? 'sfu'
-              : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none'))),
+      'media_path': _streamRtcActive
+          ? 'stream'
+          : (_rtkActive
+              ? 'rtk'
+              : (_sfuActive
+                  ? 'sfu'
+                  : (_relayForced
+                      ? 'relay'
+                      : (_connected ? 'direct' : 'none')))),
       'outgoing': config.outgoing,
       'video': config.video,
       if (config.seed.isNotEmpty) 'peer_uid': config.seed,
@@ -2158,6 +2234,8 @@ class CallSession {
   /// `audibleReady.value` guard) but leave the listener double-registered
   /// until removal, which only removes one instance.
   bool _audibleGateArmed = false;
+  bool _audibleRouteRecoveryInFlight = false;
+  int _audibleRouteRecoveryAttempts = 0;
 
   // ─────────────────────────────────────────────────────────────────────────
   //  [CALL-AUDIBLE-2 2026-08-18] Real PLAYOUT evidence for the `_pc` path.
@@ -2283,7 +2361,7 @@ class CallSession {
     if (audibleReady.value || _audibleGateArmed) return;
     _audibleGateArmed = true;
     audioFlowing.addListener(_onAudioFlowingForGate);
-    final noStatsPath = _rtkActive || _pc == null;
+    final noStatsPath = _streamRtcActive || _rtkActive || _pc == null;
     if (noStatsPath) {
       // RealtimeKit (and any future no-`_pc` path): there is no `getStats()`
       // to poll for playout, so a real remote AUDIO track event
@@ -2294,6 +2372,10 @@ class CallSession {
             viaTimeout: false, flagOff: false, evidence: 'rtk_track');
         return;
       }
+      // Stream emits `first_audio_playout` only after decoded/jitter-buffer
+      // samples exist AND Android confirms an output route. Do not let a timer
+      // turn a remote-join or RTP-only event into a false healthy call.
+      if (_streamRtcActive) return;
       _audibleSafetyTimer?.cancel();
       _audibleSafetyTimer = Timer(_kAudibleSafetyTimeout, () {
         if (_ended || audibleReady.value) return;
@@ -2315,7 +2397,7 @@ class CallSession {
 
   void _onAudioFlowingForGate() {
     if (!audioFlowing.value) return;
-    final noStatsPath = _rtkActive || _pc == null;
+    final noStatsPath = _streamRtcActive || _rtkActive || _pc == null;
     if (noStatsPath) {
       _markAudibleReady(
           viaTimeout: false, flagOff: false, evidence: 'rtk_track');
@@ -2337,6 +2419,52 @@ class CallSession {
         evidence, // 'playout' | 'bytes_fallback' | 'rtk_track' | 'timeout' | 'flag_off'
   }) {
     if (audibleReady.value) return;
+    // RTP/jitter-buffer progress is necessary but not sufficient. The native
+    // platform must also have confirmed a usable output route; otherwise a
+    // perfectly healthy packet stream can still be silent to the person.
+    if (!flagOff &&
+        !_streamRtcActive &&
+        !_rtkActive &&
+        RemoteConfig.callAudioOwnerV1 &&
+        !CallAudioController.instance.hasUsableConfirmedRoute) {
+      if (!_audibleRouteRecoveryInFlight && _audibleRouteRecoveryAttempts < 2) {
+        _audibleRouteRecoveryInFlight = true;
+        _audibleRouteRecoveryAttempts++;
+        final attempt = _audibleRouteRecoveryAttempts;
+        Analytics.capture('call_audible_route_recovery_started', {
+          'call_id': config.room,
+          'attempt': attempt,
+          'playout_evidence': evidence,
+          'confirmed_route': CallAudioController.instance.confirmedRouteName,
+        });
+        unawaited(() async {
+          try {
+            await CallAudioController.instance.apply(
+              source: 'audible_gate_recovery_$attempt',
+            );
+          } finally {
+            _audibleRouteRecoveryInFlight = false;
+          }
+          if (_ended || audibleReady.value) return;
+          if (CallAudioController.instance.hasUsableConfirmedRoute) {
+            _markAudibleReady(
+              viaTimeout: viaTimeout,
+              flagOff: flagOff,
+              evidence: '${evidence}_route_recovered',
+            );
+          } else if (attempt >= 2) {
+            Analytics.capture('call_audible_route_unconfirmed', {
+              'call_id': config.room,
+              'attempts': attempt,
+              'playout_evidence': evidence,
+              'confirmed_route':
+                  CallAudioController.instance.confirmedRouteName,
+            });
+          }
+        }());
+      }
+      return;
+    }
     audibleReady.value = true;
     _audibleSafetyTimer?.cancel();
     _audibleSafetyTimer = null;
@@ -2356,17 +2484,30 @@ class CallSession {
         'ms_from_connected': _connectedAtMs == 0 ? -1 : now - _connectedAtMs,
         'ms_from_start': _setupT0 == 0 ? -1 : now - _setupT0,
         if (_answerAtMs != null) 'ms_from_answer': now - _answerAtMs!,
-        'media_path': _rtkActive
-            ? 'rtk'
-            : (_sfuActive
-                ? 'sfu'
-                : (_relayForced ? 'relay' : (_connected ? 'direct' : 'none'))),
+        'media_path': _streamRtcActive
+            ? 'stream'
+            : (_rtkActive
+                ? 'rtk'
+                : (_sfuActive
+                    ? 'sfu'
+                    : (_relayForced
+                        ? 'relay'
+                        : (_connected ? 'direct' : 'none')))),
         'outgoing': config.outgoing,
         'video': config.video,
         // [CALL-AUDIBLE-2] Which signal actually fired, so PostHog can prove
         // the milestone is playout-backed rather than merely "an event
         // arrived" (ship-gate rule 3).
         'evidence': evidence,
+        'route_usable': _streamRtcActive ||
+            _rtkActive ||
+            !RemoteConfig.callAudioOwnerV1 ||
+            CallAudioController.instance.hasUsableConfirmedRoute,
+        'confirmed_route': _streamRtcActive
+            ? 'stream_sdk'
+            : (_rtkActive
+                ? 'realtimekit_sdk'
+                : CallAudioController.instance.confirmedRouteName),
       };
       Analytics.capture(
           viaTimeout ? 'call_audible_timeout' : 'call_audible_ready', props);
@@ -2545,6 +2686,7 @@ class CallSession {
       String activeAudioRoute = 'unknown';
       bool routeConfirmed = false;
       bool? nativeFocusHeld;
+      Map<String, dynamic>? nativeAudioDiagnostics;
       if (RemoteConfig.callAudioControllerV2) {
         try {
           final r = await NativeVoiceAudio.instance.getActiveRoute();
@@ -2554,6 +2696,10 @@ class CallSession {
         } catch (_) {}
         nativeFocusHeld = !_onFocusHold;
       }
+      try {
+        nativeAudioDiagnostics =
+            await NativeVoiceAudio.instance.getAudioDiagnostics();
+      } catch (_) {}
 
       // [CF-CALL-P2P-1] video decode/render confirmation — computed once so
       // both the early-return "no inbound audio" snapshot below and the main
@@ -2652,6 +2798,12 @@ class CallSession {
       _phOutboundAudioEnergy = outboundTotalAudioEnergy;
 
       if (!foundInboundAudio) {
+        _emitAudioDiagnostics(
+          nativeAudioDiagnostics,
+          micAudioLevel: outboundAudioLevel,
+          micEnergyDelta: outboundEnergyDelta,
+          audioBytesSentDelta: audioBytesSentDelta,
+        );
         // No inbound-audio stat exists yet at all — unknown, never inferred.
         _telemetry.mediaHealth(MediaHealthSnapshot(
           cls: MediaHealthClass.unknown,
@@ -2799,6 +2951,14 @@ class CallSession {
         }
       }
       _lastPlayoutHealthClass = cls;
+
+      _emitAudioDiagnostics(
+        nativeAudioDiagnostics,
+        micAudioLevel: outboundAudioLevel,
+        micEnergyDelta: outboundEnergyDelta,
+        audioBytesSentDelta: audioBytesSentDelta,
+        jitterBufferEmittedDelta: jbufEmittedDelta,
+      );
 
       _telemetry.mediaHealth(MediaHealthSnapshot(
         cls: cls,
@@ -3161,7 +3321,7 @@ class CallSession {
   /// globals and start the foreground service at call SETUP. Idempotent so a
   /// re-attaching view can't re-run it.
   Future<void> start() async {
-    if (_started) return;
+    if (_started || _ended || _teardownStarted) return;
     _started = true;
     // [CALL-RESTORE-1] Derive the stable per-(device, room) peer id BEFORE any
     // code path can open the signalling socket — the id is baked into the `?id=`
@@ -3170,6 +3330,7 @@ class CallSession {
     // `_bootMedia()` (which connects) is awaited at the END of this method, so
     // doing it first here is sufficient and race-free.
     await _adoptStablePeerId();
+    if (_ended || _teardownStarted) return;
     // [AVATOK-DIAL-GUARD-1] Stamp the staleness anchor the instant the counter
     // goes 0 -> >0 (not on every start(), since re-entry into an already-live
     // session must not push the anchor forward and mask real staleness).
@@ -3214,6 +3375,22 @@ class CallSession {
       provider: config.mediaProvider.wire,
     );
     _telemetry.started();
+    _placementFeedbackReady = true;
+    if (_pendingPlacementFailure) {
+      _pendingPlacementFailure = false;
+      notePlaceFailed();
+      return;
+    } else if (_pendingPlacementReachable != null) {
+      final reachable = _pendingPlacementReachable!;
+      final prewarming = _pendingPlacementPrewarming;
+      final deadline = _pendingPlacementPrewarmDeadlineMs;
+      _pendingPlacementReachable = null;
+      scheduleMicrotask(() => notePlaceResult(
+            reachable,
+            prewarming: prewarming,
+            prewarmDeadlineMs: deadline,
+          ));
+    }
     // [CALL-DEADAIR-1] Anchor the stage stopwatch to the SAME instant as
     // `call_started`, so every number on `call_first_audio_ms` can be compared
     // directly against that event's timestamp in PostHog.
@@ -3460,7 +3637,8 @@ class CallSession {
       });
     }
     if (config.outgoing) {
-      _startHandoffAuthorityPoll();
+      _placementResolved = _placementResolved || !config.deferRing;
+      if (!config.deferRing) _startHandoffAuthorityPoll();
       // CALL-GLARE-1: publish our pending outgoing dial for the incoming-push
       // handler's glare detection. Cleared on connect + on teardown.
       gOutgoingCallTo = config.seed;
@@ -3846,6 +4024,12 @@ class CallSession {
         break;
       case RtcSessionEvent.firstAudioPlayout:
         _markStreamConnected('first_audio_playout');
+        audioFlowing.value = true;
+        _markAudibleReady(
+          viaTimeout: false,
+          flagOff: !RemoteConfig.callAudibleStateV1,
+          evidence: 'stream_first_audio_playout',
+        );
         if (RemoteConfig.callFirstAudioProbeV1 && !_firstAudioReported) {
           _reportFirstAudio(bytes: -1, outcome: 'audio');
         }
@@ -4465,11 +4649,8 @@ class CallSession {
         _onFocusHold = true;
         _focusLostMs = DateTime.now().millisecondsSinceEpoch;
         onCellularHold.value = true; // reuse the "on hold" UI signal
-        if (!_muted) {
-          _muted = true;
-          muted.value = true;
-          _send({'type': 'mute', 'muted': true});
-        }
+        _applyLocalAudioEnabled();
+        _send({'type': 'mute', 'muted': true});
         _syncRecorderHold(); // [CALLHOLD-1] our capture is gone — hold the recorder
         Analytics.capture('call_audio_focus_lost', {'call_id': config.room});
         // [CALL-FOCUS-DEADLOCK-1] Arm the release watchdog — see the field doc.
@@ -4490,11 +4671,8 @@ class CallSession {
         _focusLostMs = null;
         // Only clear the hold banner if a cellular hold isn't also active.
         if (!_onCellularHold) onCellularHold.value = false;
-        if (_muted && !_onCellularHold) {
-          _muted = false;
-          muted.value = false;
-          _send({'type': 'mute', 'muted': false});
-        }
+        _applyLocalAudioEnabled();
+        _send({'type': 'mute', 'muted': _muted});
         _syncRecorderHold(); // [CALLHOLD-1] capture is back — resume the recorder
         Analytics.capture('call_audio_focus_regained', {
           'call_id': config.room,
@@ -4514,21 +4692,15 @@ class CallSession {
           if (state == 'held' && !_onCellularHold) {
             _onCellularHold = true;
             onCellularHold.value = true;
-            if (!_muted) {
-              _muted = true;
-              muted.value = true;
-              _send({'type': 'mute', 'muted': true});
-            }
+            _applyLocalAudioEnabled();
+            _send({'type': 'mute', 'muted': true});
             _syncRecorderHold(); // [CALLHOLD-1]
             Analytics.capture('call_cellular_held', {'call_id': config.room});
           } else if (state == 'resumed' && _onCellularHold) {
             _onCellularHold = false;
             onCellularHold.value = false;
-            if (_muted) {
-              _muted = false;
-              muted.value = false;
-              _send({'type': 'mute', 'muted': false});
-            }
+            _applyLocalAudioEnabled();
+            _send({'type': 'mute', 'muted': _muted});
             _syncRecorderHold(); // [CALLHOLD-1]
             Analytics.capture(
                 'call_cellular_resumed', {'call_id': config.room});
@@ -5251,10 +5423,24 @@ class CallSession {
   /// The ONE place outgoing mic tracks are enabled/disabled, so mute and hold
   /// can never overwrite each other. Off if EITHER says off.
   void _applyLocalAudioEnabled() {
+    final on = !_muted && !_userHold && !_onFocusHold && !_onCellularHold;
     try {
-      final on = !_muted && !_userHold;
       _stream?.getAudioTracks().forEach((t) => t.enabled = on);
     } catch (_) {/* stream torn down mid-toggle */}
+    final streamRtc = _streamRtc;
+    if (_streamRtcActive && streamRtc != null) {
+      unawaited(() async {
+        try {
+          await streamRtc.publishMic(enabled: on);
+        } catch (e) {
+          Analytics.capture('stream_call_mic_apply_failed', {
+            'call_id': config.room,
+            'enabled': on,
+            'error_class': e.runtimeType.toString(),
+          });
+        }
+      }());
+    }
   }
 
   /// Stop (or restore) rendering and playing the peer's audio.
@@ -5265,6 +5451,18 @@ class CallSession {
   /// across all of them. Awaited but never fatal: hold is already correct
   /// locally before this runs.
   Future<void> _applyRemoteAudioEnabled(bool on) async {
+    final streamRtc = _streamRtc;
+    if (_streamRtcActive && streamRtc is StreamCallSession) {
+      try {
+        await streamRtc.setSpeaker(enabled: on);
+      } catch (e) {
+        Analytics.capture('stream_call_speaker_apply_failed', {
+          'call_id': config.room,
+          'enabled': on,
+          'error_class': e.runtimeType.toString(),
+        });
+      }
+    }
     try {
       final receivers = await _pc?.getReceivers();
       for (final r in receivers ?? const <RTCRtpReceiver>[]) {
@@ -8958,6 +9156,15 @@ class CallSession {
     // hold is still honoured on resume.
     _applyLocalAudioEnabled();
     muted.value = _muted;
+    Analytics.capture('call_mute_changed', {
+      'call_id': config.room,
+      'user_muted': _muted,
+      'focus_held': _onFocusHold,
+      'cellular_held': _onCellularHold,
+      'effective_mic_enabled':
+          !_muted && !_userHold && !_onFocusHold && !_onCellularHold,
+      'source': 'user',
+    });
   }
 
   /// Sends an RFC 4733 DTMF tone through the negotiated audio sender. This is
@@ -10016,6 +10223,13 @@ class CallSession {
       return;
     }
     _pendingRingWindow = window;
+    if (config.deferRing && !_placementResolved) {
+      Analytics.capture('call_ring_window_deferred', {
+        'call_id': config.room,
+        'reason': 'placement_pending',
+      });
+      return;
+    }
     if (_deviceRinging) {
       _startRingWindow(window);
       return;
@@ -10276,10 +10490,19 @@ class CallSession {
   void notePlaceResult(bool reachable,
       {bool prewarming = false, int? prewarmDeadlineMs}) {
     if (_ended || _connected) return;
+    _placementResolved = true;
+    if (!_placementFeedbackReady) {
+      _pendingPlacementReachable = reachable;
+      _pendingPlacementPrewarming = prewarming;
+      _pendingPlacementPrewarmDeadlineMs = prewarmDeadlineMs;
+      return;
+    }
     if (!reachable) {
+      _handoffAuthorityPoll?.cancel();
       _onRingAck(false);
       return;
     }
+    _startHandoffAuthorityPoll();
     // [STREAM-CALL-PILOT-2] A provider decision is required before an
     // optimistic session can acquire media. Old workers do not send one, so
     // the documented compatibility default is Cloudflare. A Stream decision
@@ -10361,6 +10584,15 @@ class CallSession {
   /// the pre-mount abort the old awaited path performed before it ever mounted.
   void notePlaceFailed() {
     if (_ended || _connected) return;
+    _placementResolved = true;
+    if (!_placementFeedbackReady) {
+      _pendingPlacementFailure = true;
+      return;
+    }
+    _handoffAuthorityPoll?.cancel();
+    _ringAckFallback?.cancel();
+    _deviceRingingTimer?.cancel();
+    _ringTimeout?.cancel();
     _endWith('network-error', reason: 'place-call-failed');
   }
 

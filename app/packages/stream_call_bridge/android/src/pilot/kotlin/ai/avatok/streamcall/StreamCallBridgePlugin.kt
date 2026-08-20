@@ -67,6 +67,7 @@ internal object StreamCallRuntime {
     private val acceptingCalls = ConcurrentHashMap.newKeySet<String>()
     private val joiningCalls = ConcurrentHashMap.newKeySet<String>()
     private val joinedCalls = ConcurrentHashMap.newKeySet<String>()
+    private val micEnabled = ConcurrentHashMap<String, Boolean>()
     private val callJobs = ConcurrentHashMap<String, MutableList<Job>>()
     private var clientEvents: EventSubscription? = null
 
@@ -270,7 +271,13 @@ internal object StreamCallRuntime {
             joinedCalls.add(callId)
             call.camera.disable()
             call.microphone.setEnabled(true)
-            emit(callId, "connected", mapOf("join_ms" to (System.currentTimeMillis() - joinedAt)))
+            micEnabled[callId] = true
+            emit(
+                callId,
+                "connected",
+                mapOf("join_ms" to (System.currentTimeMillis() - joinedAt)) +
+                    audioDiagnostics(callId = callId),
+            )
         } finally {
             joiningCalls.remove(callId)
         }
@@ -344,7 +351,18 @@ internal object StreamCallRuntime {
                         participant.audioLevel.collectLatest { level ->
                             if (trackReported.get() && level > 0f &&
                                 audioReported.compareAndSet(false, true)) {
-                                emit(callId, "first_audio_playout", mapOf("inbound_audio_level" to level))
+                                val diagnostics = audioDiagnostics(callId = callId)
+                                emit(
+                                    callId,
+                                    if (diagnostics["route_confirmed"] == true)
+                                        "first_audible_voice"
+                                    else
+                                        "audio_route_unconfirmed",
+                                    mapOf(
+                                        "inbound_audio_level" to level,
+                                        "playout_evidence" to "remote_audio_level",
+                                    ) + diagnostics,
+                                )
                             }
                         }
                     }
@@ -361,6 +379,9 @@ internal object StreamCallRuntime {
         var previousAtMs = 0L
         var previousBytesReceived = -1.0
         var previousBytesSent = -1.0
+        var packetReported = false
+        var playoutReported = false
+        var routeUnconfirmedReported = false
         call.statsReport.collectLatest { report ->
             report ?: return@collectLatest
             val inbound = report.subscriber?.origin?.statsMap?.values
@@ -390,6 +411,13 @@ internal object StreamCallRuntime {
             val packetsLost = number(inbound?.members?.get("packetsLost"))
             val bytesReceived = number(inbound?.members?.get("bytesReceived"))
             val bytesSent = number(outbound?.members?.get("bytesSent"))
+            val totalSamplesReceived =
+                number(inbound?.members?.get("totalSamplesReceived"))
+            val jitterBufferEmittedCount =
+                number(inbound?.members?.get("jitterBufferEmittedCount"))
+            val concealedSamples = number(inbound?.members?.get("concealedSamples"))
+            val silentConcealedSamples =
+                number(inbound?.members?.get("silentConcealedSamples"))
             val packetTotal = (packetsReceived ?: 0.0) + (packetsLost ?: 0.0)
             val safe = linkedMapOf<String, Any?>()
             number(pair?.members?.get("currentRoundTripTime"))?.let { safe["rtt_ms"] = it * 1000 }
@@ -402,11 +430,40 @@ internal object StreamCallRuntime {
             packetsReceived?.let { safe["packets_received"] = it }
             number(outbound?.members?.get("packetsSent"))?.let { safe["packets_sent"] = it }
             packetsLost?.let { safe["packets_lost"] = it }
+            totalSamplesReceived?.let { safe["total_samples_received"] = it }
+            jitterBufferEmittedCount?.let {
+                safe["jitter_buffer_emitted_count"] = it
+            }
+            concealedSamples?.let { safe["concealed_samples"] = it }
+            silentConcealedSamples?.let {
+                safe["silent_concealed_samples"] = it
+            }
+            if (concealedSamples != null && totalSamplesReceived != null &&
+                totalSamplesReceived > 0) {
+                safe["concealment_pct"] =
+                    concealedSamples * 100 / totalSamplesReceived
+            }
+            val jitterBufferDelay =
+                number(inbound?.members?.get("jitterBufferDelay"))
+            if (jitterBufferDelay != null && jitterBufferEmittedCount != null &&
+                jitterBufferEmittedCount > 0) {
+                safe["jitter_buffer_ms"] =
+                    jitterBufferDelay * 1000 / jitterBufferEmittedCount
+            }
+            number(inbound?.members?.get("interruptionCount"))?.let {
+                safe["interruption_count"] = it
+            }
+            number(inbound?.members?.get("totalInterruptionDuration"))?.let {
+                safe["total_interruption_ms"] = it * 1000
+            }
+            safe["playout_underrun_observable"] = false
             number(pair?.members?.get("availableOutgoingBitrate"))?.let {
                 safe["available_bandwidth_kbps"] = it / 1000
             }
             codec?.members?.get("mimeType")?.toString()?.let { safe["codec_audio"] = it }
-            number(codec?.members?.get("clockRate"))?.let { safe["sample_rate"] = it }
+            number(codec?.members?.get("clockRate"))?.let {
+                safe["codec_sample_rate"] = it
+            }
             number(codec?.members?.get("channels"))?.let { safe["channels"] = it }
             report.local?.let {
                 safe["sfu"] = it.sfu
@@ -414,12 +471,41 @@ internal object StreamCallRuntime {
             }
             appContext?.let { context ->
                 safe["network_type"] = networkType(context)
-                safe["audio_route"] = audioRoute(context)
                 safe["device_model"] = Build.MODEL
                 safe["android_sdk"] = Build.VERSION.SDK_INT
+                safe.putAll(audioDiagnostics(context, callId))
                 val battery = (context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)
                     ?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
                 if (battery in 0..100) safe["battery_level"] = battery
+            }
+            if (!playoutReported &&
+                ((totalSamplesReceived ?: 0.0) > 0.0 ||
+                    (jitterBufferEmittedCount ?: 0.0) > 0.0) &&
+                safe["route_confirmed"] == true) {
+                playoutReported = true
+                emit(
+                    callId,
+                    "first_audio_playout",
+                    safe + mapOf("playout_evidence" to "decoded_samples"),
+                )
+            } else if (!playoutReported && !routeUnconfirmedReported &&
+                ((totalSamplesReceived ?: 0.0) > 0.0 ||
+                    (jitterBufferEmittedCount ?: 0.0) > 0.0) &&
+                safe["route_confirmed"] != true) {
+                routeUnconfirmedReported = true
+                emit(
+                    callId,
+                    "audio_route_unconfirmed",
+                    safe + mapOf("playout_evidence" to "decoded_samples"),
+                )
+            }
+            if (!packetReported && (bytesReceived ?: 0.0) > 0.0) {
+                packetReported = true
+                emit(
+                    callId,
+                    "first_audio_packet",
+                    safe + mapOf("packet_evidence" to "bytes_received"),
+                )
             }
             val nowMs = System.currentTimeMillis()
             val elapsedMs = nowMs - previousAtMs
@@ -451,19 +537,28 @@ internal object StreamCallRuntime {
         }
     }
 
-    private fun audioRoute(context: Context): String {
+    private data class AudioRouteSnapshot(val route: String, val confirmed: Boolean)
+
+    private fun audioRoute(context: Context): AudioRouteSnapshot {
         val manager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            ?: return "unknown"
+            ?: return AudioRouteSnapshot("unknown", false)
         val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             manager.communicationDevice
         } else {
-            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { candidate ->
+            val outputs = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            outputs.firstOrNull { candidate ->
                 candidate.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
                     candidate.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
                     candidate.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+            } ?: outputs.firstOrNull { candidate ->
+                if (manager.isSpeakerphoneOn) {
+                    candidate.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                } else {
+                    candidate.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                }
             }
         }
-        return when (device?.type) {
+        val route = when (device?.type) {
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
             AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "bluetooth"
             AudioDeviceInfo.TYPE_WIRED_HEADSET,
@@ -471,21 +566,80 @@ internal object StreamCallRuntime {
             AudioDeviceInfo.TYPE_USB_HEADSET -> "headset"
             AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "earpiece"
             AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
-            null -> if (manager.isSpeakerphoneOn) "speaker" else "earpiece"
+            null -> "unknown"
             else -> "other"
         }
+        return AudioRouteSnapshot(route, device != null && route != "other")
+    }
+
+    /** Sanitized native audio truth. Never includes device names or addresses. */
+    private fun audioDiagnostics(
+        context: Context? = appContext,
+        callId: String? = null,
+    ): Map<String, Any?> {
+        val manager = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: return mapOf("audio_diagnostics_available" to false)
+        val mode = when (manager.mode) {
+            AudioManager.MODE_IN_CALL -> "in_call"
+            AudioManager.MODE_IN_COMMUNICATION -> "in_communication"
+            AudioManager.MODE_RINGTONE -> "ringtone"
+            AudioManager.MODE_CALL_SCREENING -> "call_screening"
+            else -> "normal"
+        }
+        val route = audioRoute(context)
+        val outputTypes = runCatching {
+            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .map { it.type }.distinct().sorted().joinToString(",")
+        }.getOrDefault("unknown")
+        val inputTypes = runCatching {
+            manager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                .map { it.type }.distinct().sorted().joinToString(",")
+        }.getOrDefault("unknown")
+        return mapOf(
+            "audio_diagnostics_available" to true,
+            "audio_route" to route.route,
+            "route_confirmed" to route.confirmed,
+            "output_device_types" to outputTypes,
+            "input_device_types" to inputTypes,
+            "audio_mode" to mode,
+            "audio_focus_owner_inferred" to "stream_sdk",
+            "sdk_mic_enabled" to (callId?.let { micEnabled[it] } ?: true),
+            "system_mic_muted" to manager.isMicrophoneMute,
+            "speakerphone_on" to manager.isSpeakerphoneOn,
+            "voice_volume" to manager.getStreamVolume(AudioManager.STREAM_VOICE_CALL),
+            "voice_volume_max" to manager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL),
+            "output_sample_rate" to
+                (manager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE) ?: "unknown"),
+            "frames_per_buffer" to
+                (manager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER) ?: "unknown"),
+            "noise_cancellation_requested" to true,
+            "echo_cancellation_requested" to true,
+            "auto_gain_control_requested" to true,
+            "audio_tuning_owner" to "stream_sdk_defaults",
+        )
     }
 
     fun setMic(callId: String, enabled: Boolean) {
+        micEnabled[callId] = enabled
         calls[callId]?.microphone?.setEnabled(enabled)
+        emit(
+            callId,
+            "mic_state",
+            mapOf("sdk_mic_enabled" to enabled) + audioDiagnostics(callId = callId),
+        )
+    }
+
+    fun setSpeaker(callId: String, enabled: Boolean) {
+        calls[callId]?.speaker?.setEnabled(enabled)
+        emit(callId, "speaker_state", mapOf("sdk_speaker_enabled" to enabled))
     }
 
     fun reject(callId: String, caller: Boolean) {
         calls[callId]?.let { call ->
             scope.launch {
                 call.reject(if (caller) RejectReason.Cancel else RejectReason.Decline)
-                call.leave()
                 emit(callId, "rejected", mapOf("reason" to if (caller) "cancelled" else "declined"))
+                leave(callId)
             }
         }
     }
@@ -497,6 +651,7 @@ internal object StreamCallRuntime {
         acceptingCalls.remove(callId)
         joiningCalls.remove(callId)
         joinedCalls.remove(callId)
+        micEnabled.remove(callId)
         callTypes.remove(callId)
         emit(callId, "left")
     }
@@ -564,6 +719,9 @@ class StreamCallBridgePlugin : FlutterPlugin,
                     StreamCallRuntime.prepareCall(context, args)
                 "join" -> StreamCallRuntime.join(context, args)
                 "set_mic" -> StreamCallRuntime.setMic(
+                    args["call_id"]?.toString().orEmpty(), args["enabled"] == true,
+                )
+                "set_speaker" -> StreamCallRuntime.setSpeaker(
                     args["call_id"]?.toString().orEmpty(), args["enabled"] == true,
                 )
                 "set_camera" -> if (args["enabled"] == true) error("audio_only")

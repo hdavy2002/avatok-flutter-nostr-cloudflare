@@ -318,6 +318,17 @@ class NativeVoiceAudio {
     }
   }
 
+  /// [CALL-AUDIO-DIAG-1] Scrubbed native audio state for call telemetry.
+  /// Native intentionally returns device types only, never names/addresses.
+  Future<Map<String, dynamic>?> getAudioDiagnostics() async {
+    try {
+      final r = await _m.invokeMethod<dynamic>('getAudioDiagnostics');
+      return r is Map ? Map<String, dynamic>.from(r) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// [CALL-REL-2] Plan §5 active-route readback for a can-duck focus signal:
   /// AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK does not guarantee Android actually
   /// ducked/moved the communication stream, so confirm the real route rather
