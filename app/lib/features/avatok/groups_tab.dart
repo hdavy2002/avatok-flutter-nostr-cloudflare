@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
@@ -6,6 +7,7 @@ import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../identity/identity.dart';
@@ -421,17 +423,14 @@ class _GroupsTabState extends State<GroupsTab> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Inline dark empty tile (replaces ZineEmptyState).
-            Container(
-              width: 72, height: 72,
-              decoration: BoxDecoration(
-                color: AD.card,
-                borderRadius: BorderRadius.circular(AD.rListCard),
-                border: Border.all(color: AD.borderControl, width: 1),
-              ),
-              child: Center(child: PhosphorIcon(
-                  PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-                  size: 32, color: AD.textTertiary)),
+            // [RAJ-SEAMS-1] Rajasthani flower medallion replaces the icon-tile
+            // for the Groups empty state — decorative, next to the copy below.
+            SvgPicture.asset(
+              Illustrations.groupsMotif,
+              width: 108,
+              height: 108,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
             ),
             const SizedBox(height: Msg.s3),
             Text(

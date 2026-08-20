@@ -17,8 +17,10 @@ import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
 import '../../core/wallet_topup_billing.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import '../../shell/shell_v2.dart' show ShellScope;
 import '../../shell/v2/shell_chrome.dart' show ShellSidebar;
 import '../payout/payout_screen.dart';
@@ -1244,7 +1246,29 @@ class _WalletScreenState extends State<WalletScreen> {
       radius: Msg.rLg,
       padding: const EdgeInsets.all(Msg.s5),
       hardBorder: true,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Stack(children: [
+        // [RAJ-SEAMS-1] Decorative corner watermark, top-right, clipped to the
+        // card's own rounded border. Below the real content in paint order so
+        // it never competes with the balance figure or the buttons.
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(Msg.rLg),
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Opacity(
+                opacity: 0.16,
+                child: SvgPicture.asset(
+                  Illustrations.walletMotif120,
+                  width: 120,
+                  height: 120,
+                  fit: BoxFit.contain,
+                  excludeFromSemantics: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
             width: 36,
@@ -1323,6 +1347,7 @@ class _WalletScreenState extends State<WalletScreen> {
             },
           ),
         ],
+        ]),
       ]),
     );
   }

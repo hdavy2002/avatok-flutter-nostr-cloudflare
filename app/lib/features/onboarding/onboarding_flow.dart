@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -260,22 +261,28 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         child: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
-                child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    for (var i = 1; i <= _steps; i++) ...[
-                      Container(width: 9, height: 9, decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: i == _step + 1 ? AD.primaryBadge : AD.card,
-                        border: Border.all(color: AD.borderControl, width: 1))),
-                      const SizedBox(width: Msg.s2),
-                    ],
-                    const SizedBox(width: 4),
-                    Text('STEP ${_step + 1} / $_steps', style: ADText.sectionLabel()),
+              // [RAJ-SEAMS-1] Suppressed on the permissions step ONLY. That step
+              // now draws the designer's rani band, which carries its own
+              // two-segment progress bar and "STEP 2/2" label; leaving this
+              // generic row in as well stacked two step indicators on one
+              // screen. Every other step still uses this shared row.
+              if (_stepNames[_step] != 'permissions')
+                Padding(
+                  padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      for (var i = 1; i <= _steps; i++) ...[
+                        Container(width: 9, height: 9, decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i == _step + 1 ? AD.primaryBadge : AD.card,
+                          border: Border.all(color: AD.borderControl, width: 1))),
+                        const SizedBox(width: Msg.s2),
+                      ],
+                      const SizedBox(width: 4),
+                      Text('STEP ${_step + 1} / $_steps', style: ADText.sectionLabel()),
+                    ]),
                   ]),
-                ]),
-              ),
+                ),
               Expanded(child: _body()),
             ],
           ),
@@ -782,31 +789,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final allGranted = rows.every((r) => _permGranted[r.id] == true);
     return Column(
       children: [
+        _permissionsBand(hPad),
         Expanded(
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ZineIconBadge(
-                    icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
-                    color: AD.online, size: 44),
-                const SizedBox(height: 16),
-                Text.rich(
-                  TextSpan(children: [
-                    const TextSpan(text: 'A few '),
-                    TextSpan(text: 'permissions', style: const TextStyle(color: AD.primaryBadge)),
-                  ]),
-                  textAlign: TextAlign.left,
-                  style: ADText.appTitle().copyWith(
-                      fontSize: ZineBreakpoints.heroTextSize(context, regular: 28), height: 1.08),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                    'AvaTOK asks for everything it needs once, here — with a reason for '
-                    'each. You can change any of these later in Settings.',
-                    style: ADText.preview(c: AD.textSecondary).copyWith(fontSize: 14)),
-                const SizedBox(height: Msg.s4),
                 for (final r in rows) ...[
                   _permissionRow(r),
                   const SizedBox(height: 12),
@@ -828,6 +817,93 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       onTap: _permBusy ? null : _next, underline: AD.iconSearch),
                 ]),
         ),
+      ],
+    );
+  }
+
+  /// Rani-pink permissions header band — ~118px content, per the designer's
+  /// mockup-pulled structure (status row / 2-segment STEP 2/2 progress /
+  /// headline with a rotated haldi "permissions" chip / subtitle), then 2E
+  /// FlowerChainSeam straddling a hard 3px ink bottom border — the exact
+  /// Stack pattern used by `profile_screen.dart`'s header (band Column with a
+  /// 15px spacer + `Positioned(bottom: 0)` seam, bottom-anchored so the
+  /// flowers sit centred on the border on every device). Rani pink is a DARK
+  /// band, so every foreground element is `AD.onBand(AD.bandRani)` (cream);
+  /// the STEP label and progress fill are haldi per the designer's spec.
+  Widget _permissionsBand(double hPad) {
+    const band = AD.bandRani;
+    final onBand = AD.onBand(band);
+    // [RAJ-SEAMS-1] The mockup draws two segments and a literal "STEP 2/2",
+    // because the mockup's flow had two steps. THIS flow's step list is
+    // dynamic — `_stepNames` shrinks when a step is flag-disabled — so a
+    // hardcoded 2/2 would simply lie to the user on most runs. Same haldi
+    // segment language, real numbers: one segment per step, filled up to the
+    // current one.
+    Widget segment({required bool done}) => Container(
+          height: 4,
+          decoration: BoxDecoration(
+            color: done ? AD.haldi : AD.onBandCream.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        );
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            decoration: const BoxDecoration(
+              color: band,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(hPad, Msg.s2, hPad, Msg.s4),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    for (var i = 0; i < _steps; i++) ...[
+                      Expanded(child: segment(done: i <= _step)),
+                      const SizedBox(width: 6),
+                    ],
+                    const SizedBox(width: 4),
+                    Text('STEP ${_step + 1}/$_steps',
+                        style: TextStyle(
+                            fontFamily: ADText.family,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            letterSpacing: 0.6,
+                            color: AD.haldi)),
+                  ]),
+                  const SizedBox(height: Msg.s3),
+                  Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    Text('A few ',
+                        style: ADText.appTitle(c: onBand).copyWith(fontSize: 24, height: 1.15)),
+                    Transform.rotate(
+                      angle: -1.5 * math.pi / 180,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AD.haldi,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('permissions',
+                            style: ADText.appTitle(c: AD.onBandInk)
+                                .copyWith(fontSize: 24, height: 1.15)),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: Msg.s1),
+                  Text(
+                      'AvaTOK asks for everything it needs once, here — with a reason for '
+                      'each. You can change any of these later in Settings.',
+                      style: ADText.preview(c: onBand).copyWith(fontSize: 13)),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+        ]),
+        const Positioned(left: 0, right: 0, bottom: 0, child: FlowerChainSeam()),
       ],
     );
   }

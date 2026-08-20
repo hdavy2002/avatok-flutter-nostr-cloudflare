@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -33,6 +34,7 @@ import 'add_to_call_sheet.dart'; // [ADDCALL-1-UI]
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
 import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1]
+import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -1801,31 +1803,54 @@ class _CallScreenState extends State<CallScreen> {
                             textAlign: TextAlign.center,
                             style: ADText.appTitle().copyWith(fontSize: 28)),
                       ] else ...[
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color:
-                                phase == 'ava-countdown' ? AD.iconVideo : null,
-                            border:
-                                Border.all(color: AD.borderAvatar, width: 2),
-                            boxShadow: const [],
-                          ),
-                          child: phase == 'ava-countdown'
-                              ? SizedBox(
-                                  width: 132,
-                                  height: 132,
-                                  child: Center(
-                                      child: Text('${s.avaCount}',
-                                          style: ADText.appTitle()
-                                              .copyWith(fontSize: 76))),
-                                )
-                              : Avatar(
-                                  seed: widget.seed,
-                                  name: widget.title,
-                                  size: 132,
-                                  avatarUrl: widget.avatarUrl.isEmpty
-                                      ? null
-                                      : widget.avatarUrl),
+                        // [RAJ-SEAMS-1] Rajasthani hero art, centred BEHIND
+                        // the caller avatar — different motif for "still
+                        // ringing/dialing" (inCallHero1) vs "connected, live
+                        // conversation" (inCallHero2). `connected` mirrors
+                        // `s.isConnected` used everywhere else on this screen
+                        // (see `_connectedLabel`/`audible` above), so this
+                        // never drifts from the status text/timer the user is
+                        // already reading.
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SvgPicture.asset(
+                              connected
+                                  ? Illustrations.inCallHero2
+                                  : Illustrations.inCallHero1,
+                              width: connected ? 320 : 340,
+                              height: connected ? 300 : 350,
+                              fit: BoxFit.contain,
+                              excludeFromSemantics: true,
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: phase == 'ava-countdown'
+                                    ? AD.iconVideo
+                                    : null,
+                                border: Border.all(
+                                    color: AD.borderAvatar, width: 2),
+                                boxShadow: const [],
+                              ),
+                              child: phase == 'ava-countdown'
+                                  ? SizedBox(
+                                      width: 132,
+                                      height: 132,
+                                      child: Center(
+                                          child: Text('${s.avaCount}',
+                                              style: ADText.appTitle()
+                                                  .copyWith(fontSize: 76))),
+                                    )
+                                  : Avatar(
+                                      seed: widget.seed,
+                                      name: widget.title,
+                                      size: 132,
+                                      avatarUrl: widget.avatarUrl.isEmpty
+                                          ? null
+                                          : widget.avatarUrl),
+                            ),
+                          ],
                         ),
                         // [CALL-UI-GRID-2026-08-05] The 28px name that used to
                         // sit here is gone — it is now the centred header

@@ -34,34 +34,44 @@ class Illustrations {
   // Not empty states — nearby text is a screen headline/glyph, not a "no
   // items" title. Not wired into any screen; see the ship report for where
   // each is believed to belong.
-  /// Onboarding — headline art next to "Ava TOK" (onboarding_flow.dart,
-  /// on the do-not-touch list).
+  /// Onboarding — the welcome screen's single hero illustration
+  /// (features/onboarding/welcome_screen.dart). Wired.
   static const onboardingHero = '${_base}01-onboarding-illo-1.svg';
   /// Sign-in / OTP — the envelope + 123456 card + chai cup art, shown on the
   /// `_Mode.verify` step only (features/auth/sign_in_screen.dart). Wired.
   static const signInHero = '${_base}02-sign-in-illo-1.svg';
-  /// In-call screen — large art behind the caller identity/avatar.
+  /// Ringing / outgoing call — centred hero art where the caller info sits
+  /// (features/avatok/call_screen.dart, audio layout, `!connected`). Wired.
   static const inCallHero1 = '${_base}06-in-call-illo-1.svg';
-  /// In-call screen — secondary decorative ring/badge art.
+  /// Live / connected call — same centred position, different motif
+  /// (features/avatok/call_screen.dart, audio layout, `connected`). Wired.
   static const inCallHero2 = '${_base}06-in-call-illo-2.svg';
-  /// Profile — avatar-adjacent flower motif (profile_screen.dart, on the
-  /// do-not-touch list).
+  /// Profile — halo BEHIND the avatar at the top of the screen
+  /// (features/profile/profile_screen.dart). Wired.
   static const profileHero = '${_base}08-profile-illo-1.svg';
 
   // ------------------------------------------------------- mid-size motifs
   // Decorative hero/medallion art (manifest's own "mid-size motifs"
   // section) — never empty states. wallet_screen.dart and
   // settings_screen.dart are both on the do-not-touch list.
-  /// Wallet — small ring/coin medallion, ~100x100 (wallet_screen.dart).
+  /// Wallet donut reference. NOT shipped as an image: the designer's
+  /// instruction is that it restyles `WalletDonut`/`_DonutPainter` in
+  /// wallet_widgets.dart. Kept here only as an index entry.
   static const walletMotif100 = '${_base}07-wallet-motif-100x100.svg';
-  /// Wallet — flower medallion, ~120x120 (wallet_screen.dart).
+  /// Wallet — corner watermark, top-right of the balance card, 16% opacity,
+  /// clipped to the card radius (features/wallet/wallet_screen.dart). Wired.
   static const walletMotif120 = '${_base}07-wallet-motif-120x120.svg';
-  /// Wallet — decorative bar-chart strip, 320x62 (wallet_screen.dart).
+  /// Wallet sparkline reference. NOT shipped as an image: the designer's
+  /// instruction is that it restyles `WalletBarChart` in wallet_widgets.dart.
+  /// Kept here only as an index entry.
   static const walletMotifStrip = '${_base}07-wallet-motif-320x62.svg';
-  /// Settings — "Ava answers for you" flower motif, 120x120
-  /// (settings_screen.dart).
+  /// Settings — intended as a bottom-right watermark on the rani-pink "Ava
+  /// answers for you" card at 18% opacity. NOT WIRED: that card no longer
+  /// exists in settings_screen.dart — the AvaReceptionist entry is a plain
+  /// list row now ("Ava answers the calls you don't take"), with no card to
+  /// clip a watermark to. Needs a design decision, see IMPLEMENTATION-REPORT.
   static const settingsMotif = '${_base}09-settings-motif-120x120.svg';
-  /// Groups — flower medallion, 108x108 (likely groups_tab.dart or the
-  /// group thread header — not confidently placed; see ship report).
+  /// Groups — the Groups tab EMPTY STATE, explicitly not a header
+  /// (features/avatok/groups_tab.dart). Wired.
   static const groupsMotif = '${_base}13-groups-motif-108x108.svg';
 }

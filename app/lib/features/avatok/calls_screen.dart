@@ -206,7 +206,14 @@ class _CallsScreenState extends State<CallsScreen> {
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
                               itemCount: visible.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: Msg.s2),
+                              // [RAJ-SEAMS-1] Bead-stud row rule (patches.md
+                              // §6) replaces the plain gap — this is a
+                              // ListView.separated (no fixed itemExtent), so
+                              // the rule can freely add its own height.
+                              separatorBuilder: (_, __) => const Padding(
+                                padding: EdgeInsets.symmetric(vertical: Msg.s1),
+                                child: BeadStudRule(),
+                              ),
                               // [ISSUE-CALLS-SEARCH-1] _row no longer takes an
                               // index: deletion is by STABLE ID, so a filtered
                               // view can't misaddress the backing log.

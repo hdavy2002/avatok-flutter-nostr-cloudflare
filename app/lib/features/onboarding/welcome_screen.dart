@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/messenger_theme.dart';
 
 /// "Everything you do, one account." — pre-auth welcome hero in the AvaTOK
@@ -21,19 +23,17 @@ class WelcomeScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               const Spacer(flex: 2),
+              // [RAJ-SEAMS-1] Hero illustration — 01-onboarding-illo-1.svg
+              // (390x316), the designer's single hero art for this screen.
+              // Decorative: the "Meet Ava." headline + subtitle beside it
+              // carry the meaning, so it is excluded from semantics. This
+              // screen stays full-bleed — no header band per the spec.
               Center(
-                child: Container(
-                  width: 116, height: 116,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AD.card,
-                    border: Border.all(color: AD.borderControl, width: 1),
-                    boxShadow: AD.overlayShadow,
-                  ),
-                  child: Center(
-                    child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                        size: 46, color: AD.primaryBadge),
-                  ),
+                child: SvgPicture.asset(
+                  Illustrations.onboardingHero,
+                  width: 260,
+                  fit: BoxFit.contain,
+                  excludeFromSemantics: true,
                 ),
               ),
               const SizedBox(height: 16),

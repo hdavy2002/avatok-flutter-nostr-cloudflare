@@ -16,6 +16,7 @@ import '../../core/referral_service.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Auth sub-modes within the screen.
@@ -377,20 +378,16 @@ class _SignInScreenState extends State<SignInScreen> {
       body: ZinePaper(
         child: SafeArea(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 0),
-              child: Row(
-                mainAxisAlignment:
-                    canPop ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
-                children: [
-                  if (canPop) const ZineBackButton(),
-                  Flexible(
-                    child: Text(tag,
-                        style: ADText.sectionLabel(), overflow: TextOverflow.ellipsis),
-                  ),
-                ],
-              ),
-            ),
+            // [RAJ-SEAMS-1] Indigo header band (wordmark + mode tag) + flush
+            // 1B Squiggle seam below it — fixed chrome above the scroll area,
+            // per patches.md §6 usage note ("1B/2C/2A sit flush under the
+            // header Container, no border between"). NOTE: patches.md §6's
+            // table assigns Sign in TURQUOISE + 1B Squiggle, but the newest
+            // designer instruction for this screen says INDIGO. Built INDIGO
+            // (newest instruction wins) with the table's Squiggle seam —
+            // flag this conflict for the owner to confirm with the designer.
+            _headerBand(hPad: hPad, canPop: canPop, tag: tag),
+            const SquiggleSeam(bandColor: AD.bandIndigo),
             Expanded(
               child: SingleChildScrollView(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -472,6 +469,47 @@ class _SignInScreenState extends State<SignInScreen> {
           ]),
         ),
       ),
+    );
+  }
+
+  /// Indigo header band — 76px content (inside the 64–92px spec range),
+  /// wordmark left (mirrors `ShellSidebar` in shell_chrome.dart, recoloured
+  /// for a dark band), mode `tag` right. Indigo is a DARK band, so every
+  /// foreground element is `AD.onBand(AD.bandIndigo)` (cream) — contrast
+  /// rule, patches.md §6. Outer `SafeArea` already wraps this Column, so the
+  /// band itself does not add a second one.
+  Widget _headerBand({required double hPad, required bool canPop, required String tag}) {
+    const band = AD.bandIndigo;
+    final onBand = AD.onBand(band);
+    return Container(
+      color: band,
+      padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 14),
+      child: Row(children: [
+        if (canPop) ...[
+          AdBackButton(color: onBand),
+          const SizedBox(width: Msg.s3),
+        ],
+        Text.rich(
+          TextSpan(
+            style: TextStyle(
+                fontFamily: ADText.family,
+                fontWeight: FontWeight.w700,
+                fontSize: 19,
+                letterSpacing: -0.38,
+                color: onBand),
+            children: [
+              const TextSpan(text: 'Ava'),
+              TextSpan(text: 'TOK', style: TextStyle(color: AD.haldi)),
+            ],
+          ),
+        ),
+        const Spacer(),
+        Flexible(
+          child: Text(tag,
+              style: ADText.sectionLabel(c: onBand),
+              overflow: TextOverflow.ellipsis),
+        ),
+      ]),
     );
   }
 

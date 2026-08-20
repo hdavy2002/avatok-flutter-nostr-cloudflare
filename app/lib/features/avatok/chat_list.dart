@@ -2874,9 +2874,17 @@ class _ChatRow extends StatelessWidget {
       // whether a badge or a pin happens to be present, and (b) lets the
       // ListView use a cheap extent-based layout (see the itemExtent on the
       // builder) instead of measuring every child.
+      // [RAJ-SEAMS-1] Bead-stud row separator (patches.md §6). The sliver above
+      // is a `SliverFixedExtentList` keyed to `Msg.rowHeight` — a separator
+      // BETWEEN rows would change the per-item extent, so the rule is instead
+      // laid INSIDE this row's own fixed height as an absolutely-positioned
+      // bottom edge. It shares the row's existing bottom padding gap rather
+      // than adding new height, so `itemExtent` stays exactly `Msg.rowHeight`.
       child: SizedBox(
         height: Msg.rowHeight,
-        child: Padding(
+        child: Stack(
+          children: [
+            Padding(
         padding: Msg.rowPadding,
         child: Row(
           children: [
@@ -3009,6 +3017,17 @@ class _ChatRow extends StatelessWidget {
             ),
           ],
         ),
+            ),
+            // [RAJ-SEAMS-1] The row separator itself — bottom-aligned inside
+            // this row's own fixed extent, sharing the existing bottom row
+            // padding rather than adding new height (see the comment above).
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: BeadStudRule(),
+            ),
+          ],
         ),
       ),
     );

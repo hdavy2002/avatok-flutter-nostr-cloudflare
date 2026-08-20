@@ -367,6 +367,14 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   }
 
   Widget _avaBrainSlot() {
+    // [RAJ-SEAMS-1] The mockup's "Ava" bottom-nav icon is the lotus rosette
+    // plate (design/rajasthani/rajasthani_motifs.dart LotusRosettePlate), not
+    // a Phosphor glyph. `icon`/`selectedIcon` are still passed (required
+    // params, used nowhere once `iconWidget` is supplied) so this call site
+    // stays structurally identical to every other slot. Default plate colours
+    // (turquoise plate / cream ring+petals / haldi centre) read fine on the
+    // AD.bandIndigo footer — turquoise is light enough against dark indigo
+    // that no override was needed.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _activate(widget.onAskAva),
@@ -375,6 +383,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
         selectedIcon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
         label: 'AvaBrain',
         selected: widget.askAvaActive,
+        iconWidget: const LotusRosettePlate(size: 22),
       ),
     );
   }
@@ -409,6 +418,10 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     required String label,
     required bool selected,
     int badge = 0,
+    // [RAJ-SEAMS-1] Optional widget override — used by the "Ava" slot to draw
+    // the LotusRosettePlate instead of a Phosphor glyph. `icon`/`selectedIcon`
+    // stay required so every other call site is untouched.
+    Widget? iconWidget,
   }) {
     final iconCell = AnimatedContainer(
       duration: Msg.fast,
@@ -423,7 +436,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       // Active icon sits on the orange pill; inactive sits straight on the bar
       // — both stay one colour (owner request 2026-07-13, pic 5: "not greyed"),
       // now AD.onBand for the indigo band instead of ink.
-      child: Icon(selected ? selectedIcon : icon, size: 22, color: _onBand),
+      child: iconWidget ?? Icon(selected ? selectedIcon : icon, size: 22, color: _onBand),
     );
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,

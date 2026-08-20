@@ -222,8 +222,9 @@ class WalletChipTrack extends StatelessWidget {
 /// Weekly spend bars.
 ///
 /// Deliberately hand-rolled rather than pulled from a charting package: the
-/// poster look needs a black outline on every bar and a flat coral fill, which
-/// no chart lib gives cheaply. Heights are computed in pixels against a fixed
+/// poster look needs a black outline on every bar and a flat rani-pink fill
+/// (`AD.primaryBadge`, per `07-wallet-motif-320x62.svg`), which no chart lib
+/// gives cheaply. Heights are computed in pixels against a fixed
 /// [chartHeight] so the widget never depends on an unbounded parent.
 class WalletBarChart extends StatelessWidget {
   /// One entry per column: the axis label and its magnitude.
@@ -265,13 +266,15 @@ class WalletBarChart extends StatelessWidget {
                 SizedBox(
                   height: _barHeight(bars[i].value.toDouble(), max),
                   child: Container(
+                    // [RAJ-SEAMS-1] Flat rani fill + hard ink outline, fully
+                    // rounded corners — read straight off
+                    // `07-wallet-motif-320x62.svg`: `fill="#C9316E"`
+                    // (AD.primaryBadge), `stroke="#16110D"` (AD.borderCard) at
+                    // `stroke-width="1.6"`, `rx="3"` on every bar rect.
                     decoration: BoxDecoration(
-                      color: AW.coral,
-                      border: Border.all(color: AD.borderCard, width: 1),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(Msg.rSm),
-                        bottom: Radius.circular(4),
-                      ),
+                      color: AD.primaryBadge,
+                      border: Border.all(color: AD.borderCard, width: 1.6),
+                      borderRadius: const BorderRadius.all(Radius.circular(3)),
                     ),
                   ),
                 ),
@@ -392,6 +395,27 @@ class _DonutPainter extends CustomPainter {
         ..color = s.color;
       canvas.drawArc(rect, start, sweep, false, paint);
       start += sweep;
+    }
+
+    // [RAJ-SEAMS-1] Center hole disc, read off `07-wallet-motif-100x100.svg`:
+    // the ring's segments (r=40, stroke-width=17) leave an inner edge at
+    // r=31.5, and the mockup fills right up to it with a `fill="#FFFAF0"`
+    // (AD.card) disc outlined `stroke="#16110D"` (AD.textPrimary) at
+    // `stroke-width="2"`. Drawn last, same order as the SVG (ring segments,
+    // then the center circle on top), so the flat cream disc + hard ink ring
+    // reads as a poster shape rather than the number floating on bare
+    // surface colour.
+    final holeRadius = radius - _stroke / 2;
+    if (holeRadius > 0) {
+      final holeFill = Paint()
+        ..style = PaintingStyle.fill
+        ..color = AD.card;
+      canvas.drawCircle(center, holeRadius, holeFill);
+      final holeBorder = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = AD.textPrimary;
+      canvas.drawCircle(center, holeRadius, holeBorder);
     }
   }
 

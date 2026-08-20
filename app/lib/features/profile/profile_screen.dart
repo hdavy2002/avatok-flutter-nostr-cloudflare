@@ -15,9 +15,11 @@ import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import '../../identity/identity.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -637,7 +639,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Center(
           child: GestureDetector(
             onTap: _photoBusy ? null : _editPhoto,
-            child: Stack(clipBehavior: Clip.none, children: [
+            child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+              // [RAJ-SEAMS-1] Flower-motif halo BEHIND the avatar — decorative,
+              // laid down first so every later child (avatar, camera seal)
+              // paints on top of it.
+              SvgPicture.asset(
+                Illustrations.profileHero,
+                width: 156,
+                height: 156,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+              ),
               // White-ringed avatar (dark v2 §4).
               Container(
                 decoration: const BoxDecoration(

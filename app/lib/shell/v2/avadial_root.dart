@@ -189,19 +189,37 @@ class _AvaDialRootState extends State<AvaDialRoot> {
     );
   }
 
-  PreferredSizeWidget _bar(BuildContext context) => AppBar(
-        backgroundColor: AvaDialTheme.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: AvaDialTheme.text),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-          ),
+  // [RAJ-SEAMS-1] This AppBar used to be `AvaDialTheme.surface` — a neutral
+  // card colour that no longer matches the `AD.bandIndigo` `_CallsTabStrip`
+  // sitting directly below it (two chrome bars in different colours reads as
+  // a mistake). Recoloured to the same indigo band, with every foreground
+  // element (title, leading icon, actions) flipped to `AD.onBand` per the
+  // patches.md §6 contrast rule — indigo is a DARK band.
+  PreferredSizeWidget _bar(BuildContext context) {
+    final onBand = AD.onBand(AD.bandIndigo);
+    return AppBar(
+      backgroundColor: AD.bandIndigo,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      foregroundColor: onBand,
+      iconTheme: IconThemeData(color: onBand),
+      actionsIconTheme: IconThemeData(color: onBand),
+      titleTextStyle: ADText.appTitle(c: onBand),
+      // [RAJ-SEAMS-1] The bottom hairline is GONE. It used to separate a pale
+      // AppBar from the tab strip below; now both are AD.bandIndigo, so it
+      // drew a stray rule across the middle of one continuous indigo band.
+      // The seam under the tab strip is the only edge this chrome needs.
+      leading: Builder(
+        builder: (ctx) => IconButton(
+          icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: onBand),
+          onPressed: () => Scaffold.of(ctx).openDrawer(),
         ),
-        title: Text('AvaDialer', style: ADText.appTitle(c: AvaDialTheme.text)),
-      );
+      ),
+      // Style comes from `titleTextStyle` above — setting it here too would
+      // just shadow it.
+      title: const Text('AvaDialer'),
+    );
+  }
 }
 
 /// One Calls sub-section: icon/label pair plus its OWN recognisable color.
