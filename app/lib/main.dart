@@ -41,6 +41,7 @@ import 'core/ui_freeze_monitor.dart';
 import 'core/ui/avatok_dark.dart'; // [UI-COLDSTART-1] boot loader matches the shell
 import 'core/ui/boot_screen.dart'; // [BOOT-FLASH-2] shared static launch screen
 import 'core/ui/zine_widgets.dart';
+import 'core/ui/rajasthani_motifs.dart'; // [RAJ-PHASE3-1] GrainOverlay
 import 'firebase_options.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
@@ -400,7 +401,17 @@ class AvaTalkApp extends StatelessWidget {
             // CALL-PIP-C: paint the minimized-call overlay (draggable video
             // thumbnail / audio pill) ABOVE every route. Renders nothing and
             // adds no hit-test surface when there's no minimized call.
-            child: CallOverlay(child: child!),
+            //
+            // [RAJ-PHASE3-1] The print-grain layer sits above BOTH — one hook
+            // here covers every screen with no per-screen edit
+            // (design/flutter-handoff, patches.md §4). It is an IgnorePointer,
+            // so it never takes a tap away from the call overlay under it.
+            child: Stack(
+              children: [
+                CallOverlay(child: child!),
+                const GrainOverlay(),
+              ],
+            ),
           ),
         );
       },

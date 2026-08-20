@@ -301,6 +301,9 @@ flutter:
     - assets/audio/catalog/   # bundled ringtone catalog (preview + set as default)
     - assets/models/   # AvaVision on-device vision models (MoveNet/MediaPipe Tasks)
     - assets/ai_studio/   # Google AI Studio key-setup step screenshots
+    # Rajasthani retheme Phase 3: print-grain texture tiled by GrainOverlay
+    # (core/ui/rajasthani_motifs.dart), wired once at MaterialApp.builder.
+    - assets/textures/grain_noise.png
     # STREAM E: built-in sticker packs (.webp) for the emoji/GIF/sticker panel.
     - assets/stickers/ava_hearts/
     - assets/stickers/ava_reactions/

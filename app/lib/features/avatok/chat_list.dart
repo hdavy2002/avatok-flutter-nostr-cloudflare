@@ -35,6 +35,7 @@ import '../../core/update_service.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
@@ -2401,6 +2402,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
             communityInvites: _groupInvites,
           ),
+          // [RAJ-PHASE3-1] Header toran — the scalloped drape + hanging beads
+          // at the header↔content seam (design/flutter-handoff, patches.md §6).
+          // AvaTOK's header hue is turquoise (AD.headerFooter) per HANDOFF's
+          // per-area hue table, and the tab strip is the last chrome band above
+          // the content, so the seam is here rather than under the title row.
+          const TorranDivider(
+            bandColor: AD.headerFooter,
+            direction: TorranDirection.down,
+          ),
           Expanded(
             child: IndexedStack(index: _tab, children: [
               // Chat tab body — search dock + the list; the header lives above,
@@ -2767,10 +2777,10 @@ class _AvaTokTabStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AD.headerFooter,
-        border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-      ),
+      // [RAJ-PHASE3-1] The bottom hairline is gone: the TorranDivider added
+      // immediately below this strip in the Scaffold body IS the seam now, and
+      // a straight rule sitting on top of the scallops reads as a mistake.
+      decoration: const BoxDecoration(color: AD.headerFooter),
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Row(
         children: [

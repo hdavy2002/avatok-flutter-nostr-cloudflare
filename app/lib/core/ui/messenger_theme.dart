@@ -170,10 +170,14 @@ class Msg {
   /// is a mobile-game signal.
   static const List<BoxShadow> none = <BoxShadow>[];
 
-  /// The only permitted shadow: a soft lift for floating elements (FAB,
-  /// bottom sheets). Neutral black, never tinted with the accent.
+  /// The only permitted shadow: a HARD ink offset for floating elements (FAB,
+  /// bottom sheets). Never tinted with the accent, and never blurred.
+  ///
+  /// [RAJ-PHASE3-1] Was a soft blur (0x59000000, 0/4, blur 12). HANDOFF rule 4
+  /// is hard offset shadows only — a blur is a screen-glow signal and reads
+  /// wrong against block-printed ink outlines.
   static const List<BoxShadow> lift = [
-    BoxShadow(color: Color(0x59000000), offset: Offset(0, 4), blurRadius: 12),
+    BoxShadow(color: Color(0xFF16110D), offset: Offset(3, 4), blurRadius: 0),
   ];
 
   /// Hairline divider between rows.

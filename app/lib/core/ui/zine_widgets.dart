@@ -102,7 +102,7 @@ class ZinePressable extends StatefulWidget {
     this.pressedColor,
     this.radius = const BorderRadius.all(Radius.circular(Msg.rMd)),
     this.boxShadow = Msg.none,
-    this.borderWidth = 1,
+    this.borderWidth = 2,
     this.borderColor = AD.borderControl,
     this.padding = EdgeInsets.zero,
   });
@@ -212,7 +212,7 @@ class ZineButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: Msg.brMd,
-          border: Border.all(color: AD.borderControl, width: 1),
+          border: Border.all(color: AD.borderControl, width: 2),
         ),
         child: content,
       );
@@ -260,7 +260,7 @@ class ZineCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: AD.borderControl, width: 2),
         boxShadow: boxShadow,
       ),
       child: child,
@@ -281,7 +281,7 @@ class ZineIconBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(Msg.rSm),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: AD.borderControl, width: 2),
       ),
       child: Icon(icon, size: size * 0.53, color: _inkOn(color)),
     );
@@ -409,7 +409,7 @@ class _ZineFieldState extends State<ZineField> {
         decoration: BoxDecoration(
           color: widget.enabled ? AD.card : AD.headerFooter,
           borderRadius: Msg.brMd,
-          border: Border.all(color: borderColor, width: 1),
+          border: Border.all(color: borderColor, width: 2),
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(crossAxisAlignment: (widget.maxLines == null || widget.maxLines! > 1) ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
@@ -545,7 +545,7 @@ class ZineSticker extends StatelessWidget {
         color: fill,
         // A tag IS one of the shapes Msg.rPill is reserved for.
         borderRadius: Msg.brPill,
-        border: Border.all(color: hint ? AD.borderHairline : AD.borderControl, width: 1),
+        border: Border.all(color: hint ? AD.borderHairline : AD.borderControl, width: 2),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
@@ -603,7 +603,7 @@ class ZineStepPips extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: i == active ? AD.primaryBadge : AD.card,
-            border: Border.all(color: AD.borderControl, width: 1),
+            border: Border.all(color: AD.borderControl, width: 2),
           ),
         ),
         const SizedBox(width: Msg.s2),
@@ -728,7 +728,7 @@ class ZineCrest extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AD.newGroup,
-            border: Border.all(color: AD.borderControl, width: 1),
+            border: Border.all(color: AD.borderControl, width: 2),
             boxShadow: Msg.lift,
           ),
           child: Center(child: child ?? ZineLogoMark(size: size * 0.5)),
@@ -875,7 +875,7 @@ class ZineToggle extends StatelessWidget {
           color: value ? AD.primaryBadge : AD.card,
           // A switch track is genuinely a pill.
           borderRadius: Msg.brPill,
-          border: Border.all(color: value ? AD.primaryBadge : AD.borderControl, width: 1),
+          border: Border.all(color: value ? AD.primaryBadge : AD.borderControl, width: 2),
         ),
         child: AnimatedAlign(
           duration: reduce ? Duration.zero : Msg.fast,
@@ -886,7 +886,7 @@ class ZineToggle extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: value ? Colors.white : AD.textTertiary,
-              border: Border.all(color: AD.borderControl, width: 1),
+              border: Border.all(color: AD.borderControl, width: 2),
             ),
           ),
         ),
@@ -915,7 +915,7 @@ class ZineDropdown<T> extends StatelessWidget {
         decoration: BoxDecoration(
           color: AD.card,
           borderRadius: Msg.brMd,
-          border: Border.all(color: AD.borderControl, width: 1),
+          border: Border.all(color: AD.borderControl, width: 2),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<T>(
@@ -1127,7 +1127,7 @@ class ZineSuccessOverlay extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AD.primaryBadge,
-                    border: Border.all(color: AD.borderControl, width: 1),
+                    border: Border.all(color: AD.borderControl, width: 2),
                     boxShadow: Msg.lift,
                   ),
                   child: Icon(
@@ -1177,7 +1177,7 @@ class ZineEmptyState extends StatelessWidget {
         width: 64, height: 64,
         decoration: BoxDecoration(
           borderRadius: Msg.brMd,
-          border: Border.all(color: AD.borderControl, width: 1),
+          border: Border.all(color: AD.borderControl, width: 2),
         ),
         child: Icon(icon, size: 30, color: AD.textTertiary),
       ),

@@ -9,6 +9,7 @@ import '../shell_v2.dart';
 import 'app_order_screen.dart';
 import 'shell_destinations.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 
 /// A single destination in a shell footer (app switcher on Home, app tabs inside
 /// a sub-app).
@@ -27,11 +28,27 @@ Widget shellNavBar({
   required ValueChanged<int> onSelected,
   Color? indicatorColor, // Home passes the user's accent (personalisation §D)
 }) {
-  return Container(
-    decoration: const BoxDecoration(
-      color: AD.headerFooter,
-      border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
-    ),
+  // [RAJ-PHASE3-1] Footer toran — one hook covering every shell root, since
+  // `shellNavBar()` is the single function they all call for the bottom bar
+  // (design/flutter-handoff, patches.md §5). The top hairline is replaced by
+  // the scalloped seam.
+  //
+  // DEVIATION FROM THE PATCH, deliberate: patches.md §5 sets the band colour to
+  // `indicatorColor ?? AD.headerFooter`. `indicatorColor` here is the
+  // NavigationBar SELECTED-PILL accent (Home passes the user's personalisation
+  // accent and it defaults to AD.primaryBadge), not the band colour — feeding it
+  // to the toran paints the whole footer drape rani pink on the Home shell. The
+  // footer band is indigo/turquoise `AD.headerFooter` everywhere per HANDOFF's
+  // hue table, so the toran matches the band it hangs from.
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const TorranDivider(
+        bandColor: AD.headerFooter,
+        direction: TorranDirection.up,
+      ),
+      Container(
+    decoration: const BoxDecoration(color: AD.headerFooter),
     child: NavigationBar(
       selectedIndex: selectedIndex,
       onDestinationSelected: onSelected,
@@ -47,6 +64,8 @@ Widget shellNavBar({
           ),
       ],
     ),
+      ),
+    ],
   );
 }
 

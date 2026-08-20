@@ -41,6 +41,18 @@ class AD {
   static const borderCard = Color(0xFF16110D);
   static const borderControl = Color(0xFF16110D);
   static const borderAvatar = Color(0xFF16110D);
+  /// [RAJ-PHASE3-1] The bead-stud row rule (`BeadStudRule` in
+  /// rajasthani_motifs.dart) — ink at 14%, deliberately fainter than
+  /// `borderHairline`, because the bead carries the separation and a full-ink
+  /// rule under it reads as two dividers stacked.
+  static const borderBeadRule = Color(0x2416110D);
+
+  // ----------------------------------------------------------------- motifs
+  /// [RAJ-PHASE3-1] Haldi (turmeric yellow) — the ornament accent. It already
+  /// existed as `micIdleBg`, but that name means "the mic button is idle";
+  /// the toran beads and rosette centre are not a mic, so they get the hue by
+  /// its own name rather than borrowing an unrelated control token.
+  static const haldi = Color(0xFFE9A227);
 
   // -------------------------------------------------------------------- text
   static const textPrimary = Color(0xFF16110D);
@@ -174,17 +186,20 @@ class AD {
   static const List<BoxShadow> phoneShadow = [
     BoxShadow(color: Color(0xB3000000), offset: Offset(0, 24), blurRadius: 60),
   ];
+  // [RAJ-PHASE3-1] The three themed shadows below are HARD ink offsets, not
+  // blurs (HANDOFF rule 4). `phoneShadow` above is deliberately left blurred —
+  // it is the device bezel in the mock frame, not a themed UI surface.
   /// Bottom-sheet / overlay shadow.
   static const List<BoxShadow> overlayShadow = [
-    BoxShadow(color: Color(0xA6000000), offset: Offset(0, 16), blurRadius: 48),
+    BoxShadow(color: Color(0xFF16110D), offset: Offset(4, 5), blurRadius: 0),
   ];
   /// Dialog shadow.
   static const List<BoxShadow> dialogShadow = [
-    BoxShadow(color: Color(0xA6000000), offset: Offset(0, 20), blurRadius: 60),
+    BoxShadow(color: Color(0xFF16110D), offset: Offset(4, 5), blurRadius: 0),
   ];
   /// Toast / snackbar shadow.
   static const List<BoxShadow> toastShadow = [
-    BoxShadow(color: Color(0x8C000000), offset: Offset(0, 8), blurRadius: 30),
+    BoxShadow(color: Color(0xFF16110D), offset: Offset(3, 4), blurRadius: 0),
   ];
 
   // ---------------------------------------------------------- chat bubbles
@@ -438,7 +453,7 @@ class AdButton extends StatelessWidget {
           color: bg,
           borderRadius: BorderRadius.circular(100),
           border: variant == AdButtonVariant.ghost || disabled
-              ? Border.all(color: AD.borderControl, width: 1)
+              ? Border.all(color: AD.borderControl, width: 2)
               : null,
         ),
         child: content,
@@ -471,7 +486,7 @@ class AdCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: AD.borderControl, width: 2),
         boxShadow: boxShadow,
       ),
       child: child,
@@ -498,7 +513,7 @@ class AdChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? AD.primaryBadge : AD.card,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: active ? AD.primaryBadge : AD.borderControl, width: 1),
+          border: Border.all(color: active ? AD.primaryBadge : AD.borderControl, width: 2),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (active) ...[
@@ -538,7 +553,7 @@ class AdSticker extends StatelessWidget {
       decoration: BoxDecoration(
         color: fill,
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: AD.borderControl, width: 1),
+        border: Border.all(color: AD.borderControl, width: 2),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[
@@ -678,7 +693,7 @@ class _AdFieldState extends State<AdField> {
         decoration: BoxDecoration(
           color: widget.enabled ? AD.inputField : AD.card,
           borderRadius: BorderRadius.circular(AD.rInput),
-          border: Border.all(color: widget.error ? AD.danger : AD.borderControl, width: 1),
+          border: Border.all(color: widget.error ? AD.danger : AD.borderControl, width: 2),
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(
