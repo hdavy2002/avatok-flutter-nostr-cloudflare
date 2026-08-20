@@ -358,7 +358,12 @@ extension _ChatThreadGuardian on _ChatThreadScreenState {
         on ? PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill)
            : PhosphorIcons.shield(PhosphorIconsStyle.bold),
         _toggleGuardian,
-        color: on ? kGuardianGreen : AD.textSecondary,
+        // [RAJ-INDIGO-1] OFF state was `AD.textSecondary` — ink at 60%, picked
+        // when this sat on the pale turquoise header. The band is indigo now,
+        // so that is effectively invisible. Cream at 60% keeps the exact same
+        // "on = solid, off = muted" relationship on a dark band. `kGuardianGreen`
+        // stays: it is a semantic state colour and it clears indigo fine.
+        color: on ? kGuardianGreen : AD.onBand(AD.headerFooter).withValues(alpha: 0.6),
       ),
     );
   }

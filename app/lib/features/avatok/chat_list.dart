@@ -2338,16 +2338,28 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // above it) — both now live in ONE shared Column, wrapped in a single
       // SafeArea, so they stay put and in order no matter which of the 3 tabs
       // is active.
-      body: SafeArea(
-        bottom: false,
-        child: Column(children: [
-          // Shared header band (§8): paper-2 fill, ink bottom border — menu ·
+      // [RAJ-INDIGO-1] STATUS-BAR FIX (owner, pic 2 №1 / pic 7 №1): "in some
+      // screens even the top part becomes part of the colour… like ref in
+      // pic 3". The Updates screen does that because its band `Container` is
+      // OUTSIDE its `SafeArea`, so the band paints the top inset. Here the
+      // SafeArea used to be the outermost body widget, so the inset was painted
+      // by `scaffoldBackgroundColor` (cream) and you got a cream strip above an
+      // indigo header. Inverted: band Container first, SafeArea inside it.
+      //
+      // The seam stays OUTSIDE this Container — it is the bottom edge of the
+      // chrome, not part of the inset.
+      body: Column(children: [
+        Container(
+          color: AD.headerFooter,
+          child: SafeArea(
+            bottom: false,
+            child: Column(children: [
+          // Shared header band (§8): indigo fill, ink bottom border — menu ·
           // status avatar · filter dropdown · search · notifications. Persistent
           // across all 3 tabs (Chat/Community/Call log), unlike the tab bodies.
           Container(
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s3, Msg.s3),
             decoration: const BoxDecoration(
-              color: AD.headerFooter,
               border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             child: Row(
@@ -2360,14 +2372,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   child: Container(
                     width: 38, height: 38,
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-                    child: Icon(PhosphorIcons.list(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
+                    // [RAJ-INDIGO-1] onBand, not textPrimary. The band flipped
+                    // from light turquoise to dark indigo, so ink here is
+                    // invisible.
+                    child: Icon(PhosphorIcons.list(PhosphorIconsStyle.bold), size: 22,
+                        color: AD.onBand(AD.headerFooter)),
                   ),
                 ),
                 const SizedBox(width: 6),
                 // AvaTalk wordmark (dark v2 header title).
                 // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk', matching the
                 // shell root label. Display-only.
-                Text('AvaTalk', style: ADText.appTitle()),
+                Text('AvaTalk', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
                 const Spacer(),
                 // [WALLET-UX-1] Compact wallet-balance chip (coin icon + total
                 // spendable tokens). Loads once via WalletBalanceStore; the
@@ -2391,7 +2407,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 // Notification bell + orange unread count → the notification center.
                 _badged(
                   _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
-                      color: AD.iconBell),
+                      color: AD.onBand(AD.headerFooter)),
                   count: _notifUnread),
               ],
             ),
@@ -2404,12 +2420,33 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
             communityInvites: _groupInvites,
           ),
-          // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
-          // Squiggle seam on the turquoise band (design/seams/patches.md §6).
-          // The tab strip is the last chrome band above the content, so the
-          // seam sits here rather than under the title row.
-          const SquiggleSeam(bandColor: AD.bandTurquoise),
-          Expanded(
+            ]),
+          ),
+        ),
+        // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
+        // Squiggle seam on the band (design/seams/patches.md §6). The tab strip
+        // is the last chrome band above the content, so the seam sits here
+        // rather than under the title row.
+        // [RAJ-INDIGO-1] ⚠️ DO NOT REMOVE THIS `removePadding`.
+        //
+        // The body used to be wrapped in ONE outer `SafeArea`, which consumed
+        // the top inset for the whole subtree — so the nested SafeAreas inside
+        // the tab bodies (`CallsScreen` at calls_screen.dart:124, `GroupsTab`'s
+        // own Scaffold) saw zero padding and were harmless no-ops. Moving the
+        // SafeArea up into the header band (the status-bar fix above) left
+        // these tab bodies as SIBLINGS of it rather than descendants, so those
+        // inner SafeAreas would re-apply the FULL status-bar inset a second
+        // time and push each tab's content ~40px down the screen.
+        // [RAJ-INDIGO-1] The seam is now an OVERLAY on the tab bodies rather
+        // than a Column sibling above them (owner, pic 7 №2): as a sibling its
+        // transparent half could only ever reveal the Scaffold's cream, which
+        // is the "creamy part that hides the messages". See `SeamOverlay`.
+        Expanded(
+          child: SeamOverlay(
+            seam: const SquiggleSeam(bandColor: AD.bandJodhpur),
+            child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
             child: IndexedStack(index: _tab, children: [
               // Chat tab body — search dock + the list; the header lives above,
               // shared with Community/Call log.
@@ -2558,8 +2595,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               const CallsScreen(),
             ]),
           ),
-        ]),
-      ),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -2771,12 +2809,15 @@ class _AvaTokTabStrip extends StatelessWidget {
     required this.communityInvites,
   });
 
-  // Dark v2 colored tabs: Chats (orange) · Groups (teal) · Calls (purple).
+  // [RAJ-INDIGO-1] Chats (marigold) · Groups (rani) · Calls (terracotta) — a
+  // bandhani trio, all warm so none of them sinks into the indigo band behind.
+  // (The old comment here said "orange / teal / purple" and had been wrong
+  // through two recolours.)
   // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
   static final _items = <(IconData, IconData, String, Color)>[
     (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'Chats', AD.tabChats),
     (PhosphorIcons.usersThree(PhosphorIconsStyle.regular), PhosphorIcons.usersThree(PhosphorIconsStyle.fill), 'Groups', AD.tabGroups),
-    (PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), 'Calls', AD.tabCalls),
+    (PhosphorIcons.phoneCall(PhosphorIconsStyle.regular), PhosphorIcons.phoneCall(PhosphorIconsStyle.fill), 'Calls', AD.tabCallsChip),
   ];
 
   @override
@@ -2803,19 +2844,37 @@ class _AvaTokTabStrip extends StatelessWidget {
     final selected = i == selectedIndex;
     final showDot = i == 0 && chatUnread;
     final showCount = i == 1 && communityInvites > 0;
+    // [RAJ-INDIGO-1] Owner (pic 2 №2): the Groups and Calls tabs need a bright
+    // Rajasthani colour and a little shadow. THREE changes, and the reasons
+    // matter because the old code was tuned for a light band:
+    //
+    // 1. EVERY chip carries its FULL accent, selected or not. The old rule was
+    //    `AD.tabBg` — full accent when selected, 22% wash otherwise — which
+    //    worked when the band was pale turquoise. Over dark indigo a 22% wash
+    //    is a smudge, so Groups and Calls read as empty slots. Selection is now
+    //    carried by border weight + shadow depth + label weight, not by
+    //    draining the colour out of two thirds of the strip.
+    // 2. FOREGROUND VIA `AD.onBand`, never `Colors.white`. Chats is marigold
+    //    #E9A227 — white on marigold is ~1.9:1 and unreadable. onBand returns
+    //    ink there and cream on rani/terracotta.
+    // 3. INK OUTLINE + HARD SHADOW (HANDOFF rule 1 and 4). This is what stops
+    //    the chip blending into the band, which is the actual complaint.
+    final fg = AD.onBand(color);
     return GestureDetector(
       onTap: () => onSelected(i),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         height: 36,
         decoration: BoxDecoration(
-          color: AD.tabBg(color, selected),
+          color: color,
           borderRadius: BorderRadius.circular(AD.rTab),
+          border: Border.all(
+              color: AD.borderControl, width: selected ? AD.wHero : AD.wBorder),
+          boxShadow: selected ? AD.chipShadow : AD.chipShadowRest,
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
           Stack(clipBehavior: Clip.none, children: [
-            Icon(selected ? selectedIcon : icon, size: 16,
-                color: selected ? Colors.white : color),
+            Icon(selected ? selectedIcon : icon, size: 16, color: fg),
             if (showDot)
               Positioned(
                 right: -2, top: -2,
@@ -2826,8 +2885,7 @@ class _AvaTokTabStrip extends StatelessWidget {
               ),
           ]),
           const SizedBox(width: 6),
-          Text(label, style: ADText.tabLabel(
-              c: selected ? Colors.white : AD.textSecondary)),
+          Text(label, style: ADText.tabLabel(c: fg)),
           if (showCount) ...[
             const SizedBox(width: 5),
             Container(

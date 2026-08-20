@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/analytics.dart';
@@ -10,7 +11,9 @@ import '../../core/avatar.dart';
 import '../../core/group_store.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/illustrations.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
 import '../../identity/identity.dart';
 import '../profile/qr_share.dart';
 import 'contacts.dart';
@@ -148,19 +151,36 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AD.bg,
-      body: SafeArea(
-        bottom: false,
-        child: Column(children: [
+      // [RAJ-INDIGO-1] The outer SafeArea is gone: `_header` now paints the band
+      // above its own SafeArea so the pink reaches the status bar (pic 5). A
+      // SafeArea out here would consume the inset first and re-open the cream
+      // strip this change exists to close.
+      body: Column(children: [
           _header(context),
           Expanded(
             child: ListView(padding: const EdgeInsets.all(Msg.s5), children: [
+        // [RAJ-INDIGO-1] Petal ring (pic 5). Same construction as
+        // `profile_screen.dart:642` — the petals are the `profileHero` SVG laid
+        // BEHIND the avatar in a centred Stack, not a painter, so the two
+        // screens can never drift apart. 156px art around a 96px avatar is the
+        // ratio profile_screen uses; the avatar keeps its own 2px ink ring so it
+        // still reads as a circle against the petals.
         Center(
-          child: Container(
-            decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AD.borderAvatar, width: 2)),
-            child: Avatar(seed: widget.uid, name: _displayName, size: 96,
-                avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              SvgPicture.asset(Illustrations.profileHero,
+                  width: 156, height: 156, fit: BoxFit.contain,
+                  excludeFromSemantics: true),
+              Container(
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AD.borderAvatar, width: 2)),
+                child: Avatar(seed: widget.uid, name: _displayName, size: 96,
+                    avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: Msg.s3),
@@ -262,7 +282,6 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
             ]),
           ),
         ]),
-      ),
     );
   }
 
@@ -361,31 +380,63 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     Analytics.capture('dm_ava_mode_tapped', {'mode': mode, 'ok': next != null});
   }
 
-  /// Inline dark v2 header (replaces the light ZineAppBar): header/footer fill,
-  /// hairline bottom border, circular back button + kicker/title stack.
-  Widget _header(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
-        decoration: const BoxDecoration(
-          color: AD.headerFooter,
-          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-        ),
-        child: Row(children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-              child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
+  /// Contact info header.
+  ///
+  /// [RAJ-INDIGO-1] Owner (pic 5): "can you decorate the top part like we have
+  /// in pic 6 — where the profile photo has petals and where we have a border
+  /// of flowers and pink colour all the way up." Pic 6 is the Profile screen,
+  /// so this is deliberately built to the SAME recipe as
+  /// `profile/profile_screen.dart:569-635` rather than an approximation of it:
+  ///
+  ///   * `AD.bandRani` fill, not `headerFooter` — the pink the owner pointed at.
+  ///   * band Container OUTSIDE the `SafeArea` so the pink runs "all the way
+  ///     up" through the status bar (this was also complaint pic 2 №1).
+  ///   * 3px ink bottom border, and the `FlowerChainSeam` anchored to the
+  ///     Stack's BOTTOM (not offset from the top) so the 30px daisy chain
+  ///     straddles that border evenly on any device — the reason profile_screen
+  ///     uses `Positioned(bottom: 0)` plus a `SizedBox(height: 15)` spacer.
+  ///   * every foreground via `AD.onBand(band)`; rani is a DARK band.
+  Widget _header(BuildContext context) {
+    const band = AD.bandRani;
+    final onBand = AD.onBand(band);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Column(children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
+            decoration: const BoxDecoration(
+              color: band,
+              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: Container(
+                    width: 38, height: 38,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
+                    child: Icon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold),
+                        size: 22, color: onBand),
+                  ),
+                ),
+                const SizedBox(width: Msg.s1),
+                Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text('CONTACT', style: ADText.sectionLabel(c: onBand)),
+                  const SizedBox(height: 1),
+                  Text('Contact info', style: ADText.appTitle(c: onBand)),
+                ]),
+              ]),
             ),
           ),
-          const SizedBox(width: Msg.s1),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('CONTACT', style: ADText.sectionLabel()),
-            const SizedBox(height: 1),
-            Text('Contact info', style: ADText.appTitle()),
-          ]),
+          // Room for the lower half of the daisy chain to hang below the border.
+          const SizedBox(height: 15),
         ]),
-      );
+        const Positioned(left: 0, right: 0, bottom: 0, child: FlowerChainSeam()),
+      ],
+    );
+  }
 
   /// Inline dark v2 primary (full-width) button — replaces ZineButton.
   Widget _primaryButton({required String label, required IconData icon, required VoidCallback onPressed}) =>

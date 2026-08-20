@@ -23,8 +23,63 @@ import 'avatok_dark.dart';
 const _ink = AD.textPrimary;      // 0xFF16110D
 const _haldi = AD.haldi;          // 0xFFE9A227
 const _rani = AD.primaryBadge;    // 0xFFC9316E
-const _indigo = AD.tabCalls;      // 0xFF2E4A8C
+const _indigo = AD.bandIndigo;    // 0xFF2E4A8C
 const _cream = AD.bg;             // 0xFFFBF3E2
+
+/// [RAJ-INDIGO-1] Draws a seam ON TOP of scrolling content instead of beside
+/// it — the fix for the owner's pic 7 №2/№3 and pic 8 complaint: "underneath
+/// the wavy lines there is a cream layer which hides the messages as they are
+/// going up or down… make that creamy part transparent, both in header and
+/// footer app-wide, so we can see messages or other info going through them."
+///
+/// The seams were never the problem, and that is the part worth writing down:
+/// EVERY seam painter already leaves the far side of the wave fully
+/// transparent. But each one was mounted as a `Column` sibling of the content,
+/// so it occupied 26-36px of exclusive layout height and the only thing
+/// visible through its transparent half was the Scaffold's cream background.
+/// That cream sliver is what reads as "a layer hiding the messages".
+///
+/// Here the seam is a `Stack` overlay pinned to the content's own top (or
+/// bottom) edge, so the pixels behind the wave are the LIST, and a message
+/// scrolls up through the scallops. Two details that are not optional:
+///
+///  * `IgnorePointer` — the seam is decoration. Without it the strip swallows
+///    taps and drags on the topmost/bottom-most row, which on a chat list is
+///    the newest message.
+///  * `Positioned` (not `Positioned.fill`) — the seam keeps its intrinsic
+///    26/36px height and hugs one edge; filling would stretch the painter's
+///    fixed-amplitude geometry.
+///
+/// The content is NOT given compensating padding on purpose: reserving 26px of
+/// blank space at the top is precisely the cream gap being removed.
+class SeamOverlay extends StatelessWidget {
+  final Widget child;
+  final Widget seam;
+
+  /// Seam hugs the top edge (header). `false` = bottom edge (footer).
+  final bool top;
+
+  const SeamOverlay({
+    super.key,
+    required this.child,
+    required this.seam,
+    this.top = true,
+  });
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          Positioned.fill(child: child),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: top ? 0 : null,
+            bottom: top ? null : 0,
+            child: IgnorePointer(child: seam),
+          ),
+        ],
+      );
+}
 
 void _maybeFlip(Canvas canvas, Size size, bool flip) {
   if (flip) {

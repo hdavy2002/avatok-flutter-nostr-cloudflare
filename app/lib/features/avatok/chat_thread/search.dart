@@ -400,20 +400,28 @@ extension _ChatThreadSearch on _ChatThreadScreenState {
     );
   }
 
-  Widget _searchBar() => Row(children: [
-        IconButton(icon: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), color: AD.textPrimary),
+  // [RAJ-INDIGO-1] This bar REPLACES the thread header row in-place, so it is
+  // drawn directly on the header band. Every colour here was an ink token
+  // chosen for the old pale turquoise band; on indigo the back arrow, the typed
+  // query, the caret and the hint were all invisible. All four now come from
+  // `AD.onBand(AD.headerFooter)`.
+  Widget _searchBar() {
+    final onBand = AD.onBand(AD.headerFooter);
+    return Row(children: [
+        IconButton(icon: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), color: onBand),
             onPressed: () => setState(() { _searchMode = false; _searchQuery = ''; _resetAiSearch(); })),
         Expanded(child: TextField(
           autofocus: true,
           controller: _searchCtrl,
           onChanged: (v) => setState(() { _searchQuery = v; _resetAiSearch(); }),
-          style: ADText.rowName(),
-          cursorColor: AD.iconSearch,
+          style: ADText.rowName(c: onBand),
+          cursorColor: onBand,
           decoration: InputDecoration(
               hintText: 'Search messages',
               hintStyle: ADText.rowName().copyWith(
-                  color: AD.textTertiary, fontWeight: FontWeight.w700),
+                  color: onBand.withValues(alpha: 0.6), fontWeight: FontWeight.w700),
               border: InputBorder.none),
         )),
       ]);
+  }
 }

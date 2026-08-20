@@ -33,9 +33,21 @@ class AD {
   // ---------------------------------------------------------------- surfaces
   /// App / page background — the warm CREAM paper. (Was near-black.)
   static const bg = Color(0xFFFBF3E2);
-  /// Header + footer bars. See the band tokens below — this is the turquoise
-  /// one, kept under its old name for existing call sites.
-  static const headerFooter = Color(0xFF5CB8A6);
+  /// Header + footer bars.
+  ///
+  /// [RAJ-INDIGO-1 2026-08-21] ⚠️ THIS IS NO LONGER TURQUOISE. It was
+  /// `#5CB8A6` — a bright sea-turquoise — which the owner rejected outright
+  /// ("I don't like this turquoise, remove it from the app, wherever there
+  /// is"). It is now **Jodhpur indigo `#2E4A8C`**, the blue-city wall colour,
+  /// with marigold/haldi as its companion accent.
+  ///
+  /// THE FOREGROUND FLIPPED WITH IT. Turquoise was a LIGHT band, so
+  /// `AD.onBand()` returned ink and every header in the app hardcoded
+  /// `AD.textPrimary` to match. Indigo is a DARK band and takes CREAM. Any
+  /// screen still hardcoding ink on `headerFooter` is ink-on-indigo, i.e.
+  /// invisible. Route every header foreground through `AD.onBand(band)` —
+  /// never re-hardcode a colour on a band.
+  static const headerFooter = Color(0xFF2E4A8C);
   /// Card / list-row surface — raised paper.
   static const card = Color(0xFFFFFAF0);
   /// Card hover / pressed.
@@ -109,8 +121,19 @@ class AD {
   // the seam handoff (design/seams/patches.md §6) assigns a band hue per screen
   // by mood, and `bandTurquoise` is no longer the only answer — which is why
   // `headerFooter` alone stopped being a useful name.
-  static const bandTurquoise = headerFooter;  // 0xFF5CB8A6 — light
+  /// [RAJ-INDIGO-1] The primary band — Jodhpur indigo. Use THIS name in new
+  /// code.
+  static const bandJodhpur = headerFooter;    // 0xFF2E4A8C — dark
+  /// ⚠️ DEPRECATED NAME, NOT A TURQUOISE. Kept only because the seam call
+  /// sites (`chat_list`, `chat_thread`, `groups_tab`) pass it by this name and
+  /// there is no local compiler to catch a rename typo. It is `bandJodhpur`.
+  /// New code uses [bandJodhpur]; a mechanical rename is a separate pass.
+  static const bandTurquoise = bandJodhpur;   // 0xFF2E4A8C — dark
   static const bandHaldi = haldi;             // 0xFFE9A227 — light
+  /// Still `= tabCalls` — see the warning on that token. The Calls TAB moved to
+  /// terracotta (`tabCallsChip`) so it would not vanish into the indigo header
+  /// band, but `tabCalls` itself had to stay indigo for its ~70 unrelated call
+  /// sites, so this alias is still correct.
   static const bandIndigo = tabCalls;         // 0xFF2E4A8C — dark
   static const bandRani = primaryBadge;       // 0xFFC9316E — dark
 
@@ -147,6 +170,14 @@ class AD {
   /// its own name rather than borrowing an unrelated control token.
   static const haldi = Color(0xFFE9A227);
 
+  /// [RAJ-INDIGO-1] Terracotta / lac — the mud-wall red-orange. Added so the
+  /// Calls tab has a hue of its own: it used to be indigo `#2E4A8C`, which is
+  /// now the HEADER BAND colour, so the chip would have disappeared into the
+  /// strip behind it. Deliberately warmer and browner than `danger` `#D33A2C`
+  /// (which stays reserved for destructive/missed states) — the two never
+  /// appear on the same surface.
+  static const terracotta = Color(0xFFC4562F);
+
   // -------------------------------------------------------------------- text
   static const textPrimary = Color(0xFF16110D);
   static const textSecondary = Color(0x9916110D); // ink 60%
@@ -156,10 +187,26 @@ class AD {
   static const placeholderOnWhite = Color(0x7316110D); // ink 45%
 
   // -------------------------------------------------------------------- tabs
-  static const tabChats = Color(0xFF5CB8A6);
-  static const tabGroups = Color(0xFFC9316E);
+  // [RAJ-INDIGO-1] All three chips sit ON the indigo header band, so all three
+  // must be WARM and light-to-mid — a cool or dark chip vanishes into the
+  // strip. Chats was turquoise (retired) and Calls was the very indigo the band
+  // now uses. Marigold / rani / terracotta reads as a Rajasthani bandhani trio
+  // and each one clears the band by a wide margin.
+  static const tabChats = haldi;         // 0xFFE9A227 marigold — light, ink fg
+  static const tabGroups = primaryBadge; // 0xFFC9316E rani — dark, cream fg
+  /// ⚠️ NOT the colour of the Calls CHIP. `tabCalls` drifted into a
+  /// general-purpose "indigo accent" with ~70 call sites well outside the tab
+  /// strip (AvaVoice, AvaVision, GenUI, card manager, `kAvaVoicePurple`…), so
+  /// retargeting it to terracotta would have silently repainted all of them.
+  /// It stays indigo; the Calls chip reaches for [terracotta] directly.
   static const tabCalls = Color(0xFF2E4A8C);
-  static const double tabInactiveTintAlpha = 0.22;
+  /// The Calls chip fill — see [terracotta] for why it left indigo.
+  static const tabCallsChip = terracotta; // 0xFFC4562F lac — dark, cream fg
+  /// [RAJ-INDIGO-1] Raised 0.22 → 0.34. 22% was tuned against the old LIGHT
+  /// turquoise band, where a faint tint still read. Over the dark indigo band
+  /// a 22% wash goes muddy and the unselected chips lose their identity, which
+  /// is exactly the "elements blend into it" the owner flagged.
+  static const double tabInactiveTintAlpha = 0.34;
   static const tabActiveLabel = Color(0xFFFBF3E2);
 
   /// Background fill for a colored tab pill given its accent + active state.
@@ -209,7 +256,12 @@ class AD {
 
   // ----------------------------------------------------------------- buttons
   static const primaryBadge = Color(0xFFC9316E);
-  static const newGroup = Color(0xFF5CB8A6);
+  /// ⚠️ [RAJ-INDIGO-1] Was turquoise `#5CB8A6`; now marigold. This is the fill
+  /// behind `AdButtonVariant.teal` (name kept — ~call sites, no local
+  /// compiler), `ColorScheme.secondary`, and the `'coral'` personalisation
+  /// accent. `AdButton._fg` already delegates to `AD.onBand`, so the
+  /// foreground flipped from cream to ink on its own.
+  static const newGroup = haldi;
   static const sendActiveBg = Color(0xFFC9316E);
   static const sendActiveInk = Color(0xFFFBF3E2);
   static const micIdleBg = Color(0xFFE9A227);
@@ -221,7 +273,10 @@ class AD {
   // ------------------------------------------------------------------ status
   static const online = Color(0xFF2E7D68);
   static const outgoingCall = Color(0xFF2E4A8C);
-  static const incomingCall = Color(0xFF5CB8A6);
+  /// [RAJ-INDIGO-1] Was turquoise `#5CB8A6`, which sat on the CREAM call-log
+  /// card at only ~2.2:1. Now the deep sea-green already in the palette as
+  /// `online` — the conventional "incoming" green, and legible on cream.
+  static const incomingCall = online;
   static const missedCall = Color(0xFFD33A2C);
   static const danger = Color(0xFFD33A2C);
   static const unreadAccent = Color(0xFFC9316E);
@@ -302,6 +357,18 @@ class AD {
     BoxShadow(color: Color(0xFF16110D), offset: Offset(3, 4), blurRadius: 0),
   ];
 
+  /// [RAJ-INDIGO-1] Tab-chip lift — owner asked for "little shadow" under the
+  /// tab buttons (pic 2 №2, pic 4). Hard ink offset, `blurRadius: 0`, per
+  /// HANDOFF rule 4: nothing in this palette is allowed to blur. Smaller than
+  /// [toastShadow] because a 36px chip carrying a 4px shadow reads as a card.
+  static const List<BoxShadow> chipShadow = [
+    BoxShadow(color: Color(0xFF16110D), offset: Offset(2, 3), blurRadius: 0),
+  ];
+  /// The pressed/unselected counterpart — the chip sits closer to the band.
+  static const List<BoxShadow> chipShadowRest = [
+    BoxShadow(color: Color(0xFF16110D), offset: Offset(1, 2), blurRadius: 0),
+  ];
+
   // ---------------------------------------------------------- chat bubbles
   static const bubbleOutBg = Color(0xFF2E4A8C);
   static const bubbleOutInk = Color(0xFFFBF3E2);
@@ -375,13 +442,17 @@ class AD {
   static const Map<String, AvatarFamily> _families = {
     'lilac':   AvatarFamily(chipBg: Color(0xFF2E4A8C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E4A8C)),
     'peach':   AvatarFamily(chipBg: Color(0xFFC9316E), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFC9316E)),
-    'mint':    AvatarFamily(chipBg: Color(0xFF5CB8A6), chipInk: Color(0xFF16110D), solid: Color(0xFF5CB8A6)),
+    // [RAJ-INDIGO-1] 'mint' and 'aqua' were the last two turquoise fills in the
+    // app. Legacy KEYS, not hue descriptions — retargeted to terracotta and
+    // deep green rather than renamed, because the key is derived from a seed
+    // hash and renaming one reshuffles every existing user's avatar colour.
+    'mint':    AvatarFamily(chipBg: Color(0xFFC4562F), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFC4562F)),
     'butter':  AvatarFamily(chipBg: Color(0xFFE9A227), chipInk: Color(0xFF16110D), solid: Color(0xFFE9A227)),
     'rose':    AvatarFamily(chipBg: Color(0xFFC9316E), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFC9316E)),
     'sky':     AvatarFamily(chipBg: Color(0xFF2E4A8C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E4A8C)),
     'mustard': AvatarFamily(chipBg: Color(0xFFE9A227), chipInk: Color(0xFF16110D), solid: Color(0xFFE9A227)),
     'sage':    AvatarFamily(chipBg: Color(0xFF2E7D68), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E7D68)),
-    'aqua':    AvatarFamily(chipBg: Color(0xFF5CB8A6), chipInk: Color(0xFF16110D), solid: Color(0xFF5CB8A6)),
+    'aqua':    AvatarFamily(chipBg: Color(0xFF2E7D68), chipInk: Color(0xFFFBF3E2), solid: Color(0xFF2E7D68)),
     'terra':   AvatarFamily(chipBg: Color(0xFFD33A2C), chipInk: Color(0xFFFBF3E2), solid: Color(0xFFD33A2C)),
   };
 }
@@ -530,7 +601,8 @@ class AdButton extends StatelessWidget {
   /// primary and teal. The fills changed under it and the conclusion inverted
   /// for primary:
   ///   rani pink #C9316E + ink  ≈ 3.5:1  ✗   + cream ≈ 4.7:1  ✓
-  ///   turquoise #5CB8A6 + ink  ≈ 7.4:1  ✓   (still ink)
+  ///   marigold  #E9A227 + ink  ≈ 8.9:1  ✓   (was turquoise #5CB8A6, retired
+  ///                                          in [RAJ-INDIGO-1])
   ///   red       #D33A2C + cream ≈ 4.4:1  ✓   (large/emphasis text only)
   ///
   /// So it is no longer written out per variant at all — it delegates to

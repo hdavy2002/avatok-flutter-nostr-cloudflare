@@ -166,9 +166,13 @@ class _GroupsTabState extends State<GroupsTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Groups', style: ADText.appTitle()),
+                    // [RAJ-INDIGO-1] onBand — the band went from light
+                    // turquoise to dark indigo, so the default ink is invisible.
+                    Text('Groups', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
                     const SizedBox(height: 2),
-                    Text('YOUR GROUP CHATS', style: ADText.sectionLabel()),
+                    Text('YOUR GROUP CHATS',
+                        style: ADText.sectionLabel(
+                            c: AD.onBand(AD.headerFooter).withValues(alpha: 0.75))),
                   ],
                 ),
               ]),
@@ -176,8 +180,8 @@ class _GroupsTabState extends State<GroupsTab> {
           ),
         ),
         // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
-        // Squiggle seam on the turquoise band (design/seams/patches.md §6).
-        const SquiggleSeam(bandColor: AD.bandTurquoise),
+        // Squiggle seam on the band (design/seams/patches.md §6).
+        const SquiggleSeam(bandColor: AD.bandJodhpur),
         // [ISSUE-GROUPS-SEARCH-1] Search dock, pinned under the header and outside
         // the ListView so it stays put while the list scrolls. Hidden when there is
         // nothing to search; never autofocused (would pop the keyboard on tab open).

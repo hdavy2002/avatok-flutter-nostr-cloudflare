@@ -14,6 +14,7 @@ import '../core/config.dart';
 import '../core/profile_store.dart';
 import '../core/remote_config.dart';
 import '../core/ui/avatok_dark.dart';
+import '../core/ui/rajasthani_motifs.dart'; // [RAJ-INDIGO-1] app-wide footer seam
 import '../features/affiliate/affiliate_home.dart'; // [AFF-NAV-1] footer slot
 import '../features/askava/askava_screen.dart';
 import '../features/avadial/avadial_channel.dart';
@@ -698,6 +699,22 @@ class _ShellV2State extends State<ShellV2> {
               // (owned by a different agent) — it belongs at this shell-root
               // level so it overlays every app, not just one.
               const Positioned(top: 0, left: 0, right: 0, child: MiniAudioPlayerBar()),
+              // [RAJ-INDIGO-1] The app-wide FOOTER SEAM, moved here out of
+              // `AppSwitcherBar` (see the note there). Pinned to the bottom of
+              // the BODY, whose bottom edge is exactly the top edge of the
+              // bottomNavigationBar — so it stays flush with the bar even when
+              // the app menu expands, and its transparent half now reveals the
+              // scrolling content instead of a dead strip of Scaffold cream.
+              //
+              // `IgnorePointer` matters here: this sits over the last ~36px of
+              // every screen in the app, including a chat list's newest row and
+              // any FAB parked in that corner.
+              const Positioned(
+                left: 0, right: 0, bottom: 0,
+                child: IgnorePointer(
+                  child: DoubleWaveSeam(bandColor: AD.bandIndigo, flip: true),
+                ),
+              ),
             ],
           ),
           // The app switcher is rendered ONCE here, at the shell level — so the

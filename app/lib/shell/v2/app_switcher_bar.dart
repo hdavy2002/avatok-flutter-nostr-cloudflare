@@ -186,10 +186,22 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
     // [RAJ-SEAMS-1] TorranDivider is retired. This is the FOOTER, so the seam
     // sits ABOVE the bar, flipped — mirrors shellNavBar() in shell_chrome.dart
     // (patches.md §5/§6). Band moved AD.headerFooter -> AD.bandIndigo.
+    // [RAJ-INDIGO-1] The DoubleWaveSeam that used to be the first child of this
+    // Column has MOVED to `shell/shell_v2.dart`, where it is a bottom-pinned
+    // overlay on the shell body. Owner, pic 7 №3 / pic 8: the seam's
+    // transparent half sat inside `bottomNavigationBar`, so the only thing
+    // visible through the wave was the Scaffold's cream — a dead cream band
+    // between the content and the footer. Overlaid on the body instead, the
+    // list scrolls through the scallops.
+    //
+    // It has to live in the shell rather than here because this widget IS the
+    // bottomNavigationBar: nothing painted inside it can appear above its own
+    // top edge. Pinning the seam to `bottom: 0` of the body puts it exactly on
+    // that edge, and it tracks this bar's height automatically when the app
+    // menu expands.
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const DoubleWaveSeam(bandColor: _band, flip: true),
         Container(
           decoration: const BoxDecoration(
             color: _band,

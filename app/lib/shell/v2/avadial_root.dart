@@ -80,8 +80,18 @@ class _AvaDialRootState extends State<AvaDialRoot> {
   // NOT const: `PhosphorIcons.x(...)` is a function call. The element type is
   // unchanged, so `_CallsTabStrip` is unaffected.
   static final _items = [
+    // [RAJ-INDIGO-1] Owner (pic 4): "the buttons/tabs like Contacts, Dialpad
+    // have a white background — give each a different Indian background where
+    // the fonts stand out." Each item's colour is now the chip's PERMANENT
+    // fill (see `_CallsTabStrip._tab`), so it has to be a real hue on all four.
+    //
+    // Contacts was `AD.iconSearch`, which despite the name is NEUTRAL INK
+    // #16110D (the eight icon hues were collapsed onto one neutral in
+    // [UI-PALETTE-1]). As a chip fill that is a black rectangle on an indigo
+    // band. Marigold instead. Block list keeps `danger` and Call logs keeps
+    // `online` — those two are semantic, not decorative, and both clear indigo.
     _CallsTabItem(PhosphorIcons.user(PhosphorIconsStyle.regular),
-        PhosphorIcons.user(PhosphorIconsStyle.fill), 'Contacts', AD.iconSearch),
+        PhosphorIcons.user(PhosphorIconsStyle.fill), 'Contacts', AD.haldi),
     _CallsTabItem(PhosphorIcons.numpad(PhosphorIconsStyle.regular),
         PhosphorIcons.numpad(PhosphorIconsStyle.fill), 'Dialpad', AD.primaryBadge),
     _CallsTabItem(PhosphorIcons.prohibit(PhosphorIconsStyle.regular),
@@ -251,11 +261,14 @@ class _CallsTabStrip extends StatelessWidget {
     // [RAJ-SEAMS-1] Band recolour, patches.md §6: this strip was
     // `AvaDialTheme.surface` (a pale card colour) — now `AD.bandIndigo`, a
     // DARK band, so the unselected-tab foreground must flip to cream via
-    // AD.onBand (see _tab below). The bottom hairline stays removed: the
-    // DoubleWaveSeam added immediately below this strip in the Scaffold body
-    // IS the seam now, and a straight rule on top of the waves would read as
-    // a mistake.
-    final onBand = AD.onBand(AD.bandIndigo);
+    // AD.onBand. The bottom hairline stays removed: the DoubleWaveSeam added
+    // immediately below this strip in the Scaffold body IS the seam now, and a
+    // straight rule on top of the waves would read as a mistake.
+    //
+    // [RAJ-INDIGO-1] The `onBand` local that used to be computed here and
+    // threaded into `_tab` is gone — no chip draws its foreground on the band
+    // any more, each one draws it on its own accent fill. Leaving it would be
+    // an unused local, which `analysis_options.yaml` treats as a build failure.
     return Container(
       decoration: const BoxDecoration(color: AD.bandIndigo),
       padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
@@ -265,7 +278,7 @@ class _CallsTabStrip extends StatelessWidget {
           children: [
             for (var i = 0; i < items.length; i++) ...[
               if (i > 0) const SizedBox(width: 8),
-              _tab(items[i], i == selectedIndex, () => onSelected(i), onBand),
+              _tab(items[i], i == selectedIndex, () => onSelected(i)),
             ],
           ],
         ),
@@ -273,11 +286,23 @@ class _CallsTabStrip extends StatelessWidget {
     );
   }
 
-  Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap, Color onBand) {
-    // White text/icons on the bright accent fill (dark v2's accent-fill +
-    // white-label convention, see AdChip's active state); cream (onBand) text
-    // on the unselected indigo band.
-    final fg = selected ? Colors.white : onBand;
+  // [RAJ-INDIGO-1] The `onBand` parameter is gone: every chip now carries its
+  // own accent fill, so the foreground follows `item.color`, never the band.
+  Widget _tab(_CallsTabItem item, bool selected, VoidCallback onTap) {
+    // [RAJ-INDIGO-1] Owner pic 4, three fixes:
+    //
+    // 1. THE WHITE BACKGROUND IS GONE. The unselected fill was
+    //    `AvaDialTheme.surface2` — `AD.cardHover` #F4E8D2, a pale cream — and
+    //    the unselected foreground was `onBand`, which on an indigo band is
+    //    ALSO cream. Cream label on a cream chip: the tabs in the screenshot
+    //    are unreadable, and that is a straight contrast bug, not a taste call.
+    //    Each chip now carries its own accent whether selected or not.
+    // 2. FOREGROUND VIA `AD.onBand(item.color)`, not `Colors.white`. Contacts
+    //    is marigold; white on marigold is ~1.9:1.
+    // 3. INK OUTLINE + HARD SHADOW so the chips lift off the band ("give
+    //    shadow under the buttons"). `boxShadow: const []` was explicitly
+    //    empty before.
+    final fg = AD.onBand(item.color);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -285,10 +310,11 @@ class _CallsTabStrip extends StatelessWidget {
         curve: Msg.curve,
         padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
-          color: selected ? item.color : AvaDialTheme.surface2,
+          color: item.color,
           borderRadius: Msg.brPill,
-          border: Border.all(color: AvaDialTheme.border, width: 1),
-          boxShadow: const [],
+          border: Border.all(
+              color: AD.borderControl, width: selected ? AD.wHero : AD.wBorder),
+          boxShadow: selected ? AD.chipShadow : AD.chipShadowRest,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(selected ? item.selectedIcon : item.icon, size: 17, color: fg),

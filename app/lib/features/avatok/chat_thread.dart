@@ -1211,22 +1211,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
       // overscroll bounce matches every canvas instead of flashing white.
       backgroundColor: AD.bg,
       body: Stack(children: [
-      SafeArea(
-        bottom: false,
-        child: Column(
+      Column(
           children: [
-            // Thread header — paper-2 band with ink bottom border (§8).
+            // [RAJ-INDIGO-1] STATUS-BAR FIX (owner, pic 7 №1). `SafeArea` used
+            // to wrap this whole Column, so the top inset was painted by the
+            // Scaffold's cream and you got a cream strip above an indigo
+            // header. The band Container now sits OUTSIDE the SafeArea and the
+            // SafeArea inside it, which is the arrangement the Updates screen
+            // (`status_screen.dart:247`) already used and the owner pointed at.
+            //
+            // The fixed `height: 58` is on the INNER row, not on this
+            // Container, so the inset is added to it rather than eaten out of
+            // it — a 58px box that also has to absorb a 24-48px inset leaves no
+            // room for the title.
             Container(
+              color: AD.headerFooter,
+              child: SafeArea(
+                bottom: false,
+                child: SizedBox(
               height: 58,
-              // [RAJ-SEAMS-1] Bottom hairline removed — the SquiggleSeam
-              // below is the header↔content seam now (patches.md §6).
-              decoration: const BoxDecoration(
-                color: AD.headerFooter,
-              ),
+              child: Padding(
               padding: const EdgeInsets.only(left: 4, right: 6),
               child: _searchMode ? _searchBar() : Row(children: [
                 IconButton(
-                  icon: PhosphorIcon(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
+                  icon: PhosphorIcon(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), size: 22,
+                      color: AD.onBand(AD.headerFooter)),
                   onPressed: () => Navigator.pop(context),
                 ),
                 // [AVA-GRP-UI] Tapping the header avatar opens the full profile:
@@ -1263,16 +1272,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.threadName()),
+                          style: ADText.threadName(c: AD.onBand(AD.headerFooter))),
+                      // [RAJ-INDIGO-1] The subtitle's three states all used ink
+                      // values (`AD.online` deep green, `AD.iconSearch` neutral
+                      // ink, `AD.textTertiary` ink@45%) chosen against the old
+                      // pale band. On indigo none of them clear 2:1. Cream at
+                      // full / 75% carries the same "live vs idle" distinction
+                      // without leaving the band's foreground rule.
                       Text(
                           (_peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'Typing…')
                               : (c.group ? '${c.members} members · tap to manage'
                                   : (_peerOnline ? 'Online' : _relLastSeen()))),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: ADText.statCaption(c: (_peerTyping || _peerOnline)
-                                  ? (_peerOnline && !_peerTyping ? AD.online : AD.iconSearch)
-                                  : AD.textTertiary)),
+                          style: ADText.statCaption(
+                              c: (_peerTyping || _peerOnline)
+                                  ? AD.onBand(AD.headerFooter)
+                                  : AD.onBand(AD.headerFooter).withValues(alpha: 0.75))),
                     ],
                   ),
                   ),
@@ -1282,38 +1298,52 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 // Shield watchdog — green when Ava is watching this chat.
                 // Hidden when Guardian is switched off (pro/live launch, KV
                 // `guardianEnabled:false`).
+                // [RAJ-INDIGO-1] Every header glyph below took a NEUTRAL INK
+                // token (`iconSearch`/`iconPhone`/`iconVideo` all collapse to
+                // #16110D). That was correct on the old pale turquoise band and
+                // is invisible on indigo. They are all `onBand` now; the
+                // disabled conference state keeps its distinction as cream@45%.
                 if (RemoteConfig.guardianEnabled) _shieldAction(),
                 _headerAction(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     () => setState(() { _searchMode = true; _searchQuery = ''; }),
-                    color: AD.iconSearch),
+                    color: AD.onBand(AD.headerFooter)),
                 if (_isTelThread) ...[
                   // Unknown-number voicemail record — no live peer to call. Offer
                   // a quick "save contact" shortcut in the header instead.
                   if (!_callerSaved)
                     _headerAction(PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
-                        () => _saveUnknownContact(source: 'thread_header'), color: AD.iconVideo),
+                        () => _saveUnknownContact(source: 'thread_header'),
+                        color: AD.onBand(AD.headerFooter)),
                 ] else if (!c.group) ...[
-                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'), color: AD.iconPhone),
-                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'), color: AD.iconVideo),
+                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'),
+                      color: AD.onBand(AD.headerFooter)),
+                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'),
+                      color: AD.onBand(AD.headerFooter)),
                 ] else if (RemoteConfig.conferenceEnabled) ...[
                   // Phase 10 RULE CHANGE: group conferences (Cloudflare Realtime A/V, ≤25).
                   // >25 members → greyed icons; tapping pops the limit notice.
                   _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold),
                       () => _confAllowed ? _groupCall(false) : _confLimitNotice(false),
-                      color: _confAllowed ? AD.textPrimary : AD.textTertiary),
+                      color: _confAllowed
+                          ? AD.onBand(AD.headerFooter)
+                          : AD.onBand(AD.headerFooter).withValues(alpha: 0.45)),
                   _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
                       () => _confAllowed ? _groupCall(true) : _confLimitNotice(true),
-                      color: _confAllowed ? AD.textPrimary : AD.textTertiary),
+                      color: _confAllowed
+                          ? AD.onBand(AD.headerFooter)
+                          : AD.onBand(AD.headerFooter).withValues(alpha: 0.45)),
                   if (!_confAllowed)
                     _headerAction(PhosphorIcons.info(PhosphorIconsStyle.bold),
-                        () => _confLimitNotice(true), size: 22, color: AD.textTertiary),
+                        () => _confLimitNotice(true), size: 22,
+                        color: AD.onBand(AD.headerFooter).withValues(alpha: 0.45)),
                 ],
-                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: AD.iconVideo),
+                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow,
+                    color: AD.onBand(AD.headerFooter)),
               ]),
+              ),
+              ),
+              ),
             ),
-            // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
-            // Squiggle seam on the turquoise band (design/seams/patches.md §6).
-            const SquiggleSeam(bandColor: AD.bandTurquoise),
             if (_pinned != null) _pinBanner(),
             // Unknown-number receptionist thread — invite the owner to save the
             // caller (dismissible). Hidden once saved or dismissed.
@@ -1324,8 +1354,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             // thread (dismissible). Rendered only when we have bullets to show.
             if (!_catchupDismissed && _catchupBullets.isNotEmpty)
               CatchupCard(bullets: _catchupBullets, msgCount: _catchupCount, onDismiss: _dismissCatchup),
+            // [RAJ-SEAMS-1 / RAJ-INDIGO-1] The 1B Squiggle seam. It used to be
+            // a Column sibling directly under the header, where its transparent
+            // half showed only the Scaffold's cream — the "creamy part that
+            // hides the messages as they are going up or down" (owner, pic 7
+            // №2). It is now overlaid on the message list, so a bubble scrolls
+            // visibly through the scallops.
             Expanded(
-              child: DecoratedBox(
+              child: SeamOverlay(
+                seam: const SquiggleSeam(bandColor: AD.bandJodhpur),
+                child: DecoratedBox(
                 decoration: BoxDecoration(gradient: _threadGradient),
                 child: Builder(builder: (_) {
                 final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -1574,6 +1612,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 ]);
               }),
               ),
+              ),
             ),
             if (_mentionMatches.isNotEmpty) _mentionBar(),
             // [AVABRAIN-COMPANION-UI-1] Ava's pending suggestion — group threads
@@ -1603,7 +1642,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             else SafeArea(top: false, child: _inputBar()),
           ],
         ),
-      ),
       // Phase 4: floating-emoji burst overlay (ignores touches; pure delight).
       if (_burstFx.isNotEmpty) Positioned.fill(child: IgnorePointer(child: _burstOverlay())),
       ]),
