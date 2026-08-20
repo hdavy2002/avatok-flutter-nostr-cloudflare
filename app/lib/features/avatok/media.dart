@@ -465,8 +465,13 @@ class MediaService {
     // Public files and server-readable private digital files have a usable
     // display URL. Private E2E files must be rebuilt from enc_blob below.
     final url = item.displayUrl;
-    final isPresigned = url.contains('X-Amz-Signature') || url.contains('x-amz-signature');
-    if (!item.isPrivate || isPresigned) {
+    // [LIB-READABLE-1 2026-08-21] Was a local `isPresigned` string sniff for
+    // `X-Amz-Signature`, duplicated from `lib_thumbs.dart`. It did not
+    // recognise the worker's HMAC fallback URL, so a perfectly fetchable
+    // private file fell through to the enc_blob branch below and threw
+    // "private file has no decryption material" — surfacing to the owner as
+    // "Could not open this file". See `LibraryItem.isDirectlyReadable`.
+    if (item.isDirectlyReadable) {
       if (url.isEmpty) throw MediaUploadException('file has no readable URL');
       final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 60));
       if (res.statusCode != 200 || res.bodyBytes.isEmpty) {

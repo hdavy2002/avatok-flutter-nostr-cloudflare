@@ -180,8 +180,21 @@ class AvatarCache {
 
   /// Cloudflare Image Transformation URL (enabled on the avatok.ai zone).
   /// https://<host>/cdn-cgi/image/<opts>/<path>
+  ///
+  /// ⚠️ [LIB-READABLE-1 2026-08-21] RETURNS THE URL UNCHANGED WHEN IT HAS A
+  /// QUERY STRING. This transform rebuilds the URL from scheme + host + PATH
+  /// only, which silently DROPS `?…`. That is harmless for a public blossom
+  /// CDN object (no query) and destructive for a SIGNED url: the worker's
+  /// private-read fallback is `…/api/media/private-read?key=…&exp=…&sig=…` on
+  /// an `api.avatok.ai` host, so `sizedUrl` matched it, stripped the entire
+  /// signature, and the request came back 404 "Not found" — one of the ways
+  /// the owner's library tiles rendered blank.
+  ///
+  /// A signed URL cannot be transformed without re-signing, so the correct
+  /// answer is to leave it alone and pay for the full-size download.
   static String transformUrl(String rawUrl, int px) {
     final u = Uri.parse(rawUrl);
+    if (u.hasQuery) return rawUrl;
     final opts = 'format=avif,quality=60,width=$px,fit=cover';
     return '${u.scheme}://${u.host}/cdn-cgi/image/$opts${u.path}';
   }

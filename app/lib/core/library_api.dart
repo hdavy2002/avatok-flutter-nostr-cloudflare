@@ -53,6 +53,55 @@ class LibraryItem {
 
   bool get isPrivate => visibility == 'private';
 
+  /// [LIB-READABLE-1 2026-08-21] Can these bytes be fetched straight from
+  /// [displayUrl], with no decryption key?
+  ///
+  /// ⚠️ THIS IS THE FIX FOR "blank tiles + Could not open this file". Read the
+  /// whole comment before changing it.
+  ///
+  /// Owner report, with screenshots: every tile in AvaLibrary > Images rendered
+  /// as a black square with just a JPG/PNG chip, and tapping one said "Could
+  /// not open this file". The files were his own generated covers and
+  /// thumbnails — they existed, and the server was serving them.
+  ///
+  /// The bug was that BOTH the thumbnail path (`lib_thumbs._privateRoute`) and
+  /// the open path (`MediaService.downloadLibraryItem`) decided "can I read
+  /// this?" by SNIFFING THE URL STRING for `X-Amz-Signature`. That test only
+  /// recognises one of the two URL shapes the worker can return:
+  ///
+  ///   * `presignDigitalReadUrl` -> a real R2 SigV4 presign, which DOES carry
+  ///     `X-Amz-Signature`.                                        (recognised)
+  ///   * `fallbackPrivateMediaUrl` -> `…/api/media/private-read?key&exp&sig`,
+  ///     an HMAC-signed worker URL used whenever the R2 keys are not
+  ///     configured. Equally fetchable, equally plaintext, and carries NO
+  ///     `X-Amz-Signature`.                                     (NOT recognised)
+  ///
+  /// A row that took the fallback was therefore misfiled as unreadable E2E
+  /// ciphertext. With no `enc_blob` (the uploader never gets one for their own
+  /// row) the client concluded it had no way to read the file, drew the type
+  /// tile, and threw "private file has no decryption material" on tap.
+  ///
+  /// The test is now STRUCTURAL — "did the server hand me a signed URL?" —
+  /// rather than a string match on one vendor's signature parameter. A public
+  /// item is readable by definition; a private one is readable if its URL
+  /// carries either signature form.
+  ///
+  /// Do NOT narrow this back to a single `contains('X-Amz-Signature')`. If a
+  /// third signing scheme is added, add it here, in ONE place — the duplication
+  /// between `lib_thumbs.dart` and `media.dart` is what let the two paths agree
+  /// on the wrong answer and made the failure look like two separate bugs.
+  bool get isDirectlyReadable {
+    if (displayUrl.isEmpty) return false;
+    if (!isPrivate) return true;
+    final u = displayUrl.toLowerCase();
+    // R2 / S3 SigV4 presign.
+    if (u.contains('x-amz-signature')) return true;
+    // The worker's own HMAC fallback (`worker/src/routes/media.ts`
+    // `fallbackPrivateMediaUrl` -> `privateMediaRead`).
+    if (u.contains('/api/media/private-read') && u.contains('sig=')) return true;
+    return false;
+  }
+
   factory LibraryItem.fromJson(Map<String, dynamic> j) => LibraryItem(
         id: j['id'].toString(),
         category: (j['category'] ?? j['media_type'] ?? 'other').toString(),

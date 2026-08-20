@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/analytics.dart'; // [LIB-READABLE-1] open-failure telemetry
 import '../../core/library_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -62,7 +64,32 @@ class _LibraryMediaViewerState extends State<LibraryMediaViewer> {
         if (!mounted) return;
         setState(() { _audio = p; _playing = true; _status = ''; });
       }
-    } catch (_) {
+    } catch (e, st) {
+      // [LIB-READABLE-1 2026-08-21] This used to be a bare `catch (_)`: the real
+      // error was destroyed, nothing was logged, and NO event was emitted. So
+      // the owner's "Could not open this file" — which he hit on every image in
+      // his library — was 100% invisible in PostHog. There was literally
+      // nothing to query, which is why it survived as long as it did.
+      //
+      // `MediaService.downloadLibraryItem` throws a `MediaUploadException`
+      // carrying a specific reason ('file has no storage key', 'file has no
+      // readable URL', 'file download failed (404)', 'private file has no
+      // decryption material', 'account key unavailable'). Those five say very
+      // different things about what is broken, and they are worth telling
+      // apart — hence the properties below.
+      Analytics.capture('library_open_failed', {
+        'reason': e is MediaUploadException ? e.toString() : e.runtimeType.toString(),
+        'category': widget.item.category,
+        'mime': widget.item.mime,
+        'private': widget.item.isPrivate,
+        'directly_readable': widget.item.isDirectlyReadable,
+        'has_enc_blob': (widget.item.encBlob ?? '').isNotEmpty,
+        'has_url': widget.item.displayUrl.isNotEmpty,
+        'source_kind': widget.item.sourceKind,
+        'app_build': Analytics.appBuild,
+      });
+      unawaited(Analytics.captureException(e, st,
+          extra: {'where': 'library_media_viewer._open'}));
       if (mounted) setState(() => _status = 'Could not open this file');
     }
   }

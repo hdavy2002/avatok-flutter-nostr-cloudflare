@@ -215,15 +215,22 @@ class LibThumbs {
     // presigned `display_url` on every read. That signature is also the only
     // way to tell it apart from a `blossom` row, whose `display_url` is the
     // bare CIPHERTEXT object and is useless without a key.
-    if (_isPresigned(m.displayUrl)) return _PrivRoute.presignedPlaintext;
+    // [LIB-READABLE-1] Was `_isPresigned(m.displayUrl)` — a string sniff for
+    // `X-Amz-Signature` that missed the worker's HMAC fallback URL entirely and
+    // sent every such row down the `coldDisk` -> `none` path, i.e. the blank
+    // type tile the owner photographed. See `LibraryItem.isDirectlyReadable`.
+    if (m.isDirectlyReadable) return _PrivRoute.presignedPlaintext;
     if ((m.encBlob ?? '').isNotEmpty) return _PrivRoute.decrypt;
     // Cold index: the disk may still hold the plaintext even though `peekFile`
     // missed (it is in-memory only). Worth one async look.
     return _PrivRoute.coldDisk;
   }
 
-  static bool _isPresigned(String u) =>
-      u.isNotEmpty && (u.contains('X-Amz-Signature') || u.contains('x-amz-signature'));
+  // [LIB-READABLE-1] `_isPresigned` was removed — its one caller now asks
+  // `LibraryItem.isDirectlyReadable`, which is the same question answered in
+  // one place for both the thumbnail path and the open path. Two private
+  // copies of this predicate is how they managed to be wrong in exactly the
+  // same way while looking like unrelated bugs.
 
   /// Items we have proven underivable this session — never re-tried, so a
   /// hopeless tile costs one attempt, not one per scroll.
