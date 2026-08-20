@@ -231,32 +231,32 @@ class PillMorseStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // [RAJ-SEAMS-1] The pills are PROPORTIONAL (Expanded with a flex taken from
+    // the mockup's widths), not fixed pixels.
+    //
+    // As literal widths they summed to 218px plus 70px of gaps = 288px, which
+    // overflows a 320dp screen (280px of usable width after the 20px insets) by
+    // exactly 8px — a yellow-and-black striped bar across the header, caught by
+    // settings_screen_overflow_test at 320x568. Flex keeps the mockup's dash-dot
+    // rhythm at any width and cannot overflow: only the fixed 7px gaps consume
+    // hard space, and they total 63px.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(children: [
         for (var i = 0; i < _widths.length; i++) ...[
-          Container(
-            width: _widths[i],
-            height: 10,
-            decoration: BoxDecoration(
-              color: colors[i % colors.length],
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: _ink, width: 2),
+          if (i > 0) const SizedBox(width: 7),
+          Expanded(
+            flex: _widths[i].round(),
+            child: Container(
+              height: 10,
+              decoration: BoxDecoration(
+                color: colors[i % colors.length],
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: _ink, width: 2),
+              ),
             ),
           ),
-          const SizedBox(width: 7),
         ],
-        Expanded(
-          child: Container(
-            height: 10,
-            constraints: const BoxConstraints(minWidth: 18),
-            decoration: BoxDecoration(
-              color: colors[_widths.length % colors.length],
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: _ink, width: 2),
-            ),
-          ),
-        ),
       ]),
     );
   }

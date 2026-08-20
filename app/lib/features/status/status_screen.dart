@@ -236,7 +236,13 @@ class _StatusScreenState extends State<StatusScreen> {
     // sitting flush under the header (no border between).
     return PreferredSize(
       // Height: header content 72 + BubbleCloudSeam 32 = 104.
-      preferredSize: const Size.fromHeight(72 + 32),
+      // [RAJ-SEAMS-1] Scale-aware: the seam made this child a Column, so an
+      // under-reserved height at high FontScale is a RenderFlex overflow, not
+      // a silent squeeze. Same fix as settings_screen.dart's _adHeader.
+      preferredSize: Size.fromHeight(72.0 *
+              MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.8).toDouble() +
+          6 +
+          32),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           decoration: const BoxDecoration(

@@ -31,7 +31,11 @@ import 'wallet_widgets.dart';
 
 /// Inline dark v2 header band (replaces the light ZineAppBar): header/footer
 /// surface, hairline bottom border, back button + Nunito title + optional tag.
-PreferredSizeWidget _darkHeader({
+/// [RAJ-SEAMS-1] Takes a [context] so the band height follows the user's text
+/// scale — see the same fix in settings_screen.dart's `_adHeader`. The seam made
+/// this child a Column, so an under-reserved height is a RenderFlex overflow.
+PreferredSizeWidget _darkHeader(
+  BuildContext context, {
   required String title,
   String? tag,
   List<Widget> actions = const [],
@@ -49,7 +53,10 @@ PreferredSizeWidget _darkHeader({
   final onBand = AD.onBand(band);
   return PreferredSize(
     // Height: header content (76/92) + 9px gap + 10px PillMorseStrip = +19.
-    preferredSize: Size.fromHeight(tag == null ? 76 + 19 : 92 + 19),
+    preferredSize: Size.fromHeight((tag == null ? 76.0 : 92.0) *
+            MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.8).toDouble() +
+        6 +
+        19),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         decoration: const BoxDecoration(
@@ -992,6 +999,7 @@ class _WalletScreenState extends State<WalletScreen> {
       backgroundColor: AW.bg,
       drawer: shellScope == null ? null : ShellSidebar(current: shellScope.activeRoot),
       appBar: _darkHeader(
+        context,
         title: 'AvaWallet',
         leading: shellScope == null
             ? null

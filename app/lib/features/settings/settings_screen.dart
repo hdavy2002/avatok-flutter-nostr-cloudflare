@@ -281,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
-      appBar: _adHeader('Settings'),
+      appBar: _adHeader(context, 'Settings'),
       body: SafeArea(
         child: ListView(padding: EdgeInsets.all(hPad), children: [
         // Soft nudge to verify phone for users who skipped it at onboarding.
@@ -543,7 +543,7 @@ class _SettingsDetail extends StatelessWidget {
     return Scaffold(
       backgroundColor: AD.bg,
       resizeToAvoidBottomInset: true,
-      appBar: _adHeader(title, showBack: true),
+      appBar: _adHeader(context, title, showBack: true),
       body: SafeArea(
         child: ListView(padding: EdgeInsets.all(hPad), children: children),
       ),
@@ -553,14 +553,28 @@ class _SettingsDetail extends StatelessWidget {
 
 /// Dark v2 inline header used across Settings (replaces ZineAppBar). Near-black
 /// header bar, hairline bottom border, optional back button + Nunito title.
-PreferredSizeWidget _adHeader(String title,
+/// [RAJ-SEAMS-1] Takes a [context] so the band height can follow the user's
+/// text scale. A `PreferredSize` reports a FIXED height, but the title inside
+/// grows with FontScale — at textScale 2.0 on a 320dp screen the row needed
+/// 69px against the 64 this reserved, and because the seam turned the child
+/// into a Column (a Flex), that showed up as a RenderFlex overflow rather than
+/// a silent squeeze. Scaling the reservation is the fix; hardcoding a bigger
+/// number would only move the breaking point.
+PreferredSizeWidget _adHeader(BuildContext context, String title,
     {bool showBack = true, VoidCallback? onBack, List<Widget> actions = const []}) {
+  // Clamped: past ~1.8x the band would eat the screen, and the title itself
+  // ellipsises rather than wrapping, so it stops growing.
+  // `.toDouble()` is deliberate: `num.clamp` is statically `num` unless every
+  // operand is a double literal, and a stray `num` here is a compile error.
+  final double ts =
+      MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.8).toDouble();
+  final double bandH = 64.0 * ts + 6;
   // [RAJ-SEAMS-1] Settings moves to a HALDI (light) band — patches.md §6 —
   // so ink foreground stays correct as-is, no AD.onBand flip needed. Seam is
   // 2D PillMorseStrip, on paper 9px below a hard 3px ink bottom border.
   return PreferredSize(
-    // Height: header content 64 + 9px gap + 10px PillMorseStrip = +19.
-    preferredSize: const Size.fromHeight(64 + 19),
+    // Height: scaled band + 9px gap + 10px PillMorseStrip.
+    preferredSize: Size.fromHeight(bandH + 19),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         decoration: const BoxDecoration(
