@@ -199,14 +199,75 @@ class CallAudioController {
       'fallback_reason': result.fallbackReason ?? 'none',
     });
     if (result.active != requestedIntent) {
-      Analytics.capture('call_audio_owner_conflict', {
-        'call_id': callId,
-        'intent': requestedIntent.name,
-        'confirmed_route': result.active.name,
-        'source': source,
-      });
+      // [CALL-ROUTE-AVAIL-1 2026-08-21] Landing somewhere other than the intent
+      // is only a CONFLICT if the intent was reachable. A device with no
+      // built-in earpiece (every Android emulator, and some tablets) can only
+      // ever answer "speaker" to an earpiece request, and reporting that as a
+      // conflict on every single apply buries the real thing this event exists
+      // to catch: a device that HAS the requested route and still did not get
+      // it. On 2026-08-20 an emulator produced `intent=earpiece
+      // confirmed_route=speaker` on all three test calls and was read as a bug.
+      final available = await _routeIsAvailable(requestedIntent);
+      if (available == false) {
+        Analytics.capture('call_audio_route_unavailable', {
+          'call_id': callId,
+          'intent': requestedIntent.name,
+          'confirmed_route': result.active.name,
+          'source': source,
+          'fallback_reason': result.fallbackReason ?? 'none',
+        });
+      } else {
+        Analytics.capture('call_audio_owner_conflict', {
+          'call_id': callId,
+          'intent': requestedIntent.name,
+          'confirmed_route': result.active.name,
+          'source': source,
+          // null when the platform did not report an output-device inventory
+          // (iOS today), in which case this stays a conflict as before.
+          'intent_available': available,
+          'fallback_reason': result.fallbackReason ?? 'none',
+        });
+      }
     }
     return result;
+  }
+
+  /// Android `AudioDeviceInfo` output types that satisfy each route.
+  static const Map<CallAudioRoute, List<int>> _routeOutputDeviceTypes = {
+    CallAudioRoute.earpiece: [1], // TYPE_BUILTIN_EARPIECE
+    CallAudioRoute.speaker: [2], // TYPE_BUILTIN_SPEAKER
+    // SCO, A2DP, BLE headset, BLE speaker
+    CallAudioRoute.bluetooth: [7, 8, 26, 27],
+    // wired headset, wired headphones, USB headset
+    CallAudioRoute.wiredHeadset: [3, 4, 22],
+  };
+
+  /// [CALL-ROUTE-AVAIL-1] Whether [route] physically exists on this device.
+  ///
+  /// Returns null when the platform gives us no output-device inventory to
+  /// judge by — the honest "don't know", which callers must treat as "assume
+  /// it was available" so this can never HIDE a real conflict. Only consulted
+  /// on the rare apply that missed its intent, so the extra native read costs
+  /// nothing on the happy path.
+  Future<bool?> _routeIsAvailable(CallAudioRoute route) async {
+    final wanted = _routeOutputDeviceTypes[route];
+    if (wanted == null) return null;
+    try {
+      final diagnostics = await NativeVoiceAudio.instance.getAudioDiagnostics();
+      final raw = diagnostics?['output_device_types'];
+      if (raw == null) return null;
+      final text = raw.toString();
+      if (text.isEmpty || text == 'unknown') return null;
+      final present = text
+          .split(',')
+          .map((part) => int.tryParse(part.trim()))
+          .whereType<int>()
+          .toSet();
+      if (present.isEmpty) return null;
+      return wanted.any(present.contains);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Re-assert the CURRENT intent after a transition known to disturb
