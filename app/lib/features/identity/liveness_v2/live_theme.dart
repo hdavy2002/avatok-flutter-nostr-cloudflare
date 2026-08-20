@@ -92,8 +92,15 @@ class LiveTheme {
 
   /// Headline with a tape-highlighted [markWord] (the design's rotated lime tape
   /// on the last word). Renders paper-coloured text on the dark stage.
+  //
+  // [RAJ-PHASE2-1] `markFill` is nullable-with-fallback rather than
+  // `= tape`: `tape` is now DERIVED from AD.primaryBadge instead of being a
+  // frozen hex, which makes it `static final`, and a default parameter value
+  // has to be a compile-time constant. Callers that pass nothing still get
+  // `tape`; callers that pass a colour are unaffected.
   static Widget stageHeadline(String lead,
-      {required String markWord, Color markFill = tape, Color markText = paper}) {
+      {required String markWord, Color? markFill, Color markText = paper}) {
+    final fill = markFill ?? tape;
     return RichText(
       text: TextSpan(
         style: const TextStyle(
@@ -113,7 +120,7 @@ class LiveTheme {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: Msg.s2),
                 decoration: BoxDecoration(
-                  color: markFill,
+                  color: fill,
                   borderRadius: Msg.brSm,
                 ),
                 child: Text(markWord,

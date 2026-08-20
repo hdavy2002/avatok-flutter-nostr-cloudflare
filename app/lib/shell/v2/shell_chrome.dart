@@ -53,24 +53,34 @@ Widget shellNavBar({
       const DoubleWaveSeam(bandColor: band, flip: true),
       Container(
         decoration: const BoxDecoration(color: band),
-        child: NavigationBar(
-          selectedIndex: selectedIndex,
-          onDestinationSelected: onSelected,
-          backgroundColor: band,
-          surfaceTintColor: Colors.transparent,
-          indicatorColor: indicatorColor ?? AD.primaryBadge,
-          labelTextStyle: WidgetStatePropertyAll(
-            ADText.sectionLabel(c: onBand),
+        // [RAJ-SEAMS-1] `labelTextStyle` and `iconTheme` live on
+        // NavigationBarThemeData, NOT on the NavigationBar widget — passing
+        // either directly to the widget does not compile. This wrapper is the
+        // pattern already proven in features/avaphone/ava_phone_screen.dart.
+        // The icon colour is ALSO set per-destination below, because the theme
+        // only reaches icons that don't carry their own colour.
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            backgroundColor: band,
+            labelTextStyle:
+                WidgetStatePropertyAll(ADText.sectionLabel(c: onBand)),
+            iconTheme: WidgetStatePropertyAll(IconThemeData(color: onBand)),
           ),
-          iconTheme: WidgetStatePropertyAll(IconThemeData(color: onBand)),
-          destinations: [
-            for (final it in items)
-              NavigationDestination(
-                icon: PhosphorIcon(it.icon),
-                selectedIcon: PhosphorIcon(it.selectedIcon),
-                label: it.label,
-              ),
-          ],
+          child: NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onSelected,
+            backgroundColor: band,
+            surfaceTintColor: Colors.transparent,
+            indicatorColor: indicatorColor ?? AD.primaryBadge,
+            destinations: [
+              for (final it in items)
+                NavigationDestination(
+                  icon: PhosphorIcon(it.icon, color: onBand),
+                  selectedIcon: PhosphorIcon(it.selectedIcon, color: onBand),
+                  label: it.label,
+                ),
+            ],
+          ),
         ),
       ),
     ],

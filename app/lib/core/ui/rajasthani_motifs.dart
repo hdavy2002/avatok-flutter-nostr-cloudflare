@@ -180,7 +180,10 @@ class _BubbleCloudPainter extends CustomPainter {
   _BubbleCloudPainter(this.bandColor, this.flip);
 
   // Mockup pattern (sum of diameters = 390).
-  static const _radii = [20.0, 14, 24, 12, 19, 25, 13, 22, 15, 17, 14];
+  // [RAJ-SEAMS-1] Explicitly List<double>. Written as a bare literal this
+  // infers List<num> (one 20.0 among ints), and `num` is not assignable to
+  // the `double` that Radius.circular/width want.
+  static const List<double> _radii = [20, 14, 24, 12, 19, 25, 13, 22, 15, 17, 14];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -222,7 +225,9 @@ class PillMorseStrip extends StatelessWidget {
   final List<Color> colors;
   const PillMorseStrip({super.key, this.colors = const [_haldi, _rani, _indigo]});
 
-  static const _widths = [34.0, 10, 22, 10, 46, 10, 28, 10, 38, 10];
+  // [RAJ-SEAMS-1] Explicitly List<double> — same List<num> inference trap as
+  // _radii above.
+  static const List<double> _widths = [34, 10, 22, 10, 46, 10, 28, 10, 38, 10];
 
   @override
   Widget build(BuildContext context) {
