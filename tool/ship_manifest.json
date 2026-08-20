@@ -2397,5 +2397,37 @@
         "note": "Guards against a divide-by-zero device reporting a bogus max and manufacturing a low-volume report on every call."
       }
     ]
+  },
+  "CALL-PREWARM-TRUTH-2": {
+    "description": "The other half of CALL-PREWARM-TRUTH-1, found by auditing the P2P ordering rather than by another failed call. _startP2pOffer has always acquired the real microphone before _newPC(), but the P2P ANSWER path (case 'offer' in the signalling handler) never did - and the answerer is the only side that can ever have _prewarmAudioPending, because the callee is never the P2P offerer (the decider is). So a callee whose SFU publish aborted to P2P built its peer connection straight from the trackless protocol-silence stream: _addStreamTracks looped zero times without throwing, createAnswer produced a recvonly audio m-line, and the callee shipped silence for the entire call while hearing the caller perfectly. Nothing could repair it afterwards - call_session.dart has no replaceTrack for audio, no onRenegotiationNeeded handler and no audio renegotiation path; the only true renegotiation in the file is video-only and user-triggered. Fix: hoist the same _prewarmAudioPending guard into the offer handler before _newPC(), and make the zero-audio-track case emit call_pc_built_without_audio instead of being a silent no-op. Note CALL-PREWARM-TRUTH-1's callSfuV1 gate already makes this unreachable in production TODAY, since _prewarmAudioPending can no longer be set while callSfuV1 is false; this closes it for the day the SFU is switched on.",
+    "shipped": "pending",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "callSilentTransportPrewarmV1",
+      "callSfuV1"
+    ],
+    "success": [
+      {
+        "event": "call_pc_built_without_audio",
+        "property": "prewarm_audio_pending",
+        "not_in": [
+          true
+        ],
+        "min_events": 0,
+        "where": {},
+        "note": "This event should ideally never fire at all. If it fires with prewarm_audio_pending=true the answerer guard did not run and the trackless peer connection is back - that is the original bug, and it is terminal for the call it appears on. Firing with false is a different, unknown defect and still wants investigating."
+      },
+      {
+        "event": "call_accept_mic_attached",
+        "property": "track_enabled",
+        "equals": true,
+        "min_events": 2,
+        "where": {
+          "role": "callee"
+        },
+        "note": "Two-device qualification. The answering side must reach a live enabled mic track on the P2P path too, not just the SFU replace-track path. Pair with path=fallback to confirm the answer path specifically."
+      }
+    ]
   }
 }

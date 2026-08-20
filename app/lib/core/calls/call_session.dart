@@ -5729,6 +5729,22 @@ class CallSession {
     MediaStream stream, {
     required String stage,
   }) async {
+    // [CALL-PREWARM-TRUTH-2 2026-08-21] A stream with no audio track makes this
+    // loop a no-op: nothing throws, `stage` never fires, and the peer connection
+    // is built with no audio sender. That silence is how the answerer bug hid —
+    // the ONE observable difference between a working call and a call that will
+    // be inaudible for its entire life was a for-loop that ran zero times.
+    // Adding a track later is not possible on this path (there is no
+    // renegotiation for audio here), so this is terminal and must be loud.
+    if (!config.video && stream.getAudioTracks().isEmpty) {
+      Analytics.capture('call_pc_built_without_audio', {
+        'call_id': config.room,
+        'role': _performanceRole,
+        'stage': stage,
+        'prewarm_audio_pending': _prewarmAudioPending,
+        'total_tracks': stream.getTracks().length,
+      });
+    }
     for (final t in stream.getTracks()) {
       try {
         await pc.addTrack(t, stream);
@@ -8952,6 +8968,21 @@ class CallSession {
           });
           AvaLog.I.log('call',
               'offer arrived in signaling state $sigState — glare, answer may fail');
+        }
+        // [CALL-PREWARM-TRUTH-2 2026-08-21] The ANSWERER's missing mic guard.
+        // `_startP2pOffer` has always done this before `_newPC()`; this path
+        // never did, and this is the path the callee actually takes — the
+        // callee is the ONLY side that can have `_prewarmAudioPending`, and it
+        // is never the P2P offerer (the decider is). So a callee whose SFU
+        // publish aborted to P2P built its peer connection straight from the
+        // trackless protocol-silence stream: `_addStreamTracks` looped zero
+        // times, `createAnswer` produced a recvonly audio m-line, and it shipped
+        // silence for the whole call while hearing the caller perfectly. There
+        // is no `replaceTrack`, no `onRenegotiationNeeded` and no renegotiation
+        // path in this file that could have repaired it afterwards.
+        if (_prewarmAudioPending && !await _ensureAcceptedAudio()) {
+          _endWith('ended', reason: 'media-denied');
+          break;
         }
         try {
           _remoteId = d['from'] as String;
