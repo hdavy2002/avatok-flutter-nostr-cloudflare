@@ -105,7 +105,101 @@ class StreamLane {
 
   /// Call after sign-in / account switch. Idempotent — [init] itself detects
   /// that the account changed and rebuilds the client.
+  ///
+  /// [STREAM-ACCOUNT-1] Verified: this deliberately does NOT delete anything
+  /// from secure storage. A switch must leave the OUTGOING account's
+  /// credential blob in place so switching back to it on this device works
+  /// without a network round-trip. [init]'s account-switch branch already
+  /// calls [_teardown] (cancels `_incomingSub`, disconnects the old
+  /// `StreamVideo` client, clears `_readyUid`) before building the new
+  /// client — so the outgoing account's client is fully torn down here even
+  /// though its stored credentials survive. That teardown was already
+  /// correct as of [STREAM-LANE-FIX-1]; nothing needed to change for it.
   Future<void> onAccountChanged() => init();
+
+  /// Call on sign-out of [departingUid] (or account deletion). Unlike
+  /// [onAccountChanged], this is destructive: it tears down the client IF it
+  /// belongs to the departing account, cancels every lane subscription, and
+  /// — the actual fix for the audit item — permanently deletes that
+  /// account's cached Stream credential blob so this device can never
+  /// recreate a client for it again, in the foreground OR in
+  /// `stream_push_glue.dart`'s background recovery path. Without this, a
+  /// signed-out account's ~30-day token would keep letting a shared family
+  /// phone ring for it indefinitely.
+  ///
+  /// [departingUid] should be the account id that was active BEFORE the
+  /// sign-out (i.e. `AccountScope.id` as read by the caller before it flips
+  /// the scope) — pass null only when the caller genuinely has no departing
+  /// account to name (defensive no-op for credential deletion; the current
+  /// client, if any, is still torn down).
+  Future<void> onSignOut(String? departingUid) async {
+    // Always tear down whatever client is currently live: a real sign-out
+    // means nobody is signed in on this lane afterward, so there is never a
+    // reason to leave ANY client connected — including a mismatched
+    // `_readyUid` (defensive; should not happen given `init()`'s own
+    // account-switch teardown, but a stale connection is exactly the failure
+    // mode this method exists to close off).
+    final disconnected = _client != null;
+    await _teardown();
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _accountWaits = 0;
+    _failureRetries = 0;
+    _skipReported = false;
+
+    var deleted = false;
+    if (departingUid != null && departingUid.isNotEmpty) {
+      deleted = await _deleteCredentials(departingUid, reason: 'sign_out');
+    }
+
+    Analytics.capture('stream_lane_signout_cleanup', {
+      'account_id': departingUid ?? '',
+      'disconnected': disconnected,
+      'credentials_deleted': deleted,
+      'user_email': Analytics.currentEmail ?? '',
+    });
+  }
+
+  /// Call when an account is removed from this device (a distinct flow from
+  /// signing out of the currently-active account — e.g. "forget this
+  /// account" in a multi-account picker). No such flow exists in the app
+  /// today (verified: no removal UI beyond sign-out/delete-account, both of
+  /// which route through [onSignOut]), so this is currently unwired — kept
+  /// public so the day one is added, wiring it is a single call. Deletes the
+  /// credential blob unconditionally; also tears down the live client if the
+  /// removed account happens to be the one currently connected.
+  Future<void> onAccountRemoved(String uid) async {
+    if (uid.isEmpty) return;
+    final disconnected = _readyUid == uid;
+    if (disconnected) {
+      await _teardown();
+    }
+    final deleted = await _deleteCredentials(uid, reason: 'account_removed');
+    Analytics.capture('stream_lane_signout_cleanup', {
+      'account_id': uid,
+      'disconnected': disconnected,
+      'credentials_deleted': deleted,
+      'user_email': Analytics.currentEmail ?? '',
+    });
+  }
+
+  /// Shared by [onSignOut] and [onAccountRemoved]. Best-effort; returns
+  /// whether the delete call completed without throwing (secure storage
+  /// `delete` does not report whether a key existed).
+  Future<bool> _deleteCredentials(String uid, {required String reason}) async {
+    var ok = false;
+    try {
+      await _secure.delete(key: credKeyForUid(uid));
+      ok = true;
+    } catch (_) {/* best-effort */}
+    Analytics.capture('stream_lane_credentials_deleted', {
+      'account_id': uid,
+      'reason': reason,
+      'ok': ok,
+      'user_email': Analytics.currentEmail ?? '',
+    });
+    return ok;
+  }
 
   /// Creates and connects the `StreamVideo` client for the signed-in account.
   /// No-op when the flag is off, so a disabled lane never touches the network

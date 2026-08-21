@@ -6,6 +6,7 @@ import '../features/avatok/call_screen.dart' show clearCallState;
 import '../shell/v2/home_cards_api.dart' show HomeCardsApi;
 import '../identity/identity.dart';
 import '../push/push_service.dart';
+import '../streamlane/stream_lane.dart';
 import '../sync/sync_hub.dart';
 import 'analytics.dart';
 import 'ava_log.dart';
@@ -87,6 +88,24 @@ class AccountSwitcher {
       await clearCallState();
     } catch (e) {
       failed.add('call:$e');
+    }
+
+    // 1c. [STREAM-ACCOUNT-1] Stream-only lane sign-out cleanup. Only on a
+    //     REAL logout (`to == null`) — a plain account switch must NOT touch
+    //     the departing account's cached Stream credentials (StreamLane's own
+    //     `onAccountChanged`, called after the scope flip below, tears the
+    //     live client down for a switch without deleting anything, so
+    //     switching back to that account later still works offline). Runs
+    //     before the Clerk session ends (mirrors the ordering note on step 2)
+    //     since deleting the local secure-storage blob doesn't need server
+    //     auth, but keeping it alongside the other departing-account cleanup
+    //     is simplest to reason about.
+    if (to == null && from != null && from.isNotEmpty) {
+      try {
+        await StreamLane.instance.onSignOut(from);
+      } catch (e) {
+        failed.add('streamlane_signout:$e');
+      }
     }
 
     // 2. Mark the DEPARTING account inactive on this device (token untouched).
@@ -180,6 +199,17 @@ class AccountSwitcher {
       // Best-effort and unawaited: login stays fast, while enabled pilot
       // accounts get a warm Stream socket before any incoming Answer tap.
       unawaited(StreamCallApi.warmForAccount(to));
+      // [STREAM-ACCOUNT-1] The Stream-only lane was never re-initialised on an
+      // account switch — `StreamLane.onAccountChanged()` existed but had no
+      // caller, so after a switch the OLD account's client stayed connected
+      // (and its incoming-call listener stayed live) until the app was
+      // killed and relaunched, which is also what let a departed account's
+      // client keep ringing on a shared device. `AccountScope.id` has already
+      // flipped to `to` above, so `init()`'s own uid check tears the old
+      // client down (see the library note on `onAccountChanged`) and connects
+      // fresh for the arriving account. Unawaited for the same reason as the
+      // two calls above — login must not block on it.
+      unawaited(StreamLane.instance.onAccountChanged());
     }
 
     Analytics.capture('account_switch', {
