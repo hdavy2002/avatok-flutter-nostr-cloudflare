@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -100,9 +102,48 @@ Widget shellNavBar({
 // [UI-HEADER-2026] THE shared AvaTOK header band.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Height of the header ROW itself (the band's own top inset is added on top by
-/// `SafeArea`, and by `Scaffold` when this is used in the `appBar:` slot).
+/// Height of the header ROW itself at full size (the band's own top inset is
+/// added on top by `SafeArea`, and by `Scaffold` when this is used in the
+/// `appBar:` slot).
+///
+/// [RESP-SMALL-2] This is the CEILING, not the painted height — see
+/// [avaTokHeaderRowHeight], which trims it on narrow widths. It stays the value
+/// [AvaTokHeader.preferredSize] reports, because that getter has no
+/// `BuildContext` to ask the width from.
 const double kAvaTokHeaderRowHeight = 56;
+
+/// The square box every header control is laid out in (`_MenuButton`,
+/// `_HeaderBell`). Named because [avaTokHeaderRowHeight] floors itself on it:
+/// a shorter row than this would clip the controls, which is the same trap
+/// `[RESP-SMALL-1]` hit when it floored the chat-thread header at 48 for its
+/// 46px `IconButton` constraints.
+const double kAvaTokHeaderControlBox = 38;
+
+/// [RESP-SMALL-2] The PAINTED header-row height for this width.
+///
+/// `AvaTokHeader` is mounted on every root (messenger, Calls, Services), so it
+/// is unscrollable chrome on every primary screen — exactly the category
+/// [ZineBreakpoints.chromeScale] exists to trim on a small device, where each
+/// fixed pixel comes straight out of the content area.
+///
+/// Two rules, both deliberate:
+///
+///  * It is FLOORED at "the controls plus their own scaled padding"
+///    ([kAvaTokHeaderControlBox] + the row's vertical padding). The controls do
+///    NOT shrink — a tap target that shrinks on the smallest screen is
+///    backwards (see the scope note on [ZineBreakpoints.chromeScale]) — so a
+///    row shorter than that is not a saving, it is a RenderFlex overflow. The
+///    floor lands at ~51.6 (0.85x) and ~49.5 (0.72x), i.e. never below the 48
+///    that `[RESP-SMALL-1]` used for the chat-thread header.
+///  * It never EXCEEDS [kAvaTokHeaderRowHeight], so it can never exceed what
+///    `preferredSize` reserves.
+double avaTokHeaderRowHeight(BuildContext context) {
+  final s = ZineBreakpoints.chromeScale(context);
+  return math.max(
+    kAvaTokHeaderRowHeight * s,
+    kAvaTokHeaderControlBox + 2 * Msg.s2 * s,
+  );
+}
 
 /// The one header treatment every root and major page inherits: menu affordance ·
 /// page name · wallet chip · profile avatar · notification bell. **Only the page
@@ -176,6 +217,24 @@ class AvaTokHeader extends StatelessWidget implements PreferredSizeWidget {
     this.bottomHeight = 0,
   });
 
+  /// [RESP-SMALL-2] Reports the UNSCALED height on purpose.
+  ///
+  /// This getter has no `BuildContext`, so it cannot ask
+  /// [ZineBreakpoints.chromeScale] anything, and a `PreferredSizeWidget` cannot
+  /// be handed the width without changing every call site. Rather than guess,
+  /// the invariant is made one-sided: [avaTokHeaderRowHeight] is capped at
+  /// [kAvaTokHeaderRowHeight], so the painted row is always <= what is reported
+  /// here, never more. A header that paints TALLER than its preferredSize is
+  /// the case that clips; painting shorter cannot.
+  ///
+  /// Both possible `Scaffold` behaviours for the shorter child are benign, and
+  /// this was NOT verified against a running device (no local toolchain):
+  /// if the app-bar slot is laid out loosely, the body simply starts at the
+  /// measured height and the trim is real; if it is stretched to the reported
+  /// height instead, the surplus is inside the band-coloured `Container` below,
+  /// so it renders exactly as it does today. Neither outcome is a cream gap or
+  /// a clipped control. Two of the three call sites (chat_list, avadial_root)
+  /// mount this in a body `Column` and never consult this getter at all.
   @override
   Size get preferredSize =>
       Size.fromHeight(kAvaTokHeaderRowHeight + bottomHeight);
@@ -202,7 +261,10 @@ class AvaTokHeader extends StatelessWidget implements PreferredSizeWidget {
           bottom: false,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             SizedBox(
-              height: kAvaTokHeaderRowHeight,
+              // [RESP-SMALL-2] Width-aware: the band is unscrollable chrome on
+              // every root, so it trims on narrow phones. See
+              // `avaTokHeaderRowHeight` for the floor and the cap.
+              height: avaTokHeaderRowHeight(context),
               child: Padding(
                 // Only the VERTICAL padding scales — shrinking the horizontal
                 // gutters on the narrowest phone pushes the wordmark and the
@@ -263,8 +325,10 @@ class _MenuButton extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onTap ?? () => Scaffold.of(ctx).openDrawer(),
           child: SizedBox(
-            width: 38,
-            height: 38,
+            // [RESP-SMALL-2] Named, not 38: the row height floors itself on
+            // this box. Tap targets never scale down (breakpoints.dart).
+            width: kAvaTokHeaderControlBox,
+            height: kAvaTokHeaderControlBox,
             child: Icon(PhosphorIcons.list(PhosphorIconsStyle.bold),
                 size: 22, color: color),
           ),
@@ -287,8 +351,9 @@ class _HeaderBell extends StatelessWidget {
           () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => const NotificationsScreen())),
       child: SizedBox(
-        width: 38,
-        height: 38,
+        // [RESP-SMALL-2] See `_MenuButton` — same box, same reason.
+        width: kAvaTokHeaderControlBox,
+        height: kAvaTokHeaderControlBox,
         child: Center(
           child: PhosphorIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold),
               size: 20, color: color),
