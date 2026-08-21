@@ -92,9 +92,13 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
 
   Widget _inputBar() {
     // Input band: paper-2 with ink top border; field = ink-bordered pill.
+    // [UI-CHAT-2026] Same change as `RichInputBar` (which is the live path
+    // while `richInputEnabled` is on) — the legacy fallback must not be the
+    // one screen that still paints near-black ink on indigo, or turning the
+    // flag off resurrects the bug. See `Msg.composerBand`.
     const bandDeco = BoxDecoration(
-      color: AD.headerFooter,
-      border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+      color: Msg.composerBand,
+      border: Border(top: Msg.composerEdge),
     );
     if (_recording) return _recordingBar(bandDeco);
     // STREAM E: WhatsApp-parity rich input bar + emoji/GIF/sticker panel (flag ON
@@ -111,7 +115,9 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         hintText: _avaMode
             ? 'Ask Ava privately…'
             : (_avaPublicMode ? 'Message · Ava can join' : 'Message'),
-        fieldColor: Msg.input,
+        // [UI-CHAT-2026] One step lighter than the band so the pill still
+        // reads as raised now that the band is paper rather than indigo.
+        fieldColor: Msg.composerField,
         onSend: _send,
         onAttach: _attach,
         onCamera: () => _pickImage(ImageSource.camera),

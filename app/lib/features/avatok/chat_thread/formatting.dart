@@ -124,7 +124,21 @@ extension _ChatThreadFormatting on _ChatThreadScreenState {
   // layer — 'default' now counts as a dark wallpaper for every system/day-pill
   // and canvas-ink getter above, exactly like the 5 selectable dark presets, so
   // pills and separators invert to their dark-readable variants automatically.
-  bool get _wallpaperDark => _wallpaperId == 'default' || wallpaperIsDark(_wallpaperId);
+  //
+  // [UI-CHAT-2026] The `_wallpaperId == 'default'` half is DELETED. It was
+  // added when the default canvas really was near-black, and the doc below
+  // still says "`AD.bg` … near-black" — but `AD.bg` is `0xFFFBF3E2`, WARM
+  // CREAM PAPER, and has been since the Rajasthani retheme. The stale override
+  // meant the default thread (which is what everyone actually uses) took the
+  // dark-canvas branch of all three getters below and drew:
+  //   * `_sysPillBg`   = 0xB3202024, a dark slab, on cream;
+  //   * `_sysPillMeta` = white @82%, i.e. day separators and the "older
+  //     messages" caption in near-white text ON CREAM PAPER — unreadable;
+  //   * `_sysPillBorder` = white @14%, invisible.
+  // `wallpaperIsDark` is already the single source of truth (core/wallpaper.dart:
+  // the 5 selectable presets are dark, 'default' and unknown ids are not), so
+  // ask it and nothing else — that way a future canvas change updates one place.
+  bool get _wallpaperDark => wallpaperIsDark(_wallpaperId);
 
 
   /// [AVA-GRP-UI] The thread canvas gradient. 'default' resolves to near-black

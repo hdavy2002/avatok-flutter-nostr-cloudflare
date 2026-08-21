@@ -178,6 +178,32 @@ class Msg {
   // attachment, emoji, mention and camera controls readable.
   static const Color input = AD.bg;
 
+  /// [UI-CHAT-2026] The composer BAND — the strip the toolbar icons and the
+  /// text pill sit ON, distinct from [composerField], the pill itself.
+  ///
+  /// It was `AD.headerFooter` (0xFF2E4A8C indigo) in BOTH composer
+  /// implementations, while every glyph drawn on it uses an ON-WHITE ink token
+  /// — `AD.iconClipOnWhite`/`iconCameraOnWhite`/`iconEmoji` all alias
+  /// `AD.iconNeutral` (0xFF16110D, near-black), and the paste chip drew plain
+  /// black. Near-black ink on indigo is the "controls I can't see" the owner
+  /// reported, and it also made the input area read as part of the indigo
+  /// footer rather than a surface above it. Warm paper is what those ON-WHITE
+  /// tokens were named for; pair it with [composerEdge] so the band still
+  /// separates cleanly from the footer below.
+  static const Color composerBand = AD.bg;
+
+  /// [UI-CHAT-2026] The text pill INSIDE the composer band. One step lighter
+  /// than [composerBand] so the field still reads as raised — using the same
+  /// colour for both would flatten the pill into the strip.
+  static const Color composerField = AD.inputField;
+
+  /// [UI-CHAT-2026] The 2px ink rule along the TOP of the composer band. This
+  /// is what keeps "the input background is visually separate from the indigo
+  /// footer" true now that the band is paper rather than indigo — the seam is
+  /// drawn, not implied by a colour change.
+  static const BorderSide composerEdge =
+      BorderSide(color: AD.borderCard, width: AD.wBorder);
+
   /// Errors and destructive actions ONLY.
   static const Color error = AD.danger;
   /// Live/online presence.

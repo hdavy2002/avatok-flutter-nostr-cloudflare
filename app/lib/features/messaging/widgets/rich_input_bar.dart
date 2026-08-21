@@ -179,7 +179,15 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
-    const bandDeco = BoxDecoration(color: AD.headerFooter);
+    // [UI-CHAT-2026] Was `AD.headerFooter` — indigo, under a toolbar whose
+    // every glyph is an ON-WHITE ink token (`AD.iconClipOnWhite` and friends
+    // all alias near-black `AD.iconNeutral`). Warm paper is the surface those
+    // tokens were named for, and the 2px ink rule on top keeps the band
+    // visually separate from the indigo footer instead of merging into it.
+    const bandDeco = BoxDecoration(
+      color: Msg.composerBand,
+      border: Border(top: Msg.composerEdge),
+    );
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         decoration: bandDeco,
@@ -207,8 +215,13 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
                 ),
               _barIcon(
                 icon: PhosphorIcons.clipboardText(PhosphorIconsStyle.bold),
-                color: Colors.black,
-                backgroundColor: const Color(0xFFFFD400),
+                // [UI-CHAT-2026] Was `Colors.black` on a raw `Color(0xFFFFD400)`
+                // literal — an off-palette yellow that no token owns. Haldi is
+                // the approved warm accent and `textOnInput` is the ink that
+                // belongs on a light surface, so the chip now reads as part of
+                // the same Indian palette as the rest of the thread.
+                color: AD.textOnInput,
+                backgroundColor: AD.haldi,
                 tooltip: 'Paste',
                 onTap: widget.onPaste,
               ),
