@@ -10,6 +10,21 @@
         android:name="${applicationId}.PERMISSION_CALL"
         android:protectionLevel="signature"
         tools:replace="android:protectionLevel" />
+    <!-- [STREAM-LANE-1 2026-08-21] Play rejected run #611's .aab: "You must let
+         us know whether your app uses any Foreground Service permissions" —
+         stream_video_flutter's manifest adds FOREGROUND_SERVICE_MEDIA_PLAYBACK
+         and FOREGROUND_SERVICE_MEDIA_PROJECTION (screen share), which AvaTOK
+         has never declared in Play Console and does not use in v1 (no screen
+         share, no media-playback FGS). Strip both permissions and the screen-
+         share service so no new Play declaration is required. If Stream calls
+         ever crash with a SecurityException naming mediaPlayback/mediaProjection,
+         re-add these WITH the Play Console declaration instead. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        tools:node="remove" />
     <uses-permission android:name="com.sec.android.provider.badge.permission.READ" />
     <uses-permission android:name="com.sec.android.provider.badge.permission.WRITE" />
     <uses-permission android:name="com.htc.launcher.permission.READ_SETTINGS" />
