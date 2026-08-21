@@ -263,36 +263,46 @@ class _BrainMemoryScreenState extends State<BrainMemoryScreen> {
   }
 
   Widget _header() {
+    // [UI-BRAIN-2026] Rani band matched to the rest of AvaBrain, foregrounds
+    // routed through AD.onBand — ink type/icons on the old dark indigo band
+    // were very nearly invisible.
+    const band = AD.bandRani;
+    final onBand = AD.onBand(band);
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 12, 12),
       decoration: const BoxDecoration(
-        color: AD.headerFooter,
+        color: band,
         border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(children: [
-        const AdBackButton(),
+        AdBackButton(color: onBand),
         const SizedBox(width: 4),
         ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: AD.iconVideo, size: 40),
         const SizedBox(width: Msg.s2),
+        // Short responsive title — ellipsizes before the trailing controls do.
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('AvaBrain Memory', style: ADText.threadName(c: AD.textPrimary)),
-            Text('What Ava remembers about you', style: ADText.preview()),
+            Text('AvaBrain',
+                style: ADText.threadName(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
+            Text('What Ava remembers about you',
+                style: ADText.preview(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
           ]),
         ),
         IconButton(
           tooltip: 'Consent settings',
           icon: PhosphorIcon(PhosphorIcons.slidersHorizontal(PhosphorIconsStyle.bold),
-              color: AD.textSecondary, size: 20),
+              color: onBand, size: 20),
           onPressed: _openConsent,
         ),
         IconButton(
           tooltip: 'Export my memory',
           icon: _exporting
-              ? const SizedBox(width: 18, height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AD.iconSearch))
+              ? SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: onBand))
               : PhosphorIcon(PhosphorIcons.export(PhosphorIconsStyle.bold),
-                  color: AD.textSecondary, size: 20),
+                  color: onBand, size: 20),
           onPressed: _exporting ? null : _exportAll,
         ),
       ]),

@@ -9,11 +9,22 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
+import '../../core/ava_log.dart';
 import '../../core/brain_consent.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/rajasthani_motifs.dart';
+import '../../core/ui/zine_widgets.dart';
+import '../ava_companion/companion_session_store.dart';
 import '../avadial/block_list.dart';
 import 'askava_tools.dart';
+
+/// [UI-BRAIN-2026] Persona tag AvaBrain sessions are stored under in the shared
+/// [CompanionSessionStore]. AvaBrain (tool-calling) and AvaChat (persona
+/// companion) share ONE per-account local store + D1 backup, but each surface
+/// lists only its own sessions so a transcript always reopens in the engine
+/// that produced it.
+const String kAskAvaPersonaId = 'askava';
 
 /// Ask Ava — the universal assistant (plan §4.6). A ChatAVA-style chat surface that
 /// makes the whole app AI-powered: "call the plumber from last Tuesday", "who
@@ -32,6 +43,17 @@ import 'askava_tools.dart';
 /// to any AvaBrain ingestion lane and are not persisted beyond the visible
 /// thread. Actions (dial/block/report_spam) NEVER auto-run — they render a
 /// confirmation chip the user must tap.
+/// [UI-BRAIN-2026] AvaBrain LANDING — the session list, not a chat.
+///
+/// The owner's complaint was that opening AvaBrain dropped straight into a
+/// thread with no way back to earlier conversations. This screen is the list:
+/// every past AvaBrain session with rename / archive / delete, plus "New chat".
+/// Tapping a row opens [AskAvaThreadScreen] on its historic transcript.
+///
+/// Storage is NOT new. It reuses [CompanionSessionStore] — the existing
+/// per-account SQLite table (`ava_chat_sessions` inside `avatok_<scope>.sqlite`,
+/// so scoping is automatic) with best-effort D1 backup — tagged with the
+/// [kAskAvaPersonaId] persona so AvaBrain and AvaChat keep separate lists.
 class AskAvaScreen extends StatefulWidget {
   /// Which app opened the assistant ('root' | 'avadial' | 'avatalk' | 'services'),
   /// used to prime the preamble with that context (plan §4.6).
@@ -39,7 +61,511 @@ class AskAvaScreen extends StatefulWidget {
   const AskAvaScreen({super.key, this.contextHint = 'root'});
 
   @override
-  State<AskAvaScreen> createState() => _AskAvaScreenState();
+  State<AskAvaScreen> createState() => _AskAvaHomeState();
+}
+
+class _AskAvaHomeState extends State<AskAvaScreen> {
+  static const _ss = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+
+  /// Legacy single-thread key (pre-[UI-BRAIN-2026]). Migrated once into a real
+  /// session so the owner does not lose the conversation he already had.
+  static const _legacyThreadKey = 'askava_thread_v1';
+
+  List<CompanionSession> _sessions = const [];
+  bool _loading = true;
+  bool _showArchived = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Analytics.screenViewed('avatok', 'avabrain_sessions');
+    Analytics.capture('askava_opened', {'source': widget.contextHint});
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    final t0 = DateTime.now();
+    await _migrateLegacyThread();
+    await _load(initial: true);
+    Analytics.uiInteraction('avabrain_sessions_list',
+        DateTime.now().difference(t0).inMilliseconds,
+        extra: {'count': _sessions.length});
+  }
+
+  /// One-time move of the old flat `askava_thread_v1` blob into a session row.
+  /// Best-effort: a failure here must never block the list from rendering.
+  Future<void> _migrateLegacyThread() async {
+    try {
+      final raw = await readScoped(_ss, _legacyThreadKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final list = jsonDecode(raw);
+      if (list is! List || list.isEmpty) {
+        await _ss.delete(key: scopedKey(_legacyThreadKey));
+        return;
+      }
+      final msgs = <Map<String, String>>[];
+      for (final e in list) {
+        if (e is! Map) continue;
+        final role = (e['r'] ?? '').toString();
+        final text = (e['t'] ?? '').toString();
+        if (text.isEmpty) continue;
+        // Legacy roles were user/assistant; the shared store speaks user/ava.
+        msgs.add({'role': role == 'user' ? 'user' : 'ava', 'text': text});
+      }
+      if (msgs.isNotEmpty) {
+        await CompanionSessionStore.I.upsert(
+          sessionId: 'askava_legacy_v1',
+          persona: kAskAvaPersonaId,
+          title: 'Earlier AvaBrain chat',
+          messages: msgs,
+        );
+        Analytics.capture('avabrain_legacy_thread_migrated', {'turns': msgs.length});
+      }
+      await _ss.delete(key: scopedKey(_legacyThreadKey));
+    } catch (e, st) {
+      AvaLog.I.log('askava', 'legacy thread migration failed: $e');
+      Analytics.captureException(e, st,
+          screen: 'avabrain_sessions', handled: true,
+          extra: const {'stage': 'legacy_migration'});
+    }
+  }
+
+  Future<void> _load({bool initial = false}) async {
+    try {
+      final local = await CompanionSessionStore.I.list(archived: _showArchived);
+      if (mounted) {
+        setState(() {
+          _sessions = _mine(local);
+          _loading = false;
+        });
+      }
+      if (initial) {
+        await CompanionSessionStore.I.syncFromCloud();
+        final merged = await CompanionSessionStore.I.list(archived: _showArchived);
+        if (mounted) setState(() => _sessions = _mine(merged));
+      }
+    } catch (e, st) {
+      if (mounted) setState(() => _loading = false);
+      AvaLog.I.log('askava', 'session list failed: $e');
+      Analytics.captureException(e, st,
+          screen: 'avabrain_sessions', handled: true,
+          extra: const {'stage': 'list'});
+    }
+  }
+
+  List<CompanionSession> _mine(List<CompanionSession> all) =>
+      all.where((s) => s.persona == kAskAvaPersonaId).toList(growable: false);
+
+  Future<void> _openSession(CompanionSession s) async {
+    final t0 = DateTime.now();
+    List<Map<String, String>> msgs = const [];
+    try {
+      msgs = await CompanionSessionStore.I.messages(s.id);
+    } catch (e, st) {
+      AvaLog.I.log('askava', 'transcript load failed: $e');
+      Analytics.captureException(e, st,
+          screen: 'avabrain_sessions', handled: true,
+          extra: const {'stage': 'open_session'});
+    }
+    if (!mounted) return;
+    Analytics.uiInteraction('avabrain_session_opened',
+        DateTime.now().difference(t0).inMilliseconds,
+        extra: {'turns': msgs.length});
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AskAvaThreadScreen(
+          contextHint: widget.contextHint,
+          sessionId: s.id,
+          initialTitle: s.title,
+          initialMessages: msgs,
+        ),
+      ),
+    );
+    await _load();
+  }
+
+  Future<void> _newChat() async {
+    Analytics.capture('avabrain_new_session_tapped', const {});
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AskAvaThreadScreen(contextHint: widget.contextHint),
+      ),
+    );
+    await _load();
+  }
+
+  // ── per-session actions ────────────────────────────────────────────────────
+
+  Future<void> _sessionMenu(CompanionSession s) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AD.overlaySheet,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: AD.borderHairline, width: 1),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AD.rSheet))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s2, Msg.s5, Msg.s2),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(s.title.isEmpty ? 'AvaBrain chat' : s.title,
+                  style: ADText.threadName(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+          _menuRow(ctx, 'rename', PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Rename'),
+          _menuRow(ctx, 'archive', PhosphorIcons.archive(PhosphorIconsStyle.bold),
+              s.archived ? 'Unarchive' : 'Archive'),
+          _menuRow(ctx, 'delete', PhosphorIcons.trash(PhosphorIconsStyle.bold), 'Delete',
+              danger: true),
+          const SizedBox(height: Msg.s2),
+        ]),
+      ),
+    );
+    if (action == null || !mounted) return;
+    try {
+      switch (action) {
+        case 'rename':
+          await _rename(s);
+          break;
+        case 'archive':
+          await CompanionSessionStore.I.setArchived(s.id, !s.archived);
+          Analytics.capture('avabrain_session_archived', {'archived': !s.archived});
+          break;
+        case 'delete':
+          await _delete(s);
+          break;
+      }
+    } catch (e, st) {
+      AvaLog.I.log('askava', 'session action "$action" failed: $e');
+      Analytics.captureException(e, st,
+          screen: 'avabrain_sessions', handled: true, extra: {'action': action});
+    }
+    await _load();
+  }
+
+  Widget _menuRow(BuildContext ctx, String value, IconData icon, String label,
+      {bool danger = false}) {
+    return ListTile(
+      leading: PhosphorIcon(icon, size: 20, color: danger ? AD.danger : AD.textSecondary),
+      title: Text(label, style: ADText.rowName(c: danger ? AD.danger : AD.textPrimary)),
+      onTap: () => Navigator.pop(ctx, value),
+    );
+  }
+
+  Future<void> _rename(CompanionSession s) async {
+    final ctrl = TextEditingController(text: s.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AD.popover,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Rename chat', style: ADText.threadName()),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 80,
+          cursorColor: AD.iconSearch,
+          style: TextStyle(
+              fontFamily: ADText.family, fontWeight: FontWeight.w700,
+              fontSize: 15, color: AD.textOnInput),
+          decoration: InputDecoration(
+            hintText: 'Chat name',
+            hintStyle: ADText.preview(c: AD.textTertiary),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text('Save', style: ADText.preview(c: AD.iconSearch))),
+        ],
+      ),
+    );
+    if (newTitle != null && newTitle.isNotEmpty) {
+      await CompanionSessionStore.I.rename(s.id, newTitle);
+      Analytics.capture('avabrain_session_renamed', const {});
+    }
+  }
+
+  Future<void> _delete(CompanionSession s) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AD.popover,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Delete chat?', style: ADText.threadName()),
+        content: Text(
+            'This removes the conversation from this device and the cloud '
+            'backup. This can’t be undone.',
+            style: ADText.preview()),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: ADText.preview(c: AD.textSecondary))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Delete', style: ADText.preview(c: AD.danger))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await CompanionSessionStore.I.delete(s.id);
+      Analytics.capture('avabrain_session_deleted', const {});
+    }
+  }
+
+  // ── build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    const band = AD.bandRani;
+    final onBand = AD.onBand(band);
+    return Scaffold(
+      backgroundColor: AD.bg,
+      floatingActionButton: _showArchived
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _newChat,
+              backgroundColor: AD.primaryBadge,
+              foregroundColor: AD.sendActiveInk,
+              shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
+              icon: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold),
+                  color: AD.sendActiveInk),
+              label: Text('New chat', style: ADText.rowName(c: AD.sendActiveInk)),
+            ),
+      body: SafeArea(
+        child: Column(children: [
+          // Header band + decorative seam overlay (same Stack pattern as
+          // CompanionHome) so the seam never becomes a layout sibling that
+          // leaves a blank strip.
+          Stack(clipBehavior: Clip.none, children: [
+            Column(mainAxisSize: MainAxisSize.min, children: [
+              _header(band, onBand),
+              const SizedBox(height: 15),
+            ]),
+            const Positioned(left: 0, right: 0, bottom: 0, child: FlowerChainSeam()),
+          ]),
+          Expanded(
+            child: _loading
+                ? const Center(
+                    child: SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AD.iconSearch)))
+                : (_sessions.isEmpty ? _emptyState() : _list()),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _header(Color band, Color onBand) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      decoration: BoxDecoration(
+        color: band,
+        border: const Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
+      ),
+      child: Row(children: [
+        AdBackButton(color: onBand),
+        const SizedBox(width: 4),
+        ZineIconBadge(
+            icon: PhosphorIcons.brain(PhosphorIconsStyle.fill),
+            color: AD.iconVideo, size: 38),
+        const SizedBox(width: Msg.s2),
+        // Short, responsive title: Expanded + ellipsis so the trailing controls
+        // can never be pushed off-screen on a narrow phone.
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('AvaBrain',
+                style: ADText.appTitle(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
+            Text(_showArchived ? 'Archived' : 'Your AvaTOK assistant',
+                style: ADText.preview(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
+          ]),
+        ),
+        IconButton(
+          tooltip: _showArchived ? 'Back to chats' : 'Archived',
+          icon: PhosphorIcon(
+              _showArchived
+                  ? PhosphorIcons.chatsCircle(PhosphorIconsStyle.bold)
+                  : PhosphorIcons.archive(PhosphorIconsStyle.bold),
+              color: onBand, size: 22),
+          onPressed: () {
+            setState(() {
+              _showArchived = !_showArchived;
+              _loading = true;
+            });
+            _load();
+          },
+        ),
+      ]),
+    );
+  }
+
+  Widget _emptyState() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(Msg.s6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ZineIconBadge(
+                icon: PhosphorIcons.brain(PhosphorIconsStyle.fill),
+                color: AD.iconVideo, size: 54),
+            const SizedBox(height: Msg.s3),
+            Text(_showArchived ? 'No archived chats' : 'Ask me anything',
+                style: ADText.threadName(), textAlign: TextAlign.center),
+            const SizedBox(height: Msg.s1),
+            Text(
+              _showArchived
+                  ? 'Chats you archive will show up here.'
+                  : '"Call the plumber from last Tuesday", "who called me most '
+                      'this month?", "is +1 555 0100 spam?"',
+              style: ADText.preview(), textAlign: TextAlign.center,
+            ),
+            if (!_showArchived) ...[
+              const SizedBox(height: Msg.s4),
+              AdButton(
+                label: 'Start a chat',
+                variant: AdButtonVariant.primary,
+                fontSize: 15,
+                icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+                onPressed: _newChat,
+              ),
+            ],
+          ]),
+        ),
+      );
+
+  Widget _list() => ListView.builder(
+        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, 96),
+        itemCount: _sessions.length,
+        itemBuilder: (context, i) {
+          final s = _sessions[i];
+          return Padding(
+            key: ValueKey(s.id),
+            padding: const EdgeInsets.only(bottom: Msg.s3),
+            child: _AskAvaSessionCard(
+              session: s,
+              onTap: () => _openSession(s),
+              onMenu: () => _sessionMenu(s),
+            ),
+          );
+        },
+      );
+}
+
+/// One AvaBrain session row — title, preview, age, and a 3-dot menu
+/// (rename / archive / delete). Long-press opens the same menu.
+class _AskAvaSessionCard extends StatelessWidget {
+  final CompanionSession session;
+  final VoidCallback onTap;
+  final VoidCallback onMenu;
+  const _AskAvaSessionCard({
+    required this.session,
+    required this.onTap,
+    required this.onMenu,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = session.title.trim().isEmpty ? 'New chat' : session.title.trim();
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onMenu,
+      behavior: HitTestBehavior.opaque,
+      child: AdCard(
+        radius: AD.rListCard,
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s2, Msg.s3),
+        child: Row(children: [
+          Container(
+            width: 44, height: 44, alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AD.haldi,
+              borderRadius: BorderRadius.circular(AD.rBadge),
+              border: Border.all(color: AD.borderControl, width: 1),
+            ),
+            child: PhosphorIcon(PhosphorIcons.brain(PhosphorIconsStyle.fill),
+                size: 22, color: AD.onBand(AD.haldi)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: ADText.rowName(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: Msg.s1),
+              Text(
+                session.preview.isEmpty ? 'Tap to continue' : session.preview,
+                style: ADText.preview(), maxLines: 1, overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: Msg.s1),
+              Text(_ago(session.updatedAt),
+                  style: ADText.statCaption(c: AD.textTertiary)),
+            ]),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'More',
+            icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
+                size: 20, color: AD.textSecondary),
+            onPressed: onMenu,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  static String _ago(int ms) {
+    if (ms <= 0) return 'just now';
+    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    if (d.inDays < 7) return '${d.inDays}d ago';
+    final weeks = (d.inDays / 7).floor();
+    if (weeks < 5) return '${weeks}w ago';
+    final months = (d.inDays / 30).floor();
+    return months < 12 ? '${months}mo ago' : '${(d.inDays / 365).floor()}y ago';
+  }
+}
+
+/// The AvaBrain CHAT — one session's transcript plus the tool-calling loop.
+/// Reached from [AskAvaScreen]; never the app's landing surface.
+class AskAvaThreadScreen extends StatefulWidget {
+  /// Which app opened the assistant ('root' | 'avadial' | 'avatalk' | 'services'),
+  /// used to prime the preamble with that context (plan §4.6).
+  final String contextHint;
+
+  /// Existing session to resume; null starts a fresh one.
+  final String? sessionId;
+  final String? initialTitle;
+
+  /// Transcript to seed when resuming — `[{role:'user'|'ava', text}]`.
+  final List<Map<String, String>>? initialMessages;
+
+  const AskAvaThreadScreen({
+    super.key,
+    this.contextHint = 'root',
+    this.sessionId,
+    this.initialTitle,
+    this.initialMessages,
+  });
+
+  @override
+  State<AskAvaThreadScreen> createState() => _AskAvaScreenState();
 }
 
 enum _Role { user, assistant, action }
@@ -51,18 +577,9 @@ class _Turn {
   final String? actionTool; // 'dial' | 'block' | 'report_spam'
   final String? actionArg; // the number
   _Turn(this.role, this.text, {this.contacts = const [], this.actionTool, this.actionArg});
-
-  Map<String, dynamic> toJson() => {'r': role.name, 't': text};
-  static _Turn? fromJson(Map<String, dynamic> j) {
-    final r = _Role.values.where((e) => e.name == j['r']);
-    if (r.isEmpty) return null;
-    // Only user/assistant turns persist (actions/chips are ephemeral).
-    if (r.first == _Role.action) return null;
-    return _Turn(r.first, (j['t'] ?? '').toString());
-  }
 }
 
-class _AskAvaScreenState extends State<AskAvaScreen> {
+class _AskAvaScreenState extends State<AskAvaThreadScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _turns = <_Turn>[];
@@ -70,16 +587,32 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
   bool _streamStarted = false;
 
   static const _maxHops = 3;
-  static const _ss = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-  static const _threadKey = 'askava_thread_v1';
+
+  /// [UI-BRAIN-2026] This thread's row in the shared per-account session store.
+  /// A resumed session keeps its id; a new one gets a fresh id.
+  late final String _sessionId =
+      widget.sessionId ?? 'askava_${DateTime.now().millisecondsSinceEpoch}';
+
+  /// Auto-named title — seeds from a resumed (possibly renamed) title,
+  /// otherwise derived from the first user message.
+  String _title = '';
 
   @override
   void initState() {
     super.initState();
-    _loadThread();
-    Analytics.capture('askava_opened', {'source': widget.contextHint});
+    Analytics.screenViewed('avatok', 'avabrain_thread');
+    _title = (widget.initialTitle ?? '').trim();
+    final seed = widget.initialMessages ?? const [];
+    for (final m in seed) {
+      final text = (m['text'] ?? '').toString();
+      if (text.isEmpty) continue;
+      final role = (m['role'] ?? '').toString();
+      _turns.add(_Turn(role == 'user' ? _Role.user : _Role.assistant, text));
+    }
+    if (_turns.isNotEmpty) {
+      Analytics.capture('avabrain_session_resumed', {'turns': _turns.length});
+      _jumpToEnd();
+    }
   }
 
   @override
@@ -89,30 +622,34 @@ class _AskAvaScreenState extends State<AskAvaScreen> {
     super.dispose();
   }
 
-  Future<void> _loadThread() async {
-    try {
-      final raw = await readScoped(_ss, _threadKey);
-      if (raw == null || raw.isEmpty) return;
-      final list = jsonDecode(raw);
-      if (list is List) {
-        final restored = <_Turn>[];
-        for (final e in list) {
-          if (e is Map) {
-            final t = _Turn.fromJson(e.map((k, v) => MapEntry('$k', v)));
-            if (t != null) restored.add(t);
-          }
-        }
-        if (mounted) setState(() { _turns..clear()..addAll(restored); });
-        _jumpToEnd();
-      }
-    } catch (_) {/* first run / corrupt → empty thread */}
-  }
-
+  /// Persist the transcript through [CompanionSessionStore] (per-account SQLite
+  /// + best-effort D1 backup). Action chips are ephemeral and never saved.
   Future<void> _saveThread() async {
+    final msgs = <Map<String, String>>[
+      for (final t in _turns)
+        if (t.role != _Role.action)
+          {'role': t.role == _Role.user ? 'user' : 'ava', 'text': t.text},
+    ];
+    if (msgs.isEmpty) return;
+    if (_title.isEmpty) {
+      final firstUser = msgs.firstWhere((m) => m['role'] == 'user',
+          orElse: () => const <String, String>{});
+      final t = (firstUser['text'] ?? '').trim();
+      if (t.isNotEmpty) _title = t.length > 48 ? '${t.substring(0, 48)}…' : t;
+    }
     try {
-      final keep = _turns.where((t) => t.role != _Role.action).map((t) => t.toJson()).toList();
-      await _ss.write(key: scopedKey(_threadKey), value: jsonEncode(keep));
-    } catch (_) {/* best-effort */}
+      await CompanionSessionStore.I.upsert(
+        sessionId: _sessionId,
+        persona: kAskAvaPersonaId,
+        title: _title,
+        messages: msgs,
+      );
+    } catch (e, st) {
+      AvaLog.I.log('askava', 'session save failed: $e');
+      Analytics.captureException(e, st,
+          screen: 'avabrain_thread', handled: true,
+          extra: const {'stage': 'save'});
+    }
   }
 
   void _jumpToEnd() {
@@ -348,47 +885,74 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
         .showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
   }
 
+  /// Empty this conversation. The session row itself is kept (delete it from the
+  /// AvaBrain list) so the user can keep typing in the same thread.
   Future<void> _clearThread() async {
     setState(() => _turns.clear());
+    Analytics.capture('avabrain_thread_cleared', const {});
     try {
-      await _ss.delete(key: scopedKey(_threadKey));
-    } catch (_) {}
+      await CompanionSessionStore.I.upsert(
+        sessionId: _sessionId,
+        persona: kAskAvaPersonaId,
+        title: _title,
+        messages: const [],
+      );
+    } catch (e, st) {
+      AvaLog.I.log('askava', 'thread clear failed: $e');
+      Analytics.captureException(e, st,
+          screen: 'avabrain_thread', handled: true,
+          extra: const {'stage': 'clear'});
+    }
   }
 
-  // Ava's green accent (sparkle badge + send button).
-  static const _avaGreen = Color(0xFF7BE08C);
-
+  /// [UI-BRAIN-2026] Ava's accent badge. Was a raw green literal; now the haldi
+  /// token with its documented on-band ink so it reads on paper AND on a band.
   Widget _sparkleBadge(double size) => Container(
         width: size, height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: _avaGreen,
+          color: AD.haldi,
           borderRadius: BorderRadius.circular(size * 0.28),
+          border: Border.all(color: AD.borderControl, width: 1),
         ),
         child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-            size: size * 0.55, color: const Color(0xFF10361C)),
+            size: size * 0.55, color: AD.onBand(AD.haldi)),
       );
 
   @override
   Widget build(BuildContext context) {
+    // [UI-BRAIN-2026] The header band is DARK (rani), so every foreground on it
+    // goes through AD.onBand — the previous ink-on-indigo title and icons were
+    // very nearly invisible.
+    const band = AD.bandRani;
+    final onBand = AD.onBand(band);
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: AppBar(
-        backgroundColor: AD.headerFooter,
+        backgroundColor: band,
         surfaceTintColor: Colors.transparent,
-        foregroundColor: AD.textPrimary,
+        foregroundColor: onBand,
+        iconTheme: IconThemeData(color: onBand),
         elevation: 0,
+        titleSpacing: 0,
         shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
         title: Row(children: [
           _sparkleBadge(30),
           const SizedBox(width: Msg.s2),
-          Text('Ask Ava', style: ADText.appTitle()),
+          // Short, responsive title: ellipsizes before the trailing control
+          // can be pushed off a narrow screen.
+          Expanded(
+            child: Text(_title.isEmpty ? 'AvaBrain' : _title,
+                style: ADText.appTitle(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
+          ),
         ]),
         actions: [
           if (_turns.isNotEmpty)
             IconButton(
               tooltip: 'Clear',
-              icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: AD.textSecondary, size: 20),
+              icon: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                  color: onBand, size: 20),
               onPressed: _clearThread,
             ),
         ],
@@ -543,10 +1107,13 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
       );
 
   Widget _composer() {
+    // [UI-BRAIN-2026] The composer sits ABOVE the footer band on WARM PAPER, not
+    // on the indigo footer. Its own icons are ink tokens, so they stay visible;
+    // ink controls on the old indigo fill were effectively invisible.
     return Container(
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
-        color: AD.headerFooter,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 2)),
+        color: AD.card,
       ),
       padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
       child: Row(children: [
@@ -586,11 +1153,12 @@ Never invent contacts or numbers; only use what the tools return. Keep answers c
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: _busy ? AD.card : _avaGreen,
+              color: _busy ? AD.cardHover : AD.sendActiveBg,
               borderRadius: BorderRadius.circular(AD.rInput),
+              border: Border.all(color: AD.borderControl, width: 1),
             ),
             child: PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                color: _busy ? AD.textTertiary : const Color(0xFF10361C), size: 20),
+                color: _busy ? AD.textTertiary : AD.sendActiveInk, size: 20),
           ),
         ),
       ]),

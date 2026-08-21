@@ -14,6 +14,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/ui/illustrations.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../askava/askava_screen.dart' show kAskAvaPersonaId;
 import '../avachat/discuss_seed.dart';
 import '../avachat/thread_context.dart';
 import '../identity/ladder_api.dart';
@@ -70,17 +71,23 @@ class _CompanionHomeState extends State<CompanionHome> {
 
   bool get _isVerifiedAdult => _level >= kRoleplayMinLadderLevel;
 
+  /// [UI-BRAIN-2026] AvaBrain (Ask Ava) sessions share this store but belong to a
+  /// different engine — a tool-calling transcript must not reopen in the persona
+  /// companion. Filter them out here; AvaBrain lists them on its own landing.
+  List<CompanionSession> _companionOnly(List<CompanionSession> all) =>
+      all.where((s) => s.persona != kAskAvaPersonaId).toList(growable: false);
+
   Future<void> _loadSessions({bool initial = false}) async {
     // Paint instantly from the local SQLite copy, then merge the cloud list in.
     final local = await CompanionSessionStore.I.list(archived: _showArchived);
     if (mounted) setState(() {
-      _sessions = local;
+      _sessions = _companionOnly(local);
       _loading = false;
     });
     if (initial) {
       await CompanionSessionStore.I.syncFromCloud();
       final merged = await CompanionSessionStore.I.list(archived: _showArchived);
-      if (mounted) setState(() => _sessions = merged);
+      if (mounted) setState(() => _sessions = _companionOnly(merged));
     }
     Analytics.capture('avachat_sessions_listed',
         {'count': _sessions.length, 'archived': _showArchived});

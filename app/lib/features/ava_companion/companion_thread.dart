@@ -595,30 +595,40 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   }
 
   Widget _header() {
+    // [UI-BRAIN-2026] Rani band matched to CompanionHome, and EVERY foreground
+    // routed through AD.onBand. The previous ink title/subtitle/back-arrow sat
+    // on the dark indigo band and were very nearly invisible.
+    const band = AD.bandRani;
+    final onBand = AD.onBand(band);
     return Container(
       padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s4, Msg.s3),
       decoration: const BoxDecoration(
-        color: AD.headerFooter,
+        color: band,
         border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
       ),
       child: Row(children: [
-        const AdBackButton(),
+        AdBackButton(color: onBand),
         const SizedBox(width: 4),
         ZineIconBadge(
             icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
             color: AD.iconVideo,
             size: 40),
         const SizedBox(width: Msg.s2),
+        // Short responsive title — ellipsizes before the trailing call control
+        // can be pushed off a narrow screen.
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Ava', style: ADText.threadName(c: AD.textPrimary)),
+            Text('Ava',
+                style: ADText.threadName(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
             Text('${widget.persona.glyph} ${widget.persona.name}',
-                style: ADText.preview()),
+                style: ADText.preview(c: onBand),
+                maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
           ]),
         ),
         IconButton(
           tooltip: 'Call AvaBrain',
-          icon: PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), color: AD.iconVideo),
+          icon: PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), color: onBand),
           onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AiVoiceAgentScreen())),
         ),
@@ -874,11 +884,14 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   }
 
   Widget _composer() {
+    // [UI-BRAIN-2026] Composer sits ABOVE the footer band on WARM PAPER. It used
+    // to be filled with the indigo `headerFooter`, which made its own ink
+    // paperclip/mic icons (AD.textSecondary / AD.iconSearch) unreadable.
     return Container(
       padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s3),
       decoration: const BoxDecoration(
-        color: AD.headerFooter,
-        border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
+        color: AD.card,
+        border: Border(top: BorderSide(color: AD.borderHairline, width: 2)),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Top icon row — attach + mic sit above the field so the input itself
