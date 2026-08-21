@@ -1161,7 +1161,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   if (b.stream_capable === true) {
     const streamResponse = await prepareStreamCall({
       env,
-      config: callPolicyConfig,
+      // [WORKER-TSC-RED-1] callPolicyConfig is PlatformConfig | null (config
+      // fetch can fail); prepareStreamCall's inline type is non-null. `?? {}`
+      // keeps the existing behavior — with no config the pilot flags read as
+      // undefined → provider selection falls back exactly as before.
+      config: callPolicyConfig ?? {},
       callerUid: ctx.uid,
       calleeUid: callTo,
       callId: callIdStr,

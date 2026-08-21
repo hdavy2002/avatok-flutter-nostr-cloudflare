@@ -435,7 +435,11 @@ export async function consumeListingEntitlement(
 
     await updateOperation(db, args.listingId, period, { state: "charging", now, lastError: null });
     const feeKey = feeKeyFor(args.vertical);
-    const charge = await chargeFeature(env, args.uid, feeKey, opId, {
+    // [WORKER-TSC-RED-1] By this line `source === "free"` has already returned,
+    // so source is "paid" and opId is non-null in practice; TS can't narrow the
+    // ternary at line ~409. `?? String(op.wallet_op_id)` preserves the exact
+    // value while making the type sound.
+    const charge = await chargeFeature(env, args.uid, feeKey, opId ?? String(op.wallet_op_id), {
       // Marketplace money is never funded by daily free/bonus AI tokens. forceMeter
       // keeps a global beta bypass from silently waiving a real listing fee; the
       // listingFeeEnabled flag still controls whether this path is paid at all.
