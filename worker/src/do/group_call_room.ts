@@ -45,6 +45,7 @@ import type { Env } from "../types";
 import { verifyJoinTicket } from "../routes/groupcall";
 import { contactFor } from "../lib/identity";
 import { trackUserContact, trackException } from "../hooks";
+import { consumeHumanCallParticipantSeconds } from "../lib/call_usage_billing";
 
 export type MediaKind = "audio" | "video" | "audio_video";
 export type CallState = "starting" | "live" | "ending" | "ended";
@@ -158,6 +159,9 @@ interface Att {
   level: number;        // smoothed 0..1
   ts: number;           // last activity
   born: number;
+  /** [HUMAN-CALL-POOL-1] Server-side metering cursor for this participant. */
+  billedThrough?: number;
+  billingBlocked?: boolean;
   hot?: number;
   cold?: number;
   speaking?: boolean;
@@ -479,6 +483,8 @@ export class GroupCallRoom {
 
     const ws = this.findWsByUid(uid);
     if (!ws) return json({ ok: true, evicted: false });
+    const authority = await this.loadAuthority();
+    if (authority && authority.state !== "ended") await this.billParticipant(ws, authority, Date.now());
     const gone = new Set<WebSocket>([ws]);
     try { ws.close(1008, "removed from group"); } catch { /* already gone */ }
     // A server-initiated close does NOT re-enter webSocketClose for hibernatable
@@ -578,6 +584,7 @@ export class GroupCallRoom {
       audioTrack: null, videoTrack: null, videoEnabled: false, muted: false,
       recording: supersededAtt?.recording === true,
       audioPulls: [], videoPulls: [], level: 0, ts: now, born: now,
+      billedThrough: now, billingBlocked: false,
     };
     (server as any).serializeAttachment(att);
 
@@ -724,7 +731,9 @@ export class GroupCallRoom {
     }
   }
 
-  webSocketClose(ws: WebSocket, code: number): void {
+  async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+    const authority = await this.loadAuthority();
+    if (authority && authority.state !== "ended") await this.billParticipant(ws, authority, Date.now());
     const att = this.att(ws);
     if (att) for (const w of this.state.getWebSockets()) {
       if (w !== ws) this.sendTo(w, { t: "left", uid: att.uid });
@@ -741,8 +750,48 @@ export class GroupCallRoom {
     if (this.liveCount(ws) === 0) void this.endAuthority();
   }
 
-  webSocketError(ws: WebSocket): void {
+  async webSocketError(ws: WebSocket): Promise<void> {
+    const authority = await this.loadAuthority();
+    if (authority && authority.state !== "ended") await this.billParticipant(ws, authority, Date.now());
     try { ws.close(1011); } catch { /* ignore */ }
+  }
+
+  /** Bill one participant cursor. A failed wallet admission closes only this
+   * socket; the room and every other participant continue normally. */
+  private async billParticipant(ws: WebSocket, a: Authority, now: number): Promise<boolean> {
+    const att = this.att(ws);
+    if (!att) return false;
+    if (att.billingBlocked) return true;
+    const from = att.billedThrough ?? att.born;
+    const seconds = Math.floor(Math.max(0, now - from) / 1000);
+    if (seconds < 1) return false;
+    const result = await consumeHumanCallParticipantSeconds(this.env, {
+      uid: att.uid,
+      callId: a.call_id,
+      participantSeconds: seconds,
+      media: a.media_kind === "audio" ? "audio" : "video",
+      opId: `human-call:${a.call_id}:group:${att.uid}:${from}`,
+    });
+    if (result.disconnect) {
+      // If the final tick crossed the free boundary, WalletDO committed the
+      // free portion. Advance the cursor before closing so the state is honest
+      // even if the close callback is not delivered by the runtime.
+      const committed = Number(result.body?.free_seconds_used ?? 0);
+      att.billedThrough = from + Math.min(seconds, Math.max(0, Math.trunc(committed))) * 1000;
+      att.billingBlocked = true;
+      (ws as any).serializeAttachment(att);
+      this.sendTo(ws, {
+        t: "billing_exhausted", reason: "insufficient_balance",
+        call_id: a.call_id, media_kind: a.media_kind,
+      });
+      try { ws.close(4003, "call balance exhausted"); } catch { /* already closed */ }
+      return true;
+    }
+    // When the flag is dark WalletDO returns metered:false; advancing the cursor
+    // keeps the pilot dark even if it is enabled later during this same call.
+    att.billedThrough = from + seconds * 1000;
+    (ws as any).serializeAttachment(att);
+    return false;
   }
 
   // Zombie/idle/max-duration sweep. Hibernation-safe: scheduled via the DO alarm.
@@ -767,9 +816,17 @@ export class GroupCallRoom {
     const all = this.state.getWebSockets();
     const evicted = new Set<WebSocket>();
     const evictedUids: string[] = [];
+    const authority = await this.loadAuthority();
     for (const ws of all) {
       const a = this.att(ws);
       if (!a) continue;
+      if (authority && authority.state !== "ended") {
+        if (await this.billParticipant(ws, authority, now)) {
+          evicted.add(ws);
+          evictedUids.push(a.uid);
+          continue;
+        }
+      }
       if (now - a.ts > STALE_MS || now - a.born > MAX_ROOM_MS) {
         evicted.add(ws);
         evictedUids.push(a.uid);

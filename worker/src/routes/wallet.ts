@@ -134,7 +134,15 @@ export type WalletOperation =
   | (WalletOpBase & { op: "ai_unrecovered_release"; request_id: string; day: string })
   // Account-deletion cascade hook — clears the sub-cent AI remainder and
   // releases any stray AI-job reservations WITHOUT touching balance/free/bonus.
-  | (WalletOpBase & { op: "clear_ai_remainder" });
+  | (WalletOpBase & { op: "clear_ai_remainder" })
+  // Server-authoritative human audio/video participant-minute pool. This is
+  // intentionally an internal WalletDO operation; no client-facing wallet API
+  // shape changes and the route is unreachable while the billing flag is dark.
+  | (WalletOpBase & {
+      op: "call_usage_consume";
+      participant_seconds: number;
+      media: "audio" | "video";
+    });
 
 export async function walletOp(env: Env, uid: string, op: WalletOperation): Promise<{ status: number; body: any }> {
   const r = await walletStub(env, uid).fetch("https://wallet/op", {

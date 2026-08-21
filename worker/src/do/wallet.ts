@@ -82,6 +82,10 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { readConfig } from "../routes/config";
 import { track, trackException } from "../hooks";
+import {
+  computeHumanCallUsage,
+  HUMAN_CALL_FREE_PARTICIPANT_SECONDS,
+} from "../lib/human_call_usage_math";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
 const OPS_TTL_MS = 48 * 3_600_000; // generic dedupe window for op_id replays
@@ -252,6 +256,18 @@ export class WalletDO {
     // `unrecovered_micro_usd` telemetry/ledger instead, never accumulated
     // here. Self-migrating column add, same pattern as acct.bonus above.
     try { this.sql.exec("ALTER TABLE acct ADD COLUMN debt_micro_usd INTEGER NOT NULL DEFAULT 0"); } catch { /* column already exists */ }
+    // [HUMAN-CALL-POOL-1] Server-authoritative monthly participant seconds and
+    // a persistent fractional overage bucket. `centitoken_seconds` retains
+    // sub-centitoken precision for short (15s) billing ticks: 6,000 units = one
+    // whole wallet token = 100 centitokens. The row is per UTC calendar month;
+    // the bucket is deliberately account-wide and carries across months/calls.
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS human_call_usage (period TEXT PRIMARY KEY, participant_seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)",
+    );
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS human_call_credit (k INTEGER PRIMARY KEY, centitoken_seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)",
+    );
+    this.sql.exec("INSERT OR IGNORE INTO human_call_credit (k, centitoken_seconds, updated_at) VALUES (1,0,0)");
     // [AVA-CAMP-B1-WALLET] Escrow reservations, keyed by caller-supplied `ref`
     // (e.g. campaign_call_attempts.attempt_uuid). Brand-new table, additive only
     // — does not touch `bal`/`acct`/`holds`/`ops`.
@@ -402,6 +418,7 @@ export class WalletDO {
       body.op === "ai_budget_reserve" || body.op === "ai_budget_settle" ||
       body.op === "ai_budget_release" || body.op === "ai_unrecovered_reserve" ||
       body.op === "ai_unrecovered_settle" || body.op === "ai_unrecovered_release" // [AI-BUDGET-AUTH-1]
+      || body.op === "call_usage_consume" // [HUMAN-CALL-POOL-1]
     ) {
       const dup = this.seenOp(body.op_id);
       if (dup) return dup;
@@ -431,6 +448,7 @@ export class WalletDO {
       case "ai_unrecovered_settle": return this.aiUnrecoveredSettle(body);
       case "ai_unrecovered_release": return this.aiUnrecoveredRelease(body);
       case "clear_ai_remainder": return this.clearAiRemainder(uid, body);
+      case "call_usage_consume": return this.consumeHumanCallUsage(uid, body);
       default: return json({ error: "unknown op" }, 400);
     }
   }
@@ -489,6 +507,10 @@ export class WalletDO {
     this.setBal(0, 0);
     this.sql.exec("DELETE FROM holds");
     this.sql.exec("UPDATE acct SET free=0, premium=0, bonus=?1, last_grant_day=?2, debt_micro_usd=0 WHERE k=1", amount, today);
+    // [HUMAN-CALL-POOL-1] A hard wallet reset is a fresh account baseline;
+    // never carry prepaid call credit or prior monthly usage into it.
+    this.sql.exec("DELETE FROM human_call_usage");
+    this.sql.exec("UPDATE human_call_credit SET centitoken_seconds=0, updated_at=?1 WHERE k=1", Date.now());
     const releasedRows = this.sql.exec(
       "SELECT ref FROM resv WHERE released=0 AND reserved>0 AND ref LIKE 'aijob:%'",
     ).toArray() as any[];
@@ -543,6 +565,138 @@ export class WalletDO {
     this.recordOp(b.op_id, result);
     await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_uid: b.counterparty_uid, ref: b.ref, ...txMeta(b) }, b);
     this.broadcast();
+    return json(result);
+  }
+
+  /**
+   * [HUMAN-CALL-POOL-1] Consume connected participant seconds for the new,
+   * explicitly opt-in human-call billing lane. This lives inside WalletDO so
+   * allowance, fractional overage credit and wallet debit are one serialized
+   * operation per account. Legacy paid-call escrow remains untouched/dark.
+   */
+  private async consumeHumanCallUsage(uid: string, b: any): Promise<Response> {
+    let enabled = false;
+    try { enabled = (await readConfig(this.env)).humanCallParticipantBillingEnabled === true; } catch {
+      // A config outage must never turn a dark/unknown rollout into an
+      // unexpected charge. The call remains usable and the caller can retry a
+      // later tick once the flag is readable.
+      const result = { ok: true, metered: false, disconnect: false, reason: "config_unavailable" };
+      this.recordOp(b.op_id, result);
+      return json(result);
+    }
+    if (!enabled) {
+      const result = { ok: true, metered: false, disconnect: false, reason: "feature_disabled" };
+      this.recordOp(b.op_id, result);
+      return json(result);
+    }
+
+    const participantSeconds = Math.trunc(Number(b.participant_seconds));
+    const media = b.media === "video" ? "video" : b.media === "audio" ? "audio" : null;
+    // This is an internal operation, but keep a hard bound so a compromised
+    // caller cannot submit an accidental multi-year debit in one op.
+    if (!Number.isFinite(participantSeconds) || participantSeconds < 1 || participantSeconds > 86_400 || !media) {
+      return json({ error: "participant_seconds 1..86400 and media audio|video required" }, 400);
+    }
+
+    const period = new Date().toISOString().slice(0, 7);
+    const usageRow = this.sql.exec(
+      "SELECT participant_seconds FROM human_call_usage WHERE period=?1", period,
+    ).toArray()[0] as any;
+    const priorParticipantSeconds = Number(usageRow?.participant_seconds ?? 0);
+    const creditRow = this.sql.exec(
+      "SELECT centitoken_seconds FROM human_call_credit WHERE k=1",
+    ).one() as any;
+    const priorCentitokenSeconds = Number(creditRow?.centitoken_seconds ?? 0);
+    const math = computeHumanCallUsage({
+      priorParticipantSeconds,
+      priorCentitokenSeconds,
+      participantSeconds,
+      media,
+    });
+    const spendable = this.snap().spendable;
+
+    // Do not partially commit a tick that crosses into an unpaid token. The
+    // participant is disconnected by the owning call room, while already
+    // settled ticks remain durable and all other participants continue.
+    if (math.tokensToFund > spendable) {
+      const now = Date.now();
+      // A tick may straddle the free-pool boundary. Commit the free portion
+      // before refusing the unpaid overage, otherwise a caller that retries
+      // with short ticks could reuse the same final free seconds forever.
+      if (math.freeSecondsApplied > 0) {
+        this.sql.exec(
+          "INSERT INTO human_call_usage (period, participant_seconds, updated_at) VALUES (?1,?2,?3) " +
+          "ON CONFLICT(period) DO UPDATE SET participant_seconds=participant_seconds+excluded.participant_seconds, updated_at=excluded.updated_at",
+          period, math.freeSecondsApplied, now,
+        );
+      }
+      const result = {
+        ok: false, metered: true, disconnect: true, exhausted: true,
+        error: "insufficient_balance", reason: "insufficient_balance",
+        participant_seconds_requested: participantSeconds,
+        participant_seconds_total: priorParticipantSeconds + math.freeSecondsApplied,
+        free_seconds_used: math.freeSecondsApplied,
+        overage_seconds_denied: math.overageSeconds,
+        free_seconds_remaining: Math.max(0, HUMAN_CALL_FREE_PARTICIPANT_SECONDS - priorParticipantSeconds - math.freeSecondsApplied),
+        tokens_due: math.tokensToFund,
+        spendable,
+        centitoken_seconds: priorCentitokenSeconds,
+      };
+      this.recordOp(b.op_id, result);
+      Promise.resolve(track(this.env, uid, "human_call_usage_blocked", "human_call", {
+        ref: b.ref, media, participant_seconds: participantSeconds,
+        participant_seconds_total: priorParticipantSeconds + math.freeSecondsApplied, tokens_due: math.tokensToFund,
+        spendable, reason: "insufficient_balance",
+      })).catch(() => {});
+      return json(result, 402);
+    }
+
+    const a = this.acct();
+    const cur = this.bal();
+    const tokensDue = math.tokensToFund;
+    const freeUsed = Math.min(a.free, tokensDue);
+    const bonusUsed = Math.min(a.bonus, tokensDue - freeUsed);
+    const paidUsed = tokensDue - freeUsed - bonusUsed;
+    if (freeUsed > 0) this.sql.exec("UPDATE acct SET free=free-?1 WHERE k=1", freeUsed);
+    if (bonusUsed > 0) this.sql.exec("UPDATE acct SET bonus=bonus-?1 WHERE k=1", bonusUsed);
+    if (paidUsed > 0) this.setBal(cur.balance - paidUsed, cur.held);
+
+    const now = Date.now();
+    this.sql.exec(
+      "INSERT INTO human_call_usage (period, participant_seconds, updated_at) VALUES (?1,?2,?3) " +
+      "ON CONFLICT(period) DO UPDATE SET participant_seconds=participant_seconds+excluded.participant_seconds, updated_at=excluded.updated_at",
+      period, participantSeconds, now,
+    );
+    this.sql.exec(
+      "UPDATE human_call_credit SET centitoken_seconds=?1, updated_at=?2 WHERE k=1",
+      math.centitokenSecondsRemainder, now,
+    );
+    const result = {
+      ok: true, metered: true, disconnect: false,
+      participant_seconds: participantSeconds,
+      participant_seconds_total: math.participantSecondsTotal,
+      free_seconds_used: math.freeSecondsApplied,
+      free_seconds_remaining: Math.max(0, HUMAN_CALL_FREE_PARTICIPANT_SECONDS - math.participantSecondsTotal),
+      overage_seconds: math.overageSeconds,
+      tokens_charged: tokensDue,
+      free_used: freeUsed, bonus_used: bonusUsed, paid_used: paidUsed,
+      centitoken_seconds: math.centitokenSecondsRemainder,
+    };
+    this.recordOp(b.op_id, result);
+    if (tokensDue > 0) {
+      await this.audit(uid, {
+        type: "human_call_overage", amount: -tokensDue,
+        balance_after: this.snap().spendable, app_name: "human_call", ref: b.ref,
+        context: media, duration_sec: participantSeconds,
+        rate_per_min: media === "video" ? 0.10 : 0.05,
+      }, b);
+      Promise.resolve(track(this.env, uid, "human_call_usage_billed", "human_call", {
+        ref: b.ref, media, participant_seconds: participantSeconds,
+        participant_seconds_total: math.participantSecondsTotal,
+        tokens_charged: tokensDue, overage_seconds: math.overageSeconds,
+      })).catch(() => {});
+      this.broadcast();
+    }
     return json(result);
   }
 

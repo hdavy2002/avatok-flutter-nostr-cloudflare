@@ -35,7 +35,7 @@
 // the join/welcome/offer flow above are untouched.
 //
 // --- Legacy billing retirement (owner decision 2026-08-02) ------------------
-// Human audio/video calls are permanently free. New /billing-arm requests are
+// The old recipient-rate escrow model is retired. New /billing-arm requests are
 // rejected. A DO carrying pre-transition billing state refunds the unused
 // escrow without settling another minute, then removes the state. The billing
 // fields remain temporarily so already-created DOs can be reconciled safely.
@@ -51,6 +51,7 @@ import {
 import { CALL_RING_LIFETIME_MS, ringLifetimeMs } from "../lib/call_delivery_contract";
 import { readConfig } from "../routes/config";
 import { trackUserContact } from "../hooks";
+import { consumeHumanCallParticipantSeconds } from "../lib/call_usage_billing";
 import { emailFor, phoneFor } from "../lib/identity";
 import {
   GLARE_WINDOW_MS, glareJoinRoomToken, resolveGlarePlacement, type PendingGlareInvite,
@@ -169,6 +170,18 @@ interface BillingState {
   next_tick: number;    // epoch ms — when the next minute settle is due
   max_minutes: number;  // hard cap (Mode A = agentMaxCallSec/60; Mode B = chosen length)
   stopped: boolean;
+}
+
+/** [HUMAN-CALL-POOL-1] New additive 1:1 meter state. It is separate from the
+ * retired BillingState so old escrow rows remain safely free/refundable. */
+interface HumanCallUsageState {
+  call_id: string;
+  media: "audio" | "video";
+  started_at: number;
+  next_tick: number;
+  billed_through: Partial<Record<RoomSideTag, number>>;
+  active_since: Partial<Record<RoomSideTag, number>>;
+  blocked: Partial<Record<RoomSideTag, boolean>>;
 }
 
 /** [CALL-GRACE-MARGIN-1 2026-08-03] (audit H4) 30 s → 45 s.
@@ -1408,17 +1421,118 @@ export class CallRoom {
     else await this.state.storage.delete("billing");
   }
 
-  /** Recompute the single DO alarm as the earliest reconnect/ring deadline or
-   * legacy-billing refund retry. New human-call billing cannot be armed. */
+  private humanCallUsage: HumanCallUsageState | null | undefined;
+
+  private async loadHumanCallUsage(): Promise<HumanCallUsageState | null> {
+    if (this.humanCallUsage !== undefined) return this.humanCallUsage;
+    this.humanCallUsage = (await this.state.storage.get<HumanCallUsageState>("human_call_usage")) ?? null;
+    return this.humanCallUsage;
+  }
+
+  private async setHumanCallUsage(value: HumanCallUsageState | null): Promise<void> {
+    this.humanCallUsage = value;
+    if (value) await this.state.storage.put("human_call_usage", value);
+    else await this.state.storage.delete("human_call_usage");
+  }
+
+  /** Start the new meter only after two authenticated seats are connected. */
+  private async ensureHumanCallUsageStarted(session: CallSession, now = Date.now()): Promise<void> {
+    if (!session.caller_uid || !session.callee_uid || this.liveSeatCount() < 2) return;
+    let enabled = false;
+    try { enabled = (await readConfig(this.env)).humanCallParticipantBillingEnabled === true; } catch { return; }
+    if (!enabled) return;
+    const current = await this.loadHumanCallUsage();
+    if (current) return;
+    const sides = new Set(this.state.getWebSockets().map((w) => this.state.getTags(w)[1]));
+    if (!sides.has("side:caller") || !sides.has("side:callee")) return;
+    const mediaRaw = await this.state.storage.get<string>("human_call_media");
+    const usage: HumanCallUsageState = {
+      call_id: session.call_id || String(this.state.id.name ?? ""),
+      media: mediaRaw === "video" ? "video" : "audio",
+      started_at: now,
+      next_tick: now + BILLING_TICK_MS,
+      billed_through: { "side:caller": now, "side:callee": now },
+      active_since: { "side:caller": now, "side:callee": now },
+      blocked: {},
+    };
+    await this.setHumanCallUsage(usage);
+  }
+
+  /** Bill one 1:1 seat and return whether it must be disconnected. */
+  private async billHumanCallSide(session: CallSession, side: RoomSideTag, now: number): Promise<boolean> {
+    const usage = await this.loadHumanCallUsage();
+    const uid = side === "side:caller" ? session.caller_uid : session.callee_uid;
+    if (!usage || !uid || usage.blocked[side] || usage.active_since[side] == null) return Boolean(usage?.blocked[side]);
+    const from = usage.billed_through[side] ?? usage.active_since[side] ?? now;
+    const seconds = Math.floor(Math.max(0, now - from) / 1000);
+    if (seconds < 1) return false;
+    const result = await consumeHumanCallParticipantSeconds(this.env, {
+      uid,
+      callId: usage.call_id,
+      participantSeconds: seconds,
+      media: usage.media,
+      opId: `human-call:${usage.call_id}:1to1:${side}:${from}`,
+    });
+    if (result.disconnect) {
+      const freeCommitted = Math.max(0, Math.min(seconds, Math.trunc(Number(result.body?.free_seconds_used ?? 0))));
+      usage.billed_through[side] = from + freeCommitted * 1000;
+      usage.blocked[side] = true;
+      usage.active_since[side] = undefined;
+      await this.setHumanCallUsage(usage);
+      const ws = this.state.getWebSockets().find((w) => this.state.getTags(w)[1] === side);
+      if (ws) {
+        this.sendTo(ws, { type: "billing_exhausted", reason: "insufficient_balance", callId: usage.call_id });
+        try { ws.close(4003, "call balance exhausted"); } catch { /* already closed */ }
+      }
+      return true;
+    }
+    usage.billed_through[side] = from + seconds * 1000;
+    await this.setHumanCallUsage(usage);
+    return false;
+  }
+
+  private async billHumanCallUsage(session: CallSession, now: number): Promise<void> {
+    await this.ensureHumanCallUsageStarted(session, now);
+    const usage = await this.loadHumanCallUsage();
+    if (!usage) return;
+    await this.billHumanCallSide(session, "side:caller", now);
+    await this.billHumanCallSide(session, "side:callee", now);
+    const fresh = await this.loadHumanCallUsage();
+    if (fresh && (fresh.active_since["side:caller"] != null || fresh.active_since["side:callee"] != null)) {
+      fresh.next_tick = now + BILLING_TICK_MS;
+      await this.setHumanCallUsage(fresh);
+    }
+  }
+
+  private async stopHumanCallSide(session: CallSession, side: RoomSideTag, now: number): Promise<void> {
+    const usage = await this.loadHumanCallUsage();
+    if (!usage || usage.active_since[side] == null) return;
+    await this.billHumanCallSide(session, side, now);
+    const fresh = await this.loadHumanCallUsage();
+    if (fresh) {
+      fresh.active_since[side] = undefined;
+      fresh.next_tick = (fresh.active_since["side:caller"] != null || fresh.active_since["side:callee"] != null)
+        ? now + BILLING_TICK_MS : 0;
+      await this.setHumanCallUsage(fresh);
+    }
+  }
+
+  /** Recompute the single DO alarm as the earliest reconnect/ring deadline,
+   * legacy refund retry, or the opt-in human-call billing tick. */
   private async scheduleNextAlarm(): Promise<void> {
     const away = await this.loadAway();
     const billing = await this.loadBilling();
+    const humanUsage = await this.loadHumanCallUsage();
     if (this.ringDeadline === undefined) {
       this.ringDeadline = (await this.state.storage.get<number>("ringDeadline")) ?? null;
     }
     const candidates: number[] = [];
     if (away) candidates.push(away.awaySince + RECONNECT_GRACE_MS);
     if (billing && !billing.stopped) candidates.push(billing.next_tick);
+    if (humanUsage && humanUsage.next_tick > 0 &&
+        (humanUsage.active_since["side:caller"] != null || humanUsage.active_since["side:callee"] != null)) {
+      candidates.push(humanUsage.next_tick);
+    }
     if (this.ringDeadline != null) candidates.push(this.ringDeadline);
     const prewarm = await this.loadSilentPrewarm();
     if (prewarm?.phase === "prewarming") candidates.push(prewarm.deadline_ms);
@@ -1838,10 +1952,10 @@ export class CallRoom {
         return Response.json({ glare: false });
       }
       // Legacy endpoint retained only to prevent old callers from creating new
-      // billing state. Human calls are permanently free.
+      // billing state. Pooled participant usage is enforced separately.
       if (req.method === "POST" && stateUrl.pathname.endsWith("/billing-arm")) {
         await this.retireLegacyBillingAsFree();
-        return Response.json({ error: "human calling is permanently free", code: "CALLING_IS_FREE" }, { status: 410 });
+        return Response.json({ error: "legacy paid-call escrow is retired", code: "LEGACY_CALL_ESCROW_RETIRED" }, { status: 410 });
       }
       // [WP2] Internal-only: explicit disarm (e.g. a caller/callee abandons the
       // price prompt before the DO ever sees a second peer, or an upstream
@@ -2019,6 +2133,11 @@ export class CallRoom {
           parseRingPolicy(body.ringPolicy),
           silentPrewarm,
         );
+        if (result.ok && (body.mediaKind === "audio" || body.mediaKind === "video")) {
+          // Persist the media kind once at authenticated call admission. This
+          // does not alter the existing participant response shape.
+          try { await this.state.storage.put("human_call_media", body.mediaKind); } catch { /* billing is additive */ }
+        }
         // [CALL-4RINGS-1] Dial-time presence verdict, recorded for the
         // backstop-with-zero-receipts assertion in alarm(). Written after
         // setParticipants so a rejected/mismatched registration leaves nothing.
@@ -3027,6 +3146,19 @@ export class CallRoom {
     if (isRejoin) {
       // Cancel the pending alarm/away-state and tell the other peer we're back.
       await this.setAway(null);
+      const usage = await this.loadHumanCallUsage();
+      if (authenticatedSide && usage?.blocked[authenticatedSide]) {
+        this.sendTo(server, { type: "billing_exhausted", reason: "insufficient_balance", callId: usage.call_id });
+        try { server.close(4003, "call balance exhausted"); } catch { /* already closed */ }
+        return new Response(null, { status: 101, webSocket: client });
+      }
+      if (authenticatedSide && usage) {
+        const now = Date.now();
+        usage.active_since[authenticatedSide] = now;
+        usage.billed_through[authenticatedSide] = now;
+        usage.next_tick = now + BILLING_TICK_MS;
+        await this.setHumanCallUsage(usage);
+      }
       await this.scheduleNextAlarm(); // [WP2] re-arms the alarm for a still-pending billing tick, if any
       const buffered = away!.buffered;
       // CALL-GEN-1: a rejoin is a NEW transport for this peer — bump its gen and
@@ -3067,6 +3199,21 @@ export class CallRoom {
           await this.env.TOKENS.put(`call_answered:${callId}`, "true", { expirationTtl: 300 });
         } catch { /* best-effort: KV failure never breaks signaling */ }
       }
+    }
+    // [HUMAN-CALL-POOL-1] Start per-account participant metering only once the
+    // room has two authenticated seats; ring/setup time is not billable.
+    if (otherIds.length > 0) {
+      const existingUsage = await this.loadHumanCallUsage();
+      if (authenticatedSide && existingUsage && !existingUsage.blocked[authenticatedSide]) {
+        const now = Date.now();
+        existingUsage.active_since[authenticatedSide] = now;
+        existingUsage.billed_through[authenticatedSide] = now;
+        existingUsage.next_tick = now + BILLING_TICK_MS;
+        await this.setHumanCallUsage(existingUsage);
+      }
+      const liveSession = await this.loadSession("");
+      await this.ensureHumanCallUsageStarted(liveSession);
+      await this.scheduleNextAlarm();
     }
 
     // CALL-GEN-1: fresh join — assign this peer its generation and stamp welcome.
@@ -3244,6 +3391,14 @@ export class CallRoom {
     }
     if (data.type === "bye" || data.type === "hangup") {
       await this.setAway(null);
+      const endingSession = await this.loadSession("");
+      await this.billHumanCallUsage(endingSession, Date.now());
+      const endingUsage = await this.loadHumanCallUsage();
+      if (endingUsage) {
+        endingUsage.active_since = {};
+        endingUsage.next_tick = 0;
+        await this.setHumanCallUsage(endingUsage);
+      }
       await this.markEnded(); // CALL-KV-STATE-1: call is over — GET /state reports ended (also disarms billing → refundUnused)
       await this.scheduleNextAlarm(); // idempotent after legacy-billing retirement
     }
@@ -3330,6 +3485,10 @@ export class CallRoom {
     const side = tags[1] === "side:caller" || tags[1] === "side:callee"
       ? tags[1] as RoomSideTag
       : undefined;
+    if (side) {
+      const session = await this.loadSession("");
+      await this.stopHumanCallSide(session, side, Date.now());
+    }
     try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* already closed */ }
 
     const allOthers = this.state.getWebSockets().filter((w) => w !== ws);
@@ -3354,10 +3513,16 @@ export class CallRoom {
     for (const w of others) this.sendTo(w, { type: "peer-away", id: from });
   }
 
-  /** Single alarm for ring timeout, reconnect grace, and retryable retirement
-   * of pre-free-policy billing state. It never settles a human-call minute. */
+  /** Single alarm for ring timeout, reconnect grace, legacy retirement, and the
+   * opt-in human participant-minute meter. */
   async alarm(): Promise<void> {
     const now = Date.now();
+    // [HUMAN-CALL-POOL-1] Meter connected seats independently. The WalletDO
+    // response can close one exhausted seat; it never blocks the other seat.
+    const humanSession = await this.loadSession("");
+    if (humanSession.session_state === "connected" || this.liveSeatCount() >= 2) {
+      await this.billHumanCallUsage(humanSession, now);
+    }
     const prewarm = await this.loadSilentPrewarm();
     if (prewarm?.phase === "prewarming" && now >= prewarm.deadline_ms - 500) {
       // Best-effort transport optimisation: a killed isolate, ICE failure or
@@ -3536,8 +3701,8 @@ export class CallRoom {
         try { w.close(1000, "peer reconnect grace expired"); } catch { /* already closed */ }
       }
     }
-    // Never settle another legacy human-call minute after the permanent-free
-    // policy. Full-refund any pre-transition state on its next alarm.
+    // Never settle another legacy recipient-rate escrow minute. Full-refund
+    // any pre-transition state on its next alarm; pooled usage is separate.
     await this.retireLegacyBillingAsFree();
     await this.scheduleNextAlarm();
   }
