@@ -287,8 +287,13 @@ export async function streamVideoToken(req: Request, env: Env): Promise<Response
     && (existing.caller_uid === auth.uid || existing.callee_uid === auth.uid);
   // A flag rollback blocks NEW Stream calls but does not strand an already
   // selected Stream call whose short-lived user token needs refreshing.
-  if (!enabled(config) && !existingStreamCall) return json({ error: "stream video pilot disabled" }, 404);
-  if (!existingStreamCall && !rolloutAllowed(env, auth.uid)) return json({ error: "stream audio unavailable" }, 404);
+  // `streamCallsEnabled` is the separate kill switch for the new streamlane
+  // client lane: when on, it mints tokens on its own terms and does not fall
+  // through to the pilot rollout/allowlist gates below (which remain
+  // untouched for `streamCallPilotEnabled` callers).
+  const streamlane = config.streamCallsEnabled === true;
+  if (!enabled(config) && !streamlane && !existingStreamCall) return json({ error: "stream video pilot disabled" }, 404);
+  if (!existingStreamCall && !streamlane && !rolloutAllowed(env, auth.uid)) return json({ error: "stream audio unavailable" }, 404);
   const minted = await streamUserToken(env, auth.uid);
   return json({
     ok: true,

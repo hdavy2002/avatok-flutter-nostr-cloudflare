@@ -254,6 +254,15 @@ export interface PlatformConfig {
    */
   streamCallPilotPercent: number;
   /**
+   * Kill switch for the NEW client-side "streamlane" calling lane built on
+   * GetStream's Stream Video SDK (worker/src/routes/stream_video_calls.ts).
+   * Deliberately distinct from `streamCallPilotEnabled` — that flag gates the
+   * existing server-side rollout/provider-selection pilot; this one gates the
+   * separate client lane being built side-by-side with the current call
+   * stack, which stays untouched. Ships FALSE.
+   */
+  streamCallsEnabled: boolean;
+  /**
    * [CALL-RING-FASTPATH-1 2026-08-07] Trim the pre-ring critical path of
    * POST /api/call.
    *
@@ -1526,6 +1535,7 @@ const DEFAULTS: PlatformConfig = {
   callAudibleStateV1: false,
   streamCallPilotEnabled: false,
   streamCallPilotPercent: 0,
+  streamCallsEnabled: false,   // kill switch for the new streamlane client lane (distinct from streamCallPilotEnabled)
   // [CALL-RING-FASTPATH-1] ON: only admission → glare → participants → ring stay
   // on the pre-ring await chain. Flip false in KV to restore the old fully-serial
   // order (3.6-4.8s to call_ws_ring_sent) with no rebuild.
