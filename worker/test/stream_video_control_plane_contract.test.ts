@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { selectCallProvider } from "../src/routes/stream_video_calls";
+import { selectCallProvider, streamCallCancel } from "../src/routes/stream_video_calls";
 
 describe("GetStream Video pilot control plane contract", () => {
   const route = readFileSync("src/routes/stream_video_calls.ts", "utf8");
@@ -193,5 +193,35 @@ describe("GetStream Video pilot control plane contract", () => {
     expect(providerBranch).toBeLessThan(ringToken);
     expect(api).toContain("b.stream_capable === true");
     expect(api).toContain("admissionAlreadyGranted: true");
+  });
+
+  it("bounds provider ringing and compensates every timeout or cancellation", () => {
+    const admission = route.indexOf("const admission = await admitCall");
+    const authority = route.indexOf("const recorded = await persistStickyProvider", admission);
+    const streamCreate = route.indexOf("const created = await createRingingStreamCall", authority);
+    expect(admission).toBeGreaterThan(-1);
+    expect(authority).toBeGreaterThan(admission);
+    expect(streamCreate).toBeGreaterThan(authority);
+    expect(route).toContain("STREAM_PLACE_TOTAL_DEADLINE_MS = 7_500");
+    expect(route).toContain("deadlineAt: requestStartedAt + STREAM_PLACE_TOTAL_DEADLINE_MS");
+    expect(route).toContain("new AbortController()");
+    expect(route).toContain('created.stage === "provider_timeout"');
+    expect(route).toContain("await endStreamCall(env, callId)");
+  });
+
+  it("supports cancelling an attempt before place returns its server call id", () => {
+    expect(streamCallCancel).toBeTypeOf("function");
+    expect(route).toContain("stream-place:active:");
+    expect(route).toContain("stream-place:cancel:");
+    expect(route).toContain('return json({ cancelled: true, call_id: callId })');
+    expect(route).toContain('"call_cancelled"');
+  });
+
+  it("emits stage latency for fast-call production diagnosis", () => {
+    expect(route).toContain("auth_and_admission_ms");
+    expect(route).toContain("stream_users_ms");
+    expect(route).toContain("stream_create_ms");
+    expect(route).toContain("stream_provider_total_ms");
+    expect(route).toContain("place_total_ms");
   });
 });

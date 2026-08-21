@@ -47,6 +47,10 @@ const CALL_ID_MAX = 128;
 // window, short enough that a genuinely new call attempt minutes later still
 // mints its own id.
 const PLACE_ATTEMPT_TTL_SECONDS = 2 * 60;
+// One bounded budget for Stream user preparation + ringing. The app keeps the
+// caller engaged while this runs, but the Worker must never continue a ring
+// side effect after returning a terminal timeout.
+const STREAM_PLACE_TOTAL_DEADLINE_MS = 7_500;
 // How long an approved-and-not-yet-ended Stream call counts as "live" for
 // glare detection (job 3, plan §8). Conservative: long enough to catch the
 // realistic window between A dialing B and B dialing back before either side
@@ -317,10 +321,28 @@ function streamUsersUrl(env: Env): string {
   return `https://video.stream-io-api.com/api/v2/users?api_key=${encodeURIComponent(env.STREAM_VIDEO_API_KEY as string)}`;
 }
 
+function streamEndCallUrl(env: Env, callId: string): string {
+  return `${streamCallUrl(env, callId).replace(/\?/, "/mark_ended?")}`;
+}
+
+async function fetchBefore(url: string, init: RequestInit, deadlineAt: number): Promise<Response> {
+  if (!Number.isFinite(deadlineAt)) return await fetch(url, init);
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new DOMException("Stream deadline exceeded", "TimeoutError");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("Stream deadline exceeded"), remaining);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function ensureStreamUsers(
   env: Env,
   token: string,
   profiles: Array<{ id: string; name?: string }>,
+  deadlineAt = Number.POSITIVE_INFINITY,
 ): Promise<boolean> {
   const users = Object.fromEntries(profiles.map((profile) => [profile.id, {
     id: profile.id,
@@ -328,11 +350,11 @@ async function ensureStreamUsers(
     ...(profile.name ? { name: profile.name } : {}),
   }]));
   try {
-    const response = await fetch(streamUsersUrl(env), {
+    const response = await fetchBefore(streamUsersUrl(env), {
       method: "POST",
       headers: { Authorization: token, "Content-Type": "application/json", "stream-auth-type": "jwt" },
       body: JSON.stringify({ users }),
-    });
+    }, deadlineAt);
     return response.ok;
   } catch {
     return false;
@@ -363,7 +385,10 @@ async function createRingingStreamCall(env: Env, args: {
   callId: string;
   video: boolean;
   traceId: string;
-}): Promise<{ ok: true } | { ok: false; status: number; stage: string }> {
+  deadlineAt: number;
+  cancelled?: () => Promise<boolean>;
+}): Promise<{ ok: true; usersMs: number; createMs: number; totalMs: number } | { ok: false; status: number; stage: string; elapsedMs: number }> {
+  const startedAt = Date.now();
   let usersReady = false;
   try {
     const serverToken = await streamServerToken(env);
@@ -374,10 +399,20 @@ async function createRingingStreamCall(env: Env, args: {
     if (!await ensureStreamUsers(env, serverToken, [
       { id: args.callerUid, ...(callerName ? { name: callerName } : {}) },
       { id: args.calleeUid, ...(calleeName ? { name: calleeName } : {}) },
-    ])) {
-      return { ok: false, status: 502, stage: "ensure_users" };
+    ], args.deadlineAt)) {
+      const timedOut = Date.now() >= args.deadlineAt;
+      return {
+        ok: false,
+        status: timedOut ? 504 : 502,
+        stage: timedOut ? "provider_timeout" : "ensure_users",
+        elapsedMs: Date.now() - startedAt,
+      };
     }
     usersReady = true;
+    const usersReadyAt = Date.now();
+    if (args.cancelled && await args.cancelled()) {
+      return { ok: false, status: 409, stage: "cancelled", elapsedMs: Date.now() - startedAt };
+    }
     const payload = {
       ring: true,
       video: args.video,
@@ -395,15 +430,30 @@ async function createRingingStreamCall(env: Env, args: {
         },
       },
     };
-    const response = await fetch(streamCallUrl(env, args.callId), {
+    const response = await fetchBefore(streamCallUrl(env, args.callId), {
       method: "POST",
       headers: { Authorization: serverToken, "Content-Type": "application/json", "stream-auth-type": "jwt" },
       body: JSON.stringify(payload),
-    });
-    if (!response.ok) return { ok: false, status: response.status >= 500 ? 502 : 400, stage: "stream_create" };
-    return { ok: true };
+    }, args.deadlineAt);
+    if (!response.ok) return { ok: false, status: response.status >= 500 ? 502 : 400, stage: "stream_create", elapsedMs: Date.now() - startedAt };
+    return { ok: true, usersMs: usersReadyAt - startedAt, createMs: Date.now() - usersReadyAt, totalMs: Date.now() - startedAt };
+  } catch (error) {
+    const timedOut = Date.now() >= args.deadlineAt || (error instanceof DOMException && error.name === "AbortError");
+    return { ok: false, status: timedOut ? 504 : 502, stage: timedOut ? "provider_timeout" : (usersReady ? "stream_create" : "ensure_users"), elapsedMs: Date.now() - startedAt };
+  }
+}
+
+async function endStreamCall(env: Env, callId: string): Promise<boolean> {
+  try {
+    const token = await streamServerToken(env);
+    const response = await fetchBefore(streamEndCallUrl(env, callId), {
+      method: "POST",
+      headers: { Authorization: token, "stream-auth-type": "jwt" },
+    }, Date.now() + 2_000);
+    // A missing call is already safely not ringing.
+    return response.ok || response.status === 404;
   } catch {
-    return { ok: false, status: 502, stage: usersReady ? "stream_create" : "ensure_users" };
+    return false;
   }
 }
 
@@ -677,17 +727,15 @@ export async function streamVideoPrepare(req: Request, env: Env, ctx?: Execution
 // authoritative record of who was allowed to call whom. A blocked person could
 // ring you; nothing on the server even knew the call existed.
 //
-// WHAT THIS ENDPOINT DOES — and deliberately does NOT do.
+// WHAT THIS ENDPOINT DOES.
 //   DOES: authenticate the caller from the Clerk JWT (never from JSON), run the
 //         same `admitCall` gate the legacy dial runs, apply the same
 //         `callMinBuild` floor via the same `x-app-build` header contract,
 //         apply the same unknown-caller contact policy, MINT the call id
-//         server-side, record the authoritative provider decision, and emit
-//         telemetry tagged with BOTH parties' emails.
-//   DOES NOT: touch the Stream API. It does not create the call and it does not
-//         ring. That stays with the client's existing `getOrCreate` + `join`,
-//         which is what plan P1.3 mounts the call screen around. Creating and
-//         ringing here as well would double-create the call.
+//         server-side, record the authoritative provider decision, create and
+//         ring through Stream with server credentials, and emit telemetry
+//         tagged with BOTH parties' emails. The phone only joins the approved
+//         call; it never creates or rings one itself.
 //
 // This is the authorisation half of the split. `prepareStreamCall` above is the
 // OTHER, older lane (the `streamCallPilotEnabled` percentage rollout invoked
@@ -705,7 +753,8 @@ export type StreamPlaceRefusalCode =
   | "receptionist"
   // [STREAM-ENFORCE-2 2026-08-21] additions below.
   | "authority_unavailable"
-  | "stream_create_failed";
+  | "stream_create_failed"
+  | "call_cancelled";
 
 type StreamPlaceBody = {
   callee_uid?: unknown;
@@ -788,6 +837,7 @@ function validAttemptId(value: unknown): value is string {
  * leak. The internal reason is emitted server-side only.
  */
 export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const requestStartedAt = Date.now();
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
 
@@ -810,6 +860,11 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // users, so no cross-user key collision is possible.
   const attemptId = validAttemptId(body.attempt_id) ? body.attempt_id : null;
   const attemptKey = attemptId ? `stream-place:attempt:${callerUid}:${attemptId}` : null;
+  const activeKey = attemptId ? `stream-place:active:${callerUid}:${attemptId}` : null;
+  const cancelKey = attemptId ? `stream-place:cancel:${callerUid}:${attemptId}` : null;
+  const cancelled = async (): Promise<boolean> => cancelKey
+    ? (await env.TOKENS.get(cancelKey).catch(() => null)) === "1"
+    : false;
   if (attemptKey) {
     const cached = await env.TOKENS.get(attemptKey, "json").catch(() => null) as
       { status: number; payload: Record<string, unknown> } | null;
@@ -930,6 +985,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
       admission.internal_reason,
     );
   }
+  const admissionCompletedAt = Date.now();
 
   // ── UNKNOWN-CALLER CONTACT POLICY ──────────────────────────────────────────
   // The legacy dial diverts an unsaved caller to the callee's AI receptionist
@@ -1046,6 +1102,20 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     );
   }
 
+  // Publish the server-minted id before contacting Stream. A concurrent
+  // /cancel request can now end this exact call even though /place has not yet
+  // returned the id to the phone. The tombstone check closes the inverse race
+  // where cancellation arrived just before this mapping was visible.
+  if (activeKey) {
+    await env.TOKENS.put(activeKey, JSON.stringify({ call_id: callId, callee_uid: calleeUid }), {
+      expirationTtl: PLACE_ATTEMPT_TTL_SECONDS,
+    }).catch(() => undefined);
+  }
+  if (await cancelled()) {
+    await markProviderDecisionEnded(env, callId);
+    return await refuse("call_cancelled", "Call cancelled.", 409, { stage: "before_stream" }, "caller_cancelled");
+  }
+
   // ── SERVER-SIDE CALL CREATION (job 1a) ──────────────────────────────────
   // This is the fix for plan §8 blocker #1: the Worker — not the phone — is
   // now the thing that calls Stream's `getOrCreate(ring:true)`. A modified
@@ -1055,6 +1125,12 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // findings in the report for the client-token half of this defense.
   const created = await createRingingStreamCall(env, {
     callerUid, calleeUid, callId, video, traceId: traceId || callId,
+    // The phone stops waiting after 8 seconds. Anchor this deadline to the
+    // beginning of the whole request—not to the later Stream step—so auth and
+    // admission can never consume time and leave a provider request running
+    // after the caller has already seen a terminal timeout.
+    deadlineAt: requestStartedAt + STREAM_PLACE_TOTAL_DEADLINE_MS,
+    cancelled,
   });
   if (!created.ok) {
     // The authority row is written before Stream creation so an unrecorded
@@ -1062,10 +1138,18 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     // immediately: otherwise the reverse-direction glare lookup can return a
     // call id that never existed and strand both callers for 45 seconds.
     await markProviderDecisionEnded(env, callId);
+    // An aborted create can race with Stream accepting the request. Ending the
+    // deterministic call id is the compensating action that prevents a phone
+    // ringing after AvaTOK has already returned a terminal failure.
+    if (created.stage === "provider_timeout" || created.stage === "cancelled") {
+      await endStreamCall(env, callId);
+    }
     try {
       await trackUser(env, callerUid, callerEmail, "stream_call_create_failed", "avatok", {
         call_id: callId, from_uid: callerUid, to_uid: calleeUid,
         stage: created.stage, provider_status: created.status,
+        provider_elapsed_ms: created.elapsedMs,
+        admission_ms: admissionCompletedAt - requestStartedAt,
         trace_id: traceId || null, lane: "streamlane",
         app_name: "avatok", service_name: "avatok-api", worker: true,
       }, traceId || undefined);
@@ -1073,15 +1157,27 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     emitCallEvent(env, CallEvent.call_ended, {
       call_trace_id: traceId || callId, call_id: callId, account_id: callerUid,
       rtc_provider: PROVIDER, ended_reason: "provider_failure",
-      extra: { stage: created.stage, lane: "streamlane" },
+      extra: { stage: created.stage, lane: "streamlane", provider_elapsed_ms: created.elapsedMs },
     }, ctx);
     return await refuse(
-      "stream_create_failed",
-      "Couldn't start the call. Please try again.",
+      created.stage === "cancelled" ? "call_cancelled" : "stream_create_failed",
+      created.stage === "cancelled" ? "Call cancelled." : "Couldn't start the call. Please try again.",
       created.status,
       { stage: created.stage },
-      `stream_create_failed:${created.stage}`,
+      created.stage === "cancelled" ? "caller_cancelled" : `stream_create_failed:${created.stage}`,
     );
+  }
+
+  // Cancellation may land while Stream is processing the create request.
+  // Never acknowledge ringing in that case: end it first, close authority,
+  // and return one terminal cancelled result.
+  if (await cancelled()) {
+    await endStreamCall(env, callId);
+    await markProviderDecisionEnded(env, callId);
+    return await refuse("call_cancelled", "Call cancelled.", 409, {
+      stage: "after_stream_create",
+      provider_total_ms: created.totalMs,
+    }, "caller_cancelled");
   }
 
   const approvalProps = {
@@ -1094,6 +1190,11 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     authority_recorded: true,
     created_server_side: true,
     admission_policy: admission.policy ?? "unknown",
+    auth_and_admission_ms: admissionCompletedAt - requestStartedAt,
+    stream_users_ms: created.usersMs,
+    stream_create_ms: created.createMs,
+    stream_provider_total_ms: created.totalMs,
+    place_total_ms: Date.now() - requestStartedAt,
     app_name: "avatok", service_name: "avatok-api", worker: true,
   };
   const approvalTelemetry = (async () => {
@@ -1108,7 +1209,14 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
       rtc_provider: PROVIDER,
       media_mode: video ? "video" : "audio",
       role: "caller",
-      extra: { scope: "one_to_one", lane: "streamlane", authority_recorded: true, created_server_side: true },
+      extra: {
+        scope: "one_to_one", lane: "streamlane", authority_recorded: true, created_server_side: true,
+        auth_and_admission_ms: admissionCompletedAt - requestStartedAt,
+        stream_users_ms: created.usersMs,
+        stream_create_ms: created.createMs,
+        stream_provider_total_ms: created.totalMs,
+        place_total_ms: Date.now() - requestStartedAt,
+      },
     }, ctx);
   })();
   if (ctx) ctx.waitUntil(approvalTelemetry); else await approvalTelemetry;
@@ -1123,6 +1231,46 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     trace_id: traceId || callId,
     created: true,
   });
+}
+
+/**
+ * POST /api/stream-calls/cancel
+ * Body { attempt_id: string, call_id?: string }
+ *
+ * Safe before /place completes: the attempt tombstone is written first, then
+ * any already-published server call id is ended. A caller may only cancel its
+ * own attempt mapping; an optional call_id must match that mapping.
+ */
+export async function streamCallCancel(req: Request, env: Env): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
+  let body: { attempt_id?: unknown; call_id?: unknown };
+  try { body = await req.json() as typeof body; } catch { return json({ error: "bad json" }, 400); }
+  if (!validAttemptId(body.attempt_id)) return json({ error: "invalid attempt_id" }, 400);
+  if (body.call_id !== undefined && !validCallId(body.call_id)) return json({ error: "invalid call_id" }, 400);
+
+  const activeKey = `stream-place:active:${auth.uid}:${body.attempt_id}`;
+  const cancelKey = `stream-place:cancel:${auth.uid}:${body.attempt_id}`;
+  await env.TOKENS.put(cancelKey, "1", { expirationTtl: PLACE_ATTEMPT_TTL_SECONDS });
+  const active = await env.TOKENS.get(activeKey, "json").catch(() => null) as
+    { call_id?: unknown; callee_uid?: unknown } | null;
+  const callId = active && validCallId(active.call_id) ? active.call_id : null;
+  if (body.call_id !== undefined && callId !== body.call_id) {
+    return json({ error: "call_id does not belong to this attempt" }, 409);
+  }
+  if (callId) {
+    const cancelStartedAt = Date.now();
+    const [providerEnded] = await Promise.all([endStreamCall(env, callId), markProviderDecisionEnded(env, callId)]);
+    track(env, auth.uid, "stream_call_cancel_requested", "avatok", {
+      call_id: callId,
+      attempt_id: body.attempt_id,
+      provider_ended: providerEnded,
+      cancel_total_ms: Date.now() - cancelStartedAt,
+      lane: "streamlane",
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+  }
+  return json({ cancelled: true, call_id: callId });
 }
 
 async function unzipIfNeeded(raw: ArrayBuffer): Promise<ArrayBuffer> {

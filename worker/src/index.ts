@@ -11,7 +11,7 @@ import * as api from "./routes/api";
 import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead, sweepAvaReadableCopies } from "./routes/media";
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
-import { streamVideoToken, streamVideoPrepare, streamVideoWebhook, streamCallPlace } from "./routes/stream_video_calls";
+import { streamVideoToken, streamVideoPrepare, streamVideoWebhook, streamCallPlace, streamCallCancel } from "./routes/stream_video_calls";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
@@ -1319,6 +1319,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // call. Stream carries the media; this route decides whether the call may
       // happen at all and mints the call id. See plan §8.1.
       if (p === "/api/stream-calls/place" && req.method === "POST") return await streamCallPlace(req, env, ctx);
+      if (p === "/api/stream-calls/cancel" && req.method === "POST") return await streamCallCancel(req, env);
 
       // --- Phase 7: AvaLive delivery (Stream Live + interaction room) ---
       {
