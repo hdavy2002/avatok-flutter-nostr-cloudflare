@@ -19,6 +19,7 @@ import '../../core/call_recording/call_recording_store.dart'; // [CALLREC-UI-1]
 import '../../core/call_routing_api.dart';
 import '../../core/calls/adhoc_room_api.dart'; // [ADDCALL-1-UI]
 import '../../core/calls/call_escalation_guard.dart'; // [ADDCALL-2-UI]
+import '../../core/calls/call_media_permissions.dart'; // [STREAM-PERM-1]
 import '../../core/calls/call_overlay.dart';
 import '../../core/calls/call_telemetry_events.dart'; // [ADDCALL-1-UI]
 import '../../core/disk_cache.dart'; // [CALLREC-UI-1] per-account consent store
@@ -703,11 +704,32 @@ class _CallScreenState extends State<CallScreen> {
     _session.onRequestPop = _autoPop;
     // User-facing snackbars stay in the view; the session invokes these hooks.
     _session.setNoticeHooks(
-      mediaDenied: () {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Microphone permission is needed to make a call')));
-        }
+      // [STREAM-PERM-1] This used to print one hardcoded string —
+      // "Microphone permission is needed to make a call" — for EVERY media
+      // failure, including the `unknown factoryId` engine fault that broke
+      // build 10612 while RECORD_AUDIO was granted on both devices. The session
+      // now hands us a classified failure; we print its sentence and offer the
+      // Settings route ONLY when a permission really is permanently denied.
+      mediaFailure: (failure) {
+        if (!mounted) return;
+        Analytics.capture('call_media_failure_shown', {
+          'call_id': widget.room,
+          'kind': failure.kind.name,
+          'code': failure.code,
+          'video': widget.video,
+          'settings_offered': failure.canOpenSettings,
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(failure.message),
+          duration: const Duration(seconds: 6),
+          action: failure.canOpenSettings
+              ? SnackBarAction(
+                  label: 'Settings',
+                  onPressed: () =>
+                      unawaited(CallMediaPermissions.openSettings()),
+                )
+              : null,
+        ));
       },
       placeCallFailed: () {
         if (mounted) {

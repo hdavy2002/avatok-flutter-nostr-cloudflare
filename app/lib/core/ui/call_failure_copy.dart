@@ -172,7 +172,17 @@ final Map<String, _Entry> _kExplained = <String, _Entry>{
   'owner-accepted-other-call': _Entry('answered_elsewhere', _answeredElsewhere),
 
   // ── this phone can't do it ──────────────────────────────────────────────
+  //
+  // [STREAM-PERM-1 2026-08-21] FOUR reasons, not one. `media-denied` used to be
+  // the label for every `getUserMedia` throw — including the `unknown factoryId`
+  // ENGINE fault that broke build 10612 with RECORD_AUDIO granted throughout.
+  // Only `media-denied` may mention permissions; the classifier that picks
+  // between them is `core/calls/call_media_permissions.dart`.
   'media-denied': _Entry('media_denied', _mediaDenied),
+  'media-timeout': _Entry('media_timeout', _mediaTimeout),
+  'media-engine-failed': _Entry('media_engine_failed', _mediaEngineFailed),
+  'media-device-failed': _Entry('media_device_failed', _mediaDeviceFailed),
+  'media-failed': _Entry('media_failed', _mediaFailedUnknown),
 
   // ── Ava never came on the line ──────────────────────────────────────────
   // [AVA-VM-FALLBACK-1] When the degrade-to-recorder fallback stored something,
@@ -242,7 +252,30 @@ String _glare(String n) => n.isEmpty
 String _answeredElsewhere(String n) => 'You answered another call.';
 
 String _mediaDenied(String n) =>
-    'AvaTOK needs microphone access to make a call.';
+    'AvaTOK needs microphone access to make this call.';
+
+/// [STREAM-PERM-1] The mic/camera never came back. Not a refusal — there is
+/// nothing to change in Settings, so the copy must not send anyone there.
+String _mediaTimeout(String n) =>
+    "Your microphone didn't respond in time. Try the call again.";
+
+/// [STREAM-PERM-1] The WebRTC engine could not service the request at all
+/// (`unknown factoryId`, a missing plugin, a dead registrar). Says "not your
+/// permissions" on purpose: the old copy claimed the opposite and cost the
+/// 2026-08-21 incident three rounds of chasing granted permissions.
+String _mediaEngineFailed(String n) =>
+    "AvaTOK couldn't start the call audio — this is a fault in the app, not "
+    'your permissions. Restart AvaTOK and try again.';
+
+/// [STREAM-PERM-1] No usable capture device, or one that is busy / failing in
+/// the HAL. The remedy is another app, not a setting.
+String _mediaDeviceFailed(String n) =>
+    'Your microphone is unavailable — another app may be using it.';
+
+/// [STREAM-PERM-1] Unrecognised media failure. Honest and vague beats a guess
+/// (rule 1) — but silence would be worse, because the call visibly ended.
+String _mediaFailedUnknown(String n) =>
+    "AvaTOK couldn't start the call audio. Please try again.";
 
 String _avaUnavailable(String n) =>
     n.isEmpty ? "Couldn't reach them." : "Couldn't reach $n.";

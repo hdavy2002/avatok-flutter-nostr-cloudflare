@@ -30,6 +30,7 @@ import '../receptionist_api.dart';
 import '../receptionist_call.dart';
 import '../remote_config.dart';
 import 'call_audio_controller.dart';
+import 'call_media_permissions.dart'; // [STREAM-PERM-1] preflight + classifier
 import 'call_prewarm.dart'; // [CALL-PREWARM-1]
 import '../ringback_player.dart';
 import '../voice/native_voice_audio.dart';
@@ -4479,6 +4480,41 @@ class CallSession {
         } catch (_) {/* one bad track must not abort accept */}
       }
     } else {
+      // ── [STREAM-PERM-1 2026-08-21] Preflight, before any media is touched ──
+      //
+      // Asking the OS FIRST means a genuine refusal is named as one here, by
+      // itself, and everything that reaches the `catch` below is therefore NOT
+      // a permission problem. `ensure` only prompts when the permission is
+      // merely `denied`; a granted permission costs one cheap status read, and
+      // an unsupported platform returns `unknown` and proceeds (never block a
+      // call on the checker).
+      final perms = await CallMediaPermissions.ensure(
+        video: config.video,
+        surface: 'legacy_lane',
+        callId: config.room,
+      );
+      if (!perms.canProceed) {
+        final failure = CallMediaFailure(
+          kind: MediaFailureKind.permissionDenied,
+          video: config.video,
+          canOpenSettings: perms.needsSettings,
+        );
+        Analytics.error(
+          domain: 'call_setup',
+          code: failure.code,
+          message: 'preflight ${perms.code} (${perms.blockedBy})',
+          action: 'media_preflight',
+          extra: {
+            'call_id': config.room,
+            'video': config.video,
+            'blocked_by': perms.blockedBy,
+            'can_open_settings': failure.canOpenSettings,
+          },
+        );
+        _mediaFailureNotice?.call(failure);
+        _endWith('ended', reason: failure.endReason);
+        return;
+      }
       try {
         var mediaTimedOut = false;
         final mediaFuture = navigator.mediaDevices.getUserMedia({
@@ -4537,21 +4573,46 @@ class CallSession {
               'getUserMedia did not return within 8s (mic/camera acquisition hung)');
         });
       } catch (e, st) {
+        // ── [STREAM-PERM-1 2026-08-21] Four outcomes, not two ────────────────
+        //
+        // This catch used to label EVERY non-timeout throw `media_denied` and
+        // show "Microphone permission is needed to make a call". On build 10612
+        // the real error was `getUserMedia(): unknown factoryId null` — a WebRTC
+        // ENGINE fault from the `stream_webrtc_flutter` swap — while
+        // `RECORD_AUDIO` was granted on both test devices the entire time. The
+        // copy sent the incident three rounds deep into OS permissions and
+        // emulator audio that were never the problem.
+        //
+        // `classifyMediaFailureWithPermissions` reads the ACTUAL permission
+        // state (cheap, no prompt) and lets it outrank the exception string, so
+        // only a genuine refusal is ever called a denial.
+        final failure = await classifyMediaFailureWithPermissions(
+          e,
+          video: config.video,
+        );
         Analytics.error(
           domain: 'call_setup',
-          code: e is TimeoutException ? 'media_timeout' : 'media_denied',
+          code: failure.code,
           message: e.toString(),
           action: config.video ? 'getUserMedia_av' : 'getUserMedia_audio',
-          extra: {'call_id': config.room, 'video': config.video},
+          extra: {
+            'call_id': config.room,
+            'video': config.video,
+            'media_failure_kind': failure.kind.name,
+            'can_open_settings': failure.canOpenSettings,
+          },
         );
         _telemetry.runtimeError(
           stage: 'get_user_media_failed',
           error: e,
           stack: st,
-          extra: {'video_requested': config.video},
+          extra: {
+            'video_requested': config.video,
+            'media_failure_kind': failure.kind.name,
+          },
         );
-        _mediaDeniedNotice?.call();
-        _endWith('ended', reason: 'media-denied');
+        _mediaFailureNotice?.call(failure);
+        _endWith('ended', reason: failure.endReason);
         return;
       }
     } // [CALL-PREROLL-1] end of the `prerolledStream == null` cold-getUserMedia branch
@@ -4882,18 +4943,37 @@ class CallSession {
   }
 
   // ── View notice hooks (snackbars) — set by the attached view. ───────────────
-  void Function()? _mediaDeniedNotice;
+  // [STREAM-PERM-1] Carries the CLASSIFIED failure, so the view can print the
+  // right sentence (and only offer "Open settings" for a real denial) instead
+  // of the one hardcoded permission string it used to show for everything.
+  void Function(CallMediaFailure failure)? _mediaFailureNotice;
+
+  /// [STREAM-PERM-1] The last classified media failure, set by
+  /// `_ensureAcceptedAudio` so its three callers can end the call with the RIGHT
+  /// reason instead of the flat `media-denied` they all used to pass.
+  CallMediaFailure? _lastMediaFailure;
+
+  /// End the call on a post-Accept media failure, telling the user what actually
+  /// went wrong. Falls back to the honest-but-vague `unknown` kind when the
+  /// classifier never ran.
+  void _endWithMediaFailure() {
+    final failure = _lastMediaFailure ??
+        CallMediaFailure(kind: MediaFailureKind.unknown, video: config.video);
+    _lastMediaFailure = null;
+    _mediaFailureNotice?.call(failure);
+    _endWith('ended', reason: failure.endReason);
+  }
   void Function()? _placeCallFailedNotice;
   void Function()? _unreachableNotice;
   // [RECEPT-SETTINGS-1] the free-voicemail status snackbars were removed with the
   // voicemail feature.
   /// The view registers user-facing snackbar callbacks. Cleared on detach.
   void setNoticeHooks({
-    void Function()? mediaDenied,
+    void Function(CallMediaFailure failure)? mediaFailure,
     void Function()? placeCallFailed,
     void Function()? unreachable,
   }) {
-    _mediaDeniedNotice = mediaDenied;
+    _mediaFailureNotice = mediaFailure;
     _placeCallFailedNotice = placeCallFailed;
     _unreachableNotice = unreachable;
   }
@@ -7430,18 +7510,33 @@ class CallSession {
           await media.dispose();
         } catch (_) {}
       }
+      // [STREAM-PERM-1] Same four-way classification as the cold-boot path
+      // above; `_lastMediaFailure` carries it out to the three callers, which
+      // all used to end the call with a flat `media-denied`.
+      final failure = await classifyMediaFailureWithPermissions(
+        e,
+        video: false,
+      );
+      _lastMediaFailure = failure;
       Analytics.error(
         domain: 'call_setup',
-        code: e is TimeoutException ? 'media_timeout' : 'media_denied',
+        code: failure.code,
         message: e.toString(),
         action: 'accepted_audio',
-        extra: {'call_id': config.room, 'prewarm': true},
+        extra: {
+          'call_id': config.room,
+          'prewarm': true,
+          'media_failure_kind': failure.kind.name,
+        },
       );
       _telemetry.runtimeError(
         stage: 'accepted_audio_failed',
         error: e,
         stack: st,
-        extra: {'prewarm': true},
+        extra: {
+          'prewarm': true,
+          'media_failure_kind': failure.kind.name,
+        },
       );
       return false;
     }
@@ -7457,7 +7552,7 @@ class CallSession {
       await CallPrewarm.instance.discard(config.room, 'p2p_selected');
     }
     if (_prewarmAudioPending && !await _ensureAcceptedAudio()) {
-      _endWith('ended', reason: 'media-denied');
+      _endWithMediaFailure(); // [STREAM-PERM-1]
       return;
     }
     if (_ended || _connected || _pc != null || _remoteId == null) return;
@@ -7503,7 +7598,7 @@ class CallSession {
       await CallPrewarm.instance.discard(config.room, 'rtk_selected');
     }
     if (_prewarmAudioPending && !await _ensureAcceptedAudio()) {
-      _endWith('ended', reason: 'media-denied');
+      _endWithMediaFailure(); // [STREAM-PERM-1]
       return;
     }
     _connectWatchdogFast?.cancel();
@@ -8981,7 +9076,7 @@ class CallSession {
         // is no `replaceTrack`, no `onRenegotiationNeeded` and no renegotiation
         // path in this file that could have repaired it afterwards.
         if (_prewarmAudioPending && !await _ensureAcceptedAudio()) {
-          _endWith('ended', reason: 'media-denied');
+          _endWithMediaFailure(); // [STREAM-PERM-1]
           break;
         }
         try {
