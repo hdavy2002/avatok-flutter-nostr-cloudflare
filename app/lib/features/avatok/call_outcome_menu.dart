@@ -5,9 +5,11 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:record/record.dart';
 
 import '../../core/analytics.dart';
+import '../../core/avatar.dart';
 import '../../core/ava_log.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/db.dart';
@@ -66,6 +68,13 @@ class CallOutcomeMenu extends StatefulWidget {
   /// two sentences saying the same thing is how a menu stops being read.
   final String? headline;
 
+  /// [UI-CALLS-2026] The callee's resolved profile photo. Empty renders the
+  /// initials avatar — the same safe fallback every other surface uses. The
+  /// caller passes the RESOLVED url (`CallScreen._peerAvatarUrl`), not the raw
+  /// launch argument, so a dialer-originated call still shows a saved contact's
+  /// picture.
+  final String avatarUrl;
+
   const CallOutcomeMenu({
     super.key,
     required this.session,
@@ -76,6 +85,7 @@ class CallOutcomeMenu extends StatefulWidget {
     this.onMessage,
     this.onSaveContact,
     this.headline,
+    this.avatarUrl = '',
   });
 
   @override
@@ -304,6 +314,18 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // [UI-CALLS-2026] Who this was — the callee's real photo, with the
+            // initials avatar as the fallback when there is none.
+            Center(
+              child: Avatar(
+                seed: widget.peerUid,
+                name: widget.name.trim().isEmpty ? 'Them' : widget.name.trim(),
+                size: 72,
+                avatarUrl:
+                    widget.avatarUrl.isEmpty ? null : widget.avatarUrl,
+              ),
+            ),
+            const SizedBox(height: Msg.s3),
             // Honest status header — RED for busy (owner 2026-07-09), so the
             // caller knows exactly why they landed here before choosing.
             Text(header,
@@ -322,6 +344,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               AdButton(
                 label: 'Call again',
                 variant: AdButtonVariant.primary,
+                icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.bold),
+                trailingIcon: false,
                 fullWidth: true,
                 fontSize: 16,
                 onPressed: (_sending || _recording) ? null : widget.onCallAgain,
@@ -334,6 +358,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               AdButton(
                 label: 'Message',
                 variant: AdButtonVariant.teal,
+                icon: PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
+                trailingIcon: false,
                 fullWidth: true,
                 fontSize: 16,
                 onPressed: (_sending || _recording) ? null : widget.onMessage,
@@ -354,6 +380,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                     ? 'Talk to Ava — daily limit reached'
                     : 'Talk to Ava',
                 variant: AdButtonVariant.primary,
+                icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+                trailingIcon: false,
                 fullWidth: true,
                 fontSize: 16,
                 onPressed: (_avaCapped || _sending || _recording)
@@ -379,6 +407,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
                   ? 'Recording ${_fmtRec(_recSecs)} — tap to send'
                   : 'Leave a voice note',
               variant: AdButtonVariant.teal,
+              icon: PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+              trailingIcon: false,
               fullWidth: true,
               fontSize: 16,
               loading: _sending && !_textOpen,
@@ -420,7 +450,9 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
             // 4) Text note — a box slides open underneath.
             AdButton(
               label: 'Leave a text note',
-              variant: AdButtonVariant.teal,
+              variant: AdButtonVariant.ghost,
+              icon: PhosphorIcons.notePencil(PhosphorIconsStyle.bold),
+              trailingIcon: false,
               fullWidth: true,
               fontSize: 16,
               onPressed: (_sending || _recording)
@@ -478,6 +510,8 @@ class _CallOutcomeMenuState extends State<CallOutcomeMenu> {
               AdButton(
                 label: 'Save contact',
                 variant: AdButtonVariant.ghost,
+                icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+                trailingIcon: false,
                 fullWidth: true,
                 fontSize: 16,
                 onPressed: (_sending || _recording)

@@ -5,7 +5,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
 import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -32,10 +31,10 @@ import '../conference/cloudflare_conference_controller.dart'; // [ADDCALL-1-UI]
 import '../conference/cloudflare_conference_screen.dart'; // [ADDCALL-1-UI]
 import '../conference/conference_migration_coordinator.dart'; // [ADDCALL-2-UI]
 import 'add_to_call_sheet.dart'; // [ADDCALL-1-UI]
+import 'call_hero_composition.dart'; // [UI-CALLS-2026]
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
 import '../../core/ui/call_failure_copy.dart'; // [CALL-HONEST-FAIL-1]
-import '../../core/ui/illustrations.dart'; // [RAJ-SEAMS-1]
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -1896,48 +1895,44 @@ class _CallScreenState extends State<CallScreen> {
                         // (see `_connectedLabel`/`audible` above), so this
                         // never drifts from the status text/timer the user is
                         // already reading.
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SvgPicture.asset(
-                              connected
-                                  ? Illustrations.inCallHero2
-                                  : Illustrations.inCallHero1,
-                              width: connected ? 320 : 340,
-                              height: connected ? 300 : 350,
-                              fit: BoxFit.contain,
-                              excludeFromSemantics: true,
+                        // [UI-CALLS-2026] ONE composition — art + photo in a
+                        // single widget, so they scroll together and the photo
+                        // is centred on the orbit the art actually draws
+                        // (`call_hero_composition.dart` carries the geometry).
+                        // The bare Stack that used to be here centred the photo
+                        // on the SVG's geometric centre, 49px above the petal
+                        // wheel.
+                        CallHeroComposition(
+                          connected: connected,
+                          centre: (d) => Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: phase == 'ava-countdown'
+                                  ? AD.iconVideo
+                                  : null,
+                              border: Border.all(
+                                  color: AD.borderAvatar, width: 2),
+                              boxShadow: const [],
                             ),
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: phase == 'ava-countdown'
-                                    ? AD.iconVideo
-                                    : null,
-                                border: Border.all(
-                                    color: AD.borderAvatar, width: 2),
-                                boxShadow: const [],
-                              ),
-                              child: phase == 'ava-countdown'
-                                  ? SizedBox(
-                                      width: 132,
-                                      height: 132,
-                                      child: Center(
-                                          child: Text('${s.avaCount}',
-                                              style: ADText.appTitle()
-                                                  .copyWith(fontSize: 76))),
-                                    )
-                                  // [CALL-AVATAR-FALLBACK-1] `_peerAvatarUrl`,
-                                  // not `widget.avatarUrl` — see the field.
-                                  : Avatar(
-                                      seed: widget.seed,
-                                      name: widget.title,
-                                      size: 132,
-                                      avatarUrl: _peerAvatarUrl.isEmpty
-                                          ? null
-                                          : _peerAvatarUrl),
-                            ),
-                          ],
+                            child: phase == 'ava-countdown'
+                                ? SizedBox(
+                                    width: d,
+                                    height: d,
+                                    child: Center(
+                                        child: Text('${s.avaCount}',
+                                            style: ADText.appTitle().copyWith(
+                                                fontSize: d * 0.58))),
+                                  )
+                                // [CALL-AVATAR-FALLBACK-1] `_peerAvatarUrl`,
+                                // not `widget.avatarUrl` — see the field.
+                                : Avatar(
+                                    seed: widget.seed,
+                                    name: widget.title,
+                                    size: d,
+                                    avatarUrl: _peerAvatarUrl.isEmpty
+                                        ? null
+                                        : _peerAvatarUrl),
+                          ),
                         ),
                         // [CALL-UI-GRID-2026-08-05] The 28px name that used to
                         // sit here is gone — it is now the centred header
@@ -2048,7 +2043,16 @@ class _CallScreenState extends State<CallScreen> {
                         NoAnswerCard(
                           name: widget.title,
                           seed: widget.seed,
-                          avatarUrl: widget.avatarUrl,
+                          // [UI-CALLS-2026] `_peerAvatarUrl`, not
+                          // `widget.avatarUrl` — the unreachable/no-answer card
+                          // must show the peer's real photo, and a
+                          // dialer-originated call arrives with an EMPTY
+                          // avatarUrl that the local contact lookup fills in
+                          // ([CALL-AVATAR-FALLBACK-1]). The hero above already
+                          // used the resolved value; this card did not, so the
+                          // same person had a photo one second and initials the
+                          // next.
+                          avatarUrl: _peerAvatarUrl,
                           // [RECEPT-SETTINGS-1] voicemail removed — the card now
                           // offers Call again / Save contact / Close only.
                           onCallAgain: () async {
@@ -2671,6 +2675,13 @@ class _CallScreenState extends State<CallScreen> {
       session: _session,
       name: widget.title,
       peerUid: widget.seed,
+      // [UI-CALLS-2026] The peer's real photo on the menu itself. On the AUDIO
+      // layout the hero composition above already shows it, but the VIDEO
+      // layout renders this menu as a bare overlay with no other picture of
+      // the person the call was with. `_peerAvatarUrl` (not `widget.avatarUrl`)
+      // so a dialer-originated call still resolves the local contact photo;
+      // empty falls back to the initials avatar, never a broken image.
+      avatarUrl: _peerAvatarUrl,
       // [CALL-HONEST-FAIL-1] The menu's header used to come from
       // `CallSession.statusText`, which is a THIRD place call-outcome copy was
       // written ("User is not answering. Please try after sometime."). Hand it
