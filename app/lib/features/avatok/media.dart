@@ -552,6 +552,77 @@ class MediaService {
     }
   }
 
+  /// [CALL-VOICE-2026] Pull a RECEIVED attachment's bytes into the per-account
+  /// on-device cache the moment its envelope arrives — while the credential
+  /// that can still reach them is fresh.
+  ///
+  /// ROOT CAUSE THIS EXISTS FOR. A `storage=='digital'` voice note (the MVP
+  /// plaintext path, [uploadPlaintext]) carries ONE way in for the recipient:
+  /// `digitalUrl`, a 900-second presigned R2 read minted for the SENDER at
+  /// upload time and copied into the envelope. The sender never needs it —
+  /// [uploadPlaintext] writes its own plaintext straight into this cache — so
+  /// the sender's bubble plays forever. The recipient's does not: that URL is
+  /// persisted verbatim into the local message cache
+  /// (`chat_thread/persistence.dart` `_persistNow` stores `toEnvelope()`, url
+  /// included) and restored verbatim on reopen, so ~15 minutes after delivery
+  /// it is a dead credential. The only recovery
+  /// ([_resolveStaleDigitalUrl]) needs the RECIPIENT's own AvaLibrary row,
+  /// which [recordReceived] only creates when a server conv id was resolvable
+  /// at arrival AND the worker's two-sided membership check passed
+  /// (`worker/src/routes/media.ts` `libraryRecord` — a `digital` row is
+  /// rejected 400 `conv_required` / 403 `forbidden` otherwise). Miss either
+  /// and the note is unplayable on the recipient's phone forever, silently.
+  ///
+  /// Fetching once, immediately, converts that 900-second window into the same
+  /// permanent local-first cache every other attachment already gets. It moves
+  /// NO privacy boundary: identical bytes, identical authorization, identical
+  /// per-account cache directory (`media/<AccountScope.id>/<hash>`) — only the
+  /// MOMENT of the fetch changes. E2E (`blossom`) media is untouched by
+  /// default; nothing is made server-readable that was not already.
+  ///
+  /// Never throws. Returns true when bytes are (now) on disk.
+  static Future<bool> prefetchReceived(ChatMedia m, {String reason = 'inbound'}) async {
+    if (m.id.isEmpty) return false;
+    // Only the expiring-credential path is urgent. `blossom` media is
+    // content-addressed on a permanently fetchable URL, so pre-warming it here
+    // would just spend the recipient's data on bytes they may never open.
+    if (m.storage != 'digital') return false;
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    try {
+      if (await _cacheRead(m.id) != null) return true;
+      final bytes = await _downloadPlaintext(m).timeout(const Duration(seconds: 45));
+      final ok = bytes.isNotEmpty;
+      Analytics.capture('voice_media_prefetch', {
+        'ok': ok,
+        'kind': m.kind.name,
+        'reason': reason,
+        'bytes': bytes.length,
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+        'had_url': (m.digitalUrl ?? '').isNotEmpty,
+      });
+      return ok;
+    } catch (e, st) {
+      // NOT a silent catch: this is the stage that decides whether the
+      // recipient can ever play the note, so a failure here must be
+      // retrievable from either party's email later.
+      AvaLog.I.log('media', 'prefetch(plaintext) FAILED key=${_short(m.id)} err=${e.runtimeType}');
+      Analytics.capture('voice_media_prefetch', {
+        'ok': false,
+        'kind': m.kind.name,
+        'reason': reason,
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+        'had_url': (m.digitalUrl ?? '').isNotEmpty,
+        // [AVA-MEDIA-AUTHZ-1] classified type only — a presigned URL is a
+        // bearer credential and must never ride in a free-text field.
+        'error': e.runtimeType.toString(),
+      });
+      await Analytics.captureException(e, st,
+          screen: 'media_prefetch_received', handled: true,
+          extra: {'kind': m.kind.name, 'stage': 'prefetch_received', 'reason': reason});
+      return false;
+    }
+  }
+
   /// [AVA-VOICE-PLAINTEXT-1] Plaintext counterpart of the ciphertext fetch
   /// above — no AES, just fetch + cache. `m.digitalUrl` (embedded in the
   /// message envelope at send/receive time) is a 900s presigned URL: good for

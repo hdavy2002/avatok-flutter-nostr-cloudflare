@@ -183,11 +183,38 @@ extension _ChatThreadPresence on _ChatThreadScreenState {
   /// loaded), skip rather than invent an empty string — the server would just
   /// 400 `conv_required` — and report it once so a persistent gap (not just a
   /// one-off race) is visible.
+  ///
+  /// [CALL-VOICE-2026] Two changes, both for the recipient voice-note bug:
+  ///
+  /// 1. The BYTES are now pulled down immediately, BEFORE and INDEPENDENTLY of
+  ///    the library mirror. A `storage=='digital'` note's only way in is the
+  ///    900-second presigned URL sitting in the envelope we are holding right
+  ///    now; the library mirror is what recovers it AFTER that expires, and
+  ///    the mirror is exactly the step that silently didn't happen. Fetching
+  ///    first means the note stays playable even when every recovery path
+  ///    below fails. See [MediaService.prefetchReceived] for the full trace.
+  /// 2. A skipped mirror is reported with BOTH ends of the conversation
+  ///    tagged, because a voice note is a two-sided event and this event is
+  ///    the sender's only evidence that their note landed unplayable.
   void _recordReceivedMedia(ChatMedia media) {
+    // Stage 5a — get the bytes on disk while the credential is still alive.
+    // Deliberately NOT gated on the conv id: this is the path that survives
+    // everything else going wrong.
+    unawaited(MediaService.prefetchReceived(media, reason: 'chat_inbound'));
     final conv = _serverConvId;
     if (conv == null || conv.isEmpty) {
       AvaLog.I.log('media', 'recordReceived skipped: no server conv id yet');
-      Analytics.capture('chat_media_record_skipped', {'reason': 'no_conv'});
+      Analytics.capture('chat_media_record_skipped', {
+        'reason': 'no_conv',
+        'kind': media.kind.name,
+        'storage': media.storage,
+        'conv_kind': _isGroup ? 'group' : 'dm',
+        // Two-sided (CLAUDE.md): the reader's email is auto-stamped by
+        // Analytics._base; `peer` names the other party so either side's
+        // email retrieves this interaction.
+        'peer': widget.chat.name,
+        if (_peerNpub case final p?) 'peer_uid': _shortPub(p),
+      });
       return;
     }
     MediaService.recordReceived(media, conv: conv); // mirror into the recipient's AvaLibrary

@@ -280,7 +280,20 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
   /// note is scrubbable/playable locally but not yet resumable across a cold
   /// start under a DIFFERENT id — it gets a real one the moment the upload
   /// completes and `m.media` is set).
-  String _audioTrackId(_Msg m) => m.media?.id ?? 'local_${_convKey ?? 'x'}_${m.id}';
+  ///
+  /// [CALL-VOICE-2026] The fallback is keyed on the DURABLE rumor id (`evId`)
+  /// when the message has one, and only then on the session-local `m.id`.
+  /// `m.id` is `_seq++` — a counter that restarts at 0 on every cold open of
+  /// the thread — so the old `local_<conv>_<seq>` form named a DIFFERENT track
+  /// after every restart, which silently orphaned the saved playback position
+  /// and made `isCurrent()` miss. Same scheme `_msgCacheKey` already uses.
+  String _audioTrackId(_Msg m) {
+    final id = m.media?.id;
+    if (id != null && id.isNotEmpty) return id;
+    final ev = m.evId;
+    if (ev != null && ev.isNotEmpty) return 'ev_$ev';
+    return 'local_${_convKey ?? 'x'}_${m.id}';
+  }
 
   /// Reverse lookup: which (if any) message in THIS thread the shared
   /// service's currently-loaded track belongs to. A linear scan is fine here
@@ -359,12 +372,28 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
   /// disposed, which is exactly the "player stops when I leave the chat"
   /// report this issue fixes.
   Future<void> _playAudio(_Msg m) async {
+    // [CALL-VOICE-2026] This guard used to swallow EVERY tap while any note was
+    // loading, with no user-visible result — the literal "tapping play does
+    // nothing" the owner reported, and an asymmetry that only a RECIPIENT can
+    // hit: the sender plays from `localBytes` already in memory (0ms window),
+    // while the recipient's first tap holds this lock for the whole
+    // download+decrypt, up to 30s. A second tap in that window vanished.
+    // Now: silent only for a repeat tap on the SAME note (it is already
+    // loading — the bubble is spinning, which IS the feedback); a tap on a
+    // DIFFERENT note says so instead of doing nothing at all.
     if (_loadingAudioId != null) {
+      final sameNote = _loadingAudioId == m.id;
       Analytics.capture('voice_note_play_tap_suppressed', {
         ..._voiceTelemetry(),
-        'reason': 'another_play_in_flight',
+        'reason': sameNote ? 'same_note_already_loading' : 'another_play_in_flight',
         'requested_message_id': m.id,
+        'loading_message_id': _loadingAudioId ?? -1,
       });
+      if (!sameNote && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Still loading the other voice message…'),
+            duration: Duration(seconds: 1)));
+      }
       return;
     }
     final started = DateTime.now().millisecondsSinceEpoch;
@@ -413,20 +442,47 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       }
       return;
     }
+    // [CALL-VOICE-2026] Which of the six pipeline stages we died in. Set as we
+    // advance and read once in the catch below, so every failure emits exactly
+    // ONE `voice_note_play_failed` carrying the stage — rather than the old
+    // single untyped event that could not tell "the recipient could not reach
+    // the bytes" apart from "the player refused them".
+    var failStage = 'media_missing';
     try {
       if (mounted) setState(() { _loadingAudioId = m.id; _audioTick++; });
       Analytics.capture('voice_note_play_started', {
         ..._voiceTelemetry(),
         'message_id': m.id,
         'cache_source': m.localBytes != null ? 'memory' : 'disk_or_network',
+        // [CALL-VOICE-2026] Which SIDE is tapping, and which storage class the
+        // note uses. Without these two, a `voice_note_play_failed` is
+        // indistinguishable between the sender (who can only fail at the
+        // player) and the recipient (who fails at resolve/download) — the
+        // exact ambiguity that made this bug invisible in telemetry.
+        'mine': m.me,
+        'storage': m.media?.storage ?? 'none',
+        'has_media': m.media != null,
       });
-      final bytes = m.localBytes ?? (m.media != null
-          ? await MediaService.downloadAndDecrypt(m.media!)
-              .timeout(const Duration(seconds: 30))
-          : null);
-      if (bytes == null || bytes.isEmpty) {
+      // Stage 5 — resolve/download/decrypt. A recipient with no `localBytes`
+      // lives or dies here; a sender never enters it.
+      Uint8List? bytes = m.localBytes;
+      if (bytes == null) {
+        final src = m.media;
+        if (src == null) {
+          // Stage 4 failed upstream: the envelope produced a bubble with no
+          // ChatMedia at all, so there is nothing to fetch. Never silent.
+          throw StateError('voice_note_media_missing');
+        }
+        failStage = 'resolve_download';
+        bytes = await MediaService.downloadAndDecrypt(src)
+            .timeout(const Duration(seconds: 30));
+      }
+      if (bytes.isEmpty) {
+        failStage = 'empty_bytes';
         throw StateError('voice_note_bytes_unavailable');
       }
+      failStage = 'player';
+      // Stage 6 — hand non-empty bytes to the shared player.
       await AudioPlaybackService.I.play(
         track: AudioTrack(
           trackId: trackId,
@@ -438,21 +494,51 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
       ).timeout(const Duration(seconds: 12));
       // [UI-BUBBLE-3] honour the chosen playback speed for this note.
       await AudioPlaybackService.I.setSpeed(_audioSpeed);
-      Analytics.capture('voice_note_played', {..._voiceTelemetry(), 'speed': _audioSpeed});
+      // [CALL-VOICE-2026] SUCCESS ASSERTION (ship-gate rule 3). This is the
+      // event whose PROPERTY VALUES prove the fix, not its mere arrival:
+      //   voice_note_played  ok=true  mine=false  bytes>0
+      // `mine=false` is the whole point — a `voice_note_played` from the
+      // SENDER has always worked and proves nothing. See
+      // tool/ship_manifest.json entry CALL-VOICE-2026.
+      Analytics.capture('voice_note_played', {
+        ..._voiceTelemetry(),
+        'speed': _audioSpeed,
+        'ok': true,
+        'mine': m.me,
+        'bytes': bytes.length,
+        'storage': m.media?.storage ?? 'none',
+        'source': m.localBytes != null ? 'memory' : 'cache_or_network',
+        'player_playing': AudioPlaybackService.I.state.value?.playing ?? false,
+        'latency_ms': DateTime.now().millisecondsSinceEpoch - started,
+      });
       Analytics.uiInteraction('voice_note_play',
           DateTime.now().millisecondsSinceEpoch - started,
           phase: 'interactive', source: m.localBytes != null ? 'memory' : 'cache_or_network');
-    } catch (e) {
-      AvaLog.I.log('media', 'voice play failed: $e');
+    } catch (e, st) {
+      AvaLog.I.log('media', 'voice play failed stage=$failStage err=${e.runtimeType}');
       Analytics.capture('voice_note_play_failed', {
         ..._voiceTelemetry(),
         'message_id': m.id,
         'latency_ms': DateTime.now().millisecondsSinceEpoch - started,
+        // [AVA-MEDIA-AUTHZ-1] classified type only — a `digital` fetch failure
+        // can carry a presigned URL in its toString().
         'error': e.runtimeType.toString(),
+        'stage': failStage,
+        'mine': m.me,
+        'storage': m.media?.storage ?? 'none',
+        'had_url': (m.media?.digitalUrl ?? '').isNotEmpty,
+        'conv_kind': _isGroup ? 'group' : 'dm',
       });
+      // No silent catch (CLAUDE.md observability rule): the full, scrubbed
+      // stack goes to Error Tracking too, so a recipient-side failure is
+      // retrievable from either party's email.
+      await Analytics.captureException(e, st, screen: 'chat_thread', handled: true,
+          extra: {'stage': 'voice_note_play', 'fail_stage': failStage, 'mine': m.me});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Couldn't play this voice message")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(failStage == 'resolve_download'
+                ? "Couldn't download this voice message — ask them to resend it."
+                : "Couldn't play this voice message")));
       }
     } finally {
       if (mounted && _loadingAudioId == m.id) {
