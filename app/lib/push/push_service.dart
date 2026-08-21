@@ -53,7 +53,8 @@ import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
 import '../core/presence_beat.dart'; // [CALL-PRESENCE-1] device heartbeat
 import '../core/remote_config.dart';
-import '../core/ui/avatok_dark.dart' show AD; // [UI-COLOURS-2026] notification accent token
+import '../core/ui/avatok_dark.dart'
+    show AD; // [UI-COLOURS-2026] notification accent token
 // STREAM-LANE: pure discriminator used to keep this handler from ALSO
 // processing an envelope the new Stream Video SDK lane owns. See
 // streamlane/stream_push_glue.dart for why this import is safe even while
@@ -3228,9 +3229,9 @@ String? _fallbackRingtoneCallId;
 /// So the reason string is now honest about what actually triggered it, and the
 /// audibility-conditional behaviour the old string implied remains UNBUILT.
 /// If it is ever built, `callRingAudibilityV1` is the flag to gate it behind.
-Future<void> _startRingtoneFallback(String callId) async {
+Future<bool> _startRingtoneFallback(String callId) async {
   if (_fallbackRingtonePlayer != null)
-    return; // already running for this or another call
+    return _fallbackRingtoneCallId == callId; // already running
   // [CALL-GHOST-RING-1] Never ring for a call that has already ended. Cheap, and
   // the terminal marker is now actually set on local hang-up, so unlike before
   // this guard can really fire.
@@ -3239,7 +3240,7 @@ Future<void> _startRingtoneFallback(String callId) async {
       'call_id': callId,
       'reason': 'call_already_terminated',
     });
-    return;
+    return false;
   }
   try {
     final player = ap.AudioPlayer();
@@ -3253,9 +3254,11 @@ Future<void> _startRingtoneFallback(String callId) async {
       // that has never existed. This is the real trigger.
       'reason': 'os_ring_suppressed_app_owns_ring',
     });
+    return true;
   } catch (e) {
     _fallbackRingtonePlayer = null;
     _fallbackRingtoneCallId = null;
+    return false;
   }
 }
 
@@ -4185,6 +4188,19 @@ Future<void> _showIncoming(Map<String, dynamic> d,
 }
 
 class PushService {
+  /// Foreground Stream rings deliberately have no native CallKit surface, so
+  /// they borrow the existing single-owner AvaTOK ringtone player. Keeping the
+  /// player here preserves the same glare protection and teardown semantics as
+  /// legacy foreground rings without exposing its implementation to the
+  /// Stream lane.
+  static Future<bool> startStreamForegroundRing(String callId) =>
+      _startRingtoneFallback(callId);
+
+  /// Idempotently stop the app-owned Stream foreground ringtone. A call id is
+  /// required so a late teardown from call A cannot silence a newer call B.
+  static Future<void> stopStreamForegroundRing(String callId) =>
+      _stopRingtoneFallback(callId);
+
   /// Earliest local Answer tap for this call. Used only to calculate setup
   /// latency; callers must treat null as "not an incoming accepted call".
   static int? acceptedAtMsFor(String callId) => _acceptedCallAt[callId];

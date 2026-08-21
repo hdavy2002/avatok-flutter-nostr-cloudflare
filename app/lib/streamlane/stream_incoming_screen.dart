@@ -21,8 +21,10 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 
@@ -82,6 +84,7 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
       'app_lifecycle': StreamCallTelemetry.lifecycleState(),
       'user_email': Analytics.currentEmail ?? '',
     });
+    unawaited(_StreamForegroundRinger.instance.start(callId));
 
     // [STREAM-INCOMING-1] Close this screen when the call becomes terminal
     // while we are still ringing — the most common cause is the CALLER
@@ -110,6 +113,10 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    unawaited(_StreamForegroundRinger.instance.stop(
+      widget.call.callCid.value,
+      reason: 'screen_disposed',
+    ));
     super.dispose();
   }
 
@@ -127,6 +134,10 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   }
 
   void _dismissForRemoteEnd(Object? sdkReason) {
+    unawaited(_StreamForegroundRinger.instance.stop(
+      widget.call.callCid.value,
+      reason: 'remote_ended',
+    ));
     _emitDismissed('remote_ended:${sdkReason.runtimeType}');
     if (!mounted) return;
     Navigator.of(context).maybePop();
@@ -135,6 +146,10 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   Future<void> _onDecline() async {
     if (_acting || _dismissed) return;
     setState(() => _acting = true);
+    await _StreamForegroundRinger.instance.stop(
+      widget.call.callCid.value,
+      reason: 'declined',
+    );
     _emitDismissed('declined');
     await StreamCallService.instance.decline(
       widget.call,
@@ -146,6 +161,10 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   Future<void> _onAccept() async {
     if (_acting || _dismissed) return;
     setState(() => _acting = true);
+    await _StreamForegroundRinger.instance.stop(
+      widget.call.callCid.value,
+      reason: 'accepted',
+    );
     _emitDismissed('accepted');
     await StreamCallService.instance.accept(context, widget.call);
   }
@@ -163,7 +182,8 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
       backgroundColor: AD.bg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s6),
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s5, vertical: Msg.s6),
           child: Column(
             children: [
               const Spacer(),
@@ -187,7 +207,8 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _ringButton(
-                    icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.fill),
+                    icon:
+                        PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.fill),
                     bg: AD.primaryBadge,
                     onTap: _onDecline,
                   ),
@@ -224,6 +245,146 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   }
 }
 
+/// Single owner for the audible foreground Stream ring.
+///
+/// Stream's native push integration owns background/locked-device ringing. In
+/// the foreground there is no system notification to make sound, so this
+/// controller plays the app's bundled ringtone and supplies a light repeating
+/// haptic. Android's live ringer/DND state is checked before either starts.
+/// A generation guard prevents a slow native probe from starting an old call's
+/// sound after it was accepted, cancelled, or superseded by another call.
+class _StreamForegroundRinger {
+  _StreamForegroundRinger._();
+
+  static final instance = _StreamForegroundRinger._();
+  static const _audibilityChannel = MethodChannel('avatok/voice_audio');
+
+  Timer? _hapticTimer;
+  String? _callId;
+  bool _soundActive = false;
+  int _generation = 0;
+
+  Future<void> start(String callId) async {
+    if (callId.isEmpty) return;
+    if (_callId == callId) {
+      _capture('stream_lane_ringtone_duplicate_suppressed', callId);
+      return;
+    }
+
+    await stop(null, reason: 'superseded');
+    _callId = callId;
+    final generation = ++_generation;
+    _capture('stream_lane_ringtone_requested', callId);
+
+    var ringerMode = 'unknown';
+    var dndBlocking = false;
+    var ringVolume = -1;
+    var probeOk = false;
+    if (Platform.isAndroid) {
+      try {
+        final info = await _audibilityChannel
+            .invokeMapMethod<String, dynamic>('getRingAudibilityInfo');
+        probeOk = info?['ok'] == true;
+        ringerMode = (info?['ringer_mode'] ?? 'unknown').toString();
+        dndBlocking = info?['dnd_blocking'] == true;
+        ringVolume =
+            info?['ring_volume'] is int ? info!['ring_volume'] as int : -1;
+      } catch (error) {
+        _capture('stream_lane_ringtone_probe_failed', callId, <String, Object>{
+          'error': error.toString(),
+        });
+      }
+    }
+
+    if (_callId != callId || generation != _generation) return;
+    final silent = ringerMode == 'silent';
+    final vibrateOnly = ringerMode == 'vibrate';
+    final muted = dndBlocking || silent || (probeOk && ringVolume == 0);
+    _capture('stream_lane_ringtone_policy', callId, <String, Object>{
+      'probe_ok': probeOk,
+      'ringer_mode': ringerMode,
+      'dnd_blocking': dndBlocking,
+      'ring_volume': ringVolume,
+      'will_play_sound': !muted && !vibrateOnly,
+      'will_vibrate': !dndBlocking && !silent,
+    });
+
+    // Never override an explicit OS silence/DND decision. On platforms where
+    // the Android-only probe is unavailable, let the OS audio session enforce
+    // its own user settings rather than making foreground calls silent.
+    if (!muted && !vibrateOnly) {
+      try {
+        if (_callId != callId || generation != _generation) return;
+        final started = await PushService.startStreamForegroundRing(callId);
+        if (_callId != callId || generation != _generation) {
+          await PushService.stopStreamForegroundRing(callId);
+          return;
+        }
+        _soundActive = started;
+        _capture(
+          started
+              ? 'stream_lane_ringtone_started'
+              : 'stream_lane_ringtone_failed',
+          callId,
+          started
+              ? const <String, Object>{}
+              : const <String, Object>{'reason': 'player_start_failed'},
+        );
+      } catch (error) {
+        _soundActive = false;
+        _capture('stream_lane_ringtone_failed', callId, <String, Object>{
+          'error': error.toString(),
+        });
+      }
+    }
+
+    if (!dndBlocking && !silent && _callId == callId) {
+      unawaited(HapticFeedback.vibrate());
+      _hapticTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        if (_callId == callId) unawaited(HapticFeedback.vibrate());
+      });
+      _capture('stream_lane_ring_vibration_started', callId);
+    }
+  }
+
+  Future<void> stop(String? callId, {required String reason}) async {
+    if (callId != null && _callId != null && callId != _callId) return;
+    final stoppedId = _callId;
+    final hadSound = _soundActive;
+    final hadHaptic = _hapticTimer != null;
+    _generation += 1;
+    _callId = null;
+    _hapticTimer?.cancel();
+    _hapticTimer = null;
+    _soundActive = false;
+    try {
+      final target = stoppedId ?? callId;
+      if (target != null) {
+        await PushService.stopStreamForegroundRing(target);
+      }
+    } catch (_) {}
+    if (stoppedId != null) {
+      _capture('stream_lane_ringtone_stopped', stoppedId, <String, Object>{
+        'reason': reason,
+        'sound_was_active': hadSound,
+        'vibration_was_active': hadHaptic,
+      });
+    }
+  }
+
+  void _capture(String event, String callId,
+      [Map<String, Object> extra = const <String, Object>{}]) {
+    Analytics.capture(event, <String, Object>{
+      'call_id': callId,
+      'provider': 'stream',
+      'role': 'callee',
+      'app_lifecycle': StreamCallTelemetry.lifecycleState(),
+      'user_email': Analytics.currentEmail ?? '',
+      ...extra,
+    });
+  }
+}
+
 // (former local navigatorKeyForStreamLane removed — see REVIEW FIX above.)
 //
 // ---------------------------------------------------------------------------
@@ -243,6 +404,6 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
 // - A reason PICKER for decline (this pass added the plumbing — `decline()`
 //   takes a `reason` string and emits it — but the UI still always sends the
 //   single default; there is no "I'm driving" / "Call back later" sheet).
-// - Ringtone / vibration / full-screen lock-screen presentation for this
-//   FOREGROUND screen specifically (the native background ring path in
-//   `stream_push_glue.dart` is a different surface, owned by another agent).
+// - Full-screen lock-screen presentation is owned by the native background
+//   ring path in `stream_push_glue.dart`; foreground ringtone/vibration is
+//   implemented above by `_StreamForegroundRinger`.
