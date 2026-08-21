@@ -17,6 +17,7 @@ import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
+import 'place_1to1_call.dart' show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
 
 /// AvaTok Calls tab — real 1:1 call history; tap to call back.
 class CallsScreen extends StatefulWidget {
@@ -97,7 +98,18 @@ class _CallsScreenState extends State<CallsScreen> {
     return nd.isNotEmpty && nd.contains(qd);
   }
 
-  void _callBack(CallEntry c) {
+  Future<void> _callBack(CallEntry c) async {
+    // [STREAM-ROUTE-1 2026-08-21] Stream is the only 1:1 call path; the legacy
+    // Cloudflare CallScreen below stays compiled as the emergency backup but is
+    // unreachable while `streamCallsEnabled` is on. A phone-only Recents row
+    // (`tel:` seed) has no Stream identity and is refused inside the gate
+    // rather than falling through to Cloudflare.
+    if (await routeToStreamCallIfEnabled(context,
+        peerId: c.seed, video: c.video, entrypoint: 'recents_callback')) {
+      await _load();
+      return;
+    }
+    if (!mounted) return;
     IceCache.prefetch(); // warm TURN creds before the call screen opens
     // [CALL-ROOM-ID-1 2026-07-14] Was `'avatok-${c.seed}'` — the call-log seed
     // is the PEER's id, so calling the same person back twice from Recents

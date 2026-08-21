@@ -8,6 +8,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/call_screen.dart';
+import '../avatok/place_1to1_call.dart' show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
 
 /// TeamIvrScreen — the caller-facing auto-attendant for a team's AvaTOK number.
 /// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
@@ -108,6 +109,26 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
     final number = (r['target_number'] ?? '').toString();
     final teamId = (r['team_id'] ?? '').toString();
     await _player.stop();
+    // [STREAM-ROUTE-1 2026-08-21] Stream is the only 1:1 call path; this warm
+    // transfer used to push the legacy Cloudflare CallScreen with no
+    // `streamCallsEnabled` check at all.
+    //
+    // HONEST LIMITATION: `target_number` is an AvaTOK NUMBER, not a Stream user
+    // id, so the gate refuses it with a "not available for this contact" notice
+    // rather than bridging. That is deliberate — the alternative is Cloudflare
+    // media, which the 2026-08-21 decision forbids. Restoring the warm transfer
+    // needs either a number→uid resolution on `TeamApi.ivrRoute` or a
+    // `StreamCallService` entry point that takes a directory number; see the
+    // handover note. With the kill switch off the legacy bridge below runs
+    // exactly as it always has.
+    if (await routeToStreamCallIfEnabled(context,
+        peerId: number, video: false, entrypoint: 'team_ivr_transfer')) {
+      if (mounted) {
+        setState(() { _routing = false; _status = '${_menu?['team_name'] ?? 'Team'} — listen and choose'; });
+      }
+      return;
+    }
+    if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(
       builder: (_) => CallScreen(
         room: 'avatok-$number', title: name.isNotEmpty ? name : '+$number',

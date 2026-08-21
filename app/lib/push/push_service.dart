@@ -81,6 +81,15 @@ import '../sync/group_api.dart' show GroupApi; // [GRP-W3-RESYNC]
 import '../sync/sync_hub.dart';
 import 'call_ttl_gate.dart';
 
+// [STREAM-ROUTE-1 2026-08-21] Re-export ONLY, not used by this library.
+// `features/avatok/chat_thread/calls.dart` is a `part of chat_thread.dart`, so
+// it cannot declare imports of its own, and chat_thread.dart does not import
+// the Stream lane. chat_thread.dart DOES already import this file, so this one
+// line is what lets the chat-thread dial lane — the exact lane that bypassed
+// `streamCallsEnabled` in the build-10612 incident — reach the shared gate.
+export '../features/avatok/place_1to1_call.dart'
+    show routeToStreamCallIfEnabled;
+
 /// Global key so we can navigate to the call screen when a call is accepted.
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -6496,6 +6505,38 @@ class PushService {
       // admits a joiner, and it admits everyone up to the cap.
       if (e['group'] == true || e['group'] == 'true') {
         await _openGroupCall(e);
+        return;
+      }
+      // [STREAM-ROUTE-1 2026-08-21] STREAM IS THE ONLY 1:1 CALL PATH.
+      //
+      // This is the INCOMING half of the same bypass the dial sites had: every
+      // accept route (native CallKit, branded in-app ring, lock-screen tap,
+      // glare auto-accept, cold-start recovery) funnels through `_openCall`,
+      // and it pushed the legacy Cloudflare CallScreen without ever reading
+      // `streamCallsEnabled`.
+      //
+      // Reaching here with the flag ON means a LEGACY ring — Stream's own
+      // incoming calls never come through this method (Stream's native
+      // Firebase service owns them; see `handleStreamPushBackground` and the
+      // `sender == 'stream.video'` early-return in `_handleBackgroundMessage`).
+      // So the caller is on a pre-cutover build. Per the hard-cutover decision
+      // (`Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md` §2.1 option A + §4b.2)
+      // answering it would light up the Cloudflare media path, which is exactly
+      // what must not happen — so refuse and say why.
+      if (RemoteConfig.streamCallsEnabled) {
+        Analytics.capture('legacy_call_accept_refused', {
+          'call_id': room,
+          'reason': 'stream_only_cutover',
+          'role': 'callee',
+          'user_email': Analytics.currentEmail ?? '',
+        });
+        _noteTerminalCall(room);
+        final refuseCtx = navigatorKey.currentState?.context;
+        if (refuseCtx != null) {
+          ScaffoldMessenger.maybeOf(refuseCtx)?.showSnackBar(const SnackBar(
+              content: Text(
+                  'That call came from an older version of AvaTOK — ask them to update the app')));
+        }
         return;
       }
       // The cancellation push and branded-screen durable poll are fast paths,

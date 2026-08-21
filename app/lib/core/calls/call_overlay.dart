@@ -115,6 +115,19 @@ class _MinimizedLayer extends StatelessWidget {
 /// on-screen and we do nothing. Used both by the in-app overlay (tap pill/
 /// thumbnail) and by the ongoing-call notification tap (CALL-BG-INT1, wired in
 /// main.dart via NativeVoiceAudio.instance.onNotificationTapReturnToCall).
+///
+/// [STREAM-ROUTE-1 2026-08-21] DELIBERATELY NOT GATED on
+/// `RemoteConfig.streamCallsEnabled`, unlike the eight dial/accept sites.
+///
+/// This is not a call ENTRY point — it RESTORES a legacy [CallSession] that is
+/// already live and already minimized. It cannot run unless
+/// `CallSessionManager.instance.current` is non-null, and with Stream as the
+/// only call path no legacy session is ever constructed, so this is unreachable
+/// by construction rather than by a flag. Adding a `streamCallsEnabled` check
+/// here would only be able to break the emergency-backup path (flag off → a
+/// real legacy call in progress → the user taps the PiP pill and nothing
+/// happens). The Stream lane's own minimize/restore is [StreamCallScreen]'s
+/// concern, not this overlay's.
 void returnToActiveCall() {
   final session = CallSessionManager.instance.current;
   if (session == null || session.isEnded) return;

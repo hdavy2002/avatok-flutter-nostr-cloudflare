@@ -11,6 +11,7 @@ import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/call_screen.dart';
+import '../avatok/place_1to1_call.dart' show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
 
 /// TeamInboxScreen — the message cards from Ava-taken voicemails across the team.
 /// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md. Each card: "Julie called from +1 302…
@@ -66,7 +67,7 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
     }
   }
 
-  void _callBack(TeamMessage m) {
+  Future<void> _callBack(TeamMessage m) async {
     final title = m.callerName ?? (m.callerPhone != null ? '+${m.callerPhone}' : 'Caller');
     // In-network caller → place a real 1:1 call. Stop any voicemail playback
     // first so it doesn't bleed into the call screen.
@@ -78,6 +79,16 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
     // dedup cache from the second call onward. `seed:` carries the peer id.
     if (m.callerUid != null && m.callerUid!.isNotEmpty) {
       _player.stop();
+      // [STREAM-ROUTE-1 2026-08-21] Stream is the only 1:1 call path. This
+      // mount site never read `streamCallsEnabled` and would have dialled the
+      // legacy Cloudflare engine straight into the build-10612 getUserMedia
+      // failure. The legacy push below stays compiled as the emergency backup
+      // and is reachable again only if the kill switch is turned off.
+      if (await routeToStreamCallIfEnabled(context,
+          peerId: m.callerUid!, video: false, entrypoint: 'team_inbox')) {
+        return;
+      }
+      if (!mounted) return;
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => CallScreen(
           room: CallRoomId.newRoomId(), title: title, seed: m.callerUid!,

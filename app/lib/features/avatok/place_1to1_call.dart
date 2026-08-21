@@ -24,6 +24,67 @@ import '../../core/ui/messenger_theme.dart';
 // the app compiled while the SDK packages were commented out in pubspec.yaml.
 import '../../streamlane/stream_call_service.dart';
 
+/// [STREAM-ROUTE-1 2026-08-21] THE single gate every human 1:1 audio/video
+/// entry point must pass through before it is allowed to touch the legacy
+/// Cloudflare [CallScreen].
+///
+/// WHY THIS EXISTS: until today only `place1to1Call` below honoured
+/// `RemoteConfig.streamCallsEnabled`. The other eight `CallScreen(` mount
+/// sites — chat thread (×4), Recents call-back, team inbox call-back, team IVR
+/// warm transfer, and the incoming-accept path in `push/push_service.dart` —
+/// pushed the legacy screen directly and bypassed the flag entirely. That
+/// bypass is what produced the 2026-08-21 build-10612 incident: prod KV had
+/// `streamCallsEnabled = true`, yet every failing call reported
+/// `provider = "cloudflare"` because it was dialled from a chat thread.
+/// See `Specs/AUDIT-2026-08-21-build-10612-getusermedia-factoryid.md` §3.
+///
+/// Owner decision (`Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md` §0/§4b):
+/// **Stream only — Cloudflare carries no audio or video.** The legacy engine
+/// stays COMPILED and intact as an emergency backup, but it must be
+/// unreachable while the flag is on. Turning `streamCallsEnabled` off makes
+/// every one of these sites fall through to the legacy path again, so the flag
+/// remains a real kill switch rather than dead code.
+///
+/// Returns **true** when this function has taken responsibility for the dial —
+/// the caller must stop immediately and must NOT mount [CallScreen]. Returns
+/// **false** only when the kill switch is off.
+Future<bool> routeToStreamCallIfEnabled(
+  BuildContext context, {
+  required String peerId,
+  required bool video,
+  required String entrypoint,
+}) async {
+  if (!RemoteConfig.streamCallsEnabled) return false;
+  final email = Analytics.currentEmail ?? '';
+  // The Stream lane rings a Stream USER id. A `tel:`/E.164 seed (team IVR warm
+  // transfer, a phone-only Recents row) has no Stream identity, so there is
+  // nothing to dial — and falling through to the legacy engine is exactly what
+  // the decision forbids. Say so instead of failing silently.
+  // NOTE: `user_` is the same real-uid test `chat_thread/calls.dart` has always
+  // used for "will a POST /api/call actually ring this seed".
+  if (!peerId.startsWith('user_')) {
+    Analytics.capture('stream_route_1to1_unroutable', {
+      'entrypoint': entrypoint,
+      'media_mode': video ? 'video' : 'audio',
+      'user_email': email,
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              "AvaTOK calling isn't available for this contact yet — send them a message instead")));
+    }
+    return true;
+  }
+  Analytics.capture('stream_route_1to1', {
+    'entrypoint': entrypoint,
+    'media_mode': video ? 'video' : 'audio',
+    'peer_id': peerId,
+    'user_email': email,
+  });
+  await StreamCallService.instance.place1to1(context, peerId, video: video);
+  return true;
+}
+
 /// [AVA-IDGATE-1] Place a 1:1 AvaTOK call THROUGH POST /api/call.
 ///
 /// WHY THIS EXISTS: the dialpad (ava_phone_screen) and phone-contacts list used to
@@ -65,8 +126,11 @@ Future<void> place1to1Call(
   // STREAM-LANE-ACTIVATE: live 2026-08-21 [STREAM-LANE-1]. Gated delegation
   // to the new Stream Video SDK lane. With the flag off (the default) this is
   // a no-op and every line below is unchanged.
-  if (RemoteConfig.streamCallsEnabled) {
-    await StreamCallService.instance.place1to1(context, uid, video: video);
+  // [STREAM-ROUTE-1] Was an inline `if (RemoteConfig.streamCallsEnabled)`
+  // delegation. Same behaviour, now through the shared gate so this lane and
+  // the seven that used to bypass it can never drift apart again.
+  if (await routeToStreamCallIfEnabled(context,
+      peerId: uid, video: video, entrypoint: dialer ? 'dialer' : 'chat_retry')) {
     return;
   }
   await CallSessionManager.instance.reapOutcomeSessions();

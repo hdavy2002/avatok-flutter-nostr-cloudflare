@@ -10,6 +10,27 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // This path is 1:1 P2P ONLY — group threads route through _groupCall()
     // (Cloudflare Realtime A/V) and must NEVER reach the CallRoom DO.
     if (widget.chat.group || widget.chat.gid != null) return;
+    // [STREAM-ROUTE-1 2026-08-21] STREAM IS THE ONLY 1:1 CALL PATH.
+    //
+    // This lane is THE bypass from the build-10612 incident: prod KV had
+    // `streamCallsEnabled = true`, but nothing here ever read it, so every
+    // chat-thread dial mounted the legacy Cloudflare CallScreen and died in
+    // `getUserMedia(): unknown factoryId null`. All FOUR `CallScreen(` mount
+    // sites in this file (optimistic mount, awaited mount, and the two glare
+    // auto-connects) sit BELOW this line, so one gate here makes the whole
+    // legacy lane unreachable while the flag is on.
+    //
+    // Deliberately BEFORE the `_dialing` / `gLiveCallScreens` debounce and the
+    // CALLFIX-14 glare auto-accept: all three read legacy-engine globals that
+    // only a legacy CallSession ever sets, so under Stream they stay zero and
+    // evaluating them first would be reasoning about a lane that no longer runs.
+    // With the kill switch off, every line below is unchanged.
+    if (await routeToStreamCallIfEnabled(context,
+        peerId: widget.chat.seed,
+        video: kind == 'video',
+        entrypoint: 'chat_thread')) {
+      return;
+    }
     // Debounce double-taps / re-entrancy: a single video-button tap was firing
     // TWO POST /api/call + two CallScreens ~1s apart, and the colliding second
     // call busied out the first right after it connected — so the connected
