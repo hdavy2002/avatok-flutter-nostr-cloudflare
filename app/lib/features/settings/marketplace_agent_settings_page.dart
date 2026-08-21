@@ -295,8 +295,8 @@ class _MarketplaceAgentSettingsPageState extends State<MarketplaceAgentSettingsP
       appBar: AppBar(
         backgroundColor: AD.headerFooter,
         elevation: 0,
-        leading: const AdBackButton(),
-        title: Text('Marketplace Agent', style: ADText.appTitle()),
+        leading: AdBackButton(color: AD.onBand(AD.headerFooter)),
+        title: Text('Marketplace Agent', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

@@ -569,41 +569,54 @@ PreferredSizeWidget _adHeader(BuildContext context, String title,
   final double ts =
       MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.8).toDouble();
   final double bandH = 64.0 * ts + 6;
-  // [RAJ-SEAMS-1] Settings moves to a HALDI (light) band — patches.md §6 —
-  // so ink foreground stays correct as-is, no AD.onBand flip needed. Seam is
-  // 2D PillMorseStrip, on paper 9px below a hard 3px ink bottom border.
+  // [UI-CALLS-2026] Settings joins the SHARED chrome: the indigo band + the
+  // gold `DoubleWaveSeam` that every other AvaTOK root wears, instead of the
+  // haldi band + `PillMorseStrip` it alone used. Three consequences, all
+  // deliberate:
+  //
+  //  * foreground flips to `AD.onBand(AD.headerFooter)` — cream. Ink was right
+  //    on the light haldi band and is unreadable on indigo, which is the
+  //    "black text on an indigo surface" the owner reported here.
+  //  * the LIGHT `SystemUiOverlayStyle` is declared, so the clock / wifi /
+  //    signal / battery icons render WHITE over the dark band.
+  //  * the seam is the same 36px `DoubleWaveSeam` as the messenger, so
+  //    Settings no longer reads as a different product.
+  //
+  // Shared by both Settings and `_SettingsDetail` — both call `_adHeader`.
+  final Color onBand = AD.onBand(AD.headerFooter);
   return PreferredSize(
-    // Height: scaled band + 9px gap + 10px PillMorseStrip.
-    preferredSize: Size.fromHeight(bandH + 19),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Container(
-        decoration: const BoxDecoration(
-          color: AD.bandHaldi,
-          border: Border(bottom: BorderSide(color: AD.borderHairline, width: 3)),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
-            child: Row(children: [
-              if (showBack) AdBackButton(onTap: onBack) else const SizedBox(width: 8),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(title,
-                    style: ADText.appTitle(),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              ...actions,
-            ]),
+    // Height: scaled band + the 36px double wave.
+    preferredSize: Size.fromHeight(bandH + 36),
+    child: AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          color: AD.headerFooter,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
+              child: Row(children: [
+                if (showBack)
+                  AdBackButton(onTap: onBack, color: onBand)
+                else
+                  const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(title,
+                      style: ADText.appTitle(c: onBand),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                ...actions,
+              ]),
+            ),
           ),
         ),
-      ),
-      // [RAJ-SEAMS-1] Seam sits welded to the header (inside the fixed
-      // PreferredSize, not the scrolling body) but on paper, 9px below the
-      // band's hard ink border — per patches.md §6 2D usage note. Shared by
-      // both Settings and _SettingsDetail since both call _adHeader.
-      const SizedBox(height: 9),
-      const PillMorseStrip(),
-    ]),
+        const DoubleWaveSeam(bandColor: AD.headerFooter),
+      ]),
+    ),
   );
 }

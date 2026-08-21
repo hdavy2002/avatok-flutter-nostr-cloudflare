@@ -197,12 +197,16 @@ class _IdentityScreenState extends State<IdentityScreen> {
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
+              // [UI-CALLS-2026] Cream foreground on the indigo band. Both
+              // `AdBackButton` and `ADText.appTitle` default to INK, so this
+              // header was a black title and a black arrow on indigo.
               child: Row(children: [
-                const AdBackButton(),
+                AdBackButton(color: AD.onBand(AD.headerFooter)),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text('AvaIdentity',
-                      style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      style: ADText.appTitle(c: AD.onBand(AD.headerFooter)),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ]),
             ),

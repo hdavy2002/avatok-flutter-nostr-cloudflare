@@ -44,9 +44,9 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s3, Msg.s3),
               child: Row(children: [
-                const AdBackButton(),
+                AdBackButton(color: AD.onBand(AD.headerFooter)),
                 const SizedBox(width: 4),
-                Expanded(child: Text('Display & fonts', style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(child: Text('Display & fonts', style: ADText.appTitle(c: AD.onBand(AD.headerFooter)), maxLines: 1, overflow: TextOverflow.ellipsis)),
               ]),
             ),
           ),

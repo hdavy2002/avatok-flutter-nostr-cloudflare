@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../core/admin_tools.dart';
@@ -12,6 +13,7 @@ import '../core/team_api.dart';
 import '../core/update_service.dart';
 import '../core/ui/zine_widgets.dart';
 import '../core/ui/avatok_dark.dart';
+import '../core/ui/rajasthani_motifs.dart';
 import '../core/wallet_entitlement.dart';
 import '../features/diagnostics/log_page.dart';
 import '../features/settings/about_screen.dart';
@@ -134,19 +136,30 @@ class _AvaSidebarState extends State<AvaSidebar> {
             // My listings), not a plain app row.
             .where((a) => a.id != 'marketplace')
             .toList();
-        final body = SafeArea(child: _column(context, apps, focus));
+        // [UI-CALLS-2026] The drawer surface is CREAM PAPER now, not
+        // `AD.headerFooter` (indigo). Every row in here — the account card, the
+        // section labels, the app rows, "Log out" — is written in ink, because
+        // the same widgets are shared with the light settings pages. Painting
+        // indigo behind them is exactly the "black text on an indigo surface"
+        // the owner reported: the AvaTOK wordmark, the `sectionLabel` headings
+        // and the muted subtitles were all near-invisible.
+        //
+        // The indigo has not been lost, it has been moved to where the app puts
+        // indigo everywhere else: a header band and a footer band, each meeting
+        // the page through the shared gold `DoubleWaveSeam` (see `_column`).
+        final body = _column(context, apps, focus);
         if (widget.permanent) {
           return Container(
             width: 300,
             decoration: const BoxDecoration(
-              color: AD.headerFooter,
+              color: AD.bg,
               border: Border(right: BorderSide(color: AD.borderHairline, width: 1)),
             ),
             child: body,
           );
         }
         return Drawer(
-          backgroundColor: AD.headerFooter,
+          backgroundColor: AD.bg,
           shape: const Border(right: BorderSide(color: AD.borderHairline, width: 1)),
           width: MediaQuery.of(context).size.width * 0.82,
           child: body,
@@ -165,32 +178,65 @@ class _AvaSidebarState extends State<AvaSidebar> {
   };
 
   Widget _column(BuildContext context, List<AppEntry> apps, bool focus) {
+    // [UI-CALLS-2026] The shared header treatment: indigo band behind the
+    // status bar (with the LIGHT overlay style declared, so the clock, wifi,
+    // signal and battery icons are WHITE over it), the AvaTOK wordmark in cream
+    // + marigold rather than the ink that used to disappear into the indigo,
+    // and the same gold `DoubleWaveSeam` that meets content on every other
+    // AvaTOK screen.
+    final onBand = AD.onBand(AD.headerFooter);
     return Column(children: [
-          // header — wordmark + close
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s4, Msg.s2),
-            child: Row(children: [
-              const ZineLogoMark(size: 22),
-              const SizedBox(width: 8),
-              Text.rich(
-                TextSpan(
-                  style: const TextStyle(
-                      fontFamily: ADText.family, fontWeight: FontWeight.w700,
-                      fontSize: 19, letterSpacing: -0.38, color: AD.textPrimary),
-                  children: const [
-                    TextSpan(text: 'Ava'),
-                    TextSpan(text: 'TOK', style: TextStyle(color: AD.iconSearch)),
-                  ],
+          AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle.light.copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: Brightness.light,
+            ),
+            child: Container(
+              color: AD.headerFooter,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s3, Msg.s4, Msg.s2),
+                  child: Row(children: [
+                    // The logo mark paints in INK (`_ZineLogoPainter`, a shared
+                    // widget this file must not fork), so on the indigo band it
+                    // would be a dark glyph on a dark band. Give it a cream
+                    // plate instead — the mark keeps its own colours and the
+                    // brand stays readable.
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: const BoxDecoration(
+                          color: AD.card, shape: BoxShape.circle),
+                      child: const ZineLogoMark(size: 18),
+                    ),
+                    const SizedBox(width: 8),
+                    Text.rich(
+                      TextSpan(
+                        style: TextStyle(
+                            fontFamily: ADText.family, fontWeight: FontWeight.w700,
+                            fontSize: 19, letterSpacing: -0.38, color: onBand),
+                        children: const [
+                          TextSpan(text: 'Ava'),
+                          TextSpan(text: 'TOK', style: TextStyle(color: AD.haldi)),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (!widget.permanent)
+                      AdBackButton(
+                        icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
+                        // Required on an indigo band — the default is ink, and
+                        // an ink glyph on indigo is very nearly invisible.
+                        color: onBand,
+                        onTap: () => Navigator.pop(context),
+                      ),
+                  ]),
                 ),
               ),
-              const Spacer(),
-              if (!widget.permanent)
-                AdBackButton(
-                  icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
-                  onTap: () => Navigator.pop(context),
-                ),
-            ]),
+            ),
           ),
+          const DoubleWaveSeam(bandColor: AD.headerFooter),
+          const SizedBox(height: Msg.s2),
           // profile (tap → public profile)
           Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s3),
@@ -323,21 +369,34 @@ class _AvaSidebarState extends State<AvaSidebar> {
               _accountSection(),
             ]),
           ),
+          // [UI-CALLS-2026] Log out sits INSIDE the footer band, below the
+          // flipped gold wave — never underneath it. Before this it was a plain
+          // hairline-topped row painting red-on-indigo with nothing separating
+          // it from the list, and on a short drawer the wave overlay could ride
+          // straight over the one control a user must always be able to hit.
+          //
+          // The badge keeps `AD.danger` (a red plate reads as "this is the
+          // destructive one" on any band); the LABEL is cream, because red text
+          // on indigo is the contrast pair the owner rejected.
+          const DoubleWaveSeam(bandColor: AD.headerFooter, flip: true),
           Container(
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
-            ),
-            padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s3),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.onSignOut,
-              child: Row(children: [
-                ZineIconBadge(
-                    icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
-                    color: AD.danger, size: 30),
-                const SizedBox(width: 12),
-                Text('Log out', style: ADText.rowName(c: AD.danger)),
-              ]),
+            color: AD.headerFooter,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s2, Msg.s4, Msg.s2),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onSignOut,
+                  child: Row(children: [
+                    ZineIconBadge(
+                        icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
+                        color: AD.danger, size: 30),
+                    const SizedBox(width: 12),
+                    Text('Log out', style: ADText.rowName(c: onBand)),
+                  ]),
+                ),
+              ),
             ),
           ),
         ]);
