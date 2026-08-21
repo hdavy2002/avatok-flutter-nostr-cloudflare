@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
@@ -162,9 +163,13 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       backgroundColor: AD.bg,
       appBar: embedded
           ? null
+          // [RESP-SHORT-1] `chromeScaleHV` is 1.0 on a normal phone (nothing
+          // changes there); on a short screen it trims the fixed 76dp band so
+          // the grid gets a row back.
           : ZineAppBar(
               title: marketplaceTitle(context),
               showBack: Navigator.of(context).canPop(),
+              heightScale: ZineBreakpoints.chromeScaleHV(context),
             ),
       body: Column(children: [
         Padding(

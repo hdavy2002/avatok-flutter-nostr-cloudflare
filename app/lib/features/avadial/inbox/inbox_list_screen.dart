@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/analytics.dart';
 import '../../../core/campaigns_api.dart';
 import '../../../core/ui/avatok_dark.dart';
+import '../../../core/ui/breakpoints.dart';
 import '../../../core/ui/messenger_theme.dart';
 import '../../../core/ui/rajasthani_motifs.dart';
 import '../../../core/ui/zine_widgets.dart';
@@ -488,7 +489,12 @@ class _InboxListScreenState extends State<InboxListScreen> {
       // scrolls THROUGH it rather than behind a cream strip.
       return Scaffold(
         backgroundColor: AD.bg,
-        appBar: const ZineAppBar(title: 'Inbox'),
+        // [RESP-SHORT-1] `chromeScaleHV` is 1.0 on a normal phone, so this band
+        // is unchanged there; on the 590dp-tall QWERTY handset it gives ~11dp
+        // of the 76dp header back to the list.
+        appBar: ZineAppBar(
+            title: 'Inbox',
+            heightScale: ZineBreakpoints.chromeScaleHV(context)),
         body: SeamOverlay(
           seam: const DoubleWaveSeam(bandColor: AD.bandJodhpur),
           child: SafeArea(top: false, child: content),

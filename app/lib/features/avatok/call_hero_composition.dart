@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart';
 import '../../core/ui/illustrations.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 
@@ -56,8 +57,29 @@ class CallHeroComposition extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = connected ? _kHeroConnected : _kHeroRinging;
     final available = MediaQuery.of(context).size.width - 48;
-    final w = math.max(200.0, math.min(maxWidth, available));
-    final h = w * g.vbH / g.vbW;
+    var w = math.max(200.0, math.min(maxWidth, available));
+    var h = w * g.vbH / g.vbW;
+    // [RESP-SHORT-1 2026-08-21] HEIGHT CAP. The three lines above derive the
+    // whole composition from WIDTH alone, and `_kHeroRinging` is a 340x350
+    // viewBox — TALLER than it is wide. On the tester's QWERTY handset
+    // (393 x 590dp: normal width, two-thirds the usual height) that resolved to
+    // a 350dp hero, 59% of the entire viewport, which pushed the peer's name up
+    // under the header and everything else below the fold
+    // (Specs/AUDIT-SHORT-SCREEN-2026-08-21.md finding 5).
+    //
+    // `heroHeightFraction` returns 1.0 on a normal phone, so `capH` is the
+    // WHOLE viewport there (852dp) and the branch below never runs — this
+    // changes NOTHING on the geometry the owner signed off on. It only bites
+    // below 640dp tall: 0.42 x 590 = 248dp on the tester's phone.
+    // Width is re-derived from the capped height so the artwork keeps its
+    // aspect ratio, and `d` / `stud` below key off `w`, so the medallion and
+    // the studs follow without further arithmetic.
+    final capH = ZineBreakpoints.heroHeightFraction(context) *
+        MediaQuery.sizeOf(context).height;
+    if (h > capH) {
+      h = capH;
+      w = h * g.vbW / g.vbH;
+    }
     // The photo fills ~70% of the dotted orbit — the same 132px-in-340px
     // proportion the screen shipped with, now derived instead of hard-coded.
     final d = w * (2 * g.r * 0.70) / g.vbW;

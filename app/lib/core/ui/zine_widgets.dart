@@ -948,6 +948,17 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Optional leading widget (e.g. a hamburger menu button) shown in place of the
   /// back button. When set, [showBack] is ignored.
   final Widget? leading;
+
+  /// [RESP-SHORT-1 2026-08-21] Multiplier on the FIXED band height, for hosts
+  /// that want the header to give room back on a short screen. Pass
+  /// `ZineBreakpoints.chromeScaleHV(context)`; the default 1.0 means every
+  /// existing call site is byte-for-byte unchanged.
+  ///
+  /// It is a constructor argument rather than a `MediaQuery` read because
+  /// [preferredSize] is a getter with no `BuildContext` — `Scaffold` asks for
+  /// the height before this widget ever builds — so the host, which does have a
+  /// context, has to resolve it.
+  final double heightScale;
   const ZineAppBar({
     super.key,
     required this.title,
@@ -957,10 +968,18 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
     this.showBack = true,
     this.leading,
+    this.heightScale = 1.0,
   });
 
+  /// FLOORED AT 62. Inside the band sit an 8px top pad, a 40px
+  /// [ZineBackButton] and a 12px bottom pad = 60dp of incompressible content
+  /// (the status bar is NOT part of this number — `Scaffold` adds
+  /// `MediaQuery.padding.top` on top of `preferredSize`, and the `SafeArea` in
+  /// [build] consumes it). Scaling 76 by 0.72 would give 54.7 and overflow the
+  /// row; the floor is what stops a short-screen relief becoming a red stripe.
   @override
-  Size get preferredSize => Size.fromHeight(tag == null ? 76 : 92);
+  Size get preferredSize =>
+      Size.fromHeight(((tag == null ? 76 : 92) * heightScale).clamp(62.0, 92.0));
 
   /// Title size inside the FIXED-height band. Dropped 27 -> 22 to match
   /// ADText.appTitle; the band height is unchanged, so this only ever buys

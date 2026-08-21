@@ -313,7 +313,24 @@ class _RichInputBarState extends State<RichInputBar> with WidgetsBindingObserver
       // composer or message viewport.
       if (_panelOpen)
         RichPickerPanel(
-          height: _panelHeight,
+          // [RESP-SHORT-1 2026-08-21] Cap the emoji/GIF/sticker panel at 45% of
+          // the viewport. `_panelHeight` is LEARNED from the soft keyboard
+          // (`didChangeMetrics`) and defaults to 300 when nothing has been
+          // learned — a number that is fine on an 852dp phone (0.45 x 852 = 383,
+          // so this cap never binds there and the panel is unchanged) and wrong
+          // on the 590dp QWERTY handset, where header + 300 panel + 106 composer
+          // left ~126dp of message list
+          // (Specs/AUDIT-SHORT-SCREEN-2026-08-21.md finding 7). That device also
+          // has a HARDWARE keyboard, so it may never raise a soft one and never
+          // learn a better number — the 300 default would simply stand forever.
+          //
+          // RAW window height on purpose: the panel only ever shows with the
+          // keyboard dismissed (`_openPanel` unfocuses first), so viewInsets is
+          // 0 here anyway, and reading the raw height keeps this from being one
+          // more thing that changes when the keyboard flickers.
+          height: _panelHeight > MediaQuery.sizeOf(context).height * 0.45
+              ? MediaQuery.sizeOf(context).height * 0.45
+              : _panelHeight,
           initialTab: _tab,
           onTabChanged: (t) => setState(() => _tab = t),
           onEmoji: _insertEmoji,
