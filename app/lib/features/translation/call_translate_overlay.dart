@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
-import 'package:flutter_webrtc/flutter_webrtc.dart' show WebRTC;
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' show WebRTC;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 

@@ -16,7 +16,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' show Helper;
 import 'package:record/record.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 

@@ -54,7 +54,7 @@
 // so; do not "simplify" it back to a bare leave.
 import 'dart:async';
 
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';

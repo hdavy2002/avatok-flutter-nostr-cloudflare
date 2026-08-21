@@ -44,7 +44,7 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 
 import '../ava_log.dart';
 import '../audio_tuning.dart' as audio_tuning;

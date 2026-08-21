@@ -10,7 +10,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart' as webrtc;
 import 'package:permission_handler/permission_handler.dart' show openAppSettings;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 

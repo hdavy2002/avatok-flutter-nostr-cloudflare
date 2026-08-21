@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // [RAJ-SEAMS-1]
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/agent_voice_call.dart';

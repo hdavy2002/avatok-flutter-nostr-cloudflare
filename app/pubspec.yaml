@@ -20,7 +20,18 @@ dependencies:
   flutter_chat_types: ^3.6.2
   flutter:
     sdk: flutter
-  flutter_webrtc: ^0.12.5
+  # [STREAM-LANE-1] flutter_webrtc ^0.12.5 → stream_webrtc_flutter ^3.0.0 on
+  # 2026-08-21: run #608 failed mergeReleaseNativeLibs because flutter_webrtc's
+  # binary (io.github.webrtc-sdk:android 125.x) and the Stream SDK's
+  # (io.getstream:stream-video-webrtc-android 145.9.0) both ship
+  # lib/arm64-v8a/libjingle_peerconnection_so.so. stream_webrtc_flutter is
+  # GetStream's maintained FORK of flutter_webrtc — literally `library
+  # flutter_webrtc;` with the same Dart exports — backed by the SAME 145.9.0
+  # binary stream_video uses, so the whole app now links exactly one WebRTC
+  # engine. Old-lane Dart imports were swapped mechanically; native references
+  # went com.cloudwebrtc.webrtc.* → io.getstream.webrtc.flutter.* (same class
+  # names, verified against GetStream/webrtc-flutter android sources).
+  stream_webrtc_flutter: ^3.0.0
   # STREAM-LANE: ACTIVATED 2026-08-21 [STREAM-LANE-1]. Native conflict risk noted at
   # dark-lane build time: both stream_webrtc_flutter (io.getstream:stream-video-webrtc-android)
   # and flutter_webrtc (io.github.webrtc-sdk:android) ship different-version builds of the

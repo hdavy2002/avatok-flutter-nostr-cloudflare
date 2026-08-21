@@ -7,7 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
 import android.os.SystemClock
-import com.cloudwebrtc.webrtc.FlutterWebRTCPlugin
+import io.getstream.webrtc.flutter.FlutterWebRTCPlugin
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall

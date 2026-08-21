@@ -9,8 +9,8 @@ import android.util.Base64;
 
 import androidx.annotation.NonNull;
 
-import com.cloudwebrtc.webrtc.FlutterWebRTCPlugin;
-import com.cloudwebrtc.webrtc.audio.PlaybackSamplesReadyCallbackAdapter;
+import io.getstream.webrtc.flutter.FlutterWebRTCPlugin;
+import io.getstream.webrtc.flutter.audio.PlaybackSamplesReadyCallbackAdapter;
 
 import org.json.JSONArray;
 import org.json.JSONObject;

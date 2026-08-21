@@ -933,8 +933,8 @@ class MainActivity : FlutterFragmentActivity() {
         // Must run AFTER super.configureFlutterEngine — GeneratedPluginRegistrant
         // is what registers flutter_webrtc, and before it runs this returns null.
         ai.avatok.calltranslation.CallTranslationAudioPlugin.boundWebRtcPlugin =
-            flutterEngine.plugins.get(com.cloudwebrtc.webrtc.FlutterWebRTCPlugin::class.java)
-                as? com.cloudwebrtc.webrtc.FlutterWebRTCPlugin
+            flutterEngine.plugins.get(io.getstream.webrtc.flutter.FlutterWebRTCPlugin::class.java)
+                as? io.getstream.webrtc.flutter.FlutterWebRTCPlugin
         // [CALLREC-NATIVE-1] On-demand call recording. Taps the SAME AudioDeviceModule
         // — the near-end mic adapter as well as the decoded-playback one — so it needs
         // the same engine-scoped binding, and for the same reason: `sharedSingleton` is
@@ -944,8 +944,8 @@ class MainActivity : FlutterFragmentActivity() {
         // Dart calls `start`.
         flutterEngine.plugins.add(ai.avatok.callrecord.CallRecorderPlugin())
         ai.avatok.callrecord.CallRecorderPlugin.boundWebRtcPlugin =
-            flutterEngine.plugins.get(com.cloudwebrtc.webrtc.FlutterWebRTCPlugin::class.java)
-                as? com.cloudwebrtc.webrtc.FlutterWebRTCPlugin
+            flutterEngine.plugins.get(io.getstream.webrtc.flutter.FlutterWebRTCPlugin::class.java)
+                as? io.getstream.webrtc.flutter.FlutterWebRTCPlugin
         // AvaDial PSTN telecom bridge (default-dialer role, InCallService,
         // CallScreeningService, device contacts/call-log). DARK behind the Flutter
         // `avaDialer` flag — the plugin only ever registers a MethodChannel; nothing

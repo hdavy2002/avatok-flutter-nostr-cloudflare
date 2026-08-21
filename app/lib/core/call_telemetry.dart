@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io' show ProcessInfo;
 import 'dart:math' as math;
 
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 
 import 'analytics.dart';
 import 'ava_log.dart';
