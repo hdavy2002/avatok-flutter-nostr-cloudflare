@@ -1463,6 +1463,20 @@ class _CallScreenState extends State<CallScreen> {
     minimizeActiveCall(_session, context);
   }
 
+  /// [RESP-SMALL-3 2026-08-21] Vertical space the call header row occupies.
+  ///
+  /// The audio layout's scroll viewport starts BELOW this instead of filling
+  /// the whole Stack — see the `if (light)` branch in [build]. The header is
+  /// `SafeArea > Padding(top: Msg.s2) > Row`, whose tallest child is the 40dp
+  /// `AdBackButton`; the centred title column (name 16sp + 2 + an 11sp status
+  /// line, plus the usually-collapsed `_PeerStateLine`) is shorter than that at
+  /// every text scale this app allows. 72 is 8 + 40 with slack for the peer
+  /// state line, and it is deliberately an OVER-estimate: reserving a few
+  /// pixels too many only costs scrollable content area, while reserving too
+  /// few puts the hero art back over the title.
+  double _headerReserve(BuildContext context) =>
+      MediaQuery.of(context).padding.top + 72;
+
   @override
   Widget build(BuildContext context) {
     final s = _session;
@@ -1855,16 +1869,39 @@ class _CallScreenState extends State<CallScreen> {
         // underneath them. Reserves the control-row footprint as bottom padding;
         // the ConstrainedBox keeps the content vertically centred when it fits.
         if (light)
-          Positioned.fill(
+          // [RESP-SMALL-3 2026-08-21] Was `Positioned.fill`, which laid this
+          // scroll view OVER the header row above. Two consequences, both real:
+          //  1. `Scrollable` installs its gesture detector with
+          //     `HitTestBehavior.opaque`, so a full-bleed scroll view swallows
+          //     every tap in the header band — the back/minimize controls were
+          //     painted but dead on the audio call screen.
+          //  2. On a SHORT viewport the centred content is no longer clear of
+          //     the header: on a 393x590dp QWERTY handset the ringing hero is
+          //     350dp tall in a 458dp box, so it centres 24dp from the top and
+          //     paints straight through the peer's name.
+          // Starting the viewport below the header fixes both — the header is
+          // visible and tappable again, and the hero centres in what is left
+          // (and scrolls when it no longer fits, which is the point).
+          Positioned(
+            top: _headerReserve(context),
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(24, 0, 24,
                   controlPanelHeight + (bottomInset > 0 ? bottomInset : 16)),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height -
-                      MediaQuery.of(context).viewInsets.bottom -
-                      (controlPanelHeight +
-                          (bottomInset > 0 ? bottomInset : 16)),
+                  // Clamped at 0: once connected the control panel reserves
+                  // 350dp and the keyboard can take another ~300, which on a
+                  // 590dp screen makes this arithmetic NEGATIVE — and a
+                  // negative minHeight is an invalid BoxConstraints.
+                  minHeight: (MediaQuery.of(context).size.height -
+                          _headerReserve(context) -
+                          MediaQuery.of(context).viewInsets.bottom -
+                          (controlPanelHeight +
+                              (bottomInset > 0 ? bottomInset : 16)))
+                      .clamp(0.0, double.infinity),
                 ),
                 child: Center(
                   child: Column(

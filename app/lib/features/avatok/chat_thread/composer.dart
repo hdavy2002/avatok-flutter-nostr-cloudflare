@@ -516,6 +516,14 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
+      // [RESP-SMALL-3 2026-08-21] Without `isScrollControlled` a modal bottom
+      // sheet is capped at NINE SIXTEENTHS of the screen height
+      // (`_ModalBottomSheetLayout`), and this menu's five two-line rows come to
+      // ~470dp at the app's 1.22 type bump. On a 393x590dp QWERTY handset the
+      // cap is 332dp, so "Shorter & clearer" and "Reply ideas" were laid out
+      // past the bottom of a non-scrolling Column — invisible AND unreachable.
+      // A 852dp phone caps at 479dp, which is why this shipped looking fine.
+      isScrollControlled: true,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
           color: AD.overlaySheet,
@@ -526,16 +534,25 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('HELP ME WRITE BETTER', style: ADText.sectionLabel()),
           const SizedBox(height: 12),
-          _writeHelpRow(ctx, PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), AD.iconSearch,
-              'Fix grammar', 'Spelling & grammar, same meaning', 'grammar'),
-          _writeHelpRow(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), AD.primaryBadge,
-              'Friendlier', 'Warmer, friendlier tone', 'friendly'),
-          _writeHelpRow(ctx, PhosphorIcons.briefcase(PhosphorIconsStyle.bold), AD.online,
-              'More formal', 'Formal and professional', 'formal'),
-          _writeHelpRow(ctx, PhosphorIcons.scissors(PhosphorIconsStyle.bold), AD.iconVideo,
-              'Shorter & clearer', 'Trim it down, keep the point', 'short'),
-          _writeHelpRow(ctx, PhosphorIcons.lightbulb(PhosphorIconsStyle.bold), AD.danger,
-              'Reply ideas', 'Suggest replies to the last message', 'reply_ideas'),
+          // Belt and braces: even at full screen height a very large OS text
+          // scale can outgrow the sheet, so the rows scroll rather than clip.
+          // Same Flexible-over-a-scrollable idiom `_pickTransLang` already uses.
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _writeHelpRow(ctx, PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), AD.iconSearch,
+                    'Fix grammar', 'Spelling & grammar, same meaning', 'grammar'),
+                _writeHelpRow(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), AD.primaryBadge,
+                    'Friendlier', 'Warmer, friendlier tone', 'friendly'),
+                _writeHelpRow(ctx, PhosphorIcons.briefcase(PhosphorIconsStyle.bold), AD.online,
+                    'More formal', 'Formal and professional', 'formal'),
+                _writeHelpRow(ctx, PhosphorIcons.scissors(PhosphorIconsStyle.bold), AD.iconVideo,
+                    'Shorter & clearer', 'Trim it down, keep the point', 'short'),
+                _writeHelpRow(ctx, PhosphorIcons.lightbulb(PhosphorIconsStyle.bold), AD.danger,
+                    'Reply ideas', 'Suggest replies to the last message', 'reply_ideas'),
+              ]),
+            ),
+          ),
         ])),
       ),
     );
@@ -846,6 +863,11 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
       backgroundColor: AD.overlaySheet,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(Msg.rLg))),
+      // [RESP-SMALL-3 2026-08-21] Same 9/16 sheet cap as `_openWriteHelp`. The
+      // three suggestions are model output with NO maxLines, so a wordy reply
+      // wraps to three or four lines and the last tile lands past the bottom of
+      // a non-scrolling Column. On a 393x590dp handset that cap is 332dp.
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
@@ -865,24 +887,30 @@ extension _ChatThreadComposer on _ChatThreadScreenState {
                   style: ADText.preview()),
             ),
           ),
-          for (final idea in ideas)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-              child: GestureDetector(
-                onTap: () { Navigator.pop(ctx); _replaceComposer(idea); },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AD.card,
-                    borderRadius: BorderRadius.circular(Msg.rMd),
-                    border: Border.all(color: AD.borderControl, width: 1),
-                    boxShadow: const [],
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                for (final idea in ideas)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                    child: GestureDetector(
+                      onTap: () { Navigator.pop(ctx); _replaceComposer(idea); },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AD.card,
+                          borderRadius: BorderRadius.circular(Msg.rMd),
+                          border: Border.all(color: AD.borderControl, width: 1),
+                          boxShadow: const [],
+                        ),
+                        child: Text(idea, style: ADText.rowName()),
+                      ),
+                    ),
                   ),
-                  child: Text(idea, style: ADText.rowName()),
-                ),
-              ),
+              ]),
             ),
+          ),
           const SizedBox(height: 12),
         ]),
       ),
