@@ -24,7 +24,7 @@ import { nameFor, emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { emitCallEvent, CallEvent } from "../lib/call_telemetry_events";
 // [STREAM-AUTH-1 2026-08-21] The checks the Stream lane was bypassing.
-import { trackUser } from "../hooks";
+import { track, trackUser } from "../hooks";
 import { callerContactPolicy, shouldRouteUnknownAvatokCaller } from "../lib/call_contact_directory";
 import { APP_BUILD_HEADER, UPDATE_REQUIRED_MESSAGE, callMinBuildFrom, clientBuildFrom } from "../lib/call_build_gate";
 
@@ -41,6 +41,19 @@ const IDEMPOTENCY_TTL_SECONDS = 10 * 60;
 const WEBHOOK_ID_MAX = 256;
 const USER_ID_MAX = 128;
 const CALL_ID_MAX = 128;
+// [STREAM-ENFORCE-2 2026-08-21] POST /api/stream-calls/place hardening.
+// How long a client-supplied `attempt_id` dedupes a retry to the SAME
+// approval/call_id. Generous enough to cover a phone's normal retry/backoff
+// window, short enough that a genuinely new call attempt minutes later still
+// mints its own id.
+const PLACE_ATTEMPT_TTL_SECONDS = 2 * 60;
+// How long an approved-and-not-yet-ended Stream call counts as "live" for
+// glare detection (job 3, plan §8). Conservative: long enough to catch the
+// realistic window between A dialing B and B dialing back before either side
+// answers, short enough that a call whose `call.ended`/`call.session_ended`
+// webhook never arrives (Stream outage, dropped webhook) does not glare-trap
+// every later call between the same two people forever.
+const GLARE_LIVE_WINDOW_MS = 45_000;
 
 export type CallProvider = "cloudflare" | "stream";
 export type CallScope = "one_to_one" | "group";
@@ -244,6 +257,54 @@ async function persistStickyProvider(env: Env, callId: string, record: StickyPro
   }
 }
 
+/**
+ * Glare detection (job 3, plan §8): is there ALREADY a live Stream call with
+ * `callerUid` (the reverse direction's callee) as the ORIGINAL caller and
+ * `calleeUid` (the reverse direction's caller) as the ORIGINAL callee? If A
+ * called B and that call is still live, B calling A back should join A's
+ * call, not mint a second one.
+ *
+ * Requires the `ended_at` column and pair index from
+ * worker/migrations/2026-08-21-stream-call-place-hardening.sql. If that
+ * migration has not been applied to prod yet, the query throws (unknown
+ * column) and this fails OPEN — glare detection is simply unavailable, the
+ * same "not yet migrated" posture the rest of this file already documents for
+ * `stream_video_provider_decisions`. It does not affect the fail-CLOSED
+ * behaviour of the authority record itself (see `persistStickyProvider`
+ * call site in `streamCallPlace`).
+ */
+async function readLiveCounterCall(
+  env: Env,
+  callerUid: string,
+  calleeUid: string,
+): Promise<(StickyProviderRecord & { call_id: string }) | null> {
+  try {
+    const cutoff = Date.now() - GLARE_LIVE_WINDOW_MS;
+    const row = await env.DB_META.prepare(
+      `SELECT call_id, provider, caller_uid, callee_uid, scope, chosen_at, bucket, percent
+       FROM stream_video_provider_decisions
+       WHERE caller_uid=?1 AND callee_uid=?2 AND provider=?3 AND scope=?4
+         AND chosen_at>=?5 AND ended_at IS NULL
+       ORDER BY chosen_at DESC LIMIT 1`,
+    ).bind(calleeUid, callerUid, PROVIDER, "one_to_one", cutoff)
+      .first<StickyProviderRecord & { call_id: string }>();
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Marks a provider-decision row ended so it stops matching glare lookups.
+ *  Best-effort: called from the webhook handler, which must never 500 just
+ *  because this bookkeeping table isn't there yet. */
+async function markProviderDecisionEnded(env: Env, callId: string): Promise<void> {
+  try {
+    await env.DB_META.prepare(
+      "UPDATE stream_video_provider_decisions SET ended_at=?1 WHERE call_id=?2 AND ended_at IS NULL",
+    ).bind(Date.now(), callId).run();
+  } catch { /* migration not applied yet, or row doesn't exist — fine */ }
+}
+
 function streamConfigured(env: Env): boolean {
   return Boolean(env.STREAM_VIDEO_API_KEY && env.STREAM_VIDEO_API_SECRET);
 }
@@ -275,6 +336,74 @@ async function ensureStreamUsers(
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * [STREAM-ENFORCE-2 2026-08-21] Server-side call creation for the
+ * authorization endpoint (`streamCallPlace`), job 1a.
+ *
+ * Before this, `POST /api/stream-calls/place` only approved and minted a call
+ * id; the PHONE then called Stream's `getOrCreate(ringing:true)` directly
+ * with its own user token. A modified client with a valid Stream user token
+ * could skip `/place` entirely and ring anyone. This function makes the
+ * Worker itself the thing that calls Stream, using the SERVER token (API
+ * secret), so approval and creation happen in the same trusted place. The
+ * client's job becomes JOIN only (contract agreed with STREAM-CALLFLOW-1).
+ *
+ * Deliberately duplicates (rather than reuses) the create-call POST that
+ * `prepareStreamCall` above already does for the older percentage-rollout
+ * lane. That lane is independently gated (`streamCallPilotEnabled`) and
+ * working; refactoring it to share this helper would widen the blast radius
+ * of this change for no behavioural benefit.
+ */
+async function createRingingStreamCall(env: Env, args: {
+  callerUid: string;
+  calleeUid: string;
+  callId: string;
+  video: boolean;
+  traceId: string;
+}): Promise<{ ok: true } | { ok: false; status: number; stage: string }> {
+  let usersReady = false;
+  try {
+    const serverToken = await streamServerToken(env);
+    const [callerName, calleeName] = await Promise.all([
+      nameFor(env, args.callerUid).catch(() => null),
+      nameFor(env, args.calleeUid).catch(() => null),
+    ]);
+    if (!await ensureStreamUsers(env, serverToken, [
+      { id: args.callerUid, ...(callerName ? { name: callerName } : {}) },
+      { id: args.calleeUid, ...(calleeName ? { name: calleeName } : {}) },
+    ])) {
+      return { ok: false, status: 502, stage: "ensure_users" };
+    }
+    usersReady = true;
+    const payload = {
+      ring: true,
+      video: args.video,
+      data: {
+        created_by_id: args.callerUid,
+        members: [{ user_id: args.callerUid }, { user_id: args.calleeUid }],
+        custom: {
+          avatok_provider: PROVIDER,
+          avatok_call_id: args.callId,
+          avatok_trace_id: args.traceId,
+          avatok_caller_uid: args.callerUid,
+          avatok_callee_uid: args.calleeUid,
+          video: args.video,
+          lane: "streamlane",
+        },
+      },
+    };
+    const response = await fetch(streamCallUrl(env, args.callId), {
+      method: "POST",
+      headers: { Authorization: serverToken, "Content-Type": "application/json", "stream-auth-type": "jwt" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) return { ok: false, status: response.status >= 500 ? 502 : 400, stage: "stream_create" };
+    return { ok: true };
+  } catch {
+    return { ok: false, status: 502, stage: usersReady ? "stream_create" : "ensure_users" };
   }
 }
 
@@ -573,14 +702,30 @@ export type StreamPlaceRefusalCode =
   | "stream_calls_disabled"
   | "update_required"
   | "recipient_unavailable"
-  | "receptionist";
+  | "receptionist"
+  // [STREAM-ENFORCE-2 2026-08-21] additions below.
+  | "authority_unavailable"
+  | "stream_create_failed";
 
 type StreamPlaceBody = {
   callee_uid?: unknown;
   video?: unknown;
   app_build?: unknown;
   trace_id?: unknown;
+  /** [STREAM-ENFORCE-2 2026-08-21] Client-generated UUID, one per user tap on
+   *  "call". Same (caller_uid, attempt_id) within PLACE_ATTEMPT_TTL_SECONDS
+   *  replays the SAME approval/call_id instead of minting a second call —
+   *  covers double-tap and client retry-on-timeout. Contract agreed with
+   *  STREAM-CALLFLOW-1, who adds this on the client side. Optional: a client
+   *  that omits it gets no dedup protection from this layer (the pre-existing
+   *  `admitCall`/build-gate checks still run).
+   */
+  attempt_id?: unknown;
 };
+
+function validAttemptId(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 8 && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value);
+}
 
 /**
  * POST /api/stream-calls/place
@@ -590,11 +735,25 @@ type StreamPlaceBody = {
  *                                               the fallback — see call_build_gate.ts)
  *            x-trace-id:  <trace>              (optional)
  *            body { callee_uid: string, video?: boolean, app_build?: number,
- *                   trace_id?: string }
+ *                   trace_id?: string, attempt_id?: string }
  *
  * Approved — 200 { approved: true, provider: "stream", call_type: "default",
- *                  call_id, callee_uid, video, trace_id }
+ *                  call_id, callee_uid, video, trace_id, created }
  *            `call_id` is SERVER-MINTED and is the id the client must use.
+ *            [STREAM-ENFORCE-2 2026-08-21] `created` tells the client whether
+ *            IT still needs to create the Stream call:
+ *              created: true  → the Worker already called Stream's
+ *                                `getOrCreate(ring:true)` server-side. The
+ *                                client's ONLY job is to JOIN `call_id`. Do
+ *                                NOT call `client.makeCall` / `getOrCreate`
+ *                                again — that would re-ring or 409.
+ *              created: false → an older/degraded path where the client must
+ *                                create the call itself. Glare responses use
+ *                                created:true (the counter-call exists — join
+ *                                only; see the review-fix note at the glare
+ *                                return site).
+ *            This is the agreed contract with STREAM-CALLFLOW-1's client-side
+ *            change — do not add fields without updating both sides.
  *
  * Refused  — { approved: false, code, message, ... }
  *            update_required        → 426, plus min_build / client_build
@@ -603,6 +762,23 @@ type StreamPlaceBody = {
  *            self_call              → 400
  *            recipient_unavailable  → 200 (uniform denial, see below)
  *            receptionist           → 200, plus routing_reason
+ *            authority_unavailable  → 503 (D1 authority record couldn't be
+ *                                      written — see the AUTHORITATIVE RECORD
+ *                                      section below; retryable)
+ *            stream_create_failed   → 502/400 (Stream itself refused/errored
+ *                                      creating the call; plus `stage`)
+ *
+ * Idempotency — an `attempt_id` (client UUID, one per user tap) replays the
+ * exact same terminal response — approval OR refusal — for
+ * PLACE_ATTEMPT_TTL_SECONDS instead of evaluating twice or minting a second
+ * call id. Keyed by (caller_uid, attempt_id) in KV (`env.TOKENS`); best-effort,
+ * never blocks the request if KV is unavailable.
+ *
+ * Glare — if the CALLEE already has a live Stream call ringing/connected TO
+ * this caller (i.e. they dialled each other within GLARE_LIVE_WINDOW_MS of
+ * one another), this returns that EXISTING call_id with
+ * `code: "glare_join_existing"` / `created: false` instead of minting and
+ * ringing a second call for the same conversation.
  *
  * WHY `recipient_unavailable` IS A 200 WITH THE SAME COPY FOR EVERY CAUSE.
  * lib/call_admission.ts, owner ruling B: blocked / offline / privacy_mode /
@@ -626,6 +802,36 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // call identity is the server's, and the `sl-` prefix is kept so the existing
   // `stream_lane_*` PostHog series stays continuous with the client-minted ids.
   const callId = `sl-${crypto.randomUUID()}`;
+
+  // ── ATTEMPT-ID DEDUP (job 3) ────────────────────────────────────────────
+  // Same caller retrying the same tap (double-tap, client timeout-and-retry)
+  // must not mint a second call id or re-run admission twice. Keyed on the
+  // CALLER only — attempt ids are client-generated per tap, not shared across
+  // users, so no cross-user key collision is possible.
+  const attemptId = validAttemptId(body.attempt_id) ? body.attempt_id : null;
+  const attemptKey = attemptId ? `stream-place:attempt:${callerUid}:${attemptId}` : null;
+  if (attemptKey) {
+    const cached = await env.TOKENS.get(attemptKey, "json").catch(() => null) as
+      { status: number; payload: Record<string, unknown> } | null;
+    if (cached) {
+      track(env, callerUid, "stream_call_dedup_hit", "avatok", {
+        call_id: (cached.payload as { call_id?: unknown }).call_id ?? null,
+        attempt_id: attemptId, trace_id: traceId || null, lane: "streamlane",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      }, traceId || undefined);
+      return json({ ...cached.payload, idempotent_replay: true }, cached.status);
+    }
+  }
+
+  /** Single exit point: writes the attempt-id replay cache (if any), then responds. */
+  const finish = async (status: number, payload: Record<string, unknown>): Promise<Response> => {
+    if (attemptKey) {
+      await env.TOKENS.put(attemptKey, JSON.stringify({ status, payload }), {
+        expirationTtl: PLACE_ATTEMPT_TTL_SECONDS,
+      }).catch(() => undefined);
+    }
+    return json(payload, status);
+  };
 
   /** One refusal shape, one telemetry event, tagged to BOTH parties. */
   const refuse = async (
@@ -660,7 +866,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
         await trackUser(env, calleeUid, calleeEmail, "stream_call_refused", "avatok", props, traceId || undefined);
       }
     } catch { /* telemetry must never change a refusal */ }
-    return json({ approved: false, code, message, ...extra }, status);
+    return await finish(status, { approved: false, code, message, ...extra });
   };
 
   if (!calleeUid) return await refuse("invalid_request", "Missing or invalid callee.", 400);
@@ -749,18 +955,71 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     }
   }
 
+  const [callerEmail, calleeEmail] = await Promise.all([
+    emailFor(env, callerUid).catch(() => null),
+    emailFor(env, calleeUid).catch(() => null),
+  ]);
+
+  // ── GLARE CHECK (job 3) ────────────────────────────────────────────────
+  // Alice→Bob is already approved-and-live; Bob→Alice arrives before either
+  // side has hung up or answered. Ringing a second Stream call would give
+  // both phones two ringing screens for the same conversation, and the
+  // client contract (STREAM-CALLFLOW-1) expects at most one `call_id` per
+  // pair at a time. Join Alice's existing call instead of minting Bob's own.
+  const counterCall = await readLiveCounterCall(env, callerUid, calleeUid);
+  if (counterCall) {
+    const glareProps = {
+      call_id: counterCall.call_id,
+      from_uid: callerUid, to_uid: calleeUid,
+      from_email: callerEmail, to_email: calleeEmail,
+      media_mode: video ? "video" : "audio",
+      trace_id: traceId || null,
+      lane: "streamlane",
+      original_caller_uid: counterCall.caller_uid,
+      original_chosen_at: counterCall.chosen_at,
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    };
+    const glareTelemetry = (async () => {
+      try {
+        await trackUser(env, callerUid, callerEmail, "stream_call_glare_hit", "avatok", glareProps, traceId || undefined);
+        await trackUser(env, calleeUid, calleeEmail, "stream_call_glare_hit", "avatok", glareProps, traceId || undefined);
+      } catch { /* telemetry must never change an approval */ }
+    })();
+    if (ctx) ctx.waitUntil(glareTelemetry); else await glareTelemetry;
+    return await finish(200, {
+      approved: true,
+      provider: PROVIDER,
+      call_type: CALL_TYPE,
+      call_id: counterCall.call_id,
+      callee_uid: calleeUid,
+      video,
+      trace_id: traceId || counterCall.call_id,
+      code: "glare_join_existing",
+      // [REVIEW FIX 2026-08-21] Was `created: false` — but the client's
+      // documented fallback for created:false is `getOrCreate(ringing:true)`,
+      // which the comment above this contract explicitly forbids on an
+      // existing call (re-ring / 409). The client cannot branch on `code`
+      // (its approved-decision type does not carry one), so `created` is the
+      // only signal it acts on. Semantically the glare call IS created — it
+      // exists server-side and the client's only job is to join — so
+      // created:true is both truthful and produces exactly the join-only
+      // behaviour this path needs.
+      created: true,
+    });
+  }
+
   // ── AUTHORITATIVE RECORD ───────────────────────────────────────────────────
   // The server-side row that says THIS call id belongs to THIS pair on Stream.
   // `INSERT OR IGNORE` + read-back is the same concurrency gate `prepareStreamCall`
   // uses, so a replay can never re-point a call id at a different pair.
   //
-  // BEST-EFFORT ON PURPOSE. `stream_video_provider_decisions` ships in
-  // worker/migrations/2026-08-19-stream-video-webhooks.sql, which may not have
-  // been applied to prod D1 yet (plan §9: the Worker has never been deployed).
-  // Failing closed here would turn an unapplied migration into a 100% call
-  // outage — the exact class of failure this whole incident is about. It is
-  // recorded loudly instead. Once the migration is confirmed applied in prod,
-  // this SHOULD become fail-closed (503 `authority_unavailable`).
+  // [STREAM-ENFORCE-2 2026-08-21] FAILS CLOSED. `stream_video_provider_decisions`
+  // is confirmed to EXIST in prod D1 (verified 2026-08-21 via a read-only remote
+  // query — see the task brief this change was made under). The prior best-effort
+  // posture existed only because the table's existence in prod was unconfirmed at
+  // the time; now that it's confirmed, a write failure is a real D1 problem, not
+  // an unapplied migration, and ringing a phone with no authoritative record of
+  // who approved the call is exactly the gap this endpoint exists to close.
   const recorded = await persistStickyProvider(env, callId, {
     provider: PROVIDER,
     caller_uid: callerUid,
@@ -770,11 +1029,56 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     bucket: 0,
     percent: 100,
   });
+  if (!recorded) {
+    try {
+      await trackUser(env, callerUid, callerEmail, "stream_call_authority_write_failed", "avatok", {
+        call_id: callId, from_uid: callerUid, to_uid: calleeUid,
+        trace_id: traceId || null, lane: "streamlane",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      }, traceId || undefined);
+    } catch { /* alerting must never mask the underlying failure */ }
+    return await refuse(
+      "authority_unavailable",
+      "Calling is temporarily unavailable. Please try again in a moment.",
+      503,
+      {},
+      "authority_write_failed",
+    );
+  }
 
-  const [callerEmail, calleeEmail] = await Promise.all([
-    emailFor(env, callerUid).catch(() => null),
-    emailFor(env, calleeUid).catch(() => null),
-  ]);
+  // ── SERVER-SIDE CALL CREATION (job 1a) ──────────────────────────────────
+  // This is the fix for plan §8 blocker #1: the Worker — not the phone — is
+  // now the thing that calls Stream's `getOrCreate(ring:true)`. A modified
+  // client holding a valid Stream user token can still call Stream directly,
+  // but it can no longer get server APPROVAL plus a Stream ring from a single
+  // trusted path merely by skipping this endpoint — see the token-capability
+  // findings in the report for the client-token half of this defense.
+  const created = await createRingingStreamCall(env, {
+    callerUid, calleeUid, callId, video, traceId: traceId || callId,
+  });
+  if (!created.ok) {
+    try {
+      await trackUser(env, callerUid, callerEmail, "stream_call_create_failed", "avatok", {
+        call_id: callId, from_uid: callerUid, to_uid: calleeUid,
+        stage: created.stage, provider_status: created.status,
+        trace_id: traceId || null, lane: "streamlane",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      }, traceId || undefined);
+    } catch { /* alerting must never mask the underlying failure */ }
+    emitCallEvent(env, CallEvent.call_ended, {
+      call_trace_id: traceId || callId, call_id: callId, account_id: callerUid,
+      rtc_provider: PROVIDER, ended_reason: "provider_failure",
+      extra: { stage: created.stage, lane: "streamlane" },
+    }, ctx);
+    return await refuse(
+      "stream_create_failed",
+      "Couldn't start the call. Please try again.",
+      created.status,
+      { stage: created.stage },
+      `stream_create_failed:${created.stage}`,
+    );
+  }
+
   const approvalProps = {
     call_id: callId,
     from_uid: callerUid, to_uid: calleeUid,
@@ -782,9 +1086,8 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     media_mode: video ? "video" : "audio",
     trace_id: traceId || null,
     lane: "streamlane",
-    // false = the authority row could not be written (see the note above). A
-    // nonzero rate of this is a migration/D1 alarm, not a property of the call.
-    authority_recorded: recorded !== null,
+    authority_recorded: true,
+    created_server_side: true,
     admission_policy: admission.policy ?? "unknown",
     app_name: "avatok", service_name: "avatok-api", worker: true,
   };
@@ -800,12 +1103,12 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
       rtc_provider: PROVIDER,
       media_mode: video ? "video" : "audio",
       role: "caller",
-      extra: { scope: "one_to_one", lane: "streamlane", authority_recorded: recorded !== null },
+      extra: { scope: "one_to_one", lane: "streamlane", authority_recorded: true, created_server_side: true },
     }, ctx);
   })();
   if (ctx) ctx.waitUntil(approvalTelemetry); else await approvalTelemetry;
 
-  return json({
+  return await finish(200, {
     approved: true,
     provider: PROVIDER,
     call_type: CALL_TYPE,
@@ -813,6 +1116,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     callee_uid: calleeUid,
     video,
     trace_id: traceId || callId,
+    created: true,
   });
 }
 
@@ -863,6 +1167,50 @@ function telemetryForEvent(type: string): { event: typeof CallEvent[keyof typeof
   }
 }
 
+/**
+ * [STREAM-ENFORCE-2 2026-08-21] Webhook idempotency (job 4), with a fallback.
+ *
+ * `stream_video_webhooks` ships in
+ * worker/migrations/2026-08-19-stream-video-webhooks.sql. Whether that
+ * migration has landed in prod D1 is UNCONFIRMED — the fact this change was
+ * scoped under confirmed only `stream_video_provider_decisions` exists;
+ * a distinctly-named `stream_video_webhook_events` table does not, and this
+ * code has never referenced that name (it always used
+ * `stream_video_webhooks`, so the two checks are not the same table — see
+ * the report). Rather than assume either way, this degrades: D1 first, KV
+ * second, "cannot dedup" third — but it never 500s and never drops the event
+ * just because a table might be missing.
+ */
+async function recordWebhookIdempotency(
+  env: Env,
+  webhookId: string,
+  eventType: string,
+): Promise<{ duplicate: boolean; via: "d1" | "kv" | "none" }> {
+  try {
+    // Stream guarantees X-Webhook-Id is stable across retries. D1's primary
+    // key makes concurrent retries a no-op instead of double-emitting
+    // outcomes.
+    const inserted = await env.DB_META.prepare(
+      "INSERT OR IGNORE INTO stream_video_webhooks (webhook_id, event_type, received_at) VALUES (?1, ?2, ?3)",
+    ).bind(webhookId, eventType.slice(0, 128), Date.now()).run();
+    return { duplicate: (inserted.meta?.changes ?? 0) === 0, via: "d1" };
+  } catch {
+    // Table missing/unavailable. KV get-then-put is not atomic (two concurrent
+    // retries could both "win"), but Stream retries are not concurrent by
+    // design and a rare double-emit of best-effort telemetry is a far smaller
+    // problem than every webhook 500ing and Stream exhausting its retries.
+    try {
+      const key = `stream-webhook:seen:${webhookId}`;
+      const seen = await env.TOKENS.get(key);
+      if (seen) return { duplicate: true, via: "kv" };
+      await env.TOKENS.put(key, "1", { expirationTtl: 24 * 60 * 60 });
+      return { duplicate: false, via: "kv" };
+    } catch {
+      return { duplicate: false, via: "none" };
+    }
+  }
+}
+
 /** POST /webhooks/stream-video — signed, retry-safe Stream Video events. */
 export async function streamVideoWebhook(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   if (env.ENVIRONMENT_NAME !== "staging" && env.ENVIRONMENT_NAME !== "prod") {
@@ -870,25 +1218,60 @@ export async function streamVideoWebhook(req: Request, env: Env, ctx?: Execution
   }
   if (!env.STREAM_VIDEO_API_KEY || !env.STREAM_VIDEO_API_SECRET) return json({ error: "stream webhook unavailable" }, 503);
   const apiKey = req.headers.get("x-api-key") ?? "";
-  if (!fixedTimeEqual(apiKey, env.STREAM_VIDEO_API_KEY)) return json({ error: "unauthorized" }, 401);
+  if (!fixedTimeEqual(apiKey, env.STREAM_VIDEO_API_KEY)) {
+    track(env, "stream", "stream_webhook_rejected", "avatok", {
+      reason: "bad_api_key", app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+    return json({ error: "unauthorized" }, 401);
+  }
   const webhookId = (req.headers.get("x-webhook-id") ?? "").trim();
-  if (!webhookId || webhookId.length > WEBHOOK_ID_MAX) return json({ error: "missing webhook id" }, 400);
+  if (!webhookId || webhookId.length > WEBHOOK_ID_MAX) {
+    track(env, "stream", "stream_webhook_rejected", "avatok", {
+      reason: "missing_webhook_id", app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+    return json({ error: "missing webhook id" }, 400);
+  }
 
   const raw = await req.arrayBuffer();
-  if (raw.byteLength > 2_000_000) return json({ error: "webhook payload too large" }, 413);
+  if (raw.byteLength > 2_000_000) {
+    track(env, "stream", "stream_webhook_rejected", "avatok", {
+      reason: "payload_too_large", webhook_id: webhookId, app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+    return json({ error: "webhook payload too large" }, 413);
+  }
   const verified = await verifyWebhook(raw, req.headers.get("x-signature") ?? "", env.STREAM_VIDEO_API_SECRET);
-  if (!verified.ok) return json({ error: "bad signature" }, 401);
+  if (!verified.ok) {
+    // Signature verification already existed here (`verifyWebhook` /
+    // `fixedTimeEqual` HMAC-SHA256 over the raw, gzip-decompressed body) —
+    // job 4 only added the telemetry around the existing check.
+    track(env, "stream", "stream_webhook_rejected", "avatok", {
+      reason: "bad_signature", webhook_id: webhookId, app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+    return json({ error: "bad signature" }, 401);
+  }
   let event: StreamCallEvent;
-  try { event = JSON.parse(new TextDecoder().decode(verified.body)) as StreamCallEvent; } catch { return json({ error: "bad json" }, 400); }
+  try { event = JSON.parse(new TextDecoder().decode(verified.body)) as StreamCallEvent; } catch {
+    track(env, "stream", "stream_webhook_rejected", "avatok", {
+      reason: "bad_json", webhook_id: webhookId, app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+    return json({ error: "bad json" }, 400);
+  }
 
-  // Stream guarantees X-Webhook-Id is stable across retries. D1's primary key
-  // makes concurrent retries a no-op instead of double-emitting outcomes.
-  const inserted = await env.DB_META.prepare(
-    "INSERT OR IGNORE INTO stream_video_webhooks (webhook_id, event_type, received_at) VALUES (?1, ?2, ?3)",
-  ).bind(webhookId, String(event.type ?? "unknown").slice(0, 128), Date.now()).run();
-  if ((inserted.meta?.changes ?? 0) === 0) return json({ ok: true, duplicate: true });
+  const eventType = String(event.type ?? "unknown");
+  const dedup = await recordWebhookIdempotency(env, webhookId, eventType);
+  if (dedup.duplicate) {
+    track(env, "stream", "stream_webhook_duplicate", "avatok", {
+      webhook_id: webhookId, event_type: eventType, dedup_via: dedup.via,
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    });
+    return json({ ok: true, duplicate: true });
+  }
+  track(env, "stream", "stream_webhook_received", "avatok", {
+    webhook_id: webhookId, event_type: eventType, dedup_via: dedup.via,
+    app_name: "avatok", service_name: "avatok-api", worker: true,
+  });
 
-  const mapped = telemetryForEvent(String(event.type ?? ""));
+  const mapped = telemetryForEvent(eventType);
   if (mapped) {
     const callId = eventCallId(event) || webhookId;
     const traceId = eventTraceId(event, callId);
@@ -896,8 +1279,16 @@ export async function streamVideoWebhook(req: Request, env: Env, ctx?: Execution
       call_trace_id: traceId, call_id: callId, account_id: eventActor(event) ?? "stream",
       rtc_provider: PROVIDER, authority_phase: mapped.endedReason ? "releasing" : undefined,
       ended_reason: mapped.endedReason,
-      extra: { stream_event: String(event.type ?? "unknown"), webhook_attempt: req.headers.get("x-webhook-attempt") ?? "1" },
+      extra: { stream_event: eventType, webhook_attempt: req.headers.get("x-webhook-attempt") ?? "1" },
     }, ctx);
+    // [STREAM-ENFORCE-2 2026-08-21] Feeds the glare check (job 3): once a call
+    // is known ended, it stops matching `readLiveCounterCall`. Best-effort —
+    // see `markProviderDecisionEnded`; requires the `ended_at` column from
+    // worker/migrations/2026-08-21-stream-call-place-hardening.sql.
+    if (mapped.endedReason) {
+      const endedPromise = markProviderDecisionEnded(env, callId);
+      if (ctx) ctx.waitUntil(endedPromise); else await endedPromise;
+    }
   }
-  return json({ ok: true, event_type: event.type ?? "unknown" });
+  return json({ ok: true, event_type: eventType });
 }
