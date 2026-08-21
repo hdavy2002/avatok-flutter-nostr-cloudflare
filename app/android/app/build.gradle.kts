@@ -105,9 +105,21 @@ val streamCallSdk = System.getenv("STREAM_CALL_SDK") == "1"
 // this exclusion is where to look.
 configurations.all {
     exclude(group = "com.twilio", module = "audioswitch")
-    if (streamCallSdk) {
-        exclude(group = "io.github.webrtc-sdk", module = "android")
-    }
+    // [STREAM-LANE-1 2026-08-21] UNCONDITIONAL now (was `if (streamCallSdk)`).
+    // stream_video_flutter → stream_webrtc_flutter ships
+    // io.getstream:stream-video-webrtc-android (org.webrtc classes +
+    // libjingle_peerconnection_so.so) in EVERY build, and realtimekit_core's
+    // com.cloudflare.realtimekit:mobile-core-bridge transitively pulls
+    // io.github.webrtc-sdk:android 125.x with the SAME class namespace and the
+    // SAME .so name — run #609 failed mergeReleaseNativeLibs on exactly this.
+    // One engine only: RTK's org.webrtc calls bind to Stream's 145.9.0 classes
+    // at runtime (consult/conference are scheduled to migrate to Stream; if RTK
+    // throws NoSuchMethodError into org.webrtc.*, this exclusion is where to look).
+    exclude(group = "io.github.webrtc-sdk", module = "android")
+    // The OLD pilot's binary (stream-webrtc-android 1.3.8) also collides with
+    // stream-video-webrtc-android 145.9.0 (run #607) — keep it out even if a
+    // stale pilot build ever re-enables STREAM_CALL_SDK.
+    exclude(group = "io.getstream", module = "stream-webrtc-android")
 }
 
 dependencies {
@@ -122,11 +134,13 @@ dependencies {
     // Gradle keeps private to that module — CallTranslationAudioPlugin.java (in :app)
     // can't see org.webrtc.audio.JavaAudioDeviceModule without it declared here too.
     // Version MUST match flutter_webrtc's android/build.gradle exactly.
-    if (streamCallSdk) {
-        implementation("io.getstream:stream-webrtc-android:1.3.8")
-    } else {
-        implementation("io.github.webrtc-sdk:android:125.6422.03")
-    }
+    // [STREAM-LANE-1 2026-08-21] Was a streamCallSdk pick between the old
+    // pilot's 1.3.8 and webrtc-sdk 125.x — both are now excluded above. :app's
+    // own org.webrtc references (CallTranslationAudioPlugin's
+    // JavaAudioDeviceModule tap, CallRecorderPlugin) compile against the ONE
+    // engine the whole APK ships: the same artifact stream_webrtc_flutter uses.
+    // Version MUST match stream_webrtc_flutter's android/build.gradle.
+    implementation("io.getstream:stream-video-webrtc-android:145.9.0")
 
     // AvaVision on-device live-vision engine (CameraX + MediaPipe Tasks-Vision +
     // TFLite) REMOVED 2026-06-22 to cut ~30–50 MB of native libs from the launch
