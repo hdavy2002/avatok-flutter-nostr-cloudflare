@@ -1,5 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <!-- [STREAM-LANE-1 2026-08-21] stream_video_push_notification declares
+         ${applicationId}.PERMISSION_CALL as protectionLevel=signature while
+         flutter_callkit_incoming declares the same name as normal — manifest
+         merge fails (run #610). Declare it ourselves at the stricter signature
+         level and force-replace; both consumers live inside this one signed
+         app, so signature-level is satisfied for both. -->
+    <permission
+        android:name="${applicationId}.PERMISSION_CALL"
+        android:protectionLevel="signature"
+        tools:replace="android:protectionLevel" />
     <uses-permission android:name="com.sec.android.provider.badge.permission.READ" />
     <uses-permission android:name="com.sec.android.provider.badge.permission.WRITE" />
     <uses-permission android:name="com.htc.launcher.permission.READ_SETTINGS" />
