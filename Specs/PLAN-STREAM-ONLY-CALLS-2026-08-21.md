@@ -1,6 +1,9 @@
 # Master fix plan — Stream-only calling
 
-**Date:** 2026-08-21 · **Environment:** production · **Status:** proposed, nothing executed
+**Date:** 2026-08-21 · **Environment:** production
+**Status:** Phase 1 code COMMITTED (6 commits, unpushed, no build). Phase 0 flags APPLIED
+in prod (see §7). Worker NOT deployed. **NOT releasable — see §8 blockers.**
+*(This line said "proposed, nothing executed" while six commits already existed; corrected.)*
 **Incident:** build 10612 fails 100% of calls (`getUserMedia(): unknown factoryId null`).
 Full diagnosis: `Specs/AUDIT-2026-08-21-build-10612-getusermedia-factoryid.md`.
 
@@ -201,3 +204,86 @@ The Stream lane has **never placed a single call in production** —
 entirely unexercised path the only path. That is the right destination, but it means
 Phase 2 is not a formality: treat the first Stream call as unproven until §4 reads
 back clean on two devices.
+
+---
+
+## 7. Production flags applied 2026-08-21 (verified, 3 cache-busted probes)
+
+| flag | before | after | why |
+|---|---|---|---|
+| `conferenceEnabled` | true | **false** | group calls are Cloudflare A/V — owner: CF carries no A/V |
+| `cloudflareConferenceEnabled` | true | **false** | belt and braces on the same path |
+| `streamCallPilotEnabled` | true | **false** | both Stream lanes were on at once, which `remote_config.dart:167-169` forbids |
+| `addToCallEnabled` | true | **false** | escalates a 1:1 into a Cloudflare conference |
+| `streamCallsEnabled` | true | true | unchanged — the Stream lane stays the call path |
+| `latestAppBuild` | 10612 | 10612 | owner decision, unchanged |
+| `callMinBuild` | absent | absent | **not armed**, and must not be until the client sends `x-app-build` |
+
+Group **messaging** is untouched and works normally.
+
+**Operational note:** four `flags.sh set` calls chained with `&&` produced a
+read-modify-write race — the last two writes won and the first two silently
+reverted, while wrangler reported success for all four. **Space flag writes out and
+re-read KV after each one.** A "successful" write is not a landed write.
+
+## 8. Blockers found after the Phase 1 commits (third-party audit, verified)
+
+These are real and mean **do not build or release yet**:
+
+1. **P0 — the Stream lane bypasses AvaTOK's server authority.**
+   `stream_call_service.dart:318` creates the call directly against Stream. That
+   skips blocked-user checks, privacy settings, reachability, liveness/identity
+   gates, rate limits and receptionist routing — everything `POST /api/call`
+   enforced before a phone ever rang. Stream must carry the MEDIA; the AvaTOK
+   Worker must still AUTHORISE and create the call.
+2. **P0 — Stream calls are not metered or billed.** The 200 monthly minute
+   allowance and overage enforcement do not run for Stream calls;
+   `stream_video_calls.ts:565` records start/end but no participant join/leave.
+   Unmetered calls now, or a wrong bill later.
+3. **P1 — the incoming-call screen loses features.** `stream_incoming_screen.dart:84`
+   offers only Accept/Decline. Message, receptionist, voicemail, report spam, block
+   caller and first-answer-wins across devices are all absent versus
+   `incoming_business_call_screen.dart:538`. Conflicts with the frozen
+   call-outcome spec.
+4. **P1 — double-call protection is bypassed.** The Stream gate in
+   `chat_thread/calls.dart:28` runs BEFORE the `_dialing` debounce and the glare
+   guard, so rapid taps can create several Stream calls.
+5. **P1 — hang-up may leave the other phone ringing.** `stream_call_service.dart:519`
+   uses `leave()`; nobody has verified that cancels a RINGING 1:1 for both parties
+   rather than just removing the caller. Ghost-ring risk.
+6. **P1 — the update gate has no input.** The Worker reads `x-app-build`; the app
+   never sends it (`api.ts:444`). Ships inert at `callMinBuild=0`. **Do not arm.**
+7. **P2 — Stream credentials are not deleted on sign-out / account removal**
+   (`stream_lane.dart:398`), and last up to 30 days. On a shared phone a removed
+   account could still receive calls. Per-account scoping concern.
+8. **P2 — drop `peer_email` from telemetry.** It duplicates personal data
+   needlessly; `call_id` + `trace_id` already join the two sides.
+9. **No automated test coverage** for place/answer, permission denial, double tap,
+   caller cancel, locked/backgrounded/killed answer, multi-account, Bluetooth
+   routing, video, block/voicemail/receptionist, or allowance enforcement. The
+   two-phone test is necessary but not a substitute.
+
+### On the audit's process criticism
+- **Fair:** the status line above said "nothing executed" after six commits existed.
+  Corrected.
+- **Not correct:** running `npx tsc --noEmit` in `worker/` is not a rule violation —
+  CLAUDE.md *mandates* it before every worker deploy ("A GREEN DEPLOY IS NOT A GREEN
+  TYPECHECK"). The no-local-build rule concerns the Flutter/Android toolchain, which
+  was not used.
+
+## 9. Why the Worker was NOT deployed
+
+Two independent reasons:
+
+1. **Another agent's uncommitted work is in `worker/`** — `do/call_room.ts`,
+   `do/group_call_room.ts`, `do/wallet.ts`, `routes/wallet.ts`, plus new
+   `lib/call_usage_billing.ts`, `lib/human_call_usage_math.ts`. `cf.sh worker deploy`
+   builds from the WORKING TREE, so deploying now would push unreviewed, in-progress
+   **wallet** code to production. CLAUDE.md's "COMMIT worker source BEFORE deploy"
+   rule exists for exactly this.
+2. **It would achieve nothing yet.** The only committed Worker changes are the
+   `callMinBuild` declaration and the 426 refusal, and the refusal is inert while
+   `callMinBuild=0`. Nothing in the deploy affects 1:1 call testing.
+
+Deploy once the billing work is committed or reverted by its owner, and when the
+gate is actually going to be armed.
