@@ -80,12 +80,34 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
   bool _loading = false;
   String? _error;
 
+  /// [UI-CALLS-2026] Has this recording been played yet? Read once from the
+  /// per-account [InboxHeardStore] (the SAME store the thread list counts
+  /// unheard cards from, so the card and the row can never disagree), and
+  /// flipped locally the moment play succeeds. Defaults to `true` — i.e. no
+  /// "New" flag — so a failed read never invents an unread badge.
+  bool _heard = true;
+
   InboxCard get _c => widget.card;
 
   @override
   void initState() {
     super.initState();
     _loadMe();
+    _loadHeard();
+  }
+
+  Future<void> _loadHeard() async {
+    try {
+      final heard = await InboxHeardStore.I.isHeard(_c.stableId);
+      if (!mounted) return;
+      setState(() => _heard = heard);
+    } catch (e, st) {
+      // Never silent: a heard-state read that fails means the owner can be
+      // told a recording is new forever, or never.
+      unawaited(Analytics.captureException(e, st,
+          screen: 'inbox_callrec_card', handled: true,
+          extra: {'stage': 'heard_read'}));
+    }
   }
 
   Future<void> _loadMe() async {
@@ -213,6 +235,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
       // NOTHING ever marked a recording heard. Mark it at exactly the moment a
       // voicemail does — on play, from whichever surface played it first.
       unawaited(markCallRecordingHeard(_c));
+      if (mounted && !_heard) setState(() => _heard = true);
     } catch (e, st) {
       unawaited(Analytics.captureException(e, st,
           screen: 'inbox_callrec_card', handled: true, extra: {'stage': 'play'}));
@@ -266,7 +289,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
             icon: playing
                 ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.bold)
                 : PhosphorIcons.playCircle(PhosphorIconsStyle.bold),
-            color: AD.bubbleOutPlay,
+            color: AD.primaryBadge,
             label: playing ? 'Pause' : 'Play',
             onTap: () {
               Navigator.pop(sheetCtx);
@@ -337,12 +360,21 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          // The pale-mint bubble family, which is where this app already puts
-          // "your own side of a conversation" — a recording IS the user's own
-          // artefact of the call, so it belongs to the same visual family.
-          color: AD.bubbleOutBg,
+          // [UI-CALLS-2026] Was `AD.bubbleOutBg` with `bubbleOutInk` text. That
+          // token pair was pale-mint-on-dark-green when this card was written,
+          // but the Rajasthani re-theme re-pointed it at indigo #2E4A8C with
+          // CREAM ink — so the card had silently become an indigo slab, which
+          // is the surface the owner asked to be removed from Calls/Inbox.
+          //
+          // Now raised cream paper with a marigold wash edge and a rani-pink
+          // accent: an Indian/Holi surface where BLACK text and ink icons stay
+          // legible. Unheard recordings warm the surface further (sand) and
+          // wear a rani "New" dot, so new and heard are told apart by the card
+          // itself and not only by the row above it.
+          color: _heard ? AD.card : AD.cardHover,
           borderRadius: BorderRadius.circular(AD.rListCard),
-          border: Border.all(color: AD.bubbleOutPlay, width: 1.5),
+          border: Border.all(
+              color: _heard ? AD.haldi : AD.primaryBadge, width: 1.5),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,15 +397,33 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                     PhosphorIcon(
                       PhosphorIcons.microphone(PhosphorIconsStyle.fill),
                       size: 15,
-                      color: AD.bubbleOutPlay,
+                      color: AD.primaryBadge,
                     ),
                     const SizedBox(width: Msg.s1),
                     Expanded(
                       child: Text(_title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: ADText.threadName(c: AD.bubbleOutInk)),
+                          style: ADText.threadName(c: AD.textPrimary)),
                     ),
+                    // [UI-CALLS-2026] The unplayed marker. Until now the card
+                    // carried NO indication that a recording had never been
+                    // listened to — only the thread row above it did — so a
+                    // thread with three recordings gave no clue which one was
+                    // new. Dot + word, because a dot alone is a guess.
+                    if (!_heard) ...[
+                      const SizedBox(width: Msg.s2),
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                            color: AD.unreadAccent, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 5),
+                      Text('New',
+                          style: ADText.statCaption(c: AD.primaryBadge)
+                              .copyWith(fontWeight: FontWeight.w700)),
+                    ],
                   ]),
                   const SizedBox(height: 2),
                   // The green consent line. Deliberately explicit about who is
@@ -382,14 +432,14 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                   Text('Call between $_peerName and you',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ADText.statCaption(c: AD.bubbleOutPlay)
+                      style: ADText.statCaption(c: AD.online)
                           .copyWith(fontWeight: FontWeight.w700)),
                   if (_c.recDescription.trim().isNotEmpty) ...[
                     const SizedBox(height: Msg.s1),
                     Text(_c.recDescription.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: ADText.preview(c: AD.bubbleOutMeta)),
+                        style: ADText.preview(c: AD.textSecondary)),
                   ],
                   const SizedBox(height: Msg.s2),
                   // ---- inline player (was a decorative glyph until
@@ -424,7 +474,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                                     height: 36,
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2.5,
-                                        color: AD.bubbleOutPlay),
+                                        color: AD.primaryBadge),
                                   )
                                 // [CALLREC-PLAYER-UI-1] 26 → 40: the owner
                                 // reported the play icon was too small to hit.
@@ -435,7 +485,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                                         : PhosphorIcons.playCircle(
                                             PhosphorIconsStyle.fill),
                                     size: 40,
-                                    color: AD.bubbleOutPlay,
+                                    color: AD.primaryBadge,
                                   ),
                           ),
                         ),
@@ -448,7 +498,7 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                                     : 'Play recording · $label'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: ADText.rowName(c: AD.bubbleOutPlay),
+                            style: ADText.rowName(c: AD.primaryBadge),
                           ),
                         ),
                       ]);
@@ -474,10 +524,23 @@ class _CallRecordingCardState extends State<_CallRecordingCard> {
                     Text(_error!, style: ADText.statCaption(c: AD.danger)),
                   ],
                   const SizedBox(height: Msg.s1),
-                  Text(meta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ADText.statCaption(c: AD.bubbleOutMeta)),
+                  // [UI-CALLS-2026] Date/time/size with a leading glyph so the
+                  // metadata line reads as metadata at a glance instead of
+                  // dissolving into the description above it.
+                  Row(children: [
+                    PhosphorIcon(
+                      PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+                      size: 13,
+                      color: AD.textSecondary,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ADText.statCaption(c: AD.textSecondary)),
+                    ),
+                  ]),
                 ],
               ),
             ),
@@ -505,8 +568,8 @@ class CallRecSeekBar extends StatefulWidget {
     required this.trackId,
     required this.fallbackDurationS,
     required this.surface,
-    this.activeColor = AD.bubbleOutPlay,
-    this.inactiveColor = AD.bubbleOutMeta,
+    this.activeColor = AD.primaryBadge,
+    this.inactiveColor = AD.textFaint,
   });
 
   final String trackId;
@@ -670,9 +733,11 @@ class CallRecAvatarPair extends StatelessWidget {
   Widget _ringed(Widget child) => Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          // The pale bubble fill, not a bare white ring — the card underneath is
-          // mint, and a white halo would read as a rendering artefact on it.
-          border: Border.all(color: AD.bubbleOutBg, width: 2),
+          // [UI-CALLS-2026] The card underneath is cream paper now, not the
+          // indigo `bubbleOutBg` this ring used to borrow — a cream ring on a
+          // cream card is invisible, so the separator is the marigold edge the
+          // card itself wears.
+          border: Border.all(color: AD.haldi, width: 2),
         ),
         child: child,
       );

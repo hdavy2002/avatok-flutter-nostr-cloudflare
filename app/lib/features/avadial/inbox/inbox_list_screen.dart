@@ -7,6 +7,7 @@ import '../../../core/analytics.dart';
 import '../../../core/campaigns_api.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
+import '../../../core/ui/rajasthani_motifs.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../shell/v2/shell_chrome.dart';
 import '../../../sync/sync_hub.dart';
@@ -460,8 +461,12 @@ class _InboxListScreenState extends State<InboxListScreen> {
   @override
   Widget build(BuildContext context) {
     final content = Column(children: [
+      // [UI-CALLS-2026] Top inset is 0 here ON PURPOSE: `AdSearchDock` applies
+      // `AD.searchDockTopGap` itself, which is the shared "below the tip of the
+      // header wave" distance. A top pad here as well is the double-spacing the
+      // `topGap` parameter exists to prevent, and it showed on small phones.
       Padding(
-        padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s1),
+        padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s1),
         child: AdSearchDock(
           controller: _searchCtrl,
           // [CALLREC-UX-1] "titles" is now a real promise — `_filtered` matches
@@ -475,17 +480,19 @@ class _InboxListScreenState extends State<InboxListScreen> {
       Expanded(child: _list(context)),
     ]);
     if (!widget.embedded) {
+      // [UI-CALLS-2026] Shared AvaTOK chrome instead of the isolated cream bar
+      // this route used to draw. `ZineAppBar` paints the indigo band (and
+      // declares the LIGHT status-bar overlay, so the clock/wifi/battery icons
+      // are white over it); `DoubleWaveSeam` is the same indigo+gold wave the
+      // messenger header and footer use, mounted as a `SeamOverlay` so the list
+      // scrolls THROUGH it rather than behind a cream strip.
       return Scaffold(
-        backgroundColor: AvaDialTheme.bg,
-        appBar: AppBar(
-          backgroundColor: AvaDialTheme.surface,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          foregroundColor: AvaDialTheme.text,
-          title: Text('Inbox', style: ADText.threadName(c: AvaDialTheme.text)),
-          shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
+        backgroundColor: AD.bg,
+        appBar: const ZineAppBar(title: 'Inbox'),
+        body: SeamOverlay(
+          seam: const DoubleWaveSeam(bandColor: AD.bandJodhpur),
+          child: SafeArea(top: false, child: content),
         ),
-        body: SafeArea(child: content),
       );
     }
     return content;
@@ -643,34 +650,55 @@ class _InboxListScreenState extends State<InboxListScreen> {
   // Every child (title/preview/timestamp) is given an explicit dark-on-light
   // colour below instead of the dark-theme AvaDialTheme.text/textSoft/textMute
   // (near-white, which would vanish on these light cards).
-  static const _unreadCardBg = AD.bubbleOutBg; // 0xFFCDEBD3 — pale mint-green
-  static const _unreadCardBorder = AD.bubbleOutPlay; // 0xFF3E8E5A — deeper green edge
-  static const _unreadTitleInk = AD.bubbleOutInk; // 0xFF1C3324 — dark ink on green
-  static const _unreadSecondaryInk = Color(0xFF2A4436); // dark forest green
-  static const _readCardBg = Color(0xFFE7E8EB); // light grey (read cards)
-  static const _readCardBorder = Color(0xFFCED0D6); // slightly darker grey edge
-  static const _readTitleInk = Color(0xFF000000); // BLACK font — owner spec
-  static const _readSecondaryInk = Color(0xFF3B3D45); // dark grey preview/timestamp
-  static const _unreadDot = AD.unreadAccent; // 0xFFF2A65A — the LARGE orange dot
-  static const _readTick = AD.iconSearch; // 0xFF6FA8E8 — the 2 blue read ticks
+  //
+  // [UI-CALLS-2026] The comments above (and the hex notes that used to trail
+  // each line) described the PRE-RAJASTHANI palette. `AD.bubbleOutBg` is no
+  // longer pale mint — it was re-pointed at the indigo `#2E4A8C`, so every
+  // unread row had quietly become a dark indigo slab carrying cream text, which
+  // is exactly the "isolated indigo bar" the owner asked to be rid of. The grey
+  // pair below were raw literals from the same era and belonged to no palette
+  // at all.
+  //
+  // Both states are now genuinely light Indian/Holi paper with BLACK ink, and
+  // they differ by SURFACE + EDGE, not by text colour:
+  //   • unread → warm sand card, marigold edge, marigold-orange dot
+  //   • read   → plain cream card, hairline edge, two ink ticks
+  static const _unreadCardBg = AD.cardHover; // warm sand paper
+  static const _unreadCardBorder = AD.haldi; // marigold edge
+  static const _unreadTitleInk = AD.textPrimary; // black ink
+  static const _unreadSecondaryInk = AD.textSecondary; // ink 60%
+  static const _readCardBg = AD.card; // cream paper
+  static const _readCardBorder = AD.borderDivider; // ink hairline
+  static const _readTitleInk = AD.textPrimary; // BLACK font — owner spec
+  static const _readSecondaryInk = AD.textSecondary;
+  static const _unreadDot = AD.unreadAccent; // the LARGE unread dot
+  static const _readTick = AD.iconNeutral; // the 2 read ticks (ink on paper)
 
   // [AVA-CAMP-Q-INBOX] Campaign row tint — the SAME pale-lavender family as
   // `campaign_inbox_cards.dart`'s card shell (AD.bubbleInBg/bubbleInInk/
   // bubbleInMeta + AD.iconVideo accent), so a campaign thread reads as the
   // same "kind of thing" in the list as it does once opened.
-  static const _campaignCardBg = AD.bubbleInBg; // 0xFFE6E3F6
-  static const _campaignCardBorder = Color(0xFFC7BEEA);
-  static const _campaignTitleInk = AD.bubbleInInk; // 0xFF2A2640
-  static const _campaignSecondaryInk = AD.bubbleInMeta; // 0xFF7B76A0
+  static const _campaignCardBg = AD.bubbleInBg;
+  // [UI-CALLS-2026] Was a raw `0xFFC7BEEA`; the terracotta token is the
+  // palette's own "this row is a different kind of thing" edge.
+  static const _campaignCardBorder = AD.terracotta;
+  static const _campaignTitleInk = AD.bubbleInInk;
+  static const _campaignSecondaryInk = AD.bubbleInMeta;
 
   // [CALLREC-UI-1] A call-recording thread is neither a missed call nor a
   // campaign. It keeps the same light card body (so the read/unread language is
   // unchanged) but wears a GREEN edge and a green microphone badge — the same
   // `bubbleOut` green family the card itself uses in the thread. No new colour
   // is invented for it, and it is unmistakable next to a missed-call row.
-  static const _callRecCardBorder = AD.bubbleOutPlay; // 0xFF3E8E5A
-  static const _callRecTitleInk = AD.bubbleOutInk; // 0xFF1C3324
-  static const _callRecSecondaryInk = AD.bubbleOutMeta; // 0xFF567E63
+  //
+  // [UI-CALLS-2026] Same re-point as the read/unread pair above, and here it
+  // was not merely ugly: `bubbleOutInk`/`bubbleOutMeta` are CREAM since the
+  // Rajasthani re-theme, so a recording row was painting cream title text onto
+  // a light card — the title was very nearly invisible. Rani pink is the edge
+  // and badge (unmistakable next to a missed call), black ink is the text.
+  static const _callRecCardBorder = AD.primaryBadge; // rani edge
+  static const _callRecTitleInk = AD.textPrimary;
+  static const _callRecSecondaryInk = AD.textSecondary;
 
   Widget _row(InboxThread t) {
     final label = _labelFor(t);

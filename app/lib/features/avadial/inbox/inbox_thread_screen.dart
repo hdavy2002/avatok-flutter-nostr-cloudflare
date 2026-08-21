@@ -21,6 +21,8 @@ import '../../../core/config.dart';
 import '../../../core/voice_brain_ingest.dart';
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
+import '../../../core/ui/rajasthani_motifs.dart';
+import '../../../core/ui/zine_widgets.dart';
 import '../../../sync/sync_hub.dart' show HubEvent, SyncHub;
 // [AVAINBOX-3] `show` is REQUIRED, not tidiness: contacts.dart declares its own
 // `Directory` (the AvaTOK user directory), which collides with dart:io's
@@ -479,25 +481,22 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
   @override
   Widget build(BuildContext context) {
     final phone = _phone;
+    // [UI-CALLS-2026] Shared AvaTOK chrome — the indigo `ZineAppBar` band (which
+    // declares the LIGHT status-bar overlay, so the clock/wifi/battery icons are
+    // white over it) plus the shared indigo+gold `DoubleWaveSeam`, replacing the
+    // isolated cream `AppBar` this route drew. The caller's number moves into
+    // the band's kicker slot; `ZineAppBar` owns its own back button.
     return Scaffold(
-      backgroundColor: AvaDialTheme.bg,
-      appBar: AppBar(
-        backgroundColor: AvaDialTheme.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: AvaDialTheme.text,
-        leading: AdBackButton(),
-        shape: const Border(bottom: BorderSide(color: AvaDialTheme.border, width: 1)),
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_title, style: ADText.threadName(c: AvaDialTheme.text)),
-          if (phone != null && _title != phone)
-            Text(phone, style: ADText.statCaption(c: AvaDialTheme.textMute)),
-        ]),
+      backgroundColor: AD.bg,
+      appBar: ZineAppBar(
+        title: _title,
+        tag: (phone != null && _title != phone) ? phone : null,
         actions: [
           if (phone != null)
             PopupMenuButton<String>(
-              icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular), color: AvaDialTheme.text),
-              color: AvaDialTheme.surface,
+              icon: Icon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.regular),
+                  color: AD.onBand(AD.headerFooter)),
+              color: AD.menu,
               onSelected: (v) {
                 switch (v) {
                   case 'add': _addToContacts(); break;
@@ -509,21 +508,24 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
                 if (!_isSavedContact)
                   PopupMenuItem(
                     value: 'add',
-                    child: Text('Add to contacts', style: ADText.preview(c: AvaDialTheme.text)),
+                    child: Text('Add to contacts', style: ADText.preview(c: AD.textPrimary)),
                   ),
                 PopupMenuItem(
                   value: 'spam',
-                  child: Text('Block & report spam', style: ADText.preview(c: AvaDialTheme.text)),
+                  child: Text('Block & report spam', style: ADText.preview(c: AD.textPrimary)),
                 ),
                 PopupMenuItem(
                   value: 'block',
-                  child: Text('Block', style: ADText.preview(c: AvaDialTheme.text)),
+                  child: Text('Block', style: ADText.preview(c: AD.textPrimary)),
                 ),
               ],
             ),
         ],
       ),
-      body: SafeArea(
+      body: SeamOverlay(
+        seam: const DoubleWaveSeam(bandColor: AD.bandJodhpur),
+        child: SafeArea(
+        top: false,
         child: FutureBuilder<List<InboxCard>>(
           future: _future,
           builder: (context, snap) {
@@ -629,6 +631,7 @@ class _InboxThreadScreenState extends State<InboxThreadScreen> {
               },
             );
           },
+        ),
         ),
       ),
     );
@@ -1239,19 +1242,31 @@ class _VoicemailCardState extends State<_VoicemailCard> {
   // light bubble" token — so it reads on both surfaces. The old Opacity(0.5)
   // dimming is gone: on a light bubble it just muddied the colour; the grey vs
   // green surface already tells the two states apart at a glance.
-  static const _newBubbleBg = AD.bubbleOutBg; // 0xFFCDEBD3 — pale green (unheard)
-  static const _newBubbleBorder = AD.bubbleOutPlay; // 0xFF3E8E5A — deeper green edge
-  static const _readBubbleBg = Color(0xFFE7E8EB); // very light grey (heard)
-  static const _readBubbleBorder = Color(0xFFCED0D6); // slightly darker grey edge
-  static const _heardTick = AD.bubbleOutPlay; // 0xFF3E8E5A — the 2 heard ticks
-  static const _unheardTick = AD.iconSearch; // 0xFF6FA8E8 — the 1 "not heard" blue tick
+  //
+  // [UI-CALLS-2026] The hex notes above are from the pre-Rajasthani palette.
+  // `AD.bubbleOutBg` is indigo #2E4A8C now and `bubbleOutInk` is CREAM, so an
+  // unheard voicemail bubble had become a dark indigo slab in a light thread —
+  // the same "indigo surface behind black text" the owner reported. The greys
+  // were raw literals from that era and belong to no palette.
+  //
+  // Both states stay LIGHT with BLACK ink and differ by surface + edge:
+  //   • unheard → warm sand, marigold edge, rani "Not heard yet"
+  //   • heard   → cream paper, hairline edge, green "Heard"
+  static const _newBubbleBg = AD.cardHover; // warm sand (unheard)
+  static const _newBubbleBorder = AD.haldi; // marigold edge
+  static const _readBubbleBg = AD.card; // cream paper (heard)
+  static const _readBubbleBorder = AD.borderDivider; // ink hairline
+  static const _heardTick = AD.online; // the 2 heard ticks
+  static const _unheardTick = AD.primaryBadge; // the 1 "not heard" tick
 
   @override
   Widget build(BuildContext context) {
     final unheard = _c.hasRecording && !_heard;
     // Dark-on-light ink pair for whichever surface is showing.
-    final ink = unheard ? AD.bubbleOutInk : const Color(0xFF14161A);
-    final subInk = unheard ? const Color(0xFF2A4436) : const Color(0xFF3B3D45);
+    // [UI-CALLS-2026] One ink pair for both states — both surfaces are light
+    // paper now, so the old cream-on-indigo / near-black-on-grey split is gone.
+    const ink = AD.textPrimary;
+    const subInk = AD.textSecondary;
     return GestureDetector(
       onLongPress: () => _showCardMenu(context),
       child: Container(
@@ -1318,19 +1333,19 @@ class _VoicemailCardState extends State<_VoicemailCard> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       _loading
                           ? const SizedBox(width: 22, height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.bubbleOutPlay))
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AD.primaryBadge))
                           : Icon(
                               playing
                                   ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
                                   : PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
-                              size: 30, color: AD.bubbleOutPlay,
+                              size: 30, color: AD.primaryBadge,
                             ),
                       const SizedBox(width: 8),
                       Text(
                         _durationLabel(dur).isNotEmpty
                             ? 'Voicemail · ${_durationLabel(dur)}'
                             : 'Play voicemail',
-                        style: ADText.rowName(c: AD.bubbleOutPlay),
+                        style: ADText.rowName(c: AD.primaryBadge),
                       ),
                     ]),
                   );

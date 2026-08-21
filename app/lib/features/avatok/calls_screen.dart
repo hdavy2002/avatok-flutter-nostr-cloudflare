@@ -164,8 +164,16 @@ class _CallsScreenState extends State<CallsScreen> {
         // see yet.
         if (_loaded && _calls.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
-            child: Row(children: [
+            // [UI-CALLS-2026] Top inset 0: `AdSearchDock` applies the shared
+            // `AD.searchDockTopGap` (the "below the tip of the header wave"
+            // distance) itself, so a 12px pad here as well was double-spacing
+            // this dock relative to the Chats/Groups tabs beside it. The trash
+            // button is centred against the dock, so it follows automatically.
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+            // The dock now carries the wave gap as its own top margin, so it is
+            // taller than the 44px trash button; bottom-align them or the
+            // button floats half a gap below the field it sits next to.
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(
                 child: AdSearchDock(
                   controller: _searchCtl,
