@@ -1,0 +1,179 @@
+<title>AvaTOK Calling on Stream</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131826; --panel2:#1a2133; --line:#2a3350;
+    --ink:#e8ecf7; --mut:#8b94ad; --accent:#5b8cff; --stream:#3fa9f5;
+    --ava:#b07cff; --carrier:#ffb454; --ok:#3ecf8e; --warn:#ff6b6b;
+    --chip:#222b44;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,'Segoe UI',Inter,Roboto,sans-serif;margin:0;padding:0}
+  .wrap{max-width:960px;margin:0 auto;padding:48px 24px 80px}
+  h1{font-size:2rem;margin:0 0 4px}
+  h2{font-size:1.3rem;margin:56px 0 6px;display:flex;align-items:center;gap:10px}
+  .sub{color:var(--mut);margin:0 0 24px}
+  .lede{color:var(--mut);max-width:640px}
+  .badge{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:99px;background:var(--chip)}
+  .badge.stream{color:var(--stream)} .badge.ava{color:var(--ava)} .badge.carrier{color:var(--carrier)} .badge.ok{color:var(--ok)}
+  /* two lanes */
+  .lanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+  @media(max-width:720px){.lanes{grid-template-columns:1fr}}
+  .lane{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .lane h3{margin:0 0 2px;font-size:1.05rem}
+  .lane .who{color:var(--mut);font-size:.85rem;margin-bottom:14px}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:9px 12px;margin:6px 0;background:var(--panel2);border-radius:10px;font-size:.92rem;display:flex;justify-content:space-between;gap:10px}
+  .lane li span:last-child{color:var(--mut);font-size:.8rem;white-space:nowrap}
+  .lane.stream{border-top:3px solid var(--stream)} .lane.ava{border-top:3px solid var(--ava)}
+  /* flows */
+  .flow{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;margin-top:16px;overflow-x:auto}
+  .steps{display:flex;align-items:stretch;gap:0;min-width:640px}
+  .step{flex:1;min-width:118px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;position:relative}
+  .step .icon{font-size:1.35rem;margin-bottom:6px}
+  .step b{display:block;font-size:.88rem;line-height:1.3}
+  .step small{color:var(--mut);font-size:.76rem;line-height:1.35;display:block;margin-top:4px}
+  .arrow{align-self:center;padding:0 6px;color:var(--accent);font-size:1.1rem;flex:0 0 auto}
+  .tint-stream{border-left:3px solid var(--stream)} .tint-ava{border-left:3px solid var(--ava)}
+  .tint-carrier{border-left:3px solid var(--carrier)} .tint-ok{border-left:3px solid var(--ok)}
+  .note{margin-top:14px;color:var(--mut);font-size:.88rem;border-left:3px solid var(--line);padding-left:12px}
+  .note b{color:var(--ink)}
+  /* branch */
+  .branch{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;min-width:640px}
+  .branch .path{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .branch .path h4{margin:0 0 8px;font-size:.85rem;display:flex;gap:8px;align-items:center}
+  .branch .path p{margin:0;color:var(--mut);font-size:.85rem}
+  /* cost + phases */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+  @media(max-width:720px){.grid3{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card .big{font-size:1.5rem;font-weight:700;margin:2px 0}
+  .card p{margin:4px 0 0;color:var(--mut);font-size:.85rem}
+  .phases{margin-top:16px}
+  .phase{display:flex;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .phase:last-child{border-bottom:none}
+  .pnum{flex:0 0 44px;height:44px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent)}
+  .phase b{display:block}
+  .phase small{color:var(--mut)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px;color:var(--mut);font-size:.82rem}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:99px;margin-right:6px;vertical-align:-1px}
+</style>
+
+<div class="wrap">
+  <h1>📞 AvaTOK Calling — the new architecture</h1>
+  <p class="lede">Everything rebuilt on two clean lanes: <b style="color:var(--stream)">Stream</b> carries anything with an AvaTOK app on the line; <b style="color:var(--ava)">Ava (Gemini)</b> answers phone-line calls with no Stream in the path — until a live transfer bridges the two.</p>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--stream)"></span>Stream network</span>
+    <span><span class="dot" style="background:var(--ava)"></span>Ava container (Gemini Live)</span>
+    <span><span class="dot" style="background:var(--carrier)"></span>Phone carrier (DID)</span>
+    <span><span class="dot" style="background:var(--ok)"></span>Your Worker (rules · billing · inbox)</span>
+  </div>
+
+  <h2>🛣️ The two lanes</h2>
+  <div class="lanes">
+    <div class="lane stream">
+      <h3>Lane 1 — Stream <span class="badge stream">in-app a/v</span></h3>
+      <div class="who">Any call with an AvaTOK app on at least one end</div>
+      <ul>
+        <li>1:1 audio &amp; video calls <span>default</span></li>
+        <li>Group calls (≤25) <span>default</span></li>
+        <li>AvaLive livestreams <span>livestream</span></li>
+        <li>1:1 consult rooms <span>default</span></li>
+      </ul>
+    </div>
+    <div class="lane ava">
+      <h3>Lane 2 — Ava reception <span class="badge ava">no stream</span></h3>
+      <div class="who">Phone-line callers &amp; missed calls — invite-only, never in normal calls</div>
+      <ul>
+        <li>DID number → Ava answers <span>carrier → Gemini</span></li>
+        <li>Missed in-app call → Ava <span>record → inbox</span></li>
+        <li>Message taken → inbox <span>same as today</span></li>
+        <li>Live transfer to owner <span>bridges to Lane 1</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>📱 Flow 1 — a normal 1:1 call <span class="badge stream">stream</span></h2>
+  <div class="flow">
+    <div class="steps">
+      <div class="step tint-stream"><div class="icon">👤</div><b>User A taps call</b><small>App asks Stream to ring User B</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-stream"><div class="icon">🔔</div><b>Stream rings B</b><small>Push + full-screen ring, even if app is closed</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-stream"><div class="icon">🗣️</div><b>They talk</b><small>Your screens, Stream's engine underneath</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ok"><div class="icon">👋</div><b>Anyone hangs up</b><small>Call auto-ends when one person is left</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ok"><div class="icon">🎙️✅</div><b>Mic released</b><small>SDK owns teardown — no stuck mic, ever</small></div>
+    </div>
+    <div class="note"><b>What changed:</b> the ring, the connection and the hang-up are all Stream's responsibility now. The three bugs PostHog confirmed — mic left on, double call-end, rings not arriving — live exactly in the code being deleted.</div>
+  </div>
+
+  <h2>📭 Flow 2 — missed call → Ava takes a message <span class="badge ava">no stream after ring</span></h2>
+  <div class="flow">
+    <div class="steps">
+      <div class="step tint-stream"><div class="icon">🔕</div><b>B doesn't answer</b><small>Stream tells your Worker after N seconds</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ok"><div class="icon">📖</div><b>Worker checks rules</b><small>Is Ava on for this user? Business hours?</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ava"><div class="icon">🤖</div><b>Ava answers</b><small>Speaks &amp; listens via Gemini Live</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ava"><div class="icon">✍️</div><b>Takes the message</b><small>Recording + transcript, same as today</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ok"><div class="icon">📥</div><b>Lands in inbox</b><small>Owner reads / listens later</small></div>
+    </div>
+  </div>
+
+  <h2>☎️ Flow 3 — DID number → Ava <span class="badge carrier">zero stream cost</span></h2>
+  <div class="flow">
+    <div class="steps">
+      <div class="step tint-carrier"><div class="icon">🌐</div><b>Customer dials the DID</b><small>A real phone number you sold</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-carrier"><div class="icon">📡</div><b>Carrier forwards audio</b><small>Twilio / Telnyx streams it straight to Ava</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ava"><div class="icon">🤖</div><b>Ava converses</b><small>Gemini Live — greets, answers, takes orders</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ok"><div class="icon">📥</div><b>Inbox delivery</b><small>Recording + transcript to the owner</small></div>
+    </div>
+    <div class="note"><b>Cost per minute:</b> Gemini ~$0.01–0.02 + carrier minutes. Stream is not in this path at all.</div>
+  </div>
+
+  <h2>🔀 Flow 4 — live transfer: "let me connect you" <span class="badge ok">now in scope</span></h2>
+  <div class="flow">
+    <div class="steps">
+      <div class="step tint-ava"><div class="icon">🤖</div><b>Caller asks for a human</b><small>Ava: "One moment, connecting you…"</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-ok"><div class="icon">⚙️</div><b>Worker creates a Stream call</b><small>And rings the owner's app normally</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-stream"><div class="icon">🌉</div><b>SIP bridge</b><small>The phone-line caller is piped into that Stream call</small></div>
+      <div class="arrow">→</div>
+      <div class="step tint-stream"><div class="icon">🧑‍💼</div><b>Owner accepts</b><small>Talks live to the caller; Ava drops off</small></div>
+    </div>
+    <div class="branch">
+      <div class="path">
+        <h4>✅ Owner answers</h4>
+        <p>Caller and owner talk live. Stream bills only the bridged minutes of this one call. Ava can whisper a one-line summary to the owner before leaving.</p>
+      </div>
+      <div class="path">
+        <h4>🔕 Owner declines / no answer</h4>
+        <p>Ava seamlessly resumes: "He's not available — can I take a message?" → message flows to the inbox as usual. The caller never hears dead air.</p>
+      </div>
+    </div>
+    <div class="note"><b>This is the only place the two lanes meet</b> — and the only DID scenario that touches Stream. It ships with the receptionist phase (P3).</div>
+  </div>
+
+  <h2>💰 What a minute costs</h2>
+  <div class="grid3">
+    <div class="card"><span class="badge stream">stream</span><div class="big">~$0.0006</div><p>per minute for a 2-person audio call — under the $100/month free credit for a very long time</p></div>
+    <div class="card"><span class="badge ava">ava · gemini</span><div class="big">$0.01–0.02</div><p>per conversation minute of Ava listening + speaking (≈ ₹1–2)</p></div>
+    <div class="card"><span class="badge carrier">carrier</span><div class="big">DID + mins</div><p>number rental + per-minute forwarding — the cost you resell with margin</p></div>
+  </div>
+
+  <h2>🗓️ Build order</h2>
+  <div class="phases">
+    <div class="phase"><div class="pnum">P0</div><div><b>Foundations</b><small>Stream app + token route + webhook billing in the Worker — invisible to users</small></div></div>
+    <div class="phase"><div class="pnum">P1</div><div><b>1:1 calls on Stream</b><small>Your exact screens, new engine, behind the <code>streamCallsEnabled</code> flag — fixes the mic &amp; ring bugs</small></div></div>
+    <div class="phase"><div class="pnum">P2</div><div><b>Group calls + consult rooms</b><small>≤25 participants; consult becomes a booking-scoped Stream call; billing on webhooks</small></div></div>
+    <div class="phase"><div class="pnum">P3</div><div><b>Ava + AvaLive + live transfer</b><small>Gemini receptionist on Cloudflare Containers, DID lane, SIP transfer bridge, livestreams</small></div></div>
+    <div class="phase"><div class="pnum">P4</div><div><b>The rip</b><small>~35–40k lines of old call code deleted; flags removed</small></div></div>
+  </div>
+</div>

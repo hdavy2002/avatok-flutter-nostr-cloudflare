@@ -53,6 +53,11 @@ import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
 import '../core/presence_beat.dart'; // [CALL-PRESENCE-1] device heartbeat
 import '../core/remote_config.dart';
+// STREAM-LANE: pure discriminator used to keep this handler from ALSO
+// processing an envelope the new Stream Video SDK lane owns. See
+// streamlane/stream_push_glue.dart for why this import is safe even while
+// the SDK packages stay commented out in pubspec.yaml.
+import '../streamlane/stream_push_glue.dart';
 import '../core/update_service.dart'; // [AVA-UPDATE-PUSH-1] instant app-update prompt on release
 import '../core/voice/native_voice_audio.dart';
 import '../features/avadial/contact_overrides.dart' show ContactOverrides;
@@ -636,6 +641,12 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) =>
 
 Future<void> _handleBackgroundMessage(RemoteMessage message) async {
   final d = message.data;
+  // STREAM-LANE: only returns true when the envelope is a Stream push AND
+  // the NEW SDK lane is enabled (RemoteConfig.streamCallsEnabled) — with the
+  // flag off (today's default) this is always false and everything below,
+  // including the OLD lane's own 'stream.video' handling a few lines down,
+  // runs exactly as before.
+  if (await handleStreamPushBackground(d)) return;
   final type = (d['type'] ?? '').toString();
   // Record EVERY background push the instant it arrives (durably — the main
   // isolate ships it to PostHog on foreground). This alone makes "did the FCM
@@ -4863,6 +4874,10 @@ class PushService {
     }
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
+      // STREAM-LANE: same safe-by-construction guard as the background
+      // handler above — only short-circuits when both the envelope is a
+      // Stream push AND the new SDK lane's flag is on.
+      if (handleStreamPush(d)) return;
       AvaLog.I.log('push',
           'FCM received (foreground) type=${d['type']} callId=${d['callId'] ?? ''}');
       Analytics.capture('fcm_fg_received', {

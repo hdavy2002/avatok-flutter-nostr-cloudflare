@@ -20,6 +20,11 @@ import '../../core/ui/avatok_dark.dart';
 import 'call_screen.dart';
 import 'paid_busy_card.dart';
 import '../../core/ui/messenger_theme.dart';
+// STREAM-LANE-ACTIVATE: uncomment this import together with the gated
+// delegation block inside place1to1Call() AND the two pubspec entries when
+// the Stream lane goes live. Kept commented so the app compiles while the
+// SDK packages are commented out in pubspec.yaml.
+// import '../../streamlane/stream_call_service.dart';
 
 /// [AVA-IDGATE-1] Place a 1:1 AvaTOK call THROUGH POST /api/call.
 ///
@@ -59,6 +64,13 @@ Future<void> place1to1Call(
   String? roomOverride,
 }) async {
   if (uid.isEmpty) return;
+  // STREAM-LANE-ACTIVATE: gated delegation to the new Stream Video SDK lane.
+  // Uncomment with the import above at activation time. With the flag off
+  // (the default) this is a no-op and every line below is unchanged.
+  // if (RemoteConfig.streamCallsEnabled) {
+  //   await StreamCallService.instance.place1to1(context, uid, video: video);
+  //   return;
+  // }
   await CallSessionManager.instance.reapOutcomeSessions();
   // [CALL-ROOM-ID-1 2026-07-14] Was `'avatok-$uid'` — a STABLE room id per
   // callee, so every dialer call to the same person reused one call id and one

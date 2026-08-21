@@ -161,6 +161,14 @@ class RemoteConfig {
   /// sticky and prevents the two peers from choosing different transports.
   static bool get streamCallPilotEnabled => _b('streamCallPilotEnabled', false);
 
+  /// [STREAM-LANE] Independent gate for the NEW `stream_video_flutter` SDK
+  /// integration (app/lib/streamlane/) — do not confuse with
+  /// [streamCallPilotEnabled] above, which gates the OLD hand-rolled Stream
+  /// pilot (core/calls/rtc/). The two must never both be true for the same
+  /// call; keeping separate flags makes that a config-time guarantee rather
+  /// than something the client has to reconcile at runtime.
+  static bool get streamCallsEnabled => _b('streamCallsEnabled', false);
+
   /// [CALL-PREWARM-1 2026-08-16] P1 of
   /// `Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md`. When true, the callee
   /// begins warming its media path (ICE credentials + SFU seat join) the
