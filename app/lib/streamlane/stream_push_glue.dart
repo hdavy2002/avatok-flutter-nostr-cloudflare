@@ -47,21 +47,40 @@
 //      `payload['sender'] == 'stream.video'` internally, so this call is
 //      safe even though `isStreamPush` already gated entry.
 //
-// Per-account credential lookup: `stream_lane.dart`'s `_persistCredentials`
-// writes the blob under `scopedKey(StreamLane.kCredKeyBase)`, which is keyed
-// off `AccountScope.id` — an in-memory static that is UNSET in this fresh
-// background isolate (see BG-ISOLATE-1 in push_service.dart; the same class
-// of problem). `scopedKey` therefore cannot be used here to reconstruct the
-// exact key. Instead this file reads every secure-storage entry and matches
-// on the `StreamLane.kCredKeyBase` prefix directly. On a device shared by
-// multiple signed-in accounts this can find more than one candidate; there is
-// no recipient-id field on the FCM payload to disambiguate against (the
-// payload carries `call_cid`/`created_by_id`, not the target user), so this
-// picks the first match and accepts the known limitation that a second
-// stored account on the same device won't get its own recovered client for
-// this push. This degrades to "no in-place recovery" (native ring UI still
-// covers the primary account; nothing crashes), never to leaking one
-// account's credentials into another's UI.
+// Per-account credential lookup — [STREAM-LANE-FIX-1], plan P1.7.
+//
+// `stream_lane.dart` writes each account's blob under
+// `StreamLane.credKeyForUid(uid)`, i.e. the same string `scopedKey` would
+// produce. `scopedKey` itself cannot be CALLED here: it reads
+// `AccountScope.id`, an in-memory static that is UNSET in this fresh
+// background isolate (see BG-ISOLATE-1 in push_service.dart).
+//
+// This file used to read every secure-storage entry and take the FIRST one
+// whose key carried the prefix. On a phone shared by a parent and a child —
+// which is the normal case for this product — "first" is an arbitrary
+// iteration order, so a call for one account could be recovered with the
+// OTHER account's credentials. That is both wrong and a violation of the
+// per-account scoping rule in CLAUDE.md.
+//
+// The payload genuinely carries no recipient id: the SDK's own
+// `handleRingingFlowNotifications` only ever reads `sender`, `call_cid`,
+// `type`, `video`, `created_by_id`, `created_by_display_name` and
+// `call_display_name` (verified against
+// packages/stream_video/lib/src/stream_video.dart, GetStream/
+// stream-video-flutter@main). So the target is resolved in this order, and
+// NOTHING is guessed:
+//   1. an explicit recipient field on the payload, if one ever appears
+//      (`receiver_id` / `receiverId` / `user_id` / `recipient_id`);
+//   2. the device-level active account — the same global `clerk_account_id`
+//      key push_service.dart's `_shadeAccountId` already trusts from this
+//      isolate — matched against a STORED Stream credential blob;
+//   3. exactly ONE stored Stream account on the device, which is
+//      unambiguous by construction.
+// If none of those resolves, recovery FAILS CLOSED: no client is created, and
+// `stream_lane_bg_recovery_unresolved` records why. The native Stream ring
+// still shows (it is driven by the registered device token, not by this
+// code), so failing closed costs the in-Dart ringing bookkeeping only — never
+// one account's call surfacing under another's credentials.
 library;
 
 import 'dart:async';
@@ -73,6 +92,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 import 'package:stream_video_push_notification/stream_video_push_notification.dart';
 
+import '../core/disk_cache.dart';
 import '../core/remote_config.dart';
 import '../firebase_options.dart';
 import 'stream_lane.dart';
@@ -114,54 +134,208 @@ Future<bool> handleStreamPushBackground(Map<String, dynamic> data) async {
   return true;
 }
 
+/// Guards against two pushes arriving back-to-back in the same isolate and
+/// each building its own `StreamVideo` client + ringing subscription.
+bool _recovering = false;
+
 Future<void> _recoverInBackground(Map<String, dynamic> data) async {
-  // As this runs in a separate isolate, Firebase needs to be (re)initialized
-  // here — matches the SDK docs' `_firebaseMessagingBackgroundHandler`
-  // example exactly. Re-initializing an already-initialized default app
-  // throws; that's expected on some launches and is swallowed.
+  if (_recovering) {
+    await _bgTrack('stream_lane_bg_recovery_skipped', {
+      'reason': 'already_recovering',
+      'call_cid': (data['call_cid'] ?? '').toString(),
+    });
+    return;
+  }
+  _recovering = true;
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  } catch (_) {/* already initialized in this isolate, or unavailable */}
+    // As this runs in a separate isolate, Firebase needs to be (re)initialized
+    // here — matches the SDK docs' `_firebaseMessagingBackgroundHandler`
+    // example exactly. Re-initializing an already-initialized default app
+    // throws; that's expected on some launches and is swallowed.
+    try {
+      await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform);
+    } catch (_) {/* already initialized in this isolate, or unavailable */}
 
-  final creds = await _readAnyStreamLaneCredentials();
-  if (creds == null) return; // no locally persisted credentials to recover
+    final resolved = await _resolveTargetCredentials(data);
+    if (resolved.creds == null) {
+      // FAIL CLOSED. Recovering with SOME other account's credentials would
+      // surface one user's call under another user's identity on a shared
+      // phone; doing nothing only costs the in-Dart ringing bookkeeping.
+      await _bgTrack('stream_lane_bg_recovery_unresolved', {
+        'reason': resolved.reason,
+        'candidates': resolved.candidateCount,
+        'call_cid': (data['call_cid'] ?? '').toString(),
+        'created_by_id': (data['created_by_id'] ?? '').toString(),
+        // There is no single user to attribute this to — that IS the failure.
+        // The stored candidates' emails go on the event anyway, so a search by
+        // either tester's email still finds it (CLAUDE.md telemetry rule).
+        'user_email': resolved.candidateEmails.length == 1
+            ? resolved.candidateEmails.first
+            : '',
+        'candidate_emails': resolved.candidateEmails.join(','),
+      });
+      return;
+    }
 
-  final streamVideo = StreamVideo.create(
-    creds.apiKey,
-    user: User.regular(userId: creds.uid),
-    userToken: creds.token,
-    pushNotificationManagerProvider: StreamVideoPushNotificationManager.create(
-      iosPushProvider: const StreamVideoPushProvider.apn(name: 'avatok-apn'),
-      androidPushProvider: const StreamVideoPushProvider.firebase(name: 'firebase'),
-    ),
-  )..connect();
+    final creds = resolved.creds!;
+    await _bgTrack('stream_lane_bg_recovery_started', {
+      'resolved_by': resolved.reason,
+      'candidates': resolved.candidateCount,
+      'call_cid': (data['call_cid'] ?? '').toString(),
+      'created_by_id': (data['created_by_id'] ?? '').toString(),
+      // Persisted alongside the credentials by stream_lane.dart precisely
+      // because `Analytics.currentEmail` is main-isolate-only.
+      'user_email': creds.email,
+    });
 
-  final subscription = streamVideo.observeCoreRingingEventsForBackground();
-  streamVideo.disposeAfterResolvingRinging(
-    disposingCallback: () => subscription.cancel(),
-  );
+    final streamVideo = StreamVideo.create(
+      creds.apiKey,
+      user: User.regular(userId: creds.uid),
+      userToken: creds.token,
+      pushNotificationManagerProvider: StreamVideoPushNotificationManager.create(
+        iosPushProvider: const StreamVideoPushProvider.apn(name: 'avatok-apn'),
+        androidPushProvider:
+            const StreamVideoPushProvider.firebase(name: 'firebase'),
+      ),
+    )..connect();
 
-  await streamVideo.handleRingingFlowNotifications(data);
+    // Retained so it can be cancelled on BOTH paths: normally by
+    // `disposeAfterResolvingRinging`, and by the catch below if
+    // `handleRingingFlowNotifications` throws (previously that left the
+    // subscription — and the client — alive for the isolate's lifetime).
+    final subscription = streamVideo.observeCoreRingingEventsForBackground();
+    streamVideo.disposeAfterResolvingRinging(
+      disposingCallback: () => subscription.cancel(),
+    );
+
+    try {
+      await streamVideo.handleRingingFlowNotifications(data);
+    } catch (_) {
+      try {
+        await subscription.cancel();
+      } catch (_) {/* best-effort */}
+      rethrow;
+    }
+  } finally {
+    _recovering = false;
+  }
 }
 
 class _StreamLaneCreds {
-  const _StreamLaneCreds({required this.uid, required this.apiKey, required this.token});
+  const _StreamLaneCreds({
+    required this.uid,
+    required this.apiKey,
+    required this.token,
+    required this.email,
+  });
   final String uid;
   final String apiKey;
   final String token;
+  final String email;
+}
+
+class _TargetResolution {
+  const _TargetResolution(
+    this.creds,
+    this.reason,
+    this.candidateCount, {
+    this.candidateEmails = const <String>[],
+  });
+  final _StreamLaneCreds? creds;
+
+  /// Why we ended up here — doubles as `resolved_by` on success and
+  /// `reason` on failure. Low-cardinality on purpose.
+  final String reason;
+  final int candidateCount;
+
+  /// Emails of the stored accounts considered. Only used to TAG a failure that
+  /// by definition has no single owner, so the event is still retrievable.
+  final List<String> candidateEmails;
 }
 
 const FlutterSecureStorage _secure = FlutterSecureStorage();
 
-/// Reads every secure-storage entry and returns the first one whose key
-/// starts with [StreamLane.kCredKeyBase] — see the library comment for why
-/// `scopedKey` can't be used from this isolate.
-Future<_StreamLaneCreds?> _readAnyStreamLaneCredentials() async {
+/// Mirrors push_service.dart's private `_kActiveAccountKey` (itself a mirror of
+/// main.dart's `_kAcct`): the GLOBAL, device-level file holding the signed-in
+/// Clerk account id. `DiskCache.readGlobal` is already proven to work from this
+/// isolate — it is what `_shadeAccountId` uses. The three must never diverge.
+const String _kActiveAccountKey = 'clerk_account_id';
+
+/// Resolve WHICH account this push is for, and return only that account's
+/// credentials. Never falls back to "some other stored account".
+Future<_TargetResolution> _resolveTargetCredentials(
+  Map<String, dynamic> data,
+) async {
+  final stored = await _readAllStreamLaneCredentials();
+  if (stored.isEmpty) {
+    return const _TargetResolution(null, 'no_credentials_stored', 0);
+  }
+  final emails = stored.values
+      .map((c) => c.email)
+      .where((e) => e.isNotEmpty)
+      .toList(growable: false);
+
+  // 1. An explicit recipient on the payload. Stream does not send one today
+  //    (see the library comment); this is here so that the moment the Worker
+  //    or the SDK starts tagging the target, it is honoured for free.
+  for (final k in const [
+    'receiver_id',
+    'receiverId',
+    'recipient_id',
+    'recipientId',
+    'user_id',
+    'userId',
+  ]) {
+    final v = (data[k] ?? '').toString();
+    if (v.isEmpty) continue;
+    final hit = stored[v];
+    if (hit != null) return _TargetResolution(hit, 'payload', stored.length);
+    // The payload named a target we hold no credentials for — that is a
+    // definite MISS, not an invitation to try someone else.
+    return _TargetResolution(
+      null,
+      'target_not_stored',
+      stored.length,
+      candidateEmails: emails,
+    );
+  }
+
+  // 2. The account this device is currently signed in as.
+  String active = '';
+  try {
+    active = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
+  } catch (_) {/* fall through */}
+  active = active.trim();
+  if (active.isNotEmpty) {
+    final hit = stored[active];
+    if (hit != null) {
+      return _TargetResolution(hit, 'active_account', stored.length);
+    }
+  }
+
+  // 3. One stored account — unambiguous.
+  if (stored.length == 1) {
+    return _TargetResolution(stored.values.first, 'sole_account', 1);
+  }
+
+  // Several accounts, none of them identifiable as the target. Fail closed.
+  return _TargetResolution(
+    null,
+    'ambiguous_multi_account',
+    stored.length,
+    candidateEmails: emails,
+  );
+}
+
+/// Every stored Stream-lane credential blob on this device, keyed by its uid.
+Future<Map<String, _StreamLaneCreds>> _readAllStreamLaneCredentials() async {
+  final out = <String, _StreamLaneCreds>{};
   final Map<String, String> all;
   try {
     all = await _secure.readAll();
   } catch (_) {
-    return null;
+    return out;
   }
   for (final entry in all.entries) {
     if (!entry.key.startsWith(StreamLane.kCredKeyBase)) continue;
@@ -172,10 +346,42 @@ Future<_StreamLaneCreds?> _readAnyStreamLaneCredentials() async {
       final apiKey = (raw['api_key'] ?? '').toString();
       final token = (raw['token'] ?? '').toString();
       if (uid.isEmpty || apiKey.isEmpty || token.isEmpty) continue;
-      return _StreamLaneCreds(uid: uid, apiKey: apiKey, token: token);
+      // The key must be the one this uid's blob belongs under, or the entry is
+      // not trustworthy as "account X's credentials".
+      if (entry.key != StreamLane.credKeyForUid(uid)) continue;
+      out[uid] = _StreamLaneCreds(
+        uid: uid,
+        apiKey: apiKey,
+        token: token,
+        email: (raw['email'] ?? '').toString(),
+      );
     } catch (_) {
       continue;
     }
   }
-  return null;
+  return out;
+}
+
+/// Durable telemetry for the FCM background isolate.
+///
+/// There is no PostHog client here (`Analytics.capture` is a no-op-ish in this
+/// isolate — see push_service.dart's `_track`), so events go on the SAME
+/// on-disk queue push_service already drains to PostHog on next foreground.
+/// The key is a literal because push_service's constant is private; the two
+/// must never diverge.
+const String _kPendingBgTelemetry = 'pending_bg_telemetry';
+
+Future<void> _bgTrack(String event, Map<String, dynamic> props) async {
+  try {
+    final raw = await DiskCache.readGlobal(_kPendingBgTelemetry);
+    final list =
+        (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+    list.add({
+      'event': event,
+      'props': props,
+      'ts': DateTime.now().millisecondsSinceEpoch,
+    });
+    if (list.length > 60) list.removeRange(0, list.length - 60);
+    await DiskCache.writeGlobal(_kPendingBgTelemetry, jsonEncode(list));
+  } catch (_) {/* telemetry must never break the ring path */}
 }
