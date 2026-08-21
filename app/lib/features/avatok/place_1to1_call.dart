@@ -81,7 +81,11 @@ Future<bool> routeToStreamCallIfEnabled(
     'peer_id': peerId,
     'user_email': email,
   });
-  await StreamCallService.instance.place1to1(context, peerId, video: video);
+  // Mounts before authentication/network work, plays neutral searching
+  // feedback, and starts real ringback only after the server confirms that
+  // Stream has issued the incoming ring.
+  await StreamCallService.instance
+      .place1to1Staged(context, peerId, video: video);
   return true;
 }
 

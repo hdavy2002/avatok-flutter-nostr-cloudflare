@@ -22,6 +22,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
 
 import '../core/avatar.dart';
+import '../core/analytics.dart';
+import '../core/ringback_player.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
 import 'stream_call_service.dart';
@@ -29,6 +31,243 @@ import 'stream_call_telemetry.dart';
 
 /// What the screen is currently showing. Only [_Phase.ended] ever pops.
 enum _Phase { connecting, live, reconnecting, failed }
+
+/// The screen mounted synchronously on an outgoing tap, before authentication
+/// or Stream call creation has completed. It keeps the caller informed with
+/// neutral, privacy-safe copy and owns the searching tone until the server
+/// confirms that the recipient has actually been rung.
+class StreamOutgoingPreparationScreen extends StatefulWidget {
+  const StreamOutgoingPreparationScreen({
+    super.key,
+    required this.peerId,
+    required this.video,
+    required this.attempt,
+    required this.prepare,
+    required this.cancel,
+    this.peerName,
+    this.peerAvatarUrl,
+    this.peerEmail,
+  });
+
+  final String peerId;
+  final String? peerName;
+  final String? peerAvatarUrl;
+  final String? peerEmail;
+  final bool video;
+  final StreamOutgoingAttempt attempt;
+  final Future<StreamPreparedOutgoing?> Function(
+    void Function(String stage) onStage,
+  ) prepare;
+  final Future<void> Function() cancel;
+
+  @override
+  State<StreamOutgoingPreparationScreen> createState() =>
+      _StreamOutgoingPreparationScreenState();
+}
+
+class _StreamOutgoingPreparationScreenState
+    extends State<StreamOutgoingPreparationScreen> {
+  final RingbackPlayer _tones = RingbackPlayer();
+  String _stage = 'Connecting…';
+  bool _handedOff = false;
+  bool _cancelling = false;
+  Timer? _preparingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    Analytics.capture('stream_lane_call_stage', {
+      'attempt_id': widget.attempt.attemptId,
+      'stage': 'connecting',
+      'elapsed_ms': 0,
+      'provider': 'stream',
+      'role': 'caller',
+      'peer_id': widget.peerId,
+    });
+    // ignore: discarded_futures
+    _tones.playSearchingTone(speakerOn: true);
+    // This is an honest elapsed state: the request is still pending, so the
+    // app is preparing the call. It does not claim the user/device was found.
+    _preparingTimer = Timer(const Duration(milliseconds: 450), () {
+      _setStage('preparing');
+    });
+    // ignore: discarded_futures
+    _run();
+  }
+
+  int get _elapsedMs =>
+      DateTime.now().millisecondsSinceEpoch - widget.attempt.startedAtMs;
+
+  void _setStage(String stage) {
+    if (!mounted || widget.attempt.cancelled || _handedOff) return;
+    final label = switch (stage) {
+      'ringing' => 'Ringing…',
+      'preparing' => 'Preparing call…',
+      _ => 'Connecting…',
+    };
+    if (_stage == label) return;
+    setState(() => _stage = label);
+    Analytics.capture('stream_lane_call_stage', {
+      'attempt_id': widget.attempt.attemptId,
+      'call_id': widget.attempt.callId,
+      'stage': stage,
+      'elapsed_ms': _elapsedMs,
+      'provider': 'stream',
+      'role': 'caller',
+      'peer_id': widget.peerId,
+    });
+  }
+
+  Future<void> _run() async {
+    StreamPreparedOutgoing? prepared;
+    try {
+      prepared = await widget.prepare(_setStage);
+    } on StreamOutgoingPreparationException catch (e) {
+      if (!mounted || widget.attempt.cancelled) return;
+      _preparingTimer?.cancel();
+      await _tones.stop(reason: 'preparation_failed');
+      if (!mounted) return;
+      setState(() => _stage = e.message);
+      Analytics.capture('stream_lane_call_preparation_failed', {
+        'attempt_id': widget.attempt.attemptId,
+        'call_id': widget.attempt.callId,
+        'code': e.code,
+        'elapsed_ms': _elapsedMs,
+        'provider': 'stream',
+        'role': 'caller',
+      });
+      return;
+    } catch (e) {
+      if (!mounted || widget.attempt.cancelled) return;
+      _preparingTimer?.cancel();
+      await _tones.stop(reason: 'preparation_failed');
+      if (!mounted) return;
+      setState(() => _stage = "Couldn't start the call. Please try again.");
+      return;
+    }
+    if (!mounted || widget.attempt.cancelled || prepared == null) return;
+    _preparingTimer?.cancel();
+    _setStage('ringing');
+    // The prepare callback returns only after the server confirms the Stream
+    // ring was issued. This is the first moment real ringback is truthful.
+    await _tones.playRingback(prepared.callId, speakerOn: true);
+    if (!mounted || widget.attempt.cancelled) return;
+    _handedOff = true;
+    await Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => StreamCallScreen(
+        call: prepared.call,
+        peerId: widget.peerId,
+        peerName: widget.peerName,
+        peerAvatarUrl: widget.peerAvatarUrl,
+        peerEmail: widget.peerEmail,
+        traceId: widget.attempt.traceId,
+        video: widget.video,
+        outgoing: true,
+        startedAtMs: widget.attempt.startedAtMs,
+        connect: prepared.connect,
+        tonePlayer: _tones,
+      ),
+    ));
+  }
+
+  Future<void> _cancel() async {
+    if (_cancelling) return;
+    setState(() => _cancelling = true);
+    widget.attempt.cancelled = true;
+    _preparingTimer?.cancel();
+    await _tones.stop(reason: 'cancel_during_preparation');
+    await widget.cancel();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  void dispose() {
+    _preparingTimer?.cancel();
+    if (!_handedOff) {
+      // ignore: discarded_futures
+      _tones.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _cancel();
+        },
+        child: Scaffold(
+          backgroundColor: AD.bg,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Avatar(
+                        seed: widget.peerId,
+                        name: widget.peerName ?? widget.peerId,
+                        size: 120,
+                        avatarUrl: widget.peerAvatarUrl,
+                      ),
+                      const SizedBox(height: Msg.s4),
+                      Text(
+                        (widget.peerName?.trim().isNotEmpty ?? false)
+                            ? widget.peerName!.trim()
+                            : widget.peerId,
+                        style: const TextStyle(
+                          color: AD.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(_stage,
+                          style: const TextStyle(color: AD.textSecondary)),
+                      const SizedBox(height: Msg.s4),
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AD.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: Msg.s6,
+                  child: Center(
+                    child: InkWell(
+                      onTap: _cancelling ? null : _cancel,
+                      customBorder: const CircleBorder(),
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AD.primaryBadge,
+                        ),
+                        child: Icon(
+                          PhosphorIcons.phoneDisconnect(
+                              PhosphorIconsStyle.fill),
+                          color: AD.tabActiveLabel,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
 
 class StreamCallScreen extends StatefulWidget {
   const StreamCallScreen({
@@ -43,6 +282,7 @@ class StreamCallScreen extends StatefulWidget {
     this.outgoing = true,
     this.startedAtMs,
     this.connect,
+    this.tonePlayer,
   });
 
   final Call call;
@@ -70,6 +310,10 @@ class StreamCallScreen extends StatefulWidget {
   /// step that already succeeded. Null means the call is already joined.
   final Future<void> Function(int attempt)? connect;
 
+  /// Caller progress audio handed over by the preparation screen. The same
+  /// player swaps searching beeps for honest ringback without an audible race.
+  final RingbackPlayer? tonePlayer;
+
   @override
   State<StreamCallScreen> createState() => _StreamCallScreenState();
 }
@@ -87,6 +331,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   bool _speakerOn = true;
   bool _cameraOff = false;
   bool _hangingUp = false;
+  late final RingbackPlayer? _tonePlayer = widget.tonePlayer;
 
   _Phase _phase = _Phase.connecting;
   String _failureReason = 'unknown';
@@ -144,6 +389,8 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     // like every other capture in this lane; skipped if media never flowed
     // (nothing to summarise).
     if (_everConnected) _emitQuality();
+    // ignore: discarded_futures
+    _tonePlayer?.dispose();
     super.dispose();
   }
 
@@ -227,6 +474,10 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     setState(() => _state = s);
 
     if (_remotePublishing(s)) {
+      // The recipient has answered and media exists: ringback must stop before
+      // their first word, otherwise the fastest pickup is punished by a tone.
+      // ignore: discarded_futures
+      _tonePlayer?.stop(reason: 'remote_media');
       if (!_everConnected) {
         _everConnected = true;
         _connectWatchdog?.cancel();
@@ -239,8 +490,8 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
       }
       if (!_connectedReported) {
         _connectedReported = true;
-        final started = widget.startedAtMs ??
-            DateTime.now().millisecondsSinceEpoch;
+        final started =
+            widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch;
         StreamCallService.instance.reportConnected(
           widget.call,
           peerId: widget.peerId,
@@ -370,6 +621,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   Future<void> _hangUp() async {
     if (_hangingUp) return;
     setState(() => _hangingUp = true);
+    await _tonePlayer?.stop(reason: 'caller_cancelled');
     if (widget.outgoing && !_everConnected) {
       await StreamCallService.instance.cancelRinging(
         widget.call,
@@ -394,12 +646,24 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   /// holding the mic.
   Future<void> _closeAfterFailure() async {
     _hangingUp = true;
-    await StreamCallService.instance.leave(
-      widget.call,
-      connectedAt: _connectedAt,
-      role: widget.outgoing ? 'caller' : 'callee',
-      reason: 'join_failed_$_failureReason',
-    );
+    await _tonePlayer?.stop(reason: 'join_failed');
+    if (widget.outgoing && !_everConnected) {
+      await StreamCallService.instance.cancelRinging(
+        widget.call,
+        startedAt: DateTime.fromMillisecondsSinceEpoch(
+          widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+        ),
+        peerId: widget.peerId,
+        traceId: widget.traceId,
+      );
+    } else {
+      await StreamCallService.instance.leave(
+        widget.call,
+        connectedAt: _connectedAt,
+        role: widget.outgoing ? 'caller' : 'callee',
+        reason: 'join_failed_$_failureReason',
+      );
+    }
     if (!mounted) return;
     Navigator.of(context).maybePop();
   }
@@ -417,7 +681,9 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     try {
       await widget.call.setMicrophoneEnabled(enabled: _muted);
       if (mounted) setState(() => _muted = !_muted);
-    } catch (_) {/* best-effort — UI reflects last confirmed state on failure */}
+    } catch (_) {
+      /* best-effort — UI reflects last confirmed state on failure */
+    }
   }
 
   // verified: packages/stream_video/lib/src/webrtc/rtc_media_device/
@@ -512,10 +778,12 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
               child: isVideo
                   ? Builder(
                       builder: (_) {
-                        final others = widget.call.state.value.otherParticipants;
+                        final others =
+                            widget.call.state.value.otherParticipants;
                         CallParticipantState? remote;
                         for (final p in others) {
-                          if (p.publishedTracks.containsKey(SfuTrackType.video)) {
+                          if (p.publishedTracks
+                              .containsKey(SfuTrackType.video)) {
                             remote = p;
                             break;
                           }
@@ -628,16 +896,19 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
                   ),
                   _controlButton(
                     icon: _cameraOff
-                        ? PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold)
+                        ? PhosphorIcons.videoCameraSlash(
+                            PhosphorIconsStyle.bold)
                         : PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
                     onTap: _toggleCamera,
                   ),
                   _controlButton(
-                    icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                    icon:
+                        PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
                     onTap: _flipCamera,
                   ),
                   _controlButton(
-                    icon: PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.fill),
+                    icon:
+                        PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.fill),
                     onTap: _hangUp,
                     danger: true,
                   ),

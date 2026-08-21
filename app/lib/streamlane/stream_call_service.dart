@@ -23,6 +23,42 @@ import 'stream_lane.dart';
 /// because it belongs to this lane alone; `kApiBase` is the same base every
 /// other authed route is built from.
 const String kStreamCallPlaceUrl = '$kApiBase/stream-calls/place';
+const String kStreamCallCancelUrl = '$kApiBase/stream-calls/cancel';
+
+/// One user gesture, shared by the visible preparation screen and the network
+/// work it starts. Dart HTTP futures cannot be force-aborted, so cancellation
+/// is cooperative: every completed stage checks this token and the server is
+/// also told to invalidate the attempt. This prevents a response that arrives
+/// after the user pressed hang-up from becoming a late/ghost ring.
+class StreamOutgoingAttempt {
+  StreamOutgoingAttempt({required this.attemptId, this.traceId});
+
+  final String attemptId;
+  final String? traceId;
+  bool cancelled = false;
+  String callId = '';
+  int startedAtMs = DateTime.now().millisecondsSinceEpoch;
+}
+
+class StreamPreparedOutgoing {
+  const StreamPreparedOutgoing({
+    required this.call,
+    required this.connect,
+    required this.callId,
+  });
+
+  final Call call;
+  final String callId;
+  final Future<void> Function(int attempt) connect;
+}
+
+class StreamOutgoingPreparationException implements Exception {
+  const StreamOutgoingPreparationException(this.code, this.message);
+  final String code;
+  final String message;
+  @override
+  String toString() => message;
+}
 
 /// [STREAM-AUTH-1 2026-08-21] The AvaTOK Worker's verdict on a 1:1 Stream dial.
 ///
@@ -141,7 +177,11 @@ class StreamCallService {
         <String, String>{
           if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
         },
-        timeout: const Duration(seconds: 8),
+        // Longer than the Worker's whole-request deadline plus its compensating
+        // end-call window. The caller remains on the staged screen, while this
+        // prevents the phone declaring failure before the server has finished
+        // guaranteeing that no late ring can escape.
+        timeout: const Duration(seconds: 11),
       );
       Map<String, dynamic>? body;
       try {
@@ -178,7 +218,8 @@ class StreamCallService {
     } catch (e) {
       return StreamPlaceDecision.refused(
         code: e is TimeoutException ? 'authorize_timeout' : 'network',
-        message: "Can't reach AvaTOK right now — check your connection and try again.",
+        message:
+            "Can't reach AvaTOK right now — check your connection and try again.",
         httpStatus: 0,
       );
     }
@@ -398,7 +439,12 @@ class StreamCallService {
     // method: a nonzero count proves the lane was entered. `..._placed` now
     // means "entered AND authorised", and carries the server's call id.
     Analytics.capture('stream_lane_call_requested', {
-      ..._base(callId: '', role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+      ..._base(
+          callId: '',
+          role: 'caller',
+          peerId: userId,
+          mediaMode: mediaMode,
+          traceId: traceId),
       'attempt_id': attemptId,
     });
     final decision = await authorizePlace(
@@ -409,7 +455,12 @@ class StreamCallService {
     );
     if (!decision.approved) {
       Analytics.capture('stream_lane_call_refused', {
-        ..._base(callId: '', role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+        ..._base(
+            callId: '',
+            role: 'caller',
+            peerId: userId,
+            mediaMode: mediaMode,
+            traceId: traceId),
         'attempt_id': attemptId,
         'code': decision.code,
         'http_status': decision.httpStatus,
@@ -429,7 +480,12 @@ class StreamCallService {
     // failure) would otherwise leak the entry forever.
 
     Analytics.capture('stream_lane_call_placed', {
-      ..._base(callId: callId, role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+      ..._base(
+          callId: callId,
+          role: 'caller',
+          peerId: userId,
+          mediaMode: mediaMode,
+          traceId: traceId),
       'attempt_id': attemptId,
       'created': decision.created,
     });
@@ -448,7 +504,12 @@ class StreamCallService {
     );
     if (!perms.canProceed) {
       Analytics.capture('stream_lane_call_join_failed', {
-        ..._base(callId: callId, role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+        ..._base(
+            callId: callId,
+            role: 'caller',
+            peerId: userId,
+            mediaMode: mediaMode,
+            traceId: traceId),
         'stage': 'preflight',
         'reason': 'permission_denied',
         'error': perms.code,
@@ -498,7 +559,12 @@ class StreamCallService {
       // screen. Everything after this point is reported INSIDE the screen.
       const reason = 'make_call';
       Analytics.capture('stream_lane_call_join_failed', {
-        ..._base(callId: callId, role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+        ..._base(
+            callId: callId,
+            role: 'caller',
+            peerId: userId,
+            mediaMode: mediaMode,
+            traceId: traceId),
         'stage': 'make_call',
         'reason': reason,
         'error': e.toString(),
@@ -573,6 +639,225 @@ class StreamCallService {
     await disposeCall(call);
   }
 
+  /// Immediate-mount outgoing flow. The visible route and searching tone are
+  /// present before the first network await; real ringback begins only after
+  /// [authorizePlace] confirms the Worker has issued the Stream ring.
+  Future<void> place1to1Staged(
+    BuildContext context,
+    String userId, {
+    required bool video,
+    String? name,
+    String? avatarUrl,
+    String? peerEmail,
+    String? traceId,
+  }) async {
+    final attempt = StreamOutgoingAttempt(
+      attemptId: StreamCallTelemetry.mintAttemptId(),
+      traceId: traceId,
+    );
+    final mediaMode = video ? 'video' : 'audio';
+    Call? stagedCall;
+    Analytics.capture('stream_lane_call_requested', {
+      ..._base(
+        callId: '',
+        role: 'caller',
+        peerId: userId,
+        mediaMode: mediaMode,
+        traceId: traceId,
+      ),
+      'attempt_id': attempt.attemptId,
+      'screen_mounted_before_request': true,
+    });
+
+    Future<void> cancelAttempt() async {
+      final cancelStarted = DateTime.now().millisecondsSinceEpoch;
+      try {
+        await ApiAuth.postJsonH(
+          kStreamCallCancelUrl,
+          <String, Object>{
+            'attempt_id': attempt.attemptId,
+            if (attempt.callId.isNotEmpty) 'call_id': attempt.callId,
+          },
+          <String, String>{
+            if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
+          },
+          timeout: const Duration(seconds: 3),
+        );
+        Analytics.capture('stream_lane_call_preparation_cancelled', {
+          'attempt_id': attempt.attemptId,
+          'call_id': attempt.callId,
+          'elapsed_ms':
+              DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs,
+          'cancel_ack_ms':
+              DateTime.now().millisecondsSinceEpoch - cancelStarted,
+          'provider': 'stream',
+        });
+      } catch (e) {
+        Analytics.capture('stream_lane_call_preparation_cancel_failed', {
+          'attempt_id': attempt.attemptId,
+          'call_id': attempt.callId,
+          'error': e.toString(),
+          'provider': 'stream',
+        });
+      }
+    }
+
+    Future<StreamPreparedOutgoing?> prepare(
+      void Function(String stage) onStage,
+    ) async {
+      // Settle local media readiness before asking the server to issue a ring.
+      // The screen is already visible with searching feedback, so this does
+      // not delay acknowledgement of the user's tap; it only prevents ringing
+      // another phone for a call this phone cannot join.
+      onStage('preparing');
+      final permsStarted = DateTime.now().millisecondsSinceEpoch;
+      final perms = await CallMediaPermissions.ensure(
+        video: video,
+        surface: 'stream_lane',
+        callId: attempt.attemptId,
+      );
+      Analytics.capture('stream_lane_call_preflight_completed', {
+        'attempt_id': attempt.attemptId,
+        'call_id': '',
+        'provider': 'stream',
+        'role': 'caller',
+        'peer_id': userId,
+        'media_mode': mediaMode,
+        'can_proceed': perms.canProceed,
+        'latency_ms': DateTime.now().millisecondsSinceEpoch - permsStarted,
+      });
+      if (attempt.cancelled) return null;
+      if (!perms.canProceed) {
+        throw StreamOutgoingPreparationException(
+          'permission_denied',
+          perms.message,
+        );
+      }
+      final authStarted = DateTime.now().millisecondsSinceEpoch;
+      final decision = await authorizePlace(
+        peerId: userId,
+        video: video,
+        attemptId: attempt.attemptId,
+        traceId: traceId,
+      );
+      final authMs = DateTime.now().millisecondsSinceEpoch - authStarted;
+      attempt.callId = decision.callId;
+      Analytics.capture('stream_lane_call_authority_completed', {
+        ..._base(
+          callId: decision.callId,
+          role: 'caller',
+          peerId: userId,
+          mediaMode: mediaMode,
+          traceId: traceId,
+        ),
+        'attempt_id': attempt.attemptId,
+        'approved': decision.approved,
+        'issued': decision.created,
+        'http_status': decision.httpStatus,
+        'latency_ms': authMs,
+      });
+      if (attempt.cancelled) {
+        // The HTTP future completed after hang-up. Re-send now that call_id is
+        // known, so even an already-created Stream ring is invalidated.
+        await cancelAttempt();
+        return null;
+      }
+      if (!decision.approved) {
+        Analytics.capture('stream_lane_call_refused', {
+          ..._base(
+            callId: '',
+            role: 'caller',
+            peerId: userId,
+            mediaMode: mediaMode,
+            traceId: traceId,
+          ),
+          'attempt_id': attempt.attemptId,
+          'code': decision.code,
+          'http_status': decision.httpStatus,
+          'latency_ms': authMs,
+        });
+        // A timeout/network refusal is ambiguous: the Worker may have finished
+        // after the phone stopped waiting. Fence the attempt before showing a
+        // failure so that ambiguous work cannot become a late ring.
+        await cancelAttempt();
+        throw StreamOutgoingPreparationException(
+          decision.code,
+          decision.message,
+        );
+      }
+      if (!decision.created) {
+        // Production's server-authority contract must create and ring. Falling
+        // back to client-side creation would bypass the server's cancel fence
+        // and re-introduce late rings.
+        throw const StreamOutgoingPreparationException(
+          'ring_not_issued',
+          "Couldn't start the call. Please try again.",
+        );
+      }
+      if (!StreamLane.instance.isReady) {
+        await cancelAttempt();
+        throw const StreamOutgoingPreparationException(
+          'stream_not_ready',
+          'Connecting AvaTOK… Please try again in a moment.',
+        );
+      }
+
+      late final Call call;
+      try {
+        call = StreamVideo.instance.makeCall(
+          callType: StreamCallType.defaultType(),
+          id: decision.callId,
+        );
+      } catch (_) {
+        await cancelAttempt();
+        rethrow;
+      }
+      stagedCall = call;
+      _wireRingingEvents(
+        call,
+        Analytics.currentEmail ?? '',
+        role: 'caller',
+        peerId: userId,
+      );
+      Analytics.capture('stream_lane_call_placed', {
+        ..._base(
+          callId: decision.callId,
+          role: 'caller',
+          peerId: userId,
+          mediaMode: mediaMode,
+          traceId: traceId,
+        ),
+        'attempt_id': attempt.attemptId,
+        'created': true,
+        'elapsed_ms':
+            DateTime.now().millisecondsSinceEpoch - attempt.startedAtMs,
+      });
+      return StreamPreparedOutgoing(
+        call: call,
+        callId: decision.callId,
+        connect: (_) => call.join(),
+      );
+    }
+
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StreamOutgoingPreparationScreen(
+          peerId: userId,
+          peerName: name,
+          peerAvatarUrl: avatarUrl,
+          peerEmail: peerEmail,
+          video: video,
+          attempt: attempt,
+          prepare: prepare,
+          cancel: cancelAttempt,
+        ),
+      ),
+    );
+    if (stagedCall != null) await disposeCall(stagedCall!);
+  }
+
   /// Accept an incoming ring (called from `StreamIncomingScreen`).
   ///
   /// [STREAM-UI-1] / plan P1.3: the ring screen is replaced by the call screen
@@ -604,7 +889,8 @@ class StreamCallService {
     );
     if (!perms.canProceed) {
       Analytics.capture('stream_lane_call_join_failed', {
-        ..._base(callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
+        ..._base(
+            callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
         'stage': 'preflight',
         'reason': 'permission_denied',
         'error': perms.code,
@@ -647,7 +933,11 @@ class StreamCallService {
             if (attempt == 1) {
               await call.accept();
               Analytics.capture('stream_lane_call_accepted', {
-                ..._base(callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
+                ..._base(
+                    callId: callId,
+                    role: 'callee',
+                    peerId: peerId,
+                    traceId: traceId),
               });
             }
             await call.join();
@@ -837,12 +1127,14 @@ class StreamCallService {
     final email = Analytics.currentEmail ?? '';
     final callId = call.callCid.value;
     Analytics.capture('stream_lane_call_declined', {
-      ..._base(callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
+      ..._base(
+          callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
       'reason': reason,
     });
     try {
       await call.reject(reason: CallRejectReason.decline());
-      _emitEndedOnce(call, reason: 'declined', email: email, role: 'callee', peerId: peerId);
+      _emitEndedOnce(call,
+          reason: 'declined', email: email, role: 'callee', peerId: peerId);
     } catch (e, st) {
       await Analytics.captureException(
         e,
@@ -896,14 +1188,20 @@ class StreamCallService {
     try {
       await call.reject(reason: CallRejectReason.cancel());
       Analytics.capture('stream_lane_call_cancelled', {
-        ..._base(callId: callId, role: 'caller', peerId: peerId, traceId: traceId),
+        ..._base(
+            callId: callId, role: 'caller', peerId: peerId, traceId: traceId),
         'op': op,
         'ring_ms': DateTime.now().difference(startedAt).inMilliseconds,
       });
-      _emitEndedOnce(call, reason: 'caller_cancelled', email: email, role: 'caller', peerId: peerId);
+      _emitEndedOnce(call,
+          reason: 'caller_cancelled',
+          email: email,
+          role: 'caller',
+          peerId: peerId);
     } catch (e, st) {
       Analytics.capture('stream_lane_call_cancelled', {
-        ..._base(callId: callId, role: 'caller', peerId: peerId, traceId: traceId),
+        ..._base(
+            callId: callId, role: 'caller', peerId: peerId, traceId: traceId),
         'op': op,
         'error': e.toString(),
       });
