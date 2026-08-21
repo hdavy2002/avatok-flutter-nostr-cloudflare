@@ -289,7 +289,10 @@ class _WorkingCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: job.progress!.clamp(0.0, 1.0),
               minHeight: 4,
-              backgroundColor: music ? Colors.white24 : AD.borderControl,
+              // [UI-COLOURS-2026] On the black music card the unfilled track is
+              // on-dark-band cream at the same 24% the literal carried.
+              backgroundColor:
+                  music ? AD.onBandCream.withValues(alpha: 0.24) : AD.borderControl,
               valueColor: AlwaysStoppedAnimation(accent),
             ),
           ),
@@ -504,9 +507,12 @@ class _ReadyCard extends StatelessWidget {
         width: width,
         margin: const EdgeInsets.only(top: 12, bottom: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF12181C),
+          // [UI-COLOURS-2026] Cinematic video card = the same black surface the
+          // sibling music card already uses in `_CardShell` above; its edge and
+          // ink are on-dark-band cream at the alphas the literals carried.
+          color: Colors.black,
           borderRadius: BorderRadius.circular(AD.rListCard),
-          border: Border.all(color: Colors.white54, width: 0.8),
+          border: Border.all(color: AD.onBandCream.withValues(alpha: 0.54), width: 0.8),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -539,7 +545,7 @@ class _ReadyCard extends StatelessWidget {
                       tooltip: 'Share video',
                       onPressed: onShare,
                       icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
-                      color: Colors.white70,
+                      color: AD.onBandCream.withValues(alpha: 0.7),
                     ),
                 ]),
                 const SizedBox(height: 6),
@@ -547,16 +553,17 @@ class _ReadyCard extends StatelessWidget {
                   videoDescription,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: AD.onBandCream.withValues(alpha: 0.7),
                     fontSize: 13,
                     height: 1.35,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Made on AvaTOK AI',
-                  style: TextStyle(color: Colors.white54, fontSize: 10),
+                  style: TextStyle(
+                      color: AD.onBandCream.withValues(alpha: 0.54), fontSize: 10),
                 ),
               ],
             ),

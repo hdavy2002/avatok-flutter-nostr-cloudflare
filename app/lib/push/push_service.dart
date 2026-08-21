@@ -53,6 +53,7 @@ import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
 import '../core/presence_beat.dart'; // [CALL-PRESENCE-1] device heartbeat
 import '../core/remote_config.dart';
+import '../core/ui/avatok_dark.dart' show AD; // [UI-COLOURS-2026] notification accent token
 // STREAM-LANE: pure discriminator used to keep this handler from ALSO
 // processing an envelope the new Stream Video SDK lane owns. See
 // streamlane/stream_push_glue.dart for why this import is safe even while
@@ -159,7 +160,11 @@ final _local = FlutterLocalNotificationsPlugin();
 // No leading '@drawable/' and no extension: flutter_local_notifications resolves
 // a bare name against the drawable folder itself.
 const String _kNotifIcon = 'ic_notification';
-const Color _kNotifAccent = Color(0xFFFFD400);
+// [UI-COLOURS-2026] The Android notification accent. `AndroidNotificationDetails`
+// takes a Dart `Color`, not a literal, so this is an ordinary design decision —
+// the brand accent yellow — and belongs to the palette. `AD.haldi` is `const`,
+// so the top-level `const AndroidNotificationChannel`s below still compile.
+const Color _kNotifAccent = AD.haldi;
 // Messages channel. Keep the id 'avatok_messages' UNCHANGED — changing a channel
 // id makes Android drop the old channel and create a fresh one, resetting the
 // user's sound/vibration/importance overrides. playSound + enableVibration are set

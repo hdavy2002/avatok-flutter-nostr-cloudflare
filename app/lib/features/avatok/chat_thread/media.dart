@@ -1889,8 +1889,11 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         colors: VideoProgressColors(
                           playedColor: AD.bubbleOutPlay,
-                          bufferedColor: Colors.white38,
-                          backgroundColor: Colors.white24,
+                          // [UI-COLOURS-2026] Scrubber sits on the black@72%
+                          // pill above, so its ink is the on-dark-band cream,
+                          // not palette ink. Alphas unchanged (38%/24%).
+                          bufferedColor: AD.onBandCream.withValues(alpha: 0.38),
+                          backgroundColor: AD.onBandCream.withValues(alpha: 0.24),
                         ),
                       ),
                     ),
@@ -2061,7 +2064,10 @@ class _AiMusicJobPreview extends StatelessWidget {
                       icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
                       color: Colors.black,
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD400),
+                        // [UI-COLOURS-2026] Accent yellow — the same role the
+                        // sibling play button already takes from the palette
+                        // (AD.bubbleOutPlay is haldi).
+                        backgroundColor: AD.haldi,
                       ),
                     ),
                   ],
@@ -2070,7 +2076,10 @@ class _AiMusicJobPreview extends StatelessWidget {
                   description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: ADText.preview(c: Colors.black87).copyWith(fontSize: 12, height: 1.25),
+                  // [UI-COLOURS-2026] Body copy on the light card — palette ink
+                  // at the same 87% the literal carried.
+                  style: ADText.preview(c: AD.textPrimary.withValues(alpha: 0.87))
+                      .copyWith(fontSize: 12, height: 1.25),
                 ),
                 const SizedBox(height: Msg.s2),
                 ValueListenableBuilder<PlaybackState?>(
@@ -2134,10 +2143,12 @@ class _AiMusicJobPreview extends StatelessWidget {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(_time(position), style: ADText.statCaption(c: Colors.black54)),
+                                  // [UI-COLOURS-2026] Muted timestamp captions
+                                  // on paper -> the tertiary ink token.
+                                  Text(_time(position), style: ADText.statCaption(c: AD.textTertiary)),
                                   Text(
                                     duration == null ? '—:—' : _time(duration),
-                                    style: ADText.statCaption(c: Colors.black54),
+                                    style: ADText.statCaption(c: AD.textTertiary),
                                   ),
                                 ],
                               ),
