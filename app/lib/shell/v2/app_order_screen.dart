@@ -35,7 +35,7 @@ class AppOrderScreen extends StatelessWidget {
     // stays 'avatalk'). Mirror of shell/v2/app_switcher_bar.dart `_meta`.
     RootId.avaTalk: (
       PhosphorIcons.chatCircle(PhosphorIconsStyle.regular),
-      'AvaTalk',
+      'AvaTOK',
       'Messages & in-network calls',
       AD.online
     ),

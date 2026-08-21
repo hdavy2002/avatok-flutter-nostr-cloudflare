@@ -174,7 +174,9 @@ class Msg {
   /// dark bar under a cream thread on the app's most-used screen. It now
   /// aliases `AD.inputField`, which IS that family, so the two cannot drift
   /// apart again.
-  static const Color input = AD.inputField;
+  // Warm paper lifts the composer above the indigo footer and keeps the
+  // attachment, emoji, mention and camera controls readable.
+  static const Color input = AD.bg;
 
   /// Errors and destructive actions ONLY.
   static const Color error = AD.danger;

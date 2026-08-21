@@ -202,9 +202,7 @@ class ShellSidebar extends StatelessWidget {
               Padding(
                   padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s2),
                   child: Text('APPS', style: ADText.sectionLabel(c: AD.textTertiary))),
-              // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk' (display-only;
-              // RootId.key stays 'avatalk'). Mirror of app_switcher_bar `_meta`.
-              appRow(RootId.avaTalk, 'AvaTalk', 'Messages & in-network calls',
+              appRow(RootId.avaTalk, 'AvaTOK', 'Messages & in-network calls',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), AD.online),
               // [IOS-PORT-DISABLE-1] 2026-08-14 owner rename: 'AvaDialer' →
               // 'Calls' (display-only; RootId.key stays 'avadial'). Mirror of

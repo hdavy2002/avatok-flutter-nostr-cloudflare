@@ -125,7 +125,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
   static final Map<RootId, (IconData, IconData, String)> _meta = {
     RootId.avaDial: (PhosphorIcons.phone(PhosphorIconsStyle.regular), PhosphorIcons.phone(PhosphorIconsStyle.fill), 'Calls'),
-    RootId.avaTalk: (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'AvaTalk'),
+    RootId.avaTalk: (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'AvaTOK'),
     RootId.services: (PhosphorIcons.storefront(PhosphorIconsStyle.regular), PhosphorIcons.storefront(PhosphorIconsStyle.fill), 'Services'),
   };
 

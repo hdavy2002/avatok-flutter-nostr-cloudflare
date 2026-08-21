@@ -445,7 +445,10 @@ class AvaTheme {
   /// (turquoise, haldi, cream) take dark icons; dark bands (indigo, rani) take
   /// light ones. Same threshold as [AD.onBand] so the two can never disagree.
   static SystemUiOverlayStyle _overlayFor(Color fill) {
-    final lightBand = fill.computeLuminance() > 0.5;
+    // The shared wave/header treatment is dark on every app surface. Keep the
+    // Android status row readable while content scrolls underneath it.
+    // Individual light dialogs can still override this locally when needed.
+    const lightBand = false;
     return SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness:
