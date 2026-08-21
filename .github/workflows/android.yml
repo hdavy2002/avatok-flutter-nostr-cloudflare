@@ -66,6 +66,11 @@ on:
         required: false
         default: true
         type: boolean
+      play_wait_min:
+        description: 'Minutes to wait after Play publish before enabling the update prompt (0 = none)'
+        required: false
+        default: '45'
+        type: string
 
 env:
   # [BUILD-WIDGET-1] The environment is now an explicit dispatch INPUT, not an
@@ -502,6 +507,22 @@ jobs:
       # write gets the same protections as a human one: KV holds OVERRIDES ONLY
       # (it merges, never re-materializes the blob) and it refuses to write an
       # empty/invalid config over live flags.
+      # [STREAM-LANE-1 2026-08-21] Play needs time (typically 15–60 min) to
+      # process a committed alpha release before devices can actually download
+      # it. Bumping latestAppBuild + sending the update FCM immediately gave
+      # users a prompt (or a silent no-op) leading nowhere — the run #612 /
+      # build 10612 incident, same class as run #600. Wait before pointing the
+      # update check at this build so the prompt only ever fires when Play can
+      # serve it. Stragglers self-heal anyway: the app re-checks on every
+      # launch. Tune per-run with the play_wait_min input (0 = no wait, e.g.
+      # when re-running just the tail of a workflow after Play already went live).
+      - name: Wait for Play to process the release (Closed Alpha only)
+        if: env.PLAY_TRACK == 'alpha'
+        run: |
+          MINS="${{ inputs.play_wait_min }}"
+          MINS="${MINS:-45}"
+          echo "Waiting ${MINS} minute(s) for Google Play to process the alpha release before enabling the update prompt..."
+          sleep $(( MINS * 60 ))
       - name: Point the update check at this build (Closed Alpha only)
         if: env.PLAY_TRACK == 'alpha'
         env:
