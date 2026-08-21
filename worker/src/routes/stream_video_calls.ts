@@ -1057,6 +1057,11 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     callerUid, calleeUid, callId, video, traceId: traceId || callId,
   });
   if (!created.ok) {
+    // The authority row is written before Stream creation so an unrecorded
+    // call can never ring. If Stream then refuses creation, close that row
+    // immediately: otherwise the reverse-direction glare lookup can return a
+    // call id that never existed and strand both callers for 45 seconds.
+    await markProviderDecisionEnded(env, callId);
     try {
       await trackUser(env, callerUid, callerEmail, "stream_call_create_failed", "avatok", {
         call_id: callId, from_uid: callerUid, to_uid: calleeUid,

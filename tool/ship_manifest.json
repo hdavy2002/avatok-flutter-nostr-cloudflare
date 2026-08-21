@@ -2840,6 +2840,51 @@
   ],
   "_verified_at": "app/lib/streamlane/stream_lane.dart:63-72 (_readyUid replaces _initStarted), :113-158 (init), :219-238 (retained _incomingSub, stream_lane_ring_shown), :240-247 (stream_lane_client_connected), :168-175 (stream_lane_init_failed reason=no_api_key), :57 (_apiKeyFallback placeholder), :285-303 (_teardown); app/lib/streamlane/stream_push_glue.dart:280-328 (target resolution order), :331-360 (_readAllStreamLaneCredentials), :369-387 (_bgTrack durable queue)"
  },
+ "STREAM-RELEASE-1": {
+  "description": "Final Stream-only 1:1 production hardening. The Worker performs admission, records the authority decision fail-closed, creates and rings the Stream call server-side, deduplicates client attempts, resolves glare to one call, closes failed provider rows immediately, and deduplicates signed Stream webhooks. The client joins only server-created calls, cancels ringing with Stream reject(cancel), emits journey and 15-second quality telemetry, and deletes per-account Stream credentials on sign-out. Production also requires the Stream default call type's user role to have CreateCall disabled before release.",
+  "two_sided": true,
+  "min_devices_on_build": 2,
+  "flags": [
+   "streamCallsEnabled"
+  ],
+  "success": [
+   {
+    "event": "stream_call_authorized",
+    "property": "created_server_side",
+    "equals": true,
+    "min_events": 2,
+    "note": "Both participants receive the server-side authorization event. created_server_side=true proves the trusted Worker, rather than the phone, created the Stream call."
+   },
+   {
+    "event": "stream_lane_call_connected",
+    "property": "local_publishing",
+    "equals": true,
+    "min_events": 2,
+    "note": "Two devices must independently report connected with local media publishing; join() returning alone is not success."
+   },
+   {
+    "event": "stream_lane_call_ended",
+    "property": "mic_released",
+    "equals": true,
+    "min_events": 1,
+    "note": "A completed hang-up must release the microphone. Caller cancellation is separately proven by stream_lane_call_cancelled plus the callee ring-screen dismissal for the same call_id."
+   },
+   {
+    "event": "stream_lane_credentials_deleted",
+    "property": "ok",
+    "equals": true,
+    "min_events": 1,
+    "note": "Sign-out must delete the departing account's cached Stream credential so a shared phone cannot keep ringing for it."
+   }
+  ],
+  "manual_zero_count_checks": [
+   "PostHog on the newest build: stream_call_authority_write_failed, stream_call_create_failed, stream_webhook_rejected, stream_lane_call_join_failed reason=media_engine, and call_started provider=cloudflare must all be 0.",
+   "For one caller-cancel test, the same call_id must show stream_lane_call_cancelled on the caller and stream_lane_ring_screen_dismissed on the callee without a later connected event.",
+   "Before dispatch, verify in Stream Video roles that user/default CreateCall is inactive while call_member/default retains ReadCall, JoinCall, SendAudio, and SendVideo."
+  ],
+  "blocking_precondition": "Do not dispatch until Stream's default call type user role no longer grants CreateCall. Server-side creation alone does not stop a modified client holding a valid user token from bypassing AvaTOK admission.",
+  "_verified_at": "2026-08-21: worker/src/routes/stream_video_calls.ts; app/lib/streamlane/stream_call_service.dart; app/lib/streamlane/stream_call_screen.dart; app/lib/streamlane/stream_call_telemetry.dart; app/lib/streamlane/stream_incoming_screen.dart; app/lib/streamlane/stream_lane.dart; app/lib/core/account_switcher.dart; production D1 sqlite_master confirms stream_video_webhooks, stream_video_provider_decisions.ended_at, and idx_stream_video_provider_decisions_pair."
+ },
  "STREAM-GATE-1": {
   "description": "Two server/client gates for the hard cutover. (1) worker/src/routes/config.ts declares a new numeric callMinBuild (PlatformConfig, DEFAULTS=0, numericKeys), and worker/src/routes/api.ts refuses POST /api/call from a client below it with HTTP 426 and code='update_required', placed after the config read and before the first side effect so a refused dial never wakes the callee; the body also carries the legacy sent:0 / reachable:false shape so pre-cutover clients degrade to an honest unreachable instead of a hung ring. Ships INERT: callMinBuild=0 disables the gate. (2) app/lib/features/conference/call_escalation_service.dart now nacks an add-to-call escalation with 'conference_disabled' when conferenceEnabled or cloudflareConferenceEnabled is off, closing the door that let an adder pull a device out of a working 1:1 into a Cloudflare conference the Worker would then refuse.",
   "two_sided": true,
