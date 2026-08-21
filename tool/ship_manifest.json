@@ -2656,5 +2656,31 @@
       }
     ],
     "_verified_at": "app/lib/core/library_api.dart:54-101 isDirectlyReadable; app/lib/features/library/lib_thumbs.dart:218-233; app/lib/features/avatok/media.dart:465-476; app/lib/core/avatar_cache.dart:181-200 query-string guard; app/lib/features/library/library_media_viewer.dart:65-92 telemetry; worker/src/routes/media.ts:756-812 the two URL shapes"
+  },
+  "UPDATE-ABI-OFFSET-1": {
+    "description": "Owner report 2026-08-21: after shipping build 10603 his app still said 'You're on the latest version'. Diagnosed from PostHog: his device reports app_version 0.1.18+12601, build 12601, release SHA a51b976a — which is run #601. ROOT CAUSE: the side-load APK step passed `--split-per-abi`, and Flutter's Gradle plugin adds 1000*abiCode to versionCode for split APKs (arm64-v8a = +2000). So the APK was stamped 2000 + 10000 + run_number while the .aab AND the latestAppBuild KV pointer both used 10000 + run_number. Any tester who side-loaded the APK — which is exactly what we told him to do when the Play link was broken — installed a build number 2000 higher than the pointer will ever reach, so UpdateService computed latest(10603) <= current(12601) and reported up-to-date on every future release, permanently. The side-load workaround was itself what disabled his updates. FIX: dropped --split-per-abi (`--target-platform android-arm64` already limits this to one ABI, so the flag bought nothing but the offset), updated the staging step for the new `app-release.apk` filename with a hard error if a per-ABI file reappears, and added an aapt2 assertion that the APK's actual versionCode equals the pointer. CI-only: no app code, no worker change, no schema change, no new flag.",
+    "shipped": "2026-08-21",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "update_check_result",
+        "property": "installed_build",
+        "lt": 11000,
+        "min_events": 1,
+        "note": "THE FIX, as a number. Every CI build number is 10000 + run_number, so a healthy installed build is in [10000,10999]. The broken APKs installed as 12xxx. An installed_build >= 11000 on the new build means the ABI offset is back and that device's update check is permanently dead. NOTE: devices already on 12601 will keep reporting 12xxx until they uninstall and reinstall — this assertion is about NEW installs of the fixed APK, so read it against first-seen devices."
+      },
+      {
+        "event": "update_check_result",
+        "property": "result",
+        "not_in": [
+          "up_to_date"
+        ],
+        "min_events": 0,
+        "note": "Secondary. A device sitting on an older build must not be told it is current. Combined with the assertion above this catches the pointer/APK mismatch from either direction — a stale pointer or an inflated installed build both surface here as a wrong up_to_date."
+      }
+    ],
+    "_verified_at": ".github/workflows/android.yml:311-340 --split-per-abi removed with rationale; :348-385 staging by app-release.apk + per-ABI hard error + aapt2 versionCode assertion; :365 .aab already used the un-offset number; :464 BUILD_NO=10000+run_number for the KV pointer. Diagnosis: PostHog events 2026-08-21T00:49Z, hdavy2002@gmail.com, build=12601 app_version=0.1.18+12601 release=a51b976a (run #601)"
   }
 }
