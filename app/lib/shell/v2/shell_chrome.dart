@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ui/avatok_dark.dart';
+import '../../core/ui/breakpoints.dart';
+import '../../core/avatar.dart';
+import '../../core/profile_store.dart';
 import '../../core/remote_config.dart';
+import '../../core/theme.dart';
 import '../../core/update_service.dart';
+import '../../features/notifications/notifications_screen.dart';
+import '../../features/profile/profile_screen.dart';
+import '../../features/wallet/wallet_balance_chip.dart';
+import '../../identity/identity.dart';
 import '../shell_v2.dart';
 import 'app_order_screen.dart';
 import 'shell_destinations.dart';
@@ -85,6 +94,284 @@ Widget shellNavBar({
       ),
     ],
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [UI-HEADER-2026] THE shared AvaTOK header band.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Height of the header ROW itself (the band's own top inset is added on top by
+/// `SafeArea`, and by `Scaffold` when this is used in the `appBar:` slot).
+const double kAvaTokHeaderRowHeight = 56;
+
+/// The one header treatment every root and major page inherits: menu affordance ·
+/// page name · wallet chip · profile avatar · notification bell. **Only the page
+/// name changes between pages.**
+///
+/// Three things this deliberately does that a plain `AppBar` does not:
+///
+///  * It paints the band BEHIND the status bar (`Container` outside `SafeArea`),
+///    so there is never a cream strip above an indigo header, and it stamps
+///    [AvaTheme.bandOverlay] so the clock/Wi-Fi/battery glyphs are WHITE on the
+///    dark band. A hand-rolled header without that `AnnotatedRegion` inherits
+///    whatever the previous route left behind.
+///  * It never lets the title push the trailing controls off screen — see
+///    [AD.shortTitle].
+///  * It does NOT draw the wave. The seam is a decorative OVERLAY on the
+///    scrolling content below (`SeamOverlay`), never a layout sibling; a
+///    sibling reserves ~36px whose transparent half can only reveal the
+///    Scaffold's cream, which is exactly the "creamy strip hiding my messages"
+///    the owner rejected. Hosts keep the first control clear of the wave with
+///    [AD.searchDockTopGap].
+///
+/// Mount it in the `appBar:` slot (it is a [PreferredSizeWidget]) or as the
+/// first child of a body `Column`. When [bottom] is set — a tab strip welded to
+/// the band — prefer the body form, or pass [bottomHeight] so the `appBar:`
+/// slot reserves the right space.
+class AvaTokHeader extends StatelessWidget implements PreferredSizeWidget {
+  /// The ONLY thing that varies between pages. Brand spelling is `AvaTOK`.
+  final String title;
+
+  /// Menu tap. `null` opens the enclosing `Scaffold`'s drawer.
+  final VoidCallback? onMenu;
+
+  /// Replaces the menu button entirely (e.g. a back button on a pushed screen).
+  final Widget? leading;
+
+  /// Extra trailing controls, inserted between the avatar and the bell.
+  final List<Widget> actions;
+
+  final bool showWallet;
+  final bool showAvatar;
+  final bool showBell;
+
+  /// Override the profile avatar (the messenger passes its status-ring avatar).
+  final Widget? avatar;
+
+  /// Unread count on the bell. 0 hides the badge.
+  final int notificationCount;
+
+  /// Bell tap. `null` pushes the notification centre.
+  final VoidCallback? onBell;
+
+  /// Welded to the bottom of the band, inside the same SafeArea (a tab strip).
+  final Widget? bottom;
+
+  /// Height of [bottom]; only needed when this is used in an `appBar:` slot.
+  final double bottomHeight;
+
+  const AvaTokHeader({
+    super.key,
+    required this.title,
+    this.onMenu,
+    this.leading,
+    this.actions = const [],
+    this.showWallet = true,
+    this.showAvatar = true,
+    this.showBell = true,
+    this.avatar,
+    this.notificationCount = 0,
+    this.onBell,
+    this.bottom,
+    this.bottomHeight = 0,
+  });
+
+  @override
+  Size get preferredSize =>
+      Size.fromHeight(kAvaTokHeaderRowHeight + bottomHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    const band = AD.headerFooter;
+    final onBand = AD.onBand(band);
+    final s = ZineBreakpoints.chromeScale(context);
+
+    final trailing = <Widget>[
+      if (showWallet) const WalletBalanceChip(),
+      if (showAvatar) avatar ?? const ShellProfileAvatar(),
+      ...actions,
+      if (showBell)
+        _HeaderBell(count: notificationCount, color: onBand, onTap: onBell),
+    ];
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AvaTheme.bandOverlay(band),
+      child: Container(
+        color: band,
+        child: SafeArea(
+          bottom: false,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              height: kAvaTokHeaderRowHeight,
+              child: Padding(
+                // Only the VERTICAL padding scales — shrinking the horizontal
+                // gutters on the narrowest phone pushes the wordmark and the
+                // trailing controls toward the edges, where they are already
+                // hardest to hit ([RESP-SMALL-1]).
+                padding: EdgeInsets.fromLTRB(
+                    Msg.s4, Msg.s2 * s, Msg.s3, Msg.s2 * s),
+                child: Row(children: [
+                  leading ?? _MenuButton(onTap: onMenu, color: onBand),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Builder(builder: (ctx) {
+                      // The band is a FIXED height, so cap the OS accessibility
+                      // scale feeding the title at 1.15x — same budget rule as
+                      // ZineAppBar. This does not touch body text anywhere.
+                      final os = MediaQuery.textScalerOf(ctx).scale(1.0);
+                      return MediaQuery(
+                        data: MediaQuery.of(ctx).copyWith(
+                            textScaler:
+                                TextScaler.linear(os > 1.15 ? 1.15 : os)),
+                        child: Text(
+                          AD.shortTitle(ctx, title),
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: ADText.appTitle(c: onBand),
+                        ),
+                      );
+                    }),
+                  ),
+                  for (var i = 0; i < trailing.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 10),
+                    trailing[i],
+                  ],
+                ]),
+              ),
+            ),
+            if (bottom != null) bottom!,
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hamburger. Falls back to the enclosing Scaffold's drawer when no [onTap] is
+/// given — a `Builder` is required for that so the context is BELOW the
+/// Scaffold, which is the classic "Scaffold.of() called with a context that
+/// does not contain a Scaffold" trap.
+class _MenuButton extends StatelessWidget {
+  final VoidCallback? onTap;
+  final Color color;
+  const _MenuButton({required this.onTap, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Builder(
+        builder: (ctx) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap ?? () => Scaffold.of(ctx).openDrawer(),
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(PhosphorIcons.list(PhosphorIconsStyle.bold),
+                size: 22, color: color),
+          ),
+        ),
+      );
+}
+
+/// Notification bell + rani unread badge.
+class _HeaderBell extends StatelessWidget {
+  final int count;
+  final Color color;
+  final VoidCallback? onTap;
+  const _HeaderBell({required this.count, required this.color, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final bell = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap ??
+          () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const NotificationsScreen())),
+      child: SizedBox(
+        width: 38,
+        height: 38,
+        child: Center(
+          child: PhosphorIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold),
+              size: 20, color: color),
+        ),
+      ),
+    );
+    if (count <= 0) return bell;
+    return Stack(clipBehavior: Clip.none, children: [
+      bell,
+      Positioned(
+        right: 0,
+        top: 2,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: Msg.s2, vertical: 1),
+          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+          decoration: BoxDecoration(
+            color: AD.primaryBadge,
+            borderRadius: Msg.brPill,
+            border: Border.all(color: AD.headerFooter, width: 2),
+          ),
+          alignment: Alignment.center,
+          child: Text(count > 99 ? '99+' : '$count',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0)),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// The header's profile avatar: my own photo when I have one, my generated
+/// initials avatar otherwise. Tap → Profile.
+///
+/// Deliberately loads through [ProfileStore], which is per-account scoped and
+/// in-memory cached — one phone is shared by a parent and each child account,
+/// so this must never serve another account's photo.
+class ShellProfileAvatar extends StatefulWidget {
+  final double size;
+  const ShellProfileAvatar({super.key, this.size = 32});
+
+  @override
+  State<ShellProfileAvatar> createState() => _ShellProfileAvatarState();
+}
+
+class _ShellProfileAvatarState extends State<ShellProfileAvatar> {
+  String _url = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await ProfileStore().load();
+      // An empty URL never overwrites a good one — a profile fetch that lands
+      // empty (mid account restore) would otherwise blank the header.
+      if (mounted && p.avatarUrl.isNotEmpty && p.avatarUrl != _url) {
+        setState(() => _url = p.avatarUrl);
+      }
+    } catch (_) {/* header avatar is best-effort — initials are a fine state */}
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Pushed directly rather than via `openShellDestination`, which calls
+        // `ShellScope.of` and therefore asserts when this header is mounted on
+        // a screen outside ShellV2. The header has to work everywhere.
+        onTap: () => Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => const ProfileScreen())),
+        child: Avatar(
+          seed: AccountScope.id ?? 'me',
+          name: 'You',
+          size: widget.size,
+          avatarUrl: _url.isEmpty ? null : _url,
+        ),
+      );
 }
 
 /// A themed empty state used by placeholder tabs ("coming with AvaDial", card

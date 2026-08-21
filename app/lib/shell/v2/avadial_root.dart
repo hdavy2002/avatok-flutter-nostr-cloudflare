@@ -133,30 +133,40 @@ class _AvaDialRootState extends State<AvaDialRoot> {
       // avadial_theme.dart, which mirrors AvaPhone's existing dark palette.
       backgroundColor: AvaDialTheme.bg,
       drawer: const ShellSidebar(current: RootId.avaDial),
-      appBar: _bar(context),
+      // [UI-HEADER-2026] The hand-rolled AppBar is gone — this root now wears
+      // the SHARED header ([AvaTokHeader]) like every other root, so it carries
+      // the wallet chip, profile avatar and notification bell it was missing,
+      // and the status-bar glyphs are white over the indigo band. It moved into
+      // the body so the Calls tab strip can be WELDED to the band (`bottom:`)
+      // instead of being a second, separately-coloured chrome bar.
+      //
+      // Title is 'Calls', not 'AvaDialer' — the 2026-08-14 owner rename that
+      // the sidebar already used; this header was the last surface still
+      // showing the old label.
       // No bottomNavigationBar here anymore (2026-07-12): the persistent shell-wide
       // AppSwitcherBar owns the bottom of the screen now. Calls' own sub-sections
       // moved to a colored tab STRIP below the app bar instead (see body below).
       body: SafeArea(
         top: false,
         child: Column(children: [
-          _CallsTabStrip(
-            items: _items,
-            selectedIndex: _tab,
-            onSelected: (i) => setState(() => _tab = i),
+          AvaTokHeader(
+            title: 'Calls',
+            bottom: _CallsTabStrip(
+              items: _items,
+              selectedIndex: _tab,
+              onSelected: (i) => setState(() => _tab = i),
+            ),
           ),
-          // [RAJ-SEAMS-1] TorranDivider is retired. The tab strip is the last
-          // coloured chrome band above the tab content, so the seam is here —
-          // same placement as chat_list.dart's _AvaTokTabStrip. Per patches.md
-          // §6 the Calls tab strip is now an INDIGO band (2C Double wave),
-          // flush under the strip (no border between). Default backColor
-          // (haldi) is correct on an indigo band per the §6 usage note, so it
-          // is not overridden here.
-          const DoubleWaveSeam(bandColor: AD.bandIndigo),
           Expanded(
-            // Rebuild when a config fetch lands so flipping `avaDialer` in KV
-            // surfaces the live tabs without an app restart.
-            child: ValueListenableBuilder<int>(
+            // [UI-HEADER-2026] The seam is an OVERLAY on the tab content, not a
+            // Column sibling above it. As a sibling it reserved ~36px whose
+            // transparent half could only ever reveal the Scaffold background —
+            // the dead strip the owner rejected app-wide (see `SeamOverlay`).
+            // Default `backColor` (haldi) is correct on an indigo band per
+            // patches.md §6, so it is not overridden.
+            child: SeamOverlay(
+              seam: const DoubleWaveSeam(bandColor: AD.bandIndigo),
+              child: ValueListenableBuilder<int>(
               valueListenable: RemoteConfig.revision,
               builder: (context, _, __) {
                 final on = RemoteConfig.avaDialer;
@@ -192,42 +202,11 @@ class _AvaDialRootState extends State<AvaDialRoot> {
                     ),
                 ]);
               },
+              ),
             ),
           ),
         ]),
       ),
-    );
-  }
-
-  // [RAJ-SEAMS-1] This AppBar used to be `AvaDialTheme.surface` — a neutral
-  // card colour that no longer matches the `AD.bandIndigo` `_CallsTabStrip`
-  // sitting directly below it (two chrome bars in different colours reads as
-  // a mistake). Recoloured to the same indigo band, with every foreground
-  // element (title, leading icon, actions) flipped to `AD.onBand` per the
-  // patches.md §6 contrast rule — indigo is a DARK band.
-  PreferredSizeWidget _bar(BuildContext context) {
-    final onBand = AD.onBand(AD.bandIndigo);
-    return AppBar(
-      backgroundColor: AD.bandIndigo,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      foregroundColor: onBand,
-      iconTheme: IconThemeData(color: onBand),
-      actionsIconTheme: IconThemeData(color: onBand),
-      titleTextStyle: ADText.appTitle(c: onBand),
-      // [RAJ-SEAMS-1] The bottom hairline is GONE. It used to separate a pale
-      // AppBar from the tab strip below; now both are AD.bandIndigo, so it
-      // drew a stray rule across the middle of one continuous indigo band.
-      // The seam under the tab strip is the only edge this chrome needs.
-      leading: Builder(
-        builder: (ctx) => IconButton(
-          icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: onBand),
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
-        ),
-      ),
-      // Style comes from `titleTextStyle` above — setting it here too would
-      // just shadow it.
-      title: const Text('AvaDialer'),
     );
   }
 }
@@ -818,8 +797,12 @@ class _ContactsTabState extends State<_ContactsTab> {
       Column(children: [
         // [AVADIAL-CONTACTS-MERGE] Banner now explains the merged view: an orange
         // badge = already on AvaTOK (tap to call), everyone else gets an invite.
+        // [UI-HEADER-2026] This card is the FIRST thing under the header wave,
+        // so it — not the search field below it — is what has to clear the gold
+        // tip. `AD.searchDockTopGap` is the one shared offset for that.
         Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, 0),
+          padding: EdgeInsets.fromLTRB(
+              Msg.s4, AD.searchDockTopGap(context), Msg.s4, 0),
           child: AdCard(
             color: AvaDialTheme.surface2,
             padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s3),

@@ -51,7 +51,10 @@ import '../../shell/ava_sidebar.dart';
 import '../ava_companion/companion_home.dart';
 import '../../core/notifications_api.dart';
 import '../notifications/notifications_screen.dart';
-import '../wallet/wallet_balance_chip.dart';
+// [UI-HEADER-2026] The shared header band (menu · page name · wallet chip ·
+// profile avatar · bell). It mounts the WalletBalanceChip itself, which is why
+// the direct `wallet/wallet_balance_chip.dart` import is gone from here.
+import '../../shell/v2/shell_chrome.dart';
 import 'groups_tab.dart';
 import '../status/status_ring.dart';
 import '../status/status_screen.dart';
@@ -2350,83 +2353,48 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // The seam stays OUTSIDE this Container — it is the bottom edge of the
       // chrome, not part of the inset.
       body: Column(children: [
-        Container(
-          color: AD.headerFooter,
-          child: SafeArea(
-            bottom: false,
-            child: Column(children: [
-          // Shared header band (§8): indigo fill, ink bottom border — menu ·
-          // status avatar · filter dropdown · search · notifications. Persistent
-          // across all 3 tabs (Chat/Community/Call log), unlike the tab bodies.
-          Container(
-            // [RESP-SMALL-1] Only the VERTICAL padding scales. The horizontal
-            // gutters stay put: shrinking them on the narrowest phone pushes
-            // the wordmark and the trailing controls toward the screen edges,
-            // which is where they are already hardest to hit.
-            padding: EdgeInsets.fromLTRB(
-                Msg.s4,
-                Msg.s2 * ZineBreakpoints.chromeScale(context),
-                Msg.s3,
-                Msg.s3 * ZineBreakpoints.chromeScale(context)),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-            ),
-            child: Row(
-              children: [
-                // Left control — opens the app sidebar (this Scaffold hosts the
-                // main nav drawer). Kept from our wiring (not shown in the mockup,
-                // but the drawer is how the app-switcher/settings are reached).
-                GestureDetector(
-                  onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                  child: Container(
-                    width: 38, height: 38,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(AD.rIconButton)),
-                    // [RAJ-INDIGO-1] onBand, not textPrimary. The band flipped
-                    // from light turquoise to dark indigo, so ink here is
-                    // invisible.
-                    child: Icon(PhosphorIcons.list(PhosphorIconsStyle.bold), size: 22,
-                        color: AD.onBand(AD.headerFooter)),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text('AvaTOK', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
-                const Spacer(),
-                // [WALLET-UX-1] Compact wallet-balance chip (coin icon + total
-                // spendable tokens). Loads once via WalletBalanceStore; the
-                // wallet screen pushes fresh values on its refreshes — no
-                // polling. Tap → AvaWallet.
-                const WalletBalanceChip(),
-                const SizedBox(width: 10),
-                // Status avatar — opens the status viewer; shows my latest photo
-                // status as a thumbnail (glows when I have a live status).
-                _headerStatusButton(),
-                const SizedBox(width: 10),
-                // Filters collapsed into a single dropdown (active label shown).
-                _filterMenuButton(),
-                const SizedBox(width: 10),
-                // (Header "Chat with Ava" sparkle icon removed — owner request
-                // 2026-06-28. Ava is reachable via the shell-wide "Ava" action.)
-                // [ISSUE-CHAT-SEARCH-1] Header magnifier removed — owner request
-                // 2026-07-14. Search is now the inline dock under the tab strip.
-                // The full SearchScreen is still reachable from the overflow menu
-                // (_openSearch, kept for that call site).
-                // Notification bell + orange unread count → the notification center.
-                _badged(
-                  _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
-                      color: AD.onBand(AD.headerFooter)),
-                  count: _notifUnread),
-              ],
-            ),
-          ),
+        // [UI-HEADER-2026] This root's hand-rolled header band is now the SHARED
+        // one ([AvaTokHeader] in shell/v2/shell_chrome.dart) — the same widget
+        // Calls, Marketplace and the pushed screens use, so menu · page name ·
+        // wallet chip · profile avatar · bell sit in identical positions
+        // app-wide and only the page name changes. It also owns the band's
+        // SafeArea (so the indigo paints behind the status bar rather than
+        // leaving a cream strip) and stamps the white status-bar overlay style.
+        //
+        // Everything this screen adds on top is passed IN, so nothing was lost:
+        // the status-ring avatar (`avatar:`), the filter dropdown and this
+        // screen's own badged bell (`actions:` + `showBell: false`, because the
+        // count and the tap handler both live in this State), and the tab strip
+        // welded to the band (`bottom:`).
+        AvaTokHeader(
+          title: 'AvaTOK',
+          onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+          // Status avatar — opens the status viewer; shows my latest photo
+          // status as a thumbnail (glows when I have a live status).
+          avatar: _headerStatusButton(),
+          showBell: false,
+          actions: [
+            // Filters collapsed into a single dropdown (active label shown).
+            _filterMenuButton(),
+            // (Header "Chat with Ava" sparkle icon removed — owner request
+            // 2026-06-28. Ava is reachable via the shell-wide "Ava" action.)
+            // [ISSUE-CHAT-SEARCH-1] Header magnifier removed — owner request
+            // 2026-07-14. Search is now the inline dock under the tab strip.
+            // The full SearchScreen is still reachable from the overflow menu
+            // (_openSearch, kept for that call site).
+            // Notification bell + unread count → the notification center.
+            _badged(
+                _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
+                    color: AD.onBand(AD.headerFooter)),
+                count: _notifUnread),
+          ],
           // Tab strip — Chat · Community · Call log — directly below the header,
           // above the tab content (owner spec 2026-07-12).
-          _AvaTokTabStrip(
+          bottom: _AvaTokTabStrip(
             selectedIndex: _tab,
             onSelected: (i) => setState(() => _tab = i),
             chatUnread: _unread.values.fold<int>(0, (a, b) => a + b) > 0,
             communityInvites: _groupInvites,
-          ),
-            ]),
           ),
         ),
         // [RAJ-SEAMS-1] The retired toran divider is replaced by the 1B
@@ -2467,8 +2435,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 // [ISSUE-CHAT-SEARCH-1] Inline thread search, pinned directly
                 // under the tab strip so it never scrolls away. Groups and Calls
                 // each carry their own dock (same AdSearchDock widget).
+                // [UI-HEADER-2026] TOP PADDING IS 0 ON PURPOSE — the dock brings
+                // its own `AD.searchDockTopGap`, which is the one shared offset
+                // that clears the golden wave tip. Padding here as well is the
+                // double-spacing that squeezes the list on a small screen.
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
+                  padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s2),
                   child: AdSearchDock(
                     controller: _searchCtl,
                     hint: 'Search chats',

@@ -93,19 +93,15 @@ class ServicesRoot extends StatelessWidget {
             ),
         ],
       ),
-      appBar: AppBar(
-        backgroundColor: AD.headerFooter,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        shape: const Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: PhosphorIcon(PhosphorIcons.list(PhosphorIconsStyle.bold), color: AD.textPrimary),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-          ),
-        ),
-        title: Text(RemoteConfig.marketplaceVisible ? 'Marketplace' : 'Services',
-            style: ADText.appTitle()),
+      // [UI-HEADER-2026] Was a hand-rolled `AppBar` whose leading icon and title
+      // were drawn in `AD.textPrimary` — INK on the indigo band, i.e. very
+      // nearly invisible since [RAJ-INDIGO-1] flipped `headerFooter` from
+      // turquoise to indigo. It is now the SHARED header, so the foreground
+      // goes through `AD.onBand`, the title ellipsizes to `Market…` on a narrow
+      // phone, and the wallet chip / profile avatar / bell appear here exactly
+      // as they do on the messenger root.
+      appBar: AvaTokHeader(
+        title: RemoteConfig.marketplaceVisible ? 'Marketplace' : 'Services',
       ),
       body: const MarketplaceBrowse(),
     );

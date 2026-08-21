@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+// [UI-HEADER-2026] `AD.searchDockTopGap` scales with the same chrome factor the
+// seam painters use, so the gap below the wave tracks the wave. `breakpoints.dart`
+// imports nothing but `material` — no cycle back into this file.
+import 'breakpoints.dart';
+
 /// AvaTOK design tokens.
 ///
 /// [RAJ-PHASE1-2] ⚠️ THIS FILE IS NO LONGER A DARK PALETTE. The class doc used
@@ -63,6 +68,83 @@ class AD {
   static const inputField = Color(0xFFFFFAF0);
   /// Modal scrim — ink @65%.
   static const scrim = Color(0xA616110D);
+
+  // -------------------------------------------------- header wave geometry
+  //
+  // [UI-HEADER-2026] THE SINGLE SOURCE OF TRUTH for "how far below the header
+  // wave does the first control start". Hard acceptance requirement (handover
+  // §3): *every* search bar starts BELOW the tip of the golden wave and never
+  // touches or hides behind it.
+  //
+  // The numbers are not taste — they are read straight off `_DoubleWavePainter`
+  // in `rajasthani_motifs.dart`, which is the seam every header and footer uses
+  // since [RAJ-SINGLEWAVE-1]:
+  //
+  //   strip height          36 * chromeScale   ([seamHeight])
+  //   band  (front) wave    midY  8 + amp 12 =  20 * chromeScale
+  //   haldi (back)  wave    midY 16 + amp 12 =  28 * chromeScale  ([seamWaveTip])
+  //
+  // The GOLD back-wave is the lowest ink on screen, so it — not the strip
+  // height — is what a control has to clear. If the painter's geometry ever
+  // changes, change it HERE too; every screen reads these.
+  //
+  // The seam is mounted as a `SeamOverlay`, i.e. it is painted ON TOP of the
+  // scrolling content and occupies NO layout height (that is the whole point —
+  // a Column sibling is what produced the cream strip the owner rejected). So
+  // an offset measured from the content's own top edge is exactly right.
+
+  /// Unscaled height of the `DoubleWaveSeam` strip.
+  static const double seamHeight = 36;
+
+  /// Unscaled depth of the GOLD back-wave tip inside that strip.
+  static const double seamWaveTip = 28;
+
+  /// Breathing room between the wave tip and whatever sits under it.
+  static const double seamClearance = 8;
+
+  /// Painted height of the header/footer seam at this width.
+  static double headerSeamHeight(BuildContext context) =>
+      seamHeight * ZineBreakpoints.chromeScale(context);
+
+  /// Shorten a page title for a FIXED-height header band.
+  ///
+  /// Owner rule (handover §2): "long page names must be shortened with ellipsis,
+  /// normally after roughly 4–6 visible characters, so the wallet/avatar/bell
+  /// controls are not pushed off-screen". `TextOverflow.ellipsis` alone does not
+  /// do that — a `Flexible`/`Expanded` title only gives space back AFTER the
+  /// trailing controls have been squeezed, which is how the bell ended up off a
+  /// 320dp screen. This clamps the STRING; the ellipsis then handles the rest.
+  ///
+  /// Lives here, on the token class, so `AvaTokHeader`, `ZineAppBar` and any
+  /// screen-local header all shorten identically. Do NOT add a second copy in a
+  /// feature file — two functions with this name in scope is an ambiguous
+  /// reference, i.e. a compile error.
+  static String shortTitle(BuildContext context, String title) {
+    final w = MediaQuery.sizeOf(context).width;
+    // 320dp (the xcompact tier) is where the owner's overflow shows up. The
+    // widest tier keeps a generous clamp so ordinary titles are never touched.
+    final int maxChars = w < ZineBreakpoints.xcompactMax
+        ? 6
+        : w < 380
+            ? 10
+            : w < 430
+                ? 16
+                : 24;
+    final t = title.trim();
+    if (t.length <= maxChars) return t;
+    return '${t.substring(0, maxChars).trimRight()}…';
+  }
+
+  /// The offset EVERY search bar (and any other first control under a header
+  /// wave) must start at, measured from the top of the scrolling content.
+  ///
+  /// Read this instead of hard-coding a padding, and do NOT add your own extra
+  /// top padding on top of it — [AdSearchDock] already applies it as its own
+  /// top margin, so a host that pads as well double-spaces on a small screen.
+  /// A host that genuinely needs to own the spacing passes `topGap: 0` to the
+  /// dock and applies `AD.searchDockTopGap(context)` itself.
+  static double searchDockTopGap(BuildContext context) =>
+      seamWaveTip * ZineBreakpoints.chromeScale(context) + seamClearance;
 
   // ------------------------------------------------------------------ border
   //
@@ -1058,6 +1140,16 @@ class AdSearchDock extends StatefulWidget {
   /// Draw the 2px ink outline. See the class note.
   final bool outlined;
 
+  /// [UI-HEADER-2026] Gap above the dock. `null` (the default) means
+  /// [AD.searchDockTopGap] — the shared distance below the golden header wave,
+  /// which is the hard acceptance rule for every search bar in the app.
+  ///
+  /// Pass `0` ONLY when the host already applies the gap itself (or when the
+  /// dock is not the first thing under a header wave — e.g. a dock inside a
+  /// sheet). Do NOT wrap the dock in a Padding with its own top inset as well:
+  /// that is the double-spacing this parameter exists to prevent.
+  final double? topGap;
+
   const AdSearchDock({
     super.key,
     required this.controller,
@@ -1067,6 +1159,7 @@ class AdSearchDock extends StatefulWidget {
     this.trailing,
     this.showClear = true,
     this.outlined = true,
+    this.topGap,
   });
 
   @override
@@ -1111,10 +1204,13 @@ class _AdSearchDockState extends State<AdSearchDock> {
   Widget build(BuildContext context) {
     final hasText = widget.controller.text.isNotEmpty;
     return Container(
-      // Search docks sit below the shared golden wave tip. This margin is
-      // intentionally part of the shared component so chat, groups, calls,
-      // and the AvaDial inbox cannot drift into the header seam independently.
-      margin: const EdgeInsets.only(top: 12),
+      // [UI-HEADER-2026] Search docks sit below the shared golden wave tip.
+      // This margin is intentionally part of the shared component so chat,
+      // groups, calls, the AvaDial inbox and Marketplace cannot drift into the
+      // header seam independently. The flat `12` this used to be was SMALLER
+      // than the wave itself (the gold tip reaches 28 * chromeScale), so the
+      // dock still sat behind the wave on every host — see AD.searchDockTopGap.
+      margin: EdgeInsets.only(top: widget.topGap ?? AD.searchDockTopGap(context)),
       decoration: BoxDecoration(
         color: AD.inputField,
         borderRadius: BorderRadius.circular(AD.rInput),

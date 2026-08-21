@@ -227,13 +227,16 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        // Pre-existing bare Material Icons.* (not ours to fix —
-                        // left as-is per the design-guard baseline); only the
-                        // colour flips for the new indigo band.
+                      // [UI-HEADER-2026] Was a bare Material
+                      // `Icons.keyboard_arrow_*_rounded` pair — the ONLY two
+                      // icon violations the design guard reported under
+                      // `shell/**` (its icons baseline is 0, so they failed the
+                      // check on every PR). Phosphor carets are the app's
+                      // standard and read the same at 18px.
+                      PhosphorIcon(
                         _expanded
-                            ? Icons.keyboard_arrow_down_rounded
-                            : Icons.keyboard_arrow_up_rounded,
+                            ? PhosphorIcons.caretDown(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.caretUp(PhosphorIconsStyle.bold),
                         size: 18,
                         color: _onBand,
                       ),

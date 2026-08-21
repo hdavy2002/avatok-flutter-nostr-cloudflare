@@ -974,7 +974,16 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
     // App-bar titles are always a single readable white line. The highlighted
     // Zine title treatment remains available for hero content, but is not
     // used in the fixed shared header where it could render dark text.
-    titleW = Text(title, style: ADText.appTitle(c: onBand), maxLines: 1, overflow: TextOverflow.ellipsis);
+    // [UI-HEADER-2026] The string is clamped by `AD.shortTitle` BEFORE the
+    // ellipsis gets involved: with actions in the row, a long title squeezes
+    // the trailing controls off the band rather than truncating itself. Same
+    // helper the shared `AvaTokHeader` uses, so a page reads the same whichever
+    // header it happens to be wearing.
+    titleW = Text(AD.shortTitle(context, title),
+        style: ADText.appTitle(c: onBand),
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,

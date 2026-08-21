@@ -460,6 +460,20 @@ class AvaTheme {
     );
   }
 
+  /// [UI-HEADER-2026] The status-bar treatment for a screen whose top band is
+  /// drawn by hand (a `Container` + `SafeArea` header, not an `AppBar`) — the
+  /// shared `AvaTokHeader` and every root that mounts it.
+  ///
+  /// Those screens have NO AppBar, so `appBarTheme.systemOverlayStyle` never
+  /// reaches them and the clock/Wi-Fi/battery glyphs fall back to whatever the
+  /// previous route left behind — dark ink on the dark indigo band, i.e.
+  /// invisible. Wrap the header in
+  /// `AnnotatedRegion<SystemUiOverlayStyle>(value: AvaTheme.bandOverlay(AD.headerFooter), …)`.
+  ///
+  /// This is the SAME function [bandAppBar] uses, exposed rather than copied so
+  /// the two can never disagree about what "white status icons" means.
+  static SystemUiOverlayStyle bandOverlay(Color band) => _overlayFor(band);
+
   /// The AvaTOK wordmark is the one branded exception to native UI type.
   static TextStyle wordmark(double size, {Color color = AD.textPrimary}) =>
       TextStyle(

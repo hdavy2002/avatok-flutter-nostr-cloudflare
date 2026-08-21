@@ -177,7 +177,11 @@ class _GroupsTabState extends State<GroupsTab> {
         // nothing to search; never autofocused (would pop the keyboard on tab open).
         if (!_loading && (_groups.isNotEmpty || _invites.isNotEmpty))
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            // [UI-HEADER-2026] Top inset is 0 — the dock carries the shared
+            // `AD.searchDockTopGap` that clears the golden wave tip. The old
+            // hard-coded 12 was both too small for the wave AND additive with
+            // the dock's own margin.
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
             child: AdSearchDock(
               controller: _searchCtl,
               hint: 'Search groups',

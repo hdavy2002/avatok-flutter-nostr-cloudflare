@@ -167,6 +167,13 @@ class _SquigglePainter extends CustomPainter {
 // ------------------------------------------------------------- 2C Double wave
 /// Two stacked waves, offset phase: a deeper accent wave (default haldi)
 /// behind, the band-colour wave in front. No ink stroke.
+///
+/// [UI-HEADER-2026] ⚠️ THIS PAINTER'S GEOMETRY IS MIRRORED IN
+/// `AD.seamHeight` / `AD.seamWaveTip` (avatok_dark.dart), which is what every
+/// screen reads to keep its search bar BELOW the golden tip — the owner's hard
+/// acceptance rule. The gold back-wave reaches `midY 16 + amp 12 = 28` (scaled),
+/// deeper than the front band wave's 20, so IT is the edge a control has to
+/// clear. Change the numbers below and you must change those two tokens too.
 class DoubleWaveSeam extends StatelessWidget {
   final Color bandColor;
   final Color backColor;
