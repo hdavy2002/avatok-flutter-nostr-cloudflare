@@ -5,15 +5,74 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:stream_video_flutter/stream_video_flutter.dart';
-import 'package:uuid/uuid.dart';
 
 import '../core/analytics.dart';
+import '../core/api_auth.dart';
 import '../core/calls/call_media_permissions.dart';
+import '../core/config.dart';
 import 'stream_call_screen.dart';
 import 'stream_lane.dart';
+
+/// [STREAM-AUTH-1 2026-08-21] The Worker route that AUTHORISES a 1:1 Stream
+/// dial and mints the call id. Declared here rather than in `core/config.dart`
+/// because it belongs to this lane alone; `kApiBase` is the same base every
+/// other authed route is built from.
+const String kStreamCallPlaceUrl = '$kApiBase/stream-calls/place';
+
+/// [STREAM-AUTH-1 2026-08-21] The AvaTOK Worker's verdict on a 1:1 Stream dial.
+///
+/// Stream carries the MEDIA. It does not decide who may call whom — that is the
+/// AvaTOK Worker's job, and until today this lane never asked. See
+/// `Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md` §8.1.
+class StreamPlaceDecision {
+  const StreamPlaceDecision._({
+    required this.approved,
+    required this.callId,
+    required this.code,
+    required this.message,
+    required this.httpStatus,
+  });
+
+  const StreamPlaceDecision.approved(String callId)
+      : this._(
+          approved: true,
+          callId: callId,
+          code: 'approved',
+          message: '',
+          httpStatus: 200,
+        );
+
+  const StreamPlaceDecision.refused({
+    required String code,
+    required String message,
+    required int httpStatus,
+  }) : this._(
+          approved: false,
+          callId: '',
+          code: code,
+          message: message,
+          httpStatus: httpStatus,
+        );
+
+  /// True only when the server said yes. [callId] is then SERVER-MINTED and is
+  /// the id the Stream call must be created with.
+  final bool approved;
+  final String callId;
+
+  /// Machine-readable refusal code, e.g. `recipient_unavailable`,
+  /// `update_required`, `stream_calls_disabled`, `receptionist`, `network`.
+  final String code;
+
+  /// The sentence to show the user. Always the SERVER's message when it sent
+  /// one — the refusal copy is a product decision that lives on the server
+  /// (see worker/src/lib/call_admission.ts on why it is deliberately vague).
+  final String message;
+  final int httpStatus;
+}
 
 /// How a `CallStatusDisconnected` should be treated by the UI.
 ///
@@ -32,7 +91,68 @@ class StreamCallService {
 
   static final StreamCallService instance = StreamCallService._();
 
-  static const Uuid _uuid = Uuid();
+  /// [STREAM-AUTH-1] Ask the AvaTOK Worker whether this call may happen, and
+  /// get the SERVER-MINTED call id back.
+  ///
+  /// FAILS CLOSED. A network error, a timeout, a 5xx or an unparseable body all
+  /// refuse the dial. That is deliberate and it is the owner's requirement
+  /// verbatim: "Stream should transport the sound and video, but your server
+  /// must first approve every call." Falling back to a client-minted id on a
+  /// blip would restore exactly the bypass this method exists to remove — a
+  /// blocked caller would only have to lose signal for a second to get through.
+  ///
+  /// The Clerk bearer, `X-Trace-Id` and (as of this change) `x-app-build` are
+  /// all attached by [ApiAuth], so the Worker's `callMinBuild` gate finally has
+  /// an input on this lane too.
+  Future<StreamPlaceDecision> authorizePlace({
+    required String peerId,
+    required bool video,
+    String? traceId,
+  }) async {
+    try {
+      final res = await ApiAuth.postJsonH(
+        kStreamCallPlaceUrl,
+        <String, Object>{'callee_uid': peerId, 'video': video},
+        <String, String>{
+          if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
+        },
+        timeout: const Duration(seconds: 8),
+      );
+      Map<String, dynamic>? body;
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map) body = decoded.cast<String, dynamic>();
+      } catch (_) {/* non-JSON (edge rejection) — handled as a refusal below */}
+      if (res.statusCode == 200 && body?['approved'] == true) {
+        final callId = (body?['call_id'] ?? '').toString();
+        if (callId.isNotEmpty) return StreamPlaceDecision.approved(callId);
+        // Approved with no id is a server bug, not a permission to dial: there
+        // is no call identity to create, so this cannot proceed.
+        return const StreamPlaceDecision.refused(
+          code: 'no_call_id',
+          message: "Couldn't start the call. Please try again.",
+          httpStatus: 200,
+        );
+      }
+      final code = (body?['code'] ?? 'refused').toString();
+      final message = (body?['message'] ?? '').toString();
+      return StreamPlaceDecision.refused(
+        code: code,
+        message: message.isNotEmpty
+            ? message
+            : (res.statusCode == 401 || res.statusCode == 403
+                ? 'Please sign in again to make calls.'
+                : "Couldn't start the call. Please try again."),
+        httpStatus: res.statusCode,
+      );
+    } catch (e) {
+      return StreamPlaceDecision.refused(
+        code: e is TimeoutException ? 'authorize_timeout' : 'network',
+        message: "Can't reach AvaTOK right now — check your connection and try again.",
+        httpStatus: 0,
+      );
+    }
+  }
 
   /// Per-call state subscriptions, keyed by call cid. Previously the
   /// subscription returned by [_wireRingingEvents] was discarded at both call
@@ -187,9 +307,48 @@ class StreamCallService {
     String? peerEmail,
     String? traceId,
   }) async {
-    final callId = 'sl-${_uuid.v4()}';
     final startedAtMs = DateTime.now().millisecondsSinceEpoch;
     final email = Analytics.currentEmail ?? '';
+
+    // ── [STREAM-AUTH-1 / plan §8.1] SERVER AUTHORITY, BEFORE ANYTHING ────────
+    // This runs before the permission preflight and before a single Stream SDK
+    // symbol is touched. A refused call must not prompt for the microphone and
+    // must not reach Stream at all — the callee's phone costs them nothing,
+    // exactly like the legacy `POST /api/call` admission gate.
+    //
+    // `stream_lane_call_requested` preserves the diagnostic that
+    // `stream_lane_call_placed` used to provide as the first statement of this
+    // method: a nonzero count proves the lane was entered. `..._placed` now
+    // means "entered AND authorised", and carries the server's call id.
+    Analytics.capture('stream_lane_call_requested', {
+      'peer_id': userId,
+      'media_mode': video ? 'video' : 'audio',
+      'user_email': email,
+      if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
+      if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+    });
+    final decision =
+        await authorizePlace(peerId: userId, video: video, traceId: traceId);
+    if (!decision.approved) {
+      Analytics.capture('stream_lane_call_refused', {
+        'peer_id': userId,
+        'code': decision.code,
+        'http_status': decision.httpStatus,
+        'media_mode': video ? 'video' : 'audio',
+        'user_email': email,
+        if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
+        if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(decision.message)));
+      }
+      return;
+    }
+    // SERVER-MINTED. Was `'sl-${_uuid.v4()}'` — a call identity the phone made
+    // up, which no part of AvaTOK had authorised or recorded.
+    final callId = decision.callId;
+
     Analytics.capture('stream_lane_call_placed', {
       'call_id': callId,
       'peer_id': userId,

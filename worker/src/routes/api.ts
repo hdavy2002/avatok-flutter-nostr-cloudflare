@@ -13,6 +13,8 @@ import { requireUser, isFail } from "../authz";
 import { verifyClerk, resolveCanonicalUid, linkClerkAlias } from "../auth";
 import { emailFor, phoneFor, nameFor, primaryVerifiedEmailFor, publicIdentityFor } from "../lib/identity";
 import { admitCall, unavailableBody, CALLER_VISIBLE_OUTCOME } from "../lib/call_admission";
+// [STREAM-AUTH-1] Shared with routes/stream_video_calls.ts `streamCallPlace`.
+import { APP_BUILD_HEADER, UPDATE_REQUIRED_MESSAGE, callMinBuildFrom, clientBuildFrom } from "../lib/call_build_gate";
 import { track, trackUser, trackUserContact, trackException } from "../hooks";
 // [CALL-PRESENCE-1] The real device heartbeat (Upstash-backed, no DO wake).
 import { readPresenceRead, type PresenceReadResult, type PresenceState } from "../lib/presence";
@@ -456,20 +458,19 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   //
   // INERT BY DEFAULT: `callMinBuild` is 0 in DEFAULTS, which disables the gate
   // completely. Nothing changes until the owner arms it in KV.
-  const callMinBuild = Number(
-    (callPolicyConfig as { callMinBuild?: number } | null)?.callMinBuild ?? 0,
-  );
-  if (Number.isFinite(callMinBuild) && callMinBuild > 0) {
+  // [STREAM-AUTH-1 2026-08-21] The arithmetic moved to lib/call_build_gate.ts —
+  // unchanged, but now SHARED with the Stream authorisation endpoint
+  // (routes/stream_video_calls.ts `streamCallPlace`) so the two lanes cannot
+  // read the same flag differently. Telemetry and the refusal body below are
+  // deliberately NOT shared: they are lane-specific.
+  const callMinBuild = callMinBuildFrom(callPolicyConfig as { callMinBuild?: number } | null);
+  if (callMinBuild > 0) {
     // The build the client claims. `x-app-build` is the header the cutover build
     // sends; `app_build` in the body is accepted as a fallback so a client that
     // cannot easily set a header still has a way to identify itself. Absent or
     // unparseable → 0, i.e. "did not tell us", which is what every pre-cutover
     // build does, since the header is introduced BY the cutover build.
-    const headerBuild = Number.parseInt(req.headers.get("x-app-build") ?? "", 10);
-    const bodyBuild = Number.parseInt(String(b.app_build ?? ""), 10);
-    const clientBuild = Number.isFinite(headerBuild) && headerBuild > 0
-      ? headerBuild
-      : (Number.isFinite(bodyBuild) && bodyBuild > 0 ? bodyBuild : 0);
+    const clientBuild = clientBuildFrom(req.headers.get(APP_BUILD_HEADER), b.app_build);
     // A client that opted into Stream (`stream_capable`) is post-cutover BY
     // CONSTRUCTION and never uses the Cloudflare media path below, so it is
     // never refused here even if it forgot the header. This is a deliberate
@@ -515,7 +516,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         routed: "update_required",
         min_build: callMinBuild,
         client_build: clientBuild,
-        message: "Update AvaTOK to make calls. This version can no longer place calls.",
+        message: UPDATE_REQUIRED_MESSAGE,
       }, 426);
     }
   }

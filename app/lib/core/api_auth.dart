@@ -60,6 +60,21 @@ class ApiAuth {
     final explicit = h['X-Trace-Id'] ?? h['x-trace-id'];
     h.remove('x-trace-id');
     h['X-Trace-Id'] = explicit ?? Analytics.currentTraceId ?? _traceId();
+    // [STREAM-AUTH-1 2026-08-21] The build this install actually carries, on
+    // EVERY authed request. Closes blocker §8.6 of
+    // Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md: the Worker's `callMinBuild`
+    // "update required" gate reads `x-app-build` (worker/src/lib/call_build_gate.ts,
+    // consumed by POST /api/call and POST /api/stream-calls/place) and NO client
+    // had ever sent it — so the gate shipped inert and must not be armed until
+    // this header is in the field.
+    //
+    // Source is [Analytics.appBuild], the real versionCode resolved from
+    // PackageInfo in Analytics.init — never the frozen compile-time `kAppBuild`
+    // constant, which reads 28 on a fleet where every shipped build is 10000+.
+    // Omitted (not sent as 0 or -1) until it resolves: "did not tell us" is a
+    // truthful absence, and the server already treats a missing header as 0.
+    final build = Analytics.appBuild;
+    if (build > 0) h['x-app-build'] = '$build';
     try {
       final b = await clerkBearer?.call();
       if (b != null && b.isNotEmpty) {

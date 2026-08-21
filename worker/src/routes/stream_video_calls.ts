@@ -19,10 +19,14 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { isFail, requireUser } from "../authz";
-import { admitCall, unavailableBody } from "../lib/call_admission";
-import { nameFor } from "../lib/identity";
+import { admitCall, unavailableBody, CALLER_VISIBLE_OUTCOME, CALLER_VISIBLE_COPY } from "../lib/call_admission";
+import { nameFor, emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { emitCallEvent, CallEvent } from "../lib/call_telemetry_events";
+// [STREAM-AUTH-1 2026-08-21] The checks the Stream lane was bypassing.
+import { trackUser } from "../hooks";
+import { callerContactPolicy, shouldRouteUnknownAvatokCaller } from "../lib/call_contact_directory";
+import { APP_BUILD_HEADER, UPDATE_REQUIRED_MESSAGE, callMinBuildFrom, clientBuildFrom } from "../lib/call_build_gate";
 
 const PROVIDER = "stream" as const;
 const CALL_TYPE = "default";
@@ -527,6 +531,288 @@ export async function streamVideoPrepare(req: Request, env: Env, ctx?: Execution
     idempotencyKey,
     traceId: req.headers.get("x-trace-id") ?? undefined,
     ctx,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [STREAM-AUTH-1 2026-08-21] POST /api/stream-calls/place
+//
+// THE PROBLEM THIS FIXES (plan §8.1, owner's words):
+//   "Stream should transport the sound and video, but your server must first
+//    approve every call."
+//
+// `app/lib/streamlane/stream_call_service.dart` used to mint its own call id
+// and go straight to `client.makeCall(...)` + `getOrCreate(ringing:true)`. That
+// skipped EVERYTHING `POST /api/call` enforces before a phone can ring: the
+// blocklist, the unknown-caller contact policy, the build floor, and the
+// authoritative record of who was allowed to call whom. A blocked person could
+// ring you; nothing on the server even knew the call existed.
+//
+// WHAT THIS ENDPOINT DOES — and deliberately does NOT do.
+//   DOES: authenticate the caller from the Clerk JWT (never from JSON), run the
+//         same `admitCall` gate the legacy dial runs, apply the same
+//         `callMinBuild` floor via the same `x-app-build` header contract,
+//         apply the same unknown-caller contact policy, MINT the call id
+//         server-side, record the authoritative provider decision, and emit
+//         telemetry tagged with BOTH parties' emails.
+//   DOES NOT: touch the Stream API. It does not create the call and it does not
+//         ring. That stays with the client's existing `getOrCreate` + `join`,
+//         which is what plan P1.3 mounts the call screen around. Creating and
+//         ringing here as well would double-create the call.
+//
+// This is the authorisation half of the split. `prepareStreamCall` above is the
+// OTHER, older lane (the `streamCallPilotEnabled` percentage rollout invoked
+// from `/api/call`), which both authorises AND rings. The two are independent
+// on purpose and `remote_config.dart:167-169` forbids both flags being on.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Machine-readable refusal codes. The client keys on these, not on the copy. */
+export type StreamPlaceRefusalCode =
+  | "invalid_request"
+  | "self_call"
+  | "stream_calls_disabled"
+  | "update_required"
+  | "recipient_unavailable"
+  | "receptionist";
+
+type StreamPlaceBody = {
+  callee_uid?: unknown;
+  video?: unknown;
+  app_build?: unknown;
+  trace_id?: unknown;
+};
+
+/**
+ * POST /api/stream-calls/place
+ *
+ * Request  — Authorization: Bearer <clerk jwt> (required)
+ *            x-app-build: <versionCode>        (optional; body `app_build` is
+ *                                               the fallback — see call_build_gate.ts)
+ *            x-trace-id:  <trace>              (optional)
+ *            body { callee_uid: string, video?: boolean, app_build?: number,
+ *                   trace_id?: string }
+ *
+ * Approved — 200 { approved: true, provider: "stream", call_type: "default",
+ *                  call_id, callee_uid, video, trace_id }
+ *            `call_id` is SERVER-MINTED and is the id the client must use.
+ *
+ * Refused  — { approved: false, code, message, ... }
+ *            update_required        → 426, plus min_build / client_build
+ *            stream_calls_disabled  → 503
+ *            invalid_request        → 400
+ *            self_call              → 400
+ *            recipient_unavailable  → 200 (uniform denial, see below)
+ *            receptionist           → 200, plus routing_reason
+ *
+ * WHY `recipient_unavailable` IS A 200 WITH THE SAME COPY FOR EVERY CAUSE.
+ * lib/call_admission.ts, owner ruling B: blocked / offline / privacy_mode /
+ * rate_limited / no_callable_device must be indistinguishable to the caller,
+ * because a uniquely fast or uniquely worded failure is a perfect blocked-status
+ * oracle. Do not "improve" this copy to be more specific; specificity is the
+ * leak. The internal reason is emitted server-side only.
+ */
+export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
+
+  let body: StreamPlaceBody;
+  try { body = await req.json() as StreamPlaceBody; } catch { body = {}; }
+
+  const traceId = (req.headers.get("x-trace-id") ?? String(body.trace_id ?? "")).trim().slice(0, 128);
+  const video = body.video === true;
+  const callerUid = auth.uid;
+  const calleeUid = validUid(body.callee_uid) ? body.callee_uid : "";
+  // Minted HERE, not by the phone. This is the whole point of the endpoint: the
+  // call identity is the server's, and the `sl-` prefix is kept so the existing
+  // `stream_lane_*` PostHog series stays continuous with the client-minted ids.
+  const callId = `sl-${crypto.randomUUID()}`;
+
+  /** One refusal shape, one telemetry event, tagged to BOTH parties. */
+  const refuse = async (
+    code: StreamPlaceRefusalCode,
+    message: string,
+    status: number,
+    extra: Record<string, unknown> = {},
+    internalReason?: string,
+  ): Promise<Response> => {
+    try {
+      const [callerEmail, calleeEmail] = await Promise.all([
+        emailFor(env, callerUid).catch(() => null),
+        calleeUid ? emailFor(env, calleeUid).catch(() => null) : Promise.resolve(null),
+      ]);
+      const props = {
+        call_id: callId,
+        code,
+        // NEVER serialised to the caller — server-side abuse investigation only.
+        internal_reason: internalReason ?? null,
+        from_uid: callerUid, to_uid: calleeUid || null,
+        from_email: callerEmail, to_email: calleeEmail,
+        media_mode: video ? "video" : "audio",
+        trace_id: traceId || null,
+        lane: "streamlane",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+        ...extra,
+      };
+      // Both emails, so either party's telemetry retrieves the interaction
+      // (CLAUDE.md: a call is a conversation between two people).
+      await trackUser(env, callerUid, callerEmail, "stream_call_refused", "avatok", props, traceId || undefined);
+      if (calleeUid) {
+        await trackUser(env, calleeUid, calleeEmail, "stream_call_refused", "avatok", props, traceId || undefined);
+      }
+    } catch { /* telemetry must never change a refusal */ }
+    return json({ approved: false, code, message, ...extra }, status);
+  };
+
+  if (!calleeUid) return await refuse("invalid_request", "Missing or invalid callee.", 400);
+  if (calleeUid === callerUid) return await refuse("self_call", "You can't call yourself.", 400);
+
+  // A read failure is "unknown", not "off": failing closed on a KV hiccup would
+  // turn a transient blip into a total call outage, which is exactly the
+  // fail-open reasoning lib/call_admission.ts documents for the blocklist.
+  const config = await readConfig(env).catch(() => null);
+  if (config && config.streamCallsEnabled !== true) {
+    return await refuse("stream_calls_disabled", "Calling is temporarily unavailable. Please try again later.", 503);
+  }
+
+  // ── BUILD FLOOR (plan §2.1 option C; closes blocker §8.6 on this lane) ──────
+  // Same flag, same header, same arithmetic as the legacy dial — shared in
+  // lib/call_build_gate.ts. One deliberate difference: the legacy gate exempts
+  // `stream_capable` clients so it cannot lock out the very lane it exists to
+  // migrate people ONTO. Here there is no such exemption, because every request
+  // to this endpoint is by construction a Stream client — exempting them would
+  // make the gate permanently unreachable and therefore meaningless.
+  const callMinBuild = callMinBuildFrom(config as { callMinBuild?: number } | null);
+  if (callMinBuild > 0) {
+    const clientBuild = clientBuildFrom(req.headers.get(APP_BUILD_HEADER), body.app_build);
+    if (clientBuild < callMinBuild) {
+      return await refuse("update_required", UPDATE_REQUIRED_MESSAGE, 426, {
+        min_build: callMinBuild,
+        client_build: clientBuild,
+        // 0 means the request carried no build at all — the population to watch
+        // fall as the fleet updates.
+        build_reported: clientBuild > 0,
+      });
+    }
+  }
+
+  // ── PRE-RING ADMISSION GATE ────────────────────────────────────────────────
+  // The identical call the legacy dial makes (routes/api.ts `call()`), at the
+  // identical position: before ANY side effect and before Stream is told
+  // anything. A suppressed call costs the callee nothing.
+  const admission = await admitCall(env, callerUid, calleeUid);
+  if (admission.degraded === true) {
+    // The authoritative blocklist could not be read and this verdict came from
+    // cache or the documented fail-open. Alerting on it (tagged to the CALLEE,
+    // whose policy degraded) is what stops blocking silently ceasing to work.
+    try {
+      await trackUser(env, calleeUid, await emailFor(env, calleeUid).catch(() => null),
+        "call_admission_degraded", "avatok", {
+          call_id: callId, from_uid: callerUid, to_uid: calleeUid,
+          policy: admission.policy ?? "unknown", admitted: admission.admit,
+          internal_reason: admission.admit ? null : admission.internal_reason,
+          lane: "streamlane",
+          app_name: "avatok", service_name: "avatok-api", worker: true,
+        });
+    } catch { /* alerting must never change an admission decision */ }
+  }
+  if (!admission.admit) {
+    return await refuse(
+      "recipient_unavailable",
+      CALLER_VISIBLE_COPY,
+      200,
+      { outcome_code: CALLER_VISIBLE_OUTCOME, ...unavailableBody() },
+      admission.internal_reason,
+    );
+  }
+
+  // ── UNKNOWN-CALLER CONTACT POLICY ──────────────────────────────────────────
+  // The legacy dial diverts an unsaved caller to the callee's AI receptionist
+  // when `unknownAvatokCallerReceptionistEnabled` is on. That policy is OFF in
+  // production and has never been enabled, so this branch is dark today.
+  //
+  // TODO(STREAM-RECEPTIONIST-1): there is no Stream receptionist. Ava is a
+  // Cloudflare ReceptionRoom DO fed by the CallRoom, and the Stream lane never
+  // creates a CallRoom. Until a Stream→Ava bridge exists, the honest thing is to
+  // REFUSE with a named code rather than ring a person the policy says must not
+  // be rung, or silently drop the policy. The same gap applies to the
+  // no-answer/offline receptionist handoffs — see the report.
+  const unknownPolicyOn = config?.unknownAvatokCallerReceptionistEnabled === true;
+  if (unknownPolicyOn) {
+    const contactPolicy = await callerContactPolicy(env, calleeUid, callerUid).catch(() => null);
+    if (contactPolicy && shouldRouteUnknownAvatokCaller(contactPolicy, true)) {
+      return await refuse(
+        "receptionist",
+        "This person screens calls from people who aren't in their contacts. Send them a message instead.",
+        200,
+        { routing_reason: "unknown_caller" },
+      );
+    }
+  }
+
+  // ── AUTHORITATIVE RECORD ───────────────────────────────────────────────────
+  // The server-side row that says THIS call id belongs to THIS pair on Stream.
+  // `INSERT OR IGNORE` + read-back is the same concurrency gate `prepareStreamCall`
+  // uses, so a replay can never re-point a call id at a different pair.
+  //
+  // BEST-EFFORT ON PURPOSE. `stream_video_provider_decisions` ships in
+  // worker/migrations/2026-08-19-stream-video-webhooks.sql, which may not have
+  // been applied to prod D1 yet (plan §9: the Worker has never been deployed).
+  // Failing closed here would turn an unapplied migration into a 100% call
+  // outage — the exact class of failure this whole incident is about. It is
+  // recorded loudly instead. Once the migration is confirmed applied in prod,
+  // this SHOULD become fail-closed (503 `authority_unavailable`).
+  const recorded = await persistStickyProvider(env, callId, {
+    provider: PROVIDER,
+    caller_uid: callerUid,
+    callee_uid: calleeUid,
+    scope: "one_to_one",
+    chosen_at: Date.now(),
+    bucket: 0,
+    percent: 100,
+  });
+
+  const [callerEmail, calleeEmail] = await Promise.all([
+    emailFor(env, callerUid).catch(() => null),
+    emailFor(env, calleeUid).catch(() => null),
+  ]);
+  const approvalProps = {
+    call_id: callId,
+    from_uid: callerUid, to_uid: calleeUid,
+    from_email: callerEmail, to_email: calleeEmail,
+    media_mode: video ? "video" : "audio",
+    trace_id: traceId || null,
+    lane: "streamlane",
+    // false = the authority row could not be written (see the note above). A
+    // nonzero rate of this is a migration/D1 alarm, not a property of the call.
+    authority_recorded: recorded !== null,
+    admission_policy: admission.policy ?? "unknown",
+    app_name: "avatok", service_name: "avatok-api", worker: true,
+  };
+  const approvalTelemetry = (async () => {
+    try {
+      await trackUser(env, callerUid, callerEmail, "stream_call_authorized", "avatok", approvalProps, traceId || undefined);
+      await trackUser(env, calleeUid, calleeEmail, "stream_call_authorized", "avatok", approvalProps, traceId || undefined);
+    } catch { /* telemetry must never change an approval */ }
+    emitCallEvent(env, CallEvent.call_dial_started, {
+      call_trace_id: traceId || callId,
+      call_id: callId,
+      account_id: callerUid,
+      rtc_provider: PROVIDER,
+      media_mode: video ? "video" : "audio",
+      role: "caller",
+      extra: { scope: "one_to_one", lane: "streamlane", authority_recorded: recorded !== null },
+    }, ctx);
+  })();
+  if (ctx) ctx.waitUntil(approvalTelemetry); else await approvalTelemetry;
+
+  return json({
+    approved: true,
+    provider: PROVIDER,
+    call_type: CALL_TYPE,
+    call_id: callId,
+    callee_uid: calleeUid,
+    video,
+    trace_id: traceId || callId,
   });
 }
 

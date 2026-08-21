@@ -11,7 +11,7 @@ import * as api from "./routes/api";
 import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead, sweepAvaReadableCopies } from "./routes/media";
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
-import { streamVideoToken, streamVideoPrepare, streamVideoWebhook } from "./routes/stream_video_calls";
+import { streamVideoToken, streamVideoPrepare, streamVideoWebhook, streamCallPlace } from "./routes/stream_video_calls";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
@@ -1315,6 +1315,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/webhooks/stream-video" && req.method === "POST") return await streamVideoWebhook(req, env, ctx);
       if (p === "/api/stream-video/token" && req.method === "GET") return await streamVideoToken(req, env);
       if (p === "/api/stream-video/prepare" && req.method === "POST") return await streamVideoPrepare(req, env, ctx);
+      // [STREAM-AUTH-1 2026-08-21] Server authorisation for a streamlane 1:1
+      // call. Stream carries the media; this route decides whether the call may
+      // happen at all and mints the call id. See plan §8.1.
+      if (p === "/api/stream-calls/place" && req.method === "POST") return await streamCallPlace(req, env, ctx);
 
       // --- Phase 7: AvaLive delivery (Stream Live + interaction room) ---
       {

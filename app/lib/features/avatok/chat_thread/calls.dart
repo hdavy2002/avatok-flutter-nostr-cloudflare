@@ -20,17 +20,18 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // auto-connects) sit BELOW this line, so one gate here makes the whole
     // legacy lane unreachable while the flag is on.
     //
-    // Deliberately BEFORE the `_dialing` / `gLiveCallScreens` debounce and the
-    // CALLFIX-14 glare auto-accept: all three read legacy-engine globals that
-    // only a legacy CallSession ever sets, so under Stream they stay zero and
-    // evaluating them first would be reasoning about a lane that no longer runs.
+    // [STREAM-AUTH-1 2026-08-21 / plan §8.4] THE GATE NOW RUNS *AFTER* THE
+    // DEBOUNCE, not before it.
+    //
+    // It used to sit above the `_dialing` / `gLiveCallScreens` guard, on the
+    // reasoning that those are legacy-engine globals which stay zero under
+    // Stream. True — and that was precisely the bug: with the gate first,
+    // NOTHING debounced a Stream dial, so rapid taps placed several Stream
+    // calls. `_dialing` is a plain field on this State and works perfectly well
+    // for the Stream lane; it just has to be set around the gate, which is what
+    // the try/finally below does. `place1to1` awaits until the call screen
+    // pops, so `_dialing` covers the whole call, not merely the dial.
     // With the kill switch off, every line below is unchanged.
-    if (await routeToStreamCallIfEnabled(context,
-        peerId: widget.chat.seed,
-        video: kind == 'video',
-        entrypoint: 'chat_thread')) {
-      return;
-    }
     // Debounce double-taps / re-entrancy: a single video-button tap was firing
     // TWO POST /api/call + two CallScreens ~1s apart, and the colliding second
     // call busied out the first right after it connected — so the connected
@@ -69,6 +70,21 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         }
         return;
       }
+    }
+    // [STREAM-AUTH-1] The Stream gate, now INSIDE the debounce. `_dialing` is
+    // held for the whole delegated dial (and, since `place1to1` awaits the call
+    // screen, for the whole call) and released in `finally` so an exception can
+    // never leave the button dead.
+    _dialing = true;
+    try {
+      if (await routeToStreamCallIfEnabled(context,
+          peerId: widget.chat.seed,
+          video: kind == 'video',
+          entrypoint: 'chat_thread')) {
+        return;
+      }
+    } finally {
+      _dialing = false;
     }
     // CALLFIX-14: glare detection — if an incoming call from the same peer is
     // currently ringing, accept it instead of dialing (resolves simultaneous dials).
