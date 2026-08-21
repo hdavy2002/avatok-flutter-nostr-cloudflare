@@ -371,7 +371,21 @@ class MarketplaceCard extends StatelessWidget {
             ]),
           ),
           Container(height: 1, color: AD.borderCard),
-          Padding(
+          // [UI-MARKET-2026] Small-screen readability. The image above is
+          // Expanded, so this text block takes its natural height — at a high
+          // OS accessibility text scale it could grow past the tile and
+          // overflow the grid cell. Clamp the scale feeding this block to
+          // 1.15x (real accessibility benefit, still fits a 2-column tile on a
+          // 360dp phone) and drop the one-liner to a single line on a narrow
+          // tile so title + price + location stay visible.
+          LayoutBuilder(builder: (context, tile) {
+            final osScale = MediaQuery.textScalerOf(context).scale(1.0);
+            final clamped = osScale > 1.15 ? 1.15 : osScale;
+            final tight = tile.maxWidth < 170;
+            return MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(clamped)),
+              child: Padding(
             padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,7 +398,7 @@ class MarketplaceCard extends StatelessWidget {
                 if (card.oneLiner.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(card.oneLiner,
-                      maxLines: 2,
+                      maxLines: tight ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: ADText.preview(c: AD.textSecondary)),
                 ],
@@ -422,7 +436,9 @@ class MarketplaceCard extends StatelessWidget {
                 ],
               ],
             ),
-          ),
+              ),
+            );
+          }),
         ]),
       ),
     );

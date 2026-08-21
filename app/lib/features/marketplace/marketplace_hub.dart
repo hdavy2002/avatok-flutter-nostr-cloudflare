@@ -5,8 +5,10 @@ import '../../core/analytics.dart';
 import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../identity/listing_liveness_gate.dart';
 import '../explore/explore_home.dart';
+import 'marketplace_browse.dart' show marketplaceTitle;
 import 'my_listings_screen.dart';
 import 'sell_listing_flow.dart';
 
@@ -41,11 +43,14 @@ class MarketplaceHub extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: AppBar(
-        backgroundColor: AD.headerFooter,
-        foregroundColor: AD.textPrimary,
-        elevation: 0,
-        title: Text('Marketplace', style: ADText.appTitle()),
+      // [UI-MARKET-2026] Was a bespoke AppBar painting ADText.appTitle() (ink)
+      // on AD.headerFooter (Jodhpur indigo) — i.e. a title that is very nearly
+      // invisible since the band flipped dark. Use the shared header instead,
+      // which routes its foreground through AD.onBand and ellipsizes the title
+      // before the trailing controls overflow.
+      appBar: ZineAppBar(
+        title: marketplaceTitle(context),
+        showBack: Navigator.of(context).canPop(),
       ),
       body: ListView(
         padding: const EdgeInsets.all(Msg.s4),

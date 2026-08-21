@@ -25,10 +25,28 @@ void _fireImpression(String listingId) {
 /// the seller's country flag. Defaults to the user's detected country; a toggle
 /// switches to All countries, and the search + category chips filter the rest.
 class MarketplaceBrowse extends StatefulWidget {
-  const MarketplaceBrowse({super.key});
+  /// When true this screen renders WITHOUT its own app bar, because the host
+  /// (the shell's Services root) already draws the shared AvaTOK header band.
+  ///
+  /// [UI-MARKET-2026] Leaving it to draw its own [ZineAppBar] there was the
+  /// "two stacked Marketplace titles" the owner reported: `ServicesRoot` shows
+  /// a "Marketplace" bar and this screen showed a second one directly beneath
+  /// it. When null (the default) it is inferred: this screen is embedded when
+  /// it is the FIRST route of its navigator (how `ServicesRoot` mounts it) and
+  /// standalone when it was pushed (sidebar → Browse), where it must carry its
+  /// own header + back button. A host may still pass the flag explicitly.
+  final bool? embedded;
+  const MarketplaceBrowse({super.key, this.embedded});
   @override
   State<MarketplaceBrowse> createState() => _MarketplaceBrowseState();
 }
+
+/// [UI-MARKET-2026] Responsive page title. "Marketplace" is long enough to push
+/// the wallet chip / avatar / bell out of a narrow header, so anything under
+/// ~400dp gets the shortened form. Shared so the Services root can use the same
+/// string as this screen.
+String marketplaceTitle(BuildContext context) =>
+    MediaQuery.sizeOf(context).width < 400 ? 'Market…' : 'Marketplace';
 
 String _flagOf(String? cc) {
   if (cc == null || cc.length != 2) return '🌍';
@@ -76,39 +94,86 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
     return items;
   }
 
-  /// Dark-themed ChoiceChip — orange fill when selected, hairline card otherwise.
-  Color _chipAccent(String label) {
-    if (label.contains('country')) return AD.online;
-    if (label.contains('categor')) return AD.tabCalls;
-    if (label.contains('Vehicle')) return AD.iconSearch;
-    return AD.primaryBadge;
+  /// [UI-MARKET-2026] Holi/bandhani accent per filter family, so country,
+  /// category and each vehicle-style category chip read as different things at
+  /// a glance instead of one undifferentiated orange row.
+  ///
+  /// Order matters: `kMarketCategories` starts with Vehicles, so index 0 is
+  /// terracotta (lac red) — the vehicle filter the owner called out. The rest
+  /// rotate through marigold / rani / indigo / green.
+  static const List<Color> _categoryPalette = <Color>[
+    AD.terracotta,    // Vehicles
+    AD.haldi,         // marigold — LIGHT band, takes ink
+    AD.primaryBadge,  // rani pink — dark, takes cream
+    AD.tabCalls,      // Jodhpur indigo — dark, takes cream
+    AD.online,        // deep green — dark, takes cream
+  ];
+
+  /// Country toggles get their own hue (deep green) so they never look like a
+  /// category. Categories rotate through [_categoryPalette] by position.
+  Color _chipAccent(String label, {int? categoryIndex}) {
+    if (categoryIndex != null && categoryIndex >= 0) {
+      return _categoryPalette[categoryIndex % _categoryPalette.length];
+    }
+    return AD.online;
   }
 
-  Widget _chipStyled({required String label, required bool selected, required ValueChanged<bool> onSelected}) =>
-      ChoiceChip(
-        label: Text(label),
-        labelStyle: TextStyle(fontFamily: ADText.family, fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : AD.textSecondary),
-        selected: selected,
-        showCheckmark: false,
-        onSelected: onSelected,
-        backgroundColor: AD.card,
-        selectedColor: _chipAccent(label),
-        side: BorderSide(color: selected ? _chipAccent(label) : AD.borderControl, width: 1),
-        shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
-      );
+  /// Filter chip. Selected = full accent fill with the readable foreground
+  /// [AD.onBand] picks for that hue (cream on indigo/rani/green, ink on
+  /// marigold — never black text on indigo). Unselected = paper with a faint
+  /// wash of the same accent and a 2px accent outline, so the family colour is
+  /// still legible while the selected state stays unmistakable. No blur
+  /// shadows: this palette uses ink outlines, not elevation.
+  Widget _chipStyled({
+    required String label,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+    int? categoryIndex,
+  }) {
+    final accent = _chipAccent(label, categoryIndex: categoryIndex);
+    return ChoiceChip(
+      label: Text(label),
+      labelStyle: TextStyle(
+        fontFamily: ADText.family,
+        fontWeight: FontWeight.w600,
+        color: selected ? AD.onBand(accent) : AD.textPrimary,
+      ),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: onSelected,
+      elevation: 0,
+      pressElevation: 0,
+      backgroundColor: accent.withValues(alpha: 0.14),
+      selectedColor: accent,
+      side: BorderSide(
+          color: selected ? AD.borderControl : accent, width: AD.wBorder),
+      shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    // [UI-MARKET-2026] Embedded (Services root already drew the shared header)
+    // vs standalone (pushed route → this screen owns the header). See the
+    // `embedded` doc on the widget.
+    final embedded =
+        widget.embedded ?? (ModalRoute.of(context)?.isFirst ?? false);
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: ZineAppBar(
-        title: 'Market…',
-        showBack: Navigator.of(context).canPop(),
-      ),
+      appBar: embedded
+          ? null
+          : ZineAppBar(
+              title: marketplaceTitle(context),
+              showBack: Navigator.of(context).canPop(),
+            ),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s2, Msg.s3, Msg.s4),
+          // The search field must START BELOW THE TIP OF THE HEADER WAVE and
+          // never sit behind the golden seam. This is a plain TextField, not
+          // the shared AdSearchDock, so it has to reproduce that component's
+          // offset by hand: hosts pad AdSearchDock by Msg.s3 and the dock adds
+          // its own 12px top margin, so the equivalent clearance is Msg.s3+12.
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3 + 12, Msg.s4, Msg.s4),
           child: TextField(
             controller: _search,
             textInputAction: TextInputAction.search,
@@ -135,7 +200,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
         // Country toggle + category chips.
         SizedBox(
           height: 44,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Msg.s3), children: [
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Msg.s4), children: [
             if (_country.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(right: Msg.s2),
@@ -157,14 +222,16 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
             _chipStyled(
               label: 'All categories',
               selected: _category == null,
+              categoryIndex: _categoryPalette.length - 1,
               onSelected: (_) { _category = null; _load(); },
             ),
-            for (final c in kMarketCategories) ...[
+            for (int i = 0; i < kMarketCategories.length; i++) ...[
               const SizedBox(width: Msg.s2),
               _chipStyled(
-                label: c,
-                selected: _category == c,
-                onSelected: (_) { _category = c; _load(); },
+                label: kMarketCategories[i],
+                selected: _category == kMarketCategories[i],
+                categoryIndex: i,
+                onSelected: (_) { _category = kMarketCategories[i]; _load(); },
               ),
             ],
           ]),
@@ -182,20 +249,47 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
                 }
                 final items = snap.data ?? const <ListingCard>[];
                 if (items.isEmpty) {
-                  return ListView(children: [
-                    const SizedBox(height: 120),
-                    PhosphorIcon(PhosphorIcons.storefront(PhosphorIconsStyle.regular), size: 48, color: AD.textTertiary),
-                    const SizedBox(height: Msg.s2),
-                    Center(child: Text('No listings here yet — try All countries.', style: ADText.preview())),
-                  ]);
+                  // [UI-MARKET-2026] Was a left-aligned icon with a centred
+                  // caption and a hard 120px spacer — on a small screen the
+                  // glyph sat in the corner and the copy wrapped awkwardly.
+                  // Centred, padded and word-wrapped instead, still inside a
+                  // scrollable so pull-to-refresh keeps working.
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(Msg.s5, 72, Msg.s5, Msg.s5),
+                    children: [
+                      Center(
+                        child: PhosphorIcon(
+                            PhosphorIcons.storefront(PhosphorIconsStyle.regular),
+                            size: 44,
+                            color: AD.textTertiary),
+                      ),
+                      const SizedBox(height: Msg.s3),
+                      Text('Nothing listed here yet',
+                          textAlign: TextAlign.center,
+                          style: ADText.rowName()),
+                      const SizedBox(height: Msg.s1),
+                      Text(
+                          'Try “All countries”, clear the category filter, or pull down to refresh.',
+                          textAlign: TextAlign.center,
+                          style: ADText.preview()),
+                    ],
+                  );
                 }
                 return GridView.builder(
                   padding: const EdgeInsets.all(Msg.s3),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    // Match the ListingCardTile family extent (MarketplaceCard
-                    // mirrors it, and its 2-line one-liner + location row need
-                    // the extra height vs the old compact card's 0.72).
-                    crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.66),
+                  // [UI-MARKET-2026] Max-extent instead of a hard 2 columns:
+                  // a 240dp cap still gives exactly 2 columns on every phone
+                  // (a 360dp screen leaves 336dp of content → 168dp tiles) but
+                  // stops the cards stretching to unreadable widths on a
+                  // tablet or a large foldable.
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    // Aspect matches the ListingCardTile family extent
+                    // (MarketplaceCard mirrors it, and its 2-line one-liner +
+                    // location row need the extra height vs 0.72).
+                    maxCrossAxisExtent: 240,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.66),
                   itemCount: items.length,
                   itemBuilder: (_, i) => _Card(card: items[i]),
                 );
