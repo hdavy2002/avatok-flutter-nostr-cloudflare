@@ -37,7 +37,13 @@ import '../core/ui/messenger_theme.dart';
 // screen silently never appeared. Import cycles are legal in Dart; the
 // push_service → glue → lane → this-file cycle resolves fine.
 import '../core/analytics.dart';
-import '../push/push_service.dart' show navigatorKey;
+// [STREAM-RING-2 2026-08-21] `PushService` added to the `show` clause: the
+// foreground ringer below calls `PushService.start/stopStreamForegroundRing`,
+// which the navigatorKey-only clause left out of scope, so Dart parsed
+// `PushService` as an undefined instance getter. Combinators do not affect
+// cycle resolution — Dart resolves import cycles at the library level — so
+// this keeps the intent of the comment above intact.
+import '../push/push_service.dart' show navigatorKey, PushService;
 import 'stream_call_service.dart';
 import 'stream_call_telemetry.dart';
 

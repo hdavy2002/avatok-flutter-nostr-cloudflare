@@ -146,16 +146,23 @@ class _StreamOutgoingPreparationScreenState
       return;
     }
     if (!mounted || widget.attempt.cancelled || prepared == null) return;
+    // [STREAM-RING-2 2026-08-21] The guard above already proves non-null, but
+    // `prepared` is a REASSIGNED local read from inside the `builder:` closure
+    // below, and Dart does not carry type promotion into a closure for a
+    // variable that is written to anywhere. Copying it into a final local is
+    // the honest fix: no `!`, so there is no way for this to become a
+    // null-check crash mid-call-setup if the flow ever changes.
+    final StreamPreparedOutgoing ready = prepared;
     _preparingTimer?.cancel();
     _setStage('ringing');
     // The prepare callback returns only after the server confirms the Stream
     // ring was issued. This is the first moment real ringback is truthful.
-    await _tones.playRingback(prepared.callId, speakerOn: true);
+    await _tones.playRingback(ready.callId, speakerOn: true);
     if (!mounted || widget.attempt.cancelled) return;
     _handedOff = true;
     await Navigator.of(context).pushReplacement(MaterialPageRoute(
       builder: (_) => StreamCallScreen(
-        call: prepared.call,
+        call: ready.call,
         peerId: widget.peerId,
         peerName: widget.peerName,
         peerAvatarUrl: widget.peerAvatarUrl,
@@ -164,7 +171,7 @@ class _StreamOutgoingPreparationScreenState
         video: widget.video,
         outgoing: true,
         startedAtMs: widget.attempt.startedAtMs,
-        connect: prepared.connect,
+        connect: ready.connect,
         tonePlayer: _tones,
       ),
     ));
