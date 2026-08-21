@@ -132,7 +132,7 @@ Future<void> _recoverInBackground(Map<String, dynamic> data) async {
     userToken: creds.token,
     pushNotificationManagerProvider: StreamVideoPushNotificationManager.create(
       iosPushProvider: const StreamVideoPushProvider.apn(name: 'avatok-apn'),
-      androidPushProvider: const StreamVideoPushProvider.firebase(name: 'avatok-fcm'),
+      androidPushProvider: const StreamVideoPushProvider.firebase(name: 'firebase'),
     ),
   )..connect();
 

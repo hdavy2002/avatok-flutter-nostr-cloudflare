@@ -33,7 +33,8 @@ dependencies:
   stream_video_flutter: ^1.4.3
   stream_video_push_notification: ^1.4.3
   # Wi-Fi ⇆ cellular handoff detection → proactive ICE restart mid-call.
-  connectivity_plus: ^6.1.0
+  # [STREAM-LANE-1] ^6.1.0 -> ^7.0.0: required by stream_video ^1.4.3.
+  connectivity_plus: ^7.0.0
   # Keep the screen/CPU awake for the duration of a call so the OS can't put the
   # device to sleep and suspend the call isolate mid-conversation (the dropped-
   # after-~1-min / "screen took over and the call cut" bug — WhatsApp keeps the
@@ -82,7 +83,11 @@ dependencies:
   # a strictly-increasing versionCode via `flutter build --build-number` (see
   # .github/workflows/android.yml), which the old hardcoded kAppBuild constant
   # never reflected — the build number looked frozen after every update.
-  package_info_plus: ^8.0.2
+  # [STREAM-LANE-1] ^8.0.2 → ^9.0.1: stream_video ^1.4.3 requires
+  # package_info_plus >=9.0.0 <11.0.0, and 10.x pins win32 ^6 which clashes
+  # with device_info_plus 12.x (win32 ^5.11). Full solve verified offline
+  # with dart pub get against Flutter 3.41.9 on 2026-08-21.
+  package_info_plus: ^9.0.1
   # Google Play in-app updates (Android). Powers the "Update" sidebar row + the
   # on-launch "new version available" popup: checks Play for a newer versionCode
   # and runs the flexible download/restart flow WITHOUT sending the user to the
@@ -132,7 +137,8 @@ dependencies:
   # Liveness V3 camera-path integrity probe: emulator detection (isPhysicalDevice)
   # + Android build-tags root heuristic for the `capture_meta.integrity` block.
   # NATIVE plugin — validated by a CI APK build; unknowable fields stay null.
-  device_info_plus: ^10.1.2
+  # [STREAM-LANE-1] ^10.1.2 -> ^12.1.0: required by stream_video ^1.4.3 (>=12.1 <14).
+  device_info_plus: ^12.1.0
   file_picker: ^8.1.6
   audioplayers: ^6.1.0
   # Liveness V3 voice fallback (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1):
@@ -361,4 +367,8 @@ flutter:
           weight: 900
 
 dependency_overrides:
+  # [STREAM-LANE-1] stream_video needs device_info_plus >=12.1 <14; super_native_extensions
+  # 0.9.1 (via super_clipboard ^0.9.1) pins <12. Override wins; the API surface both use
+  # (androidInfo.version.sdkInt etc.) is unchanged in 12.x. Solve verified offline 2026-08-21.
+  device_info_plus: ^12.1.0
   record: 6.2.1

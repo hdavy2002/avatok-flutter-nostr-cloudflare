@@ -109,7 +109,7 @@ class StreamLane {
             name: 'avatok-apn',
           ),
           androidPushProvider: const StreamVideoPushProvider.firebase(
-            name: 'avatok-fcm',
+            name: 'firebase',
           ),
           registerApnDeviceToken: true,
         ),
