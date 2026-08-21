@@ -2684,14 +2684,28 @@
   "_verified_at": ".github/workflows/android.yml:311-340 --split-per-abi removed with rationale; :348-385 staging by app-release.apk + per-ABI hard error + aapt2 versionCode assertion; :365 .aab already used the un-offset number; :464 BUILD_NO=10000+run_number for the KV pointer. Diagnosis: PostHog events 2026-08-21T00:49Z, hdavy2002@gmail.com, build=12601 app_version=0.1.18+12601 release=a51b976a (run #601)"
  },
  "STREAM-LANE-1": {
-  "description": "Dormant Stream Video SDK client lane (app/lib/streamlane/) + Worker streamCallsEnabled flag and token-route gate. Ships NO user-visible behaviour: SDK deps are commented out in pubspec.yaml, SDK files parked as .dart.dark, activation blocks commented (STREAM-LANE-ACTIVATE markers). The only live code paths are two push-handler early-exit guards and the dial-entry gate, all of which are provably inert while streamCallsEnabled=false (default), plus the Worker flag declaration.",
-  "two_sided": false,
-  "min_devices_on_build": 0,
+  "description": "Stream Video SDK client lane ACTIVATED (app/lib/streamlane/) + Worker streamCallsEnabled flag and token-route gate. SDK deps uncommented in pubspec.yaml, streamlane/*.dart.dark renamed to .dart, main.dart's StreamLane.init() and place_1to1_call.dart's dial delegation both live behind RemoteConfig.streamCallsEnabled (default false — dial/init are no-ops with the flag off, so this ships no behaviour change until the flag is flipped for testers). Background push recovery (stream_push_glue.dart) now recreates a StreamVideo client from the per-account credential blob and calls the SDK's documented handleRingingFlowNotifications/observeCoreRingingEventsForBackground/disposeAfterResolvingRinging path. stream_call_screen.dart's video branch renders StreamVideoRenderer directly (not StreamCallContent) so this screen's custom control row is the only one.",
+  "shipped": "2026-08-21",
+  "two_sided": true,
+  "min_devices_on_build": 2,
   "flags": [
    "streamCallsEnabled"
   ],
-  "success": [],
-  "no_telemetry": "Dark/archived code: with streamCallsEnabled=false nothing executes and no events are emitted. Telemetry contract (stream_lane_call_placed/ring_shown/accepted/connected/ended{mic_released}/failed) is defined in stream_call_service.dart.dark and gets real success[] assertions at activation time, before the first Stream-lane build ships.",
-  "_verified_at": "2026-08-21 read from app/lib/streamlane/* and worker/src/routes/stream_video_calls.ts emit sites"
+  "success": [
+   {
+    "event": "stream_lane_call_connected",
+    "exists": true,
+    "min_events": 1,
+    "note": "Proof a Stream-lane 1:1 call actually reached the SDK's connected state on the caller side (stream_call_service.dart place1to1). Zero events on a build with streamCallsEnabled=true for the tester means the dial delegation never fired or the SDK call setup failed silently."
+   },
+   {
+    "event": "stream_lane_call_ended",
+    "property": "mic_released",
+    "equals": true,
+    "min_events": 1,
+    "note": "ASSERT THE SUCCESS VALUE, not just the event's arrival (ship-gate rule 3). mic_released is set true only after call.leave() returns without throwing (stream_call_service.dart leave()), so this is proof the mic was actually released, not merely that a hangup was requested. A stream_lane_call_ended with mic_released=false present instead is the failure signal."
+   }
+  ],
+  "_verified_at": "2026-08-21 read from app/lib/streamlane/stream_call_service.dart (emit sites of stream_lane_call_connected + stream_lane_call_ended{mic_released}), stream_push_glue.dart (background recovery), stream_call_screen.dart (StreamVideoRenderer swap), app/pubspec.yaml + app/lib/main.dart + app/lib/features/avatok/place_1to1_call.dart (STREAM-LANE-ACTIVATE blocks uncommented)"
  }
 }

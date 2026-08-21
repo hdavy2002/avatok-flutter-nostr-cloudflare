@@ -37,11 +37,10 @@ import 'core/prefs_sync.dart';
 import 'core/profile_store.dart';
 import 'core/remote_config.dart';
 import 'core/theme.dart';
-// STREAM-LANE-ACTIVATE: uncomment this import together with the init() block
-// below AND the two pubspec entries when the Stream lane goes live. Kept
-// commented so the app compiles while the SDK packages are commented out in
-// pubspec.yaml (native conflict with flutter_webrtc — see pubspec comment).
-// import 'streamlane/stream_lane.dart';
+// STREAM-LANE-ACTIVATE: live 2026-08-21 [STREAM-LANE-1]. Was commented so the
+// app compiled while the SDK packages were commented out in pubspec.yaml
+// (native conflict with flutter_webrtc — see pubspec comment).
+import 'streamlane/stream_lane.dart';
 import 'core/ui_freeze_monitor.dart';
 import 'core/ui/avatok_dark.dart'; // [UI-COLDSTART-1] boot loader matches the shell
 import 'core/ui/boot_screen.dart'; // [BOOT-FLASH-2] shared static launch screen
@@ -217,13 +216,13 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await PushService.init();
   } catch (_) {/* push unavailable; app still works */}
-  // STREAM-LANE-ACTIVATE: no-op when RemoteConfig.streamCallsEnabled is off.
-  // Placed after Firebase + PushService init since the Stream client's push
-  // wiring builds on the same FCM registration. Uncomment with the import
-  // above at activation time.
-  // try {
-  //   await StreamLane.instance.init();
-  // } catch (_) {/* Stream lane unavailable; old call lane still works */}
+  // STREAM-LANE-ACTIVATE: live 2026-08-21 [STREAM-LANE-1]. No-op when
+  // RemoteConfig.streamCallsEnabled is off. Placed after Firebase +
+  // PushService init since the Stream client's push wiring builds on the
+  // same FCM registration.
+  try {
+    await StreamLane.instance.init();
+  } catch (_) {/* Stream lane unavailable; old call lane still works */}
   // CALL-FSI-1: on Android 14+ the OS revokes USE_FULL_SCREEN_INTENT for
   // non-dialer apps unless the user grants it, so an incoming call rings but the
   // lock-screen call UI never appears. Check at startup and, if a call-capable

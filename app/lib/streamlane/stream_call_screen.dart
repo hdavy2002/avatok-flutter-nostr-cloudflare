@@ -150,20 +150,48 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         child: Stack(
           children: [
             // Remote video full-bleed, or an avatar fallback for audio-only.
+            //
+            // verified: packages/stream_video_flutter/lib/src/call_screen/
+            // call_content/call_content.dart — `StreamCallContent` IS a real
+            // exported widget, but it renders its OWN app bar, participants
+            // grid AND control row, which would double-render underneath
+            // this screen's custom AD.*/Phosphor control row below. Using it
+            // was the flagged risk at dark-lane build time (2026-08-21); at
+            // activation it is replaced with a bare `StreamVideoRenderer`
+            // scoped to the first remote participant — verified against
+            // packages/stream_video/lib/src/call_state.dart
+            // (`CallState.otherParticipants`) + video_renderer.dart, same
+            // building block already used a few lines down for the local
+            // preview thumbnail — so this screen owns the only control row.
             Positioned.fill(
               child: isVideo
-                  // verified: packages/stream_video_flutter/lib/src/
-                  // call_screen/call_content/call_content.dart —
-                  // `StreamCallContent({required Call call, ...})` exists and
-                  // is exported. NOTE: this is the SDK's full pre-built call
-                  // UI (its own app bar, participants grid AND control row) —
-                  // it will render its own controls stacked underneath this
-                  // screen's custom AD.*/Phosphor control row below. If a
-                  // bare remote-video surface (no built-in controls) is
-                  // wanted instead, swap this for `StreamVideoRenderer` scoped
-                  // to the remote participant, matching the local-preview
-                  // widget fix a few lines down.
-                  ? StreamCallContent(call: widget.call)
+                  ? Builder(
+                      builder: (_) {
+                        final others = widget.call.state.value.otherParticipants;
+                        CallParticipantState? remote;
+                        for (final p in others) {
+                          if (p.publishedTracks.containsKey(SfuTrackType.video)) {
+                            remote = p;
+                            break;
+                          }
+                        }
+                        remote ??= others.isNotEmpty ? others.first : null;
+                        if (remote == null) {
+                          return Center(
+                            child: Avatar(
+                              seed: widget.peerId,
+                              name: widget.peerId,
+                              size: 120,
+                            ),
+                          );
+                        }
+                        return StreamVideoRenderer(
+                          call: widget.call,
+                          participant: remote,
+                          videoTrackType: SfuTrackType.video,
+                        );
+                      },
+                    )
                   : Center(
                       child: Avatar(
                         seed: widget.peerId,

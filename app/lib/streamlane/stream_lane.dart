@@ -197,7 +197,13 @@ class StreamLane {
     return _apiKeyFallback;
   }
 
-  static const String _kCredKey = 'stream_lane_credentials_v1';
+  /// Public so `stream_push_glue.dart`'s background handler can locate the
+  /// same secure-storage entries without importing `account_storage.dart`'s
+  /// `scopedKey` (which reads `AccountScope.id` — unset in the FCM
+  /// background isolate, see BG-ISOLATE-1 in push_service.dart). The
+  /// background reader matches on this prefix directly instead.
+  static const String kCredKeyBase = 'stream_lane_credentials_v1';
+  static const String _kCredKey = kCredKeyBase;
   static const FlutterSecureStorage _secure = FlutterSecureStorage();
 
   /// Per-account credential blob for [uid]. Read by the background push

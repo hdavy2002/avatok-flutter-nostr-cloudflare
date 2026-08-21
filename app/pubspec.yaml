@@ -21,14 +21,17 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_webrtc: ^0.12.5
-  # STREAM-LANE: uncomment when flutter_webrtc is retired — native conflict: both stream_webrtc_flutter
-  # (io.getstream:stream-video-webrtc-android) and flutter_webrtc (io.github.webrtc-sdk:android) ship
-  # different-version builds of the org.webrtc.* Java namespace + native libjingle_peerconnection_so.so,
-  # which is a known duplicate-class/symbol conflict when both are linked into one APK. Verify in a
-  # CI build (not locally — no toolchain here) before uncommenting, e.g. a throwaway branch with ONLY
-  # this dependency added, or wait until flutter_webrtc is removed from the old call lane.
-  # stream_video_flutter: ^1.4.3
-  # stream_video_push_notification: ^1.4.3
+  # STREAM-LANE: ACTIVATED 2026-08-21 [STREAM-LANE-1]. Native conflict risk noted at
+  # dark-lane build time: both stream_webrtc_flutter (io.getstream:stream-video-webrtc-android)
+  # and flutter_webrtc (io.github.webrtc-sdk:android) ship different-version builds of the
+  # org.webrtc.* Java namespace + native libjingle_peerconnection_so.so, a known duplicate-
+  # class/symbol conflict when both are linked into one APK. Per the activation checklist
+  # (Specs/STREAM-SDK-CLIENT-REBUILD-STUDY.md §8), whether the two coexist in one APK is
+  # decided by the CI Android build (verify.yml / android.yml), not locally — there is no
+  # Flutter toolchain on this machine. If CI fails on a duplicate-class/symbol link error,
+  # the fix is retiring `flutter_webrtc` from the old call lane (P4), not re-commenting these.
+  stream_video_flutter: ^1.4.3
+  stream_video_push_notification: ^1.4.3
   # Wi-Fi ⇆ cellular handoff detection → proactive ICE restart mid-call.
   connectivity_plus: ^6.1.0
   # Keep the screen/CPU awake for the duration of a call so the OS can't put the
