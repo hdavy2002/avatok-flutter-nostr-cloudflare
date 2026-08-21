@@ -89,7 +89,10 @@ class StreamLane {
         // directly is correct; the previous `() => _loadToken(uid)` closure
         // took zero arguments and did not satisfy TokenLoader.
         tokenLoader: _loadToken,
-        options: const StreamVideoOptions(
+        // NOT const: StreamVideoOptions has a non-const constructor (CI run
+        // #606 compile error at this line — "Cannot invoke a non-'const'
+        // constructor where a const expression is expected").
+        options: StreamVideoOptions(
           // verified: packages/stream_video/lib/src/stream_video.dart
           // (StreamVideoOptions field names)
           keepConnectionsAliveWhenInBackground: true,

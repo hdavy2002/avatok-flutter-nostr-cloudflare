@@ -56,6 +56,10 @@ class StreamCallService {
         ringing: true,
         video: video,
       );
+      // REVIEW FIX 2026-08-21: without this the caller never joined the call
+      // — getOrCreate only registers + rings; join() is what connects media.
+      // The SDK keeps the call in ringing state until the callee accepts.
+      await call.join();
       Analytics.capture('stream_lane_call_connected', {
         'call_id': callId,
         'peer_id': userId,

@@ -17,6 +17,12 @@ import 'package:stream_video_flutter/stream_video_flutter.dart';
 import '../core/avatar.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
+// REVIEW FIX 2026-08-21: use the app's REAL root navigator key (assigned to
+// MaterialApp in main.dart:379) instead of a never-assigned local key — with
+// the local key, `currentContext` was always null and the foreground ring
+// screen silently never appeared. Import cycles are legal in Dart; the
+// push_service → glue → lane → this-file cycle resolves fine.
+import '../push/push_service.dart' show navigatorKey;
 import 'stream_call_service.dart';
 
 /// Global navigator key access point so [StreamLane.init]'s
@@ -32,7 +38,7 @@ class StreamIncomingScreen extends StatelessWidget {
   /// mirroring how the old lane's branded incoming screen is surfaced from
   /// push_service.dart.
   static void showForCall(Call call) {
-    final ctx = navigatorKeyForStreamLane.currentContext;
+    final ctx = navigatorKey.currentContext;
     if (ctx == null) return;
     Navigator.of(ctx, rootNavigator: true).push(
       MaterialPageRoute(
@@ -119,9 +125,4 @@ class StreamIncomingScreen extends StatelessWidget {
   }
 }
 
-/// Root navigator key the app shell must assign (mirrors the pattern used
-/// elsewhere in this app for surfacing UI from a non-widget callback — see
-/// main.dart's `RootFlow`). Left unassigned (null context) is a safe no-op:
-/// a ring with no attached navigator simply doesn't show the foreground
-/// screen, and the SDK's own native ring UI still covers background/killed.
-final GlobalKey<NavigatorState> navigatorKeyForStreamLane = GlobalKey<NavigatorState>();
+// (former local navigatorKeyForStreamLane removed — see REVIEW FIX above.)
