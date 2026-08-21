@@ -538,7 +538,7 @@ class _ReadyCard extends StatelessWidget {
                     IconButton(
                       tooltip: 'Share video',
                       onPressed: onShare,
-                      icon: const Icon(Icons.ios_share_rounded),
+                      icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
                       color: Colors.white70,
                     ),
                 ]),

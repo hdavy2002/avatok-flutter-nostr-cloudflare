@@ -1846,7 +1846,9 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
                       ),
                     )
                   : Icon(
-                      _failed ? Icons.refresh_rounded : Icons.play_arrow_rounded,
+                      _failed
+                          ? PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)
+                          : PhosphorIcons.play(PhosphorIconsStyle.fill),
                       size: 34,
                     ),
               color: Colors.white,
@@ -1875,8 +1877,8 @@ class _AiVideoJobPreviewState extends State<_AiVideoJobPreview> {
                       onPressed: () => unawaited(_toggle()),
                       icon: Icon(
                         value.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                            ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                            : PhosphorIcons.play(PhosphorIconsStyle.fill),
                         color: Colors.white,
                       ),
                     ),
@@ -2056,7 +2058,7 @@ class _AiMusicJobPreview extends StatelessWidget {
                     IconButton(
                       tooltip: 'Share $title',
                       onPressed: () => unawaited(onShare()),
-                      icon: const Icon(Icons.ios_share_rounded),
+                      icon: Icon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.regular)),
                       color: Colors.black,
                       style: IconButton.styleFrom(
                         backgroundColor: const Color(0xFFFFD400),
@@ -2100,7 +2102,9 @@ class _AiMusicJobPreview extends StatelessWidget {
                                             : AudioPlaybackService.I.resume())
                                         : onPlay(),
                                   ),
-                          icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                          icon: Icon(playing
+                              ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                              : PhosphorIcons.play(PhosphorIconsStyle.fill)),
                           color: AD.headerFooter,
                           style: IconButton.styleFrom(backgroundColor: AD.bubbleOutPlay),
                         ),

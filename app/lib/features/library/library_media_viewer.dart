@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/analytics.dart'; // [LIB-READABLE-1] open-failure telemetry
@@ -152,7 +153,9 @@ class _LibraryMediaViewerState extends State<LibraryMediaViewer> {
             iconSize: 56,
             color: AD.primaryBadge,
             onPressed: _toggle,
-            icon: Icon(_playing ? Icons.pause_circle_filled : Icons.play_circle_fill),
+            icon: Icon(_playing
+                ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
+                : PhosphorIcons.playCircle(PhosphorIconsStyle.fill)),
           ),
           if (_video != null)
             VideoProgressIndicator(_video!, allowScrubbing: true,
