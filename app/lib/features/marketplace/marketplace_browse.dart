@@ -5,6 +5,7 @@ import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
 import 'intent_theme.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
@@ -76,6 +77,13 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   }
 
   /// Dark-themed ChoiceChip — orange fill when selected, hairline card otherwise.
+  Color _chipAccent(String label) {
+    if (label.contains('country')) return AD.online;
+    if (label.contains('categor')) return AD.tabCalls;
+    if (label.contains('Vehicle')) return AD.iconSearch;
+    return AD.primaryBadge;
+  }
+
   Widget _chipStyled({required String label, required bool selected, required ValueChanged<bool> onSelected}) =>
       ChoiceChip(
         label: Text(label),
@@ -85,8 +93,8 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
         showCheckmark: false,
         onSelected: onSelected,
         backgroundColor: AD.card,
-        selectedColor: AD.primaryBadge,
-        side: BorderSide(color: selected ? AD.primaryBadge : AD.borderControl, width: 1),
+        selectedColor: _chipAccent(label),
+        side: BorderSide(color: selected ? _chipAccent(label) : AD.borderControl, width: 1),
         shape: RoundedRectangleBorder(borderRadius: Msg.brPill),
       );
 
@@ -94,11 +102,9 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AD.bg,
-      appBar: AppBar(
-        backgroundColor: AD.headerFooter,
-        foregroundColor: AD.textPrimary,
-        elevation: 0,
-        title: Text('Marketplace', style: ADText.appTitle()),
+      appBar: ZineAppBar(
+        title: 'Market…',
+        showBack: Navigator.of(context).canPop(),
       ),
       body: Column(children: [
         Padding(

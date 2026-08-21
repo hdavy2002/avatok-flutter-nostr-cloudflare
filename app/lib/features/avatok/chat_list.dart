@@ -2389,10 +2389,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   ),
                 ),
                 const SizedBox(width: 6),
-                // AvaTalk wordmark (dark v2 header title).
-                // 2026-07-14 owner rename: 'AvaTOK' → 'AvaTalk', matching the
-                // shell root label. Display-only.
-                Text('AvaTalk', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
+                Text('AvaTOK', style: ADText.appTitle(c: AD.onBand(AD.headerFooter))),
                 const Spacer(),
                 // [WALLET-UX-1] Compact wallet-balance chip (coin icon + total
                 // spendable tokens). Loads once via WalletBalanceStore; the

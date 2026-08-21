@@ -969,30 +969,18 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onBand = AD.onBand(AD.headerFooter);
     Widget titleW;
-    final mw = markWord;
-    if (mw != null && title.contains(mw)) {
-      final i = title.indexOf(mw);
-      // RESPUI-11: this title sits in a FIXED-height app-bar band
-      // (preferredSize above), unlike the hero use of ZineMarkTitle on
-      // onboarding/sign-in screens which scrolls freely. Without a line
-      // clamp, a longer title (e.g. "Complete your profile") wrapping to
-      // multiple lines at high OS text-scale on a narrow phone blew past the
-      // fixed band and threw a RenderFlex overflow (CI run 28681435747).
-      // Clamp to 1 line + ellipsis, same as the plain-Text branch below.
-      titleW = ZineMarkTitle(
-        pre: title.substring(0, i),
-        mark: mw,
-        post: title.substring(i + mw.length),
-        fontSize: _titleSize,
-        textAlign: TextAlign.left,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      );
-    } else {
-      titleW = Text(title, style: ADText.appTitle(), maxLines: 1, overflow: TextOverflow.ellipsis);
-    }
-    return Container(
+    // App-bar titles are always a single readable white line. The highlighted
+    // Zine title treatment remains available for hero content, but is not
+    // used in the fixed shared header where it could render dark text.
+    titleW = Text(title, style: ADText.appTitle(c: onBand), maxLines: 1, overflow: TextOverflow.ellipsis);
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Container(
       decoration: const BoxDecoration(
         color: AD.headerFooter,
         border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
@@ -1052,6 +1040,7 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
             ...actions,
           ]),
         ),
+      ),
       ),
     );
   }
