@@ -25,6 +25,7 @@ import '../core/avatar.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
 import 'stream_call_service.dart';
+import 'stream_call_telemetry.dart';
 
 /// What the screen is currently showing. Only [_Phase.ended] ever pops.
 enum _Phase { connecting, live, reconnecting, failed }
@@ -52,7 +53,9 @@ class StreamCallScreen extends StatefulWidget {
   final String? peerName;
   final String? peerAvatarUrl;
 
-  /// Only for telemetry joins — lets either party's email retrieve the call.
+  /// [AUDIT-8 2026-08-21] No longer read for telemetry (peer_id + call_id are
+  /// enough to join both sides server-side) — kept as a field only so
+  /// existing call sites elsewhere in the app keep compiling.
   final String? peerEmail;
   final String? traceId;
 
@@ -73,10 +76,12 @@ class StreamCallScreen extends StatefulWidget {
 
 class _StreamCallScreenState extends State<StreamCallScreen> {
   StreamSubscription<CallState>? _sub;
+  StreamSubscription<StreamStatsBundle>? _statsSub;
   CallState? _state;
   DateTime _connectedAt = DateTime.now();
   Timer? _durationTimer;
   Timer? _connectWatchdog;
+  Timer? _qualityTimer;
   Duration _elapsed = Duration.zero;
   bool _muted = false;
   bool _speakerOn = true;
@@ -89,11 +94,18 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   int _attempt = 0;
   bool _everConnected = false;
   bool _connectedReported = false;
+  bool _firstAudioReported = false;
+  bool _firstVideoReported = false;
+  StreamStatsBundle? _lastStatsBundle;
 
   /// How long a join may sit in `connecting` before the screen stops
   /// pretending and offers a retry. Without this, a `join()` that never
   /// returns is an eternal spinner — the quiet cousin of the vanished screen.
   static const Duration _connectDeadline = Duration(seconds: 60);
+
+  /// Cadence for `stream_lane_call_quality` while live. "Summaries, never
+  /// continuous emission" per the task brief.
+  static const Duration _qualityInterval = Duration(seconds: 15);
 
   @override
   void initState() {
@@ -107,6 +119,12 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     // one projected field, not needed here since this screen reads several
     // fields off the same `CallState` snapshot.
     _sub = widget.call.state.valueStream.listen(_onState);
+    // [STREAM-TELEMETRY-1] `call.stats` only carries packet-loss data — see
+    // stream_call_telemetry.dart's `qualityProps` doc comment for why this
+    // is cached separately from `statsReporter.currentMetrics`.
+    _statsSub = widget.call.stats.listen((bundle) {
+      _lastStatsBundle = bundle;
+    });
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_phase != _Phase.live && _phase != _Phase.reconnecting) return;
@@ -118,8 +136,14 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _statsSub?.cancel();
     _durationTimer?.cancel();
     _connectWatchdog?.cancel();
+    _qualityTimer?.cancel();
+    // One final summary, per the task brief ("once at end"). Fire-and-forget
+    // like every other capture in this lane; skipped if media never flowed
+    // (nothing to summarise).
+    if (_everConnected) _emitQuality();
     super.dispose();
   }
 
@@ -190,6 +214,9 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   bool _remotePublishing(CallState s) =>
       s.otherParticipants.any((p) => p.publishedTracks.isNotEmpty);
 
+  bool _remotePublishingKind(CallState s, SfuTrackType kind) =>
+      s.otherParticipants.any((p) => p.publishedTracks.containsKey(kind));
+
   bool _localPublishing(CallState s) {
     final local = s.localParticipant;
     return local != null && local.publishedTracks.isNotEmpty;
@@ -204,6 +231,11 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         _everConnected = true;
         _connectWatchdog?.cancel();
         _connectedAt = DateTime.now();
+        // Media is flowing for the first time — start the periodic quality
+        // summary. Never before this point: `statsReporter`/`call.stats`
+        // have nothing meaningful to say before a session exists.
+        _qualityTimer ??=
+            Timer.periodic(_qualityInterval, (_) => _emitQuality());
       }
       if (!_connectedReported) {
         _connectedReported = true;
@@ -215,7 +247,18 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
           setupMs: DateTime.now().millisecondsSinceEpoch - started,
           video: _isVideo,
           localPublishing: _localPublishing(s),
+          outgoing: widget.outgoing,
           peerEmail: widget.peerEmail,
+          traceId: widget.traceId,
+        );
+      }
+      _maybeReportFirstMedia(s);
+      if (_phase == _Phase.reconnecting) {
+        // The other half of `..._reconnecting` — media resumed.
+        StreamCallService.instance.reportRecovered(
+          widget.call,
+          peerId: widget.peerId,
+          outgoing: widget.outgoing,
           traceId: widget.traceId,
         );
       }
@@ -235,6 +278,14 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         // Setup blip or reconnect — keep the screen up. THIS is P1.4: the old
         // code popped here.
         if (_everConnected && _phase != _Phase.failed) {
+          if (_phase != _Phase.reconnecting) {
+            StreamCallService.instance.reportReconnecting(
+              widget.call,
+              peerId: widget.peerId,
+              outgoing: widget.outgoing,
+              traceId: widget.traceId,
+            );
+          }
           setState(() => _phase = _Phase.reconnecting);
         }
         break;
@@ -247,22 +298,94 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     }
   }
 
+  /// `stream_lane_first_audio_received` / `..._video_received`: the first
+  /// moment the remote side is actually heard/seen, not merely "a track was
+  /// published" (which `..._connected` already covers).
+  void _maybeReportFirstMedia(CallState s) {
+    final started = widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+    if (!_firstAudioReported && _remotePublishingKind(s, SfuTrackType.audio)) {
+      _firstAudioReported = true;
+      StreamCallService.instance.reportFirstMedia(
+        widget.call,
+        'audio',
+        peerId: widget.peerId,
+        outgoing: widget.outgoing,
+        elapsedMs: DateTime.now().millisecondsSinceEpoch - started,
+        traceId: widget.traceId,
+      );
+    }
+    if (widget.video &&
+        !_firstVideoReported &&
+        _remotePublishingKind(s, SfuTrackType.video)) {
+      _firstVideoReported = true;
+      StreamCallService.instance.reportFirstMedia(
+        widget.call,
+        'video',
+        peerId: widget.peerId,
+        outgoing: widget.outgoing,
+        elapsedMs: DateTime.now().millisecondsSinceEpoch - started,
+        traceId: widget.traceId,
+      );
+    }
+  }
+
+  void _emitQuality() {
+    final props = StreamCallTelemetry.qualityProps(
+      widget.call,
+      lastRawBundle: _lastStatsBundle,
+    );
+    StreamCallService.instance.reportQuality(
+      widget.call,
+      props,
+      peerId: widget.peerId,
+      outgoing: widget.outgoing,
+      video: _isVideo,
+      traceId: widget.traceId,
+    );
+  }
+
   /// Genuinely over: release the mic (that is what makes `mic_released: true`
   /// truthful) and then leave the screen.
   Future<void> _endAndPop(String reason) async {
     if (_hangingUp) return;
     _hangingUp = true;
-    await StreamCallService.instance
-        .leave(widget.call, connectedAt: _connectedAt, reason: reason);
+    await StreamCallService.instance.leave(
+      widget.call,
+      connectedAt: _connectedAt,
+      role: widget.outgoing ? 'caller' : 'callee',
+      reason: reason,
+    );
     if (!mounted) return;
     Navigator.of(context).maybePop();
   }
 
+  /// [AUDIT-5 2026-08-21] Hang-up now branches on whether the call was ever
+  /// answered. An outgoing call still in `connecting` (i.e. still ringing —
+  /// `_everConnected` false) must CANCEL the ring
+  /// (`StreamCallService.cancelRinging`, which sends `reject(reason:
+  /// CallRejectReason.cancel())` to the coordinator so the callee's phone
+  /// actually stops ringing — see that method's doc comment for the SDK
+  /// evidence). Once the call is live, or on the callee side, this stays
+  /// `leave()` exactly as before this task.
   Future<void> _hangUp() async {
     if (_hangingUp) return;
     setState(() => _hangingUp = true);
-    await StreamCallService.instance
-        .leave(widget.call, connectedAt: _connectedAt);
+    if (widget.outgoing && !_everConnected) {
+      await StreamCallService.instance.cancelRinging(
+        widget.call,
+        startedAt: DateTime.fromMillisecondsSinceEpoch(
+          widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+        ),
+        peerId: widget.peerId,
+        traceId: widget.traceId,
+      );
+    } else {
+      await StreamCallService.instance.leave(
+        widget.call,
+        connectedAt: _connectedAt,
+        role: widget.outgoing ? 'caller' : 'callee',
+      );
+    }
     if (!mounted) return;
     Navigator.of(context).maybePop();
   }
@@ -274,6 +397,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     await StreamCallService.instance.leave(
       widget.call,
       connectedAt: _connectedAt,
+      role: widget.outgoing ? 'caller' : 'callee',
       reason: 'join_failed_$_failureReason',
     );
     if (!mounted) return;

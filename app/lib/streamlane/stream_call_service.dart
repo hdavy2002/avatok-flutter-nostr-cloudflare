@@ -15,6 +15,7 @@ import '../core/api_auth.dart';
 import '../core/calls/call_media_permissions.dart';
 import '../core/config.dart';
 import 'stream_call_screen.dart';
+import 'stream_call_telemetry.dart';
 import 'stream_lane.dart';
 
 /// [STREAM-AUTH-1 2026-08-21] The Worker route that AUTHORISES a 1:1 Stream
@@ -32,15 +33,19 @@ class StreamPlaceDecision {
   const StreamPlaceDecision._({
     required this.approved,
     required this.callId,
+    required this.created,
     required this.code,
     required this.message,
     required this.httpStatus,
   });
 
-  const StreamPlaceDecision.approved(String callId)
-      : this._(
+  const StreamPlaceDecision.approved(
+    String callId, {
+    bool created = false,
+  }) : this._(
           approved: true,
           callId: callId,
+          created: created,
           code: 'approved',
           message: '',
           httpStatus: 200,
@@ -53,6 +58,7 @@ class StreamPlaceDecision {
   }) : this._(
           approved: false,
           callId: '',
+          created: false,
           code: code,
           message: message,
           httpStatus: httpStatus,
@@ -62,6 +68,17 @@ class StreamPlaceDecision {
   /// the id the Stream call must be created with.
   final bool approved;
   final String callId;
+
+  /// [STREAM-SERVER-CREATE-1 2026-08-21] True when the WORKER already
+  /// created and rang the Stream call server-side (contract change: the
+  /// place route now does the `getOrCreate(ringing:true)` itself instead of
+  /// only authorising). When true, the client must NOT call
+  /// `getOrCreate(ringing:true)` again — it only constructs the local `Call`
+  /// handle for the server-minted id and joins it. When false or absent
+  /// (an older, not-yet-upgraded worker), the client falls back to today's
+  /// client-side `getOrCreate(ringing:true)` so this lane keeps working
+  /// against a worker that hasn't shipped the new contract yet.
+  final bool created;
 
   /// Machine-readable refusal code, e.g. `recipient_unavailable`,
   /// `update_required`, `stream_calls_disabled`, `receptionist`, `network`.
@@ -101,18 +118,26 @@ class StreamCallService {
   /// blip would restore exactly the bypass this method exists to remove — a
   /// blocked caller would only have to lose signal for a second to get through.
   ///
-  /// The Clerk bearer, `X-Trace-Id` and (as of this change) `x-app-build` are
-  /// all attached by [ApiAuth], so the Worker's `callMinBuild` gate finally has
-  /// an input on this lane too.
+  /// The Clerk bearer, `X-Trace-Id` and `x-app-build` are all attached by
+  /// [ApiAuth], so the Worker's `callMinBuild` gate has an input on this lane
+  /// too. [attemptId] is a UUID minted once per user gesture
+  /// (see [StreamCallTelemetry.mintAttemptId]) — the Worker dedups repeated
+  /// `place` calls on it, so a double-send from a flaky connection cannot
+  /// mint two calls for one tap.
   Future<StreamPlaceDecision> authorizePlace({
     required String peerId,
     required bool video,
+    required String attemptId,
     String? traceId,
   }) async {
     try {
       final res = await ApiAuth.postJsonH(
         kStreamCallPlaceUrl,
-        <String, Object>{'callee_uid': peerId, 'video': video},
+        <String, Object>{
+          'callee_uid': peerId,
+          'video': video,
+          'attempt_id': attemptId,
+        },
         <String, String>{
           if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
         },
@@ -125,7 +150,12 @@ class StreamCallService {
       } catch (_) {/* non-JSON (edge rejection) — handled as a refusal below */}
       if (res.statusCode == 200 && body?['approved'] == true) {
         final callId = (body?['call_id'] ?? '').toString();
-        if (callId.isNotEmpty) return StreamPlaceDecision.approved(callId);
+        if (callId.isNotEmpty) {
+          return StreamPlaceDecision.approved(
+            callId,
+            created: body?['created'] == true,
+          );
+        }
         // Approved with no id is a server bug, not a permission to dial: there
         // is no call identity to create, so this cannot proceed.
         return const StreamPlaceDecision.refused(
@@ -159,6 +189,12 @@ class StreamCallService {
   /// sites and leaked for the lifetime of the process.
   final Map<String, StreamSubscription<CallState>> _ringSubs = {};
 
+  /// The role ('caller'/'callee') each ringing call was wired with, so the
+  /// listener-driven end path in [_wireRingingEvents] can tag
+  /// `stream_lane_call_ended` correctly even when no explicit [leave]/
+  /// [decline]/[cancelRinging] call supplied it first.
+  final Map<String, String> _roleByCid = {};
+
   /// A terminal state seen by the listener schedules the `..._call_ended`
   /// event on a short fuse instead of emitting it immediately, so that an
   /// explicit [leave] arriving milliseconds later (the normal case — the screen
@@ -170,6 +206,38 @@ class StreamCallService {
   /// terminal state observed by the listener and an explicit `leave()` do not
   /// both report the same call ending.
   final Set<String> _endedEmitted = <String>{};
+
+  // ---------------------------------------------------------------------------
+  // Telemetry — shared property base
+  // ---------------------------------------------------------------------------
+
+  /// Every `stream_lane_*` event from this lane carries these: `call_id`,
+  /// `provider:'stream'`, `role`, the app lifecycle state, `user_email`, and
+  /// (when known) `peer_id`/`media_mode`/`trace_id`.
+  ///
+  /// [AUDIT-8 2026-08-21] `peer_email` is deliberately NOT part of this base
+  /// — the server already correlates both sides of a call via `call_id`, so
+  /// copying the other person's email onto every client event was needless
+  /// duplication of personal data. `peerEmail` parameters remain on the
+  /// public methods below only so call sites elsewhere in the app (owned by
+  /// other agents) keep compiling; they are simply no longer read here.
+  Map<String, Object> _base({
+    required String callId,
+    required String role,
+    String? peerId,
+    String? mediaMode,
+    String? traceId,
+  }) =>
+      <String, Object>{
+        'call_id': callId,
+        'provider': 'stream',
+        'role': role,
+        'app_lifecycle': StreamCallTelemetry.lifecycleState(),
+        'user_email': Analytics.currentEmail ?? '',
+        if (peerId != null && peerId.isNotEmpty) 'peer_id': peerId,
+        if (mediaMode != null) 'media_mode': mediaMode,
+        if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+      };
 
   // ---------------------------------------------------------------------------
   // Failure classification
@@ -292,7 +360,9 @@ class StreamCallService {
   ///
   /// [name], [avatarUrl], [peerEmail] and [traceId] are OPTIONAL and only
   /// improve what the screen renders and what telemetry can be joined on —
-  /// every existing call site keeps compiling unchanged.
+  /// every existing call site keeps compiling unchanged. [peerEmail] is no
+  /// longer emitted (audit item 8); it stays as a parameter for source
+  /// compatibility with existing callers.
   ///
   /// [STREAM-UI-1] / plan P1.3: the call screen is mounted BEFORE any media
   /// work. `getOrCreate` + `join` run from inside the screen, so a failure
@@ -309,6 +379,13 @@ class StreamCallService {
   }) async {
     final startedAtMs = DateTime.now().millisecondsSinceEpoch;
     final email = Analytics.currentEmail ?? '';
+    final mediaMode = video ? 'video' : 'audio';
+    // [STREAM-AUTH-1 attempt_id 2026-08-21] One id for this whole gesture —
+    // minted once, sent on the `place` request, and reused in every
+    // telemetry event this call emits below. `place1to1` runs exactly once
+    // per tap; nothing here re-authorises on a later retry, so a single mint
+    // already satisfies "stable across in-gesture retries".
+    final attemptId = StreamCallTelemetry.mintAttemptId();
 
     // ── [STREAM-AUTH-1 / plan §8.1] SERVER AUTHORITY, BEFORE ANYTHING ────────
     // This runs before the permission preflight and before a single Stream SDK
@@ -321,23 +398,21 @@ class StreamCallService {
     // method: a nonzero count proves the lane was entered. `..._placed` now
     // means "entered AND authorised", and carries the server's call id.
     Analytics.capture('stream_lane_call_requested', {
-      'peer_id': userId,
-      'media_mode': video ? 'video' : 'audio',
-      'user_email': email,
-      if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-      if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+      ..._base(callId: '', role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+      'attempt_id': attemptId,
     });
-    final decision =
-        await authorizePlace(peerId: userId, video: video, traceId: traceId);
+    final decision = await authorizePlace(
+      peerId: userId,
+      video: video,
+      attemptId: attemptId,
+      traceId: traceId,
+    );
     if (!decision.approved) {
       Analytics.capture('stream_lane_call_refused', {
-        'peer_id': userId,
+        ..._base(callId: '', role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+        'attempt_id': attemptId,
         'code': decision.code,
         'http_status': decision.httpStatus,
-        'media_mode': video ? 'video' : 'audio',
-        'user_email': email,
-        if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-        if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
       });
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -348,14 +423,15 @@ class StreamCallService {
     // SERVER-MINTED. Was `'sl-${_uuid.v4()}'` — a call identity the phone made
     // up, which no part of AvaTOK had authorised or recorded.
     final callId = decision.callId;
+    // `_roleByCid[callId]` is set inside `_wireRingingEvents` below, once
+    // there is an actual subscription (and therefore a `disposeCall` path)
+    // to clean it up — not here, where an early return (preflight/make_call
+    // failure) would otherwise leak the entry forever.
 
     Analytics.capture('stream_lane_call_placed', {
-      'call_id': callId,
-      'peer_id': userId,
-      'media_mode': video ? 'video' : 'audio',
-      'user_email': email,
-      if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-      if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+      ..._base(callId: callId, role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
+      'attempt_id': attemptId,
+      'created': decision.created,
     });
 
     // ── [STREAM-PERM-1 wiring / plan P1.5] ────────────────────────────────
@@ -372,15 +448,11 @@ class StreamCallService {
     );
     if (!perms.canProceed) {
       Analytics.capture('stream_lane_call_join_failed', {
-        'call_id': callId,
-        'peer_id': userId,
+        ..._base(callId: callId, role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
         'stage': 'preflight',
         'reason': 'permission_denied',
         'error': perms.code,
         'blocked_by': perms.blockedBy,
-        'user_email': email,
-        if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-        if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
       });
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -413,7 +485,10 @@ class StreamCallService {
       final client = StreamVideo.instance;
       // verified: packages/stream_video/lib/src/call/call_type.dart — there
       // is no `StreamCallType.id(...)` factory; the built-in 1:1/group call
-      // type is `StreamCallType.defaultType()` (value 'default').
+      // type is `StreamCallType.defaultType()` (value 'default'). This is
+      // unchanged by the server-create contract change: whether the server
+      // or the client ends up calling `getOrCreate`, the client still needs
+      // a local `Call` HANDLE for the server-minted [callId] to join it.
       call = client.makeCall(
         callType: StreamCallType.defaultType(),
         id: callId,
@@ -423,14 +498,10 @@ class StreamCallService {
       // screen. Everything after this point is reported INSIDE the screen.
       const reason = 'make_call';
       Analytics.capture('stream_lane_call_join_failed', {
-        'call_id': callId,
-        'peer_id': userId,
+        ..._base(callId: callId, role: 'caller', peerId: userId, mediaMode: mediaMode, traceId: traceId),
         'stage': 'make_call',
         'reason': reason,
         'error': e.toString(),
-        'user_email': email,
-        if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-        if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
       });
       // Kept for continuity with the pre-[STREAM-UI-1] dashboards.
       Analytics.capture('stream_lane_call_failed', {
@@ -455,7 +526,7 @@ class StreamCallService {
       return;
     }
 
-    _wireRingingEvents(call, email, peerId: userId, peerEmail: peerEmail);
+    _wireRingingEvents(call, email, role: 'caller', peerId: userId);
 
     if (!context.mounted) {
       await disposeCall(call);
@@ -475,14 +546,25 @@ class StreamCallService {
           outgoing: true,
           startedAtMs: startedAtMs,
           connect: (_) async {
-            await call.getOrCreate(
-              memberIds: [userId],
-              ringing: true,
-              video: video,
-            );
-            // Without this the caller never joins — getOrCreate only registers
-            // + rings; join() is what connects media.
-            await call.join();
+            if (decision.created) {
+              // [STREAM-SERVER-CREATE-1] The Worker already created and rang
+              // this call server-side — calling `getOrCreate(ringing: true)`
+              // again here would ring the callee a second time. The client
+              // only needs to join the media session.
+              await call.join();
+            } else {
+              // Fallback for a worker that hasn't shipped the new contract
+              // yet: keep today's client-side create+ring path so this lane
+              // does not regress against the currently-deployed worker.
+              await call.getOrCreate(
+                memberIds: [userId],
+                ringing: true,
+                video: video,
+              );
+              // Without this the caller never joins — getOrCreate only
+              // registers + rings; join() is what connects media.
+              await call.join();
+            }
           },
         ),
       ),
@@ -507,6 +589,7 @@ class StreamCallService {
   }) async {
     final email = Analytics.currentEmail ?? '';
     final startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    final callId = call.callCid.value;
 
     // ── [STREAM-PERM-1 wiring / plan P1.5] ────────────────────────────────
     // Preflight BEFORE the ring screen is replaced, so a denial leaves the
@@ -517,19 +600,15 @@ class StreamCallService {
     final perms = await CallMediaPermissions.ensure(
       video: false,
       surface: 'stream_lane_accept',
-      callId: call.callCid.value,
+      callId: callId,
     );
     if (!perms.canProceed) {
       Analytics.capture('stream_lane_call_join_failed', {
-        'call_id': call.callCid.value,
+        ..._base(callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
         'stage': 'preflight',
         'reason': 'permission_denied',
         'error': perms.code,
         'blocked_by': perms.blockedBy,
-        'user_email': email,
-        if (peerId != null && peerId.isNotEmpty) 'peer_id': peerId,
-        if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-        if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
       });
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -545,7 +624,7 @@ class StreamCallService {
       return;
     }
 
-    _wireRingingEvents(call, email, peerId: peerId, peerEmail: peerEmail);
+    _wireRingingEvents(call, email, role: 'callee', peerId: peerId);
     if (!context.mounted) {
       await disposeCall(call);
       return;
@@ -568,12 +647,7 @@ class StreamCallService {
             if (attempt == 1) {
               await call.accept();
               Analytics.capture('stream_lane_call_accepted', {
-                'call_id': call.callCid.value,
-                'user_email': email,
-                if (peerId != null && peerId.isNotEmpty) 'peer_id': peerId,
-                if (peerEmail != null && peerEmail.isNotEmpty)
-                  'peer_email': peerEmail,
-                if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+                ..._base(callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
               });
             }
             await call.join();
@@ -594,18 +668,106 @@ class StreamCallService {
     required int setupMs,
     required bool video,
     required bool localPublishing,
+    required bool outgoing,
     String? peerEmail,
     String? traceId,
   }) {
     Analytics.capture('stream_lane_call_connected', {
-      'call_id': call.callCid.value,
-      'peer_id': peerId,
+      ..._base(
+        callId: call.callCid.value,
+        role: outgoing ? 'caller' : 'callee',
+        peerId: peerId,
+        mediaMode: video ? 'video' : 'audio',
+        traceId: traceId,
+      ),
       'setup_ms': setupMs,
-      'media_mode': video ? 'video' : 'audio',
       'local_publishing': localPublishing,
-      'user_email': Analytics.currentEmail ?? '',
-      if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-      if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
+    });
+  }
+
+  /// Emitted by [StreamCallScreen] the first time the remote side is heard
+  /// (`kind: 'audio'`) or seen (`kind: 'video'`) — i.e. the first moment the
+  /// call actually DOES what it is for, distinct from `..._connected` (which
+  /// only proves a track was published, not which kind).
+  void reportFirstMedia(
+    Call call,
+    String kind, {
+    required String peerId,
+    required bool outgoing,
+    required int elapsedMs,
+    String? traceId,
+  }) {
+    Analytics.capture('stream_lane_first_${kind}_received', {
+      ..._base(
+        callId: call.callCid.value,
+        role: outgoing ? 'caller' : 'callee',
+        peerId: peerId,
+        traceId: traceId,
+      ),
+      'elapsed_ms': elapsedMs,
+    });
+  }
+
+  /// Emitted when a live call's media drops but the SDK reports a transient/
+  /// reconnect-shaped disconnect (see [classifyDisconnect]) rather than a
+  /// terminal one — the screen stays up and shows "Reconnecting…".
+  void reportReconnecting(
+    Call call, {
+    required String peerId,
+    required bool outgoing,
+    String? traceId,
+  }) {
+    Analytics.capture('stream_lane_call_reconnecting', {
+      ..._base(
+        callId: call.callCid.value,
+        role: outgoing ? 'caller' : 'callee',
+        peerId: peerId,
+        traceId: traceId,
+      ),
+    });
+  }
+
+  /// Emitted when a call that had entered `reconnecting` sees remote media
+  /// flowing again — the other half of `..._reconnecting`, so the two can be
+  /// paired to measure outage duration.
+  void reportRecovered(
+    Call call, {
+    required String peerId,
+    required bool outgoing,
+    String? traceId,
+  }) {
+    Analytics.capture('stream_lane_call_recovered', {
+      ..._base(
+        callId: call.callCid.value,
+        role: outgoing ? 'caller' : 'callee',
+        peerId: peerId,
+        traceId: traceId,
+      ),
+    });
+  }
+
+  /// A quality summary — emitted every ~15s while live, and once more at
+  /// call end. Never emitted continuously (per the task brief); the caller
+  /// (the call screen) owns the cadence, this method just tags and sends
+  /// whatever [StreamCallTelemetry.qualityProps] produced.
+  void reportQuality(
+    Call call,
+    Map<String, Object> quality, {
+    required String peerId,
+    required bool outgoing,
+    required bool video,
+    String? traceId,
+  }) {
+    if (quality.isEmpty) return; // nothing measured yet — don't emit noise.
+    Analytics.capture('stream_lane_call_quality', {
+      ..._base(
+        callId: call.callCid.value,
+        role: outgoing ? 'caller' : 'callee',
+        peerId: peerId,
+        mediaMode: video ? 'video' : 'audio',
+        traceId: traceId,
+      ),
+      ...quality,
     });
   }
 
@@ -623,15 +785,16 @@ class StreamCallService {
   }) async {
     final reason = classifyJoinError(e);
     Analytics.capture('stream_lane_call_join_failed', {
-      'call_id': call.callCid.value,
-      'peer_id': peerId,
+      ..._base(
+        callId: call.callCid.value,
+        role: outgoing ? 'caller' : 'callee',
+        peerId: peerId,
+        traceId: traceId,
+      ),
       'stage': outgoing ? 'place' : 'accept',
       'reason': reason,
       'attempt': attempt,
       'error': e.toString(),
-      'user_email': Analytics.currentEmail ?? '',
-      if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
-      if (traceId != null && traceId.isNotEmpty) 'trace_id': traceId,
     });
     // Kept so the pre-[STREAM-UI-1] `stream_lane_call_failed` series stays
     // continuous; `..._join_failed` is the one carrying `reason`.
@@ -657,30 +820,118 @@ class StreamCallService {
   }
 
   /// Decline an incoming ring.
-  Future<void> decline(Call call) async {
+  ///
+  /// [reason] is telemetry-only "decline-with-reason" plumbing (task item
+  /// 4): the incoming screen still offers a single Decline button (no
+  /// reason picker — that is voicemail/receptionist territory, explicitly
+  /// out of scope here), so it always passes the default. The SDK signal
+  /// sent to the coordinator is always `CallRejectReason.decline()` —
+  /// verified: packages/stream_video/lib/src/call/call_reject_reason.dart
+  /// ("decline - when the callee intentionally declines the call").
+  Future<void> decline(
+    Call call, {
+    String reason = 'user_declined',
+    String? peerId,
+    String? traceId,
+  }) async {
     final email = Analytics.currentEmail ?? '';
+    final callId = call.callCid.value;
+    Analytics.capture('stream_lane_call_declined', {
+      ..._base(callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
+      'reason': reason,
+    });
     try {
-      await call.reject();
-      _emitEndedOnce(call, reason: 'declined', email: email);
+      await call.reject(reason: CallRejectReason.decline());
+      _emitEndedOnce(call, reason: 'declined', email: email, role: 'callee', peerId: peerId);
     } catch (e, st) {
       await Analytics.captureException(
         e,
         st,
         screen: 'stream_call_service',
         handled: true,
-        extra: {'op': 'decline', 'call_id': call.callCid.value},
+        extra: {'op': 'decline', 'call_id': callId},
       );
     } finally {
       await disposeCall(call);
     }
   }
 
-  /// Hang up. `mic_released` is set ONLY after `call.leave()` returns without
-  /// throwing, per the audit requirement that this event is proof the mic was
-  /// actually released, not just that a hangup was requested.
+  /// [AUDIT-5 2026-08-21] Cancel a call the CALLER placed that has not been
+  /// answered yet — i.e. stop the callee's phone from ringing.
+  ///
+  /// verdict: `call.leave()` does NOT do this. verified: packages/
+  /// stream_video/lib/src/call/call.dart `leave()` (~L2325) only runs
+  /// `_disconnect`, which calls `_session?.leave(...)` (the LOCAL SFU
+  /// session) and local `clientEventReporter` bookkeeping — it never calls
+  /// `_coordinatorClient`, so nothing is sent to the other party. `reject()`
+  /// (~L931) is the one that does: it calls
+  /// `_coordinatorClient.rejectCall(cid: ..., reason: ...)` — a real
+  /// server-side signal that the coordinator relays to every other call
+  /// member over their own state stream (that is how a decline updates the
+  /// caller's screen without polling) — and only THEN calls `leave()`
+  /// locally to release local media. Independent confirmation from the
+  /// SDK's own internal usage: `Call.accept()` (~L903), when the user
+  /// answers a second incoming call while they have an outgoing one ringing,
+  /// cancels that outgoing call with exactly
+  /// `outgoingCall.reject(reason: CallRejectReason.cancel())` — the SDK
+  /// authors' own choice for "cancel my ringing outgoing call" is `reject`,
+  /// not `leave`.
+  ///
+  /// So: caller-cancels-before-answer uses `reject(reason:
+  /// CallRejectReason.cancel())`, exactly like [decline] uses `reject(reason:
+  /// CallRejectReason.decline())`. Established-call hang-up keeps using
+  /// [leave] (unchanged semantics, per the task brief) — `end()` was
+  /// considered but rejected for that role: it throws for anything that
+  /// isn't `CallStatusActive` and ends the call for every participant, which
+  /// is a stronger and less reversible action than a single side leaving.
+  Future<void> cancelRinging(
+    Call call, {
+    required DateTime startedAt,
+    String? peerId,
+    String? traceId,
+  }) async {
+    final email = Analytics.currentEmail ?? '';
+    final callId = call.callCid.value;
+    const op = 'reject_cancel';
+    try {
+      await call.reject(reason: CallRejectReason.cancel());
+      Analytics.capture('stream_lane_call_cancelled', {
+        ..._base(callId: callId, role: 'caller', peerId: peerId, traceId: traceId),
+        'op': op,
+        'ring_ms': DateTime.now().difference(startedAt).inMilliseconds,
+      });
+      _emitEndedOnce(call, reason: 'caller_cancelled', email: email, role: 'caller', peerId: peerId);
+    } catch (e, st) {
+      Analytics.capture('stream_lane_call_cancelled', {
+        ..._base(callId: callId, role: 'caller', peerId: peerId, traceId: traceId),
+        'op': op,
+        'error': e.toString(),
+      });
+      await Analytics.captureException(
+        e,
+        st,
+        screen: 'stream_call_service',
+        handled: true,
+        extra: {'op': 'cancel_ringing', 'call_id': callId},
+      );
+    } finally {
+      await disposeCall(call);
+    }
+  }
+
+  /// Hang up an ESTABLISHED call. `mic_released` is set ONLY after
+  /// `call.leave()` returns without throwing, per the audit requirement that
+  /// this event is proof the mic was actually released, not just that a
+  /// hangup was requested.
+  ///
+  /// [role] tags whether the hanging-up side was the caller or callee — the
+  /// caller-cancel-before-answer case goes through [cancelRinging] instead
+  /// (see its doc comment for why); this method's semantics are otherwise
+  /// unchanged from before this task, per the brief.
   Future<void> leave(
     Call call, {
     required DateTime connectedAt,
+    required String role,
     String reason = 'user_hangup',
   }) async {
     final email = Analytics.currentEmail ?? '';
@@ -692,6 +943,7 @@ class StreamCallService {
         call,
         reason: reason,
         email: email,
+        role: role,
         durationS: durationS,
         micReleased: true,
       );
@@ -700,6 +952,7 @@ class StreamCallService {
         call,
         reason: reason,
         email: email,
+        role: role,
         durationS: durationS,
         micReleased: false,
       );
@@ -715,12 +968,13 @@ class StreamCallService {
     }
   }
 
-  /// Cancel this call's state subscription and forget its dedup entry.
+  /// Cancel this call's state subscription and forget its dedup entries.
   Future<void> disposeCall(Call call) async {
     final cid = call.callCid.value;
     final sub = _ringSubs.remove(cid);
     _pendingEnd.remove(cid)?.cancel();
     _endedEmitted.remove(cid);
+    _roleByCid.remove(cid);
     await sub?.cancel();
   }
 
@@ -728,22 +982,19 @@ class StreamCallService {
     Call call, {
     required String reason,
     required String email,
+    required String role,
     double? durationS,
     bool? micReleased,
     String? peerId,
-    String? peerEmail,
   }) {
     final cid = call.callCid.value;
     _pendingEnd.remove(cid)?.cancel();
     if (!_endedEmitted.add(cid)) return;
     Analytics.capture('stream_lane_call_ended', {
-      'call_id': cid,
+      ..._base(callId: cid, role: role, peerId: peerId),
       'reason': reason,
-      'user_email': email,
       if (durationS != null) 'duration_s': durationS,
       if (micReleased != null) 'mic_released': micReleased,
-      if (peerId != null && peerId.isNotEmpty) 'peer_id': peerId,
-      if (peerEmail != null && peerEmail.isNotEmpty) 'peer_email': peerEmail,
     });
   }
 
@@ -761,10 +1012,11 @@ class StreamCallService {
   void _wireRingingEvents(
     Call call,
     String email, {
+    required String role,
     String? peerId,
-    String? peerEmail,
   }) {
     final cid = call.callCid.value;
+    _roleByCid[cid] = role;
     _ringSubs.remove(cid)?.cancel();
     var everConnected = false;
     _ringSubs[cid] = call.state.valueStream.listen((state) {
@@ -784,8 +1036,8 @@ class StreamCallService {
           call,
           reason: reasonName,
           email: email,
+          role: _roleByCid[cid] ?? role,
           peerId: peerId,
-          peerEmail: peerEmail,
         );
       });
     });
