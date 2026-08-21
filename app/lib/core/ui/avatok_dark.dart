@@ -1111,6 +1111,10 @@ class _AdSearchDockState extends State<AdSearchDock> {
   Widget build(BuildContext context) {
     final hasText = widget.controller.text.isNotEmpty;
     return Container(
+      // Search docks sit below the shared golden wave tip. This margin is
+      // intentionally part of the shared component so chat, groups, calls,
+      // and the AvaDial inbox cannot drift into the header seam independently.
+      margin: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
         color: AD.inputField,
         borderRadius: BorderRadius.circular(AD.rInput),
