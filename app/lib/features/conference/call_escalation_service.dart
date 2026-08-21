@@ -152,6 +152,22 @@ class CallEscalationService {
     // says the feature is off must not be dragged into a conference by an adder
     // whose config says it is on.
     if (!RemoteConfig.addToCallEnabled) { nack('disabled'); return; }
+    // [STREAM-GATE-1 2026-08-21] …and the GROUP-CALL kill switches, which this
+    // gate was missing. An escalation builds a `CloudflareConferenceController`
+    // — a Cloudflare Realtime conference — so it is a group-call ENTRY POINT and
+    // must obey the same switches as the chat-thread call icons
+    // (`chat_thread/calls.dart:_confAllowed`). Without this, turning
+    // `conferenceEnabled` off darkened the header buttons but left this door
+    // open: an adder could still pull this device out of a working 1:1 and into
+    // a conference the Worker will then refuse (`routes/groupcall.ts` gates every
+    // endpoint on conferenceEnabled && cloudflareConferenceEnabled), costing the
+    // peer their call for a screen that can never connect.
+    // Owner decision 2026-08-21: group calls go dark now; group MESSAGING is
+    // untouched by this — nothing here is on any messaging path.
+    if (!RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) {
+      nack('conference_disabled');
+      return;
+    }
     if (session.isEnded) { nack('call_ended'); return; }
 
     // Resolve the navigator BEFORE building anything. Without one there is

@@ -253,7 +253,9 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const ringPathT0 = Date.now();
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string; stream_capable?: unknown };
+  // [STREAM-GATE-1] `app_build` is the body fallback for the header `x-app-build`;
+  // both are OPTIONAL and only consulted when `callMinBuild` is armed.
+  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string; stream_capable?: unknown; app_build?: unknown };
   // [WP3] 'dialpad' = the AvaTOK-number business channel (plan §3). Friend-
   // channel (email/chat) calls never send this and are byte-for-byte unaffected.
   const isDialpad = b.via === "dialpad";
@@ -438,6 +440,86 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   // for, and carries `deferred:true` so the two populations stay distinguishable.
   const callPolicyConfig = await configPromise;
   markRingStage("config");
+
+  // ── [STREAM-GATE-1 2026-08-21] LEGACY-DIAL BUILD FLOOR ("update required") ──
+  //
+  // Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md §2.1 option C, owner decision 4b.2.
+  // Calling is moving to Stream-only in a HARD CUTOVER. A pre-cutover build and a
+  // cutover build cannot connect to each other — different engines, different
+  // signalling — so a legacy dial after the cutover is a call that can only end
+  // in silence. Refuse it here and say why.
+  //
+  // PLACEMENT: immediately after the config read and BEFORE the first side
+  // effect (the stale-device prune, the glare pair-DO hop, participants, the
+  // ring). A refused dial must cost the callee nothing — their phone never
+  // wakes — exactly like the admission gate above.
+  //
+  // INERT BY DEFAULT: `callMinBuild` is 0 in DEFAULTS, which disables the gate
+  // completely. Nothing changes until the owner arms it in KV.
+  const callMinBuild = Number(
+    (callPolicyConfig as { callMinBuild?: number } | null)?.callMinBuild ?? 0,
+  );
+  if (Number.isFinite(callMinBuild) && callMinBuild > 0) {
+    // The build the client claims. `x-app-build` is the header the cutover build
+    // sends; `app_build` in the body is accepted as a fallback so a client that
+    // cannot easily set a header still has a way to identify itself. Absent or
+    // unparseable → 0, i.e. "did not tell us", which is what every pre-cutover
+    // build does, since the header is introduced BY the cutover build.
+    const headerBuild = Number.parseInt(req.headers.get("x-app-build") ?? "", 10);
+    const bodyBuild = Number.parseInt(String(b.app_build ?? ""), 10);
+    const clientBuild = Number.isFinite(headerBuild) && headerBuild > 0
+      ? headerBuild
+      : (Number.isFinite(bodyBuild) && bodyBuild > 0 ? bodyBuild : 0);
+    // A client that opted into Stream (`stream_capable`) is post-cutover BY
+    // CONSTRUCTION and never uses the Cloudflare media path below, so it is
+    // never refused here even if it forgot the header. This is a deliberate
+    // belt-and-braces: the gate must not be able to lock out the very lane it
+    // exists to migrate everyone onto.
+    const streamCapable = b.stream_capable === true;
+    if (!streamCapable && clientBuild < callMinBuild) {
+      try {
+        const [callerEmail, callerPhone] = await Promise.all([
+          emailFor(env, ctx.uid).catch(() => null),
+          phoneFor(env, ctx.uid).catch(() => null),
+        ]);
+        await trackUserContact(env, ctx.uid, callerEmail, callerPhone,
+          "call_refused_update_required", "avatok", {
+            call_id: b.callId, to_uid: b.to,
+            client_build: clientBuild, min_build: callMinBuild,
+            // 0 means the request carried no build at all — the population that
+            // will dominate immediately after the cutover, and the number to
+            // watch fall as the fleet updates.
+            build_reported: clientBuild > 0,
+            kind: b.kind ?? "audio", via: b.via ?? "chat",
+            trace_id: traceId,
+            app_name: "avatok", service_name: "avatok-api", worker: true,
+          }, traceId || undefined);
+      } catch { /* telemetry must never change a refusal */ }
+      await settleRingPath();
+      // 426 Upgrade Required — the one status that means exactly this.
+      //
+      // The body carries BOTH contracts on purpose:
+      //  • `error`/`code` = "update_required" + `message` — the machine-readable
+      //    refusal a cutover client keys on to show "Update required".
+      //  • `sent:0` + `reachable:false` — the EXISTING legacy shape. Unmodified
+      //    pre-cutover clients already read `reachable === false` (see
+      //    app/lib/features/avatok/chat_thread/calls.dart:216 and :436) and
+      //    abort the dial instead of playing ringback into a call that will
+      //    never connect. So even a client that has never heard of this refusal
+      //    degrades to an honest "unreachable" rather than a hung ring.
+      return json({
+        error: "update_required",
+        code: "update_required",
+        sent: 0,
+        reachable: false,
+        routed: "update_required",
+        min_build: callMinBuild,
+        client_build: clientBuild,
+        message: "Update AvaTOK to make calls. This version can no longer place calls.",
+      }, 426);
+    }
+  }
+
   // Kill switches, read once. `!== false` is deliberate: a KV blob written before
   // these keys existed has neither, and the correct reading of "absent" is the
   // DEFAULTS value (true), not false. Setting either to false in KV restores the

@@ -263,6 +263,31 @@ export interface PlatformConfig {
    */
   streamCallsEnabled: boolean;
   /**
+   * [STREAM-GATE-1 2026-08-21] Minimum app build allowed to place a call on the
+   * LEGACY Cloudflare dial route (`POST /api/call`).
+   *
+   * Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md §2.1 option C. The owner's
+   * decision is a HARD CUTOVER to Stream-only calling: a phone on the new Stream
+   * build and a phone on a pre-cutover build cannot connect — different engines,
+   * different signalling, no common ground. Rather than let a legacy build dial
+   * into silence, the Worker refuses the dial and says so.
+   *
+   * `0` (the default) DISABLES the gate entirely, so this key ships INERT and is
+   * switched on deliberately once the cutover build is live:
+   *   `ALLOW_PROD=1 scripts/flags.sh set callMinBuild=<cutover build>`
+   *
+   * DISTINCT from `minAppBuild`, which is the app-wide blocking update screen.
+   * This one refuses only CALLS; everything else on an old build keeps working.
+   * Deliberately narrower — the owner may not want to lock a whole fleet out of
+   * messaging to fix calling.
+   *
+   * The build is read from the `x-app-build` request header (or an `app_build`
+   * body field). See `routes/api.ts` — a request that carries NO build at all is
+   * treated as pre-cutover once the gate is armed, because the header is
+   * introduced by the cutover build itself.
+   */
+  callMinBuild: number;
+  /**
    * [CALL-RING-FASTPATH-1 2026-08-07] Trim the pre-ring critical path of
    * POST /api/call.
    *
@@ -1536,6 +1561,10 @@ const DEFAULTS: PlatformConfig = {
   streamCallPilotEnabled: false,
   streamCallPilotPercent: 0,
   streamCallsEnabled: false,   // kill switch for the new streamlane client lane (distinct from streamCallPilotEnabled)
+  // [STREAM-GATE-1 2026-08-21] 0 = gate DISABLED. Ships inert on purpose: arming
+  // it before the cutover build is on people's phones would refuse every call in
+  // the fleet. Flip to the cutover build number once that build is published.
+  callMinBuild: 0,
   // [CALL-RING-FASTPATH-1] ON: only admission → glare → participants → ring stay
   // on the pre-ring await chain. Flip false in KV to restore the old fully-serial
   // order (3.6-4.8s to call_ws_ring_sent) with no rebuild.
@@ -2169,6 +2198,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // this defensively to 0..100; keep it numeric so flags.sh can flip rollout
     // without a Worker/client rebuild.
     "streamCallPilotPercent",
+    // [STREAM-GATE-1 2026-08-21] Legacy-dial build floor — numeric, must be here
+    // or `flags.sh set callMinBuild=10620` 400s `bad type`, and the one knob the
+    // whole "update required" cutover depends on would be untunable.
+    "callMinBuild",
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
