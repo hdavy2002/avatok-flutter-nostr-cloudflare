@@ -103,7 +103,11 @@ class ServicesRoot extends StatelessWidget {
       appBar: AvaTokHeader(
         title: RemoteConfig.marketplaceVisible ? 'Marketplace' : 'Services',
       ),
-      body: const MarketplaceBrowse(),
+      // [UI-MARKET-2026] `embedded` is PASSED, not inferred. MarketplaceBrowse
+      // can infer it from being the first route of its navigator, which is true
+      // here today — but a refactor that changes how this root is routed would
+      // silently resurrect the stacked double title. Say it explicitly.
+      body: const MarketplaceBrowse(embedded: true),
     );
   }
 }
