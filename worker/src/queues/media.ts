@@ -233,7 +233,7 @@ async function generateSongCover(env: Env, job: MediaJobRecord): Promise<boolean
   const attemptStamp = claimed?.updated_at ?? job.updated_at;
   const opId = `song-cover:${job.job_id}:${attemptStamp}`;
   const capability = "media_song_cover_generate";
-  const model = "gemini-3.1-flash-image-preview";
+  const model = "gemini-3.1-flash-image";
   const email = await emailFor(env, job.owner_uid).catch(() => null);
   const reservation = await reserveAiJob(env, {
     uid: job.owner_uid, opId, capability, modality: "image", model,

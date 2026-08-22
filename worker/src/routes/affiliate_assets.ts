@@ -1,5 +1,5 @@
 // AvaAffiliate v2 — Marketing-asset kit (PROPOSAL-AVA-AFFILIATE.md §Resolved #4).
-// Gemini "Nano Banana 2" (gemini-3.1-flash-image-preview) generates 3 branded
+// Gemini "Nano Banana 2" (gemini-3.1-flash-image) generates 3 branded
 // promo images per run (story 9:16 · post 1:1 · banner 16:9) from the listing's
 // title/app/price + creator name. The prompt RESERVES a clean solid-colored
 // lower third — the app composites a REAL scannable QR there client-side (a
@@ -23,7 +23,7 @@ import { track, metric } from "../hooks";
 import { readConfig } from "./config";
 
 const APP = "avaaffiliate";
-export const ASSET_MODEL = "gemini-3.1-flash-image-preview"; // Nano Banana 2
+export const ASSET_MODEL = "gemini-3.1-flash-image"; // Nano Banana 2
 
 const APP_LABEL: Record<string, string> = { avalive: "AvaLive", avaconsult: "AvaConsult", avavoice: "AvaVoice" };
 
@@ -94,7 +94,7 @@ async function generateImage(env: Env, prompt: string, aspect: string): Promise<
   const r = await generateContentVia(env, ASSET_MODEL, {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
-      responseModalities: ["IMAGE"],
+      responseModalities: ["TEXT", "IMAGE"],
       imageConfig: { aspectRatio: aspect },
     },
   });

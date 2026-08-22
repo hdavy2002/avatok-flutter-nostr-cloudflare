@@ -213,7 +213,7 @@ const handleImageUpgrade: KindHandler = async (env, job) => {
   return {
     artifact: { mediaId: artifact.id, mimeType: "image/png", fileName, rendition: "full", resolution },
     settlement: {
-      modelActual: "gemini-3.1-flash-image-preview",
+      modelActual: "gemini-3.1-flash-image",
       usage: { images: 1, imageOutputTokens: gen.imageOutputTokens },
       providerCostUsdMicro: gen.costUsd != null ? Math.round(gen.costUsd * 1_000_000) : undefined,
     },

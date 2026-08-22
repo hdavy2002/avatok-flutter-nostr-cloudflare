@@ -29,7 +29,7 @@
 //   3. post the working chip into `conv` (transient ava_status) — since
 //      [AVA-IMG-CHIP-EARLY-1 / WS-8] this happens FIRST, before step 2 and
 //      before every other gate, so the placeholder appears immediately.
-//   4. generate with Gemini "Nano Banana 2" (gemini-3.1-flash-image-preview),
+//   4. generate with Gemini "Nano Banana 2" (gemini-3.1-flash-image),
 //      same REST shape as routes/affiliate_assets.ts.
 //   5. upload the PNG to the PUBLIC blob bucket (same layout as /upload/public:
 //      content-addressed `u/<uid>/public/<sha256>`, served by blossom + the
@@ -429,7 +429,7 @@ export async function generateImage(
 async function generateImageVertex(
   env: Env, uid: string, prompt: string, editRef: string | undefined, opts: GenerateImageOptions,
 ): Promise<GeneratedImage> {
-  const model = "gemini-3.1-flash-image-preview";
+  const model = "gemini-3.1-flash-image";
   const resolution = opts.resolution || DEFAULT_IMAGE_RESOLUTION;
   const t0 = Date.now();
   if (obviousSexualImagePrompt(prompt)) {
@@ -460,7 +460,10 @@ async function generateImageVertex(
   }
   const r = await vertexMediaRequest(env, `/publishers/google/models/${model}:generateContent`, {
     contents: [{ role: "user", parts }],
-    generationConfig: { responseModalities: ["IMAGE"], imageConfig: { imageSize: resolution } },
+    // Gemini image generation requires both modalities, even when the client
+    // only needs the returned image bytes. `imageSize` was a preview-only
+    // field and makes the Vertex request fail on the current model.
+    generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
   }, { timeoutMs: 90_000 });
   const responseParts = r.out?.candidates?.[0]?.content?.parts ?? [];
   const imagePart = responseParts.find((p: any) => p?.inlineData?.data || p?.inline_data?.data);
@@ -672,7 +675,7 @@ async function fulfil(a: FulfilArgs): Promise<void> {
         rendition: "primary", resolution: gen.resolution,
       },
       settlement: {
-        modelActual: "gemini-3.1-flash-image-preview",
+        modelActual: "gemini-3.1-flash-image",
         usage: { images: 1, imageOutputTokens: gen.imageOutputTokens },
         providerCostUsdMicro: gen.costUsd != null ? Math.round(gen.costUsd * 1_000_000) : undefined,
       },
@@ -708,7 +711,7 @@ async function fulfil(a: FulfilArgs): Promise<void> {
     // slow/missing image was on.
     await trackUser(env, uid, await emailP, "ava_image_completed", "avaai", {
       ok: true, job_id: jobId, tier, edit: !!editRef, private: priv,
-      resolution: gen.resolution, model: "gemini-3.1-flash-image-preview",
+      resolution: gen.resolution, model: "gemini-3.1-flash-image",
       bytes: gen.bytes.byteLength,
       time_to_placeholder_ms: timeToPlaceholderMs,
       gate_chain_ms: gateChainMs,
