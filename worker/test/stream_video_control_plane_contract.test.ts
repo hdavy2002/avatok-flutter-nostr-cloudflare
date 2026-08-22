@@ -213,7 +213,9 @@ describe("GetStream Video pilot control plane contract", () => {
     expect(streamCallCancel).toBeTypeOf("function");
     expect(route).toContain("stream-place:active:");
     expect(route).toContain("stream-place:cancel:");
-    expect(route).toContain('return json({ cancelled: true, call_id: callId })');
+    expect(route).toContain("attempt <= 3");
+    expect(route).toContain("provider_ended: false");
+    expect(route).toContain("provider_ended: callId ? true : null");
     expect(route).toContain('"call_cancelled"');
   });
 

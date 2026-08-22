@@ -673,18 +673,41 @@ class StreamCallService {
 
     Future<void> cancelAttempt() async {
       final cancelStarted = DateTime.now().millisecondsSinceEpoch;
-      try {
-        await ApiAuth.postJsonH(
-          kStreamCallCancelUrl,
-          <String, Object>{
-            'attempt_id': attempt.attemptId,
-            if (attempt.callId.isNotEmpty) 'call_id': attempt.callId,
-          },
-          <String, String>{
-            if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
-          },
-          timeout: const Duration(seconds: 3),
-        );
+      Object? lastError;
+      for (var tryNo = 1; tryNo <= 3; tryNo++) {
+        try {
+          final response = await ApiAuth.postJsonH(
+            kStreamCallCancelUrl,
+            <String, Object>{
+              'attempt_id': attempt.attemptId,
+              if (attempt.callId.isNotEmpty) 'call_id': attempt.callId,
+            },
+            <String, String>{
+              if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
+            },
+            timeout: const Duration(seconds: 3),
+          );
+          Map<String, dynamic> body = const <String, dynamic>{};
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) body = decoded;
+          } catch (_) {/* malformed response is a failed acknowledgement */}
+          if (response.statusCode >= 200 &&
+              response.statusCode < 300 &&
+              body['cancelled'] == true &&
+              body['provider_ended'] != false) {
+            lastError = null;
+            break;
+          }
+          lastError = StateError('Stream provider did not confirm call end');
+        } catch (e) {
+          lastError = e;
+        }
+        if (tryNo < 3) {
+          await Future<void>.delayed(Duration(milliseconds: 150 * tryNo));
+        }
+      }
+      if (lastError == null) {
         Analytics.capture('stream_lane_call_preparation_cancelled', {
           'attempt_id': attempt.attemptId,
           'call_id': attempt.callId,
@@ -694,11 +717,11 @@ class StreamCallService {
               DateTime.now().millisecondsSinceEpoch - cancelStarted,
           'provider': 'stream',
         });
-      } catch (e) {
+      } else {
         Analytics.capture('stream_lane_call_preparation_cancel_failed', {
           'attempt_id': attempt.attemptId,
           'call_id': attempt.callId,
-          'error': e.toString(),
+          'error': lastError.toString(),
           'provider': 'stream',
         });
       }

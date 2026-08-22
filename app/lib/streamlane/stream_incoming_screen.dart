@@ -77,6 +77,8 @@ class StreamIncomingScreen extends StatefulWidget {
 
 class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   StreamSubscription<CallState>? _sub;
+  StreamSubscription<CoordinatorCallEndedEvent>? _endedSub;
+  StreamSubscription<CoordinatorCallRejectedEvent>? _rejectedSub;
   bool _acting = false; // Accept/Decline in flight — don't double-dismiss.
   bool _dismissed = false; // Any dismissal path already ran.
 
@@ -115,11 +117,29 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
       if (status is! CallStatusDisconnected) return;
       _dismissForRemoteEnd(status.reason);
     });
+    // Also listen on the client's coordinator event bus. A push-created Call
+    // can briefly be a different local instance from the foreground screen;
+    // in that case the global call.ended/call.rejected event is authoritative
+    // even if this instance's CallState has not caught up yet.
+    _endedSub = StreamVideo.instance.events
+        .on<CoordinatorCallEndedEvent>((event) {
+      if (event.callCid.toString() == callId && !_dismissed && !_acting) {
+        _dismissForRemoteEnd(event);
+      }
+    });
+    _rejectedSub = StreamVideo.instance.events
+        .on<CoordinatorCallRejectedEvent>((event) {
+      if (event.callCid.toString() == callId && !_dismissed && !_acting) {
+        _dismissForRemoteEnd(event);
+      }
+    });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _endedSub?.cancel();
+    _rejectedSub?.cancel();
     unawaited(_StreamForegroundRinger.instance.stop(
       widget.call.callCid.value,
       reason: 'screen_disposed',

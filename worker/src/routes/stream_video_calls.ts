@@ -444,17 +444,19 @@ async function createRingingStreamCall(env: Env, args: {
 }
 
 async function endStreamCall(env: Env, callId: string): Promise<boolean> {
-  try {
-    const token = await streamServerToken(env);
-    const response = await fetchBefore(streamEndCallUrl(env, callId), {
-      method: "POST",
-      headers: { Authorization: token, "stream-auth-type": "jwt" },
-    }, Date.now() + 2_000);
-    // A missing call is already safely not ringing.
-    return response.ok || response.status === 404;
-  } catch {
-    return false;
+  const token = await streamServerToken(env);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetchBefore(streamEndCallUrl(env, callId), {
+        method: "POST",
+        headers: { Authorization: token, "stream-auth-type": "jwt" },
+      }, Date.now() + 2_000);
+      // A missing call is already safely not ringing.
+      if (response.ok || response.status === 404) return true;
+    } catch { /* retry the provider control-plane request */ }
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 100));
   }
+  return false;
 }
 
 /** GET /api/stream-video/token — protected background-capable user token. */
@@ -1292,9 +1294,10 @@ export async function streamCallCancel(req: Request, env: Env): Promise<Response
   if (body.call_id !== undefined && callId !== body.call_id) {
     return json({ error: "call_id does not belong to this attempt" }, 409);
   }
+  let providerEnded: boolean | null = null;
   if (callId) {
     const cancelStartedAt = Date.now();
-    const [providerEnded] = await Promise.all([endStreamCall(env, callId), markProviderDecisionEnded(env, callId)]);
+    [providerEnded] = await Promise.all([endStreamCall(env, callId), markProviderDecisionEnded(env, callId)]);
     track(env, auth.uid, "stream_call_cancel_requested", "avatok", {
       call_id: callId,
       attempt_id: body.attempt_id,
@@ -1304,7 +1307,10 @@ export async function streamCallCancel(req: Request, env: Env): Promise<Response
       app_name: "avatok", service_name: "avatok-api", worker: true,
     });
   }
-  return json({ cancelled: true, call_id: callId });
+  if (callId && !providerEnded) {
+    return json({ cancelled: false, provider_ended: false, call_id: callId }, 502);
+  }
+  return json({ cancelled: true, provider_ended: callId ? true : null, call_id: callId });
 }
 
 async function unzipIfNeeded(raw: ArrayBuffer): Promise<ArrayBuffer> {

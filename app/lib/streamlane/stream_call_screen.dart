@@ -668,24 +668,31 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     if (_hangingUp) return;
     setState(() => _hangingUp = true);
     await _tonePlayer?.stop(reason: 'caller_cancelled');
-    // The local state can briefly still say "ringing" after the other device
-    // has accepted. Always invoke the caller's server-authoritative end hook
-    // first so this race cannot strand the callee in a live Stream session.
-    if (widget.outgoing && widget.endForEveryone != null) {
-      try {
-        await widget.endForEveryone!().timeout(const Duration(seconds: 3));
-      } catch (_) {/* local cleanup still must run */}
-    }
     if (widget.outgoing && !_everConnected) {
-      await StreamCallService.instance.cancelRinging(
-        widget.call,
-        startedAt: DateTime.fromMillisecondsSinceEpoch(
-          widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+      // Send both cancellation paths at once. The SDK reject produces the
+      // lowest-latency call.cancelled event, while the Worker ends the call
+      // with server authority. Waiting for the Worker before reject used to
+      // leave the other phone ringing whenever that request timed out.
+      await Future.wait<void>([
+        StreamCallService.instance.cancelRinging(
+          widget.call,
+          startedAt: DateTime.fromMillisecondsSinceEpoch(
+            widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+          ),
+          peerId: widget.peerId,
+          traceId: widget.traceId,
         ),
-        peerId: widget.peerId,
-        traceId: widget.traceId,
-      );
+        if (widget.endForEveryone != null)
+          widget.endForEveryone!().timeout(const Duration(seconds: 8)),
+      ]).catchError((_) => <void>[]);
     } else {
+      // The local state can briefly still say "ringing" after the other device
+      // accepted. End server-side before leaving an established call.
+      if (widget.outgoing && widget.endForEveryone != null) {
+        try {
+          await widget.endForEveryone!().timeout(const Duration(seconds: 8));
+        } catch (_) {/* local cleanup still must run */}
+      }
       if (!widget.outgoing && widget.endForEveryone != null) {
         try {
           await widget.endForEveryone!().timeout(const Duration(seconds: 3));
