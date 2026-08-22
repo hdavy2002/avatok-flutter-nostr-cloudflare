@@ -19,7 +19,7 @@ export function mediaModelCatalog(cfg: PlatformConfig, _tier: "free" | "paid"): 
 } {
   return {
     video: [{
-      id: "veo-3.1-generate-preview",
+      id: "veo-3.1-generate-001",
       provider: "Google Vertex",
       media: "video",
       label: "Veo video generation",

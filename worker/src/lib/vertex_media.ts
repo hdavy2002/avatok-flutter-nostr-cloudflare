@@ -54,7 +54,7 @@ export interface RunVertexMediaResult {
   job_id?: string | null;
 }
 
-const VERTEX_VIDEO_MODEL = "veo-3.1-generate-preview";
+const VERTEX_VIDEO_MODEL = "veo-3.1-generate-001";
 const VERTEX_MUSIC_MODEL = "lyria-3-pro-preview";
 
 function decodeBase64(value: unknown): Uint8Array | null {
