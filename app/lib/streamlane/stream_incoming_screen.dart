@@ -122,13 +122,15 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
     // in that case the global call.ended/call.rejected event is authoritative
     // even if this instance's CallState has not caught up yet.
     _endedSub = StreamVideo.instance.events
-        .on<CoordinatorCallEndedEvent>((event) {
+        .whereType<CoordinatorCallEndedEvent>()
+        .listen((event) {
       if (event.callCid.toString() == callId && !_dismissed && !_acting) {
         _dismissForRemoteEnd(event);
       }
     });
     _rejectedSub = StreamVideo.instance.events
-        .on<CoordinatorCallRejectedEvent>((event) {
+        .whereType<CoordinatorCallRejectedEvent>()
+        .listen((event) {
       if (event.callCid.toString() == callId && !_dismissed && !_acting) {
         _dismissForRemoteEnd(event);
       }
