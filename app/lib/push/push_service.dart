@@ -656,11 +656,11 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) =>
 
 Future<void> _handleBackgroundMessage(RemoteMessage message) async {
   final d = message.data;
-  // STREAM-LANE: only returns true when the envelope is a Stream push AND
-  // the NEW SDK lane is enabled (RemoteConfig.streamCallsEnabled) — with the
-  // flag off (today's default) this is always false and everything below,
-  // including the OLD lane's own 'stream.video' handling a few lines down,
-  // runs exactly as before.
+  // STREAM-LANE: a background isolate cannot use RemoteConfig's in-memory
+  // feature flag (it starts empty in every fresh isolate). The Stream handler
+  // instead authenticates the provider envelope and fails closed unless it can
+  // resolve persisted credentials for the active account. Non-Stream pushes
+  // still return false and continue through the legacy handling below.
   if (await handleStreamPushBackground(d)) return;
   final type = (d['type'] ?? '').toString();
   // Record EVERY background push the instant it arrives (durably — the main

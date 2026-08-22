@@ -120,7 +120,19 @@ bool handleStreamPush(Map<String, dynamic> data) {
 /// change that decision.
 Future<bool> handleStreamPushBackground(Map<String, dynamic> data) async {
   if (!isStreamPush(data)) return false;
-  if (!RemoteConfig.streamCallsEnabled) return false;
+
+  // A Firebase background handler runs in its own Dart isolate. RemoteConfig's
+  // in-memory map is therefore empty here, so `streamCallsEnabled` reads its
+  // compile-time false default even when production has enabled the Stream
+  // lane. That made a genuine Stream push fall through to the legacy handler,
+  // which intentionally ignores `sender=stream.video`; the phone woke but no
+  // incoming-call surface was shown.
+  //
+  // The signed provider envelope is the background discriminator. Recovery
+  // still fails closed unless the payload resolves to credentials persisted
+  // for the active account, so this cannot revive Cloudflare media or surface
+  // another account's call on a shared phone. Foreground routing continues to
+  // respect RemoteConfig because the main isolate has hydrated it normally.
 
   try {
     await _recoverInBackground(data);
@@ -193,10 +205,21 @@ Future<void> _recoverInBackground(Map<String, dynamic> data) async {
       creds.apiKey,
       user: User.regular(userId: creds.uid),
       userToken: creds.token,
-      pushNotificationManagerProvider: StreamVideoPushNotificationManager.create(
+      pushNotificationManagerProvider:
+          StreamVideoPushNotificationManager.create(
         iosPushProvider: const StreamVideoPushProvider.apn(name: 'avatok-apn'),
-        androidPushProvider:
-            const StreamVideoPushProvider.firebase(name: 'firebase'),
+        androidPushProvider: StreamVideoPushProvider.firebase(
+          name: 'firebase',
+          tokenStreamProvider: () => const Stream<String>.empty(),
+        ),
+        pushConfiguration: const StreamVideoPushConfiguration(
+          android: AndroidPushConfiguration(
+            ringtonePath: 'ringtone_default',
+            incomingCallNotificationChannelName: 'AvaTOK incoming calls',
+            missedCallNotificationChannelName: 'AvaTOK missed calls',
+            showFullScreenOnLockScreen: true,
+          ),
+        ),
       ),
     )..connect();
 
@@ -267,6 +290,23 @@ const String _kActiveAccountKey = 'clerk_account_id';
 Future<_TargetResolution> _resolveTargetCredentials(
   Map<String, dynamic> data,
 ) async {
+  // Prefer the active account's exact encrypted entry. `readAll()` is not a
+  // reliable primitive in a cold Firebase isolate: one unrelated legacy entry
+  // that cannot be decrypted makes the whole operation throw, which previously
+  // turned a valid signed-in account into `no_credentials_stored`. An exact
+  // lookup is also the least-privilege operation on a shared phone.
+  String active = '';
+  try {
+    active = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
+  } catch (_) {/* fall through */}
+  active = active.trim();
+  if (active.isNotEmpty) {
+    final activeCreds = await _readStreamLaneCredential(active);
+    if (activeCreds != null) {
+      return _TargetResolution(activeCreds, 'active_account_direct', 1);
+    }
+  }
+
   final stored = await _readAllStreamLaneCredentials();
   if (stored.isEmpty) {
     return const _TargetResolution(null, 'no_credentials_stored', 0);
@@ -302,11 +342,6 @@ Future<_TargetResolution> _resolveTargetCredentials(
   }
 
   // 2. The account this device is currently signed in as.
-  String active = '';
-  try {
-    active = (await DiskCache.readGlobal(_kActiveAccountKey)) ?? '';
-  } catch (_) {/* fall through */}
-  active = active.trim();
   if (active.isNotEmpty) {
     final hit = stored[active];
     if (hit != null) {
@@ -326,6 +361,27 @@ Future<_TargetResolution> _resolveTargetCredentials(
     stored.length,
     candidateEmails: emails,
   );
+}
+
+Future<_StreamLaneCreds?> _readStreamLaneCredential(String uid) async {
+  try {
+    final encoded = await _secure.read(key: StreamLane.credKeyForUid(uid));
+    if (encoded == null || encoded.isEmpty) return null;
+    final raw = jsonDecode(encoded);
+    if (raw is! Map) return null;
+    final storedUid = (raw['uid'] ?? '').toString();
+    final apiKey = (raw['api_key'] ?? '').toString();
+    final token = (raw['token'] ?? '').toString();
+    if (storedUid != uid || apiKey.isEmpty || token.isEmpty) return null;
+    return _StreamLaneCreds(
+      uid: storedUid,
+      apiKey: apiKey,
+      token: token,
+      email: (raw['email'] ?? '').toString(),
+    );
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Every stored Stream-lane credential blob on this device, keyed by its uid.

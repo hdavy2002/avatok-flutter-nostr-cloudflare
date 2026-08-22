@@ -37,6 +37,7 @@ import '../core/ui/messenger_theme.dart';
 // screen silently never appeared. Import cycles are legal in Dart; the
 // push_service → glue → lane → this-file cycle resolves fine.
 import '../core/analytics.dart';
+import '../main.dart' show RootFlow;
 // [STREAM-RING-2 2026-08-21] `PushService` added to the `show` clause: the
 // foreground ringer below calls `PushService.start/stopStreamForegroundRing`,
 // which the navigatorKey-only clause left out of scope, so Dart parsed
@@ -146,7 +147,7 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
     ));
     _emitDismissed('remote_ended:${sdkReason.runtimeType}');
     if (!mounted) return;
-    Navigator.of(context).maybePop();
+    _exitRingScreen();
   }
 
   Future<void> _onDecline() async {
@@ -161,7 +162,19 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
       widget.call,
       peerId: widget.call.state.value.createdByUser.id,
     );
-    if (mounted) Navigator.of(context).maybePop();
+    _exitRingScreen();
+  }
+
+  void _exitRingScreen() {
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const RootFlow()),
+      );
+    }
   }
 
   Future<void> _onAccept() async {
@@ -172,7 +185,14 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
       reason: 'accepted',
     );
     _emitDismissed('accepted');
-    await StreamCallService.instance.accept(context, widget.call);
+    final caller = widget.call.state.value.createdByUser;
+    await StreamCallService.instance.accept(
+      context,
+      widget.call,
+      peerId: caller.id,
+      name: caller.name.isEmpty ? null : caller.name,
+      avatarUrl: caller.image.isEmpty ? null : caller.image,
+    );
   }
 
   @override
@@ -193,7 +213,12 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
           child: Column(
             children: [
               const Spacer(),
-              Avatar(seed: callerName, name: callerName, size: 120),
+              Avatar(
+                seed: caller.id,
+                name: callerName,
+                size: 120,
+                avatarUrl: caller.image.isEmpty ? null : caller.image,
+              ),
               const SizedBox(height: Msg.s4),
               Text(
                 callerName,

@@ -17,7 +17,8 @@ import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/rajasthani_motifs.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
-import 'place_1to1_call.dart' show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
+import 'place_1to1_call.dart'
+    show routeToStreamCallIfEnabled; // [STREAM-ROUTE-1]
 
 /// AvaTok Calls tab — real 1:1 call history; tap to call back.
 class CallsScreen extends StatefulWidget {
@@ -61,7 +62,10 @@ class _CallsScreenState extends State<CallsScreen> {
   Future<void> _load() async {
     final c = await _store.load();
     final contacts = await ContactsStore().load();
-    final avatars = {for (final x in contacts) if (x.avatarUrl.isNotEmpty) x.uid: x.avatarUrl};
+    final avatars = {
+      for (final x in contacts)
+        if (x.avatarUrl.isNotEmpty) x.uid: x.avatarUrl
+    };
     // [ISSUE-CALLS-SEARCH-1] Pre-digest each contact's number+phone to digits once
     // per load, so typing stays O(rows) with no per-keystroke string scrubbing.
     final numbers = {
@@ -70,7 +74,12 @@ class _CallsScreenState extends State<CallsScreen> {
           x.uid: _digits('${x.number} ${x.phone}'),
     };
     if (mounted) {
-      setState(() { _calls = c; _avatars = avatars; _numberDigits = numbers; _loaded = true; });
+      setState(() {
+        _calls = c;
+        _avatars = avatars;
+        _numberDigits = numbers;
+        _loaded = true;
+      });
     }
   }
 
@@ -105,7 +114,11 @@ class _CallsScreenState extends State<CallsScreen> {
     // (`tel:` seed) has no Stream identity and is refused inside the gate
     // rather than falling through to Cloudflare.
     if (await routeToStreamCallIfEnabled(context,
-        peerId: c.seed, video: c.video, entrypoint: 'recents_callback')) {
+        peerId: c.seed,
+        video: c.video,
+        entrypoint: 'recents_callback',
+        peerName: c.name,
+        peerAvatarUrl: _avatars[c.seed])) {
       await _load();
       return;
     }
@@ -115,9 +128,16 @@ class _CallsScreenState extends State<CallsScreen> {
     // is the PEER's id, so calling the same person back twice from Recents
     // reused one call id and the callee's untimed dedup cache silently swallowed
     // the second one. `seed:` still carries the peer id; the room must not.
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(room: CallRoomId.newRoomId(), title: c.name, seed: c.seed, video: c.video, avatarUrl: _avatars[c.seed] ?? ''),
-    )).then((_) => _load());
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+              room: CallRoomId.newRoomId(),
+              title: c.name,
+              seed: c.seed,
+              video: c.video,
+              avatarUrl: _avatars[c.seed] ?? ''),
+        )).then((_) => _load());
   }
 
   @override
@@ -150,108 +170,118 @@ class _CallsScreenState extends State<CallsScreen> {
     // a SafeArea here would be a no-op at best and a duplicated inset if that
     // ever changed.
     return Column(children: [
-        // [ISSUE-CALLS-SEARCH-1] Search dock, pinned directly under the tabs and
-        // OUTSIDE the scrollable so it never scrolls away. Hidden while the log is
-        // empty (nothing to search) and never autofocused — opening the tab must
-        // not pop the keyboard.
-        //
-        // [RAJ-SINGLEWAVE-1] The clear-log trash button now rides in this row
-        // instead of the deleted band. Note this TIGHTENS its condition: the
-        // button used to appear on `_calls.isNotEmpty` alone and now also waits
-        // for `_loaded`, because it shares the dock's guard. That is correct —
-        // "clear the whole log" should not be offerable before the log has
-        // finished loading, or a mistimed tap clears a list the user cannot
-        // see yet.
-        if (_loaded && _calls.isNotEmpty)
-          Padding(
-            // [UI-CALLS-2026] Top inset 0: `AdSearchDock` applies the shared
-            // `AD.searchDockTopGap` (the "below the tip of the header wave"
-            // distance) itself, so a 12px pad here as well was double-spacing
-            // this dock relative to the Chats/Groups tabs beside it. The trash
-            // button is centred against the dock, so it follows automatically.
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
-            // The dock now carries the wave gap as its own top margin, so it is
-            // taller than the 44px trash button; bottom-align them or the
-            // button floats half a gap below the field it sits next to.
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(
-                child: AdSearchDock(
-                  controller: _searchCtl,
-                  hint: 'Search name or number',
-                  onChanged: (v) => setState(() => _query = v),
-                ),
+      // [ISSUE-CALLS-SEARCH-1] Search dock, pinned directly under the tabs and
+      // OUTSIDE the scrollable so it never scrolls away. Hidden while the log is
+      // empty (nothing to search) and never autofocused — opening the tab must
+      // not pop the keyboard.
+      //
+      // [RAJ-SINGLEWAVE-1] The clear-log trash button now rides in this row
+      // instead of the deleted band. Note this TIGHTENS its condition: the
+      // button used to appear on `_calls.isNotEmpty` alone and now also waits
+      // for `_loaded`, because it shares the dock's guard. That is correct —
+      // "clear the whole log" should not be offerable before the log has
+      // finished loading, or a mistimed tap clears a list the user cannot
+      // see yet.
+      if (_loaded && _calls.isNotEmpty)
+        Padding(
+          // [UI-CALLS-2026] Top inset 0: `AdSearchDock` applies the shared
+          // `AD.searchDockTopGap` (the "below the tip of the header wave"
+          // distance) itself, so a 12px pad here as well was double-spacing
+          // this dock relative to the Chats/Groups tabs beside it. The trash
+          // button is centred against the dock, so it follows automatically.
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+          // The dock now carries the wave gap as its own top margin, so it is
+          // taller than the 44px trash button; bottom-align them or the
+          // button floats half a gap below the field it sits next to.
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: AdSearchDock(
+                controller: _searchCtl,
+                hint: 'Search name or number',
+                onChanged: (v) => setState(() => _query = v),
               ),
-              const SizedBox(width: Msg.s3),
-              ZinePressable(
-                onTap: _confirmClearAll,
-                // Paper fill, ink glyph. It sits on the cream page now rather
-                // than on a dark band, so the old contrast note about AD.onBand
-                // no longer applies — ink on paper is the default and correct.
-                color: AD.card,
-                pressedColor: AD.destructiveBg,
-                radius: Msg.brPill,
-                boxShadow: const [],
-                child: SizedBox(
-                  width: 44, height: 44,
-                  child: Center(child: PhosphorIcon(
-                      PhosphorIcons.trash(PhosphorIconsStyle.bold),
-                      size: 19, color: AD.textPrimary)),
-                ),
+            ),
+            const SizedBox(width: Msg.s3),
+            ZinePressable(
+              onTap: _confirmClearAll,
+              // Paper fill, ink glyph. It sits on the cream page now rather
+              // than on a dark band, so the old contrast note about AD.onBand
+              // no longer applies — ink on paper is the default and correct.
+              color: AD.card,
+              pressedColor: AD.destructiveBg,
+              radius: Msg.brPill,
+              boxShadow: const [],
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                    child: PhosphorIcon(
+                        PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                        size: 19,
+                        color: AD.textPrimary)),
               ),
-            ]),
-          ),
-        Expanded(
-          child: !_loaded
-              ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
-              : _calls.isEmpty
-                  ? Center(child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        SvgPicture.asset(Illustrations.callsListEmpty,
-                            height: 120, fit: BoxFit.contain, excludeFromSemantics: true),
-                        const SizedBox(height: Msg.s3),
-                        Text('No calls yet — start one from a chat',
-                            textAlign: TextAlign.center,
-                            style: ADText.preview(c: AD.textTertiary)),
-                      ]),
-                    ))
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      color: AD.iconSearch,
-                      // [ISSUE-CALLS-SEARCH-1] Distinct "no results" state, kept
-                      // scrollable so pull-to-refresh still works while filtered.
-                      child: visible.isEmpty
-                          ? ListView(
-                              padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
-                              children: [
-                                PhosphorIcon(
-                                    PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-                                    size: 40, color: AD.textFaint),
-                                const SizedBox(height: Msg.s3),
-                                Text('No calls match "$_query"',
-                                    textAlign: TextAlign.center,
-                                    style: ADText.preview(c: AD.textTertiary)),
-                              ],
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s4, Msg.s4, Msg.s5),
-                              itemCount: visible.length,
-                              // [RAJ-SEAMS-1] Bead-stud row rule (patches.md
-                              // §6) replaces the plain gap — this is a
-                              // ListView.separated (no fixed itemExtent), so
-                              // the rule can freely add its own height.
-                              separatorBuilder: (_, __) => const Padding(
-                                padding: EdgeInsets.symmetric(vertical: Msg.s1),
-                                child: BeadStudRule(),
-                              ),
-                              // [ISSUE-CALLS-SEARCH-1] _row no longer takes an
-                              // index: deletion is by STABLE ID, so a filtered
-                              // view can't misaddress the backing log.
-                              itemBuilder: (_, i) => _row(visible[i]),
-                            ),
-                    ),
+            ),
+          ]),
         ),
-      ]);
+      Expanded(
+        child: !_loaded
+            ? const Center(
+                child: CircularProgressIndicator(color: AD.iconSearch))
+            : _calls.isEmpty
+                ? Center(
+                    child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      SvgPicture.asset(Illustrations.callsListEmpty,
+                          height: 120,
+                          fit: BoxFit.contain,
+                          excludeFromSemantics: true),
+                      const SizedBox(height: Msg.s3),
+                      Text('No calls yet — start one from a chat',
+                          textAlign: TextAlign.center,
+                          style: ADText.preview(c: AD.textTertiary)),
+                    ]),
+                  ))
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    color: AD.iconSearch,
+                    // [ISSUE-CALLS-SEARCH-1] Distinct "no results" state, kept
+                    // scrollable so pull-to-refresh still works while filtered.
+                    child: visible.isEmpty
+                        ? ListView(
+                            padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+                            children: [
+                              PhosphorIcon(
+                                  PhosphorIcons.magnifyingGlass(
+                                      PhosphorIconsStyle.bold),
+                                  size: 40,
+                                  color: AD.textFaint),
+                              const SizedBox(height: Msg.s3),
+                              Text('No calls match "$_query"',
+                                  textAlign: TextAlign.center,
+                                  style: ADText.preview(c: AD.textTertiary)),
+                            ],
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(
+                                Msg.s4, Msg.s4, Msg.s4, Msg.s5),
+                            itemCount: visible.length,
+                            // [RAJ-SEAMS-1] Bead-stud row rule (patches.md
+                            // §6) replaces the plain gap — this is a
+                            // ListView.separated (no fixed itemExtent), so
+                            // the rule can freely add its own height.
+                            separatorBuilder: (_, __) => const Padding(
+                              padding: EdgeInsets.symmetric(vertical: Msg.s1),
+                              child: BeadStudRule(),
+                            ),
+                            // [ISSUE-CALLS-SEARCH-1] _row no longer takes an
+                            // index: deletion is by STABLE ID, so a filtered
+                            // view can't misaddress the backing log.
+                            itemBuilder: (_, i) => _row(visible[i]),
+                          ),
+                  ),
+      ),
+    ]);
   }
 
   // Call-history row — zine card: ink border, bordered avatar, mono timestamp,
@@ -282,66 +312,80 @@ class _CallsScreenState extends State<CallsScreen> {
       onLongPress: () => _confirmDelete(c),
       onSecondaryTap: () => _confirmDelete(c), // desktop right-click
       child: Container(
-      padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
-      decoration: BoxDecoration(
-        color: AD.card,
-        borderRadius: BorderRadius.circular(AD.rListCard),
-        border: Border.all(color: AD.borderControl, width: 1),
-        boxShadow: const [],
-      ),
-      child: Row(children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: AD.borderAvatar, width: 2),
-          ),
-          child: Avatar(seed: c.seed, name: c.name, size: 44, avatarUrl: _avatars[c.seed]),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(c.name,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: ADText.rowName(c: missed ? AD.missedCall : AD.textPrimary)),
-            const SizedBox(height: Msg.s1),
-            Row(children: [
-              PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
-              const SizedBox(width: Msg.s1),
-              // [CALL-LOG-TIME-1] date + time + duration, shared with AvaDialer.
-              // [CALL-HONEST-FAIL-1] `withOutcome: false` when the sentence
-              // below is showing, so the row doesn't say "Declined" and
-              // "Arti declined the call." on two consecutive lines.
-              Flexible(child: Text(
-                  callLogSubtitle(c, context: context, withOutcome: failure == null),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ADText.sectionLabel(c: AD.textTertiary))),
-            ]),
-            // [CALL-HONEST-FAIL-1] Why it never became a conversation, in words.
-            if (failure != null) ...[
-              const SizedBox(height: Msg.s1),
-              Text(failure.text,
-                  maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: ADText.preview(c: AD.textTertiary)),
-            ],
-          ]),
-        ),
-        const SizedBox(width: 8),
-        ZinePressable(
-          onTap: () => _callBack(c),
+        padding: const EdgeInsets.fromLTRB(Msg.s3, Msg.s3, Msg.s3, Msg.s3),
+        decoration: BoxDecoration(
           color: AD.card,
-          pressedColor: AD.primaryBadge,
-          radius: Msg.brPill,
+          borderRadius: BorderRadius.circular(AD.rListCard),
+          border: Border.all(color: AD.borderControl, width: 1),
           boxShadow: const [],
-          child: SizedBox(
-            width: 40, height: 40,
-            child: Center(child: PhosphorIcon(
-                c.video
-                    ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
-                    : PhosphorIcons.phone(PhosphorIconsStyle.bold),
-                size: 19, color: c.video ? AD.iconVideo : AD.iconPhone)),
-          ),
         ),
-      ]),
+        child: Row(children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AD.borderAvatar, width: 2),
+            ),
+            child: Avatar(
+                seed: c.seed,
+                name: c.name,
+                size: 44,
+                avatarUrl: _avatars[c.seed]),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ADText.rowName(
+                      c: missed ? AD.missedCall : AD.textPrimary)),
+              const SizedBox(height: Msg.s1),
+              Row(children: [
+                PhosphorIcon(_dirIcon(c.dir), size: 14, color: dirColor),
+                const SizedBox(width: Msg.s1),
+                // [CALL-LOG-TIME-1] date + time + duration, shared with AvaDialer.
+                // [CALL-HONEST-FAIL-1] `withOutcome: false` when the sentence
+                // below is showing, so the row doesn't say "Declined" and
+                // "Arti declined the call." on two consecutive lines.
+                Flexible(
+                    child: Text(
+                        callLogSubtitle(c,
+                            context: context, withOutcome: failure == null),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ADText.sectionLabel(c: AD.textTertiary))),
+              ]),
+              // [CALL-HONEST-FAIL-1] Why it never became a conversation, in words.
+              if (failure != null) ...[
+                const SizedBox(height: Msg.s1),
+                Text(failure.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: ADText.preview(c: AD.textTertiary)),
+              ],
+            ]),
+          ),
+          const SizedBox(width: 8),
+          ZinePressable(
+            onTap: () => _callBack(c),
+            color: AD.card,
+            pressedColor: AD.primaryBadge,
+            radius: Msg.brPill,
+            boxShadow: const [],
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Center(
+                  child: PhosphorIcon(
+                      c.video
+                          ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      size: 19,
+                      color: c.video ? AD.iconVideo : AD.iconPhone)),
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -363,7 +407,9 @@ class _CallsScreenState extends State<CallsScreen> {
         content: Text('Remove the call with ${c.name} from your history?',
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             onPressed: () => Navigator.pop(ctx, true),
@@ -396,7 +442,9 @@ class _CallsScreenState extends State<CallsScreen> {
         content: Text('Delete your entire call history? This cannot be undone.',
             style: ADText.preview(c: AD.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AD.destructiveBg),
             onPressed: () => Navigator.pop(ctx, true),
@@ -412,8 +460,10 @@ class _CallsScreenState extends State<CallsScreen> {
   }
 
   PhosphorIconData _dirIcon(CallDir d) => switch (d) {
-        CallDir.incoming => PhosphorIcons.phoneIncoming(PhosphorIconsStyle.bold),
-        CallDir.outgoing => PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.bold),
+        CallDir.incoming =>
+          PhosphorIcons.phoneIncoming(PhosphorIconsStyle.bold),
+        CallDir.outgoing =>
+          PhosphorIcons.phoneOutgoing(PhosphorIconsStyle.bold),
         CallDir.missed => PhosphorIcons.phoneX(PhosphorIconsStyle.bold),
       };
   // [CALL-LOG-TIME-1] `_dirLabel` moved to core/ui/call_log_format.dart

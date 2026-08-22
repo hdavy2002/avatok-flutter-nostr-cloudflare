@@ -1,0 +1,23 @@
+group = "ai.avatok.realtimekit_disabled"
+version = "0.1.6"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.11.1"
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace "ai.avatok.realtimekit_disabled"
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+    }
+}

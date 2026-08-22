@@ -1,0 +1,20 @@
+name: realtimekit_core_android
+description: Local no-native Android implementation while AvaTOK evaluates Stream-only calls.
+version: 0.1.6
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.0.0"
+
+flutter:
+  plugin:
+    implements: realtimekit_core
+    platforms:
+      android:
+        package: ai.avatok.realtimekit_disabled
+        pluginClass: DisabledRealtimeKitPlugin
+
+dependencies:
+  flutter:
+    sdk: flutter

@@ -45,11 +45,13 @@ class StreamPreparedOutgoing {
     required this.call,
     required this.connect,
     required this.callId,
+    required this.endForEveryone,
   });
 
   final Call call;
   final String callId;
   final Future<void> Function(int attempt) connect;
+  final Future<void> Function() endForEveryone;
 }
 
 class StreamOutgoingPreparationException implements Exception {
@@ -835,7 +837,20 @@ class StreamCallService {
       return StreamPreparedOutgoing(
         call: call,
         callId: decision.callId,
-        connect: (_) => call.join(),
+        // The existing server-authoritative cancel route remains valid after
+        // answer: it owns the caller's attempt mapping and calls Stream's
+        // mark_ended API with server credentials. Client roles may not have
+        // permission to end a call for everybody.
+        endForEveryone: cancelAttempt,
+        connect: (_) async {
+          await call.join(
+            connectOptions: CallConnectOptions(
+              microphone: TrackOption.enabled(),
+              camera: video ? TrackOption.enabled() : TrackOption.disabled(),
+              speakerDefaultOn: video,
+            ),
+          );
+        },
       );
     }
 
@@ -871,10 +886,23 @@ class StreamCallService {
     String? avatarUrl,
     String? peerEmail,
     String? traceId,
+    bool alreadyAccepted = false,
   }) async {
     final email = Analytics.currentEmail ?? '';
     final startedAtMs = DateTime.now().millisecondsSinceEpoch;
     final callId = call.callCid.value;
+    final state = call.state.value;
+    final isVideo = state.custom['video'] == true;
+    final caller = state.createdByUser;
+    final resolvedPeerId = peerId ?? caller.id;
+    final resolvedName = name ?? (caller.name.isEmpty ? null : caller.name);
+    final resolvedAvatar =
+        avatarUrl ?? (caller.image.isEmpty ? null : caller.image);
+
+    // Native Answer begins Stream's join before this method is called. Enforce
+    // audio-only immediately so permission checks and route construction can
+    // never leave the camera publishing in the background.
+    if (!isVideo) await call.setCameraEnabled(enabled: false);
 
     // ── [STREAM-PERM-1 wiring / plan P1.5] ────────────────────────────────
     // Preflight BEFORE the ring screen is replaced, so a denial leaves the
@@ -883,14 +911,17 @@ class StreamCallService {
     // blocking an audio answer on a camera denial would be wrong. A camera
     // denial on a video call still surfaces through the in-screen join error.
     final perms = await CallMediaPermissions.ensure(
-      video: false,
+      video: isVideo,
       surface: 'stream_lane_accept',
       callId: callId,
     );
     if (!perms.canProceed) {
       Analytics.capture('stream_lane_call_join_failed', {
         ..._base(
-            callId: callId, role: 'callee', peerId: peerId, traceId: traceId),
+            callId: callId,
+            role: 'callee',
+            peerId: resolvedPeerId,
+            traceId: traceId),
         'stage': 'preflight',
         'reason': 'permission_denied',
         'error': perms.code,
@@ -910,7 +941,7 @@ class StreamCallService {
       return;
     }
 
-    _wireRingingEvents(call, email, role: 'callee', peerId: peerId);
+    _wireRingingEvents(call, email, role: 'callee', peerId: resolvedPeerId);
     if (!context.mounted) {
       await disposeCall(call);
       return;
@@ -920,27 +951,32 @@ class StreamCallService {
       MaterialPageRoute(
         builder: (_) => StreamCallScreen(
           call: call,
-          peerId: peerId ?? '',
-          peerName: name,
-          peerAvatarUrl: avatarUrl,
+          peerId: resolvedPeerId,
+          peerName: resolvedName,
+          peerAvatarUrl: resolvedAvatar,
           peerEmail: peerEmail,
           traceId: traceId,
+          video: isVideo,
           outgoing: false,
           startedAtMs: startedAtMs,
           connect: (attempt) async {
             // Only the FIRST attempt accepts; a Retry after a join failure
             // must not try to accept a ring that is already accepted.
-            if (attempt == 1) {
+            if (attempt == 1 && !alreadyAccepted) {
+              if (!isVideo) await call.setCameraEnabled(enabled: false);
               await call.accept();
               Analytics.capture('stream_lane_call_accepted', {
                 ..._base(
                     callId: callId,
                     role: 'callee',
-                    peerId: peerId,
+                    peerId: resolvedPeerId,
                     traceId: traceId),
               });
             }
-            await call.join();
+            // The SDK owns join after a native Answer event. Calling join a
+            // second time races its coordinator state and delayed the caller's
+            // connected transition in local testing.
+            if (!alreadyAccepted) await call.join();
           },
         ),
       ),
@@ -1217,8 +1253,10 @@ class StreamCallService {
     }
   }
 
-  /// Hang up an ESTABLISHED call. `mic_released` is set ONLY after
-  /// `call.leave()` returns without throwing, per the audit requirement that
+  /// Hang up an ESTABLISHED 1:1 call. Ending it at Stream's coordinator is
+  /// essential: `leave()` only disconnects this device and can leave the
+  /// other phone displaying a live call indefinitely.
+  /// `mic_released` is set ONLY after the provider operations return.
   /// this event is proof the mic was actually released, not just that a
   /// hangup was requested.
   ///
@@ -1236,7 +1274,9 @@ class StreamCallService {
     final durationS =
         DateTime.now().difference(connectedAt).inMilliseconds / 1000.0;
     try {
-      await call.leave();
+      // Release this device first. Provider control-plane requests must never
+      // hold the UI hostage if the network or SDK coordinator stalls.
+      await call.leave().timeout(const Duration(seconds: 2));
       _emitEndedOnce(
         call,
         reason: reason,

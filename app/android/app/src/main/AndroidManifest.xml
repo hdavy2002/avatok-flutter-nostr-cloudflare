@@ -273,25 +273,17 @@
             android:excludeFromRecents="true"
             tools:node="merge" />
 
-        <!-- [AVATOK-VOIP-TC-1] Keep AvaTOK P2P VoIP calls OUT of the Android Telecom
-             framework. flutter_callkit_incoming ships a self-managed
-             CallkitConnectionService (BIND_TELECOM_CONNECTION_SERVICE +
-             android.telecom.ConnectionService); with MANAGE_OWN_CALLS declared, every
-             VoIP ring is reported to Telecom as a system call. Third-party caller-ID /
-             call-screening apps (e.g. Truecaller) observe that Telecom call and paint
-             their own overlay BEHIND our ring — both bound to the same call object, so
-             declining tears the connection down and Truecaller dismisses in lockstep.
-             AvaTOK P2P (VoIP + AI answering machine) is a SEPARATE product from AvaDial
-             (PSTN/SMS); it needs only the notification + CallkitIncomingActivity
-             full-screen UI, and its audio is owned by WebRTC + CallForegroundService,
-             NOT the Telecom connection. Removing this service declaration leaves Telecom
-             nothing to bind, so the call stays in-app and invisible to other dialers.
-             MANAGE_OWN_CALLS is intentionally KEPT (full-screen-intent priority on
-             Android 14+). Does NOT touch AvaDial's own telecom services (ai.avatok.avadial
-             AvaInCallService / AvaCallScreeningService) — different components entirely. -->
+        <!-- The plugin registers its PhoneAccount whenever Flutter creates a
+             background engine, even though the legacy Cloudflare call lane is
+             dark. Removing the service makes Android throw a SecurityException
+             before an incoming Stream push can be handled. Keep the declaration
+             correctly guarded; Stream remains the only active media/ring lane. -->
         <service
             android:name="com.hiennv.flutter_callkit_incoming.CallkitConnectionService"
-            tools:node="remove" />
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:permission" />
 
         <!-- flutter_web_auth_2 callback for the avatokauth:// OAuth return
              (AvaStorage "Connect Google Drive"). Lets the in-app auth tab

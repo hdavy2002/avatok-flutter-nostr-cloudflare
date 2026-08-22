@@ -20,6 +20,9 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 // ignore: unused_import
 import 'package:stream_video_flutter/stream_video_flutter.dart';
@@ -32,7 +35,15 @@ import '../core/config.dart';
 import '../core/profile_store.dart';
 import '../core/remote_config.dart';
 import '../identity/identity.dart' show AccountScope;
+import '../push/push_service.dart' show navigatorKey;
+import 'stream_call_service.dart';
 import 'stream_incoming_screen.dart';
+
+// stream_video_push_notification 1.4.3 incorrectly forwards every token from
+// its provider stream with `voipToken: true`, including Android FCM tokens.
+// Disable that automatic stream and register Android explicitly below with
+// `voipToken: false`. The provider name still configures native ringing.
+Stream<String> _noAutomaticPushTokens() => const Stream<String>.empty();
 
 /// Bootstrap singleton for the Stream Video SDK client. Mirrors the shape of
 /// [StreamCallApi] in the old lane (lazy client, per-account credentials) but
@@ -80,6 +91,11 @@ class StreamLane {
   /// stream and every incoming call pushed TWO `StreamIncomingScreen`s — one of
   /// them for the account that is no longer in front.
   StreamSubscription<dynamic>? _incomingSub;
+  // The Stream SDK returns an internal composite cancellation handle whose
+  // concrete type is not exported by stream_video_flutter. Keep it opaque;
+  // the only operation this lane needs is cancel().
+  dynamic _nativeRingingSubs;
+  String? _registeredPushToken;
 
   /// Last cid handed to the ring screen, so a re-emitted state value cannot
   /// mount the same ring twice.
@@ -263,6 +279,10 @@ class StreamLane {
       } catch (_) {/* fall back to defaults */}
 
       final apiKey = await _resolveApiKey(uid);
+      assert(() {
+        debugPrint('[StreamLane] public Stream app key: $apiKey');
+        return true;
+      }());
       if (apiKey.isEmpty) {
         Analytics.capture('stream_lane_init_failed', {
           'reason': 'no_api_key',
@@ -290,7 +310,12 @@ class StreamLane {
           // verified: packages/stream_video/lib/src/stream_video.dart
           // (StreamVideoOptions field names)
           keepConnectionsAliveWhenInBackground: true,
-          muteAudioWhenInBackground: true,
+          // A native Answer begins while Android still reports the app as
+          // backgrounded. Muting here produced a successfully connected but
+          // silent call. Stream's background-call guide requires false when
+          // audio must remain live across that transition.
+          muteAudioWhenInBackground: false,
+          muteVideoWhenInBackground: true,
         ),
         // verified: packages/stream_video_push_notification/lib/src/
         // stream_video_push_notification.dart + stream_video_push_provider.dart
@@ -307,12 +332,26 @@ class StreamLane {
           ),
           androidPushProvider: const StreamVideoPushProvider.firebase(
             name: 'firebase',
+            tokenStreamProvider: _noAutomaticPushTokens,
+          ),
+          pushConfiguration: const StreamVideoPushConfiguration(
+            android: AndroidPushConfiguration(
+              ringtonePath: 'ringtone_default',
+              incomingCallNotificationChannelName: 'AvaTOK incoming calls',
+              missedCallNotificationChannelName: 'AvaTOK missed calls',
+              showFullScreenOnLockScreen: true,
+            ),
           ),
           registerApnDeviceToken: true,
         ),
       );
 
       _client = client;
+
+      // Required by Stream's Android background-call integration. This owns
+      // the ongoing-call foreground service and cleans it up when the SDK's
+      // active-call list becomes empty.
+      StreamBackgroundService.init(client);
 
       // Foreground ringing: show the in-app ring screen when a call comes in
       // while the app is open. Killed/background is handled by
@@ -331,10 +370,116 @@ class StreamLane {
           'account_id': uid,
           'user_email': Analytics.currentEmail ?? '',
         });
-        StreamIncomingScreen.showForCall(call);
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        final isVideo = call.state.value.custom['video'] == true;
+        // Stream documents that initial media must be supplied to join via
+        // CallConnectOptions. Post-join toggles race peer-connection setup.
+        call.connectOptions = CallConnectOptions(
+          microphone: TrackOption.enabled(),
+          camera: isVideo ? TrackOption.enabled() : TrackOption.disabled(),
+          speakerDefaultOn: isVideo,
+        );
+        if (lifecycle == AppLifecycleState.resumed) {
+          StreamIncomingScreen.showForCall(call);
+          return;
+        }
+
+        // A Flutter route cannot render while Android has the app hidden. The
+        // old code queued the route and stayed silent until the user manually
+        // opened AvaTOK (45 seconds in the first local two-phone test). We
+        // already have the call over Stream's live socket, so surface the SDK's
+        // native full-screen call UI immediately instead of waiting for FCM.
+        final state = call.state.value;
+        final caller = state.createdByUser;
+        unawaited(client.pushNotificationManager?.showIncomingCall(
+              uuid: call.id,
+              callCid: cid,
+              avatar: caller.image.isEmpty ? null : caller.image,
+              handle: caller.id,
+              callerName: caller.name.isEmpty ? 'AvaTOK caller' : caller.name,
+              hasVideo: isVideo,
+            ) ??
+            Future<void>.value());
       });
 
+      // Handles Answer/Decline from Stream's native Android call screen. The
+      // SDK accepts and starts joining first; AvaTOK then mounts its own call
+      // UI around that already-accepted Call instead of asking for a second
+      // tap on a delayed Flutter ring screen.
+      _nativeRingingSubs?.cancel();
+      _nativeRingingSubs = client.observeCoreRingingEvents(
+        onCallAccepted: (call) {
+          // The SDK starts join immediately after a native Answer. Its default
+          // publish settings include video, so shut the camera off at the
+          // first callback for an audio call instead of waiting for AvaTOK's
+          // call screen to mount.
+          if (call.state.value.custom['video'] != true) {
+            unawaited(call.setCameraEnabled(enabled: false));
+          }
+          final ctx = navigatorKey.currentContext;
+          if (ctx == null) return;
+          unawaited(StreamCallService.instance.accept(
+            ctx,
+            call,
+            alreadyAccepted: true,
+          ));
+        },
+      );
+
       await client.connect();
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        // Android 14+ may block full-screen incoming-call notifications even
+        // when USE_FULL_SCREEN_INTENT is declared in the manifest. Stream's
+        // documented helper checks that special OS permission and opens the
+        // exact settings page only when the user still needs to grant it.
+        // Keep this best-effort: a settings/activity problem must never stop
+        // the Stream client or FCM token from registering.
+        try {
+          await StreamVideoPushNotificationManager
+              .ensureFullScreenIntentPermission();
+          Analytics.capture('stream_lane_full_screen_intent_checked', {
+            'account_id': uid,
+            'ok': true,
+            'user_email': Analytics.currentEmail ?? '',
+          });
+        } catch (error) {
+          Analytics.capture('stream_lane_full_screen_intent_checked', {
+            'account_id': uid,
+            'ok': false,
+            'error': error.toString().length > 500
+                ? error.toString().substring(0, 500)
+                : error.toString(),
+            'user_email': Analytics.currentEmail ?? '',
+          });
+        }
+        final pushToken = await FirebaseMessaging.instance.getToken();
+        if (pushToken != null && pushToken.isNotEmpty) {
+          final registration = await client.addDevice(
+            pushToken: pushToken,
+            pushProvider: PushProvider.firebase,
+            pushProviderName: 'firebase',
+            voipToken: false,
+          );
+          if (registration is Success) {
+            _registeredPushToken = pushToken;
+          }
+          Analytics.capture('stream_lane_push_device_registered', {
+            'account_id': uid,
+            'provider': 'firebase',
+            'ok': registration is Success,
+            'error': registration is Failure
+                ? (registration.error.toString().length > 500
+                    ? registration.error.toString().substring(0, 500)
+                    : registration.error.toString())
+                : '',
+            'user_email': Analytics.currentEmail ?? '',
+          });
+          if (registration is Failure) {
+            debugPrint(
+                '[StreamLane] Firebase device registration failed: ${registration.error}');
+          }
+        }
+      }
       _readyUid = uid;
       _accountWaits = 0;
       _failureRetries = 0;
@@ -411,11 +556,22 @@ class StreamLane {
       await _incomingSub?.cancel();
     } catch (_) {/* best-effort */}
     _incomingSub = null;
+    try {
+      _nativeRingingSubs?.cancel();
+    } catch (_) {/* best-effort */}
+    _nativeRingingSubs = null;
     _lastIncomingCid = null;
     _warmTokenBody = null;
     final c = _client;
     _client = null;
     _readyUid = null;
+    final pushToken = _registeredPushToken;
+    _registeredPushToken = null;
+    if (c != null && pushToken != null) {
+      try {
+        await c.removeDevice(pushToken: pushToken);
+      } catch (_) {/* best-effort */}
+    }
     try {
       await c?.disconnect();
     } catch (_) {/* best-effort */}

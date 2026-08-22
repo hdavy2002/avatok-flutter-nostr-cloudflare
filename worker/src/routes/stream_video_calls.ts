@@ -1116,6 +1116,40 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     return await refuse("call_cancelled", "Call cancelled.", 409, { stage: "before_stream" }, "caller_cancelled");
   }
 
+  // Wake a locked/dozing Android phone before Stream issues the real ring.
+  // This is a silent, high-priority data push: it does not show an incoming
+  // screen and carries no Cloudflare media credentials. The existing push
+  // consumer maps `call-prewarm` to FCM high priority, while Stream remains
+  // the sole owner of the subsequent call notification and all A/V media.
+  // Best-effort by design: a queue outage must not turn an otherwise healthy
+  // foreground Stream call into a hard failure.
+  if (env.Q_PUSH) {
+    try {
+      await env.Q_PUSH.send({
+        kind: "call-prewarm",
+        to: calleeUid,
+        from: callerUid,
+        fromName: await nameFor(env, callerUid).catch(() => "AvaTOK caller"),
+        callId,
+        callType: video ? "video" : "audio",
+        traceId: traceId || callId,
+        ts: Date.now(),
+        tokenExpiresAt: Date.now() + 20_000,
+      } as any);
+      track(env, calleeUid, "stream_call_prewarm_queued", "avatok", {
+        call_id: callId, from_uid: callerUid, to_uid: calleeUid,
+        media_mode: video ? "video" : "audio", trace_id: traceId || callId,
+        lane: "streamlane", worker: true,
+      }, traceId || undefined);
+    } catch {
+      track(env, calleeUid, "stream_call_prewarm_queue_failed", "avatok", {
+        call_id: callId, from_uid: callerUid, to_uid: calleeUid,
+        media_mode: video ? "video" : "audio", trace_id: traceId || callId,
+        lane: "streamlane", worker: true,
+      }, traceId || undefined);
+    }
+  }
+
   // ── SERVER-SIDE CALL CREATION (job 1a) ──────────────────────────────────
   // This is the fix for plan §8 blocker #1: the Worker — not the phone — is
   // now the thing that calls Stream's `getOrCreate(ring:true)`. A modified

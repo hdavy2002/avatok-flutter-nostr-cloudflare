@@ -5,7 +5,6 @@ part of '../chat_thread.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 extension _ChatThreadCalls on _ChatThreadScreenState {
-
   Future<void> _call(String kind) async {
     // This path is 1:1 P2P ONLY — group threads route through _groupCall()
     // (Cloudflare Realtime A/V) and must NEVER reach the CallRoom DO.
@@ -66,7 +65,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         // escape hatch (force-close) if the guard is wrong.
         if (reason == 'already_in_call' && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Already on a call — force-close the app if this is wrong')));
+              content: Text(
+                  'Already on a call — force-close the app if this is wrong')));
         }
         return;
       }
@@ -80,7 +80,9 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       if (await routeToStreamCallIfEnabled(context,
           peerId: widget.chat.seed,
           video: kind == 'video',
-          entrypoint: 'chat_thread')) {
+          entrypoint: 'chat_thread',
+          peerName: widget.chat.name,
+          peerAvatarUrl: widget.chat.avatarUrl)) {
         return;
       }
     } finally {
@@ -108,7 +110,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // stitches under one trace_id in PostHog.
     final traceId = TraceContext.mint();
     // (`to` already declared above in the CALLFIX-14 glare block)
-    AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
+    AvaLog.I.log('call',
+        'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
     // [INSTANT-CALL-MOUNT-1] Optimistic mount: show the CallScreen the INSTANT
     // the user tapped, then run POST /api/call in the BACKGROUND. The old flow
     // AWAITED that POST (Worker + FCM fan-out — routinely seconds, up to the ~8s
@@ -122,8 +125,12 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // guarantee preserved). Kill switch: RemoteConfig.instantCallMountEnabled.
     // Only for real uid contacts (the ones a POST actually rings).
     if (RemoteConfig.instantCallMountEnabled && to.startsWith('user_')) {
-      if (!mounted) { _dialing = false; return; }
-      Analytics.capture('call_mount_optimistic', {'call_id': room, 'kind': kind});
+      if (!mounted) {
+        _dialing = false;
+        return;
+      }
+      Analytics.capture(
+          'call_mount_optimistic', {'call_id': room, 'kind': kind});
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -131,9 +138,11 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
             room: room, title: widget.chat.name, seed: to, video: video,
             avatarUrl: widget.chat.avatarUrl,
             traceId: traceId, // [TRACE-ID-1]
-            deferRing: true,  // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
+            deferRing:
+                true, // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
             onRetry: () {
-              Analytics.capture('call_retry_pressed', {'call_id': room, 'kind': kind});
+              Analytics.capture(
+                  'call_retry_pressed', {'call_id': room, 'kind': kind});
               // ignore: unawaited_futures
               _call(kind);
             },
@@ -143,7 +152,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       // The screen is mounted; start() will bump gLiveCallScreens to guard re-entry.
       _dialing = false;
       // ignore: unawaited_futures
-      _placeCallInBackground(room: room, to: to, video: video, traceId: traceId, kind: kind);
+      _placeCallInBackground(
+          room: room, to: to, video: video, traceId: traceId, kind: kind);
       return;
     }
     // The callee's default ringtone (AI Ringback) — comes back on the /api/call
@@ -166,8 +176,11 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           'fromName': _myName ?? 'AvaTOK',
           'callId': room,
           'kind': video ? 'video' : 'audio',
-        }, {'x-trace-id': traceId}); // [TRACE-ID-1] propagate to Worker + push
-        AvaLog.I.log('call', 'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
+        }, {
+          'x-trace-id': traceId
+        }); // [TRACE-ID-1] propagate to Worker + push
+        AvaLog.I.log('call',
+            'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
         final callKind = video ? 'video' : 'audio';
         // [MULTIACCT-4] Parse the distinct reachability signal the server now
         // returns (`reachable:false` on both the zero-token 404 and — via a later
@@ -179,7 +192,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           if (decoded['routed'] == 'receptionist') {
             initialRouted = 'receptionist';
             final start = decoded['start'];
-            if (start is Map) initialRoutingStart = start.cast<String, dynamic>();
+            if (start is Map)
+              initialRoutingStart = start.cast<String, dynamic>();
           }
         } catch (_) {}
         // [CALL-GLARE-2] Server-side mutual-dial resolution. The callee was ALREADY
@@ -211,7 +225,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
             context,
             MaterialPageRoute(
               builder: (_) => CallScreen(
-                room: glareJoin, title: widget.chat.name, seed: to, video: video,
+                room: glareJoin, title: widget.chat.name, seed: to,
+                video: video,
                 avatarUrl: widget.chat.avatarUrl,
                 // The winner's placer keeps dialing (outgoing); the loser joins the
                 // winning room as the answering side so exactly one room forms.
@@ -224,11 +239,17 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         }
         if (res.statusCode == 200 && initialRouted == 'receptionist') {
           Analytics.capture('call_server_receptionist_routed', {
-            'call_id': room, 'reason': 'unknown_caller', 'mount': 'awaited',
+            'call_id': room,
+            'reason': 'unknown_caller',
+            'mount': 'awaited',
           });
         } else if (res.statusCode == 200 && !reachableFalse) {
-          try { ringbackUrl = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString(); } catch (_) {}
-          Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': ringbackUrl.isNotEmpty});
+          try {
+            ringbackUrl =
+                (jsonDecode(res.body)['ringbackUrl'] ?? '').toString();
+          } catch (_) {}
+          Analytics.capture('call_place_ok',
+              {'kind': callKind, 'has_ringback': ringbackUrl.isNotEmpty});
         } else if (res.statusCode == 404 || reachableFalse) {
           // The callee has NO reachable device (0 push tokens, or every token went
           // stale after a re-login). Capture it so call reachability is queryable
@@ -241,12 +262,14 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('${widget.chat.name} is unreachable right now — ask them to open AvaTOK')));
+                content: Text(
+                    '${widget.chat.name} is unreachable right now — ask them to open AvaTOK')));
           }
         } else {
           // Any other non-200 (auth, 5xx, rate-limit) — capture so a failed call
           // placement isn't silent.
-          Analytics.capture('call_place_failed', {'status': res.statusCode, 'kind': callKind});
+          Analytics.capture('call_place_failed',
+              {'status': res.statusCode, 'kind': callKind});
         }
       } catch (e) {
         // [CALL-DIAL-FAIL-1] The place-call POST itself threw (network error,
@@ -268,11 +291,13 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         unreachable = true;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text("Can't reach the network — check your connection"),
+            content:
+                const Text("Can't reach the network — check your connection"),
             action: SnackBarAction(
               label: 'Retry',
               onPressed: () {
-                Analytics.capture('call_retry_pressed', {'call_id': room, 'kind': video ? 'video' : 'audio'});
+                Analytics.capture('call_retry_pressed',
+                    {'call_id': room, 'kind': video ? 'video' : 'audio'});
                 // ignore: unawaited_futures
                 _call(kind);
               },
@@ -283,10 +308,16 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     } else {
       AvaLog.I.log('call', 'NOT ringing — contact seed is not an uid ($to)');
     }
-    if (!mounted) { _dialing = false; return; }
+    if (!mounted) {
+      _dialing = false;
+      return;
+    }
     // [MULTIACCT-4] Unreachable callee → abort the dial before mounting CallScreen
     // so no ringback plays. The snackbar above already told the user why.
-    if (unreachable) { _dialing = false; return; }
+    if (unreachable) {
+      _dialing = false;
+      return;
+    }
     // From here the CallScreen mounts (gLiveCallScreens > 0 guards re-entry),
     // so the in-flight debounce flag can be released.
     _dialing = false;
@@ -303,7 +334,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           // state: re-runs this exact dial flow (fresh room id, fresh POST)
           // instead of leaving the user stuck on a dead call screen.
           onRetry: () {
-            Analytics.capture('call_retry_pressed', {'call_id': room, 'kind': kind});
+            Analytics.capture(
+                'call_retry_pressed', {'call_id': room, 'kind': kind});
             // ignore: unawaited_futures
             _call(kind);
           },
@@ -336,8 +368,11 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         'fromName': _myName ?? 'AvaTOK',
         'callId': room,
         'kind': callKind,
-      }, {'x-trace-id': traceId}); // [TRACE-ID-1] propagate to Worker + push
-      AvaLog.I.log('call', 'POST /api/call (bg) -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
+      }, {
+        'x-trace-id': traceId
+      }); // [TRACE-ID-1] propagate to Worker + push
+      AvaLog.I.log('call',
+          'POST /api/call (bg) -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
 
       // [CALL-GLARE-2] Server folded a simultaneous mutual dial into one winning
       // room. Both devices compute the same winner. If it isn't our optimistic
@@ -345,7 +380,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       String glareJoin = '';
       try {
         final jb = jsonDecode(res.body);
-        if (jb is Map && jb['glare'] == true) glareJoin = (jb['join_call_id'] ?? '').toString();
+        if (jb is Map && jb['glare'] == true)
+          glareJoin = (jb['join_call_id'] ?? '').toString();
       } catch (_) {}
       if (glareJoin.isNotEmpty && glareJoin != room) {
         try {
@@ -353,9 +389,14 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           if (rt.isNotEmpty) rememberCallRoomToken(glareJoin, rt);
         } catch (_) {}
         Analytics.capture('call_glare_autoconnect', {
-          'winner_call_id': glareJoin, 'my_call_id': room, 'kind': callKind, 'mount': 'optimistic',
+          'winner_call_id': glareJoin,
+          'my_call_id': room,
+          'kind': callKind,
+          'mount': 'optimistic',
         });
-        CallSessionManager.instance.liveSessionFor(room)?.hangup('glare-superseded');
+        CallSessionManager.instance
+            .liveSessionFor(room)
+            ?.hangup('glare-superseded');
         if (!mounted) return;
         // Push the winner AFTER the superseded screen has popped (post-frame) so
         // the pop can never remove the winner route instead.
@@ -365,7 +406,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
             context,
             MaterialPageRoute(
               builder: (_) => CallScreen(
-                room: glareJoin, title: widget.chat.name, seed: to, video: video,
+                room: glareJoin, title: widget.chat.name, seed: to,
+                video: video,
                 avatarUrl: widget.chat.avatarUrl,
                 // We lost the glare (our room != winner) → join as the answering side.
                 outgoing: false,
@@ -406,7 +448,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         calleeLive = body['callee_live'] == true;
         prewarming = body['prewarming'] == true;
         final pd = body['prewarmDeadlineMs'] ?? body['prewarm_deadline_ms'];
-        prewarmDeadlineMs = pd is int ? pd : int.tryParse((pd ?? '').toString());
+        prewarmDeadlineMs =
+            pd is int ? pd : int.tryParse((pd ?? '').toString());
         presence = (body['presence'] ?? '').toString();
         final a = body['presence_age_ms'];
         presenceAgeMs = a is int ? a : int.tryParse((a ?? '').toString());
@@ -445,10 +488,18 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
             routingReason.isNotEmpty ? routingReason : 'unknown_caller');
       } else if (res.statusCode == 200 && !reachableFalse) {
         bool hasRingback = false;
-        try { hasRingback = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString().isNotEmpty; } catch (_) {}
-        Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': hasRingback, 'mount': 'optimistic'});
+        try {
+          hasRingback =
+              (jsonDecode(res.body)['ringbackUrl'] ?? '').toString().isNotEmpty;
+        } catch (_) {}
+        Analytics.capture('call_place_ok', {
+          'kind': callKind,
+          'has_ringback': hasRingback,
+          'mount': 'optimistic'
+        });
         // Reachable — release the honest guard flow into the full ring window.
-        session?.notePlaceResult(true, prewarming: prewarming, prewarmDeadlineMs: prewarmDeadlineMs);
+        session?.notePlaceResult(true,
+            prewarming: prewarming, prewarmDeadlineMs: prewarmDeadlineMs);
       } else if (res.statusCode == 404 || reachableFalse) {
         Analytics.capture('call_no_device', {
           'to': to.length > 40 ? to.substring(0, 40) : to,
@@ -459,16 +510,22 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
         // No reachable device → honest unreachable → Ava. No fake ringback ever
         // played (guard flow only showed connecting + searching tone).
         session?.notePlaceResult(false);
-      } else if (res.statusCode == 403 && res.body.contains('identity_required')) {
+      } else if (res.statusCode == 403 &&
+          res.body.contains('identity_required')) {
         // The global 403 interceptor already opened the consent/liveness flow —
         // tear down the optimistic call screen so it isn't stuck behind the gate.
-        Analytics.capture('call_blocked_identity', {'kind': callKind, 'mount': 'optimistic'});
+        Analytics.capture(
+            'call_blocked_identity', {'kind': callKind, 'mount': 'optimistic'});
         session?.hangup('identity-gate');
       } else {
         // Auth/5xx/rate-limit that isn't a reachability signal — let the guard
         // flow run; it self-heals via the 12s device-ring timeout → Ava if no
         // peer ever joins. Captured so it isn't silent.
-        Analytics.capture('call_place_failed', {'status': res.statusCode, 'kind': callKind, 'mount': 'optimistic'});
+        Analytics.capture('call_place_failed', {
+          'status': res.statusCode,
+          'kind': callKind,
+          'mount': 'optimistic'
+        });
         session?.notePlaceResult(true);
       }
     } catch (e) {
@@ -489,13 +546,17 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
 
   int get _groupMemberCount => _group?.members.length ?? widget.chat.members;
   bool get _confAllowed =>
-      RemoteConfig.conferenceEnabled && RemoteConfig.cloudflareConferenceEnabled && _groupMemberCount <= 25;
+      RemoteConfig.conferenceEnabled &&
+      RemoteConfig.cloudflareConferenceEnabled &&
+      _groupMemberCount <= 25;
   bool get _confOngoingHere =>
-      CloudflareConferenceController.activeGid == widget.chat.gid && widget.chat.gid != null;
+      CloudflareConferenceController.activeGid == widget.chat.gid &&
+      widget.chat.gid != null;
 
   void _startConfPolling() {
     if (!_isGroup && widget.chat.gid == null) return;
-    _confTimer ??= Timer.periodic(const Duration(seconds: 25), (_) => _refreshConfStatus());
+    _confTimer ??= Timer.periodic(
+        const Duration(seconds: 25), (_) => _refreshConfStatus());
     _refreshConfStatus();
   }
 
@@ -504,7 +565,9 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
   /// those transports.
   Future<void> _refreshConfStatus() async {
     final gid = widget.chat.gid;
-    if (gid == null || !RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) return;
+    if (gid == null ||
+        !RemoteConfig.conferenceEnabled ||
+        !RemoteConfig.cloudflareConferenceEnabled) return;
     final s = await CloudflareConferenceApi.status(gid);
     if (mounted) {
       setState(() {
@@ -536,16 +599,21 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     final gid = widget.chat.gid;
     if (gid == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This group needs to sync once before it can hold calls')));
+          content:
+              Text('This group needs to sync once before it can hold calls')));
       return;
     }
     // Both refusals route through the same notice, which now names the actual
     // reason rather than reporting a flag outage as a group-size problem.
-    if (!RemoteConfig.conferenceEnabled || !RemoteConfig.cloudflareConferenceEnabled) {
+    if (!RemoteConfig.conferenceEnabled ||
+        !RemoteConfig.cloudflareConferenceEnabled) {
       _confLimitNotice(video);
       return;
     }
-    if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
+    if (_groupMemberCount > 25) {
+      _confLimitNotice(video);
+      return;
+    }
     await _cfGroupCall(video, joinOnly: joinOnly);
   }
 
@@ -595,18 +663,33 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     if (starting && joinOnly) {
       // They asked to JOIN. There is nothing to join — say so, and refresh the
       // banner rather than starting a call nobody asked for.
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('That call has already ended')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That call has already ended')));
       unawaited(_refreshConfStatus());
       return;
     }
     if (starting) {
-      _sendSpecial('gcall', {'state': 'start', 'kind': video ? 'video' : 'audio', 'gid': gid, 'cf': true},
-          video ? '📹 Video call started — tap 📞 to join' : '🎙️ Audio call started — tap 📞 to join');
+      _sendSpecial(
+          'gcall',
+          {
+            'state': 'start',
+            'kind': video ? 'video' : 'audio',
+            'gid': gid,
+            'cf': true
+          },
+          video
+              ? '📹 Video call started — tap 📞 to join'
+              : '🎙️ Audio call started — tap 📞 to join');
     }
     if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(
-        builder: (_) => CloudflareConferenceScreen(gid: gid, title: widget.chat.name, video: video, starter: starting)));
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => CloudflareConferenceScreen(
+                gid: gid,
+                title: widget.chat.name,
+                video: video,
+                starter: starting)));
     _refreshConfStatus();
   }
 
@@ -632,7 +715,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           'disabled. You need fewer than 25 people to have a $what conference.';
     } else if (flagsOff) {
       title = 'Group calls are off';
-      body = 'Group $what calls are switched off right now. This is a setting on '
+      body =
+          'Group $what calls are switched off right now. This is a setting on '
           'our side, not something wrong with your group — please try again later.';
     } else if (!_confBackendAvailable) {
       title = 'Group calls unavailable';
@@ -641,7 +725,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           : 'The call service isn\'t responding right now. Please try again in a moment.';
     } else {
       title = '${video ? 'Video' : 'Audio'} calls unavailable';
-      body = 'Group $what calls can\'t start in this chat right now. Please try again shortly.';
+      body =
+          'Group $what calls can\'t start in this chat right now. Please try again shortly.';
     }
 
     showDialog<void>(
@@ -649,7 +734,10 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
       builder: (ctx) => AlertDialog(
         title: Text(title),
         content: Text(body),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
+        ],
       ),
     );
   }
@@ -667,14 +755,16 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
   /// (There is no PiP/minimize for conferences — leaving the screen leaves the
   /// call, so tapping while already in it says "leave it first". The previous
   /// comment here claimed otherwise.)
-  bool get _confIsVideo => _confMediaKind == 'audio_video' || _confMediaKind == 'video';
+  bool get _confIsVideo =>
+      _confMediaKind == 'audio_video' || _confMediaKind == 'video';
 
   Widget _confBanner() => GestureDetector(
         onTap: () => _groupCall(_confIsVideo, joinOnly: true),
         child: Container(
           decoration: const BoxDecoration(
             color: AD.online,
-            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 2)),
+            border:
+                Border(bottom: BorderSide(color: AD.borderHairline, width: 2)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Row(children: [
@@ -682,15 +772,18 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
                 _confIsVideo
                     ? PhosphorIcons.videoCamera(PhosphorIconsStyle.fill)
                     : PhosphorIcons.phone(PhosphorIconsStyle.fill),
-                color: AD.textPrimary, size: 17),
+                color: AD.textPrimary,
+                size: 17),
             const SizedBox(width: 8),
-            Expanded(child: Text(
+            Expanded(
+                child: Text(
               _confOngoingHere
                   ? 'Ongoing call · $_confCount — tap to return'
                   : 'Ongoing call · $_confCount — tap to join',
               style: ADText.rowName(),
             )),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                size: 16, color: AD.textPrimary),
           ]),
         ),
       );

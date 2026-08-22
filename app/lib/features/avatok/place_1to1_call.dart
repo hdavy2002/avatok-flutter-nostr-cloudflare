@@ -8,7 +8,8 @@ import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/calls/call_session_manager.dart'; // [INSTANT-CALL-MOUNT-1]
-import '../../core/calls/call_session.dart' show rememberCallRoomToken; // [CALL-WS-AUTH-1]
+import '../../core/calls/call_session.dart'
+    show rememberCallRoomToken; // [CALL-WS-AUTH-1]
 import '../../core/calls/rtc/stream_call_api.dart';
 import '../../core/calls/rtc/stream_call_provider.dart'
     show CallMediaProviderWire, StreamCallPilot;
@@ -53,6 +54,9 @@ Future<bool> routeToStreamCallIfEnabled(
   required String peerId,
   required bool video,
   required String entrypoint,
+  String? peerName,
+  String? peerAvatarUrl,
+  String? peerEmail,
 }) async {
   if (!RemoteConfig.streamCallsEnabled) return false;
   final email = Analytics.currentEmail ?? '';
@@ -84,8 +88,14 @@ Future<bool> routeToStreamCallIfEnabled(
   // Mounts before authentication/network work, plays neutral searching
   // feedback, and starts real ringback only after the server confirms that
   // Stream has issued the incoming ring.
-  await StreamCallService.instance
-      .place1to1Staged(context, peerId, video: video);
+  await StreamCallService.instance.place1to1Staged(
+    context,
+    peerId,
+    video: video,
+    name: peerName,
+    avatarUrl: peerAvatarUrl,
+    peerEmail: peerEmail,
+  );
   return true;
 }
 
@@ -134,7 +144,11 @@ Future<void> place1to1Call(
   // delegation. Same behaviour, now through the shared gate so this lane and
   // the seven that used to bypass it can never drift apart again.
   if (await routeToStreamCallIfEnabled(context,
-      peerId: uid, video: video, entrypoint: dialer ? 'dialer' : 'chat_retry')) {
+      peerId: uid,
+      video: video,
+      entrypoint: dialer ? 'dialer' : 'chat_retry',
+      peerName: name,
+      peerAvatarUrl: avatarUrl)) {
     return;
   }
   await CallSessionManager.instance.reapOutcomeSessions();
@@ -165,25 +179,36 @@ Future<void> place1to1Call(
     if (!context.mounted) return;
     Analytics.capture('call_mount_optimistic',
         {'call_id': room, 'via': 'dialpad', 'kind': video ? 'video' : 'audio'});
-    final nav = Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(
-        room: room,
-        title: name.isNotEmpty ? name : uid,
-        seed: uid,
-        video: video,
-        outgoing: true,
-        avatarUrl: avatarUrl,
-        business: business,
-        dialer: dialer,
-        deferRing: true, // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
-        traceId: callTraceId,
-      ),
-    ));
+    final nav = Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+            room: room,
+            title: name.isNotEmpty ? name : uid,
+            seed: uid,
+            video: video,
+            outgoing: true,
+            avatarUrl: avatarUrl,
+            business: business,
+            dialer: dialer,
+            deferRing:
+                true, // [INSTANT-CALL-MOUNT-1] honest guard flow until placed
+            traceId: callTraceId,
+          ),
+        ));
     // Place the call (and load the caller name) off the critical path, then keep
     // this function alive until the call screen pops (same await semantics as the
     // classic path below).
     // ignore: unawaited_futures
-    _dialerPlaceInBackground(context, uid: uid, name: name, room: room, video: video, avatarUrl: avatarUrl, dialer: dialer, business: business, traceId: callTraceId);
+    _dialerPlaceInBackground(context,
+        uid: uid,
+        name: name,
+        room: room,
+        video: video,
+        avatarUrl: avatarUrl,
+        dialer: dialer,
+        business: business,
+        traceId: callTraceId);
     await nav;
     return;
   }
@@ -204,8 +229,8 @@ Future<void> place1to1Call(
   // no-answer card already knows the right affordance without a second probe.
   String? routed;
   Map<String, dynamic>? routingStart;
-  var providerDecision = const CallProviderDecision.cloudflare(
-      reason: 'legacy_response_pending');
+  var providerDecision =
+      const CallProviderDecision.cloudflare(reason: 'legacy_response_pending');
   // [DIALPAD-BIZ-CALLS] routed:'busy' (plan §11/§15.1, owner decision
   // 2026-07-11): a PAID (Mode B) line whose agents are all full or whose
   // human callee is already on a call. Never a normal call outcome — set only
@@ -229,7 +254,9 @@ Future<void> place1to1Call(
       // the callee's ring push once the routing work lands, so the callee's
       // named incoming-business-call screen (businessCallUx) knows to show.
       'via': 'dialpad',
-    }, <String, String>{'X-Trace-Id': callTraceId});
+    }, <String, String>{
+      'X-Trace-Id': callTraceId
+    });
     // [STREAM-CALL-PILOT-2] Parse provider selection before the call screen is
     // opened. Missing provider fields are the compatibility Cloudflare choice.
     providerDecision = StreamCallApi.fromPlacementResponse(room, res.body);
@@ -240,7 +267,8 @@ Future<void> place1to1Call(
       'role': 'caller',
       'media_mode': video ? 'video' : 'audio',
       'http_status': res.statusCode,
-      'latency_ms': DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
+      'latency_ms':
+          DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
     });
     if (res.statusCode == 200) {
       try {
@@ -258,7 +286,8 @@ Future<void> place1to1Call(
                 ? 'All agents are busy right now — please try again in a while.'
                 : 'This line is busy. Please try again later.';
           }
-          Analytics.capture('paid_call_busy', {'to': uid, 'busy_kind': busyKind});
+          Analytics.capture(
+              'paid_call_busy', {'to': uid, 'busy_kind': busyKind});
         } else if (r == 'unavailable') {
           // [CALL-ADMISSION-1 2026-08-01] Uniform pre-ring denial (owner ruling
           // B). The server refused to place this call and will NOT tell us why:
@@ -277,7 +306,8 @@ Future<void> place1to1Call(
           Analytics.capture('call_unavailable', {
             'to': uid,
             // The server never sends the real cause; this is its public code.
-            'outcome_code': (j['outcome_code'] ?? 'recipient_unavailable').toString(),
+            'outcome_code':
+                (j['outcome_code'] ?? 'recipient_unavailable').toString(),
           });
         }
       } catch (_) {/* not JSON / no routed field — normal ring path */}
@@ -301,54 +331,62 @@ Future<void> place1to1Call(
     unawaited(_playBusyTone());
     if (!context.mounted) return;
     final msg = busyMessage;
-    await Navigator.push(context, MaterialPageRoute(
-      fullscreenDialog: true,
-      builder: (dialogCtx) => Scaffold(
-        backgroundColor: AD.bg,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(Msg.s5),
-              child: PaidBusyCard(
-                name: name,
-                message: msg,
-                onTryAgain: () {
-                  final nav = Navigator.of(dialogCtx);
-                  final navCtx = nav.context;
-                  nav.pop();
-                  place1to1Call(navCtx, uid: uid, name: name, avatarUrl: avatarUrl, video: video);
-                },
-                onClose: () => Navigator.of(dialogCtx).pop(),
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (dialogCtx) => Scaffold(
+            backgroundColor: AD.bg,
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(Msg.s5),
+                  child: PaidBusyCard(
+                    name: name,
+                    message: msg,
+                    onTryAgain: () {
+                      final nav = Navigator.of(dialogCtx);
+                      final navCtx = nav.context;
+                      nav.pop();
+                      place1to1Call(navCtx,
+                          uid: uid,
+                          name: name,
+                          avatarUrl: avatarUrl,
+                          video: video);
+                    },
+                    onClose: () => Navigator.of(dialogCtx).pop(),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    ));
+        ));
     return;
   }
 
   if (!context.mounted) return;
-  await Navigator.push(context, MaterialPageRoute(
-    builder: (_) => CallScreen(
-      room: room,
-      title: name.isNotEmpty ? name : uid,
-      seed: uid,
-      video: video,
-      outgoing: true,
-      avatarUrl: avatarUrl,
-      initialRouted: routed,
-      initialRoutingStart: routingStart,
-      mediaProvider: providerDecision.provider,
-      streamTicket: providerDecision.streamTicket,
-      traceId: callTraceId,
-      // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
-      // (agent hand-off, post-ring busy) instead of the generic outcome menu.
-      business: business,
-      // [DIALER-UI-SPLIT 2026-07-12] dialer-styled call screen for dialpad calls.
-      dialer: dialer,
-    ),
-  ));
+  await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallScreen(
+          room: room,
+          title: name.isNotEmpty ? name : uid,
+          seed: uid,
+          video: video,
+          outgoing: true,
+          avatarUrl: avatarUrl,
+          initialRouted: routed,
+          initialRoutingStart: routingStart,
+          mediaProvider: providerDecision.provider,
+          streamTicket: providerDecision.streamTicket,
+          traceId: callTraceId,
+          // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
+          // (agent hand-off, post-ring busy) instead of the generic outcome menu.
+          business: business,
+          // [DIALER-UI-SPLIT 2026-07-12] dialer-styled call screen for dialpad calls.
+          dialer: dialer,
+        ),
+      ));
 }
 
 /// [INSTANT-CALL-MOUNT-1] Runs POST /api/call AFTER the dialer CallScreen is
@@ -387,8 +425,9 @@ Future<void> _dialerPlaceInBackground(
       'kind': callKind,
       'stream_capable': StreamCallPilot.enabled,
       'via': 'dialpad',
-    }, <String, String>{'X-Trace-Id': traceId})
-        .timeout(const Duration(seconds: 8));
+    }, <String, String>{
+      'X-Trace-Id': traceId
+    }).timeout(const Duration(seconds: 8));
 
     // [STREAM-CALL-PILOT-2] The optimistic CallScreen is already visible, but
     // its session is deliberately media-idle until this decision is supplied.
@@ -404,7 +443,8 @@ Future<void> _dialerPlaceInBackground(
       'role': 'caller',
       'media_mode': video ? 'video' : 'audio',
       'http_status': res.statusCode,
-      'latency_ms': DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
+      'latency_ms':
+          DateTime.now().millisecondsSinceEpoch - placementStartedAtMs,
     });
     var session = CallSessionManager.instance.liveSessionFor(room);
     // Navigator attachment and a very fast placement response can cross by a
@@ -435,26 +475,42 @@ Future<void> _dialerPlaceInBackground(
     String glareJoin = '';
     try {
       final jb = jsonDecode(res.body);
-      if (jb is Map && jb['glare'] == true) glareJoin = (jb['join_call_id'] ?? '').toString();
+      if (jb is Map && jb['glare'] == true)
+        glareJoin = (jb['join_call_id'] ?? '').toString();
     } catch (_) {}
     if (glareJoin.isNotEmpty && glareJoin != room) {
       try {
         final rt = (jsonDecode(res.body)['roomToken'] ?? '').toString();
         if (rt.isNotEmpty) rememberCallRoomToken(glareJoin, rt);
       } catch (_) {}
-      Analytics.capture('call_glare_autoconnect',
-          {'winner_call_id': glareJoin, 'my_call_id': room, 'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
-      CallSessionManager.instance.liveSessionFor(room)?.hangup('glare-superseded');
+      Analytics.capture('call_glare_autoconnect', {
+        'winner_call_id': glareJoin,
+        'my_call_id': room,
+        'kind': callKind,
+        'via': 'dialpad',
+        'mount': 'optimistic'
+      });
+      CallSessionManager.instance
+          .liveSessionFor(room)
+          ?.hangup('glare-superseded');
       if (!context.mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
-        Navigator.push(context, MaterialPageRoute(
-          builder: (_) => CallScreen(
-            room: glareJoin, title: name.isNotEmpty ? name : uid, seed: uid, video: video,
-            outgoing: false, avatarUrl: avatarUrl, business: business, dialer: dialer,
-            traceId: traceId,
-          ),
-        ));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CallScreen(
+                room: glareJoin,
+                title: name.isNotEmpty ? name : uid,
+                seed: uid,
+                video: video,
+                outgoing: false,
+                avatarUrl: avatarUrl,
+                business: business,
+                dialer: dialer,
+                traceId: traceId,
+              ),
+            ));
       });
       return;
     }
@@ -520,7 +576,8 @@ Future<void> _dialerPlaceInBackground(
       });
       session?.noteServerReceptionistRoute(
           routingReason.isNotEmpty ? routingReason : 'unknown_caller');
-    } else if (res.statusCode == 200 && (routed == 'busy' || routed == 'unavailable')) {
+    } else if (res.statusCode == 200 &&
+        (routed == 'busy' || routed == 'unavailable')) {
       // [CALL-ROUTED-OPTIMISTIC-1 2026-08-03] The optimistic mount is the LIVE
       // dial path (`instantCallMountEnabled` is true in production) and it
       // handled exactly ONE value of `routed` — 'receptionist'. Everything else
@@ -539,13 +596,19 @@ Future<void> _dialerPlaceInBackground(
       //
       // The already-dead classic path below handled both correctly; this is that
       // handling brought over to the branch that actually runs.
-      Analytics.capture(routed == 'busy' ? 'paid_call_busy' : 'call_unavailable', {
-        'call_id': room, 'via': 'dialpad', 'mount': 'optimistic', 'routed': routed,
+      Analytics.capture(
+          routed == 'busy' ? 'paid_call_busy' : 'call_unavailable', {
+        'call_id': room,
+        'via': 'dialpad',
+        'mount': 'optimistic',
+        'routed': routed,
       });
       session?.noteServerRoutedTerminal(routed);
     } else if (res.statusCode == 200 && !reachableFalse) {
-      Analytics.capture('call_place_ok', {'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
-      session?.notePlaceResult(true, prewarming: prewarming, prewarmDeadlineMs: prewarmDeadlineMs);
+      Analytics.capture('call_place_ok',
+          {'kind': callKind, 'via': 'dialpad', 'mount': 'optimistic'});
+      session?.notePlaceResult(true,
+          prewarming: prewarming, prewarmDeadlineMs: prewarmDeadlineMs);
     } else if (res.statusCode == 404 || reachableFalse) {
       Analytics.capture('call_no_device', {
         'to': uid.length > 40 ? uid.substring(0, 40) : uid,
@@ -555,10 +618,12 @@ Future<void> _dialerPlaceInBackground(
         'mount': 'optimistic',
       });
       session?.notePlaceResult(false);
-    } else if (res.statusCode == 403 && res.body.contains('identity_required')) {
+    } else if (res.statusCode == 403 &&
+        res.body.contains('identity_required')) {
       // The global 403 interceptor already opened consent/liveness — tear the
       // optimistic screen down so it isn't stuck behind the gate.
-      Analytics.capture('call_blocked_identity', {'via': 'dialpad', 'mount': 'optimistic'});
+      Analytics.capture(
+          'call_blocked_identity', {'via': 'dialpad', 'mount': 'optimistic'});
       session?.hangup('identity-gate');
     } else {
       Analytics.capture('call_place_failed', {
@@ -640,7 +705,9 @@ Future<void> _playBusyTone() async {
     // TODO(future): a purpose-built busy-tone asset load failure is rare
     // (bundled asset), but fall back to a plain system alert so the caller
     // still gets SOME signal rather than dead silence.
-    try { await SystemSound.play(SystemSoundType.alert); } catch (_) {/* best-effort */}
+    try {
+      await SystemSound.play(SystemSoundType.alert);
+    } catch (_) {/* best-effort */}
   } finally {
     // Fire-and-forget: dispose shortly after the clip would have finished so
     // the underlying AudioPlayer doesn't leak. The busy card itself has no

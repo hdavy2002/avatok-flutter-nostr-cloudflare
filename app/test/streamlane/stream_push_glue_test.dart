@@ -1,8 +1,9 @@
 // STREAM-LANE. Tests the real, pure discriminator in
 // lib/streamlane/stream_push_glue.dart (SDK-free by design — see its library
-// comment). With remote config unset in tests, `streamCallsEnabled` defaults
-// to false, so the handle* wrappers must refuse even genuine Stream pushes:
-// that IS the non-interference contract this lane ships under.
+// comment). Foreground handling respects the hydrated feature flag. A Firebase
+// background isolate has no hydrated RemoteConfig, so genuine provider pushes
+// must enter fail-closed credential recovery instead of reading the false
+// compile-time default and silently losing the ring.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:avatok_call/streamlane/stream_push_glue.dart';
@@ -30,10 +31,10 @@ void main() {
       expect(handleStreamPush({'sender': 'stream.video'}), isFalse);
     });
 
-    test('handleStreamPushBackground refuses even a genuine Stream push',
+    test('background recovery accepts a genuine Stream push without config',
         () async {
-      expect(await handleStreamPushBackground({'sender': 'stream.video'}),
-          isFalse);
+      expect(
+          await handleStreamPushBackground({'sender': 'stream.video'}), isTrue);
     });
 
     test('both refuse non-Stream pushes regardless of flag', () async {

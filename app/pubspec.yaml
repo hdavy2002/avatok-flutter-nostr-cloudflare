@@ -378,6 +378,13 @@ flutter:
           weight: 900
 
 dependency_overrides:
+  # STREAM-ONLY CALLING: RealtimeKit's dormant Android engine packages a
+  # different Twilio AudioSwitch ABI under the same Java class names as
+  # Stream's engine. It crashes the app as soon as an incoming Stream call
+  # initializes audio. Cloudflare call flags are dark, so keep the Dart API
+  # available but replace only its unused Android implementation with a no-op.
+  realtimekit_core_android:
+    path: packages/realtimekit_core_android_disabled
   # [STREAM-LANE-1] stream_video needs device_info_plus >=12.1 <14; super_native_extensions
   # 0.9.1 (via super_clipboard ^0.9.1) pins <12. Override wins; the API surface both use
   # (androidInfo.version.sdkInt etc.) is unchanged in 12.x. Solve verified offline 2026-08-21.

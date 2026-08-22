@@ -26,6 +26,7 @@ import '../core/analytics.dart';
 import '../core/ringback_player.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
+import '../main.dart' show RootFlow;
 import 'stream_call_service.dart';
 import 'stream_call_telemetry.dart';
 
@@ -172,6 +173,7 @@ class _StreamOutgoingPreparationScreenState
         outgoing: true,
         startedAtMs: widget.attempt.startedAtMs,
         connect: ready.connect,
+        endForEveryone: ready.endForEveryone,
         tonePlayer: _tones,
       ),
     ));
@@ -289,6 +291,7 @@ class StreamCallScreen extends StatefulWidget {
     this.outgoing = true,
     this.startedAtMs,
     this.connect,
+    this.endForEveryone,
     this.tonePlayer,
   });
 
@@ -317,6 +320,10 @@ class StreamCallScreen extends StatefulWidget {
   /// step that already succeeded. Null means the call is already joined.
   final Future<void> Function(int attempt)? connect;
 
+  /// Server-authoritative end for an outgoing 1:1 call. Stream client roles
+  /// intentionally cannot be trusted with global call termination.
+  final Future<void> Function()? endForEveryone;
+
   /// Caller progress audio handed over by the preparation screen. The same
   /// player swaps searching beeps for honest ringback without an audible race.
   final RingbackPlayer? tonePlayer;
@@ -333,6 +340,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   Timer? _durationTimer;
   Timer? _connectWatchdog;
   Timer? _qualityTimer;
+  Timer? _peerGoneTimer;
   Duration _elapsed = Duration.zero;
   bool _muted = false;
   bool _speakerOn = true;
@@ -348,6 +356,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   bool _connectedReported = false;
   bool _firstAudioReported = false;
   bool _firstVideoReported = false;
+  bool _popped = false;
   StreamStatsBundle? _lastStatsBundle;
 
   /// How long a join may sit in `connecting` before the screen stops
@@ -362,6 +371,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   @override
   void initState() {
     super.initState();
+    _cameraOff = !widget.video;
     _connectedAt = DateTime.now();
     // verified: packages/stream_video/lib/src/state_emitter.dart +
     // packages/stream_video/lib/src/call/call.dart. `Call.state` is a
@@ -392,6 +402,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     _durationTimer?.cancel();
     _connectWatchdog?.cancel();
     _qualityTimer?.cancel();
+    _peerGoneTimer?.cancel();
     // One final summary, per the task brief ("once at end"). Fire-and-forget
     // like every other capture in this lane; skipped if media never flowed
     // (nothing to summarise).
@@ -444,6 +455,12 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
 
   void _showFailure(String reason, {required int attempt}) {
     if (!mounted || attempt != _attempt) return;
+    // A terminal connection failure must silence caller ringback immediately.
+    // Do not wait for the server cancel request or for this screen to dispose:
+    // either can take seconds on a poor network, producing the misleading
+    // "could not connect" message while the phone audibly keeps ringing.
+    // ignore: discarded_futures
+    _tonePlayer?.stop(reason: 'connect_failed');
     setState(() {
       _phase = _Phase.failed;
       _failureReason = reason;
@@ -479,6 +496,24 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   void _onState(CallState s) {
     if (!mounted) return;
     setState(() => _state = s);
+
+    // In a 1:1 call, the remaining participant must not be stranded when the
+    // other side leaves locally. The caller owns the server-authoritative
+    // attempt and can close the provider call for both sides.
+    if (_everConnected && s.otherParticipants.isEmpty) {
+      _peerGoneTimer ??= Timer(const Duration(milliseconds: 700), () async {
+        if (!mounted ||
+            _hangingUp ||
+            (_state?.otherParticipants.isNotEmpty ?? false)) {
+          _peerGoneTimer = null;
+          return;
+        }
+        await _endAndPop('peer_left');
+      });
+    } else {
+      _peerGoneTimer?.cancel();
+      _peerGoneTimer = null;
+    }
 
     if (_remotePublishing(s)) {
       // The recipient has answered and media exists: ringback must stop before
@@ -607,14 +642,18 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   Future<void> _endAndPop(String reason) async {
     if (_hangingUp) return;
     _hangingUp = true;
+    if (widget.endForEveryone != null) {
+      try {
+        await widget.endForEveryone!().timeout(const Duration(seconds: 3));
+      } catch (_) {/* local cleanup still must run */}
+    }
     await StreamCallService.instance.leave(
       widget.call,
       connectedAt: _connectedAt,
       role: widget.outgoing ? 'caller' : 'callee',
       reason: reason,
     );
-    if (!mounted) return;
-    Navigator.of(context).maybePop();
+    _exitCallScreen(source: 'remote_end', reason: reason);
   }
 
   /// [AUDIT-5 2026-08-21] Hang-up now branches on whether the call was ever
@@ -629,6 +668,14 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     if (_hangingUp) return;
     setState(() => _hangingUp = true);
     await _tonePlayer?.stop(reason: 'caller_cancelled');
+    // The local state can briefly still say "ringing" after the other device
+    // has accepted. Always invoke the caller's server-authoritative end hook
+    // first so this race cannot strand the callee in a live Stream session.
+    if (widget.outgoing && widget.endForEveryone != null) {
+      try {
+        await widget.endForEveryone!().timeout(const Duration(seconds: 3));
+      } catch (_) {/* local cleanup still must run */}
+    }
     if (widget.outgoing && !_everConnected) {
       await StreamCallService.instance.cancelRinging(
         widget.call,
@@ -639,14 +686,18 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         traceId: widget.traceId,
       );
     } else {
+      if (!widget.outgoing && widget.endForEveryone != null) {
+        try {
+          await widget.endForEveryone!().timeout(const Duration(seconds: 3));
+        } catch (_) {/* local leave remains mandatory */}
+      }
       await StreamCallService.instance.leave(
         widget.call,
         connectedAt: _connectedAt,
         role: widget.outgoing ? 'caller' : 'callee',
       );
     }
-    if (!mounted) return;
-    Navigator.of(context).maybePop();
+    _exitCallScreen(source: 'hangup_button');
   }
 
   /// Close a failed call screen. Still leaves the call so nothing is left
@@ -671,8 +722,36 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         reason: 'join_failed_$_failureReason',
       );
     }
-    if (!mounted) return;
-    Navigator.of(context).maybePop();
+    _exitCallScreen(source: 'join_failure', reason: _failureReason);
+  }
+
+  /// Programmatic call teardown must never use `maybePop()`: that API may
+  /// legitimately refuse and leave a dead call surface visible. Incoming
+  /// calls opened from a notification can also make this the first route, so
+  /// replace it with the normal app root when there is nothing underneath.
+  void _exitCallScreen({required String source, String? reason}) {
+    if (_popped || !mounted) return;
+    final nav = Navigator.of(context);
+    final canPop = nav.canPop();
+    Analytics.capture('stream_lane_call_screen_exit', {
+      'call_id': widget.call.callCid.value,
+      'provider': 'stream',
+      'role': widget.outgoing ? 'caller' : 'callee',
+      'source': source,
+      'reason': reason ?? '',
+      'can_pop': canPop,
+      'ever_connected': _everConnected,
+      'phase': _phase.name,
+      'user_email': Analytics.currentEmail ?? '',
+    });
+    _popped = true;
+    if (canPop) {
+      nav.pop();
+    } else {
+      nav.pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const RootFlow()),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -738,7 +817,10 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
           ? widget.peerName!.trim()
           : widget.peerId;
 
-  bool get _isVideo => _state?.settings.video.enabled ?? widget.video;
+  // Stream's default call type permits video, so `settings.video.enabled`
+  // describes a capability, not what this AvaTOK call requested. Using it
+  // turned every audio call into a video UI after state hydration.
+  bool get _isVideo => widget.video;
 
   String get _durationLabel {
     final m = _elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -901,18 +983,20 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
                         : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
                     onTap: _toggleSpeaker,
                   ),
-                  _controlButton(
-                    icon: _cameraOff
-                        ? PhosphorIcons.videoCameraSlash(
-                            PhosphorIconsStyle.bold)
-                        : PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-                    onTap: _toggleCamera,
-                  ),
-                  _controlButton(
-                    icon:
-                        PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
-                    onTap: _flipCamera,
-                  ),
+                  if (widget.video) ...[
+                    _controlButton(
+                      icon: _cameraOff
+                          ? PhosphorIcons.videoCameraSlash(
+                              PhosphorIconsStyle.bold)
+                          : PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                      onTap: _toggleCamera,
+                    ),
+                    _controlButton(
+                      icon: PhosphorIcons.arrowsClockwise(
+                          PhosphorIconsStyle.bold),
+                      onTap: _flipCamera,
+                    ),
+                  ],
                   _controlButton(
                     icon:
                         PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.fill),
