@@ -68,7 +68,15 @@ function decodeBase64(value: unknown): Uint8Array | null {
 }
 
 function audioFromInteraction(out: any): Uint8Array | null {
-  const item = (out?.outputs ?? []).find((x: any) => x?.type === "audio" || x?.mime_type?.startsWith("audio/"));
+  // The Interactions API has returned both response shapes in preview:
+  // `outputs:[{type:"audio",data}]` and `steps:[{content:[{type:"audio",data}]}]`.
+  // Accept both so a valid Lyria result is not turned into provider_unavailable.
+  const outputs = Array.isArray(out?.outputs) ? out.outputs : [];
+  const stepContent = Array.isArray(out?.steps)
+    ? out.steps.flatMap((step: any) => Array.isArray(step?.content) ? step.content : [])
+    : [];
+  const item = [...outputs, ...stepContent].find((x: any) =>
+    x?.type === "audio" || String(x?.mime_type ?? "").startsWith("audio/"));
   return decodeBase64(item?.data ?? item?.audioContent);
 }
 
@@ -146,12 +154,16 @@ export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<R
     musicMode: a.musicMode, flatPriceTokens: undefined,
   });
   if (!created.ok) return { ok: false, message: "I couldn't start that track right now — please try again." };
+  let providerStatus = 0;
+  let providerError = "";
   try {
     const modeInstruction = a.musicMode === "instrumental" || !lyrics
       ? "Instrumental only; no vocals."
       : "Sing the approved lyrics exactly; do not invent or omit lyric lines.";
     const input: any[] = [{ type: "text", text: `${prompt}\n\nTarget length: ${duration} seconds.\n${modeInstruction}${lyrics ? `\n\nApproved lyrics:\n${lyrics}` : ""}` }];
     const r = await vertexInteraction(env, VERTEX_MUSIC_MODEL, input, 120_000);
+    providerStatus = r.status;
+    providerError = String(r.out?.error?.message ?? "").slice(0, 240);
     const bytes = audioFromInteraction(r.out);
     if (!r.ok || !bytes) throw new Error("provider_unavailable: Vertex returned no audio");
     const tempKey = `ai-media/pending/${created.job.job_id}`;
@@ -161,7 +173,10 @@ export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<R
     await postAvaMessage(env, { ownerUid: a.uid, conv: a.conv, text: a.private ? "Ava is creating your song…" : "Ava is creating a song…", private: a.private, source: "music", meta: { job_id: created.job.job_id, media_job_kind: "music_generate" } }).catch(() => {});
     return { ok: true, job_id: created.job.job_id, message: a.private ? "🎵 Working on your track — it'll appear here privately when it's ready." : "🎵 Working on your track — it'll appear in this chat when it's ready." };
   } catch {
-    await failMediaJob(env, { jobId: created.job.job_id, errorCode: "provider_unavailable", reason: "vertex_music_failed" });
+    await track(env, a.uid, "vertex_music_failed", "avaai", {
+      job_id: created.job.job_id, status: providerStatus, provider_error: providerError || null,
+    }).catch(() => {});
+    await failMediaJob(env, { jobId: created.job.job_id, errorCode: "provider_unavailable", reason: `vertex_music_failed:${providerStatus || "unknown"}` });
     return { ok: false, message: "I couldn't start that track right now — please try again." };
   }
 }
