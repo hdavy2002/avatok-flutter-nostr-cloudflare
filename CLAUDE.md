@@ -48,6 +48,47 @@ gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk
 gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk -f play_track=none
 ```
 
+#### 📲 THE OTHER MAGIC WORD: **"ship local"** (added 2026-08-22)
+
+**"ship local"** is NOT a cloud build and has nothing to do with `gh workflow run`,
+Play, or `latestAppBuild`. It means: **take the APK that was just built locally and
+FRESH-install it on BOTH connected targets** — the owner's phone and the running
+emulator. Skip the two widget questions; the phrase already answers them.
+
+```bash
+scripts/push_apk.sh                              # newest APK under app/build/ -> BOTH
+scripts/push_apk.sh path/to/app.apk              # explicit APK -> BOTH
+scripts/push_apk.sh path/to/app.apk ZA223K79KG   # phone only
+scripts/push_apk.sh --keep-data                  # in-place upgrade instead (rare)
+```
+
+**Fresh install is the DEFAULT, deliberately** (owner decision 2026-08-22): the
+emulator **hangs on in-place updates**, so the script force-stops the app,
+`adb uninstall ai.avatok.avatok_call`, then installs clean. This **wipes app data —
+he will be logged out on both targets.** Say so in one line when reporting; do not
+quietly reach for `--keep-data` to avoid it, and do not "improve" the script back to
+`adb install -r` as the default.
+
+The two targets, verified 2026-08-22 — both Android 16 (API 36), both `arm64-v8a`,
+so **ONE arm64 APK covers both**, no second build:
+
+| Target | Serial |
+|---|---|
+| motorola edge 70 fusion (owner's phone) | `ZA223K79KG` |
+| Android emulator | `emulator-5554` |
+
+The script does **not** build. If no APK exists under `app/build/`, it says so and
+exits — that is the signal the build hasn't happened yet, not a bug to route around.
+
+If a target is missing from `adb devices`: MTP/"File transfer" mode alone is NOT
+enough — **USB debugging** must be on in Developer options and the RSA prompt
+accepted on the phone. Keep the screen unlocked during install; a locked Motorola
+throws `INSTALL_FAILED_USER_RESTRICTED`.
+
+⚠️ **This section does not license a local BUILD.** The no-local-toolchain rule and
+the disk-space constraint still govern that; `ship local` only covers the install
+step for an APK someone else already produced.
+
 #### 🚀 THE MAGIC WORD: **"ship it"**
 
 The owner asked (2026-07-15) for one phrase that means *do the whole thing*. **"ship
