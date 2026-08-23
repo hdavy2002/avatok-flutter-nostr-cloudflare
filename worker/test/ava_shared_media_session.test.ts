@@ -43,4 +43,15 @@ describe("public Ava media collaboration", () => {
     expect(agent).toContain('"audio_transcribe"');
     expect(tools).toContain("ingest, brainstorm from, summarize, transcribe");
   });
+
+  it("routes Ava conversation intelligence through Gemini on Vertex", () => {
+    const agent = readFileSync("src/do/ava_agent.ts", "utf8");
+    const tools = readFileSync("src/lib/composio.ts", "utf8");
+    expect(agent).toContain('DEFAULT_THREAD_MODEL = "gemini-3.7-flash"');
+    expect(agent).toContain('provider: r.via === "vertex" ? "google_vertex" : "google_direct"');
+    expect(agent).not.toContain("openrouterAdapter.run(this.env");
+    expect(tools).toContain("async function vertexStep");
+    expect(tools).toContain("generateContentVia(env, model");
+    expect(tools).toContain('provider: "google_vertex"');
+  });
 });

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Ava song interview resilience contract", () => {
-  it("uses one structured multi-provider contract for song and video", () => {
+  it("uses one structured Vertex contract for song and video", () => {
     const agent = readFileSync("src/do/ava_agent.ts", "utf8");
     expect(agent).toContain("private async callStructuredMediaInterview<T>");
     expect(agent).toContain("private async callSongInterview(");
@@ -13,8 +13,9 @@ describe("Ava song interview resilience contract", () => {
     expect(agent).toContain("json: true");
     expect(agent).toContain('throw new Error("empty_response")');
     expect(agent).toContain('feature: "gemini_direct"');
-    expect(agent).toContain("SONG_INTERVIEW_FALLBACK_MODEL");
-    expect(agent).toContain("await veniceChatComplete(");
+    expect(agent).toContain('model: this.threadModel()');
+    expect(agent).toContain('"google_vertex"');
+    expect(agent).not.toContain("await veniceChatComplete(");
     expect(agent).toContain('"ava_media_interview_attempt"');
   });
 

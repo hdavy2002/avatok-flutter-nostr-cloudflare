@@ -415,6 +415,7 @@ export interface Env {
   // deliberately NOT migrated (all Live/WebSocket lanes, File Search stores).
   VERTEX_PROJECT?: string;
   VERTEX_LOCATION?: string;          // default "global"; a region only for data residency
+  AVA_VERTEX_TEXT_MODEL?: string;    // interactive Ava text + tool reasoning (default gemini-3.7-flash)
 
   // GenUI global template cache (Upstash Redis REST). URL is a [var]; TOKEN is a
   // secret. Absent → cache no-ops (compose every time; nothing breaks).

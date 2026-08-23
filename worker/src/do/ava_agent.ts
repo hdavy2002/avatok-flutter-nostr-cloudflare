@@ -42,11 +42,8 @@ import { brainSearchTyped } from "../lib/ava_memory"; // F1 — typed retrieval 
 import {
   runAppsToolLoop, runAgentLoop, connectedToolkits, looksLikeImageRequest, looksLikeVideoRequest,
   guardOutput, newAgentLoopStats, type AgentLoopStats, // AVA-KIMI-TOOLS-1: shared output guard + tool-lane model telemetry
-  orStreamStep, // [AVA-STREAM-PLAIN-1 / WS-5] the tested SSE parser, shared with the tool lane
 } from "../lib/composio"; // AvaApps + unified agentic loop
-import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // AVA-KIMI-GATEWAY-1: reuse the existing OpenRouter fetch client
 import { avaReason } from "../lib/ava_reason";
-import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
 import { looksLikeMediaApproval } from "../lib/ava_group_session";
 import { runVertexVideo, runVertexMusic, runVertexDraftLyrics } from "../lib/vertex_media"; // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] in-thread video/music/lyrics gen, same async-job shape as runAvaImage
@@ -54,7 +51,6 @@ import { runVertexVideo, runVertexMusic, runVertexDraftLyrics } from "../lib/ver
 // resolve "the image you just made" into an edit source (see onImage below).
 import { getAiMediaJob, createAiMediaJob } from "../lib/ai_media_jobs";
 import { veniceTier } from "../lib/venice_tier"; // [VENICE-TIER-1] 18+ opt-in AND paid balance -> "paid" | "free"
-import { veniceChatComplete, VENICE_UNCENSORED_CHAT_MODEL } from "../lib/venice"; // [VENICE-CHAT-1] uncensored-text chat lane
 import { track, trackException } from "../hooks"; // [VENICE-CHAT-1] ava_reason_call telemetry (provider "venice")
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchOutlookInbox } from "../lib/outlook"; // same cards for Outlook-only users
@@ -91,7 +87,7 @@ import {
 } from "../lib/song_flow";
 import {
   parseSongInterviewTurn, recoverSongInterviewDiscussion, recoverSongInterviewLocally, songInterviewRecoveryReply,
-  songInterviewUserPayload, SONG_INTERVIEW_FALLBACK_MODEL, SONG_INTERVIEW_SYSTEM,
+  songInterviewUserPayload, SONG_INTERVIEW_SYSTEM,
   type SongInterviewTurn,
 } from "../lib/song_interview";
 import { mediaModelCatalog, type MediaModelChoice } from "../lib/media_model_catalog";
@@ -101,7 +97,7 @@ import {
 } from "../lib/video_flow";
 import {
   parseVideoInterviewTurn, recoverVideoDiscussion, videoInterviewPayload,
-  VIDEO_INTERVIEW_FALLBACK_MODEL, VIDEO_INTERVIEW_SYSTEM, type VideoInterviewTurn,
+  VIDEO_INTERVIEW_SYSTEM, type VideoInterviewTurn,
 } from "../lib/video_interview";
 
 // One classified route per turn. Ava reads intent, THEN acts (no keyword gates):
@@ -146,26 +142,9 @@ const WINDOW = 12;          // recent turns fed to the model (bounded context)
 const SUMMARY_EVERY = 8;    // refresh the rolling summary roughly every N messages
 const MAX_TOKENS = 300;
 
-// ---- AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat model gateway ------------------
-// Env-configurable OpenRouter target for the in-thread @ava turn. This is a
-// SEPARATE lane from the agentic tool loop below (apps/image/attachments still
-// run through composio.ts's runAgentLoop, which is Gemini-via-OpenRouter and
-// out of this file's scope) — see turn()'s `wantsTools` gate and the report
-// for why tool-calling turns are NOT migrated.
-//
-// [AVA-FREE-BUDGET-1 2026-07-25] Free-text default is now deepseek/deepseek-
-// v4-flash (owner decision, report §10/§11a/§12b) — replaces the prior Kimi K3 default.
-// This lane is capability 'chat_thread' below, one of ai_billing.ts's
-// FREE_CAPABILITIES: free, unmetered, budget-gated by lib/ai_gate.ts instead
-// of the wallet. DEFAULT_THREAD_MODEL_ALT stays google/gemini-2.5-flash-lite
-// UNCHANGED and MUST remain reachable — deepseek is TEXT-ONLY
-// (input_modalities: ["text"], confirmed from OpenRouter's catalog) and cannot
-// serve an attachment turn; the `wantsTools` gate below already keeps any
-// attachment turn OFF this lane entirely (attachments route to the agentic
-// tool loop / 'ava_thread_tools', which stays on its own, separately metered
-// model and is unaffected by this change).
-const DEFAULT_THREAD_MODEL = "deepseek/deepseek-v4-flash";
-const DEFAULT_THREAD_MODEL_ALT = "google/gemini-2.5-flash-lite";
+// One Google model for interactive Ava text, shared brainstorming, media
+// interviews and tool planning. Calls use Vertex through generateContentVia.
+const DEFAULT_THREAD_MODEL = "gemini-3.7-flash";
 const THREAD_TIMEOUT_MS = 30_000;
 
 interface Member { uid: string; }
@@ -1014,183 +993,35 @@ export class AvaAgentDO {
     return "";
   }
 
-  // ---- AVA-KIMI-GATEWAY-1: OUR-KEYS plain-chat model gateway ------------------
-  // Reuses the SAME OpenRouter fetch client the shared ava_reason gateway already
-  // uses (lib/ava_reason/adapters/openrouter.ts) instead of writing a new one.
-  // Ladder: OpenRouter primary (AVA_THREAD_MODEL, default Kimi K3) → retry ONCE
-  // on 429/5xx/timeout → OpenRouter ALT (AVA_THREAD_MODEL_ALT) → direct Gemini
-  // (geminiRun, the pre-existing last-resort path) so @ava never goes fully dark.
-  // Scope: plain-answer turns only — see turn()'s `wantsTools` gate. Tool-calling
-  // turns (apps actions, image generation, attachments) stay on the existing
-  // Gemini-via-OpenRouter agentic loop in composio.ts (out of this file's scope;
-  // see the report for why that lane was not migrated).
+  // One configured Vertex text model shared by Ava's conversational lanes.
   private threadModel(): string {
-    return String((this.env as any).AVA_THREAD_MODEL || "").trim() || DEFAULT_THREAD_MODEL;
-  }
-  private threadAltModel(): string {
-    return String((this.env as any).AVA_THREAD_MODEL_ALT || "").trim() || DEFAULT_THREAD_MODEL_ALT;
+    return String((this.env as any).AVA_VERTEX_TEXT_MODEL || "").trim() || DEFAULT_THREAD_MODEL;
   }
 
-  // Classify an OpenRouter adapter failure for fallback_reason telemetry. The
-  // adapter throws `Error("openrouter <status>: <detail>")` on a non-2xx response,
-  // or an AbortError-shaped rejection when the request hits THREAD_TIMEOUT_MS.
-  private classifyOrError(e: unknown): "timeout" | "429" | "5xx" | "parse" {
-    const name = String((e as any)?.name ?? "");
-    const msg = String((e as any)?.message ?? e ?? "");
-    if (/abort|timeout/i.test(name) || /abort|timeout/i.test(msg)) return "timeout";
-    if (/\b429\b/.test(msg)) return "429";
-    if (/\b5\d\d\b/.test(msg)) return "5xx";
-    return "parse";
-  }
-
-  // [AVA-STREAM-PLAIN-1 / WS-5] `onDelta`, when supplied, streams the PRIMARY
-  // model's tokens as they arrive (reusing composio.ts's orStreamStep — the same
-  // parser the tool lane has used all along) instead of waiting for the complete
-  // answer. Everything below it is unchanged: a streamed attempt that fails for
-  // ANY reason falls straight through to the existing non-streamed ladder
-  // (primary → retry → ALT → direct Gemini), so streaming can only ever make the
-  // turn faster, never make it fail. `streamed` is reported back so the caller
-  // can emit truthful telemetry rather than the hardcoded `streamed:false` this
-  // lane shipped with.
+  // Vertex's REST response is posted as one delta while the working indicator
+  // remains visible; the durable final-message path is unchanged.
   private async callThreadModel(uid: string, sys: string, user: string, onDelta?: (t: string) => Promise<void>): Promise<{
     text: string; model: string; provider: string;
     tokensIn: number | null; tokensOut: number | null;
     fallbackReason: string | null; latencyMs: number; streamed: boolean;
   }> {
     const t0 = Date.now();
-
-    // [VENICE-CHAT-1] Uncensored-TEXT chat lane — Specs/VENICE-AI-MEDIA-
-    // PLAN-2026-08-14.md. Only when BOTH veniceTier(env, uid) resolves "paid"
-    // (18+ opt-in AND paid wallet balance > 0, lib/venice_tier.ts) AND the
-    // veniceUncensoredChatEnabled kill switch (routes/config.ts) is true.
-    // Everyone else falls straight through to the unchanged Gemma/Gemini
-    // ladder below — this branch never runs for a free-tier account even if
-    // the flag is on. Non-streamed for v1 (see venice.ts's veniceChatComplete
-    // doc comment); a failure here (network, 4xx/5xx, empty response) falls
-    // through to the existing ladder rather than failing the turn — Venice
-    // being briefly unavailable must never dark a paid-tier user's chat.
-    try {
-      const cfg = await readConfig(this.env);
-      if ((cfg as any).veniceUncensoredChatEnabled === true) {
-        const tier = await veniceTier(this.env, uid);
-        if (tier === "paid") {
-          try {
-            const out = await veniceChatComplete(
-              this.env as any, VENICE_UNCENSORED_CHAT_MODEL,
-              [{ role: "system", content: sys }, { role: "user", content: user }],
-              { maxTokens: MAX_TOKENS, temperature: 0.7, timeoutMs: THREAD_TIMEOUT_MS },
-            );
-            const text = stripReasoning(out.text);
-            if (text) {
-              void track(this.env, uid, "ava_reason_call", "avaai", {
-                role: "ava_thread", capability: "chat_thread", trigger: "ava_thread_turn",
-                opportunity: null, feature: "ava_thread_venice", verb: "reason", provider: "venice",
-                model: VENICE_UNCENSORED_CHAT_MODEL, primary_model: this.threadModel(), ok: true,
-                fallback_used: false, cache_hit: false, latency_ms: Date.now() - t0,
-                tokens_in: out.tokensIn, tokens_out: out.tokensOut, error: null,
-              });
-              return {
-                text, model: VENICE_UNCENSORED_CHAT_MODEL, provider: "venice",
-                tokensIn: out.tokensIn, tokensOut: out.tokensOut,
-                fallbackReason: null, latencyMs: Date.now() - t0, streamed: false,
-              };
-            }
-          } catch (e: any) {
-            void track(this.env, uid, "ava_reason_call", "avaai", {
-              role: "ava_thread", capability: "chat_thread", trigger: "ava_thread_turn",
-              opportunity: null, feature: "ava_thread_venice", verb: "reason", provider: "venice",
-              model: VENICE_UNCENSORED_CHAT_MODEL, primary_model: this.threadModel(), ok: false,
-              fallback_used: true, cache_hit: false, latency_ms: Date.now() - t0,
-              tokens_in: null, tokens_out: null, error: String(e?.message ?? e).slice(0, 200),
-            });
-            // fall through to the standard ladder below
-          }
-        }
-      }
-    } catch { /* config/tier read failure — fall through to the standard ladder */ }
-
-    const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
-    const primary = this.threadModel();
-    const alt = this.threadAltModel();
-    const bodyOpts: BodyOpts = { applyDefaults: true, allowRaw: false, allowJson: false, allowAiOptions: false };
-    const req: ReasonReq = {
-      role: "thread", capability: "chat", trigger: "ava_thread_turn",
-      system: sys, user, maxTokens: MAX_TOKENS, temperature: 0.7, timeoutMs: THREAD_TIMEOUT_MS,
-    };
-    let fallbackReason: string | null = null;
-
-    if (key && onDelta) {
-      // Streamed attempt on the PRIMARY only. maxTokens/temperature are passed
-      // explicitly to keep parity with openrouterAdapter.run()'s defaults below —
-      // an unbounded stream would bill more output tokens than reserveAiJob
-      // reserved for this turn.
-      try {
-        const out = await orStreamStep(
-          this.env, primary,
-          [{ role: "system", content: sys }, { role: "user", content: user }],
-          [], onDelta,
-          { timeoutMs: THREAD_TIMEOUT_MS, maxTokens: MAX_TOKENS, temperature: 0.7 },
-        );
-        const text = stripReasoning(out.text);
-        if (text) {
-          return {
-            text, model: primary, provider: "openrouter",
-            // `|| null` not `?? null`: OpenRouter omits the usage chunk on some
-            // streamed responses and a 0 there must fall back to the caller's
-            // chars/4 estimate, not silently meter the turn as zero tokens.
-            tokensIn: out.usage?.prompt_tokens || null, tokensOut: out.usage?.completion_tokens || null,
-            fallbackReason, latencyMs: Date.now() - t0, streamed: true,
-          };
-        }
-        // Empty streamed body — treat exactly like a transport failure.
-        fallbackReason = "empty";
-      } catch (e) {
-        fallbackReason = this.classifyOrError(e);
-      }
-    }
-
-    if (key) {
-      // Primary model — retry ONCE on a transient failure (429/5xx/timeout).
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const out = await openrouterAdapter.run(this.env as any, { model: primary, req, body: bodyOpts, title: "AvaTOK Thread" });
-          return {
-            text: stripReasoning(out.text), model: primary, provider: "openrouter",
-            tokensIn: out.tokensIn ?? null, tokensOut: out.tokensOut ?? null,
-            fallbackReason, latencyMs: Date.now() - t0, streamed: false,
-          };
-        } catch (e) {
-          const reason = this.classifyOrError(e);
-          if (attempt === 0 && (reason === "429" || reason === "5xx" || reason === "timeout")) {
-            fallbackReason = reason;
-            continue;
-          }
-          fallbackReason = fallbackReason || reason;
-          break;
-        }
-      }
-      // ALT model.
-      try {
-        const out = await openrouterAdapter.run(this.env as any, { model: alt, req, body: bodyOpts, title: "AvaTOK Thread" });
-        return {
-          text: stripReasoning(out.text), model: alt, provider: "openrouter",
-          tokensIn: out.tokensIn ?? null, tokensOut: out.tokensOut ?? null,
-          fallbackReason: fallbackReason || "5xx", latencyMs: Date.now() - t0, streamed: false,
-        };
-      } catch (e) {
-        fallbackReason = fallbackReason || this.classifyOrError(e);
-      }
-    } else {
-      fallbackReason = "no_key";
-    }
-
-    // Last resort: the pre-existing direct-Gemini path. Never throws (returns ""
-    // on total failure); @ava must never go fully dark.
-    const text = stripReasoning(await geminiRun(this.env, sys, user, MAX_TOKENS, 0.7));
+    const model = this.threadModel();
+    const r = await generateContentVia(this.env, model, {
+      systemInstruction: { parts: [{ text: sys }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7, thinkingConfig: { thinkingLevel: "low" } },
+    }, "generateContent", { timeoutMs: THREAD_TIMEOUT_MS });
+    const parts = r.out?.candidates?.[0]?.content?.parts ?? [];
+    const text = stripReasoning(parts.map((p: any) => typeof p?.text === "string" ? p.text : "").join(""));
+    const usage = r.out?.usageMetadata ?? {};
+    if (onDelta && text) await onDelta(text);
     return {
-      text, model: "gemini-direct", provider: "google_direct",
-      tokensIn: null, tokensOut: null,
-      fallbackReason: fallbackReason || "parse", latencyMs: Date.now() - t0, streamed: false,
+      text, model, provider: r.via === "vertex" ? "google_vertex" : "google_direct",
+      tokensIn: Number(usage.promptTokenCount ?? 0) || null,
+      tokensOut: Number(usage.candidatesTokenCount ?? 0) || null,
+      fallbackReason: r.ok ? null : `google_${r.status}`,
+      latencyMs: Date.now() - t0, streamed: false,
     };
   }
 
@@ -1206,7 +1037,6 @@ export class AvaAgentDO {
     capability: "song_interview" | "video_interview";
     system: string;
     payload: string;
-    veniceModel: string;
     parse: (text: string) => T;
     recover: (text: string) => T | null;
   }): Promise<StructuredInterviewCallResult<T>> {
@@ -1253,54 +1083,18 @@ export class AvaAgentDO {
       recordAttempt(provider, model, attempt, false, detail);
     };
 
-    const key = String((this.env as any).OPENROUTER_API_KEY ?? "").trim();
-    const openRouterModels = [this.threadModel(), this.threadAltModel()]
-      .filter((model, index, all) => !!model && all.indexOf(model) === index);
-    let attempt = 0;
-    if (key) {
-      for (const model of openRouterModels) {
-        attempt++;
-        try {
-          const req: ReasonReq = {
-            role: "media_producer", capability: args.capability, trigger: "ava_media_interview",
-            system: args.system, user: args.payload, maxTokens, temperature: 0.45,
-            timeoutMs, json: true, aiOptions: { reasoning: { enabled: false } }, uid: args.uid,
-          };
-          const out = await openrouterAdapter.run(this.env as any, {
-            model, req,
-            body: { applyDefaults: true, allowRaw: false, allowJson: true, allowAiOptions: true },
-            title: `AvaTOK ${args.capability}`,
-          });
-          const accepted = accept(out.text, "openrouter", model, attempt);
-          if (accepted) return accepted;
-        } catch (e) { fail("openrouter", model, attempt, e); }
-      }
-    } else {
-      failures.push("openrouter:no_key");
-    }
-
-    attempt++;
+    const attempt = 1;
+    const model = this.threadModel();
     try {
       const text = await avaReason(this.env, {
         role: "media_producer", capability: args.capability, trigger: "ava_media_interview",
-        feature: "gemini_direct", system: args.system, user: args.payload,
+        feature: "gemini_direct", model, system: args.system, user: args.payload,
         maxTokens, temperature: 0.45, timeoutMs, json: true,
         geminiThinkingOff: true, uid: args.uid,
       });
-      const accepted = accept(text, "google_direct", "gemini-direct-ladder", attempt);
+      const accepted = accept(text, "google_vertex", model, attempt);
       if (accepted) return accepted;
-    } catch (e) { fail("google_direct", "gemini-direct-ladder", attempt, e); }
-
-    attempt++;
-    const veniceModel = String((this.env as any).AVA_MEDIA_INTERVIEW_VENICE_MODEL ?? "").trim() || args.veniceModel;
-    try {
-      const out = await veniceChatComplete(this.env, veniceModel, [
-        { role: "system", content: args.system },
-        { role: "user", content: args.payload },
-      ], { maxTokens, temperature: 0.45, timeoutMs });
-      const accepted = accept(out.text, "venice", veniceModel, attempt);
-      if (accepted) return accepted;
-    } catch (e) { fail("venice", veniceModel, attempt, e); }
+    } catch (e) { fail("google_vertex", model, attempt, e); }
 
     // `recovered` is only ever assigned inside the `accept` closure, which TS
     // control-flow analysis does not track — a direct read here is narrowed to
@@ -1329,7 +1123,6 @@ export class AvaAgentDO {
     const payload = songInterviewUserPayload(flow, latestUserText, serverValidationFeedback, audioModels);
     return this.callStructuredMediaInterview({
       uid, capability: "song_interview", system: SONG_INTERVIEW_SYSTEM, payload,
-      veniceModel: SONG_INTERVIEW_FALLBACK_MODEL,
       parse: (text) => parseSongInterviewTurn(text, flow.context, audioModels),
       recover: (text) => recoverSongInterviewDiscussion(text, flow.context),
     });
@@ -1345,7 +1138,6 @@ export class AvaAgentDO {
     const payload = videoInterviewPayload(flow, latestUserText, models, serverValidationFeedback);
     const result = await this.callStructuredMediaInterview({
       uid, capability: "video_interview", system: VIDEO_INTERVIEW_SYSTEM, payload,
-      veniceModel: VIDEO_INTERVIEW_FALLBACK_MODEL,
       parse: (text) => parseVideoInterviewTurn(text, flow.context, models),
       recover: (text) => recoverVideoDiscussion(text, flow.context),
     });
@@ -1386,7 +1178,7 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
     });
     const text = await avaReason(this.env, {
       role: "media_producer", capability: "shared_brainstorm", trigger: "ava_shared_brainstorm",
-      feature: "gemini_direct", system, user: payload, maxTokens: 700,
+      feature: "gemini_direct", model: this.threadModel(), system, user: payload, maxTokens: 700,
       temperature: 0.55, timeoutMs: 28_000, json: true, geminiThinkingOff: true, uid: args.uid,
     });
     const parsed = JSON.parse(String(text).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
@@ -2971,7 +2763,7 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
       // reservation for an LLM call that no longer happens.
       const toolOpId = `ava-thread-tools:${statusId}`;
       const toolPromptChars = ctx.length + userText.length;
-      const toolReqModel = String((this.env as any).OPENROUTER_AGENT_MODEL || "moonshotai/kimi-k3").trim();
+      const toolReqModel = this.threadModel();
       const toolReservation = await reserveAiJob(this.env, {
         uid, opId: toolOpId, capability: "ava_thread_tools", modality: "text", model: toolReqModel,
         maxInputTokens: estimateInputTokensFromChars(toolPromptChars), maxOutputTokens: MAX_TOKENS * 3, email,
@@ -3537,9 +3329,9 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
 
       // 5. GATEKEEPER — cheap model, strict JSON, conservative by instruction
       // AND by parse (anything malformed is a NO).
-      const gkModel = String((this.env as any).OPENROUTER_AMBIENT_GK_MODEL || "google/gemini-2.5-flash").trim();
+      const gkModel = this.threadModel();
       const gk0 = Date.now();
-      const gk = await this.orOnce(gkModel, [
+      const gk = await this.vertexOnce(gkModel, [
         { role: "system", content:
           "You decide whether Ava (an AI companion both chat participants opted into) should make ONE " +
           "unprompted remark in a private 1:1 chat. Reply ONLY with JSON: {\"chime\":true|false,\"why\":\"<8 words\"}. " +
@@ -3551,7 +3343,7 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
       ], 60);
       const gkMs = Date.now() - gk0;
       await trackUser(this.env, uid, null, "$ai_generation", "avaai", {
-        $ai_model: gkModel, $ai_provider: "openrouter",
+        $ai_model: gkModel, $ai_provider: "google_vertex",
         $ai_input_tokens: gk.tokensIn, $ai_output_tokens: gk.tokensOut,
         $ai_trace_id: `ambient:${conv}:${day}`, $ai_span_name: "ambient_gatekeeper",
       });
@@ -3566,9 +3358,9 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
       if (!verdict) return skip("gatekeeper_no");
 
       // 6. COMPOSER — the full agent model, tightly boxed.
-      const cModel = String((this.env as any).OPENROUTER_AGENT_MODEL || "google/gemini-3.5-flash").trim();
+      const cModel = this.threadModel();
       const c0 = Date.now();
-      const composed = await this.orOnce(cModel, [
+      const composed = await this.vertexOnce(cModel, [
         { role: "system", content:
           "You are Ava, a warm, brief AI companion both people in this 1:1 chat opted into. Write ONE " +
           "interjection of AT MOST 2 short sentences that adds real value right now (answer the open question, " +
@@ -3579,7 +3371,7 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
       ], 160);
       const composeMs = Date.now() - c0;
       await trackUser(this.env, uid, null, "$ai_generation", "avaai", {
-        $ai_model: cModel, $ai_provider: "openrouter",
+        $ai_model: cModel, $ai_provider: "google_vertex",
         $ai_input_tokens: composed.tokensIn, $ai_output_tokens: composed.tokensOut,
         $ai_trace_id: `ambient:${conv}:${day}`, $ai_span_name: "ambient_composer",
       });
@@ -3621,32 +3413,24 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
     }
   }
 
-  /** [AVA-AMBIENT-2] One-shot OpenRouter chat completion — deliberately tiny
+  /** [AVA-AMBIENT-2] One-shot Vertex Gemini completion — deliberately tiny
    * (no tool loop, no fallback ladder: the ambient lane's answer to any
    * failure is to stay silent, which the callers' fail-closed gates provide). */
-  private async orOnce(
+  private async vertexOnce(
     model: string, messages: { role: string; content: string }[], maxTokens: number,
   ): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
-    const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
-    if (!key) throw new Error("openrouter key missing");
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${key}`, "content-type": "application/json",
-        "HTTP-Referer": "https://avatok.ai", "X-Title": "AvaTOK ambient",
-      },
-      // [AVA-NOTHINK-1] reasoning off — the ambient lane's whole point is a
-      // quick light touch; a hybrid reasoner thinking silently here burns
-      // budget and delays a message nobody is waiting for. Ignored by models
-      // without a reasoning mode.
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.6, reasoning: { enabled: false } }),
-      signal: AbortSignal.timeout(20000),
-    });
-    const out: any = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`openrouter ${res.status}`);
-    const text = String(out?.choices?.[0]?.message?.content ?? "");
-    const u = out?.usage ?? {};
-    return { text, tokensIn: Number(u.prompt_tokens) || 0, tokensOut: Number(u.completion_tokens) || 0 };
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+    const contents = messages.filter((m) => m.role !== "system")
+      .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+    const r = await generateContentVia(this.env, model, {
+      systemInstruction: { parts: [{ text: system }] }, contents,
+      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.6, thinkingConfig: { thinkingLevel: "low" } },
+    }, "generateContent", { timeoutMs: 20_000 });
+    if (!r.ok) throw new Error(`vertex ${r.status}`);
+    const text = (r.out?.candidates?.[0]?.content?.parts ?? [])
+      .map((p: any) => typeof p?.text === "string" ? p.text : "").join("");
+    const u = r.out?.usageMetadata ?? {};
+    return { text, tokensIn: Number(u.promptTokenCount) || 0, tokensOut: Number(u.candidatesTokenCount) || 0 };
   }
 
   // ---- the "working…" chip ----------------------------------------------------

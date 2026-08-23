@@ -96,6 +96,12 @@ export interface ModelRate {
 const USD = 1_000_000; // 1 USD expressed in micro-USD, for readability at the catalog literal sites below
 
 export const AI_PRICE_CATALOG: Record<string, ModelRate> = {
+  // Verified 2026-08-23 from Google Cloud Vertex AI pricing. Introductory rate
+  // through 2026-12-31; re-verify before the 2027 rate change.
+  "gemini-3.7-flash": {
+    inPerM: Math.round(0.75 * USD), outPerM: Math.round(3.75 * USD), effectiveDate: "2026-08-23",
+    source: "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+  },
   // Verified 2026-07-24 (https://openrouter.ai/moonshotai/kimi-k3-20260715): $3 / $15 per 1M, 1M context.
   "moonshotai/kimi-k3": {
     inPerM: 3 * USD, outPerM: 15 * USD, effectiveDate: "2026-07-24",

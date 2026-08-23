@@ -56,6 +56,11 @@ OPENROUTER_AGENT_MODEL = "google/gemini-3.7-flash"
 # "fast" variant, reasoning-off by default via OpenRouter — unlike kimi-k3 it
 # won't add 15s of silent thinking on the rare turns the ladder falls back.
 OPENROUTER_AGENT_MODEL_ALT = "x-ai/grok-4.1-fast"
+# [AVA-VERTEX-TEXT-1 2026-08-23] Interactive Ava text, shared brainstorming,
+# media interviews and multi-tool planning now use Google Vertex directly.
+# The legacy OpenRouter vars above remain only for unrelated ambient/code-mode
+# paths pending their own migration; Ava's user-addressed lanes do not read them.
+AVA_VERTEX_TEXT_MODEL = "gemini-3.7-flash"
 # [LIVE-DIDIT-1] didit.me liveness — the "AvaTOK Liveness" workflow (LIVENESS
 # feature only) created 2026-07-09 in the owner's Didit console. The API key is
 # a SECRET (`wrangler secret put DIDIT_API_KEY`), never in this file.

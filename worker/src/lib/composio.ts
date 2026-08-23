@@ -23,6 +23,7 @@ import { shouldFail } from "./fault_inject";
 // e.g. do/ava_agent.ts, which folds readVoiceStyle into its turn Promise.all —
 // passes it in and skips the extra KV get.
 import { readVoiceStyle, styleClause, type AvaVoiceStyle } from "./ava_persona";
+import { generateContentVia } from "./vertex";
 
 const B = "https://backend.composio.dev/api/v3";
 
@@ -654,10 +655,6 @@ export async function executeTool(
 // runAppsToolLoop's callers).
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OR_STEP_TIMEOUT_MS = 45000;
-// Legacy fixed fallback, kept ONLY for Phase 3's unrelated "cheap model for a
-// simple read" routing (simpleModel() below) — not part of the Kimi fallback
-// ladder, which uses orAgentModelAlt() instead.
-const OR_FALLBACK_MODEL = "google/gemini-2.5-flash";
 function orAgentModel(env: Env): string {
   return (env as any).OPENROUTER_AGENT_MODEL || "moonshotai/kimi-k3";
 }
@@ -733,9 +730,6 @@ function isSimpleRead(q: string): boolean {
   const noun = /\b(email|emails|inbox|mail|calendar|schedule|agenda|event|events|file|files|doc|docs|drive|sheet|sheets)\b/;
   return verb.test(t) && noun.test(t);
 }
-function simpleModel(env: Env): string {
-  return (env as any).AVAAPPS_SIMPLE_MODEL || OR_FALLBACK_MODEL;
-}
 function orHeaders(key: string): Record<string, string> {
   return {
     "content-type": "application/json",
@@ -778,6 +772,71 @@ function assistantToolMsg(text: string, calls: OrCall[]): any {
 // OpenRouter token usage for one step (Phase 0 telemetry). Present on the
 // response body as `usage` — captured so run_ok can report real token spend.
 type OrUsage = { prompt_tokens: number; completion_tokens: number };
+
+const DEFAULT_VERTEX_AGENT_MODEL = "gemini-3.7-flash";
+function vertexAgentModel(env: Env): string {
+  return String((env as any).AVA_VERTEX_TEXT_MODEL || "").trim() || DEFAULT_VERTEX_AGENT_MODEL;
+}
+
+/** Gemini-native Vertex function-calling adapter. The loops retain their
+ * established internal transcript shape; only this boundary converts roles,
+ * inline media, declarations and function responses for Google. */
+async function vertexStep(
+  env: Env, model: string, messages: any[], tools: any[],
+  opts?: { toolChoice?: any; timeoutMs?: number },
+): Promise<{ text: string; calls: OrCall[]; usage?: OrUsage; provider: "google_vertex" | "google_direct" }> {
+  const system = messages.filter((m) => m?.role === "system")
+    .map((m) => String(m?.content || "")).filter(Boolean).join("\n\n");
+  const contents = messages.filter((m) => m?.role !== "system").map((m) => {
+    if (m?.role === "tool") {
+      let response: any;
+      try { response = JSON.parse(String(m.content || "{}")); }
+      catch { response = { result: String(m.content || "") }; }
+      if (!response || typeof response !== "object") response = { result: response };
+      return { role: "user", parts: [{ functionResponse: { name: String(m.name || "tool"), response } }] };
+    }
+    const parts: any[] = [];
+    const raw = Array.isArray(m?.content) ? m.content : [{ type: "text", text: String(m?.content || "") }];
+    for (const p of raw) {
+      if (p?.type === "image_url") {
+        const hit = /^data:([^;]+);base64,(.+)$/s.exec(String(p?.image_url?.url || ""));
+        if (hit) parts.push({ inlineData: { mimeType: hit[1], data: hit[2] } });
+      } else if (typeof p?.text === "string" && p.text) parts.push({ text: p.text });
+    }
+    for (const tc of (m?.tool_calls ?? [])) {
+      let args: any = {};
+      try { args = JSON.parse(String(tc?.function?.arguments || "{}")); } catch { /* model args were already validated */ }
+      parts.push({ functionCall: { name: String(tc?.function?.name || ""), args } });
+    }
+    return { role: m?.role === "assistant" ? "model" : "user", parts: parts.length ? parts : [{ text: " " }] };
+  });
+  const functionDeclarations = (tools ?? []).map((t: any) => t?.function).filter(Boolean).map((f: any) => ({
+    name: f.name, description: f.description,
+    parameters: f.parameters || { type: "object", properties: {} },
+  }));
+  const forced = String(opts?.toolChoice?.function?.name || "").trim();
+  const body: any = {
+    ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+    contents,
+    generationConfig: { temperature: 0.35, maxOutputTokens: 1000, thinkingConfig: { thinkingLevel: "low" } },
+    ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}),
+    ...(forced ? { toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [forced] } } } : {}),
+  };
+  const r = await generateContentVia(env, model, body, "generateContent", { timeoutMs: opts?.timeoutMs ?? OR_STEP_TIMEOUT_MS });
+  if (!r.ok) throw new Error(`vertex ${r.status}: ${JSON.stringify(r.out?.error ?? r.out).slice(0, 220)}`);
+  const parts = r.out?.candidates?.[0]?.content?.parts ?? [];
+  const text = parts.map((p: any) => typeof p?.text === "string" ? p.text : "").join("").trim();
+  const calls: OrCall[] = parts.filter((p: any) => p?.functionCall?.name).map((p: any, i: number) => ({
+    id: `vertex_call_${i}`, name: String(p.functionCall.name), args: p.functionCall.args ?? {},
+  }));
+  const u = r.out?.usageMetadata ?? {};
+  if (!text && !calls.length) throw new Error("vertex empty: no text or function calls");
+  return {
+    text, calls, provider: r.via === "vertex" ? "google_vertex" : "google_direct",
+    usage: { prompt_tokens: Number(u.promptTokenCount ?? 0) || 0, completion_tokens: Number(u.candidatesTokenCount ?? 0) || 0 },
+  };
+}
+
 async function orStep(
   env: Env, model: string, messages: any[], tools: any[],
   opts?: { toolChoice?: any; timeoutMs?: number },
@@ -1045,12 +1104,10 @@ export async function runAppsToolLoop(
   // Phase 3: route a short single-verb read to the cheaper model; keep the smart
   // model for compound/long requests. Error-fallback (below) is unchanged.
   const simple = isSimpleRead(query);
-  const primaryModel = simple ? simpleModel(env) : orAgentModel(env);
+  const primaryModel = vertexAgentModel(env);
   if (stats) { stats.model = primaryModel; stats.routed_model = primaryModel; stats.route_reason = simple ? "simple" : "complex"; }
   const onRetry = stats?.onRetry;
   const emit = stats?.emit;
-  const orKey = (env as any).OPENROUTER_API_KEY ?? "";
-  if (!orKey) return "Ava apps are temporarily unavailable.";
   // [AVA-VOICE-STYLE-1] Started HERE, before the toolkit + declaration fetches,
   // so the KV get overlaps ~200ms of setup we were doing anyway and adds zero
   // measurable latency. Awaited only where `sys` is built, below.
@@ -1107,28 +1164,8 @@ export async function runAppsToolLoop(
 
     let r: { text: string; calls: OrCall[]; usage?: OrUsage };
     const s0 = Date.now();
-    if (stream?.onDelta) {
-      // Phase 5: stream this step's text live (reusing orStreamStep); on transport
-      // failure fall back to a reliable non-streamed step.
-      try { r = await orStreamStep(env, primaryModel, messages, tools, stream.onDelta); }
-      catch (e: any) {
-        const reason = classifyOrErr(e);
-        if (stats) { stats.fallback_used = true; stats.emit?.("avaapps_model_fallback", { primary_model: primaryModel, alt_model: orAgentModelAlt(env), reason, error: String(e?.message ?? e).slice(0, 200) }); }
-        // AVA-KIMI-TOOLS-1: restart THIS completion call on the ALT model — the
-        // accumulated `messages` (incl. any prior tool results in this loop) are
-        // kept as-is, only the model for the retry changes.
-        r = await orStep(env, orAgentModelAlt(env), messages, tools);
-      }
-    } else {
-      try { r = await orStep(env, primaryModel, messages, tools); }
-      catch (e: any) {
-        // Phase 4: log the PRIMARY-model failure reason BEFORE falling back, so the
-        // fallback no longer hides the root cause.
-        const reason = classifyOrErr(e);
-        if (stats) { stats.fallback_used = true; stats.emit?.("avaapps_model_fallback", { primary_model: primaryModel, alt_model: orAgentModelAlt(env), reason, error: String(e?.message ?? e).slice(0, 200) }); }
-        r = await orStep(env, orAgentModelAlt(env), messages, tools);
-      }
-    }
+    r = await vertexStep(env, primaryModel, messages, tools);
+    if (stream?.onDelta && r.text) await stream.onDelta(r.text);
     if (stats) {
       stats.steps = step + 1;
       stats.step_ms.push(Date.now() - s0);
@@ -1290,7 +1327,7 @@ export interface AgentLoopStats {
   fallback_reason: string | null;
 }
 export function newAgentLoopStats(): AgentLoopStats {
-  return { model_requested: "", model_actual: "", provider: "openrouter", input_tokens: 0, output_tokens: 0, fallback_reason: null };
+  return { model_requested: "", model_actual: "", provider: "google_vertex", input_tokens: 0, output_tokens: 0, fallback_reason: null };
 }
 
 // ---- [DYNW-CODEMODE-1] additive exports for the Code Mode lane ---------------
@@ -1423,9 +1460,7 @@ export async function runAgentLoop(
   // Ask for the minimum song brief before either the forced draft route or the
   // regular tool loop can run. This prevents an underspecified "make a song"
   // from becoming a generic lyrics draft or a false generation promise.
-  if (opts?.modelStats) opts.modelStats.model_requested = orAgentModel(env);
-  const orKey = (env as any).OPENROUTER_API_KEY ?? "";
-  if (!orKey) return "Ava is temporarily unavailable.";
+  if (opts?.modelStats) opts.modelStats.model_requested = vertexAgentModel(env);
   // Kicked off here so it overlaps the toolkit/declaration fetch below and adds
   // no serial latency to the turn. readVoiceStyle never throws.
   const stylePromise: Promise<AvaVoiceStyle> = opts?.style
@@ -1640,29 +1675,17 @@ export async function runAgentLoop(
   // formatting, not a transient. Both cost ~45 s worst case before the ALT model
   // is reached. A timeout/5xx still gets the primary once more (those genuinely
   // are transient, and the primary is the better model).
-  const once = async (forcedTool?: string, skipPrimary = false): Promise<{ calls: OrCall[]; text: string }> => {
-    let lastErr = "";
-    const candidates = skipPrimary ? [orAgentModelAlt(env)] : [orAgentModel(env), orAgentModelAlt(env)];
-    for (let i = 0; i < candidates.length; i++) {
-      const m = candidates[i];
-      try {
-        const tc = forcedTool ? { type: "function", function: { name: forcedTool } } : undefined;
-        const r = await orStep(env, m, messages, tools, { toolChoice: tc });
-        if (opts?.modelStats) {
-          opts.modelStats.model_actual = m;
-          opts.modelStats.input_tokens += r.usage?.prompt_tokens ?? 0;
-          opts.modelStats.output_tokens += r.usage?.completion_tokens ?? 0;
-        }
-        return { calls: r.calls, text: r.text };
-      } catch (e: any) {
-        lastErr = String(e?.message ?? e);
-        // Only the PRIMARY's failure names the fallback reason. With
-        // skipPrimary the single candidate is already the ALT, and the reason
-        // was recorded by whoever decided to skip.
-        if (opts?.modelStats && i === 0 && !skipPrimary) opts.modelStats.fallback_reason = classifyOrErr(e);
-      }
+  const once = async (forcedTool?: string, _skipPrimary = false): Promise<{ calls: OrCall[]; text: string }> => {
+    const model = vertexAgentModel(env);
+    const tc = forcedTool ? { type: "function", function: { name: forcedTool } } : undefined;
+    const r = await vertexStep(env, model, messages, tools, { toolChoice: tc });
+    if (opts?.modelStats) {
+      opts.modelStats.model_actual = model;
+      opts.modelStats.provider = r.provider;
+      opts.modelStats.input_tokens += r.usage?.prompt_tokens ?? 0;
+      opts.modelStats.output_tokens += r.usage?.completion_tokens ?? 0;
     }
-    throw new Error(lastErr || "openrouter unreachable");
+    return { calls: r.calls, text: r.text };
   };
 
   let imageStarted = false; // one image generation per turn (avoid loops/dupes)
@@ -1747,26 +1770,8 @@ export async function runAgentLoop(
     if (forcedTurn) {
       calls = forcedTurn.calls; text = forcedTurn.text; forcedTurn = null;
     } else if (opts?.onDelta) {
-      // Stream this step's text live; on transport failure, fall back to a
-      // reliable non-streamed step (no live deltas, but the turn still answers).
-      const streamModel = orAgentModel(env);
-      try {
-        const r = await orStreamStep(env, streamModel, messages, tools, opts.onDelta);
-        calls = r.calls; text = r.text;
-        if (opts?.modelStats) {
-          opts.modelStats.model_actual = streamModel;
-          opts.modelStats.input_tokens += r.usage?.prompt_tokens ?? 0;
-          opts.modelStats.output_tokens += r.usage?.completion_tokens ?? 0;
-        }
-      } catch (e: any) {
-        const reason = classifyOrErr(e);
-        if (opts?.modelStats) opts.modelStats.fallback_reason = opts.modelStats.fallback_reason || reason;
-        // [AVA-TOOL-BACKOFF-1 / WS-13b] a 429 or a malformed tool-call parse on
-        // the primary means "do not ask this model again right now" — go to the
-        // ALT directly instead of paying for the primary a third time. See once().
-        const r = await once(undefined, reason === "429" || reason === "parse");
-        calls = r.calls; text = r.text;
-      }
+      const r = await once(); calls = r.calls; text = r.text;
+      if (text) await opts.onDelta(text);
     } else {
       const r = await once(); calls = r.calls; text = r.text;
     }

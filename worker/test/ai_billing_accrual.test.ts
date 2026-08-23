@@ -51,6 +51,11 @@ describe("AI_MARKUP_BPS — owner pricing decision, Part VIII §61", () => {
 });
 
 describe("2026-07-25 price-catalog additions ([AI-PRICE-CATALOG-1] prerequisite)", () => {
+  it("gemini-3.7-flash: Vertex introductory $0.75 in / $3.75 out per 1M", () => {
+    const r = rateFor("gemini-3.7-flash");
+    expect(r.inPerM).toBe(750_000);
+    expect(r.outPerM).toBe(3_750_000);
+  });
   it("deepseek/deepseek-v4-flash: $0.0938 in / $0.1876 out per 1M", () => {
     const r = rateFor("deepseek/deepseek-v4-flash");
     expect(r).toBe(AI_PRICE_CATALOG["deepseek/deepseek-v4-flash"]);
