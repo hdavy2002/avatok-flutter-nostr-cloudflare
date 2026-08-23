@@ -22,7 +22,9 @@ void main() {
       reason: 'DM and group paths must both treat media-job envelopes as non-visual',
     );
     expect(
-      RegExp(r'if \(isMediaJobEnvelope\) unawaited\(_hydrateAiJobFromEnvelope\(extra\)\);')
+      RegExp(
+        r'if \(isMediaJobEnvelope\) \{\s*unawaited\(_hydrateAiJobFromEnvelope\(extra, timelineTs: m\.createdAt\)\);\s*\}',
+      )
           .allMatches(inbound)
           .length,
       2,
