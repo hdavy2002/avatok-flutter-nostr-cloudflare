@@ -30,6 +30,8 @@ describe("public Ava media collaboration", () => {
     expect(agent).toContain("shared_image_suggestion:");
     expect(agent).toContain("PUBLIC SHARED AVA TURN");
     expect(agent).toContain("Never say you will remind or relay this to the other person");
+    expect(agent).toContain("ava_shared_reply_deflection_blocked");
+    expect(agent).toContain('&& !publicShared');
   });
 
   it("shows reference ingestion and routes readable audio correctly", () => {

@@ -62,6 +62,8 @@ type RouteTurnProps = {
   duration_ms: number;
   error_category?: string;
   do_ok?: boolean;
+  shared_role?: "initiator" | "participant";
+  media_kind?: "song" | "video" | "image" | "general";
 };
 
 // Route telemetry deliberately knows nothing about raw text or conversation IDs.
@@ -195,9 +197,11 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
           await touchGroupMediaSession(env, conv, activeSession);
         }
         if (speaker && activeSession) await touchGroupMediaSession(env, conv, activeSession);
-        if (speaker) {
+        if (activeSession) {
           execCtx.waitUntil(emailP.then((email) => trackRouteTurn(env, ctx.uid, email, "ava_group_media_session", {
             ...routeProps, status: 202, duration_ms: Date.now() - t0,
+            shared_role: speaker ? "participant" : "initiator",
+            media_kind: activeSession.media_kind ?? "general",
           })));
         }
       }

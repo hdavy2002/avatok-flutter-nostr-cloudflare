@@ -1362,6 +1362,8 @@ export class AvaAgentDO {
       ? `${speaker.name || "A participant"} (public chat participant, not the media payer) says: ${rawUserText}`
       : rawUserText;
     const initiatorName = b.initiator?.name ? String(b.initiator.name).slice(0, 60) : "the person who started it";
+    const publicShared = !priv && !!String(b.initiator?.uid || "").trim();
+    const currentSpeakerName = speaker?.name || (publicShared ? initiatorName : null);
     const sharedImageSuggestionKey = `shared_image_suggestion:${conv}`;
     // Image generation is normally immediate. In a public collaborative image
     // session, a participant's edit becomes a saved suggestion instead of a
@@ -1547,6 +1549,17 @@ export class AvaAgentDO {
     await trackUserContact(this.env, uid, email, phone, "ava_thread_turn", "avaai", {
       turn_id: statusId, conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
     }).catch(() => {});
+    const guardSharedParticipantReply = async (answer: string, lane: "plain" | "tools"): Promise<string> => {
+      if (!publicShared || !/\b(?:i(?:'ll| will) (?:remind|tell|relay)|he(?:'ll| will) get back|your (?:message|request) (?:has been|is) (?:seen|read)|hold (?:on|tight).{0,40}(?:he|she|they)(?:'ll| will))\b/i.test(answer)) {
+        return answer;
+      }
+      await trackUserContact(this.env, uid, email, phone, "ava_shared_reply_deflection_blocked", "avaai", {
+        conv_kind: convKind, turn_id: statusId, lane,
+      }).catch(() => {});
+      const addressed = currentSpeakerName ? `@${currentSpeakerName}, ` : "";
+      return `${addressed}I’m part of this conversation and following the shared discussion directly. `
+        + "I’ve added your latest direction to our working brief and will develop it here with everyone—not relay it through someone else.";
+    };
 
     // Public collaboration is shared, but spending authority is not. Handle a
     // guest's approval deterministically before any interview/tool model can
@@ -2482,7 +2495,7 @@ export class AvaAgentDO {
       // tokens and moderate before the first frame — not to silently delete the
       // streaming. Take it to the owner first.
       // ---------------------------------------------------------------------
-      const streaming = (this.env as any).AVA_STREAM_OFF !== "1";
+      const streaming = (this.env as any).AVA_STREAM_OFF !== "1" && !publicShared;
       let started = false;
       let pending = "";
       let ttfbMs = 0;
@@ -2617,7 +2630,7 @@ export class AvaAgentDO {
         const snippets = memSettled.value; // F1 — also emits ava_memory_context
         const summaryNow = this.summaryRow(conv).summary;
         const { sys: sysBase, user } = this.buildPrompt(
-          summaryNow, window, userText, snippets, false, attachments, facts, speaker?.name,
+          summaryNow, window, userText, snippets, false, attachments, facts, currentSpeakerName,
         );
         // [AVA-VOICE-STYLE-1 / WS-14] Appended LAST — after this lane's persona
         // AND after its safety rules, so it is the most recent instruction the
@@ -2726,6 +2739,7 @@ export class AvaAgentDO {
         // own) and terminate the preview before the durable answer is posted.
         if (streaming) { await flush(); if (started) await this.streamFrame(uid, conv, statusId, "end", ""); }
         let answer = guardOutput(g.text); // F8 minimal output guard
+        answer = await guardSharedParticipantReply(answer, "plain");
         if (!answer) answer = avaString("err_unavailable", style, userText);
         const outputSafety = await safetyVerdict(this.env, answer);
         const moderationOutputTokens = outputSafety.providerCalled ? estimateTokens(answer) : 0;
@@ -2806,9 +2820,9 @@ export class AvaAgentDO {
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
       let ctx = window.map((w) => `${w.ava ? "Ava" : (w.mine ? "User" : "Other")}: ${w.text}`).join("\n");
-      if (speaker) {
-        ctx += `\n\nPUBLIC SHARED AVA TURN: ${speaker.name || "A participant"} addressed Ava in the shared thread. `
-          + `Reply to ${speaker.name || "that participant"} directly and naturally (use @${speaker.name || "them"} when useful). `
+      if (publicShared) {
+        ctx += `\n\nPUBLIC SHARED AVA TURN: ${currentSpeakerName || "A participant"} addressed Ava in the shared thread. `
+          + `Reply to ${currentSpeakerName || "that participant"} directly and naturally (use @${currentSpeakerName || "them"} when useful). `
           + "Act as a third participant who has followed the recent transcript. Continue the actual discussion and combine ideas from everyone; do not become a messenger, say you will remind the other person, or give presence commentary unless explicitly asked.";
       }
 
@@ -3159,6 +3173,7 @@ export class AvaAgentDO {
       // already sent live via streamFrame above; the guard does not retroactively
       // scrub it — only the persisted final message. TODO(F8): full gateway.
       else answer = guardOutput(answer);
+      answer = await guardSharedParticipantReply(answer, "tools");
 
       // AVA-KIMI-TOOLS-1: model/token/fallback telemetry for the TOOL-calling
       // lane — the counterpart to the plain-chat lane's ava_thread_turn_model
