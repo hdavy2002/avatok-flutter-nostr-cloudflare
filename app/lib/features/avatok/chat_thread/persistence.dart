@@ -33,6 +33,10 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
         .map((m) => m.cacheIdentity)
         .toSet();
     for (final j in cached) {
+      // `ai_job` rows are derived from the durable job repository and original
+      // lifecycle envelope. Older builds cached rows bulk-injected for every
+      // historical job, producing a media wall that buried the text timeline.
+      if (j['special'] == 'ai_job') continue;
       final ev = j['evId'] as String?;
       if (ev != null) {
         if (_seenEv.contains(ev)) continue;
@@ -182,6 +186,7 @@ extension _ChatThreadPersistence on _ChatThreadScreenState {
     final out = <Map<String, dynamic>>[];
     for (final m in _msgs) {
       if (m.text.contains('"t":"receipt"')) continue; // never cache a stray receipt
+      if (m.special == 'ai_job') continue; // derived, never independent message history
       // [MSG-OUTBOX-1] PERSIST failed / still-sending messages instead of dropping
       // them. The old `if (m.uploading || m.failed) continue;` is exactly why a DM
       // that failed to POST silently vanished from the sender's own thread on

@@ -248,14 +248,10 @@ extension _ChatThreadSetup on _ChatThreadScreenState {
     final key = _convKey;
     if (key == null) return;
     // [AVA-MEDIA-JOB-2] Hydrate + reconcile this conversation's durable AI
-    // media jobs (image/doc/audio) now that a conv id is known, then
-    // explicitly seed a card for every job already known — required even
-    // though [_bindAiJobs]'s update stream ALSO fires on hydrate/reconcile,
-    // because a job whose state hasn't changed since a prior visit this
-    // session is a no-op in the repository's dedup (`_apply` only notifies on
-    // a VISIBLE change) and would otherwise never get a card in a freshly
-    // rebuilt `_msgs` list. Fire-and-forget: never blocks the rest of this
-    // thread's setup.
+    // media jobs now that a conv id is known. Only unfinished work may seed a
+    // standalone card; completed jobs are anchored by their original message
+    // envelope so repository hydration cannot replace the chat with media.
+    // Fire-and-forget: never blocks the rest of this thread's setup.
     unawaited(_openAiJobs(_serverConvId ?? key));
     final draft = (await DraftStore().load())[key];
     final timer = (await ChatTimerStore().load())[key];

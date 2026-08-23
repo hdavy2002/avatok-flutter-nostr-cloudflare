@@ -222,13 +222,14 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   // touch it, regardless of how many other messages arrive in between.
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Hydrate + reconcile [convId]'s jobs, then seed a card for every job the
-  /// repository already knows about (see the call site's note on why explicit
-  /// seeding is required in addition to the update stream).
+  /// Hydrate + reconcile [convId]'s jobs, then seed only work that is still in
+  /// progress. Terminal jobs are restored by their original lifecycle envelope
+  /// in the message timeline; injecting every historical job here creates a
+  /// second, media-only timeline and buries the user's text history.
   Future<void> _openAiJobs(String convId) async {
     await AiMediaJobRepository.I.openConversation(convId);
     if (!mounted) return;
-    for (final j in AiMediaJobRepository.I.jobsFor(convId)) {
+    for (final j in AiMediaJobRepository.I.jobsFor(convId).where((j) => j.isWorking)) {
       _upsertJobMessage(j);
     }
   }
@@ -289,6 +290,11 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       }
       final job = u.job;
       if (job == null || job.convId != convId) return;
+      // Terminal jobs may update a card already anchored by a lifecycle
+      // envelope, but repository hydration must never manufacture a new row.
+      final hasCard = _msgs.any(
+          (m) => m.special == 'ai_job' && m.extra?['job_id'] == job.jobId);
+      if (job.isTerminal && !hasCard) return;
       _upsertJobMessage(job);
     });
   }
@@ -300,9 +306,6 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// alone invalidates the per-row cache and repaints the card with the job's
   /// new state.
   void _upsertJobMessage(AiMediaJob job) {
-    if (job.kind == AiMediaJobKind.musicGenerate && job.isSucceeded) {
-      unawaited(_prepareMusicForDisplay(job));
-    }
     _mutMsgs(() {
       // The legacy image producer emits an early ava_status card before the
       // durable job id exists. Once the job card is hydrated, retire that
