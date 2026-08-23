@@ -164,11 +164,6 @@ export function classifySongRequest(text: string): SongRequestKind | null {
   const noVocals = /\b(?:instrumental|beat|no\s+(?:singing|vocals?|lyrics)|without\s+(?:singing|vocals?|lyrics))\b/.test(t);
   if (noVocals && !/\b(?:lyrics?|singer|sing(?:ing)?|vocal song)\b/.test(t)) return "instrumental";
   if (/\b(?:song|lyrics?|singer|sing(?:ing)?|vocals?|voice)\b/.test(t)) return "vocal";
-  // Shared brainstorming continuations often omit "song": "create a slow
-  // hopeful intro, acoustic rock". Creation plus unmistakably musical
-  // vocabulary must stay in the song lane instead of generic chat.
-  const musicalDirection = /\b(?:acoustic|rock|metal|guitar|riff|chorus|verse|bridge|outro|intro|melody|tempo|bpm|soulful|anthem|ballad|vocal|singer)\b/.test(t);
-  if (musicalDirection) return "vocal";
   // [SONG-VOCAL-DEFAULT-1] "Music" and "track" are ambiguous, not synonyms
   // for instrumental. The product default is a lyrics-based song; a wordless
   // result now requires an explicit instrumental/no-vocals/beat signal above.

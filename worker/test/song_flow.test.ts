@@ -37,8 +37,6 @@ describe("AI-led song flow guardrails", () => {
     expect(classifySongRequest("make another in Hindi with a female voice and rock music")).toBe("vocal");
     expect(classifySongRequest("make soft rock music about AvaTOK")).toBe("vocal");
     expect(classifySongRequest("make soft rock music with no vocals")).toBe("instrumental");
-    expect(classifySongRequest("create a slow, hopeful intro, acoustic rock")).toBe("vocal");
-    expect(classifySongRequest("make the guitar riff heavier with a hopeful outro")).toBe("vocal");
     expect(classifySongRequest("I listened to a reggae song")).toBeNull();
   });
 

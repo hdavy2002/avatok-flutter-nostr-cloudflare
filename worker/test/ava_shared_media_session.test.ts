@@ -23,15 +23,16 @@ describe("public Ava media collaboration", () => {
     expect(route).not.toContain("agentOf(env, ctx.uid).fetch");
   });
 
-  it("blocks guest spending by server rule and names the initiator", () => {
+  it("uses one AI-led brainstorm while enforcing payer approval", () => {
     const agent = readFileSync("src/do/ava_agent.ts", "utf8");
     expect(agent).toContain("speaker && looksLikeMediaApproval(rawUserText)");
     expect(agent).toContain("only ${initiatorName} can give the final go-ahead");
-    expect(agent).toContain("shared_image_suggestion:");
-    expect(agent).toContain("PUBLIC SHARED AVA TURN");
-    expect(agent).toContain("Never say you will remind or relay this to the other person");
-    expect(agent).toContain("ava_shared_reply_deflection_blocked");
-    expect(agent).toContain('&& !publicShared');
+    expect(agent).toContain("callSharedBrainstorm");
+    expect(agent).toContain("shared_brainstorm:${conv}");
+    expect(agent).toContain('capability: "shared_brainstorm"');
+    expect(agent).toContain('brainstorm.creationType === "song"');
+    expect(agent).not.toContain("shared_image_suggestion:");
+    expect(agent).not.toContain("ava_shared_reply_deflection_blocked");
   });
 
   it("shows reference ingestion and routes readable audio correctly", () => {
