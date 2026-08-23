@@ -31,6 +31,9 @@ describe("public Ava media collaboration", () => {
     expect(agent).toContain("shared_brainstorm:${conv}");
     expect(agent).toContain('capability: "shared_brainstorm"');
     expect(agent).toContain('brainstorm.creationType === "song"');
+    expect(agent).toContain('userText = `Create a ${brainstorm.creationType}.');
+    expect(agent).toContain("safetyP = null");
+    expect(agent).toContain("must never claim generation has started");
     expect(agent).not.toContain("shared_image_suggestion:");
     expect(agent).not.toContain("ava_shared_reply_deflection_blocked");
   });

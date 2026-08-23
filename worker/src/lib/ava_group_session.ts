@@ -67,7 +67,7 @@ export function looksLikeMediaApproval(text: string): boolean {
     .replace(/^\s*[@#]ava(?:!|\b)\s*/i, "")
     .trim()
     .toLowerCase();
-  return /^(?:yes[,.! ]*)?(?:go ahead|proceed|approved?|do it|make it|create it|generate it|start it|looks? good|that(?:'s| is) (?:good|perfect)|i(?:'m| am) happy)(?:\s+(?:please|now))?[.!]*$/i.test(clean);
+  return /^(?:yes[,.! ]*)?(?:go ahead|proceed|approved?|do it|make it|create it|generate it|start it|looks? (?:good|perfect)|that(?:'s| is) (?:good|perfect)|i(?:'m| am) happy)(?:\s+(?:please|now))?[.!]*$/i.test(clean);
 }
 
 export async function touchGroupMediaSession(env: Env, conv: string, session: GroupMediaSession): Promise<void> {
