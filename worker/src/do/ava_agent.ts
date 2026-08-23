@@ -897,10 +897,14 @@ export class AvaAgentDO {
     attachments: { mine: boolean; name: string; kind: string; mime: string }[] = [],
     // [AVA-PRESENCE-1 / WS-16] The compact facts block from buildFacts(), or "".
     facts = "",
+    sharedSpeakerName?: string | null,
   ): { sys: string; user: string } {
     const sys = [
       "You are Ava, a warm, concise in-chat assistant living inside the user's conversation.",
       "Answer the user's latest request directly and helpfully in a few sentences.",
+      sharedSpeakerName
+        ? `This is a PUBLIC shared Ava conversation. ${sharedSpeakerName} addressed you now. You are a third participant who has followed the recent transcript: respond directly to ${sharedSpeakerName}, combine ideas from everyone, and continue the real topic. Never say you will remind or relay this to the other person, and never volunteer presence/read-status commentary unless asked.`
+        : "",
       search ? "You can use Google Search for up-to-date facts; be accurate, mention specifics, and stay concise." : "",
       attachments.length ? "Files shared in THIS chat are listed below. You can see their names and types but cannot open their encrypted contents from here. If the user refers to one, acknowledge it by name and help — offer to summarize it if they paste the text, find it in their Gmail or Drive, or save it. NEVER reply that you have no access to their files or attachments." : "",
       // [AVA-PRESENCE-1 / WS-16] Deliberately an instruction about HOW to use the
@@ -1336,7 +1340,7 @@ export class AvaAgentDO {
   }
 
   // ---- the turn ---------------------------------------------------------------
-  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string; speaker?: { uid?: string; name?: string | null }; initiator?: { uid?: string; name?: string | null; mediaKind?: "song" | "video" | "image" } }): Promise<any> {
+  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string; speaker?: { uid?: string; name?: string | null }; initiator?: { uid?: string; name?: string | null; mediaKind?: "song" | "video" | "image" }; forceGeneral?: boolean }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
     const rawUserText = String(b.text || "").trim();
@@ -1353,7 +1357,7 @@ export class AvaAgentDO {
       ? { uid: String(b.speaker.uid).trim(), name: b.speaker.name ? String(b.speaker.name).slice(0, 60) : null }
       : null;
     let userText = speaker
-      ? `${speaker.name || "A group member"} (group member, not the session owner) says: ${rawUserText}`
+      ? `${speaker.name || "A participant"} (public chat participant, not the media payer) says: ${rawUserText}`
       : rawUserText;
     const initiatorName = b.initiator?.name ? String(b.initiator.name).slice(0, 60) : "the person who started it";
     const sharedImageSuggestionKey = `shared_image_suggestion:${conv}`;
@@ -1415,8 +1419,8 @@ export class AvaAgentDO {
     // delete: the loser keeps its state for when its own conversation resumes.
     const songLaneActive = !!songFlow && songFlow.phase !== "completed";
     const videoLaneActive = !!videoFlow && videoFlow.phase === "discovering";
-    let skipSongLane = false;
-    let skipVideoLane = false;
+    let skipSongLane = !!b.forceGeneral;
+    let skipVideoLane = !!b.forceGeneral;
     if (songLaneActive && videoLaneActive) {
       if (preferMostRecentLane(songFlow?.updatedAt, videoFlow?.updatedAt) === "song") skipVideoLane = true;
       else skipSongLane = true;
@@ -1426,18 +1430,9 @@ export class AvaAgentDO {
       : nextSongFlow(songFlow, userText);
     let pendingVideoFlow = skipVideoLane ? null : nextVideoFlow(videoFlow, userText);
 
-    // [AVA-GROUP-SESSION-1] A guest speaker may only feed an ACTIVE song/video
-    // conversation on this (owner's) agent. No active flow → the session
-    // pointer is stale; tell the route to run this turn on the speaker's own
-    // agent instead. Returned before any chip/spend so nothing is half-posted.
-    if (speaker) {
-      const songActive = !!songFlow && songFlow.phase !== "completed";
-      const videoActive = !!videoFlow && videoFlow.phase === "discovering";
-      const sharedImageActive = b.initiator?.mediaKind === "image";
-      if (!songActive && !videoActive && !sharedImageActive) {
-        return { ok: true, deferred_to_speaker: true, reason: "no_active_flow" };
-      }
-    }
+    // A public participant remains on this shared conversational agent even
+    // when no media flow is active. This is what makes Ava a third participant
+    // with one transcript, rather than two unrelated personal assistants.
 
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
@@ -2193,15 +2188,6 @@ export class AvaAgentDO {
         }
       }
 
-      // [AVA-GROUP-SESSION-1] A guest turn that reaches the general lane (for
-      // example while a song is mid-generation) must never run — and bill — on
-      // the owner's account. Defer without clearing the session.
-      if (speaker) {
-        const chipGuardR = await chipP;
-        if (chipGuardR.ok) await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
-        return { ok: true, status_id: statusId, deferred_to_speaker: true, reason: "not_media_turn" };
-      }
-
       const [chipR, winR, premiumR] = await Promise.all([chipP, windowP, premiumP]);
       // postStatus used to be awaited OUTSIDE this try, so a members() D1 failure
       // escaped turn() entirely and the caller got a bare 500 with the chip never
@@ -2626,7 +2612,9 @@ export class AvaAgentDO {
         if (!memSettled.ok) throw memSettled.error;
         const snippets = memSettled.value; // F1 — also emits ava_memory_context
         const summaryNow = this.summaryRow(conv).summary;
-        const { sys: sysBase, user } = this.buildPrompt(summaryNow, window, userText, snippets, false, attachments, facts);
+        const { sys: sysBase, user } = this.buildPrompt(
+          summaryNow, window, userText, snippets, false, attachments, facts, speaker?.name,
+        );
         // [AVA-VOICE-STYLE-1 / WS-14] Appended LAST — after this lane's persona
         // AND after its safety rules, so it is the most recent instruction the
         // model sees and it ADDS to them rather than replacing anything. Same
@@ -2814,6 +2802,11 @@ export class AvaAgentDO {
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
       let ctx = window.map((w) => `${w.ava ? "Ava" : (w.mine ? "User" : "Other")}: ${w.text}`).join("\n");
+      if (speaker) {
+        ctx += `\n\nPUBLIC SHARED AVA TURN: ${speaker.name || "A participant"} addressed Ava in the shared thread. `
+          + `Reply to ${speaker.name || "that participant"} directly and naturally (use @${speaker.name || "them"} when useful). `
+          + "Act as a third participant who has followed the recent transcript. Continue the actual discussion and combine ideas from everyone; do not become a messenger, say you will remind the other person, or give presence commentary unless explicitly asked.";
+      }
 
       // Attachment awareness: tell the agent which files were shared in this chat
       // and the details it needs to ACT on them (name, type, storage key, and any

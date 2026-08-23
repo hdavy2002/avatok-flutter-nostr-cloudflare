@@ -1,10 +1,8 @@
 // [AVA-GROUP-SESSION-1 2026-08-16] Shared public media sessions.
 //
-// Owner decision 2026-08-16: in a GROUP thread, the person who initiates a
-// public (#ava) song/video creation owns the session and pays for it; other
-// members' public #ava turns JOIN that conversation (routed to the initiator's
-// AvaAgentDO) instead of spawning a parallel per-user Ava, and only the
-// initiator can approve the paid generate step.
+// In a public (#ava) DM or group thread, Ava is one shared third participant.
+// The first public summon anchors conversational state. When paid media starts,
+// that creator owns the spend and final approval while everyone may brainstorm.
 //
 // This module is only the durable session pointer: WHICH user's AvaAgentDO a
 // group's public media turns should route to. The conversation state itself

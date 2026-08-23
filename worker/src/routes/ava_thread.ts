@@ -17,12 +17,12 @@ import { requireUser, isFail, dmConvId } from "../authz";
 import { getStoreName } from "../lib/ava_rag";
 import { track, trackUser } from "../hooks";
 import { emailFor, nameFor } from "../lib/identity";
-// [AVA-GROUP-SESSION-1] shared group song/video sessions — see lib/ava_group_session.ts
+// [AVA-GROUP-SESSION-1] shared public Ava sessions — see lib/ava_group_session.ts
 import { readConfig } from "./config";
 import { classifySongRequest } from "../lib/song_flow";
 import { looksLikeImageRequest, looksLikeVideoRequest } from "../lib/composio";
 import {
-  readGroupMediaSession, writeGroupMediaSession, touchGroupMediaSession, clearGroupMediaSession,
+  readGroupMediaSession, writeGroupMediaSession, touchGroupMediaSession,
   type GroupMediaSession,
 } from "../lib/ava_group_session";
 
@@ -145,9 +145,9 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
   let store = String(b.store ?? "").trim();
   if (!store && byoKey) store = (await getStoreName(env, ctx.uid).catch(() => null)) || "";
 
-  // [AVA-GROUP-SESSION-1] In any PUBLIC thread with an active shared media
-  // session, another member's PUBLIC #ava turn is routed to the INITIATOR'S
-  // AvaAgentDO (their conversation, their wallet) with the speaker attached.
+  // [AVA-GROUP-SESSION-1] Public Ava is one shared third participant in the
+  // thread. The first public summon anchors conversational state; subsequent
+  // public turns from either side use the same AvaAgentDO and recent transcript.
   // Private @ava turns never join the shared session. Membership is verified
   // before any cross-user forward, and the guest's BYO key/store are dropped —
   // the owner's tier governs the shared conversation.
@@ -159,16 +159,38 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
       const cfg = await readConfig(env);
       if (cfg.groupSharedMediaSessionEnabled === true) {
         activeSession = await readGroupMediaSession(env, conv);
+        const requestedKind = classifySongRequest(text) ? "song"
+          : looksLikeVideoRequest(text) ? "video"
+            : looksLikeImageRequest(text) ? "image" : undefined;
+        // A general public-Ava conversation has no payer yet. If another member
+        // becomes the first person to request paid media, move the anchor to
+        // them before dispatch so their own wallet and approval own that job.
+        if (activeSession && !activeSession.media_kind && requestedKind && activeSession.owner_uid !== ctx.uid) {
+          const ownerName = await nameFor(env, ctx.uid).catch(() => null);
+          await writeGroupMediaSession(env, conv, ctx.uid, ownerName, requestedKind);
+          activeSession = {
+            owner_uid: ctx.uid, owner_name: ownerName, media_kind: requestedKind,
+            started_at: Date.now(), updated_at: Date.now(),
+          };
+        }
+        if (activeSession && !activeSession.media_kind && requestedKind && activeSession.owner_uid === ctx.uid) {
+          await writeGroupMediaSession(env, conv, ctx.uid, activeSession.owner_name, requestedKind);
+          activeSession = { ...activeSession, media_kind: requestedKind, updated_at: Date.now() };
+        }
         if (activeSession && activeSession.owner_uid !== ctx.uid) {
           if (await isConvMember(env, conv, ctx.uid)) {
             targetUid = activeSession.owner_uid;
             speaker = { uid: ctx.uid, name: await nameFor(env, ctx.uid).catch(() => null) };
           }
-        } else if (!activeSession && (classifySongRequest(text) || looksLikeVideoRequest(text) || looksLikeImageRequest(text))) {
-          const mediaKind = classifySongRequest(text) ? "song" : looksLikeVideoRequest(text) ? "video" : "image";
+        } else if (!activeSession) {
+          const ownerName = await nameFor(env, ctx.uid).catch(() => null);
           await writeGroupMediaSession(
-            env, conv, ctx.uid, await nameFor(env, ctx.uid).catch(() => null), mediaKind,
+            env, conv, ctx.uid, ownerName, requestedKind,
           );
+          activeSession = {
+            owner_uid: ctx.uid, owner_name: ownerName, media_kind: requestedKind,
+            started_at: Date.now(), updated_at: Date.now(),
+          };
         } else if (activeSession) {
           await touchGroupMediaSession(env, conv, activeSession);
         }
@@ -207,22 +229,14 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
       body: JSON.stringify(body),
     });
     out = await res.json();
-    // The owner's agent had no active song/video conversation (or the guest
-    // changed topic): hand the turn back to the guest's OWN agent so their
-    // question gets a normal personal answer on their own account.
+    // If an active media interview identifies a real topic switch, retry on the
+    // SAME shared agent with media lanes bypassed. Never fall back to a separate
+    // personal Ava: that loses the thread transcript and turns Ava into a
+    // messenger between participants.
     if (speaker && out?.deferred_to_speaker) {
-      if (out.reason === "no_active_flow") {
-        await clearGroupMediaSession(env, conv).catch(() => {});
-        if (classifySongRequest(text) || looksLikeVideoRequest(text) || looksLikeImageRequest(text)) {
-          const mediaKind = classifySongRequest(text) ? "song" : looksLikeVideoRequest(text) ? "video" : "image";
-          await writeGroupMediaSession(
-            env, conv, ctx.uid, await nameFor(env, ctx.uid).catch(() => null), mediaKind,
-          ).catch(() => {});
-        }
-      }
-      const res2 = await agentOf(env, ctx.uid).fetch("https://ava-agent/turn", {
+      const res2 = await agentOf(env, targetUid).fetch("https://ava-agent/turn", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ conv, uid: ctx.uid, text, private: priv, key: byoKey, store }),
+        body: JSON.stringify({ ...body, forceGeneral: true }),
       });
       out = await res2.json();
     }

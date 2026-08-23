@@ -18,7 +18,9 @@ describe("public Ava media collaboration", () => {
     expect(route).toContain('conv.slice(3).split("__")');
     expect(route).toContain("looksLikeImageRequest(text)");
     expect(route).toContain("activeSession.owner_uid");
+    expect(route).toContain("forceGeneral: true");
     expect(route).not.toContain('if (!priv && conv.startsWith("g_"))');
+    expect(route).not.toContain("agentOf(env, ctx.uid).fetch");
   });
 
   it("blocks guest spending by server rule and names the initiator", () => {
@@ -26,5 +28,7 @@ describe("public Ava media collaboration", () => {
     expect(agent).toContain("speaker && looksLikeMediaApproval(rawUserText)");
     expect(agent).toContain("only ${initiatorName} can give the final go-ahead");
     expect(agent).toContain("shared_image_suggestion:");
+    expect(agent).toContain("PUBLIC SHARED AVA TURN");
+    expect(agent).toContain("Never say you will remind or relay this to the other person");
   });
 });
