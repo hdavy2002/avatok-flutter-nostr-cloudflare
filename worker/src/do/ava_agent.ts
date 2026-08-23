@@ -1343,7 +1343,9 @@ export class AvaAgentDO {
   private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string; speaker?: { uid?: string; name?: string | null }; initiator?: { uid?: string; name?: string | null; mediaKind?: "song" | "video" | "image" }; forceGeneral?: boolean }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
-    const rawUserText = String(b.text || "").trim();
+    const rawRequestText = String(b.text || "").trim();
+    const referenceIngest = rawRequestText.includes("__AVA_REFERENCE_INGEST__");
+    const rawUserText = rawRequestText.replace(/__AVA_REFERENCE_INGEST__/g, "").trim();
     const priv = !!b.private;
     const byoKey = String(b.key || "").trim();
     const store = String(b.store || "").trim();
@@ -1476,7 +1478,9 @@ export class AvaAgentDO {
     // client closes a chip by (status_id + label), so a 'start' and an 'end' that
     // disagree leave a working pill spinning forever. Hence a promise threaded
     // through, not two calls.
-    const chipLabelP: Promise<string> = styleP.then((s) => avaString("chip_working", s, userText));
+    const chipLabelP: Promise<string> = referenceIngest
+      ? Promise.resolve("Ava is ingesting the reference…")
+      : styleP.then((s) => avaString("chip_working", s, userText));
     // The "working…" chip (transient broadcast where possible, persisted
     // fallback so the FROZEN chat_thread.dart always renders it). It now waits on
     // styleP — one KV get in front of the chip fan-out and nothing else, because
@@ -2961,18 +2965,27 @@ export class AvaAgentDO {
               if (Number(row.encrypted) === 1) {
                 return "That attachment is end-to-end encrypted. I need your approval to create a temporary server-readable copy before I can analyze it.";
               }
-              const kind = action === "translate" ? "doc_translate" : "doc_summarize";
+              const audio = selected.kind === "audio" || selected.mime.startsWith("audio/");
+              const kind = audio
+                ? (action === "translate" ? "audio_translate" : "audio_transcribe")
+                : (action === "translate" ? "doc_translate" : "doc_summarize");
               const created = await createAiMediaJob(this.env, {
                 ownerUid: uid, convId: conv, sourceMediaId: row.id, kind,
                 targetLanguage: action === "translate" ? (targetLanguage || "en") : null,
-                label: action === "translate" ? `Translating ${selected.name}…` : `Summarizing ${selected.name}…`,
+                label: audio
+                  ? (action === "translate" ? `Translating ${selected.name}…` : `Transcribing ${selected.name}…`)
+                  : (action === "translate" ? `Translating ${selected.name}…` : `Ingesting ${selected.name}…`),
                 email,
               });
               if (!created.ok) return created.error === "AI_INSUFFICIENT_TOKENS"
                 ? "You don't have enough AI allowance for that file right now."
                 : "I couldn't start processing that file right now.";
               await this.env.Q_AI_MEDIA.send({ job_id: created.job.job_id, kind });
-              return { job_id: created.job.job_id, status: action === "translate" ? "Translation started." : "Summary started." };
+              return {
+                job_id: created.job.job_id,
+                status: action === "translate" ? "Translation started."
+                  : audio ? "Transcription started." : "Reference ingestion started.",
+              };
             },
             // In-thread image gen. All gating (premium + per-user daily allowance)
             // lives in runAvaImage, keyed to THIS caller. PRIVACY: pass `private`

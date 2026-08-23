@@ -1304,23 +1304,27 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     // ONE message: photo + caption together (awaits upload + delivery so the
     // attachment is on the InboxDO before we summon Ava below).
     await _sendMedia(MediaKind.image, bytes, ct, name, caption: c);
-    if (c.isEmpty) return;
-    // Index the caption into the user's own RAG store (same as a normal line),
-    // but skip @ava control lines.
-    _ragAddLine('You', c);
-    // If the caption summons Ava (@ava / #ava / Ava-mode), fire the in-thread
-    // turn now — the photo (with this caption) is already on the InboxDO, so the
-    // server's recentWindow sees the attachment AND the instruction together.
-    if (_editing == null && onSummonAva != null) {
-      final lower = c.toLowerCase();
-      final shared = lower.contains(_avaShareWord);
-      final atAva = lower.contains(_avaWakeWord);
-      final avaModePrivate = _avaMode && !shared && !atAva;
-      if (atAva || shared || avaModePrivate) {
-        // ignore: unawaited_futures
-        onSummonAva!(avaModePrivate ? '$_avaWakeWord $c' : c);
-      }
-    }
+    if (c.isNotEmpty) _ragAddLine('You', c);
+    _summonAvaForReference(name: name, kind: 'image', instruction: c);
+  }
+
+  void _summonAvaForReference({required String name, required String kind, String instruction = ''}) {
+    if (_editing != null || onSummonAva == null) return;
+    final c = instruction.trim();
+    final lower = c.toLowerCase();
+    final shared = lower.contains(_avaShareWord);
+    final atAva = lower.contains(_avaWakeWord);
+    final privateDirected = (atAva && !shared) || (_avaMode && !shared && !atAva);
+    final publicDirected = shared || (_avaPublicMode && !atAva);
+    if (!privateDirected && !publicDirected) return;
+    final request = c.isNotEmpty
+        ? c
+        : 'Use this $kind reference named "$name" in our brainstorming.';
+    final ingestRequest = '__AVA_REFERENCE_INGEST__ Analyze the newly shared $kind reference "$name". '
+        'Extract the useful creative details, connect them to our current discussion, and tell everyone when it is ready. $request';
+    _showAvaWorking('Ava is ingesting the reference…', trigger: 'attachment');
+    // ignore: unawaited_futures
+    onSummonAva!(privateDirected ? '$_avaWakeWord $ingestRequest' : '$_avaShareWord $ingestRequest');
   }
 
   // ---- clipboard image paste into the composer ----
@@ -1547,6 +1551,11 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       }
     }
     await Future.wait(List.generate(math.min(poolSize, jobs.length), (_) => worker()));
+    _summonAvaForReference(
+      name: jobs.map((j) => j.name).join(', '),
+      kind: jobs.length == 1 ? 'image' : '${jobs.length} images',
+      instruction: seed,
+    );
   }
 
   // [MEDIA-INSTANT-1a] The transcode used to run HERE, BEFORE the bubble ever
@@ -1577,18 +1586,8 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     // and swaps in the compressed bytes for the actual upload.
     await _sendMedia(MediaKind.video, bytes, 'video/mp4', name,
         caption: c, sourcePath: sourcePath, pickStartMs: pickStartMs);
-    if (c.isEmpty) return;
-    _ragAddLine('You', c);
-    if (_editing == null && onSummonAva != null) {
-      final lower = c.toLowerCase();
-      final shared = lower.contains(_avaShareWord);
-      final atAva = lower.contains(_avaWakeWord);
-      final avaModePrivate = _avaMode && !shared && !atAva;
-      if (atAva || shared || avaModePrivate) {
-        // ignore: unawaited_futures
-        onSummonAva!(avaModePrivate ? '$_avaWakeWord $c' : c);
-      }
-    }
+    if (c.isNotEmpty) _ragAddLine('You', c);
+    _summonAvaForReference(name: name, kind: 'video', instruction: c);
   }
 
   Future<void> _pickFile() async {
@@ -1611,18 +1610,8 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     // ONE message: file + caption together, awaited so the attachment is on the
     // InboxDO before we summon Ava below.
     await _sendMedia(MediaKind.file, bytes, 'application/octet-stream', name, caption: c);
-    if (c.isEmpty) return;
-    _ragAddLine('You', c);
-    if (_editing == null && onSummonAva != null) {
-      final lower = c.toLowerCase();
-      final shared = lower.contains(_avaShareWord);
-      final atAva = lower.contains(_avaWakeWord);
-      final avaModePrivate = _avaMode && !shared && !atAva;
-      if (atAva || shared || avaModePrivate) {
-        // ignore: unawaited_futures
-        onSummonAva!(avaModePrivate ? '$_avaWakeWord $c' : c);
-      }
-    }
+    if (c.isNotEmpty) _ragAddLine('You', c);
+    _summonAvaForReference(name: name, kind: 'document', instruction: c);
   }
 
   // Compact sheet: a file chip (icon + name) + a caption/instruction field.
@@ -1726,6 +1715,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
         _capNote('That file is over 25 MB.'); return;
       }
       await _sendMedia(kind, bytes, item.mime, item.name);
+      _summonAvaForReference(name: item.name, kind: kind.name);
     } catch (_) {
       _capNote('Could not attach from library.');
     }

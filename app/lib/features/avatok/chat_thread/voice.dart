@@ -220,6 +220,7 @@ extension _ChatThreadVoice on _ChatThreadScreenState {
     // goes through the ordinary encrypted `_upload` path unaffected.
     await _upload(msg, bytes, MediaKind.audio, 'audio/mp4', 'voice.m4a',
         plaintextVoice: !RemoteConfig.voiceNoteEncryptionEnabled);
+    _summonAvaForReference(name: 'voice.m4a', kind: 'audio');
     // [VOICE-BRAIN-1] The upload has finished, so `msg.media` now carries the
     // real content-addressed id (== the AvaLibrary key). Ingest AFTER the await
     // for exactly that reason: before it there is no stable key to file the

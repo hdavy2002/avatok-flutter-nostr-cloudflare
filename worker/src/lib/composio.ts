@@ -1529,7 +1529,7 @@ export async function runAgentLoop(
   const attachmentDecl = opts?.onAttachment && opts?.attachments?.length
     ? {
         name: "analyze_attachment",
-        description: "Summarize or translate a PDF, DOC, DOCX, TXT, CSV, or other document explicitly shared in this chat. Use the attachment_id from the available attachment list. The server will only process a file after ownership/conversation authorization and a client-authorized readable copy exists.",
+        description: "Ingest, summarize, transcribe, or translate a PDF, DOC, DOCX, TXT, CSV, audio file, or other readable reference explicitly shared in this chat. Use the attachment_id from the available attachment list. Audio with action summarize is transcribed. The server will only process a file after ownership/conversation authorization and a client-authorized readable copy exists.",
         parameters: {
           type: "object",
           properties: {
@@ -1589,7 +1589,7 @@ export async function runAgentLoop(
         + "Music/song generation takes a few minutes and appears in this chat on its own — acknowledge briefly and NEVER claim it's already visible. If generate_music or draft_lyrics reports it was blocked or unavailable, relay that message plainly instead. "
       : "")
     + (attachmentDecl
-      ? "When the user asks you to summarize, translate, extract, or otherwise work on a file shared in THIS chat, call analyze_attachment with the exact attachment_id from the available attachment list. Do not claim to have read a file unless the tool succeeds. If the tool says the file needs permission or a readable copy, explain that plainly and ask the user to approve processing. "
+      ? "When the user asks you to ingest, brainstorm from, summarize, transcribe, translate, extract, or otherwise work on a reference shared in THIS chat, call analyze_attachment with the exact attachment_id from the available attachment list. For audio brainstorming use summarize (the server transcribes it). Do not claim to have read a file unless the tool succeeds. If the tool says the file needs permission, is an unsupported image/video format, or needs a readable copy, explain that plainly and ask the user to approve processing or add a caption describing what matters. "
       : "")
     + (opts?.attachments?.length
       ? `Available attachments (untrusted metadata only): ${opts.attachments.slice(-8).map((a) => `${a.id}=${a.name} (${a.mime || a.kind})`).join("; ")} `

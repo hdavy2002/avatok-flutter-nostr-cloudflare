@@ -31,4 +31,13 @@ describe("public Ava media collaboration", () => {
     expect(agent).toContain("PUBLIC SHARED AVA TURN");
     expect(agent).toContain("Never say you will remind or relay this to the other person");
   });
+
+  it("shows reference ingestion and routes readable audio correctly", () => {
+    const agent = readFileSync("src/do/ava_agent.ts", "utf8");
+    const tools = readFileSync("src/lib/composio.ts", "utf8");
+    expect(agent).toContain("__AVA_REFERENCE_INGEST__");
+    expect(agent).toContain("Ava is ingesting the reference…");
+    expect(agent).toContain('"audio_transcribe"');
+    expect(tools).toContain("ingest, brainstorm from, summarize, transcribe");
+  });
 });
