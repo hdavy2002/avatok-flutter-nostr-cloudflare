@@ -8,6 +8,9 @@ export type SongFlowPhase = "awaiting_brief" | "reviewing" | "generating" | "com
 // there is no lyric draft and no approval step. It is a third first-class mode
 // alongside "vocal" (Ava drafts lyrics, person approves) and "instrumental".
 export type SongRequestKind = "vocal" | "instrumental" | "engine_written";
+export const DEFAULT_SONG_DURATION_SECONDS = 180;
+export const SONG_OUTRO_RESERVE_SECONDS = 12;
+export const SUNG_WORDS_PER_MINUTE = 125;
 
 export interface SongFlowState {
   phase: SongFlowPhase;
@@ -22,7 +25,7 @@ export interface SongFlowState {
   durationSeconds?: number;
   lyrics?: string;
   /** Who supplied the exact reviewed lyrics. User text is never silently rewritten. */
-  lyricsSource?: "ava" | "user";
+  lyricsSource?: "ava" | "user" | "user_fitted";
   /** [AVA-MULTITOOL-1] Epoch ms of the last storage write; drives idle expiry. */
   updatedAt?: number;
 }
@@ -95,7 +98,8 @@ export function songProductionBrief(context: SongProductionContext, kind: SongRe
     kind !== "instrumental" && context.voiceStyle ? `Voice character: ${context.voiceStyle}` : "",
     context.intendedUse ? `Intended use: ${context.intendedUse}` : "",
     context.modelId ? `Audio model: ${context.modelId}` : "",
-    `Length: ${context.durationSeconds ?? 60} seconds`,
+    `Length: ${context.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS} seconds`,
+    `Ending: begin a proper outro before the limit, resolve the song naturally, then fade smoothly to silence. Never end with an abrupt cut.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -110,7 +114,7 @@ export function withSongInterview(
     ...flow,
     context,
     lastInterviewReply: reply,
-    durationSeconds: context.durationSeconds ?? flow.durationSeconds ?? 60,
+    durationSeconds: context.durationSeconds ?? flow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
     ...(ready ? { brief: songProductionBrief(context, kind) } : {}),
   };
 }
@@ -181,6 +185,38 @@ export function parseSongDurationSeconds(text: string): number | undefined {
   return undefined;
 }
 
+export function lyricWordCount(lyrics: string): number {
+  return String(lyrics || "")
+    .replace(/\[[^\]]+\]/g, " ")
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean).length;
+}
+
+export function maxLyricsWordsForDuration(durationSeconds: number): number {
+  const duration = clampSongDurationSeconds(durationSeconds || DEFAULT_SONG_DURATION_SECONDS);
+  const sungSeconds = Math.max(48, duration - SONG_OUTRO_RESERVE_SECONDS);
+  return Math.max(40, Math.floor((sungSeconds / 60) * SUNG_WORDS_PER_MINUTE));
+}
+
+export function estimateLyricsDurationSeconds(lyrics: string): number {
+  const words = lyricWordCount(lyrics);
+  return Math.ceil((words / SUNG_WORDS_PER_MINUTE) * 60 + SONG_OUTRO_RESERVE_SECONDS);
+}
+
+export function lyricsFitAssessment(lyrics: string, durationSeconds: number): {
+  fits: boolean; words: number; maxWords: number; estimatedSeconds: number;
+} {
+  const words = lyricWordCount(lyrics);
+  const maxWords = maxLyricsWordsForDuration(durationSeconds);
+  return {
+    fits: words <= maxWords,
+    words,
+    maxWords,
+    estimatedSeconds: estimateLyricsDurationSeconds(lyrics),
+  };
+}
+
 export function songFlowKey(conv: string): string {
   return `song_flow:${conv}`;
 }
@@ -196,7 +232,7 @@ export function isSongFlowState(value: unknown): value is SongFlowState {
     && (flow.brief == null || typeof flow.brief === "string")
     && (flow.durationSeconds == null || (typeof flow.durationSeconds === "number" && Number.isFinite(flow.durationSeconds)))
     && (flow.lyrics == null || typeof flow.lyrics === "string")
-    && (flow.lyricsSource == null || flow.lyricsSource === "ava" || flow.lyricsSource === "user")
+    && (flow.lyricsSource == null || flow.lyricsSource === "ava" || flow.lyricsSource === "user" || flow.lyricsSource === "user_fitted")
     && (flow.updatedAt == null || (typeof flow.updatedAt === "number" && Number.isFinite(flow.updatedAt)));
 }
 
@@ -241,7 +277,7 @@ export function preferMostRecentLane(
 export function withSongLyrics(
   flow: SongFlowState,
   lyrics: string,
-  lyricsSource: "ava" | "user" = "ava",
+  lyricsSource: "ava" | "user" | "user_fitted" = "ava",
 ): SongFlowState {
   return {
     ...flow,
@@ -249,7 +285,7 @@ export function withSongLyrics(
     phase: "reviewing",
     lyrics: String(lyrics),
     lyricsSource,
-    durationSeconds: clampSongDurationSeconds(flow.durationSeconds ?? 180),
+    durationSeconds: clampSongDurationSeconds(flow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS),
   };
 }
 
@@ -293,7 +329,7 @@ export function explicitlyRequestsSongCreation(text: string): boolean {
 export function withEngineWrittenSong(flow: SongFlowState, context: SongProductionContext): SongFlowState {
   const merged: SongProductionContext = { ...(flow.context ?? {}), ...context };
   const durationSeconds = clampSongDurationSeconds(
-    merged.durationSeconds ?? flow.durationSeconds ?? 60,
+    merged.durationSeconds ?? flow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
   );
   const withDuration: SongProductionContext = { ...merged, durationSeconds };
   return {
@@ -337,7 +373,7 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
       kind: "ask_brief",
       flow: {
         phase: "awaiting_brief", kind: requestKind, brief, conversation: brief,
-        durationSeconds: parseSongDurationSeconds(brief) ?? carried?.durationSeconds ?? 180,
+        durationSeconds: parseSongDurationSeconds(brief) ?? carried?.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
         ...(carried ? { context: carried, lastInterviewReply: flow?.lastInterviewReply } : {}),
       },
     };
@@ -360,7 +396,7 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
       kind: "ask_brief",
       flow: {
         ...flow, conversation,
-        durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 180,
+        durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
       },
     };
   }

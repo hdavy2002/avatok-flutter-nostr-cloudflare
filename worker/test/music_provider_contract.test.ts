@@ -65,4 +65,14 @@ describe("music provider request contract", () => {
     expect(src).toContain('const VERTEX_MUSIC_MODEL = "lyria-3-pro-preview"');
     expect(src).toContain("approved custom lyrics");
   });
+
+  it("requires a resolved outro and smooth fade inside the requested duration", () => {
+    const src = readFileSync("src/lib/vertex_media.ts", "utf8");
+    expect(src).toContain("Begin the final outro before the time limit");
+    expect(src).toContain("final 8–12 seconds for a smooth musical fade to silence");
+    const prompts = readFileSync("src/lib/media_prompt.ts", "utf8");
+    expect(prompts).toContain("with AT MOST ${targetWords} sung words");
+    expect(prompts).toContain("fitLyricsToDurationWithRecovery");
+    expect(prompts).toContain("fitted lyrics still exceed duration word budget");
+  });
 });

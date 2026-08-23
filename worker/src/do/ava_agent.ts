@@ -82,7 +82,8 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
 import {
   completeSongFlow, isSongFlowState, isSongProductionContextReady, isQuickSongContextReady,
-  classifySongRequest, explicitlyRequestsSongCreation, extractUserProvidedLyrics, withEngineWrittenSong,
+  classifySongRequest, DEFAULT_SONG_DURATION_SECONDS, explicitlyRequestsSongCreation, extractUserProvidedLyrics,
+  lyricsFitAssessment, withEngineWrittenSong,
   isMediaFlowExpired, preferMostRecentLane, stampFlowUpdated,
   nextSongFlow, songFlowKey, songProductionBrief, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
@@ -1381,7 +1382,7 @@ export class AvaAgentDO {
         songFlow = {
           phase: "reviewing",
           brief: String(legacyDraft.theme ?? "Song from the approved lyrics"),
-          durationSeconds: Number(legacyDraft.durationSeconds ?? 60),
+          durationSeconds: Number(legacyDraft.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS),
           lyrics: String(legacyDraft.lyrics),
         };
       }
@@ -1707,7 +1708,7 @@ export class AvaAgentDO {
                   phase: "awaiting_brief",
                   kind: classifySongRequest(userText) ?? activeInterviewFlow.kind ?? "vocal",
                   conversation: stripAvaWakeWordForIntent(userText),
-                  durationSeconds: interview.context.durationSeconds ?? 60,
+                  durationSeconds: interview.context.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
                 };
                 const restarted = withSongInterview(restartedBase, interview.context, interview.reply);
                 await this.state.storage.put(flowKey, stampFlowUpdated(restarted));
@@ -1799,7 +1800,7 @@ export class AvaAgentDO {
                     phase: "awaiting_brief",
                     kind: classifySongRequest(userText) ?? activeInterviewFlow.kind ?? "vocal",
                     conversation: stripAvaWakeWordForIntent(userText),
-                    durationSeconds: interview.context.durationSeconds ?? 60,
+                    durationSeconds: interview.context.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
                   };
                   const restarted = withSongInterview(restartedBase, interview.context, interview.reply);
                   await this.state.storage.put(flowKey, stampFlowUpdated(restarted));
@@ -1832,7 +1833,7 @@ export class AvaAgentDO {
                 || interview.action === "quick_generate") {
                 const progressLabel = interview.action === "draft"
                   ? "Writing your lyrics…"
-                  : "Creating your song…";
+                  : interview.action === "accept_lyrics" ? "Checking your lyrics…" : "Creating your song…";
                 await this.postAva({
                   conv, uid, text: interview.reply, private: priv, source: "music",
                   meta: { status_id: statusId, turn_pending: true, progress_label: progressLabel },
@@ -1852,7 +1853,7 @@ export class AvaAgentDO {
                   });
                   await trackUserContact(this.env, uid, email, phone, "ava_song_quick_mode", "avaai", {
                     turn_id: statusId, conv_kind: convKind, private: priv,
-                    music_mode: "engine_written", duration_seconds: quickFlow.durationSeconds ?? 60,
+                    music_mode: "engine_written", duration_seconds: quickFlow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
                     from_phase: activeInterviewFlow.phase, guest_present: !!speaker,
                     interview_model: interviewModel.model, interview_provider: interviewModel.provider,
                   }).catch(() => {});
@@ -1866,7 +1867,7 @@ export class AvaAgentDO {
                     genre: interview.context.genre ?? "contemporary pop",
                     mood: interview.context.mood ?? "expressive and melodic",
                     language: interview.context.language ?? "the language of the supplied lyrics",
-                    durationSeconds: interview.context.durationSeconds ?? interviewedFlow.durationSeconds ?? 180,
+                    durationSeconds: interview.context.durationSeconds ?? interviewedFlow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS,
                   };
                   const acceptedBase = withSongInterview(interviewedFlow, acceptedContext, interview.reply);
                   const accepted = withSongLyrics({
@@ -1874,6 +1875,50 @@ export class AvaAgentDO {
                     kind: "vocal",
                     brief: acceptedBase.brief ?? songProductionBrief(acceptedContext, "vocal"),
                   }, userProvidedLyrics, "user");
+                  const fit = lyricsFitAssessment(userProvidedLyrics, accepted.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS);
+                  if (!fit.fits) {
+                    const fitted = await runVertexDraftLyrics(this.env, {
+                      uid,
+                      theme: accepted.brief ?? "Fit the supplied lyrics to the requested song duration",
+                      durationSeconds: accepted.durationSeconds,
+                      sourceLyrics: userProvidedLyrics,
+                    });
+                    if (fitted.ok && fitted.lyrics) {
+                      const fittedFlow = withSongLyrics(accepted, fitted.lyrics, "user_fitted");
+                      await this.state.storage.put(flowKey, stampFlowUpdated(fittedFlow));
+                      await this.state.storage.put(songDraftKey, {
+                        theme: fittedFlow.brief, durationSeconds: fittedFlow.durationSeconds,
+                        lyrics: fittedFlow.lyrics, lyricsSource: "user_fitted", approved: false, updated_at: Date.now(),
+                      });
+                      await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                      const requestedMinutes = Math.round((fittedFlow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS) / 6) / 10;
+                      const estimatedMinutes = Math.ceil(fit.estimatedSeconds / 6) / 10;
+                      await this.postAva({
+                        conv, uid, private: priv, source: "music",
+                        text: `Your original lyrics are about ${fit.words} sung words—roughly ${estimatedMinutes} minutes—so a ${requestedMinutes}-minute song would cut off before the ending. I shortened them to ${fitted.fittedWords ?? fit.maxWords} words, kept the story and strongest hook, and added a proper outro that can fade naturally.`,
+                      });
+                      await this.postAva({ conv, uid, private: priv, source: "music", text: fitted.lyrics });
+                      await this.postAva({
+                        conv, uid, private: priv, source: "music",
+                        text: "Happy with this time-fitted version? Say **go ahead** and I’ll create the song — or tell me what lines must stay.",
+                      });
+                      await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+                        turn_id: statusId, conv_kind: convKind, private: priv,
+                        phase: "fit_lyrics", outcome: "overlength_user_lyrics_fitted",
+                        duration_seconds: fittedFlow.durationSeconds,
+                        original_words: fit.words, max_words: fit.maxWords,
+                        fitted_words: fitted.fittedWords ?? null,
+                      }).catch(() => {});
+                      return { ok: true, status_id: statusId };
+                    }
+                    await this.state.storage.put(flowKey, stampFlowUpdated(accepted));
+                    await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                    await this.postAva({
+                      conv, uid, private: priv, source: "music",
+                      text: `These lyrics are too long for ${Math.round((accepted.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS) / 6) / 10} minutes and would be cut off. I couldn't shorten them safely just now, so I haven't generated a broken song. I’ll keep the original words and retry the shorter edit on your next message.`,
+                    });
+                    return { ok: false, status_id: statusId, error: "lyrics_fit_failed" };
+                  }
                   await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
                     turn_id: statusId, conv_kind: convKind, private: priv,
                     phase: "accept_lyrics", outcome: explicitlyRequestsSongCreation(userText)
@@ -2009,6 +2054,53 @@ export class AvaAgentDO {
 
         if (songAction.kind === "generate") {
         const reviewing: SongFlowState = { ...songAction.flow, phase: "reviewing" };
+        const originalLyrics = String(songAction.flow.lyrics ?? "").trim();
+        const generationFit = originalLyrics
+          ? lyricsFitAssessment(originalLyrics, songAction.flow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS)
+          : null;
+        if ((songAction.flow.kind ?? "vocal") === "vocal" && generationFit && !generationFit.fits) {
+          const fitted = await runVertexDraftLyrics(this.env, {
+            uid,
+            theme: songAction.flow.brief ?? "Fit these lyrics to the requested song duration",
+            durationSeconds: songAction.flow.durationSeconds,
+            sourceLyrics: originalLyrics,
+          });
+          if (fitted.ok && fitted.lyrics) {
+            const fittedSource = songAction.flow.lyricsSource === "user" || songAction.flow.lyricsSource === "user_fitted"
+              ? "user_fitted" as const : "ava" as const;
+            const fittedFlow = withSongLyrics(reviewing, fitted.lyrics, fittedSource);
+            await this.state.storage.put(flowKey, stampFlowUpdated(fittedFlow));
+            await this.state.storage.put(songDraftKey, {
+              theme: fittedFlow.brief, durationSeconds: fittedFlow.durationSeconds,
+              lyrics: fittedFlow.lyrics, lyricsSource: fittedSource, approved: false, updated_at: Date.now(),
+            });
+            await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+            const targetMinutes = Math.round((fittedFlow.durationSeconds ?? DEFAULT_SONG_DURATION_SECONDS) / 6) / 10;
+            const sourceMinutes = Math.ceil(generationFit.estimatedSeconds / 6) / 10;
+            await this.postAva({
+              conv, uid, private: priv, source: "music",
+              text: `Before generating, I found these lyrics would run about ${sourceMinutes} minutes and be cut off in a ${targetMinutes}-minute song. I made a complete shorter version with a proper outro and fade room:`,
+            });
+            await this.postAva({ conv, uid, private: priv, source: "music", text: fitted.lyrics });
+            await this.postAva({
+              conv, uid, private: priv, source: "music",
+              text: "Please approve this fitted version with **go ahead**, or tell me which lines must stay.",
+            });
+            await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+              turn_id: statusId, conv_kind: convKind, private: priv, phase: "duration_fit",
+              outcome: "lyrics_fitted_for_approval", duration_seconds: fittedFlow.durationSeconds,
+              original_words: generationFit.wordCount, fitted_words: fitted.fittedWords,
+            }).catch(() => {});
+            return { ok: true, status_id: statusId, lyrics_fitted: true };
+          }
+          await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
+          await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+          await this.postAva({
+            conv, uid, private: priv, source: "music",
+            text: "These lyrics would run past the requested length, so I stopped before creating a song that cuts off. I couldn't produce the shorter edit just now; your current lyrics are still saved.",
+          });
+          return { ok: false, status_id: statusId, error: "lyrics_fit_failed" };
+        }
         // Keep the durable state retryable until the provider confirms a queued
         // job. If the DO is interrupted mid-call, the next approval can retry.
         await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));

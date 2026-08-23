@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   clampSongDurationSeconds,
   classifySongRequest,
+  DEFAULT_SONG_DURATION_SECONDS,
+  estimateLyricsDurationSeconds,
   explicitlyRequestsSongCreation,
   extractUserProvidedLyrics,
   isSongProductionContextReady,
+  lyricsFitAssessment,
+  maxLyricsWordsForDuration,
   nextSongFlow,
   parseSongDurationSeconds,
   songProductionBrief,
@@ -51,6 +55,17 @@ describe("AI-led song flow guardrails", () => {
       kind: "ask_brief",
       flow: { kind: "vocal", durationSeconds: 180 },
     });
+    expect(DEFAULT_SONG_DURATION_SECONDS).toBe(180);
+    expect(maxLyricsWordsForDuration(180)).toBe(350);
+  });
+
+  it("detects lyrics that would run past the outro and get cut off", () => {
+    const tooLong = Array.from({ length: 400 }, (_, i) => `word${i}`).join(" ");
+    const fit = lyricsFitAssessment(tooLong, 180);
+    expect(fit).toMatchObject({ fits: false, words: 400, maxWords: 350 });
+    expect(estimateLyricsDurationSeconds(tooLong)).toBeGreaterThan(180);
+    const fitting = Array.from({ length: 300 }, (_, i) => `word${i}`).join(" ");
+    expect(lyricsFitAssessment(fitting, 180).fits).toBe(true);
   });
 
   it("persists free-form turns for AI instead of keyword-matching answers", () => {

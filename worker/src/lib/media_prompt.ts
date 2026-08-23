@@ -15,6 +15,11 @@
 // lyrics when the provider is unavailable.
 import type { Env } from "../types";
 import { vertexMediaRequest } from "./vertex";
+import {
+  DEFAULT_SONG_DURATION_SECONDS,
+  maxLyricsWordsForDuration,
+  lyricWordCount,
+} from "./song_flow";
 
 const CRAFT_MODEL = "gemini-3.7-flash";
 const LYRICS_FALLBACK_MODEL = "gemini-2.5-flash-lite";
@@ -40,11 +45,6 @@ async function vertexText(
     .join("")
     .trim();
 }
-
-// Standard songwriting rule of thumb: ~150 words/min sung. Used only to size
-// how much lyric content to ask for at a given track length — not sent to
-// the model as a hard word-count instruction (that reads unnatural in verse).
-const WORDS_PER_MINUTE_SUNG = 150;
 
 /**
  * Rewrite a user's video ask into a stronger, more visual, duration-aware
@@ -173,8 +173,8 @@ export async function draftLyricsWithRecovery(
   if (!t) return { lyrics: "", model: CRAFT_MODEL, fallbackUsed: false, attempts: 0 };
   const dur = Number.isFinite(durationSeconds as number) && (durationSeconds as number) > 0
     ? Math.round(durationSeconds as number)
-    : 60;
-  const targetWords = Math.max(40, Math.round((dur / 60) * WORDS_PER_MINUTE_SUNG));
+    : DEFAULT_SONG_DURATION_SECONDS;
+  const targetWords = maxLyricsWordsForDuration(dur);
   // [SONG-LEN-2] When the singing model has a hard lyric-length limit (MiniMax:
   // lyrics_prompt < 1000 chars), the DRAFT must respect it — otherwise the
   // person approves lyrics the singer will never be given in full.
@@ -183,14 +183,15 @@ export async function draftLyricsWithRecovery(
     : undefined;
   const sys =
     "You are a songwriter. Write ORIGINAL song lyrics for the theme given by the user, sized for a track " +
-    `roughly ${dur} seconds long (about ${targetWords} words of sung lyric content at a natural singing pace). ` +
+    `exactly within ${dur} seconds, with AT MOST ${targetWords} sung words so the ending has room to breathe. ` +
     (charCap
       ? `HARD LIMIT: the entire lyric including section labels must be UNDER ${charCap} characters — the music ` +
         "engine rejects anything longer. Compose a complete, self-contained song within that limit. "
       : "The duration is a hard requirement: the lyrics must contain enough sung content to fill the WHOLE track, " +
         "so write the COMPLETE song — every verse, chorus, bridge and outro in full. ") +
-    "Never stop mid-line or " +
-    "mid-section, and never summarise a section instead of writing it. " +
+    "Never stop mid-line or mid-section, and never summarise a section instead of writing it. " +
+    "Reserve the final section for a real [Outro] that resolves the story and can be repeated softly while the music fades. " +
+    "The outro and fade must finish INSIDE the requested duration; never rely on the audio engine cutting the song off. " +
     "If the theme names or implies a language (for example Hindi), write the lyrics in that language. " +
     "Structure it with clear labelled sections, e.g. [Verse 1] / [Chorus] / [Verse 2] / [Chorus] / [Outro] — use " +
     "fewer, shorter sections for a short track (~60s: one verse plus one chorus is plenty) and more for a longer " +
@@ -212,6 +213,7 @@ export async function draftLyricsWithRecovery(
     try {
       const text = await vertexText(env, sys, t, maxTokens, attempt === 0 ? 0.85 : 0.72, model);
       if (!text) throw new Error("empty lyrics response");
+      if (lyricWordCount(text) > targetWords) throw new Error("lyrics exceeded duration word budget");
       return { lyrics: text, model, fallbackUsed: model !== CRAFT_MODEL, attempts: attempt + 1 };
     } catch (error) {
       lastError = error;
@@ -223,4 +225,35 @@ export async function draftLyricsWithRecovery(
 /** Backwards-compatible text-only facade for existing callers/tests. */
 export async function draftLyrics(env: Env, theme: string, durationSeconds?: number, maxChars?: number): Promise<string> {
   return (await draftLyricsWithRecovery(env, theme, durationSeconds, maxChars)).lyrics;
+}
+
+export async function fitLyricsToDurationWithRecovery(
+  env: Env,
+  sourceLyrics: string,
+  durationSeconds: number,
+): Promise<DraftLyricsRecoveryResult> {
+  const source = String(sourceLyrics || "").trim();
+  if (!source) return { lyrics: "", model: CRAFT_MODEL, fallbackUsed: false, attempts: 0 };
+  const targetWords = maxLyricsWordsForDuration(durationSeconds);
+  const system =
+    "You are an expert song editor. Shorten the person's supplied lyrics so the complete sung song fits inside " +
+    `${durationSeconds} seconds with AT MOST ${targetWords} sung words. Preserve the original language, central story, ` +
+    "voice, names, strongest images and best hook. Remove repetition and weaker lines before changing important lines. " +
+    "Return a complete singable structure with labelled sections and a final [Outro] that resolves the song naturally. " +
+    "The outro must be short enough to finish and fade smoothly before the time limit—never leave a verse, chorus or sentence unfinished. " +
+    "Output ONLY the shortened lyrics; no explanation, apology, word count or markdown fence.";
+  let lastError: unknown = null;
+  const ladder = [CRAFT_MODEL, CRAFT_MODEL, LYRICS_FALLBACK_MODEL];
+  for (let attempt = 0; attempt < ladder.length; attempt++) {
+    const model = ladder[attempt];
+    try {
+      const text = await vertexText(env, system, source, Math.min(3600, Math.max(900, targetWords * 8)), 0.45, model);
+      if (!text) throw new Error("empty fitted lyrics response");
+      if (lyricWordCount(text) > targetWords) throw new Error("fitted lyrics still exceed duration word budget");
+      return { lyrics: text, model, fallbackUsed: model !== CRAFT_MODEL, attempts: attempt + 1 };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }

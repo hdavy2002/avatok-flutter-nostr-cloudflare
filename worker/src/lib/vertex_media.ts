@@ -33,7 +33,7 @@ import { avaString, readVoiceStyle, type AvaVoiceStyle } from "./ava_persona";
 import { postAvaMessage } from "../routes/ava_thread";
 // [VENICE-PROMPT-1 / VENICE-SONG-1] Gemini-3.7-via-Venice prompt/lyrics
 // crafting — see lib/media_prompt.ts's header for the fail-soft contract.
-import { craftVideoPrompt, craftVideoCardMetadata, craftSongCardMetadata, draftLyricsWithRecovery } from "./media_prompt";
+import { craftVideoPrompt, craftVideoCardMetadata, craftSongCardMetadata, draftLyricsWithRecovery, fitLyricsToDurationWithRecovery } from "./media_prompt";
 import { vertexInteraction, vertexPredictLongRunning } from "./vertex";
 
 const VIDEO_DEADLINE_MS = 10 * 60_000; // ~10 min hard ceiling, per the work order
@@ -160,7 +160,9 @@ export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<R
     const modeInstruction = a.musicMode === "instrumental" || !lyrics
       ? "Instrumental only; no vocals."
       : "Sing the approved lyrics exactly; do not invent or omit lyric lines.";
-    const input: any[] = [{ type: "text", text: `${prompt}\n\nTarget length: ${duration} seconds.\n${modeInstruction}${lyrics ? `\n\nApproved lyrics:\n${lyrics}` : ""}` }];
+    const endingInstruction =
+      "Begin the final outro before the time limit, resolve the melody and rhythm naturally, then use the final 8–12 seconds for a smooth musical fade to silence. Finish inside the target duration; never hard-cut the performance.";
+    const input: any[] = [{ type: "text", text: `${prompt}\n\nTarget length: ${duration} seconds.\n${modeInstruction}\n${endingInstruction}${lyrics ? `\n\nApproved lyrics:\n${lyrics}` : ""}` }];
     let bytes: Uint8Array | null = null;
     for (let attempt = 1; attempt <= 2 && !bytes; attempt++) {
       const r = await vertexInteraction(env, VERTEX_MUSIC_MODEL, input, 120_000);
@@ -391,12 +393,16 @@ export interface RunVertexDraftLyricsArgs {
   uid: string;
   theme: string;
   durationSeconds?: number;
+  sourceLyrics?: string;
 }
 export interface RunVertexDraftLyricsResult {
   ok: boolean;
   blocked?: boolean;
   lyrics?: string;
   message: string;
+  fitted?: boolean;
+  originalWords?: number;
+  fittedWords?: number;
 }
 
 export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs): Promise<RunVertexDraftLyricsResult> {
@@ -416,7 +422,8 @@ export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs
   // ── PROMPT GATE (mandatory) ── reuses the music prompt gate verbatim, same
   // rubric as runVertexMusic above — lyrics are user-facing text a moment
   // after this call, so they must clear the same bar before drafting starts.
-  const verdict = await moderate(env, { text: theme, field: "vertex_music_prompt" });
+  const sourceLyrics = String(a.sourceLyrics || "").trim();
+  const verdict = await moderate(env, { text: `${theme}\n${sourceLyrics}`, field: "vertex_music_prompt" });
   if (!verdict.safe) {
     void track(env, a.uid, "media_content_blocked", "avaai", {
       stage: "prompt", media: "lyrics", reason: verdict.reason, categories: verdict.categories, provider: "vertex",
@@ -436,7 +443,9 @@ export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs
   let ok = true;
   let error: string | null = null;
   try {
-    const drafted = await draftLyricsWithRecovery(env, theme, durationSeconds, lyricsCharCap);
+    const drafted = sourceLyrics
+      ? await fitLyricsToDurationWithRecovery(env, sourceLyrics, durationSeconds)
+      : await draftLyricsWithRecovery(env, theme, durationSeconds, lyricsCharCap);
     lyrics = drafted.lyrics;
     lyricsModel = drafted.model;
     fallbackUsed = drafted.fallbackUsed;
@@ -449,7 +458,8 @@ export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs
   // order §6) — but every Vertex model call still gets an ava_reason_call row
   // so spend/latency is visible, same as the media calls above.
   void track(env, a.uid, "ava_reason_call", "avaai", {
-    role: "ava_lyrics", capability: "media_lyrics_draft", trigger: "draft_lyrics",
+    role: "ava_lyrics", capability: sourceLyrics ? "media_lyrics_fit" : "media_lyrics_draft",
+    trigger: sourceLyrics ? "fit_lyrics" : "draft_lyrics",
     opportunity: null, feature: "ava_music", verb: "hear", provider: "vertex",
     model: lyricsModel, primary_model: "gemini-3.7-flash", ok, fallback_used: fallbackUsed, cache_hit: false,
     attempts,
@@ -458,6 +468,11 @@ export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs
   if (!ok || !lyrics) {
     return { ok: false, message: "I couldn't draft lyrics right now — please try again." };
   }
-  void track(env, a.uid, "media_lyrics_drafted", "avaai", { duration_seconds: durationSeconds, chars: lyrics.length });
-  return { ok: true, lyrics, message: lyrics };
+  const originalWords = sourceLyrics ? sourceLyrics.replace(/\[[^\]]+\]/g, " ").trim().split(/\s+/u).filter(Boolean).length : undefined;
+  const fittedWords = lyrics.replace(/\[[^\]]+\]/g, " ").trim().split(/\s+/u).filter(Boolean).length;
+  void track(env, a.uid, sourceLyrics ? "media_lyrics_fitted" : "media_lyrics_drafted", "avaai", {
+    duration_seconds: durationSeconds, chars: lyrics.length,
+    original_words: originalWords ?? null, fitted_words: fittedWords,
+  });
+  return { ok: true, lyrics, message: lyrics, fitted: !!sourceLyrics, originalWords, fittedWords };
 }
