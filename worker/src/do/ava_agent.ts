@@ -48,6 +48,7 @@ import * as openrouterAdapter from "../lib/ava_reason/adapters/openrouter"; // A
 import { avaReason } from "../lib/ava_reason";
 import type { BodyOpts, ReasonReq } from "../lib/ava_reason/types";
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
+import { looksLikeMediaApproval } from "../lib/ava_group_session";
 import { runVertexVideo, runVertexMusic, runVertexDraftLyrics } from "../lib/vertex_media"; // [VENICE-VID-1 / VENICE-MUS-1 / VENICE-SONG-1] in-thread video/music/lyrics gen, same async-job shape as runAvaImage
 // [AVA-IMG-EDIT-1] Reads a job's freshly-minted artifact URL by id — used to
 // resolve "the image you just made" into an edit source (see onImage below).
@@ -1335,7 +1336,7 @@ export class AvaAgentDO {
   }
 
   // ---- the turn ---------------------------------------------------------------
-  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string; speaker?: { uid?: string; name?: string | null } }): Promise<any> {
+  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string; speaker?: { uid?: string; name?: string | null }; initiator?: { uid?: string; name?: string | null; mediaKind?: "song" | "video" | "image" } }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
     const rawUserText = String(b.text || "").trim();
@@ -1351,9 +1352,22 @@ export class AvaAgentDO {
     const speaker = b.speaker && typeof b.speaker === "object" && String(b.speaker.uid || "").trim()
       ? { uid: String(b.speaker.uid).trim(), name: b.speaker.name ? String(b.speaker.name).slice(0, 60) : null }
       : null;
-    const userText = speaker
+    let userText = speaker
       ? `${speaker.name || "A group member"} (group member, not the session owner) says: ${rawUserText}`
       : rawUserText;
+    const initiatorName = b.initiator?.name ? String(b.initiator.name).slice(0, 60) : "the person who started it";
+    const sharedImageSuggestionKey = `shared_image_suggestion:${conv}`;
+    // Image generation is normally immediate. In a public collaborative image
+    // session, a participant's edit becomes a saved suggestion instead of a
+    // charge; the initiator's later approval replays that suggestion as the
+    // actual image instruction on the initiator's wallet.
+    if (!speaker && b.initiator?.mediaKind === "image" && looksLikeMediaApproval(rawUserText)) {
+      const pendingImageSuggestion = await this.state.storage.get<string>(sharedImageSuggestionKey);
+      if (pendingImageSuggestion) {
+        userText = `Create an image applying this collaborator request: ${pendingImageSuggestion}`;
+        await this.state.storage.delete(sharedImageSuggestionKey);
+      }
+    }
 
     const songDraftKey = `song_draft:${conv}`;
     const flowKey = songFlowKey(conv);
@@ -1419,7 +1433,8 @@ export class AvaAgentDO {
     if (speaker) {
       const songActive = !!songFlow && songFlow.phase !== "completed";
       const videoActive = !!videoFlow && videoFlow.phase === "discovering";
-      if (!songActive && !videoActive) {
+      const sharedImageActive = b.initiator?.mediaKind === "image";
+      if (!songActive && !videoActive && !sharedImageActive) {
         return { ok: true, deferred_to_speaker: true, reason: "no_active_flow" };
       }
     }
@@ -1533,6 +1548,32 @@ export class AvaAgentDO {
     await trackUserContact(this.env, uid, email, phone, "ava_thread_turn", "avaai", {
       turn_id: statusId, conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
     }).catch(() => {});
+
+    // Public collaboration is shared, but spending authority is not. Handle a
+    // guest's approval deterministically before any interview/tool model can
+    // reinterpret it or start a billable image/video/song operation.
+    if (speaker && looksLikeMediaApproval(rawUserText)) {
+      const speakerName = speaker.name || "there";
+      await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+      await this.postAva({
+        conv, uid, private: false, source: "media_approval",
+        text: `Thanks, ${speakerName} — everyone can help shape this creation, but ${initiatorName} started it and will pay for it, so only ${initiatorName} can give the final go-ahead. ${initiatorName}, say **go ahead** when you're ready.`,
+      });
+      await trackUserContact(this.env, uid, email, phone, "ava_shared_media_approval_blocked", "avaai", {
+        turn_id: statusId, conv_kind: convKind, speaker_uid: speaker.uid,
+      }).catch(() => {});
+      return { ok: true, status_id: statusId, approval_blocked: true };
+    }
+
+    if (speaker && b.initiator?.mediaKind === "image") {
+      await this.state.storage.put(sharedImageSuggestionKey, rawUserText);
+      await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+      await this.postAva({
+        conv, uid, private: false, source: "image",
+        text: `Thanks, ${speaker.name || "there"} — I've saved that image suggestion. ${initiatorName} started this image and will pay for it, so only ${initiatorName} can approve the change. ${initiatorName}, say **go ahead** to apply it, or tell me what else to adjust.`,
+      });
+      return { ok: true, status_id: statusId, image_suggestion_saved: true };
+    }
 
     try {
       // Video creation is an AI-led producer conversation. Server code keeps

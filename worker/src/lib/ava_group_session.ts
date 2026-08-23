@@ -1,4 +1,4 @@
-// [AVA-GROUP-SESSION-1 2026-08-16] Shared group media (song/video) sessions.
+// [AVA-GROUP-SESSION-1 2026-08-16] Shared public media sessions.
 //
 // Owner decision 2026-08-16: in a GROUP thread, the person who initiates a
 // public (#ava) song/video creation owns the session and pays for it; other
@@ -16,6 +16,8 @@ import type { Env } from "../types";
 
 export interface GroupMediaSession {
   owner_uid: string;
+  owner_name?: string | null;
+  media_kind?: "song" | "video" | "image";
   started_at: number;
   updated_at: number;
 }
@@ -43,10 +45,31 @@ export async function readGroupMediaSession(env: Env, conv: string): Promise<Gro
   }
 }
 
-export async function writeGroupMediaSession(env: Env, conv: string, ownerUid: string): Promise<void> {
+export async function writeGroupMediaSession(
+  env: Env,
+  conv: string,
+  ownerUid: string,
+  ownerName?: string | null,
+  mediaKind?: GroupMediaSession["media_kind"],
+): Promise<void> {
   const now = Date.now();
-  const session: GroupMediaSession = { owner_uid: ownerUid, started_at: now, updated_at: now };
+  const session: GroupMediaSession = {
+    owner_uid: ownerUid,
+    owner_name: ownerName ? String(ownerName).slice(0, 60) : null,
+    media_kind: mediaKind,
+    started_at: now,
+    updated_at: now,
+  };
   await env.TOKENS.put(key(conv), JSON.stringify(session), { expirationTtl: KV_TTL_SECONDS }).catch(() => {});
+}
+
+/** Conservative spend approval detector; false negatives still hit the AI-side guard. */
+export function looksLikeMediaApproval(text: string): boolean {
+  const clean = String(text || "")
+    .replace(/^\s*[@#]ava(?:!|\b)\s*/i, "")
+    .trim()
+    .toLowerCase();
+  return /^(?:yes[,.! ]*)?(?:go ahead|proceed|approved?|do it|make it|create it|generate it|start it|looks? good|that(?:'s| is) (?:good|perfect)|i(?:'m| am) happy)(?:\s+(?:please|now))?[.!]*$/i.test(clean);
 }
 
 export async function touchGroupMediaSession(env: Env, conv: string, session: GroupMediaSession): Promise<void> {

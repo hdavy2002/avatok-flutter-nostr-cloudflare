@@ -20,13 +20,18 @@ import { emailFor, nameFor } from "../lib/identity";
 // [AVA-GROUP-SESSION-1] shared group song/video sessions — see lib/ava_group_session.ts
 import { readConfig } from "./config";
 import { classifySongRequest } from "../lib/song_flow";
-import { looksLikeVideoRequest } from "../lib/composio";
+import { looksLikeImageRequest, looksLikeVideoRequest } from "../lib/composio";
 import {
   readGroupMediaSession, writeGroupMediaSession, touchGroupMediaSession, clearGroupMediaSession,
   type GroupMediaSession,
 } from "../lib/ava_group_session";
 
 async function isConvMember(env: Env, conv: string, uid: string): Promise<boolean> {
+  // DMs encode both participants and do not reliably have D1 membership rows.
+  if (conv.startsWith("dm_")) {
+    const parts = conv.slice(3).split("__");
+    return parts.length === 2 && parts.includes(uid);
+  }
   try {
     const row = await env.DB_META
       .prepare("SELECT 1 AS ok FROM conversation_members WHERE conv_id = ?1 AND uid = ?2 LIMIT 1")
@@ -140,7 +145,7 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
   let store = String(b.store ?? "").trim();
   if (!store && byoKey) store = (await getStoreName(env, ctx.uid).catch(() => null)) || "";
 
-  // [AVA-GROUP-SESSION-1] In a GROUP thread with an active shared media
+  // [AVA-GROUP-SESSION-1] In any PUBLIC thread with an active shared media
   // session, another member's PUBLIC #ava turn is routed to the INITIATOR'S
   // AvaAgentDO (their conversation, their wallet) with the speaker attached.
   // Private @ava turns never join the shared session. Membership is verified
@@ -149,7 +154,7 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
   let targetUid = ctx.uid;
   let speaker: { uid: string; name: string | null } | null = null;
   let activeSession: GroupMediaSession | null = null;
-  if (!priv && conv.startsWith("g_")) {
+  if (!priv) {
     try {
       const cfg = await readConfig(env);
       if (cfg.groupSharedMediaSessionEnabled === true) {
@@ -159,8 +164,11 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
             targetUid = activeSession.owner_uid;
             speaker = { uid: ctx.uid, name: await nameFor(env, ctx.uid).catch(() => null) };
           }
-        } else if (!activeSession && (classifySongRequest(text) || looksLikeVideoRequest(text))) {
-          await writeGroupMediaSession(env, conv, ctx.uid);
+        } else if (!activeSession && (classifySongRequest(text) || looksLikeVideoRequest(text) || looksLikeImageRequest(text))) {
+          const mediaKind = classifySongRequest(text) ? "song" : looksLikeVideoRequest(text) ? "video" : "image";
+          await writeGroupMediaSession(
+            env, conv, ctx.uid, await nameFor(env, ctx.uid).catch(() => null), mediaKind,
+          );
         } else if (activeSession) {
           await touchGroupMediaSession(env, conv, activeSession);
         }
@@ -181,9 +189,19 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
   })));
   let out: any = { ok: true };
   try {
+    const initiator = activeSession
+      ? {
+          uid: activeSession.owner_uid,
+          name: activeSession.owner_name ?? await nameFor(env, activeSession.owner_uid).catch(() => null),
+          mediaKind: activeSession.media_kind,
+        }
+      : undefined;
     const body = speaker
-      ? { conv, uid: targetUid, text, private: false, key: "", store: "", speaker }
-      : { conv, uid: ctx.uid, text, private: priv, key: byoKey, store };
+      ? {
+          conv, uid: targetUid, text, private: false, key: "", store: "", speaker,
+          initiator,
+        }
+      : { conv, uid: ctx.uid, text, private: priv, key: byoKey, store, initiator };
     const res = await agentOf(env, targetUid).fetch("https://ava-agent/turn", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -195,8 +213,11 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
     if (speaker && out?.deferred_to_speaker) {
       if (out.reason === "no_active_flow") {
         await clearGroupMediaSession(env, conv).catch(() => {});
-        if (classifySongRequest(text) || looksLikeVideoRequest(text)) {
-          await writeGroupMediaSession(env, conv, ctx.uid).catch(() => {});
+        if (classifySongRequest(text) || looksLikeVideoRequest(text) || looksLikeImageRequest(text)) {
+          const mediaKind = classifySongRequest(text) ? "song" : looksLikeVideoRequest(text) ? "video" : "image";
+          await writeGroupMediaSession(
+            env, conv, ctx.uid, await nameFor(env, ctx.uid).catch(() => null), mediaKind,
+          ).catch(() => {});
         }
       }
       const res2 = await agentOf(env, ctx.uid).fetch("https://ava-agent/turn", {
