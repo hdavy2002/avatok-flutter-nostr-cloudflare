@@ -152,7 +152,9 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
-    if (isMediaJobEnvelope) unawaited(_hydrateAiJobFromEnvelope(extra));
+    if (isMediaJobEnvelope) {
+      unawaited(_hydrateAiJobFromEnvelope(extra, timelineTs: m.createdAt));
+    }
     // Full-thread RAG: index a member's LIVE group text into my own store.
     // `_ragLive` gates out the history that replays on open (avoids re-indexing).
     if (!m.mine && _ragLive && special == null && media == null) {
@@ -394,7 +396,9 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
       }
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
-    if (isMediaJobEnvelope) unawaited(_hydrateAiJobFromEnvelope(extra));
+    if (isMediaJobEnvelope) {
+      unawaited(_hydrateAiJobFromEnvelope(extra, timelineTs: m.createdAt));
+    }
     // Persist the inline flag so the red bubble survives reopen (mirrors how the
     // deep-lane safety_flag frame is persisted). Best-effort.
     if (inlineSafetyCat != null) {

@@ -237,7 +237,8 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// A server-side Venice submit/completion envelope is only a lifecycle
   /// signal. The durable job card is the single visual representation, so the
   /// text envelope itself must not create a duplicate chat bubble.
-  Future<void> _hydrateAiJobFromEnvelope(Map<String, dynamic>? extra) async {
+  Future<void> _hydrateAiJobFromEnvelope(Map<String, dynamic>? extra,
+      {required int timelineTs}) async {
     final meta = extra?['meta'];
     if (meta is! Map) return;
     final jobId = (meta['job_id'] ?? '').toString();
@@ -259,7 +260,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
       createdAt: createdAtMs == null ? null : (createdAtMs > 100000000000 ? createdAtMs ~/ 1000 : createdAtMs),
     );
     if (!mounted) return;
-    _upsertJobMessage(provisional);
+    _upsertJobMessage(provisional, timelineTs: timelineTs);
     Analytics.capture('creative_job_card_seen', {
       'job_id': jobId,
       'media_kind': kind,
@@ -268,7 +269,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     _clearAvaWorking('job_card');
     final job = await AiMediaJobRepository.I.fetch(jobId);
     if (!mounted || job == null) return; // provisional card + polling stay live
-    _upsertJobMessage(job);
+    _upsertJobMessage(job, timelineTs: timelineTs);
   }
 
   /// Bind the app-wide job-update stream once. Filters to THIS conversation at
@@ -305,7 +306,7 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
   /// there is nothing else to mutate on an update; the `_mutMsgs` wrapper
   /// alone invalidates the per-row cache and repaints the card with the job's
   /// new state.
-  void _upsertJobMessage(AiMediaJob job) {
+  void _upsertJobMessage(AiMediaJob job, {int? timelineTs}) {
     _mutMsgs(() {
       // The legacy image producer emits an early ava_status card before the
       // durable job id exists. Once the job card is hydrated, retire that
@@ -327,9 +328,16 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
         return meta is Map && (meta['job_id'] ?? '').toString() == job.jobId;
       });
       final i = _msgs.indexWhere((m) => m.special == 'ai_job' && m.extra?['job_id'] == job.jobId);
-      if (i >= 0) return; // card already placed; _aiJobBubble reads fresh state every rebuild
-      _msgs.add(_Msg(_seq++, false, '', _fmtTime(job.createdAt),
-          ts: job.createdAt, special: 'ai_job', extra: {'job_id': job.jobId}));
+      final anchoredTs = timelineTs ?? job.createdAt;
+      if (i >= 0) {
+        // A working card may have been seeded from the repository before its
+        // lifecycle envelope replayed. Re-anchor it to the envelope's exact
+        // timeline timestamp instead of leaving media grouped by job metadata.
+        if (timelineTs == null || _msgs[i].ts == anchoredTs) return;
+        _msgs.removeAt(i);
+      }
+      _msgs.add(_Msg(_seq++, false, '', _fmtTime(anchoredTs),
+          ts: anchoredTs, special: 'ai_job', extra: {'job_id': job.jobId}));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
   }
