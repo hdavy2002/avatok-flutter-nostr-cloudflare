@@ -1659,7 +1659,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
                 },
                 onBlockedOrReported: () { if (mounted) Navigator.of(context).maybePop(); },
               ))
-            else SafeArea(top: false, child: _inputBar()),
+            else Padding(
+              padding: const EdgeInsets.only(bottom: _kShellFooterClearance),
+              child: SafeArea(top: false, child: _inputBar()),
+            ),
           ],
         ),
       // Phase 4: floating-emoji burst overlay (ignores touches; pure delight).

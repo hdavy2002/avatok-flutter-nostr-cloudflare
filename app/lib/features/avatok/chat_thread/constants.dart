@@ -11,6 +11,10 @@ const _kHideDeletedKey = 'chat_hide_deleted';
 
 const String _kSenderPubRepairKey = 'grp_senderpub_repaired_v1';
 
+/// The shell-wide Pill Morse footer overlays the bottom 27dp of every root.
+/// Keep the live composer above it so the field and send/mic stay unobscured.
+const double _kShellFooterClearance = 27;
+
 /// The wake words the composer watches for. `@ava` = a PRIVATE personal call
 /// to Ava (never sent to the peer, private reply). `#ava` = a SHARED call (both
 /// parties see the question + reply).
