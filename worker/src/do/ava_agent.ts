@@ -82,9 +82,9 @@ import { reserveAiJob, settleAiJob, releaseAiJob, estimateInputTokensFromChars }
 import { readVoiceStyle, styleClause, avaString, AVA_VOICE_STYLE_FALLBACK, type AvaVoiceStyle } from "../lib/ava_persona";
 import {
   completeSongFlow, isSongFlowState, isSongProductionContextReady, isQuickSongContextReady,
-  classifySongRequest, withEngineWrittenSong,
+  classifySongRequest, explicitlyRequestsSongCreation, extractUserProvidedLyrics, withEngineWrittenSong,
   isMediaFlowExpired, preferMostRecentLane, stampFlowUpdated,
-  nextSongFlow, songFlowKey, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
+  nextSongFlow, songFlowKey, songProductionBrief, stripAvaWakeWordForIntent, withSongInterview, withSongLyrics,
   type SongFlowState,
 } from "../lib/song_flow";
 import {
@@ -1679,6 +1679,13 @@ export class AvaAgentDO {
               userText,
             );
             let interview = interviewModel.turn;
+            // User-authored lyrics are a server-observable fact, not a model
+            // opinion. Force the exact-input action if a model mistakes pasted
+            // lyrics for a request to draft replacements.
+            const exactUserLyrics = extractUserProvidedLyrics(userText);
+            if (exactUserLyrics && interview.action !== "switch" && interview.action !== "restart") {
+              interview = { ...interview, action: "accept_lyrics" };
+            }
             // [AVA-GROUP-SESSION-1] A guest changing topic must not destroy
             // the owner's song conversation — defer to the guest's own agent.
             if (speaker && interview.action === "switch") {
@@ -1715,8 +1722,18 @@ export class AvaAgentDO {
                 return { ok: true, status_id: statusId };
               }
               let interviewedFlow = withSongInterview(songAction.flow, interview.context, interview.reply);
+              // An explicit new vocal/instrumental instruction overrides a
+              // stale mode saved by an earlier misclassification. Without this,
+              // "make the lyrics" could never escape an instrumental flow:
+              // server validation rejected draft forever while preserving the
+              // very state that caused the rejection.
+              const explicitKind = classifySongRequest(userText);
+              if (explicitKind === "vocal" || explicitKind === "instrumental") {
+                interviewedFlow = { ...interviewedFlow, kind: explicitKind };
+              }
               let songKind = interviewedFlow.kind ?? "vocal";
               let ready = isSongProductionContextReady(interview.context, songKind);
+              const userProvidedLyrics = exactUserLyrics;
               // [AVA-GROUP-SESSION-1] Only the initiator may approve the paid
               // generate step. A guest's go-ahead is acknowledged, then Ava
               // asks the initiator by name for the final yes.
@@ -1750,6 +1767,11 @@ export class AvaAgentDO {
                   // downgrades to a normal vocal song rather than dead-ending.
                   || (interview.action === "draft" && songKind !== "instrumental" &&
                     (draftReady || (activeInterviewFlow.phase === "reviewing" && !!interviewedFlow.brief)))
+                  // The model only identifies the intent. The exact lyric text
+                  // is extracted from the raw user turn and never round-trips
+                  // through model JSON, so spelling, language and line breaks
+                  // cannot be silently changed.
+                  || (interview.action === "accept_lyrics" && !!userProvidedLyrics)
                   // SPEND. The engine writes the words, so there is nothing to
                   // review — but there still must be a subject and a length,
                   // and an explicit instrumental request can never land here.
@@ -1806,9 +1828,15 @@ export class AvaAgentDO {
                 songAction = { kind: "none", flow: null };
               } else if (!canExecute()) {
                 throw new Error(`song interview returned invalid ${interview.action} transition`);
-              } else if (interview.action === "draft" || interview.action === "generate"
+              } else if (interview.action === "draft" || interview.action === "accept_lyrics" || interview.action === "generate"
                 || interview.action === "quick_generate") {
-                await this.postAva({ conv, uid, text: interview.reply, private: priv, source: "music" });
+                const progressLabel = interview.action === "draft"
+                  ? "Writing your lyrics…"
+                  : "Creating your song…";
+                await this.postAva({
+                  conv, uid, text: interview.reply, private: priv, source: "music",
+                  meta: { status_id: statusId, turn_pending: true, progress_label: progressLabel },
+                });
                 if (interview.action === "quick_generate") {
                   // [SONG-QUICK-1] The engine writes the words, so the brief is
                   // rebuilt for that mode and any drafted lyrics are dropped.
@@ -1820,6 +1848,7 @@ export class AvaAgentDO {
                   await this.postAva({
                     conv, uid, private: priv, source: "music",
                     text: "Heads up: in quick mode the music engine writes the words itself, so I can't show them to you before it sings and the exact wording may not be what you pictured. If you'd rather read and approve the lyrics first, say the word and I'll write them for you instead.",
+                    meta: { status_id: statusId, turn_pending: true, progress_label: "Creating your song…" },
                   });
                   await trackUserContact(this.env, uid, email, phone, "ava_song_quick_mode", "avaai", {
                     turn_id: statusId, conv_kind: convKind, private: priv,
@@ -1830,6 +1859,44 @@ export class AvaAgentDO {
                   songAction = { kind: "generate", flow: quickFlow };
                 } else if (interview.action === "generate") {
                   songAction = { kind: "generate", flow: { ...interviewedFlow, phase: "generating" } };
+                } else if (interview.action === "accept_lyrics" && userProvidedLyrics) {
+                  const acceptedContext = {
+                    ...interview.context,
+                    theme: interview.context.theme ?? "the story and emotion in the user's lyrics",
+                    genre: interview.context.genre ?? "contemporary pop",
+                    mood: interview.context.mood ?? "expressive and melodic",
+                    language: interview.context.language ?? "the language of the supplied lyrics",
+                    durationSeconds: interview.context.durationSeconds ?? interviewedFlow.durationSeconds ?? 180,
+                  };
+                  const acceptedBase = withSongInterview(interviewedFlow, acceptedContext, interview.reply);
+                  const accepted = withSongLyrics({
+                    ...acceptedBase,
+                    kind: "vocal",
+                    brief: acceptedBase.brief ?? songProductionBrief(acceptedContext, "vocal"),
+                  }, userProvidedLyrics, "user");
+                  await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
+                    turn_id: statusId, conv_kind: convKind, private: priv,
+                    phase: "accept_lyrics", outcome: explicitlyRequestsSongCreation(userText)
+                      ? "user_lyrics_accepted_and_approved" : "user_lyrics_accepted",
+                    lyrics_source: "user", lyrics_chars: userProvidedLyrics.length,
+                  }).catch(() => {});
+                  if (explicitlyRequestsSongCreation(userText) && !speaker) {
+                    songAction = { kind: "generate", flow: { ...accepted, phase: "generating" } };
+                  } else {
+                    await this.state.storage.put(flowKey, stampFlowUpdated(accepted));
+                    await this.state.storage.put(songDraftKey, {
+                      theme: accepted.brief, durationSeconds: accepted.durationSeconds,
+                      lyrics: accepted.lyrics, lyricsSource: "user", approved: false, updated_at: Date.now(),
+                    });
+                    await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
+                    await this.postAva({
+                      conv, uid, private: priv, source: "music",
+                      text: speaker
+                        ? "I’ve kept those lyrics exactly as supplied. The person who started this song can say **go ahead** to create it."
+                        : "I’ll use your lyrics exactly as you wrote them. Say **go ahead** and I’ll create the song — or tell me what musical style you want.",
+                    });
+                    return { ok: true, status_id: statusId };
+                  }
                 } else {
                   const revisionBrief = activeInterviewFlow.phase === "reviewing"
                     ? [interviewedFlow.brief, stripAvaWakeWordForIntent(userText)].filter(Boolean).join("\n\n")
@@ -1913,7 +1980,8 @@ export class AvaAgentDO {
             await this.state.storage.put(flowKey, stampFlowUpdated(reviewing));
             await this.state.storage.put(songDraftKey, {
               theme: reviewing.brief, durationSeconds: reviewing.durationSeconds,
-              lyrics: reviewing.lyrics, approved: false, updated_at: Date.now(),
+              lyrics: reviewing.lyrics, lyricsSource: reviewing.lyricsSource ?? "ava",
+              approved: false, updated_at: Date.now(),
             });
             await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
             await this.postAva({
@@ -1933,7 +2001,8 @@ export class AvaAgentDO {
           }
           await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
             turn_id: statusId, conv_kind: convKind, private: priv, phase: "draft", outcome: drafted.ok ? "lyrics_posted" : "failed",
-            duration_seconds: songAction.flow.durationSeconds ?? 60,
+            duration_seconds: songAction.flow.durationSeconds ?? 180,
+            lyrics_source: "ava",
           }).catch(() => {});
           return { ok: drafted.ok, status_id: statusId, ...(!drafted.ok ? { error: "lyrics_draft_failed" } : {}) };
         }
@@ -1973,7 +2042,8 @@ export class AvaAgentDO {
           await this.state.storage.put(flowKey, stampFlowUpdated(completeSongFlow(songAction.flow)));
           await this.state.storage.put(songDraftKey, {
             theme: songAction.flow.brief, durationSeconds: songAction.flow.durationSeconds,
-            lyrics: songAction.flow.lyrics, approved: true, kind: songAction.flow.kind ?? "vocal", approved_at: Date.now(),
+            lyrics: songAction.flow.lyrics, lyricsSource: songAction.flow.lyricsSource ?? null,
+            approved: true, kind: songAction.flow.kind ?? "vocal", approved_at: Date.now(),
           });
           await this.rememberLastMedia(conv, "music", music.job_id, songAction.flow.brief ?? "Approved song");
         } else {
@@ -1983,8 +2053,8 @@ export class AvaAgentDO {
         await this.postStatus(conv, uid, priv, chipLabel, statusId, "end");
         await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
           turn_id: statusId, conv_kind: convKind, private: priv, phase: "generate", outcome: music.ok ? "job_started" : "failed",
-          duration_seconds: songAction.flow.durationSeconds ?? 60, job_id: music.job_id ?? null,
-          music_mode: musicMode,
+          duration_seconds: songAction.flow.durationSeconds ?? 180, job_id: music.job_id ?? null,
+          music_mode: musicMode, lyrics_source: songAction.flow.lyricsSource ?? null,
         }).catch(() => {});
         return { ok: music.ok, status_id: statusId, ...(!music.ok ? { error: "music_start_failed" } : {}) };
         }

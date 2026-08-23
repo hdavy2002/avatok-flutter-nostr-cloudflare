@@ -165,20 +165,25 @@ extension _ChatThreadSend on _ChatThreadScreenState {
 
   /// [AVA-WORKING-DOTS-1] Show the animated "Ava is working…" indicator (the
   /// synthetic bottom list item — see `_avaWorkingBubble`). Re-arming with a new
-  /// label just updates the text; every call resets the 60s failsafe so a
+  /// label just updates the text; every call resets the five-minute failsafe so a
   /// server turn that dies without a reply/'end' chip can never leave the dots
   /// bouncing forever (a stuck spinner is worse than none).
   ///
   /// [AVA-WORKING-DOTS-2] `trigger` names the edge that raised it — 'send' (the
   /// optimistic raise the instant an ava-directed message is dispatched),
   /// 'wire_start' (a server `ava_status` start chip) or 'local' (the on-device
-  /// lane) — and is reported to PostHog alongside a later `ava_working_painted`
+  /// lane). `wire_progress` is a non-terminal Ava acknowledgement posted before
+  /// a slower tool/provider call — and is reported to PostHog alongside a later `ava_working_painted`
   /// proof-of-paint, because a raise that never reached a frame and a raise
   /// that was torn down 200ms later look identical to the user.
   void _showAvaWorking(String label, {required String trigger, String? statusId}) {
     if (!mounted) return;
     _avaWorkingTimeout?.cancel();
-    _avaWorkingTimeout = Timer(const Duration(seconds: 60), () {
+    // A music submission may consume two provider attempts of up to 120s each.
+    // Sixty seconds made the indicator disappear during legitimate work—the
+    // exact silent gap it exists to prevent. Terminal wire signals normally
+    // clear it much sooner; this remains only a dead-turn safety ceiling.
+    _avaWorkingTimeout = Timer(const Duration(minutes: 5), () {
       if (mounted && _avaWorking != null) _clearAvaWorking('timeout');
     });
     final wasVisible = _avaWorking != null;
@@ -209,7 +214,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   /// [AVA-WORKING-DOTS-1] Hide the indicator. Called from every terminal edge:
   /// the durable Ava reply (inbound.dart), the persisted 'ava_status'
   /// phase:'end' chip (inbound.dart), the first live stream frame
-  /// ([_bindAvaStream]), the on-device answer ([_bindLocalAva]), and the 60s
+  /// ([_bindAvaStream]), the on-device answer ([_bindLocalAva]), and the five-minute
   /// timeout above. Idempotent and cheap when already hidden.
   /// [AVA-WORKING-DOTS-2] `reason` is one of 'reply', 'local_reply',
   /// 'phase_end', 'stream', 'timeout' or 'dispose' and is reported with the
@@ -232,6 +237,22 @@ extension _ChatThreadSend on _ChatThreadScreenState {
       _avaWorkingStatusId = null;
       _avaWorkingPainted = false;
     });
+  }
+
+  /// A normal Ava bubble is terminal, but song/video acknowledgements can be
+  /// deliberately non-terminal: "I'm writing it now" is followed by the real
+  /// provider wait. Keep the same correlated indicator alive and adopt the
+  /// server's phase label instead of creating a silent gap.
+  void _reconcileAvaReplyProgress(Map<String, dynamic>? extra) {
+    final rawMeta = extra?['meta'];
+    final meta = rawMeta is Map ? rawMeta.cast<String, dynamic>() : const <String, dynamic>{};
+    if (meta['turn_pending'] == true) {
+      final label = (meta['progress_label'] ?? 'Ava is working…').toString();
+      final statusId = (meta['status_id'] ?? '').toString();
+      _showAvaWorking(label, trigger: 'wire_progress', statusId: statusId);
+      return;
+    }
+    _clearAvaWorking('reply');
   }
 
   /// [AVA-WORKING-DOTS-1] Reconcile the indicator with a wire 'ava_status'
@@ -360,7 +381,7 @@ extension _ChatThreadSend on _ChatThreadScreenState {
         // instead of waiting on the server's ava_status chip — which the old
         // message-row pipeline dropped anyway. The persisted 'start' chip
         // reconciles the label when it arrives (inbound.dart); the reply /
-        // 'end' chip / 60s timeout clears it.
+        // 'end' chip / provider-aware timeout clears it.
         _showAvaWorking('Ava is working…', trigger: 'send');
         if (privateAva) {
           _ragAddLine('You', t);

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   clampSongDurationSeconds,
   classifySongRequest,
+  explicitlyRequestsSongCreation,
+  extractUserProvidedLyrics,
   isSongProductionContextReady,
   nextSongFlow,
   parseSongDurationSeconds,
@@ -28,7 +30,27 @@ describe("AI-led song flow guardrails", () => {
     expect(classifySongRequest("make a reggae song for me")).toBe("vocal");
     expect(classifySongRequest("let's create a hindi rock song on freedom")).toBe("vocal");
     expect(classifySongRequest("make an instrumental reggae beat")).toBe("instrumental");
+    expect(classifySongRequest("make another in Hindi with a female voice and rock music")).toBe("vocal");
+    expect(classifySongRequest("make soft rock music about AvaTOK")).toBe("vocal");
+    expect(classifySongRequest("make soft rock music with no vocals")).toBe("instrumental");
     expect(classifySongRequest("I listened to a reggae song")).toBeNull();
+  });
+
+  it("keeps user-provided lyrics byte-for-byte and recognizes an immediate creation request", () => {
+    const request = "make a song with my lyrics:\n[Verse 1]\nमेरी राहें आज भी गाती हैं\n[Chorus]\nहम फिर घर लौट आएँ";
+    expect(extractUserProvidedLyrics(request)).toBe(
+      "[Verse 1]\nमेरी राहें आज भी गाती हैं\n[Chorus]\nहम फिर घर लौट आएँ",
+    );
+    expect(explicitlyRequestsSongCreation(request)).toBe(true);
+    expect(extractUserProvidedLyrics("please write some Hindi lyrics")).toBeNull();
+  });
+
+  it("defaults a normal new song to a full three-minute vocal production", () => {
+    const started = nextSongFlow(null, "make rock music about AvaTOK");
+    expect(started).toMatchObject({
+      kind: "ask_brief",
+      flow: { kind: "vocal", durationSeconds: 180 },
+    });
   });
 
   it("persists free-form turns for AI instead of keyword-matching answers", () => {

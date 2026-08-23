@@ -178,6 +178,25 @@ describe("quick song — flow promotion", () => {
 });
 
 describe("quick song — configuration and server-side authority", () => {
+  it("keeps the client working indicator alive across non-terminal song acknowledgements", () => {
+    const agent = readFileSync("src/do/ava_agent.ts", "utf8");
+    const inbound = readFileSync("../app/lib/features/avatok/chat_thread/inbound.dart", "utf8");
+    const send = readFileSync("../app/lib/features/avatok/chat_thread/send.dart", "utf8");
+    expect(agent).toContain("turn_pending: true");
+    expect(agent).toContain('progress_label: progressLabel');
+    expect(inbound).toContain("_reconcileAvaReplyProgress(extra)");
+    expect(send).toContain("meta['turn_pending'] == true");
+    expect(send).toContain("trigger: 'wire_progress'");
+  });
+
+  it("automatically falls back to an independent lyrics model before asking the person to retry", () => {
+    const prompts = readFileSync("src/lib/media_prompt.ts", "utf8");
+    const media = readFileSync("src/lib/vertex_media.ts", "utf8");
+    expect(prompts).toContain('const LYRICS_FALLBACK_MODEL = "gemini-2.5-flash-lite"');
+    expect(prompts).toContain("const ladder = [CRAFT_MODEL, CRAFT_MODEL, LYRICS_FALLBACK_MODEL]");
+    expect(media).toContain("fallback_used: fallbackUsed");
+  });
+
   it("declares veniceQuickSongModel in BOTH the interface and DEFAULTS, and not in numericKeys", () => {
     // A key the server reads but DEFAULTS does not declare is a FAKE flag:
     // putConfig rejects it with 400 `unknown key`, so it can never be flipped

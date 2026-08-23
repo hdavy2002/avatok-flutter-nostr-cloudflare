@@ -59,6 +59,14 @@ describe("AI song interview", () => {
     expect(generated.action).toBe("generate");
   });
 
+  it("accepts user-supplied lyrics without asking the model to reproduce them", () => {
+    const accepted = parseSongInterviewTurn(
+      '{"action":"accept_lyrics","reply":"I’ll use your exact words for the song.","context":{"genre":"Hindi rock","mood":"warm","language":"Hindi","durationSeconds":180}}',
+    );
+    expect(accepted.action).toBe("accept_lyrics");
+    expect(SONG_INTERVIEW_SYSTEM).toContain("Never rewrite, summarize, translate, sanitize, or reproduce those lyrics in JSON");
+  });
+
   it("lets the model release a stale song flow when the user changes topic", () => {
     const switched = parseSongInterviewTurn(
       '{"action":"switch","reply":"","context":{}}',

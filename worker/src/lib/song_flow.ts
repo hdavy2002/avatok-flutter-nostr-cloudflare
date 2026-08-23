@@ -21,6 +21,8 @@ export interface SongFlowState {
   brief?: string;
   durationSeconds?: number;
   lyrics?: string;
+  /** Who supplied the exact reviewed lyrics. User text is never silently rewritten. */
+  lyricsSource?: "ava" | "user";
   /** [AVA-MULTITOOL-1] Epoch ms of the last storage write; drives idle expiry. */
   updatedAt?: number;
 }
@@ -157,8 +159,11 @@ export function classifySongRequest(text: string): SongRequestKind | null {
   if (!creation) return null;
   const noVocals = /\b(?:instrumental|beat|no\s+(?:singing|vocals?|lyrics)|without\s+(?:singing|vocals?|lyrics))\b/.test(t);
   if (noVocals && !/\b(?:lyrics?|singer|sing(?:ing)?|vocal song)\b/.test(t)) return "instrumental";
-  if (/\b(?:song|lyrics?|singer|sing(?:ing)?|vocal)\b/.test(t)) return "vocal";
-  if (/\b(?:music|track|beat|instrumental)\b/.test(t)) return "instrumental";
+  if (/\b(?:song|lyrics?|singer|sing(?:ing)?|vocals?|voice)\b/.test(t)) return "vocal";
+  // [SONG-VOCAL-DEFAULT-1] "Music" and "track" are ambiguous, not synonyms
+  // for instrumental. The product default is a lyrics-based song; a wordless
+  // result now requires an explicit instrumental/no-vocals/beat signal above.
+  if (/\b(?:music|track)\b/.test(t)) return "vocal";
   return null;
 }
 
@@ -191,6 +196,7 @@ export function isSongFlowState(value: unknown): value is SongFlowState {
     && (flow.brief == null || typeof flow.brief === "string")
     && (flow.durationSeconds == null || (typeof flow.durationSeconds === "number" && Number.isFinite(flow.durationSeconds)))
     && (flow.lyrics == null || typeof flow.lyrics === "string")
+    && (flow.lyricsSource == null || flow.lyricsSource === "ava" || flow.lyricsSource === "user")
     && (flow.updatedAt == null || (typeof flow.updatedAt === "number" && Number.isFinite(flow.updatedAt)));
 }
 
@@ -232,8 +238,48 @@ export function preferMostRecentLane(
 }
 
 /** Records a freshly generated lyric draft as awaiting explicit user approval. */
-export function withSongLyrics(flow: SongFlowState, lyrics: string): SongFlowState {
-  return { ...flow, phase: "reviewing", lyrics: String(lyrics), durationSeconds: clampSongDurationSeconds(flow.durationSeconds ?? 60) };
+export function withSongLyrics(
+  flow: SongFlowState,
+  lyrics: string,
+  lyricsSource: "ava" | "user" = "ava",
+): SongFlowState {
+  return {
+    ...flow,
+    kind: "vocal",
+    phase: "reviewing",
+    lyrics: String(lyrics),
+    lyricsSource,
+    durationSeconds: clampSongDurationSeconds(flow.durationSeconds ?? 180),
+  };
+}
+
+/**
+ * Extract lyrics supplied by the person without asking a model to reproduce
+ * them. This intentionally returns the original line breaks and wording.
+ */
+export function extractUserProvidedLyrics(text: string): string | null {
+  const raw = stripAvaWakeWordForIntent(text).trim();
+  if (!raw) return null;
+  const labelled = raw.match(/\b(?:with\s+)?(?:my|these|the following)\s+lyrics\s*[:\-–]\s*\n?([\s\S]+)$/i)
+    ?? raw.match(/(?:^|\n)\s*(?:here(?:'s| are)|use|take|my|these are)\s+(?:my\s+|these\s+)?lyrics\s*[:\-–]?\s*\n?([\s\S]+)$/i)
+    ?? raw.match(/(?:^|\n)\s*lyrics\s*:\s*\n?([\s\S]+)$/i);
+  let candidate = (labelled?.[1] ?? raw).trim();
+  const firstSection = candidate.search(/\[(?:verse|chorus|pre-chorus|bridge|outro|intro)(?:\s+\d+)?\]/i);
+  if (!labelled && firstSection > 0) candidate = candidate.slice(firstSection).trim();
+  const hasSections = /\[(?:verse|chorus|pre-chorus|bridge|outro|intro)(?:\s+\d+)?\]/i.test(candidate);
+  const lines = candidate.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const explicitlyPresented = !!labelled;
+  if ((hasSections || explicitlyPresented || (/\blyrics?\b/i.test(raw) && lines.length >= 4))
+      && candidate.length >= 20) {
+    return candidate;
+  }
+  return null;
+}
+
+export function explicitlyRequestsSongCreation(text: string): boolean {
+  const t = stripAvaWakeWordForIntent(text).toLowerCase();
+  return /\b(?:make|create|generate|produce|compose|turn)\b/.test(t)
+    && /\b(?:song|music|track|lyrics?)\b/.test(t);
 }
 
 /**
@@ -291,7 +337,7 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
       kind: "ask_brief",
       flow: {
         phase: "awaiting_brief", kind: requestKind, brief, conversation: brief,
-        durationSeconds: parseSongDurationSeconds(brief) ?? carried?.durationSeconds ?? 60,
+        durationSeconds: parseSongDurationSeconds(brief) ?? carried?.durationSeconds ?? 180,
         ...(carried ? { context: carried, lastInterviewReply: flow?.lastInterviewReply } : {}),
       },
     };
@@ -314,7 +360,7 @@ export function nextSongFlow(flow: SongFlowState | null, text: string): SongFlow
       kind: "ask_brief",
       flow: {
         ...flow, conversation,
-        durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 60,
+        durationSeconds: parseSongDurationSeconds(brief) ?? flow.durationSeconds ?? 180,
       },
     };
   }

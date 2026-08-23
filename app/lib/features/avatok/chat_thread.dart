@@ -395,11 +395,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
   // The fix: show this indicator OPTIMISTICALLY the moment an @ava/#ava message
   // is sent, reconcile the label from the persisted `ava_status` start chip
   // when it arrives, and clear it on the Ava reply / phase:'end' / stream
-  // start / a 60s timeout — so it can never depend on sort order and can never
+  // start / a five-minute timeout — so it can never depend on sort order and can never
   // stick forever. `ava_status` message rows themselves no longer render
   // (bubbles.dart) — this indicator owns the visual.
   String? _avaWorking;        // non-null label = indicator visible
-  Timer? _avaWorkingTimeout;  // 60s failsafe — a stuck spinner is worse than none
+  Timer? _avaWorkingTimeout;  // 5m provider-aware failsafe; terminal wire signals clear sooner
   // [AVA-WORKING-DOTS-2] Diagnosis state. "The dots never appeared" and "the
   // dots appeared and were torn down 200ms later" are indistinguishable to the
   // user and are completely different bugs, and with no local toolchain the

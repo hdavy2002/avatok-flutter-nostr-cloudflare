@@ -17,6 +17,7 @@ import type { Env } from "../types";
 import { vertexMediaRequest } from "./vertex";
 
 const CRAFT_MODEL = "gemini-3.7-flash";
+const LYRICS_FALLBACK_MODEL = "gemini-2.5-flash-lite";
 const CRAFT_TIMEOUT_MS = 20000;
 
 async function vertexText(
@@ -25,8 +26,9 @@ async function vertexText(
   user: string,
   maxOutputTokens: number,
   temperature: number,
+  model = CRAFT_MODEL,
 ): Promise<string> {
-  const r = await vertexMediaRequest(env, `/publishers/google/models/${CRAFT_MODEL}:generateContent`, {
+  const r = await vertexMediaRequest(env, `/publishers/google/models/${model}:generateContent`, {
     contents: [
       { role: "user", parts: [{ text: `${system}\n\nUser request:\n${user}` }] },
     ],
@@ -154,9 +156,21 @@ export async function craftSongCardMetadata(
  * `durationSeconds` long (defaults to 60s). Throws on provider/empty output so
  * the caller can retain the brief and ask the user to retry safely.
  */
-export async function draftLyrics(env: Env, theme: string, durationSeconds?: number, maxChars?: number): Promise<string> {
+export interface DraftLyricsRecoveryResult {
+  lyrics: string;
+  model: string;
+  fallbackUsed: boolean;
+  attempts: number;
+}
+
+export async function draftLyricsWithRecovery(
+  env: Env,
+  theme: string,
+  durationSeconds?: number,
+  maxChars?: number,
+): Promise<DraftLyricsRecoveryResult> {
   const t = String(theme ?? "").trim();
-  if (!t) return t;
+  if (!t) return { lyrics: "", model: CRAFT_MODEL, fallbackUsed: false, attempts: 0 };
   const dur = Number.isFinite(durationSeconds as number) && (durationSeconds as number) > 0
     ? Math.round(durationSeconds as number)
     : 60;
@@ -192,14 +206,21 @@ export async function draftLyrics(env: Env, theme: string, durationSeconds?: num
   // dense scripts.
   const maxTokens = Math.min(3600, Math.max(900, Math.round(dur * 14)));
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const ladder = [CRAFT_MODEL, CRAFT_MODEL, LYRICS_FALLBACK_MODEL];
+  for (let attempt = 0; attempt < ladder.length; attempt++) {
+    const model = ladder[attempt];
     try {
-      const text = await vertexText(env, sys, t, maxTokens, 0.85);
+      const text = await vertexText(env, sys, t, maxTokens, attempt === 0 ? 0.85 : 0.72, model);
       if (!text) throw new Error("empty lyrics response");
-      return text;
+      return { lyrics: text, model, fallbackUsed: model !== CRAFT_MODEL, attempts: attempt + 1 };
     } catch (error) {
       lastError = error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+/** Backwards-compatible text-only facade for existing callers/tests. */
+export async function draftLyrics(env: Env, theme: string, durationSeconds?: number, maxChars?: number): Promise<string> {
+  return (await draftLyricsWithRecovery(env, theme, durationSeconds, maxChars)).lyrics;
 }

@@ -33,7 +33,7 @@ import { avaString, readVoiceStyle, type AvaVoiceStyle } from "./ava_persona";
 import { postAvaMessage } from "../routes/ava_thread";
 // [VENICE-PROMPT-1 / VENICE-SONG-1] Gemini-3.7-via-Venice prompt/lyrics
 // crafting — see lib/media_prompt.ts's header for the fail-soft contract.
-import { craftVideoPrompt, craftVideoCardMetadata, craftSongCardMetadata, draftLyrics } from "./media_prompt";
+import { craftVideoPrompt, craftVideoCardMetadata, craftSongCardMetadata, draftLyricsWithRecovery } from "./media_prompt";
 import { vertexInteraction, vertexPredictLongRunning } from "./vertex";
 
 const VIDEO_DEADLINE_MS = 10 * 60_000; // ~10 min hard ceiling, per the work order
@@ -161,11 +161,19 @@ export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<R
       ? "Instrumental only; no vocals."
       : "Sing the approved lyrics exactly; do not invent or omit lyric lines.";
     const input: any[] = [{ type: "text", text: `${prompt}\n\nTarget length: ${duration} seconds.\n${modeInstruction}${lyrics ? `\n\nApproved lyrics:\n${lyrics}` : ""}` }];
-    const r = await vertexInteraction(env, VERTEX_MUSIC_MODEL, input, 120_000);
-    providerStatus = r.status;
-    providerError = String(r.out?.error?.message ?? "").slice(0, 240);
-    const bytes = audioFromInteraction(r.out);
-    if (!r.ok || !bytes) throw new Error("provider_unavailable: Vertex returned no audio");
+    let bytes: Uint8Array | null = null;
+    for (let attempt = 1; attempt <= 2 && !bytes; attempt++) {
+      const r = await vertexInteraction(env, VERTEX_MUSIC_MODEL, input, 120_000);
+      providerStatus = r.status;
+      providerError = String(r.out?.error?.message ?? "").slice(0, 240);
+      bytes = r.ok ? audioFromInteraction(r.out) : null;
+      await track(env, a.uid, "vertex_music_attempt", "avaai", {
+        job_id: created.job.job_id, attempt, ok: !!bytes,
+        status: providerStatus, provider_error: providerError || null,
+        music_mode: a.musicMode,
+      }).catch(() => {});
+    }
+    if (!bytes) throw new Error("provider_unavailable: Vertex returned no audio after automatic retry");
     const tempKey = `ai-media/pending/${created.job.job_id}`;
     await env.DIGITAL.put(tempKey, bytes, { httpMetadata: { contentType: "audio/mpeg" } });
     await attachProviderOperationId(env, created.job.job_id, `vertex-inline:${tempKey}`);
@@ -422,10 +430,17 @@ export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs
   const lyricsCharCap = undefined;
   const t0 = Date.now();
   let lyrics = "";
+  let lyricsModel = "gemini-3.7-flash";
+  let fallbackUsed = false;
+  let attempts = 0;
   let ok = true;
   let error: string | null = null;
   try {
-    lyrics = await draftLyrics(env, theme, durationSeconds, lyricsCharCap);
+    const drafted = await draftLyricsWithRecovery(env, theme, durationSeconds, lyricsCharCap);
+    lyrics = drafted.lyrics;
+    lyricsModel = drafted.model;
+    fallbackUsed = drafted.fallbackUsed;
+    attempts = drafted.attempts;
   } catch (e: any) {
     ok = false;
     error = String(e?.message ?? e ?? "unknown").slice(0, 300);
@@ -436,7 +451,8 @@ export async function runVertexDraftLyrics(env: Env, a: RunVertexDraftLyricsArgs
   void track(env, a.uid, "ava_reason_call", "avaai", {
     role: "ava_lyrics", capability: "media_lyrics_draft", trigger: "draft_lyrics",
     opportunity: null, feature: "ava_music", verb: "hear", provider: "vertex",
-    model: "gemini-3-7-flash", primary_model: null, ok, fallback_used: false, cache_hit: false,
+    model: lyricsModel, primary_model: "gemini-3.7-flash", ok, fallback_used: fallbackUsed, cache_hit: false,
+    attempts,
     latency_ms: Date.now() - t0, tokens_in: null, tokens_out: null, error,
   });
   if (!ok || !lyrics) {

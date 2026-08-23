@@ -23,6 +23,7 @@ Conversation rules:
 - Do not invent a user preference unless the conversation gives Ava permission to choose; when it does, make sensible producer choices and record them.
 - Choose action "discuss" when the person wants to keep shaping the idea or one essential creative decision is genuinely unclear.
 - Choose action "draft" when the person means that Ava should now write or rewrite vocal lyrics. A revision may be expressed in ordinary conversational language.
+- Choose action "accept_lyrics" when the person has supplied their own lyrics. Never rewrite, summarize, translate, sanitize, or reproduce those lyrics in JSON; the server takes the exact text from latestUserMessage. Preserve all creative context, acknowledge that their exact words will be used, and ask for approval only if they did not already explicitly ask to create the finished song.
 - Choose action "generate" when the person means that Ava should create an instrumental, or accepts the currently reviewed vocal lyrics and wants the finished song created.
 - Choose action "quick_generate" when the person does not want to write or approve lyrics at all and just wants a finished song now — "quick song", "you write it", "surprise me", "just make it", "one tap", "don't show me the words", or plain impatience with the lyric step. Also prefer it when songType is "engine_written". In this mode the music engine writes AND sings its own words from your brief, so pick quick_generate as soon as you know what the song is about and how long it should be; do not gather anything else. Your reply for quick_generate MUST set expectations in the person's own language: the engine writes the words itself, so they cannot be read or approved first, and the exact wording may not be what they pictured. Offer, in one short clause, that they can ask for lyrics they approve instead.
 - Choose action "restart" when the person is clearly starting a different song idea rather than revising the active one. Build context only from the new idea; do not carry creative choices from the older song into it.
@@ -32,7 +33,7 @@ Conversation rules:
 Return ONLY valid JSON with this shape:
 {"action":"discuss","reply":"natural Ava response","context":{"theme":string|null,"genre":string|null,"mood":string|null,"instruments":string[],"language":string|null,"vocalArrangement":string|null,"voiceStyle":string|null,"durationSeconds":number|null,"intendedUse":string|null,"modelId":string|null}}
 
-The action value must be "discuss", "draft", "generate", "quick_generate", "restart", or "switch". For every action except "switch", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. For "restart", context must instead describe only the new song. Choose "draft" only when the essential vocal direction is known. Choose "generate" for a vocal song only when the current lyrics are under review and the person has accepted them. Choose "quick_generate" only when the person has asked, in effect, for Ava to skip the lyric step entirely. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
+The action value must be "discuss", "draft", "accept_lyrics", "generate", "quick_generate", "restart", or "switch". For every action except "switch", context must contain the best current understanding after this turn, preserving prior values unless the person changed them. For "restart", context must instead describe only the new song. Choose "draft" only when the essential vocal direction is known. Choose "accept_lyrics" whenever the person supplies lyrics, even when they also ask to make the finished song. Choose "generate" for a vocal song only when the current lyrics are under review and the person has accepted them. Choose "quick_generate" only when the person has asked, in effect, for Ava to skip the lyric step entirely. For action "switch", the reply may be empty because the new request will be handled by Ava's normal conversation route.`;
 
 export const SONG_INTERVIEW_FALLBACK_MODEL = "gemini-3-7-flash";
 
@@ -76,7 +77,7 @@ export interface SongInterviewTurn {
   // SPEND action, so like "generate" it is only a PROPOSAL here: do/ava_agent.ts's
   // canExecute() re-validates it against the saved server state before a token
   // is reserved. The model never authorises spend on its own.
-  action: "discuss" | "draft" | "generate" | "quick_generate" | "restart" | "switch";
+  action: "discuss" | "draft" | "accept_lyrics" | "generate" | "quick_generate" | "restart" | "switch";
   reply: string;
   context: SongProductionContext;
 }
@@ -88,7 +89,7 @@ export function parseSongInterviewTurn(rawText: string, previous?: SongProductio
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("song interview returned no JSON object");
   const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  const action = ["draft", "generate", "quick_generate", "restart", "switch"].includes(String(parsed.action))
+  const action = ["draft", "accept_lyrics", "generate", "quick_generate", "restart", "switch"].includes(String(parsed.action))
     ? parsed.action as SongInterviewTurn["action"]
     : "discuss";
   const reply = cleanText(parsed.reply, 700);

@@ -120,7 +120,7 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
     if (special == 'ava_status') {
       _reconcileAvaWorking(extra, m.createdAt);
     } else if (special == 'ava' || special == 'ava_private') {
-      _clearAvaWorking('reply');
+      _reconcileAvaReplyProgress(extra);
     }
     final isMediaJobEnvelope = (special == 'ava' || special == 'ava_private') &&
         extra?['meta'] is Map &&
@@ -371,7 +371,7 @@ extension _ChatThreadInbound on _ChatThreadScreenState {
       if (special == 'ava_status') {
         _reconcileAvaWorking(extra, m.createdAt);
       } else if (special == 'ava' || special == 'ava_private') {
-        _clearAvaWorking('reply');
+        _reconcileAvaReplyProgress(extra);
       }
     }
     final isMediaJobEnvelope = (special == 'ava' || special == 'ava_private') &&
