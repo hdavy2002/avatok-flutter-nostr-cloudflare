@@ -240,9 +240,33 @@ extension _ChatThreadMedia on _ChatThreadScreenState {
     final meta = extra?['meta'];
     if (meta is! Map) return;
     final jobId = (meta['job_id'] ?? '').toString();
-    if (jobId.isEmpty || (meta['media_job_kind'] ?? '').toString().isEmpty) return;
+    final kind = (meta['media_job_kind'] ?? '').toString();
+    if (jobId.isEmpty || kind.isEmpty) return;
+    final convId = _serverConvId ?? _convKey;
+    if (convId == null || convId.isEmpty) return;
+    // [AVA-JOB-PRESENCE-1] Put a real repository-backed card on screen before
+    // waiting for the network. It is immediately persisted per account and
+    // starts the normal reconciliation loop. The authoritative GET below can
+    // refine/finish it, but can no longer be a single point of visual failure.
+    final rawCreatedAt = meta['job_created_at'];
+    final createdAtMs = rawCreatedAt is num ? rawCreatedAt.toInt() : int.tryParse('$rawCreatedAt');
+    final provisional = AiMediaJobRepository.I.seedPendingFromEnvelope(
+      jobId: jobId,
+      kind: kind,
+      convId: convId,
+      label: (meta['job_label'] ?? '').toString(),
+      createdAt: createdAtMs == null ? null : (createdAtMs > 100000000000 ? createdAtMs ~/ 1000 : createdAtMs),
+    );
+    if (!mounted) return;
+    _upsertJobMessage(provisional);
+    Analytics.capture('creative_job_card_seen', {
+      'job_id': jobId,
+      'media_kind': kind,
+      'source': 'job_envelope',
+    });
+    _clearAvaWorking('job_card');
     final job = await AiMediaJobRepository.I.fetch(jobId);
-    if (!mounted || job == null) return;
+    if (!mounted || job == null) return; // provisional card + polling stay live
     _upsertJobMessage(job);
   }
 

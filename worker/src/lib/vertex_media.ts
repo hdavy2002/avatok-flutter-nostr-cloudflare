@@ -154,6 +154,38 @@ export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<R
     musicMode: a.musicMode, flatPriceTokens: undefined,
   });
   if (!created.ok) return { ok: false, message: "I couldn't start that track right now — please try again." };
+  // [AVA-JOB-PRESENCE-1] CREATE BEFORE PROMISE, then hand the durable identity
+  // to the chat BEFORE the slow Vertex call. The interactions request below may
+  // consume two 120-second attempts. Posting this envelope after those attempts
+  // left the person staring at nothing after Ava said production had started.
+  // Current clients seed a persistent job card from this envelope immediately;
+  // older clients still receive truthful compatibility copy. `client_id` makes
+  // a retried delivery idempotent without changing the job's billing identity.
+  const startedPost = await postAvaMessage(env, {
+    ownerUid: a.uid,
+    conv: a.conv,
+    text: a.private ? "Ava is creating your song…" : "Ava is creating a song…",
+    private: a.private,
+    source: "music",
+    meta: {
+      job_id: created.job.job_id,
+      media_job_kind: "music_generate",
+      job_label: created.job.label ?? "Generating your track…",
+      job_created_at: created.job.created_at,
+    },
+    client_id: `media-start:${created.job.job_id}`,
+  }).catch(() => ({ ok: false }));
+  // Starting provider work without a deliverable job identity recreates the
+  // incident by construction. Fail and release the reservation instead; the
+  // caller keeps the turn indicator alive until it posts the terminal error.
+  if (!startedPost.ok) {
+    await failMediaJob(env, {
+      jobId: created.job.job_id,
+      errorCode: "pipeline_state_error",
+      reason: "job_start_envelope_failed",
+    });
+    return { ok: false, message: "I couldn't start that track right now — please try again." };
+  }
   let providerStatus = 0;
   let providerError = "";
   try {
@@ -180,7 +212,6 @@ export async function runVertexMusic(env: Env, a: RunVertexMusicArgs): Promise<R
     await env.DIGITAL.put(tempKey, bytes, { httpMetadata: { contentType: "audio/mpeg" } });
     await attachProviderOperationId(env, created.job.job_id, `vertex-inline:${tempKey}`);
     await enqueueMediaPoll(env, created.job.job_id, "music_generate", 0);
-    await postAvaMessage(env, { ownerUid: a.uid, conv: a.conv, text: a.private ? "Ava is creating your song…" : "Ava is creating a song…", private: a.private, source: "music", meta: { job_id: created.job.job_id, media_job_kind: "music_generate" } }).catch(() => {});
     return { ok: true, job_id: created.job.job_id, message: a.private ? "🎵 Working on your track — it'll appear here privately when it's ready." : "🎵 Working on your track — it'll appear in this chat when it's ready." };
   } catch {
     await track(env, a.uid, "vertex_music_failed", "avaai", {

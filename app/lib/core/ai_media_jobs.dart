@@ -526,6 +526,55 @@ class AiMediaJobRepository {
 
   AiMediaJob? byId(String jobId) => _byId[jobId];
 
+  /// [AVA-JOB-PRESENCE-1] Seed the durable card synchronously from the trusted
+  /// server lifecycle envelope, before its follow-up GET can cross the network.
+  /// The envelope contains only safe job metadata; the next poll replaces this
+  /// provisional record with the authoritative row. This closes the exact gap
+  /// where Ava had promised production, the turn dots were cleared, and a slow
+  /// or failed hydration left no visible indication at all.
+  AiMediaJob seedPendingFromEnvelope({
+    required String jobId,
+    required String kind,
+    required String convId,
+    String? label,
+    int? createdAt,
+  }) {
+    final existing = _byId[jobId];
+    if (existing != null) {
+      _rearmPolling(existing.convId);
+      return existing;
+    }
+    final now = _nowS();
+    final seeded = AiMediaJob(
+      jobId: jobId,
+      kind: AiMediaJobKindWire.fromWire(kind) ?? AiMediaJobKind.imageGenerate,
+      status: AiMediaJobStatus.queued,
+      convId: convId,
+      sourceMediaId: null,
+      label: (label ?? '').trim(),
+      progress: null,
+      artifactMediaId: null,
+      artifactUrl: null,
+      songTitle: null,
+      songDescription: null,
+      coverMediaId: null,
+      coverUrl: null,
+      coverStatus: null,
+      videoTitle: null,
+      videoDescription: null,
+      thumbnailUrl: null,
+      thumbnailStatus: null,
+      errorCode: null,
+      createdAt: createdAt ?? now,
+      updatedAt: createdAt ?? now,
+      completedAt: null,
+    );
+    _apply(seeded, notify: true);
+    unawaited(_persist(convId));
+    _rearmPolling(convId);
+    return seeded;
+  }
+
   // ── Lifecycle: open / resume a conversation ────────────────────────────────
 
   /// Convenience for Wave 3: hydrate the local cache, then reconcile against

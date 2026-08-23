@@ -246,6 +246,16 @@ extension _ChatThreadSend on _ChatThreadScreenState {
   void _reconcileAvaReplyProgress(Map<String, dynamic>? extra) {
     final rawMeta = extra?['meta'];
     final meta = rawMeta is Map ? rawMeta.cast<String, dynamic>() : const <String, dynamic>{};
+    // [AVA-JOB-PRESENCE-1] A job envelope is a handoff, not a terminal reply.
+    // Keep the turn indicator visible until media.dart has synchronously seeded
+    // and painted the durable card. Clearing here used to create the silent gap
+    // reported by the owner whenever the follow-up job GET was slow or failed.
+    if ((meta['job_id'] ?? '').toString().isNotEmpty &&
+        (meta['media_job_kind'] ?? '').toString().isNotEmpty) {
+      final label = (meta['job_label'] ?? meta['progress_label'] ?? 'Starting production…').toString();
+      _showAvaWorking(label, trigger: 'wire_job_handoff', statusId: (meta['status_id'] ?? '').toString());
+      return;
+    }
     if (meta['turn_pending'] == true) {
       final label = (meta['progress_label'] ?? 'Ava is working…').toString();
       final statusId = (meta['status_id'] ?? '').toString();

@@ -1775,8 +1775,16 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
                 const progressLabel = interview.action === "draft"
                   ? "Writing your lyrics…"
                   : interview.action === "accept_lyrics" ? "Checking your lyrics…" : "Creating your song…";
+                // [AVA-JOB-PRESENCE-1] The model may phrase its generate reply
+                // as "production has started" before createMediaJob() has
+                // actually succeeded. Until a durable job id exists, the only
+                // truthful state is preparation. Once the row exists,
+                // runVertexMusic posts the job-correlated production envelope.
+                const conversationalReply = interview.action === "generate" || interview.action === "quick_generate"
+                  ? "Preparing your song production now…"
+                  : interview.reply;
                 await this.postAva({
-                  conv, uid, text: interview.reply, private: priv, source: "music",
+                  conv, uid, text: conversationalReply, private: priv, source: "music",
                   meta: { status_id: statusId, turn_pending: true, progress_label: progressLabel },
                 });
                 if (interview.action === "quick_generate") {
