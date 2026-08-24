@@ -83,7 +83,7 @@ class _PaInAppScreenState extends State<PaInAppScreen> {
 
   bool _rejected = true;
   bool _notPickedUp = true;
-  bool _unreachable = false;
+  bool _unreachable = true;
   bool _redirectAll = false;
 
   @override

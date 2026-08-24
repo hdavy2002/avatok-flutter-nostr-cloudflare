@@ -486,7 +486,7 @@ function receptOnUnreachable(s: SettingsRow | null | undefined): boolean {
 // [RECEPT-BACKEND-TOGGLES-1] (owner decision 2026-07-23): the canonical per-lane +
 // per-scenario resolvers. Each reads its own column; a NULL/undefined column (owner
 // never set it, or a pre-migration row) falls back to the mirror the client uses —
-// not_picked_up + rejected → ON, unreachable + redirect_all → OFF — NEVER to a blanket
+// not_picked_up + rejected + unreachable → ON, redirect_all → OFF — NEVER to a blanket
 // `false` (which would silently silence a scenario the owner expects Ava on). This is
 // exactly the client's `containsKey ? value : default` behaviour, kept in lock-step so
 // the two can never drift. These 8 are the SOLE source of truth for routing; the legacy
@@ -500,7 +500,10 @@ function receptPstnUnreachableNew(s: SettingsRow | null | undefined): boolean { 
 function receptPstnRedirectAll(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_pstn_redirect_all, false); }
 function receptAvatokNotPickedUp(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_not_picked_up, true); }
 function receptAvatokRejectedNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_rejected, true); }
-function receptAvatokUnreachableNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_unreachable, false); }
+// AvaTOK calls must hand off to Ava when the callee is unreachable (phone off,
+// no data connection, or no registered delivery path). This is the safe
+// default for callers; an explicit saved value still overrides it.
+function receptAvatokUnreachableNew(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_unreachable, true); }
 function receptAvatokRedirectAll(s: SettingsRow | null | undefined): boolean { return _onDefault(s?.recept_avatok_redirect_all, false); }
 
 // A LANE is "active" (Ava may answer at least one scenario) iff any of its four
@@ -971,8 +974,8 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   // TWO-lane × FOUR-scenario toggles. PRESERVE-OR-DEFAULT per key so neither an
   // absent field nor an OLD app build (which sends none of these) ever RESETS the
   // owner's saved choices: a field present in the body wins; else the current stored
-  // value is kept; else the sensible default (not_picked_up + rejected → ON;
-  // unreachable + redirect_all → OFF) applies. This is the write-side mirror of the
+  // value is kept; else the sensible default (not_picked_up + rejected + unreachable → ON;
+  // redirect_all → OFF) applies. This is the write-side mirror of the
   // containsKey-style read defaults, so a new build round-trips exactly and an old
   // build leaves the 8 columns untouched. The old recept_on_* / recept_*_enabled body
   // keys are IGNORED here (dropped) — the legacy columns are DERIVED below instead.
@@ -987,7 +990,7 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   const receptPstnRedirectAllV = toggle("recept_pstn_redirect_all", existingRow?.recept_pstn_redirect_all, false);
   const receptAvatokNotPickedUpV = toggle("recept_avatok_not_picked_up", existingRow?.recept_avatok_not_picked_up, true);
   const receptAvatokRejectedV = toggle("recept_avatok_rejected", existingRow?.recept_avatok_rejected, true);
-  const receptAvatokUnreachableNewV = toggle("recept_avatok_unreachable", existingRow?.recept_avatok_unreachable, false);
+  const receptAvatokUnreachableNewV = toggle("recept_avatok_unreachable", existingRow?.recept_avatok_unreachable, true);
   const receptAvatokRedirectAllV = toggle("recept_avatok_redirect_all", existingRow?.recept_avatok_redirect_all, false);
   // Legacy columns DERIVED from the new model so old app builds' /config probe + the
   // PSTN lane's old SELECT stay coherent after a new-build save: a lane is "enabled"
