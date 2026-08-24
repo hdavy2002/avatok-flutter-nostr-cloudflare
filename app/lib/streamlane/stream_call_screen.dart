@@ -597,6 +597,17 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         traceId: widget.traceId,
       );
     } catch (_) {/* the handoff must happen even if the cancel misbehaves */}
+    // [STREAM-AVA-AUDIO-1 2026-08-24] LEAVE, not just reject. `cancelRinging`
+    // tells Stream's coordinator the caller gave up, but it never calls
+    // `leave()` — in the ordinary cancel path that is fine because the whole
+    // screen is being torn down. Here the app stays alive and immediately opens
+    // a SECOND audio session for Ava, and this device had already `join()`ed,
+    // so without this the WebRTC session keeps holding the mic and the
+    // communication-mode audio route while Ava tries to play through it. That
+    // contention is the other half of "her voice was very low".
+    try {
+      await widget.call.leave().timeout(const Duration(seconds: 3));
+    } catch (_) {/* already gone, or Stream refused a leave after reject */}
     try {
       final end = widget.endForEveryone;
       if (end != null) await end().timeout(const Duration(seconds: 5));
@@ -1223,7 +1234,14 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
                           : PhosphorIcons.speakerSlash(
                               PhosphorIconsStyle.bold),
                       onTap: _toggleSpeaker,
-                      active: !_speakerOn,
+                      // [STREAM-AVA-AUDIO-1 2026-08-24] Highlighted = speaker
+                      // ON, the phone-app convention. This was `!_speakerOn`,
+                      // which highlighted the button when the speaker was OFF —
+                      // so the loudspeaker looked engaged when it was not, and
+                      // tapping it turned the speaker off. Mute and camera keep
+                      // the inverse sense on purpose: there, the notable state
+                      // IS the disabled one.
+                      active: _speakerOn,
                     ),
                     if (widget.video) ...[
                       _controlButton(

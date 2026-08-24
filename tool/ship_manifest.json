@@ -3189,5 +3189,47 @@
       }
     ],
     "_verified_at": "worker/src/routes/stream_video_calls.ts:1002-1113 (presence read, three offline proofs, eligibility gate, refuse('receptionist') with start.activation_mode 'unreachable', emitPresenceDecision to both parties); worker/src/routes/receptionist.ts:572-589 (activationMode param) and :524-538 (avatokHandoffAllowed: 'unreachable' -> recept_avatok_unreachable, 'rings' -> recept_avatok_not_picked_up); app/lib/streamlane/stream_call_service.dart:57-70 (StreamOutgoingAvaHandoff) and :215-232 (start payload parse) and :846-856 (throw on routesToReceptionist); app/lib/streamlane/stream_call_screen.dart:134-158 (preparation-screen handoff), :478-499 (_ringWindow + _avaHandingOff), :548-604 (_handOffToAva), :617-625 (timer armed, outgoing only), :736-742 (disarmed on answer), :781-786 (disconnect guard); app/lib/streamlane/stream_ava_screen.dart (whole file); app/lib/core/remote_config.dart:589-604 (receptionistRings getter, clamped 1-12)"
+  },
+  "STREAM-AVA-AUDIO-1": {
+    "description": "Reported 2026-08-24, immediately after STREAM-RECEPTIONIST-1 shipped: \"Ava finally picked up, but her voice was very low, even when I had the speakers on.\" She was on the EARPIECE and the Speaker button could not move her off it. Three causes, all fixed. (1) CallAudioController is the single owner of the live route ([CALL-AUDIO-OWNER-1]) and its `intent` defaults to CallAudioRoute.earpiece; only call_session.dart (the LEGACY lane) ever calls seed(), so on the Stream lane the intent was never set. ReceptionistCall.start() then calls reassert('recept_prewarm_before'/'_after') around the native engine's startEngine, and _applyInternal applies `intent` whether or not a call was seeded — so both reasserts actively pulled Ava to the earpiece and pinned her there. StreamAvaScreen now seeds the controller with CallAudioRoute.speaker BEFORE start() and applies it, so those two reasserts hold the speaker instead of undoing it, installs onRouteConfirmed to keep Ava's speaker flag and the button in sync, and releases ownership on dispose. (2) The Speaker button called ReceptionistCall.setSpeaker directly, which only writes the native engine and never the owner — while callAudioOwnerV1 is on that is a race the owner wins, which is why the button looked dead. It now does setIntent then apply (the documented order) and only then tells the engine. (3) _handOffToAva called cancelRinging, which rejects at Stream's coordinator but never calls leave(); this device had already join()ed, so the WebRTC session kept holding the mic and the communication-mode route while Ava played through it. It now leaves the Stream call before opening Ava. Also two affordance fixes: the speaker button highlighted when the speaker was OFF (both here and on stream_call_screen.dart) and Ava now starts on speaker. Client-only; no worker change, no schema change, no new flag.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "callAudioOwnerV1",
+      "receptionistEnabled"
+    ],
+    "success": [
+      {
+        "event": "stream_lane_ava_audio_route",
+        "where": {
+          "outcome": "route_seeded"
+        },
+        "property": "confirmed",
+        "equals": "speaker",
+        "min_events": 1,
+        "min_pass_rate": 0.9,
+        "note": "The CONFIRMED native route once Ava's session is up — not the requested intent, which is what made this invisible before. `confirmed` comes from CallAudioController.confirmedRouteName, i.e. what NativeVoiceAudio.selectRoute actually landed on, so `speaker` here is the direct refutation of the reported symptom. Asserting the requested intent instead would have passed all along while Ava stayed on the earpiece. 0.9 allows a device genuinely routed elsewhere by the OS (wired headset or bluetooth connected, where speaker is the wrong answer and the fallback is correct)."
+      },
+      {
+        "event": "stream_lane_ava_audio_route",
+        "where": {
+          "outcome": "user_toggle"
+        },
+        "property": "applied",
+        "equals": true,
+        "min_events": 1,
+        "note": "The Speaker button now reaches the route owner at all. `applied` is false when CallAudioController.apply returned null, which is exactly the silent path the old direct-to-engine call took. This is a failure-path-adjacent assertion: it only appears on a build where someone actually tapped Speaker, so read it against stream_lane_ava_connected on the same build rather than against total call volume."
+      },
+      {
+        "event": "ava_recept_native",
+        "property": "speaker",
+        "equals": true,
+        "min_events": 1,
+        "min_pass_rate": 0.9,
+        "note": "ReceptionistCall's OWN view of the route it started with (receptionist_call.dart emits this from startEngine's result). Cross-checks the seed from the other side of the boundary: if this is false while stream_lane_ava_audio_route says speaker, the screen and the engine disagree and the reasserts are fighting again. Note this event is shared with the legacy lane, so filter to the new build."
+      }
+    ],
+    "_verified_at": "app/lib/streamlane/stream_ava_screen.dart:96-131 (_speakerOn default true, _audioOwnerId doc), :141-172 (seed + apply before ReceptionistCall, stream_lane_ava_audio_route), :176-190 (speaker: _speakerOn, onRouteConfirmed), :257-283 (_toggleSpeaker via setIntent+apply), :305-311 (release on dispose), :399-406 (active: _speakerOn); app/lib/streamlane/stream_call_screen.dart:599-610 (call.leave() before the handoff), :1224-1232 (speaker affordance); app/lib/core/calls/call_audio_controller.dart:43 (intent defaults to earpiece), :68-75 (seed), :79-81 (setIntent), :108-112 (_applyInternal applies intent with no seeded-call guard), :64 (onRouteConfirmed); app/lib/core/receptionist_call.dart:487-497 (the two reasserts around startEngine), setSpeaker (native engine only)"
   }
 }
