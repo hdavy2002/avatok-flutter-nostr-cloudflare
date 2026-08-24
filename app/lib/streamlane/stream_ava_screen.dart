@@ -29,6 +29,9 @@ import '../core/analytics.dart';
 import '../core/ava_identity.dart';
 import '../core/avatar.dart';
 import '../core/calls/call_audio_controller.dart';
+import '../core/peer_identity_cache.dart';
+import '../core/profile_store.dart';
+import '../core/receptionist_api.dart';
 import '../core/receptionist_call.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
@@ -107,6 +110,21 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
   bool _popped = false;
   final int _startedAtMs = DateTime.now().millisecondsSinceEpoch;
 
+  /// [STREAM-AVA-COPY-1 2026-08-24] Who the callee is, in their own pronoun.
+  /// Starts from the durable on-device cache so the first frame is already
+  /// right, then is refreshed from the receptionist config probe.
+  PeerIdentity _peer = const PeerIdentity();
+
+  /// [STREAM-AVA-COPY-1 2026-08-24] The caller's own name and photo.
+  ///
+  /// The screen rendered a bare "?" circle because both call sites push it
+  /// WITHOUT `myName`/`myAvatarUrl` — nothing in the Stream lane carries the
+  /// signed-in user's own profile, so `Avatar` fell through to its no-initials
+  /// placeholder. Read it here instead of adding two more parameters that every
+  /// future call site would have to remember to pass.
+  String _myName = '';
+  String _myAvatarUrl = '';
+
   /// [STREAM-AVA-AUDIO-1 2026-08-24] The id this screen owns audio under in
   /// [CallAudioController].
   ///
@@ -134,8 +152,71 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
   @override
   void initState() {
     super.initState();
+    // Seed both identities from local state FIRST, so the first painted frame
+    // already says the right name and pronoun rather than correcting itself a
+    // moment later. Neither await blocks the Ava session below.
+    // ignore: discarded_futures
+    _resolveIdentities();
     // ignore: discarded_futures
     _start();
+  }
+
+  /// [STREAM-AVA-COPY-1 2026-08-24] Three tiers, cheapest first: the durable
+  /// per-account on-device cache, then whatever the caller's route already knew
+  /// (`widget.peerName`), then the server probe — which
+  /// `ReceptionistApi.configFor` has usually already cached in memory for this
+  /// contact, so it normally costs no round trip at all.
+  Future<void> _resolveIdentities() async {
+    final cached = await PeerIdentityCache.instance.load(widget.peerId);
+    if (!mounted) return;
+    if (!cached.isEmpty) setState(() => _peer = cached);
+
+    try {
+      final me = await ProfileStore().load();
+      if (mounted && (me.displayName.isNotEmpty || me.avatarUrl.isNotEmpty)) {
+        setState(() {
+          _myName = widget.myName?.trim().isNotEmpty == true
+              ? widget.myName!.trim()
+              : me.displayName;
+          _myAvatarUrl = widget.myAvatarUrl?.trim().isNotEmpty == true
+              ? widget.myAvatarUrl!.trim()
+              : me.avatarUrl;
+        });
+      }
+    } catch (_) {/* the call must not depend on reading our own profile */}
+
+    try {
+      final cfg = await ReceptionistApi.configFor(widget.peerId);
+      if (cfg == null || !mounted) return;
+      // `mergedWith` keeps anything the probe left blank — an owner who has not
+      // set a gender must not erase a name we already had, and vice versa.
+      final fresh = PeerIdentity.fromConfig(cfg).mergedWith(cached);
+      if (fresh.isEmpty) return;
+      setState(() => _peer = fresh);
+      await PeerIdentityCache.instance.save(widget.peerId, fresh);
+      Analytics.capture('stream_lane_ava_peer_identity', {
+        ..._base('peer_resolved'),
+        'from_cache': !cached.isEmpty,
+        'has_first_name': fresh.firstName.isNotEmpty,
+        // The VALUE that decides the sentence. `false` here on a build where
+        // the owner has set a gender means the field is not reaching the caller.
+        'has_gender': fresh.gender.isNotEmpty,
+      });
+    } catch (_) {/* copy degrades to they/their, which is still true */}
+  }
+
+  /// What to CALL the callee in a sentence: their first name if we have it,
+  /// then whatever the route passed, then a neutral noun. Never the raw uid.
+  String get _peerFirstName {
+    if (_peer.firstName.isNotEmpty) return _peer.firstName;
+    final routed = (widget.peerName ?? '').trim();
+    if (routed.isNotEmpty) return routed.split(RegExp(r'\s+')).first;
+    return '';
+  }
+
+  String get _peerDisplayName {
+    if (_peer.displayName.isNotEmpty) return _peer.displayName;
+    return (widget.peerName ?? '').trim();
   }
 
   Map<String, Object> _base(String outcome) => <String, Object>{
@@ -319,16 +400,35 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
     super.dispose();
   }
 
+  /// [STREAM-AVA-COPY-1 2026-08-24] Says WHY you are talking to an assistant,
+  /// using the callee's name and their own pronoun.
+  ///
+  /// The first cut read "Ava is picking up…" and then, once she HAD picked up,
+  /// "They can't be reached — Ava is taking a message" — which the owner read as
+  /// the call having failed at the exact moment it succeeded. The live line now
+  /// states the situation in the past tense (the ringing is over) and names the
+  /// assistant's owner, so the screen never contradicts what is happening.
   String get _statusLabel {
+    final name = _peerFirstName;
+    final poss = _peer.possessivePronoun; // her / his / their
+    final who = name.isEmpty ? 'They' : name;
     switch (_phase) {
       case _AvaPhase.connecting:
-        return 'Ava is picking up…';
+        return name.isEmpty
+            ? 'Connecting you to their assistant…'
+            : "Connecting you to $name's assistant…";
       case _AvaPhase.live:
+        // Two genuinely different facts, and the caller deserves the right one:
+        // 'rings' means the phone rang and nobody answered; 'unreachable' means
+        // it never rang because the phone is not reachable at all.
         return widget.activationMode == 'unreachable'
-            ? "They can't be reached — Ava is taking a message"
-            : 'No answer — Ava is taking a message';
+            ? "$who can't be reached right now, so you're talking to "
+                '$poss assistant'
+            : "$who didn't pick up, so you're talking to $poss assistant";
       case _AvaPhase.wrapup:
-        return 'Ava is wrapping up…';
+        return name.isEmpty
+            ? 'Wrapping up — your message will be passed on'
+            : 'Wrapping up — $name will get your message';
       case _AvaPhase.failed:
         return _failReasonCopy(_failReason);
     }
@@ -353,7 +453,7 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final peerName = (widget.peerName ?? '').trim();
+    final peerName = _peerDisplayName;
     return Scaffold(
       backgroundColor: AD.bg,
       body: SafeArea(
@@ -381,8 +481,11 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
             _AvaDuo(
               recept: _recept,
               connecting: _phase == _AvaPhase.connecting,
-              myAvatarUrl: widget.myAvatarUrl,
-              myName: widget.myName,
+              myAvatarUrl: _myAvatarUrl,
+              myName: _myName,
+              avaLabel: _peerFirstName.isEmpty
+                  ? 'Ava'
+                  : "$_peerFirstName's Ava",
             ),
             const Spacer(),
             Padding(
@@ -454,47 +557,81 @@ class _StreamAvaScreenState extends State<StreamAvaScreen> {
   }
 }
 
-/// The caller and Ava, each pulsing with their own voice level. Driven by
-/// [ReceptionistCall.micLevel] / [ReceptionistCall.avaLevel], the same 0..1
-/// notifiers the legacy lane's duo uses.
+/// The caller and Ava, side by side, with a live link between them.
+///
+/// [STREAM-AVA-UI-1 2026-08-24] Rebuilt from the first cut, which the owner
+/// reported as three separate problems in one screenshot: the two faces were
+/// tiny, Ava's was greyed out, and the animation that used to show both sides
+/// communicating was gone.
+///
+///  * Size: 84px / r42 became [_avatarSize] 132. This is the focal point of the
+///    screen — there is nothing else on it — so it is now sized like one.
+///  * No more grey. The old `dimmed` flag dropped Ava to 45% opacity for the
+///    whole `connecting` phase, which reads as "disabled", not "connecting".
+///    Waiting is now expressed by the LINK animating on its own instead.
+///  * The link ([_LinkFlow]) is the replacement for the legacy lane's
+///    `_LinkPainter`: dots travelling between the two faces, toward whoever is
+///    currently speaking, driven by the same `micLevel`/`avaLevel` notifiers.
+///    While connecting they drift gently toward Ava, so the screen is alive
+///    before the first word rather than frozen behind a curtain.
 class _AvaDuo extends StatelessWidget {
   const _AvaDuo({
     required this.recept,
     required this.connecting,
+    required this.avaLabel,
     this.myAvatarUrl,
     this.myName,
   });
 
   final ReceptionistCall? recept;
   final bool connecting;
+
+  /// "Sonal's Ava" — whose assistant this is, not just "Ava".
+  final String avaLabel;
   final String? myAvatarUrl;
   final String? myName;
+
+  static const double _avatarSize = 132;
 
   @override
   Widget build(BuildContext context) {
     final r = recept;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _Pulse(
           level: r?.micLevel,
           label: 'You',
+          size: _avatarSize,
           child: Avatar(
             seed: 'me',
             name: myName ?? '',
             avatarUrl: myAvatarUrl,
-            size: 84,
+            size: _avatarSize,
           ),
         ),
-        const SizedBox(width: Msg.s6),
+        _LinkFlow(
+          mic: r?.micLevel,
+          ava: r?.avaLevel,
+          connecting: connecting,
+          height: _avatarSize,
+        ),
         _Pulse(
           level: r?.avaLevel,
-          dimmed: connecting,
-          label: 'Ava',
-          child: const CircleAvatar(
-            radius: 42,
-            backgroundColor: AD.tabCalls,
-            backgroundImage: AssetImage(AvaId.avatarAsset),
+          label: avaLabel,
+          size: _avatarSize,
+          child: Container(
+            width: _avatarSize,
+            height: _avatarSize,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AD.tabCalls,
+              image: DecorationImage(
+                image: AssetImage(AvaId.avatarAsset),
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
         ),
       ],
@@ -502,28 +639,30 @@ class _AvaDuo extends StatelessWidget {
   }
 }
 
+/// One face, haloed in proportion to how loudly its owner is speaking.
 class _Pulse extends StatelessWidget {
   const _Pulse({
     required this.child,
     required this.label,
+    required this.size,
     this.level,
-    this.dimmed = false,
   });
 
   final Widget child;
   final String label;
+  final double size;
   final ValueListenable<double>? level;
-  final bool dimmed;
+  static const double _labelWidth = 140;
 
   @override
   Widget build(BuildContext context) {
     final listenable = level;
-    final avatar = Opacity(opacity: dimmed ? 0.45 : 1, child: child);
+    final face = SizedBox(width: size, height: size, child: child);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (listenable == null)
-          avatar
+          face
         else
           ValueListenableBuilder<double>(
             valueListenable: listenable,
@@ -535,19 +674,173 @@ class _Pulse extends StatelessWidget {
                   boxShadow: [
                     BoxShadow(
                       color: AD.haldi.withValues(alpha: 0.55 * t),
-                      blurRadius: 6 + 18 * t,
-                      spreadRadius: 1 + 7 * t,
+                      blurRadius: 8 + 22 * t,
+                      spreadRadius: 1 + 9 * t,
                     ),
                   ],
                 ),
                 child: child,
               );
             },
-            child: avatar,
+            child: face,
           ),
         const SizedBox(height: Msg.s3),
-        Text(label, style: const TextStyle(color: AD.textSecondary)),
+        SizedBox(
+          width: _labelWidth,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AD.textSecondary),
+          ),
+        ),
       ],
     );
   }
+}
+
+/// [STREAM-AVA-UI-1 2026-08-24] The living link between the two faces.
+///
+/// This is the replacement for the animation the owner missed — the legacy
+/// lane's `_LinkPainter` (features/avatok/call_screen.dart), which this lane
+/// deliberately does not import. Dots travel along the gap, and they travel
+/// TOWARD whoever is currently speaking: driven right by Ava's level, left by
+/// the caller's mic. When neither is speaking — and during `connecting`, before
+/// there is any audio at all — they drift slowly toward Ava, so the screen shows
+/// that something is happening instead of freezing.
+///
+/// Deliberately cheap: one 16.7ms ticker, six dots, no per-frame allocation
+/// beyond the painter, and it repaints only while mounted. The old approach
+/// (greying Ava out) needed no ticker but told the user the wrong thing.
+class _LinkFlow extends StatefulWidget {
+  const _LinkFlow({
+    required this.mic,
+    required this.ava,
+    required this.connecting,
+    required this.height,
+  });
+
+  final ValueListenable<double>? mic;
+  final ValueListenable<double>? ava;
+  final bool connecting;
+  final double height;
+
+  static const double width = 72;
+
+  @override
+  State<_LinkFlow> createState() => _LinkFlowState();
+}
+
+class _LinkFlowState extends State<_LinkFlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 2),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mic = widget.mic;
+    final ava = widget.ava;
+    return SizedBox(
+      width: _LinkFlow.width,
+      height: widget.height,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          // Read the two levels at paint time. They are ValueNotifiers updated
+          // by the audio engine on its own cadence, so sampling them here keeps
+          // this to ONE animation clock rather than three rebuild sources.
+          final micLevel = _read(mic);
+          final avaLevel = _read(ava);
+          return CustomPaint(
+            painter: _LinkFlowPainter(
+              phase: _c.value,
+              micLevel: micLevel,
+              avaLevel: avaLevel,
+              connecting: widget.connecting,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static double _read(ValueListenable<double>? v) {
+    final raw = v?.value ?? 0.0;
+    if (raw.isNaN) return 0.0;
+    return raw.clamp(0.0, 1.0);
+  }
+}
+
+class _LinkFlowPainter extends CustomPainter {
+  _LinkFlowPainter({
+    required this.phase,
+    required this.micLevel,
+    required this.avaLevel,
+    required this.connecting,
+  });
+
+  /// 0..1, one full traversal per cycle.
+  final double phase;
+  final double micLevel;
+  final double avaLevel;
+  final bool connecting;
+
+  static const int _dots = 6;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // This box is sized to the AVATAR's height (the labels sit below it, outside
+    // this painter), so its own centre is the faces' centre.
+    final y = size.height / 2;
+    final loud = avaLevel > micLevel ? avaLevel : micLevel;
+
+    // Direction: +1 toward Ava (right), -1 toward the caller (left). Whoever is
+    // louder wins; silence (and connecting) drifts toward Ava.
+    final towardAva = avaLevel >= micLevel;
+    final dir = towardAva ? 1.0 : -1.0;
+    final colour = towardAva ? AD.tabCalls : AD.haldi;
+
+    // A quiet line the dots ride along, so the two faces always read as joined
+    // even at total silence.
+    final rail = Paint()
+      ..color = AD.textSecondary.withValues(alpha: 0.18)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(2, y), Offset(size.width - 2, y), rail);
+
+    // Speed rises with volume; connecting has no audio so it gets a slow float.
+    final speed = connecting ? 0.45 : 0.55 + 1.6 * loud;
+    final travel = size.width - 8;
+    final dot = Paint()..style = PaintingStyle.fill;
+
+    for (var i = 0; i < _dots; i++) {
+      // Evenly spaced along the cycle, wrapped into 0..1.
+      var t = (phase * speed + i / _dots) % 1.0;
+      if (dir < 0) t = 1.0 - t;
+      final x = 4 + travel * t;
+      // Fade in and out at the ends so dots appear to emerge from one face and
+      // sink into the other rather than popping on at a hard edge.
+      final edge = (t < 0.5 ? t : 1.0 - t) * 2.0; // 0 at ends, 1 at centre
+      final alpha = (connecting ? 0.35 : 0.30 + 0.62 * loud) * edge;
+      final radius = (connecting ? 2.0 : 2.0 + 2.4 * loud) * (0.55 + 0.45 * edge);
+      dot.color = colour.withValues(alpha: alpha.clamp(0.0, 1.0));
+      canvas.drawCircle(Offset(x, y), radius, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LinkFlowPainter old) =>
+      old.phase != phase ||
+      old.micLevel != micLevel ||
+      old.avaLevel != avaLevel ||
+      old.connecting != connecting;
 }
