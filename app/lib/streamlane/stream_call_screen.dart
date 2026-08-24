@@ -213,9 +213,9 @@ class _StreamOutgoingPreparationScreenState
     Analytics.capture('stream_lane_call_retry_tapped', {
       'attempt_id': widget.attempt.attemptId,
       'call_id': widget.attempt.callId,
-      'trace_id': widget.attempt.traceId,
+      'trace_id': widget.attempt.traceId ?? '',
       'peer_id': widget.peerId,
-      'peer_email': widget.peerEmail,
+      'peer_email': widget.peerEmail ?? '',
       'stage': 'preparation',
       'lane': 'streamlane',
     });
