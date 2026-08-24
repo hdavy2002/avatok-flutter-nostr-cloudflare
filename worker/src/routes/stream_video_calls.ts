@@ -27,6 +27,13 @@ import { emitCallEvent, CallEvent } from "../lib/call_telemetry_events";
 import { track, trackUser } from "../hooks";
 import { callerContactPolicy, shouldRouteUnknownAvatokCaller } from "../lib/call_contact_directory";
 import { APP_BUILD_HEADER, UPDATE_REQUIRED_MESSAGE, callMinBuildFrom, clientBuildFrom } from "../lib/call_build_gate";
+// [STREAM-RECEPTIONIST-1 2026-08-24] Presence + the receptionist scenario gate,
+// so a Stream call to a phone that is off goes to Ava instead of ringing into
+// the void. Same helpers, same thresholds and the same wire contract as the
+// legacy dial's offline branch in routes/api.ts — see the block in
+// streamCallPlace for why the values are deliberately identical.
+import { readPresenceRead, type PresenceState } from "../lib/presence";
+import { receptionistNoAnswerEligibility } from "./receptionist";
 
 const PROVIDER = "stream" as const;
 const CALL_TYPE = "default";
@@ -989,17 +996,138 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   }
   const admissionCompletedAt = Date.now();
 
+  // ── [STREAM-RECEPTIONIST-1 2026-08-24] OFFLINE CALLEE → AVA, WITHOUT RINGING ─
+  // Reported 2026-08-24: calling a dead phone on this lane rang forever and
+  // never reached Ava. The four-ring handoff lives in the CallRoom DO, which
+  // counts the CALLEE's device-ringing receipts — and a phone that is off sends
+  // none, so nothing ever counts and nothing ever fires. The Stream lane does
+  // not even create a CallRoom, so it had no ring accounting at all.
+  //
+  // This is the fast half of the fix: when presence PROVES the callee is not
+  // checking in, skip the ring entirely and tell the caller to open Ava now
+  // (~2s), instead of making them sit through the client's ring window first.
+  // The slow half — the caller-side ring timer for a phone that IS reachable
+  // but unanswered — lives in the client (stream_call_screen.dart).
+  //
+  // Deliberately identical to the legacy dial's offline branch (routes/api.ts):
+  // same `readPresenceRead`, same presenceFreshSec/presenceOfflineSec
+  // thresholds, same three proofs of offline, and the same fail-open rule — a
+  // Redis hiccup reads as `unknown` and RINGS, because diverting a call on a
+  // failed read would turn a transient blip into a total call outage.
+  //
+  // The ONE deliberate difference is `activation_mode: "unreachable"` rather
+  // than the legacy `"offline"`. `"offline"` is not in receptionistStart's
+  // VALID_MODES, so it silently coerced to `"rings"` and was therefore gated by
+  // the owner's not-picked-up toggle instead of their unreachable one. This
+  // lane is new, so there are no shipped clients to keep compatible — it can
+  // send the honest value from day one.
+  let presenceState: PresenceState = "unknown";
+  let presenceAgeMs: number | null = null;
+  let presenceRead = "not_read";
+  let presenceDecision = "ring";
+  let offlineBy: string | null = null;
+  const presenceRoutingOn = (config as { callPresenceRouting?: boolean } | null)?.callPresenceRouting !== false;
+  const presenceFreshSec = Number((config as { presenceFreshSec?: number } | null)?.presenceFreshSec ?? 90);
+  const presenceOfflineSec = Number((config as { presenceOfflineSec?: number } | null)?.presenceOfflineSec ?? 300);
+  const emitPresenceDecision = async (decision: string, routingReason: string | null): Promise<void> => {
+    try {
+      const [callerEmail, calleeEmail] = await Promise.all([
+        emailFor(env, callerUid).catch(() => null),
+        emailFor(env, calleeUid).catch(() => null),
+      ]);
+      const props = {
+        call_id: callId,
+        presence: presenceState,
+        presence_age_ms: presenceAgeMs,
+        decision,
+        routing_reason: routingReason,
+        from_uid: callerUid, to_uid: calleeUid,
+        from_email: callerEmail, to_email: calleeEmail,
+        fresh_sec: presenceFreshSec,
+        offline_sec: presenceOfflineSec,
+        offline_by: offlineBy,
+        presence_read: presenceRead,
+        media_mode: video ? "video" : "audio",
+        trace_id: traceId || null,
+        lane: "streamlane",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      };
+      // BOTH parties — a call is a conversation between two people (CLAUDE.md).
+      await trackUser(env, callerUid, callerEmail, "call_presence_decision", "avatok", props, traceId || undefined);
+      await trackUser(env, calleeUid, calleeEmail, "call_presence_decision", "avatok", props, traceId || undefined);
+    } catch { /* presence telemetry must never change routing */ }
+  };
+  if (presenceRoutingOn) {
+    const read = await readPresenceRead(env, calleeUid).catch(
+      () => ({ record: null, outcome: "error" as const, ms: 0, status: null }),
+    );
+    presenceRead = read.outcome;
+    if (read.record) {
+      presenceAgeMs = Math.max(0, Date.now() - read.record.lastSeenMs);
+      presenceState = presenceAgeMs <= presenceFreshSec * 1000 ? "fresh" : "stale";
+    }
+    const offlineMs = presenceOfflineSec > 0 ? presenceOfflineSec * 1000 : 0;
+    const heartbeatLapsed = presenceState === "stale" && offlineMs > 0
+      && presenceAgeMs !== null && presenceAgeMs >= offlineMs;
+    // A clean `miss` is also offline: the key's TTL is at least
+    // presenceOfflineSec*6, so nothing found means this ACCOUNT has not checked
+    // in for far longer than the threshold (routes/api.ts [CALL-PRESENCE-3]).
+    const noRecord = presenceRead === "miss" && offlineMs > 0;
+    if (heartbeatLapsed || noRecord) {
+      offlineBy = noRecord ? "no_record" : "age";
+      // Video has no Ava lane — Ava is a voice receptionist — so a video call to
+      // an off phone keeps its ordinary unreachable outcome rather than being
+      // diverted into a session that could not render.
+      const eligibility = video
+        ? { eligible: false, reason: "video" }
+        : await receptionistNoAnswerEligibility(env, calleeUid, "unreachable")
+            .catch(() => ({ eligible: false, reason: "wallet_unavailable" }));
+      if (eligibility.eligible) {
+        presenceDecision = "receptionist_offline_immediate";
+        await emitPresenceDecision(presenceDecision, "offline");
+        // 200 + `approved:false` + code `receptionist`: the refusal shape this
+        // lane already speaks, carrying the `start` payload the client needs to
+        // open Ava. No Stream call is created, so an off phone costs nothing.
+        return await refuse(
+          "receptionist",
+          "They can't be reached right now — Ava will take a message.",
+          200,
+          {
+            routing_reason: "offline",
+            presence: presenceState,
+            presence_age_ms: presenceAgeMs,
+            start: { to: calleeUid, activation_mode: "unreachable", trace_id: traceId || callId },
+          },
+        );
+      }
+      // Not eligible (owner opted out, no tokens, receptionist off) → fall
+      // through and ring exactly as before. This is the pre-existing behaviour,
+      // not a new failure mode.
+      presenceDecision = "ring_offline_ineligible";
+    } else {
+      presenceDecision = presenceState === "stale" ? "ring_stale"
+        : presenceState === "fresh" ? "ring_fresh" : "ring_unknown";
+    }
+    // Fire-and-forget for the RINGING outcomes: this is not an early return, so
+    // the request keeps running and the telemetry must not add latency to it.
+    if (ctx) ctx.waitUntil(emitPresenceDecision(presenceDecision, null));
+    else void emitPresenceDecision(presenceDecision, null).catch(() => undefined);
+  }
+
   // ── UNKNOWN-CALLER CONTACT POLICY ──────────────────────────────────────────
   // The legacy dial diverts an unsaved caller to the callee's AI receptionist
   // when `unknownAvatokCallerReceptionistEnabled` is on. That policy is OFF in
   // production and has never been enabled, so this branch is dark today.
   //
-  // TODO(STREAM-RECEPTIONIST-1): there is no Stream receptionist. Ava is a
-  // Cloudflare ReceptionRoom DO fed by the CallRoom, and the Stream lane never
-  // creates a CallRoom. Until a Stream→Ava bridge exists, the honest thing is to
-  // REFUSE with a named code rather than ring a person the policy says must not
-  // be rung, or silently drop the policy. The same gap applies to the
-  // no-answer/offline receptionist handoffs — see the report.
+  // [STREAM-RECEPTIONIST-1 2026-08-24] The TODO that used to sit here said there
+  // was no Stream receptionist and that refusing was the honest stop-gap. Half
+  // of that is now obsolete: `receptionistStart`'s `call_id` is OPTIONAL (every
+  // CALL_ROOMS interaction inside it is guarded by `if (callId)`), so a lane
+  // with no CallRoom CAN start Ava — it just cannot use the DO's ring counting.
+  // The offline block above and the caller-side ring timer in
+  // stream_call_screen.dart are that bridge. This unknown-caller branch keeps
+  // refusing, because the policy is dark in production and routing it to Ava
+  // would mean shipping an untested path behind a flag nobody can turn on.
   const unknownPolicyOn = config?.unknownAvatokCallerReceptionistEnabled === true;
   if (unknownPolicyOn) {
     const contactPolicy = await callerContactPolicy(env, calleeUid, callerUid).catch(() => null);

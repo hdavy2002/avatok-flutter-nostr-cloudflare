@@ -588,6 +588,22 @@ class RemoteConfig {
   /// those receipts are stamped `derived: true`. Server mirror: `ringCycleMs`.
   static int get ringCycleMs => (_asNum(_cfg['ringCycleMs'])?.toInt()) ?? 6000;
 
+  /// [STREAM-RECEPTIONIST-1 2026-08-24] How many unanswered ring cycles before
+  /// Ava takes the call. The LEGACY lane never needed this client-side — the
+  /// CallRoom DO owns the count there and tells the client via the
+  /// `device-ringing` frame's `ringsRequired`. The Stream lane has no CallRoom
+  /// and no ring receipts, so the CALLER's phone has to time the ring window
+  /// itself, and that needs the number locally.
+  ///
+  /// Declared server-side in `worker/src/routes/config.ts` (PlatformConfig,
+  /// DEFAULTS = 4, and `numericKeys` because it is numeric), so this is a real
+  /// flag and not a fake one — `flags.sh set receptionistRings=6` works.
+  /// Clamped so a bad override can neither hand off instantly nor never.
+  static int get receptionistRings {
+    final v = (_asNum(_cfg['receptionistRings'])?.toInt()) ?? 4;
+    return v < 1 ? 1 : (v > 12 ? 12 : v);
+  }
+
   /// [CALL-VIDEO-CODEC-1] Express a video codec preference (AV1 > VP9 > VP8 >
   /// H264) and request temporal SVC (L1T3) on the 1:1 video sender.
   ///

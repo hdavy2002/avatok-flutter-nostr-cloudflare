@@ -572,6 +572,12 @@ async function refreshSettingsCache(env: Env, uid: string): Promise<void> {
 export async function receptionistNoAnswerEligibility(
   env: Env,
   ownerUid: string,
+  // [STREAM-RECEPTIONIST-1 2026-08-24] Which scenario is asking. This used to be
+  // hardcoded "rings", which meant the OFFLINE pre-check in api.ts was gated by
+  // the owner's not-picked-up toggle rather than their unreachable one — two
+  // separate switches in `avatokHandoffAllowed`, silently collapsed into one.
+  // Defaulted so every existing caller keeps the exact behaviour it had.
+  activationMode: string = "rings",
 ): Promise<{ eligible: boolean; reason: string; spendable?: number }> {
   try {
     const cfg = await readConfig(env);
@@ -579,7 +585,7 @@ export async function receptionistNoAnswerEligibility(
       return { eligible: false, reason: "disabled" };
     }
     const settings = (await loadSettingsCached(env, ownerUid)) ?? defaultSettings(ownerUid);
-    if (!avatokHandoffAllowed(settings, "rings", false)) {
+    if (!avatokHandoffAllowed(settings, activationMode, false)) {
       return { eligible: false, reason: "scenario_disabled" };
     }
     const balance = await walletOp(env, ownerUid, { op: "balance", uid: ownerUid });

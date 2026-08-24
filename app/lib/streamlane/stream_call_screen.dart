@@ -23,10 +23,12 @@ import 'package:stream_video_flutter/stream_video_flutter.dart';
 
 import '../core/avatar.dart';
 import '../core/analytics.dart';
+import '../core/remote_config.dart';
 import '../core/ringback_player.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
 import '../main.dart' show RootFlow;
+import 'stream_ava_screen.dart';
 import 'stream_call_service.dart';
 import 'stream_call_telemetry.dart';
 
@@ -132,6 +134,40 @@ class _StreamOutgoingPreparationScreenState
     StreamPreparedOutgoing? prepared;
     try {
       prepared = await widget.prepare(_setStage);
+    } on StreamOutgoingAvaHandoff catch (e) {
+      // [STREAM-RECEPTIONIST-1 2026-08-24] Caught BEFORE the general preparation
+      // exception below (Dart matches `on` clauses in order, and this is a
+      // subclass). The Worker proved the callee's phone is not checking in and
+      // created no Stream call, so there is nothing to ring and nothing to
+      // cancel — swap this screen for Ava rather than showing a failure.
+      if (!mounted || widget.attempt.cancelled) return;
+      _preparingTimer?.cancel();
+      await _tones.stop(reason: 'ava_handoff_unreachable');
+      if (!mounted) return;
+      Analytics.capture('stream_lane_call_ava_handoff', {
+        'attempt_id': widget.attempt.attemptId,
+        'call_id': widget.attempt.callId,
+        'activation_mode': e.activationMode,
+        'trigger': 'server_presence_offline',
+        'elapsed_ms': _elapsedMs,
+        'provider': 'stream',
+        'role': 'caller',
+        'peer_id': widget.peerId,
+        'peer_email': widget.peerEmail ?? '',
+        'lane': 'streamlane',
+      });
+      _handedOff = true;
+      await Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => StreamAvaScreen(
+          peerId: widget.peerId,
+          activationMode: e.activationMode,
+          peerName: widget.peerName,
+          peerAvatarUrl: widget.peerAvatarUrl,
+          peerEmail: widget.peerEmail,
+          traceId: widget.attempt.traceId,
+        ),
+      ));
+      return;
     } on StreamOutgoingPreparationException catch (e) {
       if (!mounted || widget.attempt.cancelled) return;
       _preparingTimer?.cancel();
@@ -442,6 +478,32 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   /// continuous emission" per the task brief.
   static const Duration _qualityInterval = Duration(seconds: 15);
 
+  /// [STREAM-RECEPTIONIST-1 2026-08-24] The caller's ring window, after which an
+  /// unanswered OUTGOING call is handed to the callee's Ava.
+  ///
+  /// This exists because this lane has no server-side ring accounting at all.
+  /// In the legacy lane the CallRoom DO counts the callee's device-ringing
+  /// receipts and fires the handoff itself at `receptionistRings`; the Stream
+  /// lane never creates a CallRoom, so nothing counted and an unanswered call
+  /// rang until the 60 s join watchdog called it a failure. The caller's own
+  /// phone is the only thing in this lane that knows how long it has been
+  /// ringing, so it owns the window.
+  ///
+  /// Same arithmetic as the server's backstop (`lib/call_delivery_contract.ts`
+  /// `ringLifetimeMs`): rings × cycle, floored at 20 s so a small `ringCycleMs`
+  /// cannot hand off before the callee's phone has realistically had a chance
+  /// to ring, and capped so a bad override cannot strand the caller.
+  Timer? _avaHandoffTimer;
+  static Duration _ringWindow() {
+    final ms = RemoteConfig.receptionistRings * RemoteConfig.ringCycleMs;
+    return Duration(milliseconds: ms.clamp(20000, 120000));
+  }
+
+  /// Set once the handoff has been decided, so the peer-gone teardown, the
+  /// disconnect classifier and the join watchdog all stop competing for the
+  /// screen while Ava is being opened.
+  bool _avaHandingOff = false;
+
   @override
   void initState() {
     super.initState();
@@ -477,6 +539,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     _connectWatchdog?.cancel();
     _qualityTimer?.cancel();
     _peerGoneTimer?.cancel();
+    _avaHandoffTimer?.cancel();
     // One final summary, per the task brief ("once at end"). Fire-and-forget
     // like every other capture in this lane; skipped if media never flowed
     // (nothing to summarise).
@@ -484,6 +547,73 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     // ignore: discarded_futures
     _tonePlayer?.dispose();
     super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // [STREAM-RECEPTIONIST-1 2026-08-24] Ava handoff
+  // ---------------------------------------------------------------------------
+
+  /// The ring window elapsed with nobody answering: end the Stream ring and
+  /// give the caller the callee's Ava instead of a dead line.
+  ///
+  /// Ordering matters. The Stream ring is cancelled FIRST and awaited, because
+  /// leaving it up would keep buzzing the callee's phone while their own
+  /// receptionist is talking to the caller — and because `cancelRinging` is
+  /// what releases the microphone this screen holds, which Ava then needs.
+  Future<void> _handOffToAva(String trigger) async {
+    if (!mounted || _avaHandingOff) return;
+    // Answered, live, or already finished: not a no-answer.
+    if (_everConnected || _phase == _Phase.live || _phase == _Phase.failed) {
+      return;
+    }
+    if (!widget.outgoing) return;
+    _avaHandingOff = true;
+    _avaHandoffTimer?.cancel();
+    _connectWatchdog?.cancel();
+    _peerGoneTimer?.cancel();
+    Analytics.capture('stream_lane_call_ava_handoff', {
+      'call_id': widget.call.id,
+      'activation_mode': 'rings',
+      'trigger': trigger,
+      'ring_window_ms': _ringWindow().inMilliseconds,
+      'rings_required': RemoteConfig.receptionistRings,
+      'ring_cycle_ms': RemoteConfig.ringCycleMs,
+      'provider': 'stream',
+      'role': 'caller',
+      'peer_id': widget.peerId,
+      'peer_email': widget.peerEmail ?? '',
+      'trace_id': widget.traceId ?? '',
+      'lane': 'streamlane',
+    });
+    // ignore: discarded_futures
+    _tonePlayer?.stop(reason: 'ava_handoff_rings');
+    try {
+      await StreamCallService.instance.cancelRinging(
+        widget.call,
+        startedAt: DateTime.fromMillisecondsSinceEpoch(
+          widget.startedAtMs ?? DateTime.now().millisecondsSinceEpoch,
+        ),
+        peerId: widget.peerId,
+        traceId: widget.traceId,
+      );
+    } catch (_) {/* the handoff must happen even if the cancel misbehaves */}
+    try {
+      final end = widget.endForEveryone;
+      if (end != null) await end().timeout(const Duration(seconds: 5));
+    } catch (_) {/* server-side end is best-effort here */}
+    if (!mounted) return;
+    _popped = true; // this route is being REPLACED, not popped by _exitCallScreen
+    await Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => StreamAvaScreen(
+        peerId: widget.peerId,
+        activationMode: 'rings',
+        peerName: widget.peerName,
+        peerAvatarUrl: widget.peerAvatarUrl,
+        peerEmail: widget.peerEmail,
+        traceId: widget.traceId,
+        callId: widget.call.id,
+      ),
+    ));
   }
 
   // ---------------------------------------------------------------------------
@@ -502,8 +632,20 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     _connectWatchdog?.cancel();
     _connectWatchdog = Timer(_connectDeadline, () {
       if (!mounted || _everConnected || _phase != _Phase.connecting) return;
+      if (_avaHandingOff) return;
       _showFailure('timeout', attempt: attempt);
     });
+    // [STREAM-RECEPTIONIST-1 2026-08-24] Arm the ring window alongside the join
+    // watchdog, and only for an OUTGOING call — the callee's phone is the one
+    // being rung, so it has no ring window of its own to run, and an incoming
+    // screen must never hand its own caller to Ava.
+    _avaHandoffTimer?.cancel();
+    if (widget.outgoing && RemoteConfig.receptionistEnabled) {
+      _avaHandoffTimer = Timer(_ringWindow(), () {
+        // ignore: discarded_futures
+        _handOffToAva('ring_window_elapsed');
+      });
+    }
     try {
       await connect(attempt);
       // join() returning is NOT "connected" — `stream_lane_call_connected` is
@@ -597,6 +739,12 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
       if (!_everConnected) {
         _everConnected = true;
         _connectWatchdog?.cancel();
+        // [STREAM-RECEPTIONIST-1 2026-08-24] They answered. Disarm the ring
+        // window here rather than checking `_everConnected` only inside the
+        // timer, so a live call cannot be interrupted by a stale handoff if the
+        // timer and the answer land in the same microtask.
+        _avaHandoffTimer?.cancel();
+        _avaHandoffTimer = null;
         _connectedAt = DateTime.now();
         // Media is flowing for the first time — start the periodic quality
         // summary. Never before this point: `statsReporter`/`call.stats`
@@ -636,6 +784,11 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
 
     final status = s.status;
     if (status is! CallStatusDisconnected) return;
+    // [STREAM-RECEPTIONIST-1 2026-08-24] The handoff CANCELS the Stream ring on
+    // purpose, which arrives here as a disconnect. Without this guard the
+    // classifier would race the route replacement and either pop the navigator
+    // out from under Ava or paint a "call failed" panel over her.
+    if (_avaHandingOff) return;
     final kind = StreamCallService.classifyDisconnect(
       status.reason,
       everConnected: _everConnected,

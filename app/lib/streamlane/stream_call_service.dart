@@ -62,6 +62,24 @@ class StreamOutgoingPreparationException implements Exception {
   String toString() => message;
 }
 
+/// [STREAM-RECEPTIONIST-1 2026-08-24] Not a failure — an INSTRUCTION.
+///
+/// Thrown out of the staged preparation when the Worker answered the dial with
+/// `code: 'receptionist'` and a `start` payload: presence proved the callee is
+/// not checking in, so no Stream call was created and the caller should go
+/// straight to Ava. It subclasses the preparation exception so that any call
+/// site which has not learned about the handoff still degrades to the ordinary
+/// "couldn't start the call" panel rather than crashing — but the preparation
+/// screen checks for this type FIRST and routes instead of showing an error.
+class StreamOutgoingAvaHandoff extends StreamOutgoingPreparationException {
+  const StreamOutgoingAvaHandoff(this.activationMode, String message)
+      : super('receptionist', message);
+
+  /// `'unreachable'` today. Passed through to `/api/receptionist/start` so the
+  /// owner's per-scenario toggle is the one actually consulted.
+  final String activationMode;
+}
+
 /// [STREAM-AUTH-1 2026-08-21] The AvaTOK Worker's verdict on a 1:1 Stream dial.
 ///
 /// Stream carries the MEDIA. It does not decide who may call whom — that is the
@@ -75,7 +93,15 @@ class StreamPlaceDecision {
     required this.code,
     required this.message,
     required this.httpStatus,
+    this.receptionistActivationMode,
   });
+
+  /// [STREAM-RECEPTIONIST-1 2026-08-24] Set only on a `code: 'receptionist'`
+  /// refusal that carried a `start` payload — the Worker proved the callee is
+  /// not reachable and is telling the caller to open Ava INSTEAD of ringing.
+  /// Null on every other refusal, including the unknown-caller screen (which
+  /// is a "send them a message" dead end, not a handoff).
+  final String? receptionistActivationMode;
 
   const StreamPlaceDecision.approved(
     String callId, {
@@ -93,6 +119,7 @@ class StreamPlaceDecision {
     required String code,
     required String message,
     required int httpStatus,
+    String? receptionistActivationMode,
   }) : this._(
           approved: false,
           callId: '',
@@ -100,7 +127,15 @@ class StreamPlaceDecision {
           code: code,
           message: message,
           httpStatus: httpStatus,
+          receptionistActivationMode: receptionistActivationMode,
         );
+
+  /// True when this refusal is really a HANDOFF instruction: don't ring, open
+  /// Ava. See [receptionistActivationMode].
+  bool get routesToReceptionist =>
+      !approved &&
+      code == 'receptionist' &&
+      (receptionistActivationMode ?? '').isNotEmpty;
 
   /// True only when the server said yes. [callId] is then SERVER-MINTED and is
   /// the id the Stream call must be created with.
@@ -208,8 +243,19 @@ class StreamCallService {
       }
       final code = (body?['code'] ?? 'refused').toString();
       final message = (body?['message'] ?? '').toString();
+      // [STREAM-RECEPTIONIST-1 2026-08-24] A `receptionist` refusal that carries
+      // a `start` block is the Worker saying "this phone is off — go straight to
+      // Ava". Read the activation mode from the payload rather than assuming
+      // 'unreachable': the same code is also used for the unknown-caller screen,
+      // which sends NO start block and must stay a dead end.
+      final start = body?['start'];
+      final activationMode = start is Map
+          ? (start['activation_mode'] ?? '').toString()
+          : '';
       return StreamPlaceDecision.refused(
         code: code,
+        receptionistActivationMode:
+            activationMode.isEmpty ? null : activationMode,
         message: message.isNotEmpty
             ? message
             : (res.statusCode == 401 || res.statusCode == 403
@@ -800,11 +846,23 @@ class StreamCallService {
           'code': decision.code,
           'http_status': decision.httpStatus,
           'latency_ms': authMs,
+          'routes_to_receptionist': decision.routesToReceptionist,
         });
         // A timeout/network refusal is ambiguous: the Worker may have finished
         // after the phone stopped waiting. Fence the attempt before showing a
         // failure so that ambiguous work cannot become a late ring.
         await cancelAttempt();
+        // [STREAM-RECEPTIONIST-1 2026-08-24] The callee's phone is off and the
+        // Worker created no Stream call. This is a handoff, not an error: the
+        // caller goes to Ava instead of hearing a ring that could never be
+        // answered. The cancel above is still correct and cheap — it fences an
+        // attempt id that never produced a ring.
+        if (decision.routesToReceptionist) {
+          throw StreamOutgoingAvaHandoff(
+            decision.receptionistActivationMode!,
+            decision.message,
+          );
+        }
         throw StreamOutgoingPreparationException(
           decision.code,
           decision.message,

@@ -3141,5 +3141,53 @@
       }
     ],
     "_verified_at": "app/lib/streamlane/stream_call_screen.dart:1166-1200 (_controlButton bg/fg selection: danger AD.primaryBadge, active AD.haldi + AD.textPrimary, idle AD.tabCalls + AD.tabActiveLabel), :1046-1082 (media controls hidden when _phase == _Phase.failed), :79-83 and :258-310 (_failed -> spinner replaced by Close / Try again), :207-224 (_retry + stream_lane_call_retry_tapped); app/lib/streamlane/stream_call_service.dart:890-905 (retry callback re-enters place1to1Staged, minting a fresh attemptId)"
+  },
+  "STREAM-RECEPTIONIST-1": {
+    "description": "Closes the gap reported 2026-08-24: on the Stream lane (streamCallsEnabled=true in prod, so ALL 1:1 calls) an unanswered call rang forever and never reached Ava, and a dead phone rang forever too. The four-ring handoff lives entirely in the legacy CallRoom DO, which counts the CALLEE's device-ringing receipts and fires handoff_to_receptionist at receptionistRings — and the Stream lane never creates a CallRoom, so nothing counted and nothing fired. This was the TODO(STREAM-RECEPTIONIST-1) at stream_video_calls.ts:996. Two halves. SERVER: streamCallPlace now reads callee presence (readPresenceRead, gated on callPresenceRouting, same presenceFreshSec/presenceOfflineSec thresholds and the same fail-open-on-read-error rule as the legacy offline branch in api.ts) and, when the callee is provably not checking in AND receptionistNoAnswerEligibility(env, callee, 'unreachable') passes, refuses with code 'receptionist' + routing_reason 'offline' + a start payload carrying activation_mode 'unreachable' — no Stream call is created, so an off phone costs nothing. receptionistNoAnswerEligibility gained an activationMode parameter (default 'rings', so every existing caller is unchanged) because the offline path was previously gated by the owner's not-picked-up toggle instead of their unreachable one. CLIENT: the caller's own phone owns the ring window (receptionistRings x ringCycleMs, clamped 20-120s, outgoing only) since this lane has no server ring accounting; on expiry it cancels the Stream ring, ends the call server-side and pushReplacements to the new StreamAvaScreen, which drives a ReceptionistCall — lane-agnostic, because receptionistStart's call_id is optional and every CALL_ROOMS interaction inside it is guarded by if(callId). New client flag getter RemoteConfig.receptionistRings (already in PlatformConfig, DEFAULTS=4 and numericKeys, so not a fake flag).",
+    "shipped": "",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "receptionistEnabled",
+      "receptionistRings",
+      "ringCycleMs",
+      "callPresenceRouting",
+      "presenceFreshSec",
+      "presenceOfflineSec",
+      "streamCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "stream_lane_call_ava_handoff",
+        "property": "activation_mode",
+        "in": [
+          "rings",
+          "unreachable"
+        ],
+        "min_events": 1,
+        "note": "The handoff FIRES at all on this lane. Zero of these on the new build means the ring window never elapsed into Ava and the presence refusal never routed — i.e. the reported bug is still live. No such event existed before this change, so absence is unambiguous. activation_mode is asserted as a VALUE so this is not an 'events are flowing' check: a 'rings' handoff proves the client ring window fired, an 'unreachable' one proves the server presence fast-path fired, and the two are independent halves that must each be seen at least once."
+      },
+      {
+        "event": "stream_lane_ava_connected",
+        "property": "outcome",
+        "equals": "connected",
+        "min_events": 1,
+        "note": "Ava actually PICKED UP — the thing the owner reported never happening. stream_lane_call_ava_handoff only proves the client decided to hand off; this proves the receptionist session reached a live WebSocket. A build carrying handoffs with zero connects means the bridge routes into a dead end, which is worse than the original bug because the caller loses the ring too. Read alongside stream_lane_ava_failed.reason, which names why when it does not connect (insufficient_tokens / scenario_disabled / disabled / network)."
+      },
+      {
+        "event": "call_presence_decision",
+        "where": {
+          "lane": "streamlane"
+        },
+        "property": "decision",
+        "not_in": [
+          "ring_unknown"
+        ],
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "The Stream lane is now READING presence rather than ringing blind. `ring_unknown` is what a failed or absent Upstash read produces, and per CLAUDE.md a fleet-wide `presence=unknown decision=ring_unknown` is exactly the pattern that made [CALL-PRESENCE-1] untestable while the report claimed telemetry was flowing. A healthy build should show ring_fresh / ring_stale / receptionist_offline_immediate. 0.8 tolerates a genuine share of Redis timeouts, which fail open by design and must not read as a regression."
+      }
+    ],
+    "_verified_at": "worker/src/routes/stream_video_calls.ts:1002-1113 (presence read, three offline proofs, eligibility gate, refuse('receptionist') with start.activation_mode 'unreachable', emitPresenceDecision to both parties); worker/src/routes/receptionist.ts:572-589 (activationMode param) and :524-538 (avatokHandoffAllowed: 'unreachable' -> recept_avatok_unreachable, 'rings' -> recept_avatok_not_picked_up); app/lib/streamlane/stream_call_service.dart:57-70 (StreamOutgoingAvaHandoff) and :215-232 (start payload parse) and :846-856 (throw on routesToReceptionist); app/lib/streamlane/stream_call_screen.dart:134-158 (preparation-screen handoff), :478-499 (_ringWindow + _avaHandingOff), :548-604 (_handOffToAva), :617-625 (timer armed, outgoing only), :736-742 (disarmed on answer), :781-786 (disconnect guard); app/lib/streamlane/stream_ava_screen.dart (whole file); app/lib/core/remote_config.dart:589-604 (receptionistRings getter, clamped 1-12)"
   }
 }
