@@ -1697,7 +1697,11 @@ export class CallRoom {
 
     if (this.autoReceptionistEligible === undefined) {
       this.autoReceptionistEligible =
-        (await this.state.storage.get<boolean>("autoReceptionistEligible")) ?? false;
+        // Four completed rings are the product contract. If the asynchronous
+        // eligibility probe has not arrived yet, do not silently downgrade the
+        // call to a normal timeout; the receptionist handoff path owns the
+        // final wallet/config admission and can report a startup failure.
+        (await this.state.storage.get<boolean>("autoReceptionistEligible")) ?? true;
     }
     if (this.noAnswerReason === undefined) {
       this.noAnswerReason = (await this.state.storage.get<string>("noAnswerReason")) || null;

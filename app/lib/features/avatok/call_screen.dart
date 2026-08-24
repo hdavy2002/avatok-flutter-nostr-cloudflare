@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -331,16 +332,38 @@ class _CallScreenState extends State<CallScreen> {
   /// is already per-account scoped (`load()` -> `AccountScope.id`), so it
   /// cannot leak one account's photo into another's call.
   String _resolvedAvatarUrl = '';
+  String _resolvedPeerName = '';
 
   /// The photo to draw: whatever the launch site passed, else the local match.
   String get _peerAvatarUrl =>
       widget.avatarUrl.isNotEmpty ? widget.avatarUrl : _resolvedAvatarUrl;
 
+  String get _peerDisplayName =>
+      _resolvedPeerName.trim().isNotEmpty ? _resolvedPeerName : widget.title;
+
   Future<void> _resolvePeerAvatar() async {
-    if (widget.avatarUrl.isNotEmpty) return; // launch site already knew
     final seed = widget.seed.trim();
     if (seed.isEmpty) return;
     try {
+      // Always refresh the directory identity for a live call. A cached contact
+      // can legitimately contain yesterday's name/photo after the peer edits
+      // their profile; the call screen must not freeze that stale snapshot.
+      if (seed.startsWith('user_')) {
+        final fresh = await Directory.resolve(seed);
+        if (fresh != null && mounted) {
+          setState(() {
+            if (fresh.name.trim().isNotEmpty) _resolvedPeerName = fresh.name.trim();
+            if (fresh.avatarUrl.trim().isNotEmpty) _resolvedAvatarUrl = fresh.avatarUrl.trim();
+          });
+          unawaited(Analytics.capture('call_identity_refreshed', {
+            'source': 'directory',
+            'name_updated': fresh.name.trim().isNotEmpty,
+            'avatar_updated': fresh.avatarUrl.trim().isNotEmpty,
+          }));
+          return;
+        }
+      }
+      if (widget.avatarUrl.isNotEmpty) return; // launch site already knew
       final contacts = await ContactsStore().load();
       // Match on uid first (the seed IS the peer uid for an in-network call),
       // then on the phone/AvaTOK number for a dialer-originated one. Digits are
@@ -1801,7 +1824,7 @@ class _CallScreenState extends State<CallScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(widget.title,
+                      Text(_peerDisplayName,
                           maxLines: 1,
                           textAlign: TextAlign.center,
                           overflow: TextOverflow.ellipsis,
@@ -1964,7 +1987,7 @@ class _CallScreenState extends State<CallScreen> {
                                 // not `widget.avatarUrl` — see the field.
                                 : Avatar(
                                     seed: widget.seed,
-                                    name: widget.title,
+                                    name: _peerDisplayName,
                                     size: d,
                                     avatarUrl: _peerAvatarUrl.isEmpty
                                         ? null
@@ -2642,18 +2665,29 @@ class _CallScreenState extends State<CallScreen> {
     // PopScope: intercept the system back gesture so it MINIMIZES the call
     // instead of tearing it down. canPop:false → onPopInvoked runs _minimize,
     // which pops the route itself while keeping the session alive.
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop || _popped) return;
-        _minimize();
-      },
-      child: Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        // Keep the Android navigation bar on the app's indigo footer, with
+        // cream glyphs that remain visible against it.
+        systemNavigationBarColor: AD.headerFooter,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop || _popped) return;
+          _minimize();
+        },
+        child: Scaffold(
         // [DIALER-UI-SPLIT 2026-07-12] dialer audio call → dark PhoneTheme surface.
         backgroundColor: dialerSkin ? PhoneTheme.bg : AD.bg,
         body: dialerSkin
             ? Container(color: PhoneTheme.bg, child: stack)
             : Container(color: AD.bg, child: stack),
+        ),
       ),
     );
   }
