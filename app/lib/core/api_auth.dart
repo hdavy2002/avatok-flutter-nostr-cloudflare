@@ -231,9 +231,28 @@ class ApiAuth {
       {Duration timeout = const Duration(seconds: 20)}) async {
     final bodyStr = jsonEncode(jsonBody);
     final bytes = utf8.encode(bodyStr);
+    // [2026-08-24] `timeout` must bound the WHOLE call, not just the socket.
+    // `_headers` awaits the Clerk bearer with no limit of its own; on
+    // 2026-08-24 08:38 IST a call-place request left the phone ~30s after the
+    // tap because that await stalled, the 11s `.timeout` below never started
+    // ticking, and the caller saw "Can't reach AvaTOK" on a perfectly good
+    // network. Spend the budget across both steps.
+    final t0 = DateTime.now();
     final headers = await _headers('POST', url,
-        body: bytes, base: {'Content-Type': 'application/json', ...extraHeaders});
-    return _tracked(url, () => http.post(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout));
+            body: bytes, base: {'Content-Type': 'application/json', ...extraHeaders})
+        .timeout(timeout);
+    final spent = DateTime.now().difference(t0);
+    if (spent > const Duration(seconds: 2)) {
+      Analytics.capture('auth_bearer_slow', {
+        'endpoint': Uri.parse(url).path,
+        'latency_ms': spent.inMilliseconds,
+      });
+    }
+    final remaining = timeout - spent;
+    if (remaining <= Duration.zero) {
+      throw TimeoutException('auth headers consumed the request budget', timeout);
+    }
+    return _tracked(url, () => http.post(Uri.parse(url), headers: headers, body: bodyStr).timeout(remaining));
   }
 
   static Future<http.Response> postJson(String url, Object jsonBody,
