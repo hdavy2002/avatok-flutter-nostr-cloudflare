@@ -184,6 +184,23 @@ export type PublicIdentity = {
    *  disk cache can be keyed `avatar:{uid}:{avatar_version}` rather than on the
    *  URL — CDN query strings and transforms change while the image does not. */
   avatar_version: string | null;
+  /**
+   * [STREAM-AVA-COPY-1 2026-08-24] `users.gender` — "male" | "female" | "other"
+   * | null. Added so a CALLER can be told the truth in the callee's own
+   * pronoun: "Sonal didn't pick up, so you're talking to her assistant."
+   *
+   * The column already existed (migrations/add_user_gender.sql, "Owner gender
+   * for receptionist pronouns") and the server-side prompt builder already uses
+   * it (lib/pa_prompt.ts:59), but nothing ever exposed it to the other party,
+   * so the caller's UI had no way to say "her" rather than "their".
+   *
+   * OPTIONAL on purpose. Snapshots already sitting in KV were serialised before
+   * this field existed and will parse with it undefined; every reader must
+   * treat absent/empty as unknown and fall back to "they/their". That is why
+   * the cache key is NOT versioned — a missing pronoun degrades gracefully and
+   * the entry self-evicts within the 300s TTL anyway.
+   */
+  gender?: string | null;
   profile_version: number;
   resolved_at: number;
 };
@@ -202,10 +219,11 @@ export async function publicIdentityFor(env: Env, uid: string): Promise<PublicId
   let row: {
     display_name?: string | null; first_name?: string | null; last_name?: string | null;
     avatar_url?: string | null; handle?: string | null; updated_at?: number | null;
+    gender?: string | null;
   } | null = null;
   try {
     row = await env.DB_META
-      .prepare("SELECT display_name, first_name, last_name, avatar_url, handle, updated_at FROM users WHERE uid=?1")
+      .prepare("SELECT display_name, first_name, last_name, avatar_url, handle, updated_at, gender FROM users WHERE uid=?1")
       .bind(uid)
       .first();
   } catch { /* best-effort — a D1 hiccup must never block a call */ }
@@ -237,6 +255,13 @@ export async function publicIdentityFor(env: Env, uid: string): Promise<PublicId
     greeting_name: greeting,
     avatar_url: avatarUrl,
     avatar_version: avatarVersion,
+    // Normalised to the three values the client's Profile model already uses
+    // ('male' | 'female' | 'other'); anything else, including an empty string,
+    // becomes null so a reader cannot mistake noise for a stated pronoun.
+    gender: (() => {
+      const g = String(row.gender ?? "").trim().toLowerCase();
+      return g === "male" || g === "female" || g === "other" ? g : null;
+    })(),
     profile_version: Number(row.updated_at ?? 0),
     resolved_at: Date.now(),
   };

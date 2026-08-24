@@ -3231,5 +3231,38 @@
       }
     ],
     "_verified_at": "app/lib/streamlane/stream_ava_screen.dart:96-131 (_speakerOn default true, _audioOwnerId doc), :141-172 (seed + apply before ReceptionistCall, stream_lane_ava_audio_route), :176-190 (speaker: _speakerOn, onRouteConfirmed), :257-283 (_toggleSpeaker via setIntent+apply), :305-311 (release on dispose), :399-406 (active: _speakerOn); app/lib/streamlane/stream_call_screen.dart:599-610 (call.leave() before the handoff), :1224-1232 (speaker affordance); app/lib/core/calls/call_audio_controller.dart:43 (intent defaults to earpiece), :68-75 (seed), :79-81 (setIntent), :108-112 (_applyInternal applies intent with no seeded-call guard), :64 (onRouteConfirmed); app/lib/core/receptionist_call.dart:487-497 (the two reasserts around startEngine), setSpeaker (native engine only)"
+  },
+  "STREAM-AVA-COPY-1": {
+    "description": "Four reports against the new Ava screen on 2026-08-24. (1) The caller's own avatar was a bare '?' — both push sites omit myName/myAvatarUrl and nothing in the Stream lane carries the signed-in user's profile, so Avatar fell through to its placeholder; the screen now reads ProfileStore().load() itself. (2) The status copy contradicted itself: 'Ava is picking up...' followed, at the moment she DID pick up, by \"They can't be reached\", which read as failure. It now says \"Sonal didn't pick up, so you're talking to her assistant\" (rings) or \"Sonal can't be reached right now, so you're talking to her assistant\" (unreachable), with a wrap-up line naming who will get the message. (3) The pronoun is the callee's own. users.gender already existed (migrations/add_user_gender.sql, used by lib/pa_prompt.ts) but was never exposed to the other party; publicIdentityFor now selects and normalises it into its existing 300s KV snapshot, receptionistConfigFor returns owner_first_name/owner_display_name/owner_gender, and a new per-account on-device cache (core/peer_identity_cache.dart, scopedKey/readScoped per the rulebook) makes the first frame correct with no network. Unknown gender renders they/their and is NEVER inferred from the name. (4) The header and Ava's label now use the resolved display name rather than the raw routed value. No schema change (the column predates this), no new flag.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "receptionistEnabled"
+    ],
+    "success": [
+      {
+        "event": "stream_lane_ava_peer_identity",
+        "property": "has_gender",
+        "equals": true,
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "The callee's pronoun actually REACHED the caller's device. This is the assertion that would have caught the whole class of bug: the field existed in D1 and was used server-side for a year, and the caller's UI still could not say 'her'. `has_gender` false on a build where the callee HAS set a gender means publicIdentityFor, receptionistConfigFor or the client parse dropped it. 0.8 tolerates genuinely unset profiles, which are a real and permanent share of users and correctly render they/their."
+      },
+      {
+        "event": "stream_lane_ava_peer_identity",
+        "property": "has_first_name",
+        "equals": true,
+        "min_events": 1,
+        "min_pass_rate": 0.8,
+        "note": "The sentence can name the person instead of saying 'They'. Separate from has_gender on purpose: a user can have a name and no stated gender, and the copy has a distinct fallback for each, so one assertion could not prove the other."
+      }
+    ],
+    "_verified_at": "worker/src/lib/identity.ts:186-203 (gender on PublicIdentity, documented as optional for snapshots already in KV), :218-220 (SELECT ... gender), :256-262 (normalised to male/female/other or null); worker/src/routes/receptionist.ts:1186-1210 (owner_first_name / owner_display_name / owner_gender on the config probe); app/lib/core/peer_identity_cache.dart (PeerIdentity + subjectPronoun/possessivePronoun matching pa_prompt.ts, scoped disk cache, empty identity never written); app/lib/streamlane/stream_ava_screen.dart:113-131 (_peer, _myName, _myAvatarUrl), :152-205 (_resolveIdentities three tiers + stream_lane_ava_peer_identity), :207-218 (_peerFirstName / _peerDisplayName), :403-434 (_statusLabel)"
+  },
+  "STREAM-AVA-UI-1": {
+    "description": "Presentation fixes on the Ava screen, reported 2026-08-24 from one screenshot: the two avatars were tiny (84px / r42) on a screen with nothing else on it, Ava's avatar was greyed to 45% opacity for the whole connecting phase (which reads as disabled, not connecting), and the animation showing both sides communicating was missing. Avatars are now 132px; the dim is gone; and _LinkFlow replaces it — dots travelling along a rail between the two faces, moving TOWARD whoever is currently speaking and coloured indigo for Ava / marigold for the caller, driven by the same ReceptionistCall.micLevel and avaLevel notifiers the per-face halo uses, with a slow drift toward Ava while connecting so waiting looks alive. One 2s ticker, six dots, one CustomPainter, no import of the legacy lane's _LinkPainter (the two lanes must stay independent). Labels ellipsize under a fixed width so \"Sonal's Ava\" cannot shift the layout. Client-only; presentation only.",
+    "shipped": "",
+    "no_telemetry": "Presentation only: no code path, no gate, no new event, and no property that could carry a failure value. The animation is driven entirely by micLevel/avaLevel, whose real behaviour is already asserted by STREAM-AVA-AUDIO-1 (a confirmed speaker route and a live session) and STREAM-RECEPTIONIST-1 (stream_lane_ava_connected) — if those pass, the notifiers are moving and the link is animating. Visual acceptance is by eye on the screenshot that reported it; inventing an event that fires whenever a widget paints would be an 'events are flowing' check, which the ship gate exists to forbid."
   }
 }

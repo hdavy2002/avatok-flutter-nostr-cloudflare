@@ -1184,11 +1184,31 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // menu greys "Talk to Ava" when 0; server-side enforcement lives in /start.
   const menuCaps = capsFor(cfg);
   const sessionsLeft = await callerSessionsLeft(env, cfg, ctx.uid, to);
+  // [STREAM-AVA-COPY-1 2026-08-24] The caller's Ava screen needs to say
+  // something true and specific — "Sonal didn't pick up, so you're talking to
+  // her assistant" — which needs the owner's FIRST name and their pronoun.
+  //
+  // This probe is the right carrier: the client already calls it at handoff time
+  // (ReceptionistCall.start -> ReceptionistApi.configFor) and already caches the
+  // positive answer for 3 minutes, so the copy costs no extra round trip.
+  // `publicIdentityFor` is itself KV-cached for 300s, so this adds nothing on
+  // the hot path. `display_name` below is the RECEPTIONIST's configured name and
+  // is usually blank, which is why the owner's own name is a separate field
+  // rather than a reuse of it.
+  const ownerIdentity = await publicIdentityFor(env, to).catch(() => null);
   return json({
     available: true, mode, rings,
     decline_to_ava: !!s.decline_to_ava,
     voice_name: AVA_VOICE, // P12: pinned — stored custom voice is overridden
     display_name: s.display_name ?? "",
+    // Absent/unknown gender is sent as "" and MUST render as they/their on the
+    // client — never guessed from the name. There is a separate AI inference
+    // endpoint (/api/ai/gender) for prefilling the owner's OWN profile field;
+    // inferring a stranger's pronoun at call time is not the same thing and is
+    // not something this endpoint should do.
+    owner_first_name: ownerIdentity?.greeting_name ?? "",
+    owner_display_name: ownerIdentity?.display_name ?? "",
+    owner_gender: ownerIdentity?.gender ?? "",
     recept_remaining: res.remaining, recept_cap: res.cap,
     soft_cap_ms: menuCaps.close, hard_cap_ms: menuCaps.hard,
     caller_sessions_left: sessionsLeft,
