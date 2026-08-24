@@ -45,10 +45,17 @@ class StreamOutgoingPreparationScreen extends StatefulWidget {
     required this.attempt,
     required this.prepare,
     required this.cancel,
+    this.retry,
     this.peerName,
     this.peerAvatarUrl,
     this.peerEmail,
   });
+
+  /// [2026-08-24] Re-places the call with a FRESH attempt id after a
+  /// preparation failure (the Worker dedups `place` on attempt id, so reusing
+  /// the old one would be silently swallowed). The screen pops itself first;
+  /// the service then pushes a new preparation screen.
+  final Future<void> Function()? retry;
 
   final String peerId;
   final String? peerName;
@@ -72,6 +79,8 @@ class _StreamOutgoingPreparationScreenState
   String _stage = 'Connecting…';
   bool _handedOff = false;
   bool _cancelling = false;
+  /// Preparation failed: the spinner stops and Close / Try again appear.
+  bool _failed = false;
   Timer? _preparingTimer;
 
   @override
@@ -128,7 +137,10 @@ class _StreamOutgoingPreparationScreenState
       _preparingTimer?.cancel();
       await _tones.stop(reason: 'preparation_failed');
       if (!mounted) return;
-      setState(() => _stage = e.message);
+      setState(() {
+        _stage = e.message;
+        _failed = true;
+      });
       Analytics.capture('stream_lane_call_preparation_failed', {
         'attempt_id': widget.attempt.attemptId,
         'call_id': widget.attempt.callId,
@@ -143,7 +155,10 @@ class _StreamOutgoingPreparationScreenState
       _preparingTimer?.cancel();
       await _tones.stop(reason: 'preparation_failed');
       if (!mounted) return;
-      setState(() => _stage = "Couldn't start the call. Please try again.");
+      setState(() {
+        _stage = "Couldn't start the call. Please try again.";
+        _failed = true;
+      });
       return;
     }
     if (!mounted || widget.attempt.cancelled || prepared == null) return;
@@ -189,6 +204,26 @@ class _StreamOutgoingPreparationScreenState
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// Pop this (already-failed, already-fenced) attempt and place a new one.
+  Future<void> _retry() async {
+    if (_cancelling) return;
+    setState(() => _cancelling = true);
+    widget.attempt.cancelled = true;
+    _preparingTimer?.cancel();
+    Analytics.capture('stream_lane_call_retry_tapped', {
+      'attempt_id': widget.attempt.attemptId,
+      'call_id': widget.attempt.callId,
+      'trace_id': widget.attempt.traceId,
+      'peer_id': widget.peerId,
+      'peer_email': widget.peerEmail,
+      'stage': 'preparation',
+      'lane': 'streamlane',
+    });
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    await widget.retry?.call();
+  }
+
   @override
   void dispose() {
     _preparingTimer?.cancel();
@@ -232,17 +267,56 @@ class _StreamOutgoingPreparationScreenState
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(_stage,
-                          style: const TextStyle(color: AD.textSecondary)),
-                      const SizedBox(height: Msg.s4),
-                      const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AD.textSecondary,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: Msg.s5),
+                        child: Text(
+                          _stage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _failed
+                                ? AD.textPrimary
+                                : AD.textSecondary,
+                          ),
                         ),
                       ),
+                      const SizedBox(height: Msg.s4),
+                      // [2026-08-24] A failed preparation used to leave the
+                      // spinner running under the error text with no way
+                      // forward except hang-up. Now the spinner stops and
+                      // the same Close / Try again pair as the live-call
+                      // failure panel appears.
+                      if (_failed)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(
+                              onPressed: _cancelling ? null : _cancel,
+                              child: const Text(
+                                'Close',
+                                style: TextStyle(color: AD.textSecondary),
+                              ),
+                            ),
+                            const SizedBox(width: Msg.s4),
+                            if (widget.retry != null)
+                              TextButton(
+                                onPressed: _cancelling ? null : _retry,
+                                child: const Text(
+                                  'Try again',
+                                  style: TextStyle(color: AD.textPrimary),
+                                ),
+                              ),
+                          ],
+                        )
+                      else
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AD.textSecondary,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -978,31 +1052,42 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _controlButton(
-                    icon: _muted
-                        ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
-                        : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
-                    onTap: _toggleMute,
-                  ),
-                  _controlButton(
-                    icon: _speakerOn
-                        ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
-                        : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
-                    onTap: _toggleSpeaker,
-                  ),
-                  if (widget.video) ...[
+                  // [2026-08-24] On a failed call there is no media to mute
+                  // or route — the panel above already offers Close / Try
+                  // again, so only hang-up stays.
+                  if (_phase != _Phase.failed) ...[
                     _controlButton(
-                      icon: _cameraOff
-                          ? PhosphorIcons.videoCameraSlash(
+                      icon: _muted
+                          ? PhosphorIcons.microphoneSlash(
                               PhosphorIconsStyle.bold)
-                          : PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-                      onTap: _toggleCamera,
+                          : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                      onTap: _toggleMute,
+                      active: _muted,
                     ),
                     _controlButton(
-                      icon: PhosphorIcons.arrowsClockwise(
-                          PhosphorIconsStyle.bold),
-                      onTap: _flipCamera,
+                      icon: _speakerOn
+                          ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.speakerSlash(
+                              PhosphorIconsStyle.bold),
+                      onTap: _toggleSpeaker,
+                      active: !_speakerOn,
                     ),
+                    if (widget.video) ...[
+                      _controlButton(
+                        icon: _cameraOff
+                            ? PhosphorIcons.videoCameraSlash(
+                                PhosphorIconsStyle.bold)
+                            : PhosphorIcons.videoCamera(
+                                PhosphorIconsStyle.bold),
+                        onTap: _toggleCamera,
+                        active: _cameraOff,
+                      ),
+                      _controlButton(
+                        icon: PhosphorIcons.arrowsClockwise(
+                            PhosphorIconsStyle.bold),
+                        onTap: _flipCamera,
+                      ),
+                    ],
                   ],
                   _controlButton(
                     icon:
@@ -1087,11 +1172,29 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     );
   }
 
+  /// [2026-08-24] Was `AD.card` (0xFFFFFAF0) on `AD.bg` (0xFFFBF3E2) — two
+  /// creams a few points apart, so the mic/speaker circles vanished into the
+  /// page. Idle now uses the indigo call band with a cream glyph; a toggled
+  /// state (muted, speaker off, camera off) flips to marigold with an ink
+  /// glyph so the state is readable at a glance; hang-up stays rani.
   Widget _controlButton({
     required PhosphorIconData icon,
     required VoidCallback onTap,
     bool danger = false,
+    bool active = false,
   }) {
+    final Color bg;
+    final Color fg;
+    if (danger) {
+      bg = AD.primaryBadge;
+      fg = AD.tabActiveLabel;
+    } else if (active) {
+      bg = AD.haldi;
+      fg = AD.textPrimary;
+    } else {
+      bg = AD.tabCalls;
+      fg = AD.tabActiveLabel;
+    }
     return InkWell(
       onTap: onTap,
       customBorder: const CircleBorder(),
@@ -1100,13 +1203,9 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         height: 56,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: danger ? AD.primaryBadge : AD.card,
+          color: bg,
         ),
-        child: Icon(
-          icon,
-          color: danger ? AD.tabActiveLabel : AD.iconNeutral,
-          size: 26,
-        ),
+        child: Icon(icon, color: fg, size: 26),
       ),
     );
   }

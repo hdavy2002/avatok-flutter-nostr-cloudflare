@@ -890,6 +890,19 @@ class StreamCallService {
           attempt: attempt,
           prepare: prepare,
           cancel: cancelAttempt,
+          // Fresh attempt id on every retry — see the Worker's dedup note on
+          // [authorizePlace].
+          retry: () => context.mounted
+              ? place1to1Staged(
+                  context,
+                  userId,
+                  video: video,
+                  name: name,
+                  avatarUrl: avatarUrl,
+                  peerEmail: peerEmail,
+                  traceId: traceId,
+                )
+              : Future<void>.value(),
         ),
       ),
     );
