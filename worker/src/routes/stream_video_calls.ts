@@ -1078,15 +1078,30 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // the time; now that it's confirmed, a write failure is a real D1 problem, not
   // an unapplied migration, and ringing a phone with no authoritative record of
   // who approved the call is exactly the gap this endpoint exists to close.
-  const recorded = await persistStickyProvider(env, callId, {
-    provider: PROVIDER,
-    caller_uid: callerUid,
-    callee_uid: calleeUid,
-    scope: "one_to_one",
-    chosen_at: Date.now(),
-    bucket: 0,
-    percent: 100,
-  });
+  // [PLACE-LATENCY-1 2026-08-24] The D1 authority write, the KV active-key
+  // publish and the caller-name lookup for the prewarm push are independent
+  // of one another. Run them concurrently: measured serially on 2026-08-24
+  // they consumed ~3.8s of the 7.5s whole-request budget before Stream was
+  // contacted, which is what produced the `provider_timeout` 504s at 07:45
+  // and 08:38 IST — Stream itself answered in ~0.3s once it was asked.
+  const activePublish = activeKey
+    ? env.TOKENS.put(activeKey, JSON.stringify({ call_id: callId, callee_uid: calleeUid }), {
+        expirationTtl: PLACE_ATTEMPT_TTL_SECONDS,
+      }).catch(() => undefined)
+    : Promise.resolve();
+  const callerNamePromise = nameFor(env, callerUid).catch(() => "AvaTOK caller");
+  const [recorded] = await Promise.all([
+    persistStickyProvider(env, callId, {
+      provider: PROVIDER,
+      caller_uid: callerUid,
+      callee_uid: calleeUid,
+      scope: "one_to_one",
+      chosen_at: Date.now(),
+      bucket: 0,
+      percent: 100,
+    }),
+    activePublish,
+  ]);
   if (!recorded) {
     try {
       await trackUser(env, callerUid, callerEmail, "stream_call_authority_write_failed", "avatok", {
@@ -1108,11 +1123,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // /cancel request can now end this exact call even though /place has not yet
   // returned the id to the phone. The tombstone check closes the inverse race
   // where cancellation arrived just before this mapping was visible.
-  if (activeKey) {
-    await env.TOKENS.put(activeKey, JSON.stringify({ call_id: callId, callee_uid: calleeUid }), {
-      expirationTtl: PLACE_ATTEMPT_TTL_SECONDS,
-    }).catch(() => undefined);
-  }
+  // (active-key publish now runs concurrently with the authority write above.)
   if (await cancelled()) {
     await markProviderDecisionEnded(env, callId);
     return await refuse("call_cancelled", "Call cancelled.", 409, { stage: "before_stream" }, "caller_cancelled");
@@ -1125,13 +1136,18 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // the sole owner of the subsequent call notification and all A/V media.
   // Best-effort by design: a queue outage must not turn an otherwise healthy
   // foreground Stream call into a hard failure.
-  if (env.Q_PUSH) {
+  // [PLACE-LATENCY-1 2026-08-24] No longer awaited inline. The queue send
+  // starts NOW (so the wake push still leaves before or alongside the Stream
+  // ring) but the Stream create is not held behind it — a slow queue or a
+  // slow D1 name lookup was previously charged against Stream's deadline.
+  const prewarm = (async () => {
+    if (!env.Q_PUSH) return;
     try {
       await env.Q_PUSH.send({
         kind: "call-prewarm",
         to: calleeUid,
         from: callerUid,
-        fromName: await nameFor(env, callerUid).catch(() => "AvaTOK caller"),
+        fromName: await callerNamePromise,
         callId,
         callType: video ? "video" : "audio",
         traceId: traceId || callId,
@@ -1150,7 +1166,11 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
         lane: "streamlane", worker: true,
       }, traceId || undefined);
     }
-  }
+  })();
+  if (ctx) ctx.waitUntil(prewarm);
+  // Without an ExecutionContext (unit tests, direct invocation) the promise
+  // still has to be consumed, or a late rejection surfaces as an unhandled one.
+  else void prewarm.catch(() => undefined);
 
   // ── SERVER-SIDE CALL CREATION (job 1a) ──────────────────────────────────
   // This is the fix for plan §8 blocker #1: the Worker — not the phone — is
