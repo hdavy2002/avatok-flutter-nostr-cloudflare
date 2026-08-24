@@ -1,19 +1,15 @@
 ---
-// avatok.ai home — the AvaTok launch landing (AI receptionist · private number · AI messaging).
-// The design ships as a self-contained, pre-resolved static document
-// (src/landing/avatok-landing.html): the x-dc runtime and all webfonts are
-// inlined, a #joinlist waitlist section is wired to POST /api/waitlist (Brevo),
-// and the site footer (with the real /privacy, /terms, /cookies, /dmca, /about,
-// /careers, /blog, /contact links) is ported from the previous design.
+// avatok.ai home — India-first Gen Z creator experience marketplace.
+// The current design is a self-contained static document. The previous
+// co-friend editorial homepage remains archived under src/landing/archive/.
 //
 // We strip the document's own leading <!DOCTYPE html> and let Astro emit one,
 // then drop the whole document in via set:html (opaque to the Astro compiler,
 // so its {{ }} bindings and CSS braces pass through untouched). Fully static.
 export const prerender = true;
 
-import landingRaw from '../landing/avatok-landing.html?raw';
+import landingRaw from '../landing/avatok-creator-marketplace.html?raw';
 import SiteFooter from '../components/SiteFooter.astro';
-import SmokeTrail from '../islands/site/SmokeTrail';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 
@@ -26,7 +22,7 @@ const FOOTER_MARK = '<!--SITE_FOOTER-->';
 const [landingHead, landingTail = ''] = landingHtml.split(FOOTER_MARK);
 if (landingTail === '') {
   throw new Error(
-    'index.astro: <!--SITE_FOOTER--> marker missing from src/landing/avatok-landing.html — ' +
+    'index.astro: <!--SITE_FOOTER--> marker missing from src/landing/avatok-creator-marketplace.html — ' +
     'the home page would silently ship with no footer.',
   );
 }
@@ -35,11 +31,3 @@ if (landingTail === '') {
 <Fragment set:html={landingHead} />
 <SiteFooter />
 <Fragment set:html={landingTail} />
-
-<!--
-  Blue smoke trailing the cursor. `client:load` rather than `client:idle`: this page
-  runs continuous scroll animations, so requestIdleCallback is unreliable here and the
-  island was observed failing to hydrate at all. It is decorative and
-  pointer-events:none, so a browser that never runs it loses nothing.
--->
-<SmokeTrail client:load />
