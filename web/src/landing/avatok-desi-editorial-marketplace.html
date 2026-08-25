@@ -112,9 +112,180 @@
 
 
       .hero-pan-hint,
-      .mobile-actions { display: none; }
+      .mobile-actions,
+      .mobile-hero { display: none; }
 
       @media (max-width: 700px) {
+        .hero-scroll,
+        .hero-pan-hint,
+        .mobile-actions { display: none; }
+
+        .mobile-hero {
+          position: relative;
+          display: block;
+          overflow: hidden;
+          min-height: 760px;
+          padding: 18px 18px 30px;
+          background: #f4e5c5;
+          color: #171613;
+          line-height: normal;
+          background-image: radial-gradient(rgba(23,22,19,.09) .8px,transparent .8px);
+          background-size: 7px 7px;
+        }
+
+        .mobile-hero::before {
+          content: '✺';
+          position: absolute;
+          right: -20px;
+          top: 75px;
+          color: #df3d29;
+          font-size: 92px;
+          line-height: 1;
+          transform: rotate(13deg);
+        }
+
+        .mobile-topbar {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .mobile-logo {
+          color: #171613;
+          font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+          font-size: 40px;
+          letter-spacing: -.045em;
+          text-decoration: none;
+        }
+
+        .mobile-logo span { color: #df3d29; font-style: italic; }
+
+        .mobile-menu {
+          display: flex;
+          min-height: 43px;
+          align-items: center;
+          gap: 8px;
+          padding: 0 15px;
+          border: 2px solid #171613;
+          border-radius: 999px;
+          background: #fff7e6;
+          color: #171613;
+          font: 700 11px 'Space Mono', monospace;
+          text-decoration: none;
+          text-transform: uppercase;
+          box-shadow: 3px 4px 0 #171613;
+        }
+
+        .mobile-kicker {
+          position: relative;
+          z-index: 1;
+          margin: 54px 0 13px;
+          font: 700 11px/1.2 'Space Mono', monospace;
+          letter-spacing: .14em;
+          text-transform: uppercase;
+        }
+
+        .mobile-title {
+          position: relative;
+          z-index: 1;
+          max-width: 360px;
+          margin: 0;
+          font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+          font-size: clamp(72px, 21vw, 98px);
+          line-height: .78;
+          letter-spacing: -.045em;
+          text-transform: uppercase;
+        }
+
+        .mobile-title span {
+          display: block;
+          color: #df3d29;
+          text-shadow: 4px 4px 0 #171613;
+        }
+
+        .mobile-copy {
+          position: relative;
+          z-index: 1;
+          max-width: 330px;
+          margin: 24px 0 0;
+          font-size: 18px;
+          font-weight: 600;
+          line-height: 1.4;
+        }
+
+        .mobile-hero-actions {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          gap: 10px;
+          margin-top: 22px;
+        }
+
+        .mobile-hero-actions a {
+          display: flex;
+          min-height: 52px;
+          align-items: center;
+          justify-content: center;
+          padding: 0 18px;
+          border: 2px solid #171613;
+          border-radius: 999px;
+          color: #171613;
+          background: #fff7e6;
+          font: 700 11px 'Space Mono', monospace;
+          text-decoration: none;
+          text-transform: uppercase;
+          box-shadow: 4px 5px 0 #171613;
+        }
+
+        .mobile-hero-actions .primary { background: #df3d29; color: white; }
+
+        .mobile-collage {
+          position: relative;
+          z-index: 1;
+          height: 265px;
+          margin: 37px -4px 0;
+          overflow: hidden;
+          border: 2px solid #171613;
+          border-radius: 26px;
+          background: #d46e59;
+          box-shadow: 7px 8px 0 #171613;
+          transform: rotate(-1deg);
+        }
+
+        .mobile-collage img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .mobile-collage-tag {
+          position: absolute;
+          left: 12px;
+          bottom: 12px;
+          padding: 9px 12px;
+          border: 2px solid #171613;
+          border-radius: 999px;
+          background: #efad24;
+          font: 700 10px 'Space Mono', monospace;
+          text-transform: uppercase;
+          box-shadow: 3px 3px 0 #171613;
+        }
+
+        .mobile-collage-note {
+          position: absolute;
+          right: 10px;
+          top: 10px;
+          padding: 8px 10px;
+          border-radius: 12px;
+          background: #fff7e6;
+          color: #a5261c;
+          font: 700 10px/1.2 'Space Mono', monospace;
+          transform: rotate(3deg);
+        }
+
         .hero-scroll {
           width: 100vw;
           overflow-x: auto;
@@ -135,7 +306,6 @@
         }
 
         .hero-pan-hint {
-          display: block;
           margin: 0;
           padding: 10px 16px;
           background: #f7ead5;
@@ -146,7 +316,6 @@
         }
 
         .mobile-actions {
-          display: block;
           padding: 0 16px 20px;
           background: #f7ead5;
           color: #171717;
@@ -197,6 +366,24 @@
   <body>
     <main>
       <section class="hero-region" aria-label="avaTOK desi editorial marketplace">
+        <div class="mobile-hero">
+          <header class="mobile-topbar">
+            <a class="mobile-logo" href="/" aria-label="avaTOK home">ava<span>TOK</span></a>
+            <a class="mobile-menu" href="#marketplace-catalogue">Menu <span aria-hidden="true">☰</span></a>
+          </header>
+          <p class="mobile-kicker">India's creator marketplace · भारत लाइव</p>
+          <h1 class="mobile-title">Your story.<span>Your stage.</span></h1>
+          <p class="mobile-copy">Go live, host private sessions or build an AI voice. You set the price. Your people join from anywhere.</p>
+          <div class="mobile-hero-actions">
+            <a class="primary" href="/sign-up">Create free</a>
+            <a href="#live-streaming">Explore live</a>
+          </div>
+          <div class="mobile-collage">
+            <img src="/listings-friends-sheet.png?v=mobile-hero-1" alt="Indian creators sharing stories and conversations from across India" width="1348" height="989" fetchpriority="high" />
+            <span class="mobile-collage-tag">Desi dil se · global</span>
+            <span class="mobile-collage-note">Paid live events<br />from ₹49</span>
+          </div>
+        </div>
         <div
           class="hero-scroll"
           tabindex="0"
