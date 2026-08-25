@@ -45,6 +45,27 @@ jobs:
 
       - name: Build
         working-directory: web
+        # PUBLIC_* vars are inlined into the browser bundle by Astro at BUILD
+        # time (src/lib/config.ts), so they must be present here — setting them
+        # on the Pages project afterwards does nothing for an already-built
+        # bundle. Until 2026-08-26 this step had no env at all, so
+        # CLERK_PUBLISHABLE_KEY came out `undefined` and every auth island
+        # rendered its "Sign-in isn't set up yet" fallback. That is the ONLY
+        # reason avatok.ai/sign-in did not work — the Worker has verified Clerk
+        # JWTs as the sole auth authority since 2026-07-02 (worker/src/auth.ts).
+        #
+        # A Clerk PUBLISHABLE key is public by design: it is shipped inside the
+        # browser bundle of every Clerk site and inside the Android app. It is
+        # NOT a secret and deliberately lives in plaintext here so the build can
+        # never silently lose it to an unset repo secret. The SECRET key
+        # (sk_live_…) is server-side only and must never appear in this repo.
+        #
+        # This key decodes to `clerk.avatok.ai`, which matches CLERK_ISSUER /
+        # CLERK_JWKS_URL in worker/wrangler.toml. If those ever change, change
+        # this too or web sign-in silently stops being accepted by the API.
+        env:
+          PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuYXZhdG9rLmFpJA
+          PUBLIC_API_BASE: https://api.avatok.ai
         run: npm run build      # runs prebuild (zine tokens) + astro build
 
       - name: Deploy to Cloudflare Pages (avatok-app)
