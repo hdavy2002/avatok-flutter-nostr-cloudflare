@@ -4,6 +4,15 @@ import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 
+// [WEB-DEVSERVER-1 2026-08-26] Is this `astro dev`, as opposed to build/preview?
+// The `react-dom/server` → `.edge` alias below is REQUIRED for the Cloudflare
+// Workers build but makes `astro dev` fail with "require is not defined" on
+// every page: dev renders SSR in plain Node, and `react-dom/server.edge.js` is
+// not loadable there. The result was a 500 on every route locally, which is why
+// a local preview appeared impossible. Scope the alias to non-dev so `npm run
+// dev` works and the deployed bundle is byte-for-byte unchanged.
+const isDev = process.argv.includes('dev');
+
 // avatok.ai public web client.
 //
 // "hybrid" rendering on Astro 5 = `output: 'static'` + a server adapter:
@@ -38,7 +47,12 @@ export default defineConfig({
       // module-init time, which Cloudflare Workers do not expose during worker
       // startup → "MessageChannel is not defined" and a 500 on every route.
       // The `.edge` build is purpose-built for edge runtimes and avoids it.
-      alias: {
+      //
+      // DEV EXCEPTION ([WEB-DEVSERVER-1], see isDev above): `astro dev` renders
+      // in Node, where the `.edge` build throws "require is not defined" — so
+      // the fix for production was breaking local preview. Node's default
+      // `react-dom/server` is correct in dev and never ships.
+      alias: isDev ? {} : {
         'react-dom/server': 'react-dom/server.edge',
       },
     },
