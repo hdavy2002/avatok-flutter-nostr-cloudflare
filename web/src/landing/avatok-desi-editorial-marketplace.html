@@ -44,12 +44,29 @@
         font-family: Arial, Helvetica, sans-serif;
       }
 
+      .hero-region,
+      .hero-scroll {
+        width: 100vw;
+        max-width: none;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+      }
+
       .hero-stage {
         position: relative;
-        width: 100%;
+        width: 100vw;
         aspect-ratio: var(--poster-width) / var(--poster-height);
         overflow: hidden;
         line-height: 0;
+        border: 0;
+        border-radius: 0;
+        background: #f7ead5;
+      }
+
+      .hero-canvas {
+        position: absolute;
+        inset: -1.9%;
       }
 
       .hero-poster {
@@ -94,15 +111,12 @@
       .event-ai-voice { left: 54.7%; top: 70.6%; width: 16.7%; height: 27.9%; border-radius: 4%; }
 
 
-      .hero-scroll { width: 100%; }
       .hero-pan-hint,
       .mobile-actions { display: none; }
 
       @media (max-width: 700px) {
-        .hotspot { display: none; }
-
         .hero-scroll {
-          width: 100%;
+          width: 100vw;
           overflow-x: auto;
           overflow-y: hidden;
           overscroll-behavior-x: contain;
@@ -190,9 +204,10 @@
           aria-describedby="hero-pan-hint"
         >
           <div class="hero-stage">
+            <div class="hero-canvas">
             <img
               class="hero-poster"
-              src="/og-desi-marketplace.png"
+              src="/og-desi-marketplace.png?v=full-bleed-2"
               alt="avaTOK marketplace poster: India has stories. Go live."
               width="1536"
               height="1024"
@@ -213,6 +228,7 @@
             <a class="hotspot event-kedarnath" href="/marketplace" aria-label="Open Kedarnath Darshan event"></a>
             <a class="hotspot event-ladakh" href="/marketplace" aria-label="Open Ride to Ladakh event"></a>
             <a class="hotspot event-ai-voice" href="/vision" aria-label="Open AI Voice event"></a>
+            </div>
           </div>
         </div>
         <p class="hero-pan-hint" id="hero-pan-hint">Swipe to explore the poster.</p>
@@ -231,6 +247,12 @@
           </ul>
         </nav>
       </section>
+      <script>
+        if (!window.location.hash) {
+          history.scrollRestoration = 'manual';
+          window.scrollTo(0, 0);
+        }
+      </script>
 
 <!--
   AvaTOK lower-page draft
