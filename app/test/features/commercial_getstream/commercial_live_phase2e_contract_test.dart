@@ -19,7 +19,7 @@ void main() {
   test('phase 2E source keeps live join POST-only and no-store', () {
     final router = File('../worker/src/index.ts').readAsStringSync();
     final route = File('../worker/src/routes/commercial_stream_sessions.ts').readAsStringSync();
-    expect(router, contains('commercial/live/[A-Za-z0-9-]{1,64}\\/join$/.test(p) && req.method === "POST"'));
+    expect(router, contains(r'commercial/live/[A-Za-z0-9-]{1,64}\/join$/.test(p) && req.method === "POST"'));
     expect(route, contains('noStoreJoinResponse'));
     expect(route, contains("Cache-Control"));
   });

@@ -48,6 +48,7 @@ import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 
 import '../ava_log.dart';
 import '../audio_tuning.dart' as audio_tuning;
+import '../../features/avatok/call_billing/messenger_call_billing_models.dart';
 import 'call_sfu_api.dart';
 
 /// Reuse an overlapped peer lookup when it succeeded, but never let a lookup
@@ -156,6 +157,11 @@ class CallSfuTransport {
     this.onStaleAudioMuted,
     this.onNegotiation,
     this.overlapPeerWait = true,
+    this.billingAuthorization,
+    this.billingAuthorizationId,
+    this.billingCallId,
+    this.billingAttemptId,
+    this.billingPriceVersion,
   });
 
   /// The same room id the P2P signalling uses. Both transports are keyed on it,
@@ -250,6 +256,15 @@ class CallSfuTransport {
   /// completes anyway. Flag-gated from `CallSession` (`callSetupParallelBootV1`)
   /// so it can be switched off in KV without a build.
   final bool overlapPeerWait;
+
+  /// Optional server-frozen Messenger billing context. Only the four
+  /// admission identifiers are sent; legacy and non-Messenger calls remain
+  /// byte-for-byte unchanged.
+  final MessengerCallAuthorization? billingAuthorization;
+  final String? billingAuthorizationId;
+  final String? billingCallId;
+  final String? billingAttemptId;
+  final int? billingPriceVersion;
 
   String? _sessionId;
   RTCPeerConnection? _pc;
@@ -687,7 +702,14 @@ class CallSfuTransport {
     try {
       final join = (prewarmedJoin != null && prewarmedJoin.sessionId.isNotEmpty)
           ? prewarmedJoin
-          : await CallSfuApi.join(room);
+          : await CallSfuApi.join(
+              room,
+              billingAuthorization: billingAuthorization,
+              billingAuthorizationId: billingAuthorizationId,
+              billingCallId: billingCallId,
+              billingAttemptId: billingAttemptId,
+              billingPriceVersion: billingPriceVersion,
+            );
       if (join.sessionId.isEmpty) {
         return CallSfuResult.failed(SfuFailure.joinFailed, detail: 'empty_session_id');
       }

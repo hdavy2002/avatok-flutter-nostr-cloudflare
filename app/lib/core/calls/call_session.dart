@@ -40,6 +40,8 @@ import '../../push/push_service.dart';
 // and are DRIVEN from here. Imported for scope; call_screen.dart also imports
 // this file — Dart permits the library cycle. See call_screen.dart:33-108.
 import '../../features/avatok/call_screen.dart';
+import '../../features/avatok/call_billing/messenger_call_billing_models.dart';
+import '../../features/avatok/call_billing/messenger_call_billing_api.dart';
 // [RECEPT-CALLBACK-PREEMPT-1] gReceptionistTargetPub lives in
 // call_session_manager.dart (mirrors the gInCall-style globals above);
 // call_session_manager.dart also imports this file — same permitted library
@@ -59,6 +61,17 @@ import 'rtc/stream_call_provider.dart';
 /// the fine-grained [CallSession.uiPhase] string for its status label.
 /// See Specs/CALL-SESSION-API.md.
 enum CallPhase { dialing, ringing, connecting, connected, reconnecting, ended }
+
+/// Testable part of the CallRoom challenge transition. A duplicate challenge
+/// for the same nonce/epoch may resume an existing heartbeat; a new epoch (or
+/// nonce) invalidates every prior playout observation.
+@visibleForTesting
+bool messengerCallBillingChallengeIsSameGeneration({
+  required String? previousNonce,
+  required int? previousEpoch,
+  required String nonce,
+  required int epoch,
+}) => previousNonce == nonce && previousEpoch == epoch;
 
 /// Immutable inputs for a 1:1 call, mirroring the old `CallScreen` widget fields
 /// so the session is constructed from the same params the launch sites pass.
@@ -110,6 +123,13 @@ class CallSessionConfig {
   /// live call cannot silently migrate providers halfway through setup.
   final CallMediaProvider mediaProvider;
   final StreamCallJoinTicket? streamTicket;
+  /// Frozen Messenger authorization. Present only for billing-enabled
+  /// Cloudflare audio; legacy calls leave it null and preserve their path.
+  final MessengerCallAuthorization? billingAuthorization;
+  final String? billingAuthorizationId;
+  final String? billingAttemptId;
+  final int? billingPriceVersion;
+  final String? billingServerCallId;
   const CallSessionConfig({
     required this.room,
     required this.title,
@@ -128,6 +148,11 @@ class CallSessionConfig {
     this.prewarmNetworkIdentity = '',
     this.mediaProvider = CallMediaProvider.cloudflare,
     this.streamTicket,
+    this.billingAuthorization,
+    this.billingAuthorizationId,
+    this.billingAttemptId,
+    this.billingPriceVersion,
+    this.billingServerCallId,
   });
 }
 
@@ -418,7 +443,17 @@ class CallSession {
   /// debug-build tripwire in case a token is ever smuggled out.
   CallSession.internalByManager(CallSessionToken token, this.config)
       : assert(identical(token, kCallSessionToken),
-            'CallSession must be constructed via CallSessionManager.attach()');
+            'CallSession must be constructed via CallSessionManager.attach()') {
+    if (config.billingAuthorization != null &&
+        config.billingAuthorization!.provider == 'cloudflare' &&
+        !config.video) {
+      billingState.value = MessengerCallBillingRuntimeState(
+        authorization: config.billingAuthorization!,
+        freeParticipantSecondsRemaining:
+            config.billingAuthorization!.freeParticipantSecondsRemaining,
+      );
+    }
+  }
 
   final CallSessionConfig config;
   String get room => config.room;
@@ -603,6 +638,239 @@ class CallSession {
   /// Generic "session changed" tick so a view can rebuild on anything (e.g. the
   /// receptionist duo appearing). Bumped whenever notable non-notifier state moves.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  /// Server-authorized billing state for the optional Messenger audio lane.
+  /// This notifier is empty for legacy calls and for Stream video calls.
+  final ValueNotifier<MessengerCallBillingRuntimeState?> billingState =
+      ValueNotifier<MessengerCallBillingRuntimeState?>(null);
+
+  bool _billingMediaEstablished = false;
+  bool _billingMediaLost = false;
+  // True only after the native playout gate has accepted actual audible
+  // evidence. `audibleReady` also has a legacy flag-off path, which must never
+  // become financial evidence for Messenger billing.
+  bool _billingPlayoutConfirmed = false;
+  String? _billingNonce;
+  int? _billingMediaEpoch;
+  bool _billingAwaitingFreshPlayout = false;
+  Timer? _billingHeartbeatTimer;
+  Future<void>? _billingReceiptFuture;
+
+  bool get hasMessengerCloudflareBilling =>
+      !config.video &&
+      (config.billingAuthorization?.provider == 'cloudflare' ||
+          (config.billingAuthorizationId?.isNotEmpty ?? false));
+
+  String get _billingAuthorizationId =>
+      config.billingAuthorization?.authorizationId ??
+      config.billingAuthorizationId ?? '';
+  String get _billingCallId =>
+      config.billingAuthorization?.callId ??
+      config.billingServerCallId ?? config.room;
+  String get _billingAttemptId =>
+      config.billingAuthorization?.attemptId ?? config.billingAttemptId ?? '';
+  int get _billingPriceVersion =>
+      config.billingAuthorization?.priceVersion ?? config.billingPriceVersion ?? 0;
+
+  /// The only client-side billing evidence emitted by this session. The
+  /// CallRoom authenticates the WebSocket peer and generation; a remote track,
+  /// ICE state, answer, or welcome alone never calls this method.
+  void _emitBillingMediaEstablished(String evidence) {
+    if (!hasMessengerCloudflareBilling ||
+        _billingMediaEstablished ||
+        _ended ||
+        _billingNonce == null ||
+        _billingMediaEpoch == null) return;
+    _billingMediaEstablished = true;
+    _billingMediaLost = false;
+    _billingAwaitingFreshPlayout = false;
+    _billingHeartbeatTimer ??= Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _sendBillingHeartbeat(),
+    );
+    _send({
+      'type': 'media_established',
+      'call_id': _billingCallId,
+      'authorization_id': _billingAuthorizationId,
+      'attempt_id': _billingAttemptId,
+      'price_version': _billingPriceVersion,
+      'evidence': evidence,
+      'nonce': _billingNonce,
+      'media_epoch': _billingMediaEpoch,
+      'event_id': '${_billingAuthorizationId}:media-established:${_billingMediaEpoch}:${DateTime.now().microsecondsSinceEpoch}',
+    });
+    Analytics.capture('messenger_call_media_established', {
+      'call_id': _billingCallId,
+      'authorization_id': _billingAuthorizationId,
+      'attempt_id': _billingAttemptId,
+      'price_version': _billingPriceVersion,
+      'evidence': evidence,
+      'provider': 'cloudflare',
+      'media': 'audio',
+    });
+  }
+
+  /// Ends the authenticated media interval. This is intentionally idempotent
+  /// and is also sent from teardown so a hangup cannot leave an open interval.
+  void _emitBillingMediaLost(String reason) {
+    if (!hasMessengerCloudflareBilling ||
+        !_billingMediaEstablished ||
+        _billingMediaLost ||
+        _billingNonce == null ||
+        _billingMediaEpoch == null) return;
+    _billingMediaLost = true;
+    _billingMediaEstablished = false;
+    _billingPlayoutConfirmed = false;
+    _billingAwaitingFreshPlayout = false;
+    _billingHeartbeatTimer?.cancel();
+    _billingHeartbeatTimer = null;
+    _send({
+      'type': 'media_lost',
+      'call_id': _billingCallId,
+      'authorization_id': _billingAuthorizationId,
+      'attempt_id': _billingAttemptId,
+      'price_version': _billingPriceVersion,
+      'reason': reason,
+      'nonce': _billingNonce,
+      'media_epoch': _billingMediaEpoch,
+      'event_id': '${_billingAuthorizationId}:media-lost:${_billingMediaEpoch}:${DateTime.now().microsecondsSinceEpoch}',
+    });
+    Analytics.capture('messenger_call_media_lost', {
+      'call_id': _billingCallId,
+      'authorization_id': _billingAuthorizationId,
+      'attempt_id': _billingAttemptId,
+      'price_version': _billingPriceVersion,
+      'reason': reason,
+      'provider': 'cloudflare',
+      'media': 'audio',
+    });
+  }
+
+  void _sendBillingHeartbeat() {
+    if (!hasMessengerCloudflareBilling ||
+        !_billingMediaEstablished ||
+        _billingNonce == null ||
+        _billingMediaEpoch == null ||
+        _ended) return;
+    _send({
+      'type': 'media_heartbeat',
+      'call_id': _billingCallId,
+      'authorization_id': _billingAuthorizationId,
+      'nonce': _billingNonce,
+      'media_epoch': _billingMediaEpoch,
+    });
+  }
+
+  void _applyBillingChallenge(Map<String, dynamic> data) {
+    if (!hasMessengerCloudflareBilling ||
+        '${data['authorization_id'] ?? ''}' != _billingAuthorizationId ||
+        '${data['call_id'] ?? ''}' != _billingCallId) return;
+    final nonce = '${data['nonce'] ?? ''}';
+    final epoch = data['media_epoch'];
+    final parsedEpoch = epoch is num ? epoch.toInt() : int.tryParse('$epoch');
+    if (nonce.isEmpty || parsedEpoch == null || parsedEpoch < 1) return;
+    final sameGeneration = messengerCallBillingChallengeIsSameGeneration(
+      previousNonce: _billingNonce,
+      previousEpoch: _billingMediaEpoch,
+      nonce: nonce,
+      epoch: parsedEpoch,
+    );
+    _billingNonce = nonce;
+    _billingMediaEpoch = parsedEpoch;
+    if (sameGeneration) {
+      // A duplicate challenge can arrive after a reconnect race. Preserve the
+      // current interval and heartbeat; if the interval was waiting on its
+      // first proof, a proof already accepted for this generation is enough.
+      if (_billingMediaEstablished) {
+        _billingHeartbeatTimer ??= Timer.periodic(
+          const Duration(seconds: 15),
+          (_) => _sendBillingHeartbeat(),
+        );
+      } else if (_billingPlayoutConfirmed) {
+        _emitBillingMediaEstablished('playout_challenge_ready');
+      }
+      return;
+    }
+    // A new nonce/epoch is a new authenticated media interval. Any proof from
+    // the previous interval is deliberately discarded; the next playout
+    // sampler must observe fresh post-challenge evidence.
+    _billingMediaEstablished = false;
+    _billingMediaLost = false;
+    _billingPlayoutConfirmed = false;
+    _billingAwaitingFreshPlayout = true;
+    _billingHeartbeatTimer?.cancel();
+    _billingHeartbeatTimer = null;
+  }
+
+  void _applyBillingServerState(Map<String, dynamic> data) {
+    final current = billingState.value;
+    if (current == null) return;
+    int? integer(Object? value) {
+      if (value is int) return value >= 0 ? value : null;
+      if (value is num && value == value.toInt()) return value.toInt() >= 0 ? value.toInt() : null;
+      return int.tryParse('$value');
+    }
+    final free = integer(data['free_participant_seconds_remaining'] ??
+        data['allowance_remaining_participant_seconds']);
+    final paid = integer(data['paid_remaining_wall_seconds'] ??
+        data['remaining_paid_wall_seconds']);
+    final warning = data['low_balance'] == true || data['warning'] == true;
+    final exhausted = data['funds_exhausted'] == true ||
+        data['reason'] == 'insufficient_balance';
+    final reason = '${data['reason'] ?? data['ending_reason'] ?? ''}';
+    billingState.value = current.copyWith(
+      freeParticipantSecondsRemaining: free,
+      paidRemainingWallSeconds: paid,
+      lowBalance: warning || current.lowBalance,
+      fundsExhausted: exhausted || current.fundsExhausted,
+      renewalFailure: data['renewal_failed'] == true ? reason : null,
+      endReason: reason.isEmpty ? null : reason,
+    );
+    if (exhausted && !_ended) {
+      _endWith('ended', reason: reason.isEmpty ? 'billing-renewal-failed' : reason);
+    }
+  }
+
+  Future<void> _loadBillingReceipt({int attempts = 6}) async {
+    final current = billingState.value;
+    final auth = config.billingAuthorization;
+    if (current == null || auth == null) return;
+    final inFlight = _billingReceiptFuture;
+    if (inFlight != null) return inFlight;
+    final future = _pollBillingReceipt(auth, current, attempts);
+    _billingReceiptFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_billingReceiptFuture, future)) {
+        _billingReceiptFuture = null;
+      }
+    }
+  }
+
+  Future<void> _pollBillingReceipt(
+    MessengerCallAuthorization auth,
+    MessengerCallBillingRuntimeState current,
+    int attempts,
+  ) async {
+    final boundedAttempts = attempts.clamp(1, 12).toInt();
+    for (var attempt = 0; attempt < boundedAttempts; attempt++) {
+      await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      final receipt =
+          await MessengerCallBillingApi.fetchReceipt(auth.authorizationId);
+      if (receipt != null) {
+        billingState.value = (billingState.value ?? current).copyWith(
+          receipt: receipt,
+          endReason: receipt.endedReason,
+        );
+        return;
+      }
+    }
+  }
+
+  /// Explicit terminal/UI retry for settlement that is still being finalized
+  /// by the billing DO after the media interval closes.
+  Future<void> refreshBillingReceipt() => _loadBillingReceipt(attempts: 10);
   void _bump() => revision.value++;
 
   // [DIAL-NARRATION-1] First name for the dial narration ("Amy" from "Amy
@@ -1928,7 +2196,10 @@ class CallSession {
   bool get _playoutSamplerWanted =>
       RemoteConfig.callPlayoutHealthV2 ||
       RemoteConfig.callIceRecoveryV2 ||
-      RemoteConfig.callRelayMigrationV1;
+      RemoteConfig.callRelayMigrationV1 ||
+      // Messenger billing needs a fresh post-challenge playout sample even
+      // when the optional recovery/diagnostic flags are disabled.
+      hasMessengerCloudflareBilling;
 
   /// Drop every cumulative stat and recovery streak whenever the active peer
   /// connection changes. Stats counters belong to a PC generation; carrying
@@ -2514,6 +2785,14 @@ class CallSession {
       return;
     }
     audibleReady.value = true;
+    // Billing starts only from confirmed audio playout (or the narrowly
+    // defined bytes fallback when this platform exposes no playout counters).
+    // Transport, signaling, onTrack, and the flag-off timeout shim are never
+    // financial evidence.
+    if (!flagOff && (evidence == 'playout' || evidence == 'bytes_fallback' || evidence.endsWith('_route_recovered'))) {
+      _billingPlayoutConfirmed = true;
+      _emitBillingMediaEstablished(evidence);
+    }
     _audibleSafetyTimer?.cancel();
     _audibleSafetyTimer = null;
     _stopAudiblePlayoutProbe();
@@ -2999,6 +3278,30 @@ class CallSession {
         }
       }
       _lastPlayoutHealthClass = cls;
+      // Once an already-established interval has lost native playout for two
+      // consecutive health samples, close that interval. The CallRoom rotates
+      // the authenticated challenge, so a later confirmed playout starts a new
+      // interval instead of billing through a silent gap.
+      if (!sampleMigration &&
+          _billingMediaEstablished &&
+          _noPlayoutStreak >= 2) {
+        _emitBillingMediaLost('playout_lost');
+      }
+      if (!sampleMigration &&
+          _billingAwaitingFreshPlayout &&
+          hasMessengerCloudflareBilling &&
+          !_billingMediaEstablished &&
+          !_ended) {
+        final freshPlayout = (jbufEmittedDelta != null && jbufEmittedDelta > 0) ||
+            (_playoutCountersSupported == false &&
+                bytesDelta != null &&
+                bytesDelta > 0);
+        if (freshPlayout) {
+          _billingPlayoutConfirmed = true;
+          _billingAwaitingFreshPlayout = false;
+          _emitBillingMediaEstablished('playout_challenge_ready');
+        }
+      }
 
       _emitAudioDiagnostics(
         nativeAudioDiagnostics,
@@ -5030,6 +5333,7 @@ class CallSession {
       return;
     }
     if (_connected) {
+      _emitBillingMediaLost('signaling_disconnected');
       // CALL-RC-D2: post-connect drop → the exponential-backoff reconnect
       // state machine (phase=reconnecting), not the legacy pre-connect path.
       _beginReconnect();
@@ -6140,6 +6444,7 @@ class CallSession {
       transportState: s.toString(),
     );
     if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+      _emitBillingMediaLost('rtc_closed');
       // [CALL-PCRETIRE-1 2026-08-06] The identity guard above cannot see this
       // one. `CallSfuTransport.connect()` closes its OWN `_pc` on failure
       // (`_closePc()`), and that is the same object the session already
@@ -6163,6 +6468,9 @@ class CallSession {
       _endWith('ended');
     } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
         s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+      _emitBillingMediaLost(s == RTCPeerConnectionState.RTCPeerConnectionStateFailed
+          ? 'rtc_failed'
+          : 'rtc_disconnected');
       if (_sfuActive || _sfuStarting) {
         _telemetry.runtimeError(
           stage: 'sfu_pc_disconnected',
@@ -7901,6 +8209,16 @@ class CallSession {
         });
       },
       overlapPeerWait: RemoteConfig.callSetupParallelBootV1,
+      billingAuthorization:
+          hasMessengerCloudflareBilling ? config.billingAuthorization : null,
+      billingAuthorizationId:
+          hasMessengerCloudflareBilling ? config.billingAuthorizationId : null,
+      billingCallId:
+          hasMessengerCloudflareBilling ? config.billingServerCallId : null,
+      billingAttemptId:
+          hasMessengerCloudflareBilling ? config.billingAttemptId : null,
+      billingPriceVersion:
+          hasMessengerCloudflareBilling ? config.billingPriceVersion : null,
     );
   }
 
@@ -8793,6 +9111,22 @@ class CallSession {
     if (d['country'] is String)
       _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
+      case 'billing_challenge':
+        _applyBillingChallenge(d);
+        break;
+      case 'billing_warning':
+      case 'billing_low_balance':
+      case 'billing_renewal_failed':
+      case 'billing_exhausted':
+        _applyBillingServerState(d);
+        break;
+      case 'billing_unavailable':
+        _applyBillingServerState(<String, dynamic>{
+          ...d,
+          'renewal_failed': true,
+          'reason': d['reason'] ?? 'billing_unavailable',
+        });
+        break;
       case 'welcome':
         _gotWelcome = true;
         _stage('ws_welcome'); // [CALL-DEADAIR-1]
@@ -11670,6 +12004,8 @@ class CallSession {
   Future<void> _teardownImpl({String? reason}) async {
     if (_ended || _teardownStarted) return;
     _teardownStarted = true;
+    _emitBillingMediaLost(reason ?? 'teardown');
+    if (hasMessengerCloudflareBilling) unawaited(_loadBillingReceipt());
     // ── [CALLREC-STOP-ON-END-1] Finalize this call's recording WITH the call ──
     //
     // On 2026-08-08 (call avatok-85dc200b) nothing stopped the recorder when

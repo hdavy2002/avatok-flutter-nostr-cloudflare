@@ -49,6 +49,11 @@ import 'data.dart' show Chat; // [AVACALL-MENU-1] Chat model for the DM thread
 import 'no_answer_card.dart';
 import 'paid_busy_card.dart';
 import 'place_1to1_call.dart';
+import 'call_billing/messenger_call_billing_hud.dart';
+import 'call_billing/messenger_call_billing_gate.dart';
+import 'call_billing/messenger_call_billing_models.dart';
+import 'call_billing/messenger_call_consent_sheets.dart';
+import 'call_billing/messenger_call_receipt_details_screen.dart';
 // Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
 // clearCallState() on account switch. push_service.dart also imports this file
 // (Dart permits the library cycle).
@@ -260,6 +265,14 @@ class CallScreen extends StatefulWidget {
   /// existing Cloudflare/P2P session so every current launch site is unchanged.
   final CallMediaProvider mediaProvider;
   final StreamCallJoinTicket? streamTicket;
+  /// Frozen server authorization for a billing-enabled free Cloudflare audio
+  /// call. Paid audio is admitted through GetStream and never mounts this
+  /// screen. Null keeps all legacy and incoming call behavior unchanged.
+  final MessengerCallAuthorization? billingAuthorization;
+  final String? billingAuthorizationId;
+  final String? billingAttemptId;
+  final int? billingPriceVersion;
+  final String? billingServerCallId;
   const CallScreen({
     super.key,
     required this.room,
@@ -283,6 +296,11 @@ class CallScreen extends StatefulWidget {
     this.prewarmNetworkIdentity = '',
     this.mediaProvider = CallMediaProvider.cloudflare,
     this.streamTicket,
+    this.billingAuthorization,
+    this.billingAuthorizationId,
+    this.billingAttemptId,
+    this.billingPriceVersion,
+    this.billingServerCallId,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -291,6 +309,9 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   late final CallSession _session;
   bool _popped = false;
+  bool _billingWarningShown = false;
+  bool _billingRenewalFailureShown = false;
+  bool _billingContinuationShown = false;
 
   // ── [CALL-HONEST-FAIL-1] "why did that call just stop?" ────────────────────
   //
@@ -714,6 +735,11 @@ class _CallScreenState extends State<CallScreen> {
       prewarmNetworkIdentity: widget.prewarmNetworkIdentity,
       mediaProvider: widget.mediaProvider,
       streamTicket: widget.streamTicket,
+      billingAuthorization: widget.billingAuthorization,
+      billingAuthorizationId: widget.billingAuthorizationId,
+      billingAttemptId: widget.billingAttemptId,
+      billingPriceVersion: widget.billingPriceVersion,
+      billingServerCallId: widget.billingServerCallId,
     ));
     // [CALL-AVATAR-FALLBACK-1] Fire-and-forget; the ring renders initials until
     // it lands, exactly as it does today, and swaps in place if it finds one.
@@ -782,6 +808,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.uiPhase.addListener(_onSessionChanged);
     _session.elapsedSeconds.addListener(_onSessionChanged);
     _session.audibleReady.addListener(_onSessionChanged); // [CALL-AUDIBLE-1]
+    _session.billingState.addListener(_onSessionChanged);
     _session.muted.addListener(_onSessionChanged);
     _session.speakerOn.addListener(_onSessionChanged);
     _session.cameraOn.addListener(_onSessionChanged);
@@ -831,7 +858,64 @@ class _CallScreenState extends State<CallScreen> {
     _maybeFetchNoAnswerRouting();
     _maybeStartAgentFromPhase(); // [DIALPAD-BIZ-CALLS Phase C]
     _resolveFailure(); // [CALL-HONEST-FAIL-1]
+    final billing = _session.billingState.value;
+    if (mounted && billing != null && billing.lowBalance && !_billingWarningShown) {
+      _billingWarningShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Your call balance is running low.'),
+        duration: Duration(seconds: 5),
+      ));
+    }
+    if (mounted && billing?.renewalFailure != null && !_billingRenewalFailureShown) {
+      _billingRenewalFailureShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Call ended because paid time could not be renewed: ${billing!.renewalFailure}'),
+        duration: const Duration(seconds: 6),
+      ));
+    }
+    if (mounted &&
+        billing != null &&
+        billing.fundsExhausted &&
+        !widget.video &&
+        widget.outgoing &&
+        billing.authorization.provider == 'cloudflare' &&
+        !_billingContinuationShown) {
+      _billingContinuationShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_offerPaidAudioContinuation());
+      });
+    }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _offerPaidAudioContinuation() async {
+    if (!mounted) return;
+    final catalog = await MessengerCallBillingGate.pricing(
+      media: MessengerCallMedia.audio,
+    );
+    if (!mounted) return;
+    final consent = await showMessengerPaidAudioSheet(
+      context,
+      rate: catalog.rateFor(MessengerCallQualitySku.audio),
+      spendableTokens: catalog.spendableTokens,
+    );
+    if (consent == null || !consent.accepted || !mounted) return;
+    // The old Cloudflare call is already terminal. Pop it and deliberately
+    // start a fresh authorization/attempt so paid audio enters GetStream with
+    // a new call id; no provider switch or Cloudflare reservation is reused.
+    final nav = Navigator.of(context);
+    final freshPaidAttemptId = MessengerCallBillingGate.newAttemptId();
+    _popIfMounted();
+    await place1to1Call(
+      nav.context,
+      uid: widget.seed,
+      name: widget.title,
+      avatarUrl: widget.avatarUrl,
+      video: false,
+      dialer: widget.dialer,
+      business: widget.business,
+      billingAttemptId: freshPaidAttemptId,
+    );
   }
 
   /// [CALL-HONEST-FAIL-1] Work out — from whatever the session is willing to
@@ -952,6 +1036,7 @@ class _CallScreenState extends State<CallScreen> {
     _session.uiPhase.removeListener(_onSessionChanged);
     _session.elapsedSeconds.removeListener(_onSessionChanged);
     _session.audibleReady.removeListener(_onSessionChanged); // [CALL-AUDIBLE-1]
+    _session.billingState.removeListener(_onSessionChanged);
     _session.muted.removeListener(_onSessionChanged);
     _session.speakerOn.removeListener(_onSessionChanged);
     _session.cameraOn.removeListener(_onSessionChanged);
@@ -1503,6 +1588,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     final s = _session;
+    final billing = s.billingState.value;
     final phase = s.uiPhase.value;
     final connected = s.isConnected;
     // [CALL-AUDIBLE-1] `connected` alone means "media path established" and
@@ -2197,6 +2283,38 @@ class _CallScreenState extends State<CallScreen> {
                           },
                         ),
                       ],
+                      if (billing?.receipt != null) ...[
+                        const SizedBox(height: Msg.s3),
+                        TextButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => MessengerCallReceiptDetailsScreen(
+                                receipt: billing!.receipt!,
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.receipt_long_outlined),
+                          label: const Text('View call receipt'),
+                        ),
+                      ] else if (billing != null) ...[
+                        const SizedBox(height: Msg.s3),
+                        TextButton.icon(
+                          onPressed: () async {
+                            await s.refreshBillingReceipt();
+                            if (mounted &&
+                                s.billingState.value?.receipt == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Your receipt is still being finalized. Try again shortly.'),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Refresh receipt'),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -2323,6 +2441,22 @@ class _CallScreenState extends State<CallScreen> {
               ),
               child: connected
                   ? Column(mainAxisSize: MainAxisSize.min, children: [
+                if (billing != null) ...[
+                  MessengerCallBillingHud(
+                    authorization: billing.authorization,
+                    freeParticipantSecondsRemaining:
+                        billing.freeParticipantSecondsRemaining,
+                    paidRemainingWallSeconds: billing.paidRemainingWallSeconds,
+                    showFreeAllowance:
+                        billing.authorization.qualitySku ==
+                                MessengerCallQualitySku.audio &&
+                            billing.authorization.provider == 'cloudflare',
+                    lowBalance: billing.lowBalance,
+                    fundsExhausted: billing.fundsExhausted,
+                    renewalFailure: billing.renewalFailure,
+                  ),
+                  const SizedBox(height: Msg.s2),
+                ],
                 Row(children: [
                   Expanded(
                     child: _CallTile(

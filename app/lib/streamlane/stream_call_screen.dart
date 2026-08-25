@@ -27,6 +27,9 @@ import '../core/remote_config.dart';
 import '../core/ringback_player.dart';
 import '../core/ui/avatok_dark.dart';
 import '../core/ui/messenger_theme.dart';
+import '../features/avatok/call_billing/messenger_call_billing_hud.dart';
+import '../features/avatok/call_billing/messenger_call_billing_api.dart';
+import '../features/avatok/call_billing/messenger_call_billing_models.dart';
 import '../main.dart' show RootFlow;
 import 'stream_ava_screen.dart';
 import 'stream_call_service.dart';
@@ -403,6 +406,7 @@ class StreamCallScreen extends StatefulWidget {
     this.connect,
     this.endForEveryone,
     this.tonePlayer,
+    this.billingAuthorization,
   });
 
   final Call call;
@@ -437,12 +441,14 @@ class StreamCallScreen extends StatefulWidget {
   /// Caller progress audio handed over by the preparation screen. The same
   /// player swaps searching beeps for honest ringback without an audible race.
   final RingbackPlayer? tonePlayer;
+  final MessengerCallAuthorization? billingAuthorization;
 
   @override
   State<StreamCallScreen> createState() => _StreamCallScreenState();
 }
 
-class _StreamCallScreenState extends State<StreamCallScreen> {
+class _StreamCallScreenState extends State<StreamCallScreen>
+    with WidgetsBindingObserver {
   StreamSubscription<CallState>? _sub;
   StreamSubscription<StreamStatsBundle>? _statsSub;
   CallState? _state;
@@ -451,6 +457,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   Timer? _connectWatchdog;
   Timer? _qualityTimer;
   Timer? _peerGoneTimer;
+  Timer? _billingRuntimeTimer;
   Duration _elapsed = Duration.zero;
   bool _muted = false;
   bool _speakerOn = true;
@@ -468,6 +475,11 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   bool _firstVideoReported = false;
   bool _popped = false;
   StreamStatsBundle? _lastStatsBundle;
+  MessengerCallBillingRuntimeState? _billingState;
+  bool _billingPollInFlight = false;
+  bool _billingPollingPaused = false;
+  bool _billingTerminal = false;
+  int _billingPollCount = 0;
 
   /// How long a join may sit in `connecting` before the screen stops
   /// pretending and offers a retry. Without this, a `join()` that never
@@ -477,6 +489,12 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   /// Cadence for `stream_lane_call_quality` while live. "Summaries, never
   /// continuous emission" per the task brief.
   static const Duration _qualityInterval = Duration(seconds: 15);
+
+  /// Server-state polling is bounded and lifecycle-aware. The server remains
+  /// authoritative for balance, connected time, reservation renewal, and end
+  /// reason; this cadence only controls how quickly the HUD reacts.
+  static const Duration _billingPollInterval = Duration(seconds: 15);
+  static const int _billingMaxPolls = 240;
 
   /// [STREAM-RECEPTIONIST-1 2026-08-24] The caller's ring window, after which an
   /// unanswered OUTGOING call is handed to the callee's Ava.
@@ -507,6 +525,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _cameraOff = !widget.video;
     _connectedAt = DateTime.now();
     // verified: packages/stream_video/lib/src/state_emitter.dart +
@@ -533,12 +552,14 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     _statsSub?.cancel();
     _durationTimer?.cancel();
     _connectWatchdog?.cancel();
     _qualityTimer?.cancel();
     _peerGoneTimer?.cancel();
+    _billingRuntimeTimer?.cancel();
     _avaHandoffTimer?.cancel();
     // One final summary, per the task brief ("once at end"). Fire-and-forget
     // like every other capture in this lane; skipped if media never flowed
@@ -547,6 +568,105 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
     // ignore: discarded_futures
     _tonePlayer?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _billingPollingPaused = false;
+      if (_phase == _Phase.live || _phase == _Phase.reconnecting) {
+        _startBillingPolling(immediate: true);
+      }
+      return;
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _billingPollingPaused = true;
+      _billingRuntimeTimer?.cancel();
+      _billingRuntimeTimer = null;
+    }
+  }
+
+  void _startBillingPolling({bool immediate = false}) {
+    if (widget.billingAuthorization == null ||
+        _billingPollingPaused ||
+        _billingTerminal ||
+        _billingRuntimeTimer != null) {
+      if (immediate && widget.billingAuthorization != null && !_billingTerminal) {
+        unawaited(_pollBillingStatus());
+      }
+      return;
+    }
+    if (immediate) unawaited(_pollBillingStatus());
+    // Each Timer tick ultimately calls MessengerCallBillingApi.fetchRuntimeState;
+    // the Worker remains authoritative for connected time and settlement.
+    _billingRuntimeTimer = Timer.periodic(
+      // fetchRuntimeState remains bounded by the live/reconnecting phase.
+      _billingPollInterval,
+      (_) => unawaited(_pollBillingStatus()),
+    );
+  }
+
+  void _stopBillingPolling() {
+    _billingRuntimeTimer?.cancel();
+    _billingRuntimeTimer = null;
+  }
+
+  Future<void> _pollBillingStatus() async {
+    final authorization = widget.billingAuthorization;
+    if (authorization == null ||
+        _billingPollingPaused ||
+        _billingTerminal ||
+        _billingPollInFlight ||
+        (_phase != _Phase.live && _phase != _Phase.reconnecting)) {
+      return;
+    }
+    if (_billingPollCount >= _billingMaxPolls) {
+      _stopBillingPolling();
+      return;
+    }
+    _billingPollInFlight = true;
+    _billingPollCount++;
+    try {
+      final snapshot =
+          await MessengerCallBillingApi.fetchRuntimeState(authorization);
+      if (!mounted || snapshot == null) return;
+      _billingState = snapshot;
+      if (snapshot.terminal) {
+        _billingTerminal = true;
+        _stopBillingPolling();
+      }
+      setState(() {});
+      if (snapshot.terminal && !_hangingUp) {
+        await _endAndPop(
+          snapshot.endReason?.isNotEmpty == true
+              ? snapshot.endReason!
+              : 'billing_terminal',
+        );
+      }
+    } finally {
+      _billingPollInFlight = false;
+    }
+  }
+
+  Future<void> _refreshFinalBillingReceipt() async {
+    final authorization = widget.billingAuthorization;
+    if (authorization == null) return;
+    // Settlement may be written just after provider leave. Keep this short and
+    // bounded; failure leaves the server receipt available through history.
+    for (var attempt = 0; attempt < 4; attempt++) {
+      final receipt = await MessengerCallBillingApi.fetchReceipt(
+        authorization.authorizationId,
+      );
+      if (receipt != null) {
+        _billingState = (_billingState ??
+                MessengerCallBillingRuntimeState(authorization: authorization))
+            .copyWith(receipt: receipt, endReason: receipt.endedReason);
+        return;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -791,10 +911,15 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
       if (_phase != _Phase.live && _phase != _Phase.failed) {
         setState(() => _phase = _Phase.live);
       }
+      _startBillingPolling(immediate: true);
     }
 
     final status = s.status;
     if (status is! CallStatusDisconnected) return;
+    // A disconnect is no longer a connected billing interval. Stop polling
+    // immediately; a reconnect that restores real media will arm a fresh
+    // lifecycle poll in the remote-publishing branch above.
+    _stopBillingPolling();
     // [STREAM-RECEPTIONIST-1 2026-08-24] The handoff CANCELS the Stream ring on
     // purpose, which arrives here as a disconnect. Without this guard the
     // classifier would race the route replacement and either pop the navigator
@@ -880,6 +1005,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   Future<void> _endAndPop(String reason) async {
     if (_hangingUp) return;
     _hangingUp = true;
+    _stopBillingPolling();
     if (widget.endForEveryone != null) {
       try {
         await widget.endForEveryone!().timeout(const Duration(seconds: 3));
@@ -891,6 +1017,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
       role: widget.outgoing ? 'caller' : 'callee',
       reason: reason,
     );
+    await _refreshFinalBillingReceipt();
     _exitCallScreen(source: 'remote_end', reason: reason);
   }
 
@@ -905,6 +1032,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   Future<void> _hangUp() async {
     if (_hangingUp) return;
     setState(() => _hangingUp = true);
+    _stopBillingPolling();
     await _tonePlayer?.stop(reason: 'caller_cancelled');
     if (widget.outgoing && !_everConnected) {
       // Send both cancellation paths at once. The SDK reject produces the
@@ -942,6 +1070,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         role: widget.outgoing ? 'caller' : 'callee',
       );
     }
+    await _refreshFinalBillingReceipt();
     _exitCallScreen(source: 'hangup_button');
   }
 
@@ -949,6 +1078,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
   /// holding the mic.
   Future<void> _closeAfterFailure() async {
     _hangingUp = true;
+    _stopBillingPolling();
     await _tonePlayer?.stop(reason: 'join_failed');
     if (widget.outgoing && !_everConnected) {
       await StreamCallService.instance.cancelRinging(
@@ -967,6 +1097,7 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
         reason: 'join_failed_$_failureReason',
       );
     }
+    await _refreshFinalBillingReceipt();
     _exitCallScreen(source: 'join_failure', reason: _failureReason);
   }
 
@@ -1161,6 +1292,25 @@ class _StreamCallScreenState extends State<StreamCallScreen> {
                 ],
               ),
             ),
+            if ((widget.billingAuthorization != null || _billingState != null) &&
+                (_phase == _Phase.live || _phase == _Phase.reconnecting))
+              Positioned(
+                top: 76,
+                left: Msg.s3,
+                right: Msg.s3,
+                child: MessengerCallBillingHud(
+                  authorization: _billingState?.authorization ??
+                      widget.billingAuthorization!,
+                  freeParticipantSecondsRemaining:
+                      _billingState?.freeParticipantSecondsRemaining,
+                  paidRemainingWallSeconds:
+                      _billingState?.paidRemainingWallSeconds,
+                  showFreeAllowance: false,
+                  lowBalance: _billingState?.lowBalance ?? false,
+                  fundsExhausted: _billingState?.fundsExhausted ?? false,
+                  renewalFailure: _billingState?.renewalFailure,
+                ),
+              ),
             // Local preview thumbnail (video calls only).
             if (isVideo)
               Positioned(

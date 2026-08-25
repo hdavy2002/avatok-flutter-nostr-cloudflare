@@ -118,6 +118,10 @@ class _Entry {
     required this.generation,
     required this.networkIdentity,
     this.deviceId = '',
+    this.billingAuthorizationId,
+    this.billingCallId,
+    this.billingAttemptId,
+    this.billingPriceVersion,
   });
   final String callId;
   final int startedAtMs;
@@ -125,6 +129,10 @@ class _Entry {
   final int? generation;
   String? networkIdentity;
   final String deviceId;
+  String? billingAuthorizationId;
+  String? billingCallId;
+  String? billingAttemptId;
+  int? billingPriceVersion;
   StreamSubscription<List<ConnectivityResult>>? networkSub;
   Future<CallSfuJoinResult?>? joinFuture;
   Future<List<Map<String, dynamic>>>? iceFuture;
@@ -205,6 +213,10 @@ class CallPrewarm {
     String? networkIdentity,
     bool transportOnly = false,
     String deviceId = '',
+    String? billingAuthorizationId,
+    String? billingCallId,
+    String? billingAttemptId,
+    int? billingPriceVersion,
   }) {
     if (callId.isEmpty) return;
     if (!transportOnly && !RemoteConfig.callPrewarmOnRingV1) return;
@@ -220,6 +232,10 @@ class CallPrewarm {
           incomingGeneration: generation,
         ) &&
         !old.discarded) {
+      old.billingAuthorizationId ??= billingAuthorizationId;
+      old.billingCallId ??= billingCallId;
+      old.billingAttemptId ??= billingAttemptId;
+      old.billingPriceVersion ??= billingPriceVersion;
       return;
     }
     if (old != null) unawaited(_discardEntry(old, 'superseded'));
@@ -230,6 +246,10 @@ class CallPrewarm {
       generation: generation,
       networkIdentity: networkIdentity,
       deviceId: deviceId,
+      billingAuthorizationId: billingAuthorizationId,
+      billingCallId: billingCallId,
+      billingAttemptId: billingAttemptId,
+      billingPriceVersion: billingPriceVersion,
     );
     _entry = e;
     // [CALL-PREWARM-TRUTH-1] The SFU seat cannot be prewarmed while the SFU is
@@ -260,6 +280,10 @@ class CallPrewarm {
     int? generation,
     String? networkIdentity,
     String deviceId = '',
+    String? billingAuthorizationId,
+    String? billingCallId,
+    String? billingAttemptId,
+    int? billingPriceVersion,
   }) async {
     start(callId,
       nonce: nonce,
@@ -267,6 +291,10 @@ class CallPrewarm {
       networkIdentity: networkIdentity,
       transportOnly: true,
       deviceId: deviceId,
+      billingAuthorizationId: billingAuthorizationId,
+      billingCallId: billingCallId,
+      billingAttemptId: billingAttemptId,
+      billingPriceVersion: billingPriceVersion,
     );
     final e = _entry;
     if (e != null && e.callId == callId) {
@@ -282,6 +310,10 @@ class CallPrewarm {
     int? generation,
     String? networkIdentity,
     String deviceId = '',
+    String? billingAuthorizationId,
+    String? billingCallId,
+    String? billingAttemptId,
+    int? billingPriceVersion,
   }) async {
     if (!RemoteConfig.callSilentTransportPrewarmV1) return;
     // [CALL-PREWARM-TRUTH-1] Publishing a send-only section needs a live SFU.
@@ -298,7 +330,11 @@ class CallPrewarm {
     if (e == null || e.callId != callId || e.discarded) {
       start(callId, nonce: nonce, generation: generation,
           networkIdentity: networkIdentity, transportOnly: true,
-          deviceId: deviceId);
+          deviceId: deviceId,
+          billingAuthorizationId: billingAuthorizationId,
+          billingCallId: billingCallId,
+          billingAttemptId: billingAttemptId,
+          billingPriceVersion: billingPriceVersion);
       e = _entry;
     }
     if (e == null || e.callId != callId || e.discarded) return;
@@ -500,6 +536,10 @@ class CallPrewarm {
       prewarmNonce: e.nonce,
       prewarmGeneration: e.generation,
       prewarmDeviceId: e.deviceId,
+      billingAuthorizationId: e.billingAuthorizationId,
+      billingCallId: e.billingCallId,
+      billingAttemptId: e.billingAttemptId,
+      billingPriceVersion: e.billingPriceVersion,
     );
     try {
       final result = await request.timeout(joinDeadline);

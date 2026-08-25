@@ -16,8 +16,38 @@ import 'dart:convert';
 
 import '../api_auth.dart';
 import '../config.dart';
+import '../../features/avatok/call_billing/messenger_call_billing_models.dart';
 
 String get _base => '$kApiBase/callsfu';
+
+/// Server-frozen Messenger fields accepted by the Cloudflare SFU admission
+/// route. Deliberately excludes payer, provider, rate, quality, and any other
+/// client-asserted billing terms.
+Map<String, dynamic> callSfuBillingJoinFields(
+  MessengerCallAuthorization? authorization, {
+  String? authorizationId,
+  String? callId,
+  String? attemptId,
+  int? priceVersion,
+}) {
+  final authId = authorization?.authorizationId ?? authorizationId ?? '';
+  final resolvedCallId = authorization?.callId ?? callId ?? '';
+  final resolvedAttemptId = authorization?.attemptId ?? attemptId ?? '';
+  final resolvedPriceVersion = authorization?.priceVersion ?? priceVersion;
+  if (authId.isEmpty ||
+      resolvedCallId.isEmpty ||
+      resolvedAttemptId.isEmpty ||
+      resolvedPriceVersion == null ||
+      resolvedPriceVersion <= 0) {
+    return const <String, dynamic>{};
+  }
+  return <String, dynamic>{
+    'authorization_id': authId,
+    'call_id': resolvedCallId,
+    'attempt_id': resolvedAttemptId,
+    'price_version': resolvedPriceVersion,
+  };
+}
 
 /// Thrown for any non-200. Carries the server's own `error` string so the caller
 /// can branch on `sfu_unavailable` (fall back to P2P, expected) versus a real
@@ -114,8 +144,21 @@ class CallSfuApi {
     String prewarmNonce = '',
     int? prewarmGeneration,
     String prewarmDeviceId = '',
+    MessengerCallAuthorization? billingAuthorization,
+    String? billingAuthorizationId,
+    String? billingCallId,
+    String? billingAttemptId,
+    int? billingPriceVersion,
   }) async {
-    final body = <String, dynamic>{};
+    final body = <String, dynamic>{
+      ...callSfuBillingJoinFields(
+        billingAuthorization,
+        authorizationId: billingAuthorizationId,
+        callId: billingCallId,
+        attemptId: billingAttemptId,
+        priceVersion: billingPriceVersion,
+      ),
+    };
     if (prewarmNonce.isNotEmpty && prewarmGeneration != null && prewarmDeviceId.isNotEmpty) {
       body['prewarm'] = {
         'nonce': prewarmNonce,
