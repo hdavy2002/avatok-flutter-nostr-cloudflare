@@ -11,6 +11,7 @@
 // calls them (CampaignDO, Phase B2+).
 
 import type { Env } from "../types";
+import { FrejunProvider } from "./frejun_provider";
 import { VobizProvider } from "./vobiz_provider";
 
 // ---------------------------------------------------------------------------
@@ -101,6 +102,26 @@ export interface TelephonyProvider {
    * in the `in-progress` state.
    */
   transferCall(p: { callUuid: string; legs?: "aleg" | "bleg" | "both"; alegUrl?: string; blegUrl?: string; alegMethod?: string }): Promise<void>;
+
+  // Optional lifecycle hooks. Campaign providers remain compatible while the
+  // multi-line provider contract is introduced incrementally.
+  reserveNumber?(e164: string): Promise<{ reservationId: string; expiresAt?: string }>;
+  configureWebhooks?(p: { e164: string; voiceUrl?: string; messagingUrl?: string }): Promise<void>;
+  verifyWebhook?(req: Request, rawBody: string): Promise<boolean>;
+  parseWebhook?(rawBody: string, headers?: Headers): Promise<NormalizedTelephonyEvent>;
+}
+
+export interface NormalizedTelephonyEvent {
+  provider: TelephonyProviderName;
+  providerEventId: string;
+  type: "call.incoming" | "call.outgoing" | "call.missed" | "voicemail.created" | "recording.ready" | "receptionist.started" | "receptionist.completed" | "sms.received" | "sms.sent" | "otp.detected";
+  resourceId?: string;
+  lineNumber?: string;
+  direction?: "inbound" | "outbound";
+  startedAt?: string;
+  endedAt?: string;
+  durationSec?: number;
+  metadata?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,12 +129,14 @@ export interface TelephonyProvider {
 // campaign logic, which only ever imports this factory + the interface above.
 // ---------------------------------------------------------------------------
 
-export type TelephonyProviderName = "vobiz";
+export type TelephonyProviderName = "vobiz" | "frejun";
 
 export function getTelephonyProvider(env: Env, provider: TelephonyProviderName = "vobiz"): TelephonyProvider {
   switch (provider) {
     case "vobiz":
       return new VobizProvider(env);
+    case "frejun":
+      return new FrejunProvider(env);
     default:
       throw new Error(`unknown telephony provider: ${provider as string}`);
   }
