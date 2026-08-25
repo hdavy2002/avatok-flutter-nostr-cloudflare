@@ -194,13 +194,14 @@
           margin: 0;
           font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
           font-size: clamp(72px, 21vw, 98px);
-          line-height: .78;
+          line-height: .88;
           letter-spacing: -.045em;
           text-transform: uppercase;
         }
 
         .mobile-title span {
           display: block;
+          margin-top: 12px;
           color: #df3d29;
           text-shadow: 4px 4px 0 #171613;
         }
@@ -284,6 +285,52 @@
           color: #a5261c;
           font: 700 10px/1.2 'Space Mono', monospace;
           transform: rotate(3deg);
+        }
+
+        .mobile-chai {
+          position: absolute;
+          z-index: 3;
+          right: -12px;
+          top: 492px;
+          display: grid;
+          width: 74px;
+          height: 74px;
+          place-items: center;
+          border: 2px solid #171613;
+          border-radius: 50%;
+          background: #9ccab9;
+          font-size: 39px;
+          box-shadow: 4px 5px 0 #171613;
+          transform: rotate(8deg);
+        }
+
+        .mobile-dialogue {
+          position: absolute;
+          z-index: 4;
+          padding: 7px 10px;
+          background: #fff7e6;
+          color: #171613;
+          font: 700 12px/1.2 'Space Mono', monospace;
+          box-shadow: 3px 3px 0 #171613;
+        }
+
+        .mobile-dialogue.one { right: 35px; top: 501px; transform: rotate(-4deg); }
+        .mobile-dialogue.two { left: 27px; bottom: 20px; transform: rotate(3deg); }
+
+        .mobile-truck {
+          position: absolute;
+          z-index: 4;
+          right: -24px;
+          bottom: 23px;
+          width: 125px;
+          height: 105px;
+          background-image: url('/og-desi-marketplace.png?v=mobile-truck-1');
+          background-repeat: no-repeat;
+          background-position: left bottom;
+          background-size: 625px 417px;
+          filter: saturate(1.2) contrast(1.05);
+          transform: rotate(-2deg);
+          pointer-events: none;
         }
 
         .hero-scroll {
@@ -378,11 +425,15 @@
             <a class="primary" href="/sign-up">Create free</a>
             <a href="#live-streaming">Explore live</a>
           </div>
+          <span class="mobile-chai" aria-hidden="true">☕</span>
+          <span class="mobile-dialogue one" aria-hidden="true">“Picture abhi baaki hai!”</span>
           <div class="mobile-collage">
             <img src="/listings-friends-sheet.png?v=mobile-hero-1" alt="Indian creators sharing stories and conversations from across India" width="1348" height="989" fetchpriority="high" />
             <span class="mobile-collage-tag">Desi dil se · global</span>
             <span class="mobile-collage-note">Paid live events<br />from ₹49</span>
           </div>
+          <span class="mobile-dialogue two" aria-hidden="true">Apni kahaani, apna stage.</span>
+          <span class="mobile-truck" aria-hidden="true"></span>
         </div>
         <div
           class="hero-scroll"
