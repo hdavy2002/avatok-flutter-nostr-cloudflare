@@ -27,9 +27,25 @@ const ghostCta =
 const primaryCta =
   'rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
 
-// Primary nav — the three launch features plus pricing & FAQ. All are
-// landing-page anchors so they resolve to the home page sections from any route.
+// Primary nav.
+//
+// [WEB-NAV-MARKETPLACE-1 2026-08-26] Marketplace added as the FIRST item and is
+// the only entry pointing at a real route (`src/pages/marketplace.astro`).
+//
+// ⚠️ THE FIVE ANCHOR LINKS BELOW ARE DEAD AND HAVE BEEN SINCE THE HOMEPAGE WAS
+// REDESIGNED. They target `#features` / `#receptionist` / `#number` /
+// `#messaging` / `#faq`, and NONE of those ids exist in the current landing
+// document (`src/landing/avatok-desi-editorial-marketplace.html` or
+// `…-listings-catalogue.html`) — verified by grep, 0 hits each. Clicking any of
+// them just lands at the top of the home page. This header is used by 21 pages,
+// so that is a broken menu across most of the site.
+//
+// The real section ids on today's homepage are `#live-streaming`,
+// `#consultations`, `#voice-agents` and `#marketplace-catalogue`. Replacing the
+// five below with those is a one-line change, but it is a product decision
+// about what belongs in the menu, so it is deliberately NOT made here.
 const links: { href: string; label: string }[] = [
+  { href: '/marketplace', label: 'Marketplace' },
   { href: '/#features', label: 'Features' },
   { href: '/#receptionist', label: 'Receptionist' },
   { href: '/#number', label: 'Number' },
