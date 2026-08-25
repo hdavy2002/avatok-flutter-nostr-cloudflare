@@ -70,6 +70,20 @@ ISSUE_RE = re.compile(r"^\s*\[([A-Za-z0-9][A-Za-z0-9._-]*)\]")
 # one. If someone re-adds a push trigger, pushing would silently ship a build.
 ACTIVE_PUSH_TRIGGER_RE = re.compile(r"^\s{0,4}push:\s*$")
 
+# [WEB-AUTODEPLOY-1 2026-08-26, owner decision] Workflows allowed to keep a live
+# `push:` trigger. The rule above exists because an APK/AAB build costs 30-80
+# minutes of CI and can reach real users on Play — a push must never start one.
+# A WEBSITE deploy is a different animal: it builds no app, touches no store,
+# takes ~2 minutes, and is the thing that stops avatok.ai silently drifting
+# behind the repo. web-deploy.yml's trigger was originally disabled on
+# 2026-06-24 for the unrelated reason "no web, just apk" — a statement of focus,
+# not of safety — and that stopped being true when web work resumed.
+#
+# Keep this list SHORT and web-only. Never add android.yml, avaconsult.yml or
+# macos.yml: those are the exact builds the 2026-07-04 no-auto-build decision is
+# about, and exempting one would silently ship an app on every push.
+PUSH_TRIGGER_ALLOWED = frozenset({"web-deploy.yml"})
+
 
 def run(args, **kw):
     return subprocess.run(args, capture_output=True, text=True, **kw)
@@ -99,13 +113,16 @@ def issue_of(subject):
 
 
 def active_push_triggers():
-    """Workflows whose `push:` trigger is live. Empty list is the expected state."""
+    """Workflows whose `push:` trigger is live. Empty list is the expected state,
+    except for the workflows in PUSH_TRIGGER_ALLOWED (see below)."""
     hits = []
     wf_dir = os.path.join(".github", "workflows")
     if not os.path.isdir(wf_dir):
         return hits
     for name in sorted(os.listdir(wf_dir)):
         if not name.endswith((".yml", ".yaml")):
+            continue
+        if name in PUSH_TRIGGER_ALLOWED:
             continue
         path = os.path.join(wf_dir, name)
         try:

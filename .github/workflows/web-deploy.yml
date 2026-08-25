@@ -10,15 +10,28 @@
 name: Deploy web (Cloudflare Pages)
 
 on:
-  # NOTE: auto-deploy on push DISABLED (owner 2026-06-24: "no web, just apk").
-  # Run manually from the Actions tab when a web deploy is needed. Re-enable the
-  # push: block below to resume auto-deploy on web/ or core/ui changes.
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - 'web/**'
-  #     - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
-  #     - '.github/workflows/web-deploy.yml'
+  # [WEB-AUTODEPLOY-1 2026-08-26, owner decision] Auto-deploy RE-ENABLED.
+  #
+  # It was disabled 2026-06-24 ("no web, just apk") — a statement of focus, not
+  # of safety — and the result was that web/ commits landed in git and never
+  # reached avatok.ai until someone remembered to run this by hand. The live
+  # site silently drifted behind the repo.
+  #
+  # This is NOT a breach of the 2026-07-04 no-auto-build rule. That rule is
+  # about APK/AAB builds: 30-80 minutes of CI that can reach real users on Play.
+  # This workflow builds no app, touches no store, and finishes in ~2 minutes.
+  # android.yml / avaconsult.yml / macos.yml stay workflow_dispatch-only.
+  #
+  # `scripts/git_safe_push.py` blocks a push when ANY workflow has a live
+  # `push:` trigger, so this file is named in that script's
+  # PUSH_TRIGGER_ALLOWED. The two MUST stay in sync: re-enabling a trigger here
+  # without the allowlist entry makes the repo unpushable for every agent.
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
+      - '.github/workflows/web-deploy.yml'
   workflow_dispatch:                  # allow manual "Run workflow"
 
 concurrency:
