@@ -5,11 +5,13 @@
 //
 // We strip the document's own leading <!DOCTYPE html> and let Astro emit one,
 // then drop the whole document in via set:html (opaque to the Astro compiler,
-// so its {{ }} bindings and CSS braces pass through untouched). Fully static.
+// so its {{ }} bindings and CSS braces pass through untouched). The page stays
+// prerendered; the only dynamic part is one client-hydrated island (below).
 export const prerender = true;
 
 import landingRaw from '../landing/avatok-desi-editorial-marketplace.html?raw';
 import catalogueRaw from '../landing/avatok-listings-catalogue.html?raw';
+import HomeAccountChip from '../islands/site/HomeAccountChip.tsx';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 const LEGACY_LOWER_MARK = '<!--\n  AvaTOK lower-page draft';
@@ -17,8 +19,15 @@ const [heroHtml, legacyLower = ''] = landingHtml.split(LEGACY_LOWER_MARK);
 if (!legacyLower) {
   throw new Error('index.astro: expected legacy lower-page marker is missing');
 }
-const pageHtml = `${heroHtml}${catalogueRaw}\n</main>\n</body>\n</html>`;
+// Split the closing tags off the document so the account island can be mounted
+// INSIDE <body> rather than after </html> (where the parser would have to hoist
+// it). The two halves are emitted back-to-back below, so the rendered markup is
+// byte-identical to before apart from the island.
+const pageHtml = `${heroHtml}${catalogueRaw}\n</main>`;
+const pageClose = `\n</body>\n</html>`;
 
 ---
 
 <Fragment set:html={pageHtml} />
+<HomeAccountChip client:idle />
+<Fragment set:html={pageClose} />
