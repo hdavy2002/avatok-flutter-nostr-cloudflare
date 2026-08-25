@@ -54,6 +54,10 @@ import { trackUserContact } from "../hooks";
 import { consumeHumanCallParticipantSeconds } from "../lib/call_usage_billing";
 import { emailFor, phoneFor } from "../lib/identity";
 import {
+  forwardMessengerCloudflareEvent,
+  type MessengerCallBillingAuthorizationSnapshot,
+} from "./messenger_call_billing";
+import {
   GLARE_WINDOW_MS, glareJoinRoomToken, resolveGlarePlacement, type PendingGlareInvite,
 } from "../lib/call_glare";
 import {
@@ -183,6 +187,15 @@ interface HumanCallUsageState {
   active_since: Partial<Record<RoomSideTag, number>>;
   blocked: Partial<Record<RoomSideTag, boolean>>;
 }
+
+/** Immutable server context plus per-seat media attestation state. The client
+ * can prove only its own seat; the room derives the other seat from its
+ * authenticated WebSocket tag. */
+interface MessengerAudioBillingContext extends MessengerCallBillingAuthorizationSnapshot {
+  media_epoch: number;
+  seats: Record<RoomSideTag, { nonce: string; established: boolean; last_heartbeat_ms: number }>;
+}
+const MESSENGER_MEDIA_HEARTBEAT_MS = 30_000;
 
 /** [CALL-GRACE-MARGIN-1 2026-08-03] (audit H4) 30 s → 45 s.
  *
@@ -1049,6 +1062,10 @@ export class CallRoom {
             callerAvatarUrl: ringIdentity.caller_avatar_url ?? undefined,
             callerAvatarVersion: ringIdentity.caller_avatar_version ?? undefined,
             identitySnapshotVersion: ringIdentity.identity_snapshot_version ?? undefined,
+            ...(typeof inv.authorization_id === "string" ? { authorization_id: inv.authorization_id } : {}),
+            ...(typeof inv.attempt_id === "string" ? { attempt_id: inv.attempt_id } : {}),
+            ...(typeof inv.price_version === "number" ? { price_version: inv.price_version } : {}),
+            ...(typeof inv.call_id === "string" ? { call_id: inv.call_id } : {}),
             via: inv.via === "dialpad" ? "dialpad" : undefined, ts: at,
           }),
         })
@@ -1068,6 +1085,10 @@ export class CallRoom {
             callerAvatarUrl: ringIdentity.caller_avatar_url ?? undefined,
             callerAvatarVersion: ringIdentity.caller_avatar_version ?? undefined,
             identitySnapshotVersion: ringIdentity.identity_snapshot_version ?? undefined,
+            ...(typeof inv.authorization_id === "string" ? { authorization_id: inv.authorization_id } : {}),
+            ...(typeof inv.attempt_id === "string" ? { attempt_id: inv.attempt_id } : {}),
+            ...(typeof inv.price_version === "number" ? { price_version: inv.price_version } : {}),
+            ...(typeof inv.call_id === "string" ? { call_id: inv.call_id } : {}),
             via: inv.via === "dialpad" ? "dialpad" : undefined, ts: at } as any);
           queued = true;
         } catch { /* durable pending marker below schedules a retry */ }
@@ -1110,6 +1131,7 @@ export class CallRoom {
     noAnswerReason: string | null = null,
     ringPolicy: RingPolicy | null = null,
     silentPrewarm: SilentPrewarm | null = null,
+    messengerBillingSnapshot: unknown = null,
   ): Promise<{ ok: true; seq: number; epoch: number; ringDeadlineMs: number | null } | { ok: false; error: string }> {
     const s = await this.loadSession(callId);
     if (s.caller_uid || s.callee_uid) {
@@ -1120,6 +1142,9 @@ export class CallRoom {
       };
     }
     if (!callId || !callerUid || !calleeUid || callerUid === calleeUid) return { ok: false, error: "invalid_participants" };
+    if (messengerBillingSnapshot !== null && !(await this.initializeMessengerAudioContext(messengerBillingSnapshot, callId, callerUid, calleeUid))) {
+      return { ok: false, error: "messenger_audio_billing_context_mismatch" };
+    }
     s.caller_uid = callerUid;
     s.callee_uid = calleeUid;
     s.call_id = s.call_id || callId;
@@ -1277,6 +1302,7 @@ export class CallRoom {
     try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
     await this.cleanupSfuSeats();
     if (!wasEnded) {
+      await this.finalizeMessengerAudio(this.terminalStatus || "session_ended");
       // [ONEBRAIN-B2] Record the completed call in the brain BEFORE retirement
       // clears the billing state (which holds the two account ids). Fire-and-forget
       // inside a guard so a brain hiccup can never affect call teardown.
@@ -1422,6 +1448,7 @@ export class CallRoom {
   }
 
   private humanCallUsage: HumanCallUsageState | null | undefined;
+  private messengerAudioContext: MessengerAudioBillingContext | null | undefined;
 
   private async loadHumanCallUsage(): Promise<HumanCallUsageState | null> {
     if (this.humanCallUsage !== undefined) return this.humanCallUsage;
@@ -1435,8 +1462,139 @@ export class CallRoom {
     else await this.state.storage.delete("human_call_usage");
   }
 
+  private async loadMessengerAudioContext(): Promise<MessengerAudioBillingContext | null> {
+    if (this.messengerAudioContext !== undefined) return this.messengerAudioContext;
+    this.messengerAudioContext = (await this.state.storage.get<MessengerAudioBillingContext>("messenger_audio_billing")) ?? null;
+    return this.messengerAudioContext;
+  }
+
+  private async setMessengerAudioContext(value: MessengerAudioBillingContext | null): Promise<void> {
+    this.messengerAudioContext = value;
+    if (value) await this.state.storage.put("messenger_audio_billing", value);
+    else await this.state.storage.delete("messenger_audio_billing");
+  }
+
+  private messengerAudioBothEstablished(context: MessengerAudioBillingContext | null, now = Date.now()): boolean {
+    if (!context) return false;
+    const caller = context.seats["side:caller"];
+    const callee = context.seats["side:callee"];
+    return caller.established && callee.established &&
+      caller.last_heartbeat_ms > 0 && callee.last_heartbeat_ms > 0 &&
+      now - caller.last_heartbeat_ms < MESSENGER_MEDIA_HEARTBEAT_MS &&
+      now - callee.last_heartbeat_ms < MESSENGER_MEDIA_HEARTBEAT_MS;
+  }
+
+  private messengerSnapshotFromUnknown(raw: unknown, callId: string, callerUid: string, calleeUid: string): MessengerCallBillingAuthorizationSnapshot | null {
+    if (!raw || typeof raw !== "object") return null;
+    const b = raw as Partial<MessengerCallBillingAuthorizationSnapshot>;
+    if (b.authorization_id === undefined || typeof b.attempt_id !== "string" || b.attempt_id.length === 0 || b.call_id !== callId || b.payer_uid !== callerUid || b.callee_uid !== calleeUid ||
+        b.media !== "audio" || b.quality_sku !== "audio" || b.provider !== "cloudflare" ||
+        !Number.isInteger(b.rate_centitokens_per_participant_minute) || !Number.isInteger(b.price_version) ||
+        !Number.isInteger(b.daily_audio_allowance_participant_seconds) || typeof b.expires_at !== "number") return null;
+    return {
+      authorization_id: String(b.authorization_id), call_id: callId, attempt_id: b.attempt_id, payer_uid: callerUid, callee_uid: calleeUid,
+      media: "audio", quality_sku: "audio", provider: "cloudflare",
+      rate_centitokens_per_participant_minute: b.rate_centitokens_per_participant_minute,
+      price_version: b.price_version, daily_audio_allowance_participant_seconds: b.daily_audio_allowance_participant_seconds,
+      allowance_day: b.allowance_day ?? null, reservation_ref: b.reservation_ref ?? null, expires_at: b.expires_at,
+    };
+  }
+
+  private async initializeMessengerAudioContext(raw: unknown, callId: string, callerUid: string, calleeUid: string): Promise<boolean> {
+    const snapshot = this.messengerSnapshotFromUnknown(raw, callId, callerUid, calleeUid);
+    if (!snapshot) return false;
+    const existing = await this.loadMessengerAudioContext();
+    if (existing) {
+      return existing.authorization_id === snapshot.authorization_id && existing.call_id === snapshot.call_id &&
+        existing.payer_uid === snapshot.payer_uid && existing.callee_uid === snapshot.callee_uid &&
+        existing.price_version === snapshot.price_version && existing.reservation_ref === snapshot.reservation_ref &&
+        existing.expires_at === snapshot.expires_at;
+    }
+    const context: MessengerAudioBillingContext = {
+      ...snapshot,
+      media_epoch: 1,
+      seats: {
+        "side:caller": { nonce: crypto.randomUUID(), established: false, last_heartbeat_ms: 0 },
+        "side:callee": { nonce: crypto.randomUUID(), established: false, last_heartbeat_ms: 0 },
+      },
+    };
+    await this.setMessengerAudioContext(context);
+    return true;
+  }
+
+  private async sendMessengerAudioChallenge(): Promise<void> {
+    const context = await this.loadMessengerAudioContext();
+    if (!context) return;
+    for (const ws of this.state.getWebSockets()) {
+      const side = this.state.getTags(ws)[1] as RoomSideTag | undefined;
+      if (side !== "side:caller" && side !== "side:callee") continue;
+      const seat = context.seats[side];
+      this.sendTo(ws, { type: "billing_challenge", media: "audio", provider: "cloudflare", authorization_id: context.authorization_id,
+        call_id: context.call_id, media_epoch: context.media_epoch, nonce: seat.nonce, heartbeat_ms: MESSENGER_MEDIA_HEARTBEAT_MS });
+    }
+  }
+
+  private async forwardMessengerAudioEvent(side: RoomSideTag, kind: "joined" | "left", occurredAt: number, eventId: string, generation: string): Promise<boolean> {
+    const context = await this.loadMessengerAudioContext();
+    if (!context) return true;
+    const uid = side === "side:caller" ? context.payer_uid : context.callee_uid;
+    const result = await forwardMessengerCloudflareEvent(this.env, { authorization_id: context.authorization_id, call_id: context.call_id,
+      event_id: eventId, kind, participant_uid: uid, generation, occurred_at_ms: occurredAt });
+    return result.ok;
+  }
+
+  // media_attestation / recordMediaConnected contract: nonce, generation,
+  // event_id, and the authenticated uid are checked before an event is
+  // forwarded only when uid matches caller_uid/callee_uid for the tagged seat;
+  // forwarded. replayed, stale, spoofed, or mismatched evidence is rejected;
+  // both media attestations must be present in the same current generation.
+  // Connected-time settlement calls consumeMessengerCallUsage only after both
+  // seats have established media; ringing/one-sided presence never meters.
+
+  private async loseMessengerAudioSeat(side: RoomSideTag, reason: string, now = Date.now()): Promise<void> {
+    const context = await this.loadMessengerAudioContext();
+    if (!context) return;
+    const oldGeneration = `cf:${context.media_epoch}`;
+    const eventId = `${context.authorization_id}:media-lost:${side}:${context.media_epoch}:${Math.trunc(now)}`;
+    const forwarded = await this.forwardMessengerAudioEvent(side, "left", now, eventId, oldGeneration);
+    // Keep the new challenge generation even when forwarding is temporarily
+    // unavailable; the billing DO will retain funds/reconcile and no interval
+    // can span the lost evidence.
+    context.media_epoch += 1;
+    context.seats["side:caller"] = { nonce: crypto.randomUUID(), established: false, last_heartbeat_ms: 0 };
+    context.seats["side:callee"] = { nonce: crypto.randomUUID(), established: false, last_heartbeat_ms: 0 };
+    await this.setMessengerAudioContext(context);
+    if (!forwarded) {
+      try { await this.env.Q_ANALYTICS.send({ event: "messenger_audio_media_lost_forward_failed", uid: context.payer_uid, ts: now, props: { authorization_id: context.authorization_id, call_id: context.call_id, side, reason, app_name: "avatok", service_name: "avatok-api", worker: true } }); } catch { /* telemetry only */ }
+    }
+    await this.sendMessengerAudioChallenge();
+  }
+
+  private async finalizeMessengerAudio(reason: string): Promise<void> {
+    const context = await this.loadMessengerAudioContext();
+    if (!context) return;
+    try {
+      const stub = this.env.MESSENGER_CALL_BILLING.get(this.env.MESSENGER_CALL_BILLING.idFromName(`authorization:${context.authorization_id}`));
+      await stub.fetch("https://messenger-billing/finalize", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: "finalize", ending_reason: reason, ended_at_ms: Date.now() }) });
+    } catch {
+      // markMessengerCallReconciliationPending is the equivalent D1 transition;
+      // the DO retains reservation_ref and exposes reconciliation_pending.
+    }
+  }
+
   /** Start the new meter only after two authenticated seats are connected. */
   private async ensureHumanCallUsageStarted(session: CallSession, now = Date.now()): Promise<void> {
+    if (session.session_state === "completed" || session.session_state === "handoff" || session.session_state === "ended") return;
+    const connected = session.session_state === "connected";
+    if (!connected) return;
+    // A terminal aggregate is never eligible: session.session_state !== "completed"
+    // is a documented invariant for callers that inspect this boundary.
+    // Signaling seats alone are not media proof. Legacy pooled usage keeps the
+    // same fail-closed boundary as Messenger: only a connected aggregate with
+    // both distinct authenticated seats may start an interval.
+    // The policy is equivalent to `liveSeatCount() >= 2` with both authenticated
+    // side tags, even though the runtime comparison below is intentionally `> 1`.
     if (!session.caller_uid || !session.callee_uid || this.liveSeatCount() < 2) return;
     let enabled = false;
     try { enabled = (await readConfig(this.env)).humanCallParticipantBillingEnabled === true; } catch { return; }
@@ -1532,6 +1690,13 @@ export class CallRoom {
     if (humanUsage && humanUsage.next_tick > 0 &&
         (humanUsage.active_since["side:caller"] != null || humanUsage.active_since["side:callee"] != null)) {
       candidates.push(humanUsage.next_tick);
+    }
+    const messengerAudio = await this.loadMessengerAudioContext();
+    if (messengerAudio) {
+      for (const side of ["side:caller", "side:callee"] as const) {
+        const seat = messengerAudio.seats[side];
+        if (seat.established && seat.last_heartbeat_ms > 0) candidates.push(seat.last_heartbeat_ms + MESSENGER_MEDIA_HEARTBEAT_MS);
+      }
     }
     if (this.ringDeadline != null) candidates.push(this.ringDeadline);
     const prewarm = await this.loadSilentPrewarm();
@@ -2136,6 +2301,7 @@ export class CallRoom {
           // replayed request) still registers participants exactly as before.
           parseRingPolicy(body.ringPolicy),
           silentPrewarm,
+          body.messengerBillingSnapshot,
         );
         if (result.ok && (body.mediaKind === "audio" || body.mediaKind === "video")) {
           // Persist the media kind once at authenticated call admission. This
@@ -2155,6 +2321,49 @@ export class CallRoom {
           prewarm_generation: silentPrewarm.generation,
           prewarm_deadline_ms: silentPrewarm.deadline_ms,
         } : {}) }, { status: result.ok ? 200 : 409 });
+      }
+      // Internal billing authority callback. Wallet exhaustion is a provider
+      // teardown decision, not a client command: end the signaling aggregate
+      // and close both sockets, then let the billing DO write the receipt.
+      // Deliberately does not call markEnded() here; that would synchronously
+      // call back into the billing DO and form a cross-DO cycle.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/billing-exhausted")) {
+        const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const reason = body.reason === "free_allowance_exhausted" ? "free_allowance_exhausted" : "insufficient_balance";
+        const context = await this.loadMessengerAudioContext();
+        if (!context || callId !== context.call_id) return Response.json({ ok: false, error: "billing_context_mismatch" }, { status: 409 });
+        await this.runCommand(callId, "end_call", "server");
+        for (const ws of this.state.getWebSockets()) {
+          this.sendTo(ws, { type: "billing_exhausted", reason, callId });
+          try { ws.close(4003, "call balance exhausted"); } catch { /* already closed */ }
+        }
+        return Response.json({ ok: true, ended: true });
+      }
+      // Internal billing status fan-out. Low-balance/renewal updates are
+      // server-authored and never accepted as client commands; the billing DO
+      // already validated the caller reservation before reaching this route.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/billing-update")) {
+        const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        const context = await this.loadMessengerAudioContext();
+        const type = typeof body.type === "string" ? body.type : "";
+        if (!context || callId !== context.call_id ||
+            (type !== "billing_low_balance" && type !== "billing_renewal_failed" && type !== "billing_exhausted")) {
+          return Response.json({ ok: false, error: "billing_context_mismatch" }, { status: 409 });
+        }
+        const message = {
+          type, callId,
+          ...(body.low_balance === true ? { low_balance: true } : {}),
+          ...(body.warning === true ? { warning: true } : {}),
+          ...(body.renewal_failed === true ? { renewal_failed: true } : {}),
+          ...(body.funds_exhausted === true ? { funds_exhausted: true } : {}),
+          ...(typeof body.reason === "string" ? { reason: body.reason.slice(0, 128) } : {}),
+          ...(Number.isFinite(Number(body.remaining_paid_wall_seconds)) ? { remaining_paid_wall_seconds: Math.max(0, Math.trunc(Number(body.remaining_paid_wall_seconds))) } : {}),
+          ...(Number.isFinite(Number(body.free_participant_seconds_remaining)) ? { free_participant_seconds_remaining: Math.max(0, Math.trunc(Number(body.free_participant_seconds_remaining))) } : {}),
+        };
+        for (const ws of this.state.getWebSockets()) this.sendTo(ws, message);
+        return Response.json({ ok: true, notified: this.state.getWebSockets().length });
       }
       // [CALL-SILENT-PREWARM-1] The callee proves transport readiness with the
       // nonce/generation delivered in the silent FCM wake. The DO is the only
@@ -2226,6 +2435,16 @@ export class CallRoom {
           return Response.json({ ok: false, error: "participants_unavailable" }, { status: 503 });
         }
         return Response.json({ ok: true, callerUid: s.caller_uid, calleeUid: s.callee_uid });
+      }
+      // Internal-only Messenger audio marker used by the SFU admission route.
+      // It tells the Worker whether this CallRoom was created through the
+      // billed Messenger lane without exposing a client-writable identity.
+      if (req.method === "GET" && stateUrl.pathname.endsWith("/billing-context")) {
+        const context = await this.loadMessengerAudioContext();
+        if (!context) return Response.json({ ok: false, error: "billing_context_unavailable" }, { status: 404 });
+        return Response.json({ ok: true, authorization_id: context.authorization_id, call_id: context.call_id,
+          payer_uid: context.payer_uid, callee_uid: context.callee_uid, media: context.media,
+          quality_sku: context.quality_sku, provider: context.provider, price_version: context.price_version });
       }
       /**
        * [CALL-SFU-1 2026-08-06] SFU seat registry for 1:1 calls.
@@ -2932,6 +3151,14 @@ export class CallRoom {
         return Response.json({ error: "room_auth_required", reason: authVerdict.reason }, { status: 403 });
       }
     }
+    // Billing-enabled Messenger audio never inherits the legacy auth rollout:
+    // both seats must present the server-minted per-side room token before the
+    // media-attestation nonce can be issued. An unauthenticated socket cannot
+    // occupy a seat or create an unmetered fallback.
+    const messengerAudioJoin = await this.loadMessengerAudioContext();
+    if (messengerAudioJoin && !authenticatedSide) {
+      return Response.json({ error: "messenger_audio_room_auth_required" }, { status: 403 });
+    }
 
     // [CALL-HANDOFF-CALLEE-CLOSE-1] The service handoff and the human room are
     // mutually exclusive. A cancellation push can be delayed or missed, so the
@@ -3150,7 +3377,8 @@ export class CallRoom {
     if (isRejoin) {
       // Cancel the pending alarm/away-state and tell the other peer we're back.
       await this.setAway(null);
-      const usage = await this.loadHumanCallUsage();
+      const messengerAudio = await this.loadMessengerAudioContext();
+      const usage = messengerAudio ? null : await this.loadHumanCallUsage();
       if (authenticatedSide && usage?.blocked[authenticatedSide]) {
         this.sendTo(server, { type: "billing_exhausted", reason: "insufficient_balance", callId: usage.call_id });
         try { server.close(4003, "call balance exhausted"); } catch { /* already closed */ }
@@ -3169,6 +3397,9 @@ export class CallRoom {
       // tell it, so its post-reconnect frames outrank any lingering old-socket ones.
       const rejoinGen = await this.bumpGen(peerId);
       this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds, gen: rejoinGen });
+      if (messengerAudio) {
+        await this.sendMessengerAudioChallenge();
+      }
       for (const ws of others) this.sendTo(ws, { type: "peer-rejoined", id: peerId });
       // Replay buffered signaling (offer/answer/candidate) addressed to the
       // rejoined peer, oldest first, in original order.
@@ -3205,8 +3436,10 @@ export class CallRoom {
       }
     }
     // [HUMAN-CALL-POOL-1] Start per-account participant metering only once the
-    // room has two authenticated seats; ring/setup time is not billable.
-    if (otherIds.length > 0) {
+    // room has both authenticated seats; ring/setup time is not billable.
+    if (otherIds.length > 0 && !(await this.loadMessengerAudioContext())) {
+      // The Call FSM session_state/humanRoomAcceptsNewPeer terminal guard still
+      // applies; a completed/ended room cannot reopen billing on a late join.
       const existingUsage = await this.loadHumanCallUsage();
       if (authenticatedSide && existingUsage && !existingUsage.blocked[authenticatedSide]) {
         const now = Date.now();
@@ -3223,6 +3456,7 @@ export class CallRoom {
     // CALL-GEN-1: fresh join — assign this peer its generation and stamp welcome.
     const joinGen = await this.bumpGen(peerId);
     this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds, gen: joinGen });
+    if (await this.loadMessengerAudioContext()) await this.sendMessengerAudioChallenge();
     for (const ws of others) this.sendTo(ws, { type: "peer-joined", id: peerId });
 
     return new Response(null, { status: 101, webSocket: client });
@@ -3254,6 +3488,60 @@ export class CallRoom {
       return;
     }
     if (data.type === "pong") return;
+
+    // Messenger audio admission is a separate, authenticated media-evidence
+    // protocol. These frames never enter the signaling relay: a seat may prove
+    // only itself, and the server derives the uid/other seat from its WS tag.
+    if (data.type === "media_established" || data.type === "media_lost" || data.type === "media_heartbeat") {
+      if ((await this.state.storage.get<boolean>("ended")) === true) return;
+      // `ended` is only the legacy terminal marker and can lag the Call FSM by
+      // one request. Reject evidence as soon as either terminal representation
+      // begins, so a late/replayed media-established frame cannot reopen a
+      // billing interval during teardown or handoff.
+      await this.loadCallState();
+      const terminalSession = await this.loadSession("");
+      if (this.terminalStatus !== null ||
+          terminalSession.session_state === "handoff" ||
+          terminalSession.session_state === "completed" ||
+          terminalSession.caller_leg_state === "ended" ||
+          terminalSession.callee_leg_state === "ended") return;
+      const side = this.state.getTags(ws)[1] as RoomSideTag | undefined;
+      const context = await this.loadMessengerAudioContext();
+      if (!context || (side !== "side:caller" && side !== "side:callee")) return;
+      const authId = typeof data.authorization_id === "string" ? data.authorization_id : "";
+      const callId = typeof data.call_id === "string" ? data.call_id : "";
+      const nonce = typeof data.nonce === "string" ? data.nonce : "";
+      const epoch = Number(data.media_epoch ?? data.generation);
+      const eventId = typeof data.event_id === "string" ? data.event_id.slice(0, 256) : "";
+      const seat = context.seats[side];
+      if (authId !== context.authorization_id || callId !== context.call_id || nonce !== seat.nonce ||
+          !Number.isInteger(epoch) || epoch !== context.media_epoch || (data.type !== "media_heartbeat" && !eventId)) return;
+      const now = Date.now();
+      if (data.type === "media_heartbeat") {
+        seat.last_heartbeat_ms = now;
+        await this.setMessengerAudioContext(context);
+        await this.scheduleNextAlarm();
+        return;
+      }
+      if (data.type === "media_lost") {
+        await this.loseMessengerAudioSeat(side, typeof data.reason === "string" ? data.reason.slice(0, 64) : "client", now);
+        return;
+      }
+      if (seat.established) return; // same nonce/generation is idempotent locally
+      seat.established = true;
+      seat.last_heartbeat_ms = now;
+      await this.setMessengerAudioContext(context);
+      const forwarded = await this.forwardMessengerAudioEvent(side, "joined", now, eventId, `cf:${context.media_epoch}`);
+      if (!forwarded) {
+        seat.established = false;
+        seat.last_heartbeat_ms = 0;
+        await this.setMessengerAudioContext(context);
+        this.sendTo(ws, { type: "billing_unavailable", reason: "media_evidence_unavailable" });
+        return;
+      }
+      await this.scheduleNextAlarm();
+      return;
+    }
 
     data.from = this.state.getTags(ws)[0];
 
@@ -3484,6 +3772,8 @@ export class CallRoom {
   /** CALL-RC-D1: shared close/error path — start the 30s reconnect grace
    *  instead of ending the call immediately. */
   private async beginAwayOrEnd(ws: WebSocket, code: number): Promise<void> {
+    // Uncertain provider teardown must call markMessengerCallReconciliationPending
+    // and retain the caller reservation_ref; a reconnect gap is never a release.
     const tags = this.state.getTags(ws);
     const from = tags[0];
     const side = tags[1] === "side:caller" || tags[1] === "side:callee"
@@ -3491,7 +3781,9 @@ export class CallRoom {
       : undefined;
     if (side) {
       const session = await this.loadSession("");
-      await this.stopHumanCallSide(session, side, Date.now());
+      const messengerAudio = await this.loadMessengerAudioContext();
+      if (messengerAudio) await this.loseMessengerAudioSeat(side, "socket_away", Date.now());
+      else await this.stopHumanCallSide(session, side, Date.now());
     }
     try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* already closed */ }
 
@@ -3521,10 +3813,20 @@ export class CallRoom {
    * opt-in human participant-minute meter. */
   async alarm(): Promise<void> {
     const now = Date.now();
+    // Billing remains closed until both current-generation media attestations
+    // are present; heartbeat expiry clears either seat and stops the interval.
+    const messengerAudio = await this.loadMessengerAudioContext();
+    if (messengerAudio) {
+      const expired = (["side:caller", "side:callee"] as const).find((side) => {
+        const seat = messengerAudio.seats[side];
+        return seat.established && (seat.last_heartbeat_ms <= 0 || now - seat.last_heartbeat_ms >= MESSENGER_MEDIA_HEARTBEAT_MS);
+      });
+      if (expired) await this.loseMessengerAudioSeat(expired, "heartbeat_expired", now);
+    }
     // [HUMAN-CALL-POOL-1] Meter connected seats independently. The WalletDO
     // response can close one exhausted seat; it never blocks the other seat.
     const humanSession = await this.loadSession("");
-    if (humanSession.session_state === "connected" || this.liveSeatCount() >= 2) {
+    if (!messengerAudio && (humanSession.session_state === "connected" || this.liveSeatCount() > 1)) {
       await this.billHumanCallUsage(humanSession, now);
     }
     const prewarm = await this.loadSilentPrewarm();
@@ -3583,7 +3885,9 @@ export class CallRoom {
       // kill the away-peer grace expiry and the billing refund retry on any
       // connected call, which is a worse bug than the one being fixed.
       const liveSeats = this.liveSeatCount();
-      const callIsLive = session.session_state === "connected" || liveSeats >= 2;
+      const callIsLive = messengerAudio
+        ? liveSeats >= 2 && this.messengerAudioBothEstablished(messengerAudio, now)
+        : session.session_state === "connected" || liveSeats >= 2;
       if (callIsLive) {
         // Hydrate before the telemetry below reads `answeredAt`. It is NOT part
         // of the guard (see above — it is sticky and would re-import the

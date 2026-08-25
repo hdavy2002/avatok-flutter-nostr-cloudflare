@@ -76,13 +76,27 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // screen, for the whole call) and released in `finally` so an exception can
     // never leave the button dead.
     _dialing = true;
+    MessengerCallAuthorization? billingAuthorization;
+    if (RemoteConfig.messengerCallBillingEnabled && kind != 'video') {
+      billingAuthorization = await prepareMessengerBillingAuthorization(
+        context,
+        calleeUid: widget.chat.seed,
+        video: false,
+        entrypoint: 'chat_thread',
+      );
+      if (billingAuthorization == null) {
+        _dialing = false;
+        return;
+      }
+    }
     try {
       if (await routeToStreamCallIfEnabled(context,
           peerId: widget.chat.seed,
           video: kind == 'video',
           entrypoint: 'chat_thread',
           peerName: widget.chat.name,
-          peerAvatarUrl: widget.chat.avatarUrl)) {
+          peerAvatarUrl: widget.chat.avatarUrl,
+          billingAuthorization: billingAuthorization)) {
         return;
       }
     } finally {
@@ -103,7 +117,8 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     _dialing = true;
     IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
-    final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
+    final room = billingAuthorization?.callId ??
+        'avatok-${const Uuid().v4().substring(0, 8)}';
     // [TRACE-ID-1] Mint ONE correlation id at this dial boundary. It rides the
     // /api/call POST header (→ Worker → push payload → callee → RTC telemetry)
     // and is handed to the CallSession so every call event on BOTH devices
@@ -124,7 +139,9 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
     // unreachable callee still never hears ringback into the void ([MULTIACCT-4]
     // guarantee preserved). Kill switch: RemoteConfig.instantCallMountEnabled.
     // Only for real uid contacts (the ones a POST actually rings).
-    if (RemoteConfig.instantCallMountEnabled && to.startsWith('user_')) {
+    if (RemoteConfig.instantCallMountEnabled &&
+        billingAuthorization == null &&
+        to.startsWith('user_')) {
       if (!mounted) {
         _dialing = false;
         return;
@@ -176,11 +193,24 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           'fromName': _myName ?? 'AvaTOK',
           'callId': room,
           'kind': video ? 'video' : 'audio',
+          if (billingAuthorization != null) ...{
+            'authorization_id': billingAuthorization.authorizationId,
+            'attempt_id': billingAuthorization.attemptId,
+            'price_version': billingAuthorization.priceVersion,
+          },
         }, {
           'x-trace-id': traceId
         }); // [TRACE-ID-1] propagate to Worker + push
         AvaLog.I.log('call',
             'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
+        if (billingAuthorization != null && res.statusCode != 200) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Calling is temporarily unavailable. Please try again later.'),
+            ));
+          }
+          unreachable = true;
+        }
         final callKind = video ? 'video' : 'audio';
         // [MULTIACCT-4] Parse the distinct reachability signal the server now
         // returns (`reachable:false` on both the zero-token 404 and — via a later
@@ -232,6 +262,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
                 // winning room as the answering side so exactly one room forms.
                 outgoing: outgoingWon,
                 traceId: traceId,
+                billingAuthorization: billingAuthorization,
               ),
             ),
           );
@@ -328,6 +359,7 @@ extension _ChatThreadCalls on _ChatThreadScreenState {
           room: room, title: widget.chat.name, seed: to, video: video,
           avatarUrl: widget.chat.avatarUrl, ringbackUrl: ringbackUrl,
           traceId: traceId, // [TRACE-ID-1]
+          billingAuthorization: billingAuthorization,
           initialRouted: initialRouted,
           initialRoutingStart: initialRoutingStart,
           // [CALL-DIAL-FAIL-1] Retry affordance on the 'network-error' terminal

@@ -14,6 +14,8 @@ import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/calls/call_media_permissions.dart';
 import '../core/config.dart';
+import '../core/remote_config.dart';
+import '../features/avatok/call_billing/messenger_call_billing_models.dart';
 import 'stream_call_screen.dart';
 import 'stream_call_telemetry.dart';
 import 'stream_lane.dart';
@@ -202,7 +204,16 @@ class StreamCallService {
     required bool video,
     required String attemptId,
     String? traceId,
+    MessengerCallAuthorization? billingAuthorization,
   }) async {
+    if (RemoteConfig.messengerCallBillingEnabled &&
+        billingAuthorization == null) {
+      return const StreamPlaceDecision.refused(
+        code: 'billing_authorization_missing',
+        message: 'This call could not be authorized. Please try again.',
+        httpStatus: 409,
+      );
+    }
     try {
       final res = await ApiAuth.postJsonH(
         kStreamCallPlaceUrl,
@@ -210,6 +221,12 @@ class StreamCallService {
           'callee_uid': peerId,
           'video': video,
           'attempt_id': attemptId,
+          if (billingAuthorization != null)
+            'authorization_id': billingAuthorization.authorizationId,
+          if (billingAuthorization != null)
+            'quality_sku': billingAuthorization.qualitySku.wireName,
+          if (billingAuthorization != null)
+            'price_version': billingAuthorization.priceVersion,
         },
         <String, String>{
           if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
@@ -465,6 +482,7 @@ class StreamCallService {
     String? avatarUrl,
     String? peerEmail,
     String? traceId,
+    MessengerCallAuthorization? billingAuthorization,
   }) async {
     final startedAtMs = DateTime.now().millisecondsSinceEpoch;
     final email = Analytics.currentEmail ?? '';
@@ -474,7 +492,17 @@ class StreamCallService {
     // telemetry event this call emits below. `place1to1` runs exactly once
     // per tap; nothing here re-authorises on a later retry, so a single mint
     // already satisfies "stable across in-gesture retries".
-    final attemptId = StreamCallTelemetry.mintAttemptId();
+    if (RemoteConfig.messengerCallBillingEnabled &&
+        (billingAuthorization?.attemptId ?? '').isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This call could not be authorized. Please try again.'),
+        ));
+      }
+      return;
+    }
+    final attemptId = billingAuthorization?.attemptId ??
+        StreamCallTelemetry.mintAttemptId();
 
     // ── [STREAM-AUTH-1 / plan §8.1] SERVER AUTHORITY, BEFORE ANYTHING ────────
     // This runs before the permission preflight and before a single Stream SDK
@@ -500,6 +528,7 @@ class StreamCallService {
       video: video,
       attemptId: attemptId,
       traceId: traceId,
+      billingAuthorization: billingAuthorization,
     );
     if (!decision.approved) {
       Analytics.capture('stream_lane_call_refused', {
@@ -659,6 +688,7 @@ class StreamCallService {
           video: video,
           outgoing: true,
           startedAtMs: startedAtMs,
+          billingAuthorization: billingAuthorization,
           connect: (_) async {
             if (decision.created) {
               // [STREAM-SERVER-CREATE-1] The Worker already created and rang
@@ -698,9 +728,20 @@ class StreamCallService {
     String? avatarUrl,
     String? peerEmail,
     String? traceId,
+    MessengerCallAuthorization? billingAuthorization,
   }) async {
+    if (RemoteConfig.messengerCallBillingEnabled &&
+        (billingAuthorization?.attemptId ?? '').isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This call could not be authorized. Please try again.'),
+        ));
+      }
+      return;
+    }
     final attempt = StreamOutgoingAttempt(
-      attemptId: StreamCallTelemetry.mintAttemptId(),
+      attemptId: billingAuthorization?.attemptId ??
+          StreamCallTelemetry.mintAttemptId(),
       traceId: traceId,
     );
     final mediaMode = video ? 'video' : 'audio';
@@ -727,6 +768,8 @@ class StreamCallService {
             <String, Object>{
               'attempt_id': attempt.attemptId,
               if (attempt.callId.isNotEmpty) 'call_id': attempt.callId,
+              if (billingAuthorization != null)
+                'authorization_id': billingAuthorization.authorizationId,
             },
             <String, String>{
               if (traceId != null && traceId.isNotEmpty) 'X-Trace-Id': traceId,
@@ -810,6 +853,7 @@ class StreamCallService {
         video: video,
         attemptId: attempt.attemptId,
         traceId: traceId,
+        billingAuthorization: billingAuthorization,
       );
       final authMs = DateTime.now().millisecondsSinceEpoch - authStarted;
       attempt.callId = decision.callId;
@@ -948,8 +992,8 @@ class StreamCallService {
           attempt: attempt,
           prepare: prepare,
           cancel: cancelAttempt,
-          // Fresh attempt id on every retry — see the Worker's dedup note on
-          // [authorizePlace].
+          // Legacy retries mint a fresh attempt id. Billing-authorized retries
+          // retain the frozen authorization's exact attempt id.
           retry: () => context.mounted
               ? place1to1Staged(
                   context,
@@ -959,6 +1003,7 @@ class StreamCallService {
                   avatarUrl: avatarUrl,
                   peerEmail: peerEmail,
                   traceId: traceId,
+                  billingAuthorization: billingAuthorization,
                 )
               : Future<void>.value(),
         ),
@@ -1053,6 +1098,10 @@ class StreamCallService {
           video: isVideo,
           outgoing: false,
           startedAtMs: startedAtMs,
+          // Incoming Stream rings may not carry a full billing row yet; the
+          // caller's paid authorization is still threaded when this path has
+          // one available.
+          billingAuthorization: null,
           connect: (attempt) async {
             // Only the FIRST attempt accepts; a Retry after a join failure
             // must not try to accept a ring that is already accepted.

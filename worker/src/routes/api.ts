@@ -44,6 +44,8 @@ import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 import { rekognitionConfigured, detectModerationLabels, avatarModerationRejected } from "../aws/rekognition";
 // [WELCOME-100-1] 100-token welcome bonus on first account materialization.
 import { grantWelcomeBonus } from "./welcome_bonus";
+import { loadMessengerCallAuthorization } from "./messenger_call_billing";
+import { initializeMessengerCallBilling, type MessengerCallBillingAuthorizationSnapshot } from "../do/messenger_call_billing";
 import {
   deriveCallRecipient,
   deriveQuickReplyRecipient,
@@ -257,7 +259,11 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // [STREAM-GATE-1] `app_build` is the body fallback for the header `x-app-build`;
   // both are OPTIONAL and only consulted when `callMinBuild` is armed.
-  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string; via?: string; stream_capable?: unknown; app_build?: unknown };
+  const b = (await req.json().catch(() => ({}))) as {
+    to?: string; callId?: string; kind?: string; fromName?: string; via?: string;
+    stream_capable?: unknown; app_build?: unknown; authorization_id?: string;
+    attempt_id?: string; price_version?: unknown;
+  };
   // [WP3] 'dialpad' = the AvaTOK-number business channel (plan §3). Friend-
   // channel (email/chat) calls never send this and are byte-for-byte unaffected.
   const isDialpad = b.via === "dialpad";
@@ -443,6 +449,82 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const callPolicyConfig = await configPromise;
   markRingStage("config");
 
+  // Free Messenger audio is the Cloudflare lane. Once its master gate is
+  // armed, a free-audio ring is admitted only from the immutable D1
+  // authorization created by /api/messenger-call/authorize. Paid audio starts
+  // as a separate Stream authorization/call through stream-calls/place; this
+  // route never migrates a Cloudflare room into paid media. Client-supplied
+  // provider, payer, rate, day, and call terms are never accepted here.
+  let messengerAudioSnapshot: MessengerCallBillingAuthorizationSnapshot | null = null;
+  let billingAuthorization: MessengerCallBillingAuthorizationSnapshot | null = null;
+  const effectiveCallId = (): string => billingAuthorization?.call_id ?? b.callId as string;
+  // For billing-enabled audio the authoritative expression is
+  // `callId: billingAuthorization.call_id`; the optional fallback below is
+  // reachable only while the Messenger master is dark (legacy behavior).
+  // The same server row is `authorization.authorization_id` / `authorization.call_id`;
+  // no body provider, payer, rate, or client call id is trusted.
+  if (callPolicyConfig?.messengerCallBillingEnabled === true && (b.kind ?? "audio") !== "video") {
+    // Any uncertain teardown remains reconciliation_pending with reservation_ref
+    // retained; the caller is never released merely because this request ended.
+    const authorizationId = typeof b.authorization_id === "string" ? b.authorization_id.trim() : "";
+    const attemptId = typeof b.attempt_id === "string" ? b.attempt_id.trim() : "";
+    const clientPriceVersion = Number(b.price_version);
+    if (!authorizationId || !attemptId || !Number.isInteger(clientPriceVersion) || !b.callId) {
+      await settleRingPath();
+      return json({ error: "messenger_audio_authorization_required", code: "authorization_required", reachable: false, sent: 0 }, 402);
+    }
+    const authRow = await loadMessengerCallAuthorization(env, authorizationId, ctx.uid, attemptId).catch(() => null);
+    const now = Date.now();
+    // caller + callee_uid are both server-checked against the immutable row.
+    const callerCalleeMatch = !!authRow && authRow.payer_uid === ctx.uid && authRow.callee_uid === callTo;
+    if (!authRow || !callerCalleeMatch || authRow.media !== "audio" || authRow.quality_sku !== "audio" ||
+        authRow.provider !== "cloudflare" || authRow.payer_uid !== ctx.uid || authRow.attempt_id !== attemptId ||
+        authRow.call_id !== callIdStr || authRow.price_version !== clientPriceVersion || authRow.status !== "authorized" ||
+        (authRow.expires_at > 0 && authRow.expires_at <= now)) {
+      await settleRingPath();
+      return json({ error: "messenger_audio_authorization_invalid", code: "authorization_invalid", reachable: false, sent: 0 }, 409);
+    }
+    billingAuthorization = {
+      authorization_id: authRow.authorization_id, call_id: authRow.call_id, attempt_id: authRow.attempt_id,
+      payer_uid: authRow.payer_uid, callee_uid: authRow.callee_uid,
+      media: "audio", quality_sku: "audio", provider: "cloudflare",
+      rate_centitokens_per_participant_minute: authRow.rate_centitokens_per_participant_minute,
+      price_version: authRow.price_version,
+      daily_audio_allowance_participant_seconds: Number(callPolicyConfig.messengerAudioFreeParticipantSecondsDaily ?? 0),
+      allowance_day: authRow.allowance_day, reservation_ref: authRow.reservation_ref, expires_at: authRow.expires_at,
+    };
+    messengerAudioSnapshot = {
+      authorization_id: authRow.authorization_id,
+      call_id: authRow.call_id,
+      attempt_id: authRow.attempt_id,
+      payer_uid: authRow.payer_uid,
+      callee_uid: authRow.callee_uid,
+      media: "audio",
+      quality_sku: "audio",
+      provider: "cloudflare",
+      rate_centitokens_per_participant_minute: authRow.rate_centitokens_per_participant_minute,
+      price_version: authRow.price_version,
+      daily_audio_allowance_participant_seconds: Number(callPolicyConfig.messengerAudioFreeParticipantSecondsDaily ?? 0),
+      allowance_day: authRow.allowance_day,
+      reservation_ref: authRow.reservation_ref,
+      expires_at: authRow.expires_at,
+    };
+    const initialized = await initializeMessengerCallBilling(env, messengerAudioSnapshot).catch(() => ({ ok: false, status: 503, body: {} }));
+    if (!initialized.ok) {
+      await settleRingPath();
+      return json({ error: "messenger_audio_billing_unavailable", code: "billing_unavailable", reachable: false, sent: 0 }, 503);
+    }
+  }
+  // The callee has no authenticated HTTP round-trip before it joins the
+  // CallRoom. Carry only server-frozen billing identifiers in every ring
+  // transport so its CallSession can attest the same authorization/call.
+  const messengerBillingRingFields = billingAuthorization ? {
+    authorization_id: billingAuthorization.authorization_id,
+    attempt_id: b.attempt_id as string,
+    price_version: billingAuthorization.price_version,
+    call_id: billingAuthorization.call_id,
+  } : {};
+
   // ── [STREAM-GATE-1 2026-08-21] LEGACY-DIAL BUILD FLOOR ("update required") ──
   //
   // Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md §2.1 option C, owner decision 4b.2.
@@ -602,10 +684,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   else await contactPolicyTelemetry;
   if (routeUnknownCaller) {
     try {
-      const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+      const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(effectiveCallId()));
       const participantResponse = await callStub.fetch("https://call-room/participants", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+        body: JSON.stringify({ callId: billingAuthorization?.call_id ?? b.callId, callerUid: ctx.uid, calleeUid: b.to, ...(messengerAudioSnapshot ? { messengerBillingSnapshot: messengerAudioSnapshot, mediaKind: "audio" } : {}) }),
       });
       if (!participantResponse.ok) { await settleRingPath(); return json({ error: "call_authority_unavailable" }, 503); }
     } catch {
@@ -782,10 +864,10 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
           ? "receptionist_offline_immediate"
           : "receptionist_offline";
         try {
-          const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+          const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(effectiveCallId()));
           const participantResponse = await callStub.fetch("https://call-room/participants", {
             method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ callId: b.callId, callerUid: ctx.uid, calleeUid: b.to }),
+            body: JSON.stringify({ callId: billingAuthorization?.call_id ?? b.callId, callerUid: ctx.uid, calleeUid: b.to, ...(messengerAudioSnapshot ? { messengerBillingSnapshot: messengerAudioSnapshot, mediaKind: "audio" } : {}) }),
           });
           if (!participantResponse.ok) {
             await emitPresenceDecision("authority_unavailable", "offline");
@@ -1071,7 +1153,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     const gr = await pairStub.fetch("https://call/glare-place", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        placer: ctx.uid, peer: b.to, callId: b.callId,
+        placer: ctx.uid, peer: b.to, callId: effectiveCallId(),
         callerRoomToken, calleeRoomToken,
       }),
     });
@@ -1342,12 +1424,13 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const prewarmNonce = silentTransportPrewarm ? crypto.randomUUID() : "";
   const prewarmGeneration = 1;
   try {
-    const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+    const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(effectiveCallId()));
     const participantResponse = await callStub.fetch("https://call-room/participants", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        callId: b.callId, callerUid: ctx.uid, calleeUid: b.to,
+        callId: billingAuthorization?.call_id ?? b.callId, callerUid: ctx.uid, calleeUid: b.to,
         mediaKind: b.kind === "video" ? "video" : "audio",
+        ...(messengerAudioSnapshot ? { messengerBillingSnapshot: messengerAudioSnapshot } : {}),
         // Ring credentials, merged in from the old second /control hop.
         token: ringReceiptToken, nativeActionToken, expiresAt,
         // [CALL-WS-AUTH-1] The DO is the only place these are ever compared.
@@ -1366,7 +1449,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
           silentPrewarm: {
             enabled: true, nonce: prewarmNonce, generation: prewarmGeneration,
             deadlineMs: Date.now() + silentPrewarmDeadlineMs,
-            invite: { callId: b.callId, from: ctx.uid, to: b.to,
+            invite: { callId: effectiveCallId(), from: ctx.uid, to: b.to,
               fromName: resolvedName, callType: b.kind ?? "audio", traceId,
               ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
               roomToken: calleeRoomToken,
@@ -1374,6 +1457,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
               ...(callerAvatarVersion ? { callerAvatarVersion } : {}),
               identitySnapshotVersion,
               ...(isDialpad ? { via: "dialpad" } : {}),
+              ...messengerBillingRingFields,
             },
           },
         } : {}),
@@ -1402,7 +1486,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       try {
         await env.INBOX.get(env.INBOX.idFromName(b.to)).fetch("https://inbox/event", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ type: "call_prewarm", callId: b.callId,
+          body: JSON.stringify({ type: "call_prewarm", callId: effectiveCallId(),
             prewarmNonce, prewarmGeneration,
             prewarmDeadlineMs: participantResult.prewarm_deadline_ms ?? Date.now() + silentPrewarmDeadlineMs,
             trace_id: traceId, ts: Date.now() }),
@@ -1410,7 +1494,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       } catch { /* FCM plus the server deadline remain the fallback */ }
       await env.Q_PUSH.send({
         kind: "call-prewarm", to: b.to, from: ctx.uid, fromName: resolvedName,
-        callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
+        callId: effectiveCallId(), callType: b.kind ?? "audio", traceId, ts: Date.now(),
         ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
         roomToken: calleeRoomToken, prewarmNonce,
         prewarmGeneration, prewarmDeadlineMs: participantResult.prewarm_deadline_ms ?? Date.now() + silentPrewarmDeadlineMs,
@@ -1461,7 +1545,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     const wr = await inboxStub.fetch("https://inbox/event", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        type: "call_ring", callId: b.callId, fromPub: ctx.uid,
+        type: "call_ring", callId: effectiveCallId(), fromPub: ctx.uid,
         fromName: resolvedName, kind: b.kind ?? "audio",
         ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
         // [CALL-CALLEE-SEQ-1] Same sequence as the FCM copy. The WS ring and the
@@ -1487,6 +1571,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
         identitySnapshotVersion,
         // [WP3] mirrors the Q_PUSH payload's via:'dialpad' marker above.
         ...(isDialpad ? { via: "dialpad" } : {}),
+        ...messengerBillingRingFields,
       }),
     });
     const wj = (await wr.json().catch(() => ({}))) as { live?: number | boolean };
@@ -1518,7 +1603,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
       // Captured as a plain const: b.callId is validated truthy at the top of
       // this handler, but that narrowing does not survive into an async
       // closure (same reason deferredCallId/deferredTo exist further below).
-      const ringDeliveredCallId = b.callId as string;
+      const ringDeliveredCallId = effectiveCallId();
       const ringDeliveredNotify = (async () => {
         try {
           const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(ringDeliveredCallId));
@@ -1561,7 +1646,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   const fcmNameSource = fcmIdent?.display_name ? "profile" : (clientName ? "client" : "fallback");
   const pushSend = env.Q_PUSH.send({
     kind: "call", to: b.to, from: ctx.uid, fromName: fcmName,
-    callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
+    callId: effectiveCallId(), callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, nativeActionToken, tokenExpiresAt: expiresAt,
     // [CALL-CALLEE-SEQ-1] The ring push carried NO sequence, on an at-least-once
     // queue with max_retries:5 and no dedupe key — so a redelivered or reordered
@@ -1584,6 +1669,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
     // [WP3] 'dialpad' marks this as a business-channel call so the callee's
     // incoming-call screen shows the named business UI (client already checks d['via']).
     ...(isDialpad ? { via: "dialpad" } : {}),
+    ...messengerBillingRingFields,
   });
   // calleeLive: the ring already reached a live device over the fast lane, so
   // FCM enqueue can finish after the response (still always sent — belt and
@@ -1699,7 +1785,7 @@ export async function call(req: Request, env: Env, execCtx?: ExecutionContext): 
   await settleRingPath();
 
   return json({
-    sent: n, reachable: true, ringbackUrl, roomToken: callerRoomToken,
+    sent: n, reachable: true, call_id: effectiveCallId(), ringbackUrl, roomToken: callerRoomToken,
     ...(ringDeadlineMs != null ? { ringDeadlineMs } : {}),
     // [CALL-PRESENCE-1] Is the callee holding a live WebSocket right now? The
     // caller's app uses this to stop inventing progress text about someone who

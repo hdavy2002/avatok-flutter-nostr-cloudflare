@@ -24,6 +24,7 @@ import '../../core/ui/messenger_theme.dart';
 // STREAM-LANE-ACTIVATE: live 2026-08-21 [STREAM-LANE-1]. Was commented so
 // the app compiled while the SDK packages were commented out in pubspec.yaml.
 import '../../streamlane/stream_call_service.dart';
+import 'call_billing/call_billing.dart';
 
 /// [STREAM-ROUTE-1 2026-08-21] THE single gate every human 1:1 audio/video
 /// entry point must pass through before it is allowed to touch the legacy
@@ -57,8 +58,52 @@ Future<bool> routeToStreamCallIfEnabled(
   String? peerName,
   String? peerAvatarUrl,
   String? peerEmail,
+  MessengerCallAuthorization? billingAuthorization,
 }) async {
-  if (!RemoteConfig.streamCallsEnabled) return false;
+  // [MESSENGER-CALL-BILLING-ROUTE-1] Free Messenger audio stays on Cloudflare
+  // while the daily allowance is available. Paid audio and every video call
+  // use GetStream. A paid authorization therefore must never fall through to
+  // the legacy Cloudflare screen or silently switch providers.
+  final paidAudioAuthorization = !video &&
+      billingAuthorization?.provider == 'stream';
+  if (RemoteConfig.messengerCallBillingEnabled &&
+      (video || paidAudioAuthorization) &&
+      !RemoteConfig.streamCallsEnabled) {
+    Analytics.capture('messenger_call_billing_provider_blocked', {
+      'entrypoint': entrypoint,
+      'media_mode': video ? 'video' : 'audio',
+      'reason': 'stream_provider_disabled',
+      'user_email': Analytics.currentEmail ?? '',
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Calling is temporarily unavailable. Please try again later.'),
+      ));
+    }
+    return true;
+  }
+  if (!RemoteConfig.streamCallsEnabled &&
+      !RemoteConfig.messengerCallBillingEnabled) {
+    return false;
+  }
+  final messengerEntrypoint = entrypoint == 'dialer' ||
+      entrypoint == 'chat_retry' ||
+      entrypoint == 'chat_thread' ||
+      entrypoint == 'recents_callback';
+  if (RemoteConfig.messengerCallBillingEnabled && messengerEntrypoint && !video &&
+      billingAuthorization == null) {
+    Analytics.capture('messenger_call_billing_provider_blocked', {
+      'entrypoint': entrypoint,
+      'media_mode': 'audio',
+      'reason': 'billing_authorization_missing',
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Calling is temporarily unavailable. Please try again later.'),
+      ));
+    }
+    return true;
+  }
   final email = Analytics.currentEmail ?? '';
   // The Stream lane rings a Stream USER id. A `tel:`/E.164 seed (team IVR warm
   // transfer, a phone-only Recents row) has no Stream identity, so there is
@@ -85,18 +130,197 @@ Future<bool> routeToStreamCallIfEnabled(
     'peer_id': peerId,
     'user_email': email,
   });
+  if (RemoteConfig.messengerCallBillingEnabled && video) {
+    billingAuthorization = await prepareMessengerBillingAuthorization(
+      context,
+      calleeUid: peerId,
+      video: video,
+      entrypoint: entrypoint,
+    );
+    if (billingAuthorization == null) return true;
+    // The video route owns GetStream. A Cloudflare result here is a server
+    // contract mismatch and must not be treated as permission to start a
+    // mismatched provider.
+    if (billingAuthorization.provider != 'stream') {
+      Analytics.capture('messenger_call_billing_provider_blocked', {
+        'entrypoint': entrypoint,
+        'media_mode': 'video',
+        'reason': 'authorization_provider_mismatch',
+        'authorized_provider': billingAuthorization.provider,
+        'expected_provider': 'stream',
+        'authorization_id': billingAuthorization.authorizationId,
+        'user_email': email,
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Calling is temporarily unavailable. Please try again later.'),
+        ));
+      }
+      return true;
+    }
+  }
+  if (RemoteConfig.messengerCallBillingEnabled &&
+      !video &&
+      billingAuthorization != null &&
+      billingAuthorization.provider != 'cloudflare' &&
+      billingAuthorization.provider != 'stream') {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Calling is temporarily unavailable. Please try again later.'),
+      ));
+    }
+    return true;
+  }
+  // Free audio is the only Messenger call that remains on Cloudflare. Paid
+  // audio is deliberately admitted to the Stream lane below.
+  if (!video && billingAuthorization?.provider == 'cloudflare') return false;
   // Mounts before authentication/network work, plays neutral searching
   // feedback, and starts real ringback only after the server confirms that
   // Stream has issued the incoming ring.
-  await StreamCallService.instance.place1to1Staged(
-    context,
-    peerId,
-    video: video,
-    name: peerName,
-    avatarUrl: peerAvatarUrl,
-    peerEmail: peerEmail,
-  );
+  if (billingAuthorization == null) {
+    // Preserve the pre-billing call path exactly when the billing switch is
+    // false. No pricing read, consent sheet, or additional request occurs.
+    await StreamCallService.instance.place1to1Staged(
+      context,
+      peerId,
+      video: video,
+      name: peerName,
+      avatarUrl: peerAvatarUrl,
+      peerEmail: peerEmail,
+    );
+  } else {
+    await StreamCallService.instance.place1to1Staged(
+      context,
+      peerId,
+      video: video,
+      name: peerName,
+      avatarUrl: peerAvatarUrl,
+      peerEmail: peerEmail,
+      billingAuthorization: billingAuthorization,
+    );
+  }
   return true;
+}
+
+Future<MessengerCallAuthorization?> prepareMessengerBillingAuthorization(
+  BuildContext context, {
+  required String calleeUid,
+  required bool video,
+  required String entrypoint,
+  String? attemptIdOverride,
+}) async {
+  final media = video ? MessengerCallMedia.video : MessengerCallMedia.audio;
+  final attemptId = attemptIdOverride != null && attemptIdOverride.isNotEmpty
+      ? attemptIdOverride
+      : MessengerCallBillingGate.newAttemptId();
+  MessengerCallQualitySku qualitySku = video
+      ? MessengerCallQualitySku.videoHd
+      : MessengerCallQualitySku.audio;
+
+  if (video) {
+    final catalog = await MessengerCallBillingGate.pricing(
+      media: MessengerCallMedia.video,
+    );
+    final consent = await showMessengerVideoQualitySheet(
+      context,
+      catalog: catalog,
+      spendableTokens: catalog.spendableTokens,
+    );
+    if (consent == null || !consent.accepted || consent.qualitySku == null) {
+      Analytics.capture('messenger_call_consent_result', {
+        'entrypoint': entrypoint,
+        'media': 'video',
+        'result': 'cancelled',
+        'attempt_id': attemptId,
+      });
+      return null;
+    }
+    qualitySku = consent.qualitySku!;
+  }
+
+  var result = await MessengerCallBillingGate.authorize(
+    calleeUid: calleeUid,
+    media: media,
+    qualitySku: qualitySku,
+    attemptId: attemptId,
+  );
+
+  // Audio can use the daily allowance without a payment sheet. Only the
+  // server's typed consent_required result opens paid-audio consent.
+  if (!video && result.status == MessengerCallGateStatus.consentRequired) {
+    final catalog = result.pricing ?? await MessengerCallBillingGate.pricing();
+    final consent = await showMessengerPaidAudioSheet(
+      context,
+      rate: catalog.rateFor(MessengerCallQualitySku.audio),
+      spendableTokens: catalog.spendableTokens,
+    );
+    if (consent == null || !consent.accepted) {
+      Analytics.capture('messenger_call_consent_result', {
+        'entrypoint': entrypoint,
+        'media': 'audio',
+        'result': 'cancelled',
+        'attempt_id': attemptId,
+      });
+      return null;
+    }
+    // Confirm the exact server-issued challenge returned by the first
+    // authorization attempt. A client-generated consent ID is not accepted.
+    final consentId = result.consentId;
+    if (consentId == null || consentId.isEmpty) return null;
+    // Paid continuation is a fresh Stream authorization/call attempt. The
+    // consent challenge is still server-issued from the first response, so a
+    // new attempt cannot be created without an explicit user confirmation.
+    final paidAttemptId = MessengerCallBillingGate.newAttemptId();
+    result = await MessengerCallBillingGate.authorize(
+      calleeUid: calleeUid,
+      media: MessengerCallMedia.audio,
+      qualitySku: MessengerCallQualitySku.audio,
+      attemptId: paidAttemptId,
+      consentId: consentId,
+    );
+  }
+
+  // Video already displayed its cost sheet before the first request. The
+  // first request creates the server-side challenge; this retry confirms that
+  // exact challenge on the same attempt before provider placement.
+  if (video && result.status == MessengerCallGateStatus.consentRequired) {
+    final frozenCatalog = result.pricing ??
+        await MessengerCallBillingGate.pricing(media: MessengerCallMedia.video);
+    final finalConsent = await showMessengerVideoQualitySheet(
+      context,
+      catalog: frozenCatalog,
+      spendableTokens: frozenCatalog.spendableTokens,
+      initialSku: qualitySku,
+    );
+    if (finalConsent == null ||
+        !finalConsent.accepted ||
+        finalConsent.qualitySku != qualitySku) {
+      Analytics.capture('messenger_call_consent_result', {
+        'entrypoint': entrypoint,
+        'media': 'video',
+        'result': 'cancelled',
+        'attempt_id': attemptId,
+      });
+      return null;
+    }
+    final consentId = result.consentId;
+    if (consentId == null || consentId.isEmpty) return null;
+    result = await MessengerCallBillingGate.authorize(
+      calleeUid: calleeUid,
+      media: media,
+      qualitySku: qualitySku,
+      attemptId: attemptId,
+      consentId: consentId,
+    );
+  }
+
+  if (!result.approved || result.authorization == null) {
+    if (context.mounted && result.message.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+    }
+    return null;
+  }
+  return result.authorization;
 }
 
 /// [AVA-IDGATE-1] Place a 1:1 AvaTOK call THROUGH POST /api/call.
@@ -135,8 +359,23 @@ Future<void> place1to1Call(
   // identity before navigation. Billing remains server-authoritative and does
   // not change this UI entry point.
   String? roomOverride,
+  // Used only when a terminal free Cloudflare call is explicitly continued as
+  // paid GetStream audio. The caller must provide a new id; this is never the
+  // previous Cloudflare attempt.
+  String? billingAttemptId,
 }) async {
   if (uid.isEmpty) return;
+  MessengerCallAuthorization? billingAuthorization;
+  if (RemoteConfig.messengerCallBillingEnabled && !video) {
+    billingAuthorization = await prepareMessengerBillingAuthorization(
+      context,
+      calleeUid: uid,
+      video: false,
+      entrypoint: dialer ? 'dialer' : 'chat_retry',
+      attemptIdOverride: billingAttemptId,
+    );
+    if (billingAuthorization == null) return;
+  }
   // STREAM-LANE-ACTIVATE: live 2026-08-21 [STREAM-LANE-1]. Gated delegation
   // to the new Stream Video SDK lane. With the flag off (the default) this is
   // a no-op and every line below is unchanged.
@@ -148,7 +387,8 @@ Future<void> place1to1Call(
       video: video,
       entrypoint: dialer ? 'dialer' : 'chat_retry',
       peerName: name,
-      peerAvatarUrl: avatarUrl)) {
+      peerAvatarUrl: avatarUrl,
+      billingAuthorization: billingAuthorization)) {
     return;
   }
   await CallSessionManager.instance.reapOutcomeSessions();
@@ -158,7 +398,7 @@ Future<void> place1to1Call(
   // TTL) then dropped the 2nd and every later call as a duplicate: "she never
   // heard a ring". The callee's identity already travels via `seed:`/`to:`, so
   // the room id never needed to carry it. See core/calls/call_room_id.dart.
-  final room = roomOverride ?? CallRoomId.newRoomId();
+  final room = billingAuthorization?.callId ?? roomOverride ?? CallRoomId.newRoomId();
   final callTraceId = TraceContext.mint();
   Analytics.currentTraceId = callTraceId;
   Analytics.capture('call_attempt_started', {
@@ -175,7 +415,7 @@ Future<void> place1to1Call(
   // _dialerPlaceInBackground. The optimistic session runs the honest guard flow (deferRing → connecting +
   // searching tone, no fake ringback); the helper feeds the reachability/glare/
   // failure outcome back into it. Kill switch: RemoteConfig.instantCallMountEnabled.
-  if (RemoteConfig.instantCallMountEnabled) {
+  if (RemoteConfig.instantCallMountEnabled && billingAuthorization == null) {
     if (!context.mounted) return;
     Analytics.capture('call_mount_optimistic',
         {'call_id': room, 'via': 'dialpad', 'kind': video ? 'video' : 'audio'});
@@ -238,6 +478,7 @@ Future<void> place1to1Call(
   // below we skip CallScreen entirely in favor of a full-screen busy card.
   String? busyMessage;
   String? busyKind;
+  var placementStatus = 0;
   try {
     final placementStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     final res = await ApiAuth.postJsonH(kCallUrl, {
@@ -254,9 +495,15 @@ Future<void> place1to1Call(
       // the callee's ring push once the routing work lands, so the callee's
       // named incoming-business-call screen (businessCallUx) knows to show.
       'via': 'dialpad',
+      if (billingAuthorization != null) ...{
+        'authorization_id': billingAuthorization.authorizationId,
+        'attempt_id': billingAuthorization.attemptId,
+        'price_version': billingAuthorization.priceVersion,
+      },
     }, <String, String>{
       'X-Trace-Id': callTraceId
     });
+    placementStatus = res.statusCode;
     // [STREAM-CALL-PILOT-2] Parse provider selection before the call screen is
     // opened. Missing provider fields are the compatibility Cloudflare choice.
     providerDecision = StreamCallApi.fromPlacementResponse(room, res.body);
@@ -273,6 +520,11 @@ Future<void> place1to1Call(
     if (res.statusCode == 200) {
       try {
         final j = jsonDecode(res.body) as Map<String, dynamic>;
+        if (billingAuthorization != null &&
+            j['call_id'] is String &&
+            j['call_id'] != billingAuthorization.callId) {
+          throw const FormatException('billing call identity mismatch');
+        }
         final r = j['routed'];
         if (r == 'voicemail' || r == 'agent' || r == 'receptionist') {
           routed = r as String;
@@ -319,11 +571,27 @@ Future<void> place1to1Call(
       return;
     }
   } catch (_) {
+    if (billingAuthorization != null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Calling is temporarily unavailable. Please try again later.'),
+        ));
+      }
+      return;
+    }
     // Network error placing the call → fall through and still open the screen;
     // CallSession has its own reconnect/timeout handling, and this is no worse than
     // the previous behaviour (which opened the screen with no /api/call at all).
   }
 
+  if (billingAuthorization != null && placementStatus != 200) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Calling is temporarily unavailable. Please try again later.'),
+      ));
+    }
+    return;
+  }
   if (busyMessage != null) {
     // Never ring, never open CallScreen — a busy tone + full-screen card
     // instead (plan §15.1: "PAID lines never overflow to voicemail — the
@@ -379,6 +647,7 @@ Future<void> place1to1Call(
           initialRoutingStart: routingStart,
           mediaProvider: providerDecision.provider,
           streamTicket: providerDecision.streamTicket,
+          billingAuthorization: billingAuthorization,
           traceId: callTraceId,
           // [DIALPAD-BIZ-CALLS Phase C] business channel → §3 after-ring flow
           // (agent hand-off, post-ring busy) instead of the generic outcome menu.

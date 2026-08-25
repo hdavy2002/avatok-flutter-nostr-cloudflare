@@ -62,6 +62,7 @@ import { trackException, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { mintIceServersWithStatus } from "./media";
+import { loadMessengerCallAuthorizationForParticipant, type MessengerCallAuthorizationRecord } from "./messenger_call_billing";
 
 const APP = "avatok";
 
@@ -299,6 +300,68 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
   if (g instanceof Response) return g;
   const startedAt = Date.now();
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+
+  // Messenger audio has a separate admission boundary from the legacy SFU
+  // transport. /api/call initializes the CallRoom context, but a client can
+  // still call this route directly (or replay an old join), so the provider
+  // session MUST NOT be minted until this route re-loads and validates the
+  // immutable D1 authorization. All terms below come from D1; the request is
+  // used only to carry the authorization identity already held by CallSession.
+  // This branch is deliberately audio-only: video remains the Stream lane and
+  // unrelated SFU behavior stays unchanged while the Messenger gate is dark.
+  let messengerAudioAuthorization: MessengerCallAuthorizationRecord | null = null;
+  const cfg = await readConfig(env);
+  const roomBillingContext = cfg.messengerCallBillingEnabled === true
+    ? await roomFetch(env, room, `/billing-context?callId=${encodeURIComponent(room)}`)
+    .then(async (r) => r.ok ? await r.json().catch(() => null) as {
+      ok?: boolean; authorization_id?: unknown; call_id?: unknown; payer_uid?: unknown; callee_uid?: unknown;
+      media?: unknown; quality_sku?: unknown; provider?: unknown; price_version?: unknown;
+    } | null : null)
+    .catch(() => null)
+    : null;
+  const requestAuthorizationId = typeof body.authorization_id === "string" ? body.authorization_id.trim() : "";
+  // This route is the 1:1 Messenger Cloudflare lane. Once the master is armed,
+  // every join is billing-admitted; provider capability (`g.video`) and an
+  // absent/stale CallRoom marker must never classify a request as legacy.
+  if (cfg.messengerCallBillingEnabled === true) {
+    const authorizationId = requestAuthorizationId;
+    const attemptId = typeof body.attempt_id === "string" ? body.attempt_id.trim() : "";
+    const clientPriceVersion = Number(body.price_version);
+    if (!authorizationId || !attemptId || !Number.isInteger(clientPriceVersion)) {
+      return json({ error: "messenger_audio_authorization_required", code: "authorization_required" }, 402);
+    }
+    const row = await loadMessengerCallAuthorizationForParticipant(env, authorizationId, g.uid, attemptId).catch(() => null);
+    // The participant lookup is server-to-DO. It proves that the D1 callee is
+    // the callee of this exact CallRoom, rather than accepting a client-chosen
+    // peer identity. The caller is the authenticated SFU request user.
+    const participants = await roomFetch(env, room, `/participants?callId=${encodeURIComponent(room)}`)
+      .then(async (r) => r.ok ? await r.json().catch(() => null) as { callerUid?: unknown; calleeUid?: unknown } | null : null)
+      .catch(() => null);
+    const callerUid = typeof participants?.callerUid === "string" ? participants.callerUid : "";
+    const calleeUid = typeof participants?.calleeUid === "string" ? participants.calleeUid : "";
+    const now = Date.now();
+    const valid = !!row && !!roomBillingContext && roomBillingContext.ok === true && row.authorization_id === authorizationId &&
+      row.call_id === room &&
+      roomBillingContext.authorization_id === row.authorization_id && roomBillingContext.call_id === row.call_id &&
+      roomBillingContext.payer_uid === row.payer_uid && roomBillingContext.callee_uid === row.callee_uid &&
+      roomBillingContext.media === row.media && roomBillingContext.quality_sku === row.quality_sku && roomBillingContext.provider === row.provider &&
+      Number(roomBillingContext.price_version) === row.price_version &&
+      row.payer_uid === callerUid && row.callee_uid === calleeUid &&
+      (g.uid === callerUid || g.uid === calleeUid) &&
+      row.media === "audio" &&
+      row.quality_sku === "audio" && row.provider === "cloudflare" &&
+      row.attempt_id === attemptId && row.price_version === clientPriceVersion &&
+      row.status === "authorized" && (row.expires_at <= 0 || row.expires_at > now);
+    if (!valid) {
+      ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_blocked", APP, {
+        call_id: room, reason: "messenger_audio_authorization_invalid",
+        authorization_id: authorizationId,
+      }));
+      return json({ error: "messenger_audio_authorization_invalid", code: "authorization_invalid" }, 409);
+    }
+    messengerAudioAuthorization = row;
+  }
+
   const prewarm = body.prewarm as Record<string, unknown> | undefined;
   const prewarmNonce = typeof prewarm?.nonce === "string" ? prewarm.nonce.slice(0, 128) : "";
   const prewarmDeviceId = typeof prewarm?.deviceId === "string" ? prewarm.deviceId.trim().slice(0, 128) : "";
@@ -342,6 +405,14 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
     method: "POST",
     body: JSON.stringify({
       callId: room, uid: g.uid, sessionId,
+      ...(messengerAudioAuthorization ? {
+        // Server-frozen identifiers let CallRoom correlate this seat with the
+        // billed CallSession. Never copy payer/provider/rate from the request.
+        authorization_id: messengerAudioAuthorization.authorization_id,
+        attempt_id: messengerAudioAuthorization.attempt_id,
+        price_version: messengerAudioAuthorization.price_version,
+        billing_call_id: messengerAudioAuthorization.call_id,
+      } : {}),
       ...(taggedPrewarm ? {
         deviceId: prewarmDeviceId,
         prewarmNonce,
@@ -362,7 +433,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
   ctx.waitUntil(sfuTrack(env, g.uid, "call_sfu_joined", APP, {
     call_id: room,
     session_id: sessionId,
-    video_allowed: g.video,
+    video_allowed: messengerAudioAuthorization ? false : g.video,
     prewarm: taggedPrewarm,
     relay_available: !ice.relayDegraded,
     relay_degraded: ice.relayDegraded,
@@ -383,7 +454,7 @@ export async function callSfuJoin(req: Request, env: Env, room: string, ctx: Exe
     relay_available: !ice.relayDegraded,
     relay_degraded: ice.relayDegraded,
     ...(ice.relayReason ? { relay_reason: ice.relayReason } : {}),
-    media: { audio: true, video: g.video },
+    media: { audio: true, video: messengerAudioAuthorization ? false : g.video },
   });
 }
 
