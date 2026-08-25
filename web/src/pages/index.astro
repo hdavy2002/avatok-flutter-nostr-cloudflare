@@ -9,9 +9,16 @@
 export const prerender = true;
 
 import landingRaw from '../landing/avatok-desi-editorial-marketplace.html?raw';
+import catalogueRaw from '../landing/avatok-listings-catalogue.html?raw';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
+const LEGACY_LOWER_MARK = '<!--\n  AvaTOK lower-page draft';
+const [heroHtml, legacyLower = ''] = landingHtml.split(LEGACY_LOWER_MARK);
+if (!legacyLower) {
+  throw new Error('index.astro: expected legacy lower-page marker is missing');
+}
+const pageHtml = `${heroHtml}${catalogueRaw}\n</main>\n</body>\n</html>`;
 
 ---
 
-<Fragment set:html={landingHtml} />
+<Fragment set:html={pageHtml} />
