@@ -197,7 +197,10 @@ describe("GetStream Video pilot control plane contract", () => {
 
   it("bounds provider ringing and compensates every timeout or cancellation", () => {
     const admission = route.indexOf("const admission = await admitCall");
-    const authority = route.indexOf("const recorded = await persistStickyProvider", admission);
+    const authority = Math.max(
+      route.indexOf("const recorded = await persistStickyProvider", admission),
+      route.indexOf("const [recorded] = await Promise.all", admission),
+    );
     const streamCreate = route.indexOf("const created = await createRingingStreamCall", authority);
     expect(admission).toBeGreaterThan(-1);
     expect(authority).toBeGreaterThan(admission);
@@ -207,6 +210,9 @@ describe("GetStream Video pilot control plane contract", () => {
     expect(route).toContain("new AbortController()");
     expect(route).toContain('created.stage === "provider_timeout"');
     expect(route).toContain("await endStreamCall(env, callId)");
+    expect(route).toContain("provider_compensation_unconfirmed");
+    expect(route).toContain("retainBillingForReconciliation");
+    expect(route).toContain("reservation_retained: true");
   });
 
   it("supports cancelling an attempt before place returns its server call id", () => {
@@ -217,6 +223,8 @@ describe("GetStream Video pilot control plane contract", () => {
     expect(route).toContain("provider_ended: false");
     expect(route).toContain("provider_ended: callId ? true : null");
     expect(route).toContain('"call_cancelled"');
+    expect(route).toContain("markMessengerCallReconciliationPending");
+    expect(route).toContain('"provider_cancel_failed"');
   });
 
   it("emits stage latency for fast-call production diagnosis", () => {
@@ -225,5 +233,35 @@ describe("GetStream Video pilot control plane contract", () => {
     expect(route).toContain("stream_create_ms");
     expect(route).toContain("stream_provider_total_ms");
     expect(route).toContain("place_total_ms");
+  });
+
+  it("requires the frozen Messenger authorization for billing-enabled video", () => {
+    expect(route).toContain("messengerCallBillingEnabled");
+    expect(route).toContain("readMessengerVideoAuthorization");
+    expect(route).toContain("authorization_id");
+    expect(route).toContain("quality_sku");
+    expect(route).toContain("price_version");
+    expect(route).toContain('billingAuthorization.provider !== "stream"');
+    expect(route).toContain("billingAuthorization.call_id");
+    expect(route).toContain("authorization_contract_mismatch");
+    expect(route).toContain("releaseBilling");
+    expect(route).toContain("caller_cancelled_after_provider");
+    expect(route).toContain("initializeMessengerCallBilling");
+    expect(route).toContain("billing_do_init_failed");
+    expect(route).toContain("billingDoStatus === \"connected\"");
+    expect(route).toContain("forwardMessengerStreamEventByCall");
+    expect(route).toContain("cachedPayloadMatchesAuthorization");
+    expect(route).toContain("cached.payload.call_id === cachedAuthorization.call_id");
+    expect(route).toContain("cached.payload.authorization_id === cachedAuthorization.authorization_id");
+    expect(route).toContain("cached.payload.provider === cachedAuthorization.provider");
+  });
+
+  it("mounts the dark Messenger billing endpoints without changing legacy routing", () => {
+    expect(index).toContain('"/api/messenger-calls/authorize"');
+    expect(index).toContain('"/api/messenger-calls/pricing"');
+    expect(index).toContain('"/api/messenger-calls/receipt"');
+    expect(index).toContain('"/api/messenger-calls/cancel"');
+    expect(index).toContain("messengerCallAuthorize");
+    expect(route).toContain("Legacy Stream behavior is untouched");
   });
 });

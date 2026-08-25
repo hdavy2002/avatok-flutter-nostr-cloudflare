@@ -34,6 +34,13 @@ import { APP_BUILD_HEADER, UPDATE_REQUIRED_MESSAGE, callMinBuildFrom, clientBuil
 // streamCallPlace for why the values are deliberately identical.
 import { readPresenceRead, type PresenceState } from "../lib/presence";
 import { receptionistNoAnswerEligibility } from "./receptionist";
+import {
+  cancelMessengerCallAuthorization,
+  markMessengerCallReconciliationPending,
+  type MessengerCallAuthorizationRecord,
+} from "./messenger_call_billing";
+import { forwardMessengerStreamEventByCall, initializeMessengerCallBilling } from "../do/messenger_call_billing";
+import { recordCommercialStreamEvent } from "./commercial_stream_sessions";
 
 const PROVIDER = "stream" as const;
 const CALL_TYPE = "default";
@@ -93,11 +100,39 @@ type StreamServerTokenPayload = {
 type StreamCallEvent = {
   type?: string;
   call_cid?: string;
+  created_at?: unknown;
+  timestamp?: unknown;
   call?: { cid?: string; id?: string; type?: string; custom?: Record<string, unknown> };
-  data?: { call_cid?: string; call?: { cid?: string; id?: string; custom?: Record<string, unknown> } };
+  data?: { call_cid?: string; created_at?: unknown; timestamp?: unknown; session_id?: string; session?: { id?: string; created_at?: unknown; started_at?: unknown; ended_at?: unknown; timestamp?: unknown }; user_id?: string; call?: { cid?: string; id?: string; type?: string; custom?: Record<string, unknown>; session?: { id?: string; created_at?: unknown; started_at?: unknown; ended_at?: unknown; timestamp?: unknown } }; user?: { id?: string }; participant?: { user?: { id?: string }; user_id?: string; session_id?: string }; session_participant?: { user?: { id?: string }; user_id?: string; session_id?: string } };
   user?: { id?: string };
   reason?: string;
 };
+
+const STREAM_EVENT_TIME_SKEW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function streamEventTimestampMs(event: StreamCallEvent): number | null {
+  const candidates: unknown[] = [
+    event.created_at, event.timestamp,
+    event.data?.created_at, event.data?.timestamp,
+    event.data?.session?.created_at, event.data?.session?.started_at,
+    event.data?.session?.ended_at, event.data?.session?.timestamp,
+    event.data?.call?.session?.created_at, event.data?.call?.session?.started_at,
+    event.data?.call?.session?.ended_at, event.data?.call?.session?.timestamp,
+  ];
+  const now = Date.now();
+  for (const candidate of candidates) {
+    let parsed = typeof candidate === "number" ? candidate : NaN;
+    if (typeof candidate === "string") {
+      const raw = candidate.trim();
+      parsed = /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : Date.parse(raw);
+    }
+    if (!Number.isFinite(parsed) || parsed <= 0) continue;
+    if (parsed < 1_000_000_000_000) parsed *= 1000;
+    parsed = Math.trunc(parsed);
+    if (Math.abs(parsed - now) <= STREAM_EVENT_TIME_SKEW_MS) return parsed;
+  }
+  return null;
+}
 
 function enabled(config: { streamCallPilotEnabled?: boolean }): boolean {
   return config.streamCallPilotEnabled === true;
@@ -147,7 +182,7 @@ function rolloutBucket(callId: string, callerUid: string, calleeUid: string): nu
  * effect; old clients therefore remain byte-for-byte on Cloudflare.
  */
 export function selectCallProvider(args: {
-  config: { streamCallPilotEnabled?: boolean; streamCallPilotPercent?: number };
+  config: { streamCallPilotEnabled?: boolean; streamCallPilotPercent?: number; messengerCallBillingEnabled?: boolean };
   env: Env;
   callerUid: string;
   calleeUid: string;
@@ -159,7 +194,7 @@ export function selectCallProvider(args: {
   const percent = rolloutPercent(args.config);
   const bucket = rolloutBucket(args.callId, args.callerUid, args.calleeUid);
   const allowlisted = rolloutAllowed(args.env, args.callerUid, args.calleeUid);
-  const stream = args.config.streamCallPilotEnabled === true
+  const stream = args.config.messengerCallBillingEnabled !== true && args.config.streamCallPilotEnabled === true
     && (args.scope ?? "one_to_one") === "one_to_one"
     && (args.media ?? "audio") === "audio"
     && args.clientSupportsStream === true
@@ -500,7 +535,7 @@ export async function streamVideoToken(req: Request, env: Env): Promise<Response
 /** Create a Stream call after the server has authenticated the caller. */
 export async function prepareStreamCall(args: {
   env: Env;
-  config: { streamCallPilotEnabled?: boolean; streamCallPilotPercent?: number };
+  config: { streamCallPilotEnabled?: boolean; streamCallPilotPercent?: number; messengerCallBillingEnabled?: boolean };
   callerUid: string;
   calleeUid: string;
   callId: string;
@@ -513,6 +548,13 @@ export async function prepareStreamCall(args: {
   traceId?: string;
 }): Promise<Response> {
   const { env, config, callerUid, calleeUid, callId, clientSupportsStream, ctx } = args;
+  if (config.messengerCallBillingEnabled === true && args.media !== "video") {
+    // The legacy prepare route has no paid-audio authorization contract. Free
+    // audio belongs to /api/call; paid audio must use /place with a fresh,
+    // caller-funded Stream authorization. Never return a Cloudflare fallback
+    // here that could be mistaken for paid continuation.
+    return json({ ok: false, provider: "stream", call_id: callId, error: "messenger paid audio requires authorized Stream placement" }, 409);
+  }
   const traceId = args.traceId?.trim() || callId;
   const prepareStartedAt = Date.now();
   const scope = args.scope ?? "one_to_one";
@@ -763,7 +805,10 @@ export type StreamPlaceRefusalCode =
   // [STREAM-ENFORCE-2 2026-08-21] additions below.
   | "authority_unavailable"
   | "stream_create_failed"
-  | "call_cancelled";
+  | "call_cancelled"
+  | "billing_authorization_required"
+  | "billing_authorization_invalid"
+  | "billing_authorization_expired";
 
 type StreamPlaceBody = {
   callee_uid?: unknown;
@@ -779,10 +824,32 @@ type StreamPlaceBody = {
    *  `admitCall`/build-gate checks still run).
    */
   attempt_id?: unknown;
+  /** Phase 1 paid-video authorization contract; required only when the
+   * Messenger billing master is enabled for video. */
+  authorization_id?: unknown;
+  quality_sku?: unknown;
+  price_version?: unknown;
 };
 
 function validAttemptId(value: unknown): value is string {
   return typeof value === "string" && value.length >= 8 && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+async function readMessengerVideoAuthorization(
+  env: Env,
+  payerUid: string,
+  authorizationId: string,
+): Promise<MessengerCallAuthorizationRecord | null> {
+  try {
+    return await env.DB_WALLET.prepare(
+      "SELECT authorization_id, call_id, attempt_id, payer_uid, callee_uid, media, quality_sku, provider, " +
+      "rate_centitokens_per_participant_minute, price_version, consent_id, allowance_day, status, reservation_ref, " +
+      "reservation_tokens, created_at, expires_at, connected_at, ended_at, terminal_reason " +
+      "FROM messenger_call_authorizations WHERE authorization_id=?1 AND payer_uid=?2 LIMIT 1",
+    ).bind(authorizationId, payerUid).first<MessengerCallAuthorizationRecord>();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -860,7 +927,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // Minted HERE, not by the phone. This is the whole point of the endpoint: the
   // call identity is the server's, and the `sl-` prefix is kept so the existing
   // `stream_lane_*` PostHog series stays continuous with the client-minted ids.
-  const callId = `sl-${crypto.randomUUID()}`;
+  let callId = `sl-${crypto.randomUUID()}`;
 
   // ── ATTEMPT-ID DEDUP (job 3) ────────────────────────────────────────────
   // Same caller retrying the same tap (double-tap, client timeout-and-retry)
@@ -877,7 +944,41 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   if (attemptKey) {
     const cached = await env.TOKENS.get(attemptKey, "json").catch(() => null) as
       { status: number; payload: Record<string, unknown> } | null;
-    if (cached) {
+    const cachedConfig = cached ? await readConfig(env).catch(() => null) : null;
+    // A legacy cached approval must never survive a later billing-gate flip
+    // for video. Revalidate the D1 authorization in that mode instead of
+    // replaying an unmetered attempt response.
+    const billingCallCacheBypass = cachedConfig?.messengerCallBillingEnabled === true;
+    const billingVideoCacheBypass = billingCallCacheBypass && video;
+    if (cached && billingVideoCacheBypass) {
+      const cachedAuthorizationId = typeof cached.payload.authorization_id === "string" ? cached.payload.authorization_id : "";
+      const cachedAuthorization = cachedAuthorizationId
+        ? await readMessengerVideoAuthorization(env, callerUid, cachedAuthorizationId)
+        : null;
+      const cachedPriceVersion = Number(body.price_version);
+      const cachedQualitySku = typeof body.quality_sku === "string" ? body.quality_sku : "";
+      // Do not let a stale/malformed attempt cache replay a payload whose
+      // provider identity differs from the current frozen D1 authorization.
+      // Validating only the authorization row still allowed the cached call_id
+      // (or a legacy audio payload) to bypass the server-owned call contract.
+      const cachedPayloadMatchesAuthorization = cachedAuthorization &&
+        cached.payload.call_id === cachedAuthorization.call_id &&
+        cached.payload.authorization_id === cachedAuthorization.authorization_id &&
+        cached.payload.callee_uid === cachedAuthorization.callee_uid &&
+        cached.payload.video === true &&
+        cached.payload.provider === cachedAuthorization.provider;
+      const cacheStillAuthorized = cachedAuthorization &&
+        cachedPayloadMatchesAuthorization &&
+        cachedAuthorization.attempt_id === attemptId && cachedAuthorization.callee_uid === calleeUid &&
+        cachedAuthorization.media === "video" && cachedAuthorization.provider === "stream" &&
+        cachedAuthorization.quality_sku === cachedQualitySku && cachedAuthorization.price_version === cachedPriceVersion &&
+        cachedAuthorization.status === "authorized" &&
+        (cachedAuthorization.expires_at <= 0 || cachedAuthorization.expires_at > Date.now());
+      if (cacheStillAuthorized) {
+        return json({ ...cached.payload, idempotent_replay: true }, cached.status);
+      }
+    }
+    if (cached && !billingCallCacheBypass) {
       track(env, callerUid, "stream_call_dedup_hit", "avatok", {
         call_id: (cached.payload as { call_id?: unknown }).call_id ?? null,
         attempt_id: attemptId, trace_id: traceId || null, lane: "streamlane",
@@ -895,6 +996,34 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
       }).catch(() => undefined);
     }
     return json(payload, status);
+  };
+
+  let billingAuthorization: MessengerCallAuthorizationRecord | null = null;
+  // Once Stream may have accepted a request, refusal must not release the
+  // caller's reservation until the provider outcome is confirmed.
+  let billingProviderUncertain = false;
+  const releaseBilling = async (reason: string): Promise<void> => {
+    if (billingAuthorization) {
+      await cancelMessengerCallAuthorization(env, callerUid, billingAuthorization.authorization_id, reason).catch(() => undefined);
+    }
+  };
+  const retainBillingForReconciliation = async (reason: string): Promise<void> => {
+    billingProviderUncertain = true;
+    if (!billingAuthorization) return;
+    await markMessengerCallReconciliationPending(
+      env, callerUid, billingAuthorization.authorization_id, reason,
+    ).catch(() => undefined);
+    track(env, callerUid, "messenger_call_reconciliation_pending", "avatok", {
+      call_id: callId,
+      authorization_id: billingAuthorization.authorization_id,
+      callee_uid: calleeUid,
+      provider: "stream",
+      media: video ? "video" : "audio",
+      reason,
+      reservation_retained: true,
+      lane: "streamlane",
+      app_name: "avatok", service_name: "avatok-api", worker: true,
+    }, traceId || undefined);
   };
 
   /** One refusal shape, one telemetry event, tagged to BOTH parties. */
@@ -930,6 +1059,13 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
         await trackUser(env, calleeUid, calleeEmail, "stream_call_refused", "avatok", props, traceId || undefined);
       }
     } catch { /* telemetry must never change a refusal */ }
+    if (billingProviderUncertain) {
+      // retainBillingForReconciliation already persisted the non-releasing
+      // transition. This branch prevents a later generic refusal from
+      // accidentally compensating away a live/unknown provider call.
+    } else {
+      await releaseBilling(internalReason ?? code);
+    }
     return await finish(status, { approved: false, code, message, ...extra });
   };
 
@@ -941,7 +1077,84 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // fail-open reasoning lib/call_admission.ts documents for the blocklist.
   const config = await readConfig(env).catch(() => null);
   if (config && config.streamCallsEnabled !== true) {
+    if (config.messengerCallBillingEnabled === true && typeof body.authorization_id === "string" && validAttemptId(body.authorization_id)) {
+      await cancelMessengerCallAuthorization(env, callerUid, body.authorization_id, "stream_provider_disabled").catch(() => undefined);
+    }
     return await refuse("stream_calls_disabled", "Calling is temporarily unavailable. Please try again later.", 503);
+  }
+
+  // Phase 1 paid-call enforcement. Legacy Stream behavior is untouched when
+  // the Messenger billing master is false. Once enabled, every paid audio or
+  // video request must present the exact server authorization created for this
+  // caller and attempt; all provider/rate/payer/call identity comes from D1.
+  const messengerBillingCall = config?.messengerCallBillingEnabled === true;
+  const messengerBillingVideo = messengerBillingCall && video;
+  const messengerBillingAudio = messengerBillingCall && !video;
+  if (messengerBillingVideo || messengerBillingAudio) {
+    const authorizationId = typeof body.authorization_id === "string" ? body.authorization_id : "";
+    const qualitySku = typeof body.quality_sku === "string" ? body.quality_sku : "";
+    const priceVersion = Number(body.price_version);
+    if (!attemptId || !validAttemptId(authorizationId) ||
+      (messengerBillingVideo ? !["video_sd", "video_hd", "video_2k", "video_4k"].includes(qualitySku) : qualitySku !== "audio") ||
+      !Number.isInteger(priceVersion) || priceVersion < 1) {
+      return await refuse("billing_authorization_required", "This call could not be authorized.", 409, {}, "missing_messenger_authorization");
+    }
+    billingAuthorization = await readMessengerVideoAuthorization(env, callerUid, authorizationId);
+    if (!billingAuthorization) {
+      return await refuse("billing_authorization_invalid", "This call could not be authorized.", 409, {}, "authorization_not_found");
+    }
+    if (billingAuthorization.attempt_id !== attemptId || billingAuthorization.callee_uid !== calleeUid ||
+      billingAuthorization.media !== (messengerBillingVideo ? "video" : "audio") || billingAuthorization.quality_sku !== qualitySku ||
+      billingAuthorization.provider !== "stream" || billingAuthorization.price_version !== priceVersion ||
+      billingAuthorization.status !== "authorized" ||
+      (messengerBillingAudio && billingAuthorization.rate_centitokens_per_participant_minute <= 0)) {
+      return await refuse("billing_authorization_invalid", "This call could not be authorized.", 409, {}, "authorization_contract_mismatch");
+    }
+    if (billingAuthorization.expires_at > 0 && billingAuthorization.expires_at <= Date.now()) {
+      await cancelMessengerCallAuthorization(env, callerUid, authorizationId, "authorization_expired");
+      return await refuse("billing_authorization_expired", "This call authorization has expired.", 409, {}, "authorization_expired");
+    }
+    if (!validCallId(billingAuthorization.call_id)) {
+      return await refuse("billing_authorization_invalid", "This call could not be authorized.", 409, {}, "invalid_authorized_call_id");
+    }
+    callId = billingAuthorization.call_id;
+    // Seed the per-authorization connected-time authority before Stream is
+    // contacted. A missing/mismatched DO cannot be allowed to create media,
+    // while the master flag remains dark for legacy calls.
+    const billingInitialized = await initializeMessengerCallBilling(env, {
+      authorization_id: billingAuthorization.authorization_id,
+      call_id: billingAuthorization.call_id,
+      attempt_id: billingAuthorization.attempt_id,
+      payer_uid: billingAuthorization.payer_uid,
+      callee_uid: billingAuthorization.callee_uid,
+      media: billingAuthorization.media,
+      quality_sku: billingAuthorization.quality_sku,
+      provider: "stream",
+      rate_centitokens_per_participant_minute: billingAuthorization.rate_centitokens_per_participant_minute,
+      price_version: billingAuthorization.price_version,
+      daily_audio_allowance_participant_seconds: config?.messengerAudioFreeParticipantSecondsDaily ?? 28_800,
+      allowance_day: billingAuthorization.allowance_day,
+      reservation_ref: billingAuthorization.reservation_ref,
+      expires_at: billingAuthorization.expires_at,
+    });
+    const billingDoStatus = typeof billingInitialized.body.status === "string" ? billingInitialized.body.status : "";
+    if (billingInitialized.ok && billingDoStatus === "connected") {
+      // A retry after the provider accepted the call must join the existing
+      // deterministic call rather than create a second Stream call. Never
+      // run the generic refusal/release path for this already-live state.
+      return await finish(200, {
+        approved: true, provider: PROVIDER, call_type: CALL_TYPE, call_id: callId,
+        authorization_id: billingAuthorization.authorization_id, callee_uid: calleeUid,
+        video, trace_id: traceId || callId, created: true, idempotent_replay: true,
+      });
+    }
+    if (!billingInitialized.ok || (billingDoStatus && billingDoStatus !== "authorized")) {
+      // A non-authorized DO state may mean provider work is live or its
+      // settlement is incomplete; retaining funds is safer than generic
+      // cancellation/release on this retry path.
+      billingProviderUncertain = true;
+      return await refuse("billing_authority_unavailable", "This call could not be authorized.", 503, {}, "billing_do_init_failed");
+    }
   }
 
   // ── BUILD FLOOR (plan §2.1 option C; closes blocker §8.6 on this lane) ──────
@@ -1154,6 +1367,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // pair at a time. Join Alice's existing call instead of minting Bob's own.
   const counterCall = await readLiveCounterCall(env, callerUid, calleeUid);
   if (counterCall) {
+    await releaseBilling("glare_join_existing");
     const glareProps = {
       call_id: counterCall.call_id,
       from_uid: callerUid, to_uid: calleeUid,
@@ -1231,6 +1445,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     activePublish,
   ]);
   if (!recorded) {
+    await releaseBilling("provider_authority_write_failed");
     try {
       await trackUser(env, callerUid, callerEmail, "stream_call_authority_write_failed", "avatok", {
         call_id: callId, from_uid: callerUid, to_uid: calleeUid,
@@ -1254,6 +1469,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // (active-key publish now runs concurrently with the authority write above.)
   if (await cancelled()) {
     await markProviderDecisionEnded(env, callId);
+    await releaseBilling("caller_cancelled_before_provider");
     return await refuse("call_cancelled", "Call cancelled.", 409, { stage: "before_stream" }, "caller_cancelled");
   }
 
@@ -1322,11 +1538,21 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     // immediately: otherwise the reverse-direction glare lookup can return a
     // call id that never existed and strand both callers for 45 seconds.
     await markProviderDecisionEnded(env, callId);
-    // An aborted create can race with Stream accepting the request. Ending the
-    // deterministic call id is the compensating action that prevents a phone
-    // ringing after AvaTOK has already returned a terminal failure.
-    if (created.stage === "provider_timeout" || created.stage === "cancelled") {
-      await endStreamCall(env, callId);
+    // A timeout or failed Stream create can mean that Stream accepted the
+    // request but the response was lost. Attempt compensation, but retain the
+    // reservation unless the provider confirms the deterministic call ended.
+    const providerMayHaveAccepted = created.stage === "provider_timeout" || created.stage === "stream_create";
+    if (providerMayHaveAccepted) {
+      const providerEnded = await endStreamCall(env, callId);
+      if (providerEnded) {
+        await releaseBilling("provider_ended_after_failure");
+      } else {
+        await retainBillingForReconciliation("provider_compensation_unconfirmed");
+      }
+    } else {
+      // ensure_users/cancelled means the provider create request was never
+      // made, so releasing the caller's unused reservation is safe.
+      await releaseBilling(created.stage === "cancelled" ? "caller_cancelled" : "provider_failure");
     }
     try {
       await trackUser(env, callerUid, callerEmail, "stream_call_create_failed", "avatok", {
@@ -1356,8 +1582,13 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
   // Never acknowledge ringing in that case: end it first, close authority,
   // and return one terminal cancelled result.
   if (await cancelled()) {
-    await endStreamCall(env, callId);
+    const providerEnded = await endStreamCall(env, callId);
     await markProviderDecisionEnded(env, callId);
+    if (providerEnded) {
+      await releaseBilling("caller_cancelled_after_provider");
+    } else {
+      await retainBillingForReconciliation("provider_compensation_unconfirmed_after_cancel");
+    }
     return await refuse("call_cancelled", "Call cancelled.", 409, {
       stage: "after_stream_create",
       provider_total_ms: created.totalMs,
@@ -1410,6 +1641,7 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
     provider: PROVIDER,
     call_type: CALL_TYPE,
     call_id: callId,
+    ...(billingAuthorization ? { authorization_id: billingAuthorization.authorization_id } : {}),
     callee_uid: calleeUid,
     video,
     trace_id: traceId || callId,
@@ -1428,10 +1660,11 @@ export async function streamCallPlace(req: Request, env: Env, ctx?: ExecutionCon
 export async function streamCallCancel(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
-  let body: { attempt_id?: unknown; call_id?: unknown };
+  let body: { attempt_id?: unknown; call_id?: unknown; authorization_id?: unknown };
   try { body = await req.json() as typeof body; } catch { return json({ error: "bad json" }, 400); }
   if (!validAttemptId(body.attempt_id)) return json({ error: "invalid attempt_id" }, 400);
   if (body.call_id !== undefined && !validCallId(body.call_id)) return json({ error: "invalid call_id" }, 400);
+  if (body.authorization_id !== undefined && !validAttemptId(body.authorization_id)) return json({ error: "invalid authorization_id" }, 400);
 
   const activeKey = `stream-place:active:${auth.uid}:${body.attempt_id}`;
   const cancelKey = `stream-place:cancel:${auth.uid}:${body.attempt_id}`;
@@ -1456,9 +1689,29 @@ export async function streamCallCancel(req: Request, env: Env): Promise<Response
     });
   }
   if (callId && !providerEnded) {
+    if (typeof body.authorization_id === "string" && (await readConfig(env).catch(() => null))?.messengerCallBillingEnabled === true) {
+      // Stream did not confirm the end. Keep the reservation and block this
+      // authorization until a webhook/reaper reconciles the provider state.
+      await markMessengerCallReconciliationPending(
+        env, auth.uid, body.authorization_id, "provider_cancel_failed",
+      );
+      track(env, auth.uid, "messenger_call_reconciliation_pending", "avatok", {
+        call_id: callId,
+        authorization_id: body.authorization_id,
+        provider: "stream",
+        reason: "provider_cancel_failed",
+        reservation_retained: true,
+        lane: "streamlane",
+        app_name: "avatok", service_name: "avatok-api", worker: true,
+      });
+    }
     return json({ cancelled: false, provider_ended: false, call_id: callId }, 502);
   }
-  return json({ cancelled: true, provider_ended: callId ? true : null, call_id: callId });
+  let billingCancelled = false;
+  if (typeof body.authorization_id === "string" && (await readConfig(env).catch(() => null))?.messengerCallBillingEnabled === true) {
+    billingCancelled = await cancelMessengerCallAuthorization(env, auth.uid, body.authorization_id, "caller_cancelled");
+  }
+  return json({ cancelled: true, provider_ended: callId ? true : null, call_id: callId, billing_cancelled: billingCancelled });
 }
 
 async function unzipIfNeeded(raw: ArrayBuffer): Promise<ArrayBuffer> {
@@ -1506,6 +1759,13 @@ function telemetryForEvent(type: string): { event: typeof CallEvent[keyof typeof
     case "call.ended": return { event: CallEvent.call_ended, endedReason: "completed" };
     default: return null;
   }
+}
+
+function messengerBillingEventKind(type: string): "joined" | "left" | "session_ended" | null {
+  if (type === "call.session_participant_joined" || type === "call.participant_joined" || type === "call.session_joined") return "joined";
+  if (type === "call.session_participant_left" || type === "call.participant_left" || type === "call.session_left") return "left";
+  if (type === "call.session_ended" || type === "call.ended" || type === "call.missed" || type === "call.rejected") return "session_ended";
+  return null;
 }
 
 /**
@@ -1599,6 +1859,54 @@ export async function streamVideoWebhook(req: Request, env: Env, ctx?: Execution
   }
 
   const eventType = String(event.type ?? "unknown");
+  const rawJson = new TextDecoder().decode(verified.body);
+  const eventCid = String(event.call_cid ?? event.data?.call_cid ?? event.call?.cid ?? event.data?.call?.cid ?? "");
+  const cidCallType = eventCid.includes(":") ? eventCid.split(":", 1)[0] : "";
+  const commercialCallType = String(event.call?.type ?? event.data?.call?.type ?? cidCallType);
+  const commercialCallId = event.call?.id ?? event.data?.call?.id ?? eventCallId(event);
+  const commercialEvent = await recordCommercialStreamEvent(env, {
+    webhookId,
+    eventType,
+    callType: commercialCallType,
+    callId: commercialCallId,
+    actorId: event.user?.id ?? event.data?.user?.id ?? event.data?.user_id
+      ?? event.data?.participant?.user?.id ?? event.data?.participant?.user_id
+      ?? event.data?.session_participant?.user?.id ?? event.data?.session_participant?.user_id ?? null,
+    providerSessionId: event.data?.session_id ?? event.data?.session?.id
+      ?? event.data?.participant?.session_id ?? event.data?.session_participant?.session_id ?? null,
+    occurredAt: streamEventTimestampMs(event) ?? Date.now(),
+    rawJson,
+  }).catch(() => ({ handled: true, reviewPending: true }));
+  if (commercialEvent.handled) {
+    if (commercialEvent.reviewPending) return json({ error: "commercial reconciliation pending" }, 503);
+    return json({ ok: true, event_type: eventType, duplicate: commercialEvent.duplicate === true });
+  }
+  // The signature has been verified above. Forward only the narrow Stream
+  // lifecycle subset to the per-authorization DO; it resolves authorization
+  // terms from D1 and rejects any member outside the exact caller/callee pair.
+  if ((await readConfig(env).catch(() => null))?.messengerCallBillingEnabled === true) {
+    const billingKind = messengerBillingEventKind(eventType);
+    const billingCallId = eventCallId(event) || webhookId;
+    if (billingKind && billingCallId) {
+      const providerEventTimestamp = streamEventTimestampMs(event);
+      const billingEvent = await forwardMessengerStreamEventByCall(env, {
+        call_id: billingCallId,
+        event_id: webhookId,
+        kind: billingKind,
+        participant_uid: event.user?.id ?? event.data?.user?.id ?? event.data?.user_id ?? event.data?.participant?.user?.id ?? event.data?.participant?.user_id ?? event.data?.session_participant?.user?.id ?? event.data?.session_participant?.user_id ?? null,
+        generation: event.data?.session_id ?? event.data?.session?.id ?? event.data?.session_participant?.session_id ?? event.data?.participant?.session_id ?? event.data?.call?.session?.id ?? "default",
+        occurred_at_ms: providerEventTimestamp ?? Date.now(),
+        ending_reason: event.reason ?? (billingKind === "session_ended" ? eventType : undefined),
+      }).catch(() => ({ ok: false, status: 503, body: { error: "billing_adapter_unavailable" } }));
+      if (!billingEvent.ok && billingEvent.status !== 204) {
+        track(env, "stream", "messenger_call_billing_adapter_failed", "avatok", {
+          call_id: billingCallId, event_type: eventType, webhook_id: webhookId,
+          status: billingEvent.status, app_name: "avatok", service_name: "avatok-api", worker: true,
+        });
+        return json({ error: "billing adapter unavailable" }, 503);
+      }
+    }
+  }
   const dedup = await recordWebhookIdempotency(env, webhookId, eventType);
   if (dedup.duplicate) {
     track(env, "stream", "stream_webhook_duplicate", "avatok", {

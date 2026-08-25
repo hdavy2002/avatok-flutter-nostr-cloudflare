@@ -25,6 +25,7 @@ import { readConfig } from "./config";
 import { getSub } from "./plans";
 import { subscribeWebhookEvent } from "./subscribe";
 import { listVoidedPlayPurchases, verifyPlayProduct } from "../play";
+import type { MessengerMedia, MessengerQualitySku } from "../lib/messenger_call_billing";
 // [WALLET-TXMETA-1] wallet_statement.ts already imports walletOp from here; this
 // back-reference is only ever CALLED from inside an async handler (never at
 // module-init), so the ESM cycle resolves safely — function declarations are
@@ -142,13 +143,121 @@ export type WalletOperation =
       op: "call_usage_consume";
       participant_seconds: number;
       media: "audio" | "video";
-    });
+    })
+  | MessengerCallWalletOperation;
+
+// [MESSENGER-CALL-BILLING-FOUNDATION] Caller-only daily allowance/tick
+// operation. This is intentionally a different op from call_usage_consume:
+// the latter is the dark legacy monthly/per-seat meter and must retain its
+// wire semantics. The payer is the WalletDO uid passed to walletOp(); there is
+// deliberately no payer_uid or callee wallet field in this contract.
+export interface MessengerCallUsageConsumeOperation {
+  op: "messenger_call_usage_consume";
+  op_id: string;
+  call_id: string;
+  authorization_id: string;
+  day: string;
+  wall_seconds: number;
+  media: MessengerMedia;
+  quality_sku: MessengerQualitySku;
+  /** Frozen by the authorization row; never supplied by a callee. */
+  price_version: number;
+  rate_centitokens_per_participant_minute: number;
+  daily_audio_allowance_participant_seconds: number;
+  allow_free: boolean;
+  /** Paid ticks must consume this caller-owned reservation. */
+  reservation_ref?: string;
+}
+
+export interface MessengerCallUsageStatusOperation {
+  op: "messenger_call_usage_status";
+  day: string;
+  daily_audio_allowance_participant_seconds: number;
+}
+
+/** Read-only server authority for a caller's active Messenger reservation. */
+export interface MessengerCallReservationStatusOperation {
+  op: "messenger_call_reservation_status";
+  reservation_ref: string;
+}
+
+export type MessengerCallWalletOperation = WalletOpBase & (MessengerCallUsageConsumeOperation | MessengerCallUsageStatusOperation | MessengerCallReservationStatusOperation);
 
 export async function walletOp(env: Env, uid: string, op: WalletOperation): Promise<{ status: number; body: any }> {
   const r = await walletStub(env, uid).fetch("https://wallet/op", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(op),
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
+}
+
+/**
+ * Atomic caller-funded Messenger tick. The uid is the payer authority and is
+ * supplied separately from the operation body; callee identity is intentionally
+ * absent so this helper cannot debit a second WalletDO by accident.
+ */
+export async function consumeMessengerCallUsage(
+  env: Env,
+  uid: string,
+  args: Omit<MessengerCallUsageConsumeOperation, "op">,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const result = await walletOp(env, uid, {
+    ...args,
+    op: "messenger_call_usage_consume",
+    uid,
+    app_name: "messenger_call",
+    ref: `messenger-call:${args.authorization_id}`,
+  });
+  return { ok: result.status === 200 && result.body?.ok === true, status: result.status, body: result.body };
+}
+
+/** Create/extend a paid-only caller reservation before provider connection. */
+export async function reserveMessengerCall(
+  env: Env,
+  uid: string,
+  amount: number,
+  ref: string,
+  opId: string,
+  expiresAt: number,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const result = await walletOp(env, uid, {
+    op: "reserve", uid, amount, ref, op_id: opId, app_name: "messenger_call",
+    allow_free: false, expires_at: expiresAt,
+  });
+  return { ok: result.status === 200 && result.body?.ok === true, status: result.status, body: result.body };
+}
+
+export async function releaseMessengerCallReservation(
+  env: Env,
+  uid: string,
+  ref: string,
+  opId: string,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const result = await walletOp(env, uid, {
+    op: "release_reservation", uid, ref, op_id: opId, app_name: "messenger_call",
+  });
+  return { ok: result.status === 200 && result.body?.ok === true, status: result.status, body: result.body };
+}
+
+export async function messengerCallReservationStatus(
+  env: Env,
+  uid: string,
+  reservationRef: string,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const result = await walletOp(env, uid, {
+    op: "messenger_call_reservation_status", uid, reservation_ref: reservationRef, app_name: "messenger_call",
+  });
+  return { ok: result.status === 200 && result.body?.ok === true, status: result.status, body: result.body };
+}
+
+export async function messengerCallUsageStatus(
+  env: Env,
+  uid: string,
+  args: Omit<MessengerCallUsageStatusOperation, "op">,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const result = await walletOp(env, uid, {
+    ...args, op: "messenger_call_usage_status", uid, app_name: "messenger_call",
+  });
+  return { ok: result.status === 200 && result.body?.ok === true, status: result.status, body: result.body };
 }
 
 /** Look up an app's commission rate (0..1); 0.20 default. */

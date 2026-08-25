@@ -13,6 +13,26 @@ export interface PlatformConfig {
   donationsEnabled: boolean;
   liveEnabled: boolean;
   consultEnabled: boolean;
+  // Phase 2 commercial GetStream lane. These controls are deliberately
+  // independent from Messenger and the legacy AvaLive/AvaConsult switches so
+  // discovery, checkout and admission can be canaried separately.
+  commercialLiveListingsEnabled: boolean;
+  commercialLiveCheckoutEnabled: boolean;
+  commercialLiveJoinEnabled: boolean;
+  commercialConsultListingsEnabled: boolean;
+  commercialConsultCheckoutEnabled: boolean;
+  commercialConsultJoinEnabled: boolean;
+  commercialCreatorFeePct: number;
+  commercialSettlementHoldHours: number;
+  commercialConsultJoinEarlyMin: number;
+  commercialConsultJoinLateMin: number;
+  commercialConsultExtensionEnabled: boolean;
+  commercialConsultExtensionMinutes: number;
+  commercialConsultExtensionRate: number;
+  commercialLiveBackstageEarlyMin: number;
+  commercialLiveStartGraceMin: number;
+  commercialReplayEnabled: boolean;
+  commercialRecordingEnabled: boolean;
   conferenceEnabled: boolean;
   // FREE LAUNCH group AUDIO on Cloudflare Realtime SFU (Specs/FREE-LAUNCH-DIRECTION.md
   // + Specs/CF-REALTIME-SFU-GROUP-AUDIO-BUILD.md). Default OFF: the new audio-only
@@ -262,6 +282,24 @@ export interface PlatformConfig {
    * stack, which stays untouched. Ships FALSE.
    */
   streamCallsEnabled: boolean;
+  /**
+   * [MESSENGER-CALL-BILLING-FOUNDATION] Phase 1 Messenger caller-funded
+   * allowance/metering gate. This is separate from the Stream pilot flags and
+   * from the legacy monthly human-call meter. It ships dark until the
+   * authorization, wallet, provider-adapter, and two-account release gates are
+   * complete.
+   */
+  messengerCallBillingEnabled: boolean;
+  messengerAudioFreeParticipantSecondsDaily: number;
+  messengerAudioPaidCentitokensPerParticipantMinute: number;
+  messengerVideoSdCentitokensPerParticipantMinute: number;
+  messengerVideoHdCentitokensPerParticipantMinute: number;
+  messengerVideo2kCentitokensPerParticipantMinute: number;
+  messengerVideo4kCentitokensPerParticipantMinute: number;
+  messengerCallReservationWallSeconds: number;
+  messengerCallLowBalanceWarningWallSeconds: number;
+  messengerCallUsageTickSeconds: number;
+  messengerCallPriceVersion: number;
   /**
    * [STREAM-GATE-1 2026-08-21] Minimum app build allowed to place a call on the
    * LEGACY Cloudflare dial route (`POST /api/call`).
@@ -806,6 +844,27 @@ export interface PlatformConfig {
   // virtual number that represents a user and hides their real phone. Master
   // switch for /api/number/* and the directory's number search key.
   numberFeatureEnabled: boolean;
+  // AVACALLS / Virtual Numbers — dark until the additive schema and client are
+  // verified. Numeric values are token units unless explicitly named subunits.
+  avaCallsEnabled: boolean;
+  avaCallsUniversalDialpadEnabled: boolean;
+  avaCallsAvatokResolveEnabled: boolean;
+  avaCallsPstnOutboundEnabled: boolean;
+  avaCallsPstnTokensPerMinute: number;
+  avaCallsPstnMinRunwayMinutes: number;
+  virtualNumbersEnabled: boolean;
+  virtualNumberDidPurchaseEnabled: boolean;
+  virtualNumberFreeEnabled: boolean;
+  virtualNumberFreeMaxPerAccount: number;
+  virtualNumberDidMonthlyTokens: number;
+  virtualNumberSmsEnabled: boolean;
+  virtualNumberOtpEnabled: boolean;
+  virtualNumberRecordingsEnabled: boolean;
+  virtualNumberReceptionistEnabled: boolean;
+  virtualNumberPrimaryProvider: "vobiz" | "frejun";
+  virtualNumberFrejunEnabled: boolean;
+  virtualNumberVobizEnabled: boolean;
+  virtualNumberProviderFailoverEnabled: boolean;
   teamIvrEnabled: boolean;           // master switch for /api/team/* (auto-attendant + team billing)
   ivrAiFrontDesk: boolean;           // future: AI natural-language front desk (off; tap-menu is default)
   // Group invites with TRUE pending membership + Accept/Decline (owner request
@@ -1511,6 +1570,25 @@ const DEFAULTS: PlatformConfig = {
   donationsEnabled: true,
   liveEnabled: false,              // FREE LAUNCH: marketplace/AvaLive hidden
   consultEnabled: false,           // FREE LAUNCH: paid consulting hidden
+  commercialLiveListingsEnabled: false,
+  commercialLiveCheckoutEnabled: false,
+  commercialLiveJoinEnabled: false,
+  commercialConsultListingsEnabled: false,
+  commercialConsultCheckoutEnabled: false,
+  commercialConsultJoinEnabled: false,
+  commercialCreatorFeePct: 80,
+  commercialSettlementHoldHours: 24,
+  commercialConsultJoinEarlyMin: 10,
+  commercialConsultJoinLateMin: 2,
+  // Paid consultation extensions stay dark until an owner-configured duration
+  // and token/minute rate are present. Zero is intentionally fail-closed.
+  commercialConsultExtensionEnabled: false,
+  commercialConsultExtensionMinutes: 0,
+  commercialConsultExtensionRate: 0,
+  commercialLiveBackstageEarlyMin: 30,
+  commercialLiveStartGraceMin: 15,
+  commercialReplayEnabled: false,
+  commercialRecordingEnabled: false,
   conferenceEnabled: true,         // group AUDIO calls (master kill switch)
   groupAudioSfuEnabled: false,     // CF Realtime SFU group path — dormant until built+CI-verified
   brainEnabled: false,             // FREE LAUNCH: secondary — revisit later
@@ -1561,6 +1639,20 @@ const DEFAULTS: PlatformConfig = {
   streamCallPilotEnabled: false,
   streamCallPilotPercent: 0,
   streamCallsEnabled: false,   // kill switch for the new streamlane client lane (distinct from streamCallPilotEnabled)
+  // [MESSENGER-CALL-BILLING-FOUNDATION] Safe defaults: new billing is dark,
+  // audio has four wall-clock hours of daily allowance for two participants,
+  // and all paid SKUs remain unavailable until rates are supplied remotely.
+  messengerCallBillingEnabled: false,
+  messengerAudioFreeParticipantSecondsDaily: 28_800,
+  messengerAudioPaidCentitokensPerParticipantMinute: 0,
+  messengerVideoSdCentitokensPerParticipantMinute: 0,
+  messengerVideoHdCentitokensPerParticipantMinute: 0,
+  messengerVideo2kCentitokensPerParticipantMinute: 0,
+  messengerVideo4kCentitokensPerParticipantMinute: 0,
+  messengerCallReservationWallSeconds: 300,
+  messengerCallLowBalanceWarningWallSeconds: 300,
+  messengerCallUsageTickSeconds: 15,
+  messengerCallPriceVersion: 1,
   // [STREAM-GATE-1 2026-08-21] 0 = gate DISABLED. Ships inert on purpose: arming
   // it before the cutover build is on people's phones would refuse every call in
   // the fleet. Flip to the cutover build number once that build is published.
@@ -1722,6 +1814,25 @@ const DEFAULTS: PlatformConfig = {
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
+  avaCallsEnabled: false,
+  avaCallsUniversalDialpadEnabled: false,
+  avaCallsAvatokResolveEnabled: false,
+  avaCallsPstnOutboundEnabled: false,
+  avaCallsPstnTokensPerMinute: 0.5,
+  avaCallsPstnMinRunwayMinutes: 1,
+  virtualNumbersEnabled: false,
+  virtualNumberDidPurchaseEnabled: false,
+  virtualNumberFreeEnabled: false,
+  virtualNumberFreeMaxPerAccount: 5,
+  virtualNumberDidMonthlyTokens: 600,
+  virtualNumberSmsEnabled: false,
+  virtualNumberOtpEnabled: false,
+  virtualNumberRecordingsEnabled: false,
+  virtualNumberReceptionistEnabled: false,
+  virtualNumberPrimaryProvider: "vobiz",
+  virtualNumberFrejunEnabled: false,
+  virtualNumberVobizEnabled: true,
+  virtualNumberProviderFailoverEnabled: false,
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
@@ -2130,6 +2241,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set([
+    "commercialCreatorFeePct", "commercialSettlementHoldHours",
+    "commercialConsultJoinEarlyMin", "commercialConsultJoinLateMin",
+    "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
+    "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
     "minAppBuild", "latestAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
@@ -2198,6 +2313,19 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // this defensively to 0..100; keep it numeric so flags.sh can flip rollout
     // without a Worker/client rebuild.
     "streamCallPilotPercent",
+    // [MESSENGER-CALL-BILLING-FOUNDATION] Messenger prices, allowance and
+    // reservation/tick controls. Every numeric config key must be listed here
+    // or flags.sh rejects a valid remote override as bad type.
+    "messengerAudioFreeParticipantSecondsDaily",
+    "messengerAudioPaidCentitokensPerParticipantMinute",
+    "messengerVideoSdCentitokensPerParticipantMinute",
+    "messengerVideoHdCentitokensPerParticipantMinute",
+    "messengerVideo2kCentitokensPerParticipantMinute",
+    "messengerVideo4kCentitokensPerParticipantMinute",
+    "messengerCallReservationWallSeconds",
+    "messengerCallLowBalanceWarningWallSeconds",
+    "messengerCallUsageTickSeconds",
+    "messengerCallPriceVersion",
     // [STREAM-GATE-1 2026-08-21] Legacy-dial build floor — numeric, must be here
     // or `flags.sh set callMinBuild=10620` 400s `bad type`, and the one knob the
     // whole "update required" cutover depends on would be untunable.
@@ -2216,7 +2344,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // `flags.sh set veniceImageTokens=3` 400s `bad type`. (`veniceMediaEnabled`
     // is a BOOLEAN — not listed.)
     "veniceImageTokens", "veniceMusicTokens", "veniceVideoTokens",
+    // AVACALLS / Virtual Numbers pricing and per-account cap.
+    "avaCallsPstnTokensPerMinute", "avaCallsPstnMinRunwayMinutes",
+    "virtualNumberFreeMaxPerAccount", "virtualNumberDidMonthlyTokens",
   ]);
+  const stringKeys = new Set(["virtualNumberPrimaryProvider"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if ((k === "paidCalls" || k === "conferenceBillingEnabled") && v !== false) {
@@ -2225,8 +2357,24 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     if (k === "conferenceVideoTokensPerHour" && v !== 0) {
       return json({ error: "conferenceVideoTokensPerHour is retired; pooled participant billing owns rates" }, 409);
     }
-    if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
+    if (numericKeys.has(k) ? typeof v !== "number" : stringKeys.has(k) ? typeof v !== "string" : typeof v !== "boolean") {
       return json({ error: `bad type for ${k}` }, 400);
+    }
+    if (k.startsWith("messenger") && numericKeys.has(k) && (!Number.isFinite(v as number) || (v as number) < 0)) {
+      return json({ error: `${k} must be a non-negative finite number` }, 400);
+    }
+    if (k.startsWith("commercial") && numericKeys.has(k)
+      && (!Number.isFinite(v as number) || (v as number) < 0)) {
+      return json({ error: `${k} must be a non-negative finite number` }, 400);
+    }
+    if (k === "commercialCreatorFeePct" && (v as number) > 100) {
+      return json({ error: "commercialCreatorFeePct must be between 0 and 100" }, 400);
+    }
+    if (k === "messengerCallPriceVersion" && (v as number) < 1) {
+      return json({ error: "messengerCallPriceVersion must be >= 1" }, 400);
+    }
+    if (k === "virtualNumberPrimaryProvider" && v !== "vobiz" && v !== "frejun") {
+      return json({ error: "virtualNumberPrimaryProvider must be vobiz or frejun" }, 400);
     }
     next[k] = v;
   }

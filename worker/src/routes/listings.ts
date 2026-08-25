@@ -75,6 +75,18 @@ async function marketplacePublishOn(env: Env): Promise<boolean> {
   } catch { return false; }
 }
 
+// Once a commercial service lane is enabled, the legacy booking endpoint must
+// not be able to create an order that has no commercial entitlement or policy
+// snapshot. Keep the old booking behavior intact while that lane is dark.
+async function commercialBookingLaneOn(env: Env, kind: string): Promise<boolean | null> {
+  try {
+    const cfg = await readConfig(env);
+    return kind === "live_event"
+      ? cfg.commercialLiveListingsEnabled === true
+      : kind === "consult" && cfg.commercialConsultListingsEnabled === true;
+  } catch { return null; }
+}
+
 function marketplaceOff(): Response {
   return json({
     error: "marketplace_publish_disabled",
@@ -172,6 +184,54 @@ function encodeAttrs(v: unknown): { json: string | null; error?: string } {
     return { json: null, error: `attrs too large (${bytes} bytes; max ${ATTRS_MAX_BYTES})` };
   }
   return { json: s };
+}
+
+const COMMERCIAL_REFUND_WINDOWS = new Set([0, 12, 24, 48]);
+const COMMERCIAL_BOOKING_NOTICE_HOURS = new Set([1, 2, 6, 24]);
+
+/** Creator-selected display policy is still server-bounded before storage.
+ * Checkout later freezes these validated values into an immutable snapshot;
+ * clients cannot invent extra commercial_* authority inside generic attrs. */
+function commercialPolicyError(kind: string, raw: unknown): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const attrs = raw as Record<string, unknown>;
+  const commercialKeys = Object.keys(attrs).filter((k) => k.startsWith("commercial_"));
+  if (!commercialKeys.length) return null;
+  const liveKeys = new Set(["commercial_refund_window_hours"]);
+  const consultKeys = new Set([
+    "commercial_cancellation_window_hours",
+    "commercial_reschedule_allowed",
+    "commercial_booking_notice_hours",
+    "commercial_preparation_instructions",
+    "commercial_no_show_policy",
+  ]);
+  const allowed = kind === "live_event" ? liveKeys : kind === "consult" ? consultKeys : new Set<string>();
+  if (commercialKeys.some((k) => !allowed.has(k))) return "unsupported commercial policy field";
+  if (kind === "live_event") {
+    if (!COMMERCIAL_REFUND_WINDOWS.has(Number(attrs.commercial_refund_window_hours))) {
+      return "commercial refund deadline must be 0, 12, 24 or 48 hours";
+    }
+    return null;
+  }
+  if (kind === "consult") {
+    if (!COMMERCIAL_REFUND_WINDOWS.has(Number(attrs.commercial_cancellation_window_hours))) {
+      return "commercial cancellation deadline must be 0, 12, 24 or 48 hours";
+    }
+    if (!COMMERCIAL_BOOKING_NOTICE_HOURS.has(Number(attrs.commercial_booking_notice_hours))) {
+      return "commercial booking notice must be 1, 2, 6 or 24 hours";
+    }
+    if (typeof attrs.commercial_reschedule_allowed !== "boolean") {
+      return "commercial reschedule setting must be boolean";
+    }
+    if (attrs.commercial_no_show_policy !== "session_charged") {
+      return "unsupported commercial no-show policy";
+    }
+    const preparation = attrs.commercial_preparation_instructions;
+    if (typeof preparation !== "string" || preparation.length > 600) {
+      return "commercial preparation instructions must be at most 600 characters";
+    }
+  }
+  return null;
 }
 
 /** The version triple a listing born RIGHT NOW would pin (§2.4), or null when the
@@ -564,6 +624,8 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   if (b.attrs !== undefined) {
     const enc = encodeAttrs(b.attrs);
     if (enc.error) return json({ ok: false, error: enc.error, message: enc.error, field: "attrs" }, 422);
+    const policyError = commercialPolicyError(kind, b.attrs);
+    if (policyError) return json({ ok: false, error: policyError, message: policyError, field: "attrs" }, 422);
   }
   const blocked = await guardWrite(req, env, ctx.uid, APP, [
     { text: f.title as string | undefined, field: "listing_title" },
@@ -660,6 +722,8 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   if (b.attrs !== undefined) {
     const enc = encodeAttrs(b.attrs);
     if (enc.error) return json({ ok: false, error: enc.error, message: enc.error, field: "attrs" }, 422);
+    const policyError = commercialPolicyError(String(row.kind), b.attrs);
+    if (policyError) return json({ ok: false, error: policyError, message: policyError, field: "attrs" }, 422);
     // A category change in the same PUT validates against the NEW category — still at
     // the pinned cat_version, because re-pinning is an explicit admin migration (§2.4),
     // never a side effect of a seller edit.
@@ -1263,6 +1327,19 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   if (uid) {
     following = !!(await metaDb(env).prepare("SELECT 1 FROM creator_follows WHERE follower_id=?1 AND creator_id=?2").bind(uid, r.creator_id).first());
     booked = !!(await metaDb(env).prepare("SELECT 1 FROM bookings WHERE listing_id=?1 AND buyer_id=?2 AND status IN ('confirmed','completed')").bind(id, uid).first());
+    // Commercial live tickets are account-bound entitlements, not rows in the
+    // legacy bookings table. Keep the detail CTA aligned with the same
+    // server admission authority used by the GetStream join route.
+    if (!booked && r.kind === "live_event") {
+      try {
+        booked = !!(await metaDb(env).prepare(
+          "SELECT 1 FROM commercial_entitlements WHERE kind='live_event' AND listing_id=?1 AND account_id=?2 AND role='viewer' AND state IN ('reserved','held','active','consumed')",
+        ).bind(id, uid).first());
+      } catch (_) {
+        // Before the commercial migration lands, fail closed and leave the
+        // normal checkout CTA visible rather than granting access.
+      }
+    }
   }
   // Creator analytics: log non-owner detail views (D1 dashboard + PostHog mirror).
   if (!isOwner && ["published", "live"].includes(String(r.status))) {
@@ -1556,6 +1633,16 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || !["published", "live"].includes(l.status)) return json({ error: "listing not available" }, 404);
   if (l.creator_id === ctx.uid) return json({ error: "cannot book your own listing" }, 400);
+  if (l.kind === "live_event" || l.kind === "consult") {
+    const commercialOn = await commercialBookingLaneOn(env, String(l.kind));
+    if (commercialOn === null) return json({ error: "commercial configuration unavailable" }, 503);
+    if (commercialOn) {
+      return json({
+        error: "commercial_checkout_required",
+        message: "This service must be purchased through commercial checkout.",
+      }, 409);
+    }
+  }
   // Phase 7 A5 — creator block list: a blocked buyer cannot book this creator.
   {
     const blocked = await db.prepare("SELECT 1 FROM blocks WHERE uid=?1 AND blocked_uid=?2").bind(l.creator_id, ctx.uid).first().catch(() => null);

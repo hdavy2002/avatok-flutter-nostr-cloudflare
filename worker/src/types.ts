@@ -96,6 +96,9 @@ export interface Env {
   USER_BRAIN: DurableObjectNamespace;
   // Durable Object — per-user atomic coin balance (Phase 2)
   WALLET_DO: DurableObjectNamespace;
+  // Durable Object — one fail-closed connected-time authority per Messenger
+  // authorization. Dark until messengerCallBillingEnabled is explicitly on.
+  MESSENGER_CALL_BILLING: DurableObjectNamespace;
   // Durable Object — per-stream gift aggregation (Phase 2)
   STREAM_SESSION_DO: DurableObjectNamespace;
   // Durable Object — per-user agent coordinator (rate-limit + neuron budget, Phase 7)

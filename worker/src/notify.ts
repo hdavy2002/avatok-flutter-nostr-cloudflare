@@ -13,13 +13,19 @@ export interface Notice {
 }
 
 export async function notifyUser(
-  env: Env, uid: string, n: Notice, opts?: { push?: boolean },
+  env: Env, uid: string, n: Notice, opts?: { push?: boolean; id?: string },
 ): Promise<string> {
-  const id = crypto.randomUUID();
+  // Commercial events pass a deterministic id so queue retries cannot create a
+  // second feed row (or a second push). Legacy callers keep UUID semantics.
+  const id = opts?.id ?? crypto.randomUUID();
   const now = Date.now();
-  await metaDb(env).prepare(
-    "INSERT INTO notifications (id, uid, type, title, body, data, read, created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",
+  const inserted = await metaDb(env).prepare(
+    "INSERT OR IGNORE INTO notifications (id, uid, type, title, body, data, read, created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",
   ).bind(id, uid, n.type, n.title, n.body ?? null, n.data ? JSON.stringify(n.data) : null, now).run();
+
+  // INSERT OR IGNORE reports zero changes for a replay. Do not enqueue another
+  // FCM wake for an already persisted event.
+  if (Number(inserted.meta?.changes ?? 1) === 0) return id;
 
   // The in-app feed (D1, above) always records the alert. The FCM WAKE is
   // OPTIONAL: agent↔agent (marketplace) results are delivered over the live

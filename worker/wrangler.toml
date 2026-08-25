@@ -385,6 +385,12 @@ class_name = "UserBrain"
 name = "WALLET_DO"
 class_name = "WalletDO"
 
+# Per-authorization Messenger connected-time authority. Dark until the
+# Messenger billing master flag is explicitly enabled.
+[[durable_objects.bindings]]
+name = "MESSENGER_CALL_BILLING"
+class_name = "MessengerCallBillingDO"
+
 # Per-stream gift aggregation (AvaLive). Batches gifts, settles to creator WalletDO.
 [[durable_objects.bindings]]
 name = "STREAM_SESSION_DO"
@@ -620,6 +626,10 @@ new_sqlite_classes = ["VoicemailStreamRoom"]
 [[migrations]]
 tag = "v22"
 new_sqlite_classes = ["ConferenceRoomDO"]
+
+[[migrations]]
+tag = "v23"
+new_sqlite_classes = ["MessengerCallBillingDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -908,6 +918,10 @@ name = "WALLET_DO"
 class_name = "WalletDO"
 
 [[env.staging.durable_objects.bindings]]
+name = "MESSENGER_CALL_BILLING"
+class_name = "MessengerCallBillingDO"
+
+[[env.staging.durable_objects.bindings]]
 name = "STREAM_SESSION_DO"
 class_name = "StreamSessionDO"
 
@@ -1086,3 +1100,7 @@ new_sqlite_classes = ["VoicemailStreamRoom"]
 [[env.staging.migrations]]
 tag = "v22"
 new_sqlite_classes = ["ConferenceRoomDO"]
+
+[[env.staging.migrations]]
+tag = "v23"
+new_sqlite_classes = ["MessengerCallBillingDO"]

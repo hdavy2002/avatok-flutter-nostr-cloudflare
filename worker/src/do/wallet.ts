@@ -86,6 +86,11 @@ import {
   computeHumanCallUsage,
   HUMAN_CALL_FREE_PARTICIPANT_SECONDS,
 } from "../lib/human_call_usage_math";
+import {
+  computeCallerFundedTick,
+  type MessengerMedia,
+  type MessengerQualitySku,
+} from "../lib/messenger_call_billing";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
 const OPS_TTL_MS = 48 * 3_600_000; // generic dedupe window for op_id replays
@@ -268,6 +273,16 @@ export class WalletDO {
       "CREATE TABLE IF NOT EXISTS human_call_credit (k INTEGER PRIMARY KEY, centitoken_seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)",
     );
     this.sql.exec("INSERT OR IGNORE INTO human_call_credit (k, centitoken_seconds, updated_at) VALUES (1,0,0)");
+    // [MESSENGER-CALL-BILLING-FOUNDATION] Separate daily allowance and
+    // fractional paid-time state. Never reuse human_call_usage/credit: those
+    // tables implement the superseded monthly, per-seat human-call product.
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS messenger_audio_daily_usage (day TEXT PRIMARY KEY, participant_seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)",
+    );
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS messenger_call_credit (k INTEGER PRIMARY KEY, centitoken_seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)",
+    );
+    this.sql.exec("INSERT OR IGNORE INTO messenger_call_credit (k, centitoken_seconds, updated_at) VALUES (1,0,0)");
     // [AVA-CAMP-B1-WALLET] Escrow reservations, keyed by caller-supplied `ref`
     // (e.g. campaign_call_attempts.attempt_uuid). Brand-new table, additive only
     // — does not touch `bal`/`acct`/`holds`/`ops`.
@@ -419,6 +434,7 @@ export class WalletDO {
       body.op === "ai_budget_release" || body.op === "ai_unrecovered_reserve" ||
       body.op === "ai_unrecovered_settle" || body.op === "ai_unrecovered_release" // [AI-BUDGET-AUTH-1]
       || body.op === "call_usage_consume" // [HUMAN-CALL-POOL-1]
+      || body.op === "messenger_call_usage_consume" // [MESSENGER-CALL-BILLING-FOUNDATION]
     ) {
       const dup = this.seenOp(body.op_id);
       if (dup) return dup;
@@ -449,6 +465,9 @@ export class WalletDO {
       case "ai_unrecovered_release": return this.aiUnrecoveredRelease(body);
       case "clear_ai_remainder": return this.clearAiRemainder(uid, body);
       case "call_usage_consume": return this.consumeHumanCallUsage(uid, body);
+      case "messenger_call_usage_consume": return this.consumeMessengerCallUsage(uid, body);
+      case "messenger_call_usage_status": return this.messengerCallUsageStatus(uid, body);
+      case "messenger_call_reservation_status": return this.messengerCallReservationStatus(uid, body);
       default: return json({ error: "unknown op" }, 400);
     }
   }
@@ -700,6 +719,248 @@ export class WalletDO {
     return json(result);
   }
 
+  /**
+   * [MESSENGER-CALL-BILLING-FOUNDATION] Atomic caller-funded Messenger tick.
+   *
+   * This operation is separate from consumeHumanCallUsage(): the latter is
+   * the dark legacy monthly/per-seat meter. This operation owns one payer's
+   * daily audio allowance, fractional paid remainder, and caller-only token
+   * debit in one serialized WalletDO transaction. The callee is never accepted
+   * as a payer input. A future call authority must provide the frozen rate and
+   * price version from its authorization record.
+   */
+  private async consumeMessengerCallUsage(uid: string, b: any): Promise<Response> {
+    if (b.payer_uid !== undefined || b.callee_uid !== undefined) {
+      return json({ error: "payer and callee wallet identities are authority-bound" }, 400);
+    }
+    let enabled = false;
+    try { enabled = (await readConfig(this.env)).messengerCallBillingEnabled === true; } catch {
+      return json({ ok: false, metered: false, disconnect: false, reason: "config_unavailable" }, 503);
+    }
+    if (!enabled) {
+      const result = { ok: false, metered: false, disconnect: false, reason: "feature_disabled" };
+      this.recordOp(b.op_id, result);
+      return json(result, 409);
+    }
+
+    const opId = typeof b.op_id === "string" ? b.op_id : "";
+    const callId = typeof b.call_id === "string" ? b.call_id : "";
+    const authorizationId = typeof b.authorization_id === "string" ? b.authorization_id : "";
+    const day = typeof b.day === "string" ? b.day : "";
+    const media = b.media === "audio" || b.media === "video" ? b.media as MessengerMedia : null;
+    const quality = typeof b.quality_sku === "string" ? b.quality_sku as MessengerQualitySku : null;
+    const wallSeconds = Math.trunc(Number(b.wall_seconds));
+    const rate = Math.trunc(Number(b.rate_centitokens_per_participant_minute));
+    const dailyAllowance = Math.trunc(Number(b.daily_audio_allowance_participant_seconds));
+    const priceVersion = Math.trunc(Number(b.price_version));
+    if (!opId || opId.length > 256 || !callId || callId.length > 256 || !authorizationId || authorizationId.length > 256) {
+      return json({ error: "op_id, call_id and authorization_id are required" }, 400);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: "day must be YYYY-MM-DD" }, 400);
+    if (!media || !quality) return json({ error: "media and quality_sku are required" }, 400);
+    if ((media === "audio" && quality !== "audio") || (media === "video" && !["video_sd", "video_hd", "video_2k", "video_4k"].includes(quality))) {
+      return json({ error: "media and quality_sku mismatch" }, 400);
+    }
+    if (!Number.isInteger(wallSeconds) || wallSeconds < 1 || wallSeconds > 86_400) {
+      return json({ error: "wall_seconds must be 1..86400" }, 400);
+    }
+    if (!Number.isInteger(rate) || rate < 0 || !Number.isInteger(dailyAllowance) || dailyAllowance < 0 || !Number.isInteger(priceVersion) || priceVersion < 1) {
+      return json({ error: "invalid frozen Messenger billing contract" }, 400);
+    }
+    if (typeof b.allow_free !== "boolean") return json({ error: "allow_free boolean required" }, 400);
+    const reservationRef = typeof b.reservation_ref === "string" && b.reservation_ref.length > 0
+      ? b.reservation_ref : null;
+
+    const usageRow = this.sql.exec(
+      "SELECT participant_seconds FROM messenger_audio_daily_usage WHERE day=?1", day,
+    ).toArray()[0] as any;
+    const priorDaily = Math.max(0, Number(usageRow?.participant_seconds ?? 0));
+    const creditRow = this.sql.exec(
+      "SELECT centitoken_seconds FROM messenger_call_credit WHERE k=1",
+    ).one() as any;
+    const priorCredit = Math.max(0, Number(creditRow?.centitoken_seconds ?? 0));
+
+    // Cloudflare is the free-audio provider only. Its frozen rate is zero and
+    // it must stop at the daily allowance boundary rather than falling into a
+    // paid Cloudflare suffix. Keep this branch separate from the paid
+    // calculator so a zero rate can never be interpreted as free overage.
+    if (media === "audio" && rate === 0) {
+      const participantSeconds = wallSeconds * 2;
+      const freeParticipantSeconds = Math.min(participantSeconds, Math.max(0, dailyAllowance - priorDaily));
+      const paidParticipantSeconds = participantSeconds - freeParticipantSeconds;
+      const now = Date.now();
+      if (freeParticipantSeconds > 0) {
+        this.sql.exec(
+          "INSERT INTO messenger_audio_daily_usage (day, participant_seconds, updated_at) VALUES (?1,?2,?3) " +
+          "ON CONFLICT(day) DO UPDATE SET participant_seconds=participant_seconds+excluded.participant_seconds, updated_at=excluded.updated_at",
+          day, freeParticipantSeconds, now,
+        );
+      }
+      const base = {
+        metered: true, exhausted: paidParticipantSeconds > 0,
+        participant_seconds: freeParticipantSeconds,
+        daily_allowance_participant_seconds_total: priorDaily + freeParticipantSeconds,
+        free_participant_seconds: freeParticipantSeconds,
+        paid_participant_seconds_denied: paidParticipantSeconds,
+        daily_audio_allowance_remaining: Math.max(0, dailyAllowance - priorDaily - freeParticipantSeconds),
+        tokens_due: 0, available: 0, reservation_required: false, reservation_remaining: 0,
+        call_id: callId, authorization_id: authorizationId, day, price_version: priceVersion,
+      };
+      if (paidParticipantSeconds > 0) {
+        const result = { ok: false, ...base, disconnect: true, reason: "free_allowance_exhausted", error: "free audio allowance exhausted" };
+        this.recordOp(opId, result);
+        return json(result, 402);
+      }
+      const result = { ok: true, ...base, disconnect: false, paid_participant_seconds: 0, charged_centitoken_seconds: 0, tokens_charged: 0 };
+      this.recordOp(opId, result);
+      return json(result);
+    }
+
+    let math;
+    try {
+      math = computeCallerFundedTick({
+        priorDailyParticipantSeconds: priorDaily,
+        priorCentitokenSeconds: priorCredit,
+        wallSeconds,
+        participantCount: 2,
+        dailyAudioAllowanceParticipantSeconds: dailyAllowance,
+        media,
+        rateCentitokensPerParticipantMinute: rate,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "invalid Messenger billing contract";
+      const code = message.includes("non-zero rate") ? "pricing_unavailable" : "invalid_billing_contract";
+      return json({ ok: false, metered: false, disconnect: false, reason: code, error: message }, 409);
+    }
+
+    const a = this.acct();
+    const cur = this.bal();
+    const tokensDue = math.tokensToFund;
+    // Paid connected time is admissible only against the reservation created
+    // by authorization. A stale balance read or an unreserved direct tick must
+    // never turn an insufficient-boundary result into billable paid seconds.
+    const reservation = reservationRef ? this.getResv(reservationRef) : null;
+    const reservationRemaining = reservation && !reservation.released
+      ? Math.max(0, reservation.reserved) : 0;
+    const available = Math.min(cur.balance, reservationRemaining);
+    if (tokensDue > 0 && (!reservationRef || !reservation || reservation.released || reservation.allow_free !== 0 || tokensDue > available)) {
+      if (math.freeParticipantSeconds > 0) {
+        this.sql.exec(
+          "INSERT INTO messenger_audio_daily_usage (day, participant_seconds, updated_at) VALUES (?1,?2,?3) " +
+          "ON CONFLICT(day) DO UPDATE SET participant_seconds=participant_seconds+excluded.participant_seconds, updated_at=excluded.updated_at",
+          day, math.freeParticipantSeconds, Date.now(),
+        );
+      }
+      const result = {
+        ok: false, metered: true, disconnect: true, exhausted: true,
+        reason: !reservationRef ? "reservation_required" : "insufficient_balance",
+        error: !reservationRef ? "paid time requires an active caller reservation" : "insufficient_balance",
+        participant_seconds: math.participantSeconds,
+        daily_allowance_participant_seconds_total: math.dailyAllowanceParticipantSecondsTotal,
+        free_participant_seconds: math.freeParticipantSeconds,
+        paid_participant_seconds_denied: math.paidParticipantSeconds,
+        daily_audio_allowance_remaining: math.dailyAudioAllowanceRemaining,
+        tokens_due: tokensDue, available,
+        reservation_required: !reservationRef,
+        reservation_remaining: reservationRemaining,
+      };
+      this.recordOp(opId, result);
+      return json(result, 402);
+    }
+
+    const freeUsed = tokensDue > 0 ? 0 : (b.allow_free ? Math.min(a.free, tokensDue) : 0);
+    const bonusUsed = tokensDue > 0 ? 0 : (b.allow_free ? Math.min(a.bonus, tokensDue - freeUsed) : 0);
+    const paidUsed = tokensDue - freeUsed - bonusUsed;
+    if (freeUsed > 0) this.sql.exec("UPDATE acct SET free=free-?1 WHERE k=1", freeUsed);
+    if (bonusUsed > 0) this.sql.exec("UPDATE acct SET bonus=bonus-?1 WHERE k=1", bonusUsed);
+    if (paidUsed > 0) this.setBal(cur.balance - paidUsed, cur.held);
+    if (paidUsed > 0 && reservationRef) {
+      this.sql.exec(
+        "UPDATE resv SET reserved=reserved-?1, spent=spent+?1, updated_at=?2 WHERE ref=?3 AND released=0 AND reserved>=?1",
+        paidUsed, Date.now(), reservationRef,
+      );
+    }
+
+    const now = Date.now();
+    if (math.freeParticipantSeconds > 0) {
+      this.sql.exec(
+        "INSERT INTO messenger_audio_daily_usage (day, participant_seconds, updated_at) VALUES (?1,?2,?3) " +
+        "ON CONFLICT(day) DO UPDATE SET participant_seconds=participant_seconds+excluded.participant_seconds, updated_at=excluded.updated_at",
+        day, math.freeParticipantSeconds, now,
+      );
+    }
+    this.sql.exec(
+      "UPDATE messenger_call_credit SET centitoken_seconds=?1, updated_at=?2 WHERE k=1",
+      math.centitokenSecondsRemainder, now,
+    );
+    const result = {
+      ok: true, metered: true, disconnect: false,
+      participant_seconds: math.participantSeconds,
+      daily_allowance_participant_seconds_total: math.dailyAllowanceParticipantSecondsTotal,
+      free_participant_seconds: math.freeParticipantSeconds,
+      paid_participant_seconds: math.paidParticipantSeconds,
+      charged_centitoken_seconds: math.chargedCentitokenSeconds,
+      daily_audio_allowance_remaining: math.dailyAudioAllowanceRemaining,
+      tokens_charged: tokensDue, free_used: freeUsed, bonus_used: bonusUsed, paid_used: paidUsed,
+      centitoken_seconds_remainder: math.centitokenSecondsRemainder,
+      call_id: callId, authorization_id: authorizationId, day, price_version: priceVersion,
+      reservation_ref: reservationRef,
+      reservation_remaining: reservationRef ? Math.max(0, Number(this.getResv(reservationRef)?.reserved ?? 0)) : 0,
+    };
+    this.recordOp(opId, result);
+    if (tokensDue > 0) {
+      await this.audit(uid, {
+        type: "messenger_call_overage", amount: -tokensDue,
+        balance_after: this.snap().spendable, app_name: "messenger_call",
+        ref: `messenger-call:${authorizationId}`, context: quality,
+        duration_sec: wallSeconds, rate_per_min: rate / 100,
+      }, b);
+      this.broadcast();
+    }
+    return json(result);
+  }
+
+  /** Read-only caller-owned daily allowance state; no callee identity accepted. */
+  private async messengerCallUsageStatus(uid: string, b: any): Promise<Response> {
+    if (b.payer_uid !== undefined || b.callee_uid !== undefined) {
+      return json({ error: "payer and callee wallet identities are authority-bound" }, 400);
+    }
+    const day = typeof b.day === "string" ? b.day : "";
+    const allowance = Math.trunc(Number(b.daily_audio_allowance_participant_seconds));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isInteger(allowance) || allowance < 0) {
+      return json({ error: "valid day and allowance are required" }, 400);
+    }
+    const row = this.sql.exec("SELECT participant_seconds FROM messenger_audio_daily_usage WHERE day=?1", day).one() as any;
+    const used = Math.max(0, Number(row?.participant_seconds ?? 0));
+    const balance = this.snap();
+    return json({
+      ok: true, uid, day,
+      daily_audio_allowance_participant_seconds: allowance,
+      daily_allowance_participant_seconds_used: used,
+      daily_audio_allowance_remaining: Math.max(0, allowance - used),
+      spendable_tokens: balance.spendable,
+    });
+  }
+
+  /** Read-only reservation state for the Messenger billing authority. The
+   * WalletDO remains the sole source of reserved capacity and spendable funds;
+   * no client-provided payer/callee identity is accepted. */
+  private async messengerCallReservationStatus(uid: string, b: any): Promise<Response> {
+    if (b.payer_uid !== undefined || b.callee_uid !== undefined) {
+      return json({ error: "payer and callee wallet identities are authority-bound" }, 400);
+    }
+    const ref = typeof b.reservation_ref === "string" ? b.reservation_ref.trim() : "";
+    if (!ref || ref.length > 256) return json({ error: "reservation_ref required" }, 400);
+    const row = this.getResv(ref);
+    const balance = this.snap();
+    if (!row) return json({ ok: false, error: "reservation_not_found", ref, spendable_tokens: balance.spendable }, 404);
+    return json({
+      ok: true, uid, ref, released: row.released !== 0,
+      reserved_tokens: Math.max(0, row.reserved), spent_tokens: Math.max(0, row.spent),
+      expires_at: row.expires_at, spendable_tokens: balance.spendable,
+    });
+  }
+
   // Earn into a 7-day hold (not spendable until matured). commission already deducted
   // by the caller; `amount` is the net credited to the creator.
   private async earn(uid: string, b: any): Promise<Response> {
@@ -708,7 +969,16 @@ export class WalletDO {
     const cur = this.bal();
     const held = cur.held + amount;
     this.setBal(cur.balance, held);
-    const availableAt = Date.now() + HOLD_MS;
+    // Commercial marketplace settlements may snapshot a different payout hold
+    // at checkout. Existing callers omit hold_hours and retain the legacy
+    // seven-day hold byte-for-byte.
+    const requestedHoldHours = Number(b.hold_hours);
+    const holdMs = Number.isFinite(requestedHoldHours)
+      && requestedHoldHours >= 0
+      && requestedHoldHours <= 365 * 24
+      ? Math.trunc(requestedHoldHours * 3_600_000)
+      : HOLD_MS;
+    const availableAt = Date.now() + holdMs;
     const id = crypto.randomUUID();
     this.sql.exec("INSERT INTO holds (id, amount, available_at, released) VALUES (?1,?2,?3,0)", id, amount, availableAt);
     await this.state.storage.setAlarm(availableAt);

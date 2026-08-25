@@ -7,11 +7,34 @@
 // has been removed — the Flutter app signs NIP-98 and calls /api/*.
 import type { Env } from "./types";
 import { json, preflight } from "./util";
+import { requireUser, isFail } from "./authz";
 import * as api from "./routes/api";
 import { uploadPublic, uploadPrivate, mediaCommit, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce, privateMediaRead, sweepAvaReadableCopies } from "./routes/media";
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { streamVideoToken, streamVideoPrepare, streamVideoWebhook, streamCallPlace, streamCallCancel } from "./routes/stream_video_calls";
+import {
+  commercialLiveJoin,
+  commercialConsultPrejoin,
+  commercialConsultJoin,
+  commercialLivePrepareHost,
+  commercialLiveGoLive,
+  commercialLiveEnd,
+  commercialConsultEnd,
+  commercialConsultState,
+  commercialConsultExtensionQuote,
+  commercialConsultExtensionConfirm,
+  commercialLiveState,
+  commercialReceipt,
+  commercialRefundReceipt,
+  commercialSessionsMine,
+  reconcileCommercialSessions,
+} from "./routes/commercial_stream_sessions";
+import { commercialCheckout } from "./routes/commercial_checkout";
+import { commercialLifecycle } from "./routes/commercial_lifecycle";
+import { commercialDiagnostics, scanCommercialHealth } from "./routes/commercial_diagnostics";
+import { runCommercialSettlements } from "./commercial_settlement";
+import { messengerCallAuthorize, messengerCallPricing, messengerCallReceipt, messengerCallBillingStatus, cancelMessengerCallAuthorization } from "./routes/messenger_call_billing";
 import { brain } from "./routes/brain";
 import { brainDomains } from "./routes/brain_domains";
 import { brainMediaPrepare, brainMediaComplete, brainMediaStatus, brainMediaDelete } from "./routes/brain_media"; // [AVABRAIN-MEDIA-1]
@@ -80,6 +103,8 @@ import { getConfig, putConfig, readConfig } from "./routes/config";
 import { createConversation, listConversations, getParticipants } from "./routes/conversations2";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
+import { virtualLinesRoute } from "./routes/virtual_lines";
+import { avacallsResolve } from "./routes/avacalls";
 import * as keybk from "./routes/keybackup";
 import * as cbook from "./routes/contacts_backup";
 import * as team from "./routes/team";
@@ -238,6 +263,7 @@ export { SentinelDO } from "./sentinel/do"; // Guardian Sentinel S1 hot-cache DO
 export { PartyDO } from "./do/party"; // PartyKit realtime layer (ephemeral; replaces Ably)
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";
+export { MessengerCallBillingDO } from "./do/messenger_call_billing";
 export { StreamSessionDO } from "./do/stream_session";
 export { AgentDO } from "./do/agent";
 export { ConversationDO } from "./do/conversation";
@@ -369,6 +395,18 @@ export default {
         sweepAvaReadableCopies(env)
           .then((n) => { if (n) console.log("[ava-readable-cleanup]", n); })
           .catch((e) => { console.error("[ava-readable-cleanup] failed:", String(e)); }),
+        reconcileCommercialSessions(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-reconciliation]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-reconciliation] failed:", String(e)); }),
+        runCommercialSettlements(env)
+          .then((r) => { if (r.scanned) console.log("[commercial-settlement]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[commercial-settlement] failed:", String(e)); }),
+        scanCommercialHealth(env)
+          .then((r) => {
+            const warnings = r.alarms.filter((alarm) => alarm.state === "warning");
+            if (warnings.length) console.log("[commercial-health]", JSON.stringify({ checked_at: r.checked_at, warnings }));
+          })
+          .catch((e) => { console.error("[commercial-health] failed:", String(e)); }),
       ]),
     );
   },
@@ -401,6 +439,23 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
+
+    // Messenger Phase 1 billing authority. These endpoints are mounted for
+    // client contract testing, but the master flag in config.ts remains dark;
+    // authorization/pricing therefore fail closed until the two-account gate.
+    if (p === "/api/messenger-calls/authorize" && req.method === "POST") return await messengerCallAuthorize(req, env);
+    if (p === "/api/messenger-calls/pricing" && req.method === "GET") return await messengerCallPricing(req, env);
+    if (p === "/api/messenger-calls/status" && req.method === "GET") return await messengerCallBillingStatus(req, env);
+    if (p === "/api/messenger-calls/receipt" && req.method === "GET") return await messengerCallReceipt(req, env);
+    if (p === "/api/messenger-calls/cancel" && req.method === "POST") {
+      const auth = await requireUser(req, env);
+      if (isFail(auth)) return json({ error: auth.error }, auth.status);
+      const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+      const authorizationId = typeof body?.authorization_id === "string" ? body.authorization_id : "";
+      if (!authorizationId) return json({ error: "authorization_id required" }, 400);
+      const cancelled = await cancelMessengerCallAuthorization(env, auth.uid, authorizationId, "caller_cancelled");
+      return json({ cancelled }, cancelled ? 200 : 404);
+    }
 
     // [DYNW-CORE-1] Dynamic Workers Phase 0 acceptance battery (admin-only; 403s
     // unless dynamicWorkersEnabled — dark in prod, exercised on staging).
@@ -825,6 +880,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/number/private" && req.method === "POST") return await num.privateNumberSet(req, env);
       if (p === "/api/add" && req.method === "GET") return await cached(req, ctx, () => num.addResolve(req, env), 30);
 
+      // AvaCalls universal classifier and Virtual Numbers multi-line domain.
+      // These are separate from the legacy singular AvaTOK number routes above.
+      if (p === "/api/avacalls/resolve" && req.method === "POST") return await avacallsResolve(req, env);
+      if (p === "/api/virtual-lines" || p.startsWith("/api/virtual-lines/")) return await virtualLinesRoute(req, env, p);
+
       // --- Team Receptionist (IVR / auto-attendant; Specs/TEAM-RECEPTIONIST-IVR-SPEC.md) ---
       if (p === "/api/team" && req.method === "POST") return await team.teamCreate(req, env);
       if (p === "/api/team" && req.method === "GET") return await team.teamGet(req, env);
@@ -1109,6 +1169,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/refund" && req.method === "POST") return await adminRefund(req, env);
       if (p === "/api/admin/adjust" && req.method === "POST") return await adminAdjust(req, env);
       if (p === "/api/admin/recon" && req.method === "GET") return await adminRecon(req, env);
+      if (p === "/api/admin/commercial/diagnostics" && req.method === "GET") return await commercialDiagnostics(req, env);
       if (p === "/api/admin/tax-export" && req.method === "GET") return await adminTaxExport(req, env);
       if (p === "/api/admin/escrow/hold" && req.method === "POST") return await adminEscrowHold(req, env);
       if (p === "/api/admin/escrow/release" && req.method === "POST") return await adminEscrowRelease(req, env);
@@ -1320,6 +1381,58 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // happen at all and mints the call id. See plan §8.1.
       if (p === "/api/stream-calls/place" && req.method === "POST") return await streamCallPlace(req, env, ctx);
       if (p === "/api/stream-calls/cancel" && req.method === "POST") return await streamCallCancel(req, env);
+
+      // --- Phase 2 commercial GetStream lane (independent, all flags dark) ---
+      if (/^\/api\/commercial\/(live|consult)\/[A-Za-z0-9-]{1,64}\/checkout$/.test(p) && req.method === "POST") {
+        return await commercialCheckout(req, env);
+      }
+      if (/^\/api\/commercial\/(live|consult)\/[A-Za-z0-9-]{1,96}\/(cancel|reschedule|calendar)$/.test(p) && req.method === "POST") {
+        return await commercialLifecycle(req, env);
+      }
+      // Commercial live admission returns short-lived GetStream credentials;
+      // POST-only keeps provider tokens out of cacheable GET semantics.
+      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/join$/.test(p) && req.method === "POST") {
+        return await commercialLiveJoin(req, env);
+      }
+      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/prepare-host$/.test(p) && req.method === "POST") {
+        return await commercialLivePrepareHost(req, env);
+      }
+      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/go-live$/.test(p) && req.method === "POST") {
+        return await commercialLiveGoLive(req, env);
+      }
+      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/end$/.test(p) && req.method === "POST") {
+        return await commercialLiveEnd(req, env);
+      }
+      if (/^\/api\/commercial\/live\/[A-Za-z0-9-]{1,64}\/state$/.test(p) && req.method === "GET") {
+        return await commercialLiveState(req, env);
+      }
+      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/prejoin$/.test(p) && req.method === "GET") {
+        return await commercialConsultPrejoin(req, env);
+      }
+      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/join$/.test(p) && req.method === "POST") {
+        return await commercialConsultJoin(req, env);
+      }
+      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/end$/.test(p) && req.method === "POST") {
+        return await commercialConsultEnd(req, env);
+      }
+      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/state$/.test(p) && req.method === "GET") {
+        return await commercialConsultState(req, env);
+      }
+      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/extend\/quote$/.test(p) && req.method === "POST") {
+        return await commercialConsultExtensionQuote(req, env);
+      }
+      if (/^\/api\/commercial\/consult\/[A-Za-z0-9-]{1,64}\/extend\/confirm$/.test(p) && req.method === "POST") {
+        return await commercialConsultExtensionConfirm(req, env);
+      }
+      if (/^\/api\/commercial\/session\/[A-Za-z0-9_:-]{1,160}\/receipt$/.test(p) && req.method === "GET") {
+        return await commercialReceipt(req, env);
+      }
+      if (/^\/api\/commercial\/refund-receipt\/[A-Za-z0-9_:-]{1,160}$/.test(p) && req.method === "GET") {
+        return await commercialRefundReceipt(req, env);
+      }
+      if (p === "/api/commercial/sessions/mine" && req.method === "GET") {
+        return await commercialSessionsMine(req, env);
+      }
 
       // --- Phase 7: AvaLive delivery (Stream Live + interaction room) ---
       {
