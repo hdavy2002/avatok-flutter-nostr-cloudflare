@@ -10,6 +10,7 @@
 //    the guarantee). Self-contained token refresh — reads the same
 //    gcal_accounts rows avatok-api writes.
 import type { Env, EmailMsg } from "./types";
+import { notifyUser } from "./notify";
 
 const GTOKEN = "https://oauth2.googleapis.com/token";
 const GCAL = "https://www.googleapis.com/calendar/v3";
@@ -68,11 +69,11 @@ function reminderHtml(tier: "24h" | "60m", o: { title: string; start: number; ot
 // ---------------------------------------------------------------------------
 type SendEmail = (msg: EmailMsg, env: Env) => Promise<void>;
 
-interface DueBooking { id: string; creator_id: string; buyer_id: string; starts_at: number; title: string | null; }
+interface DueBooking { id: string; creator_id: string; buyer_id: string; listing_id?: string | null; kind?: string | null; starts_at: number; title: string | null; }
 
 async function dueRows(env: Env, flagCol: string, lo: number, hi: number): Promise<DueBooking[]> {
   const rs = await env.DB_META.prepare(
-    `SELECT b.id, b.creator_id, b.buyer_id, b.starts_at,
+    `SELECT b.id, b.creator_id, b.buyer_id, b.listing_id, b.kind, b.starts_at,
             (SELECT title FROM calendar_events e WHERE e.booking_id=b.id LIMIT 1) AS title
        FROM bookings b WHERE b.status='confirmed' AND b.${flagCol}=0 AND b.starts_at>?1 AND b.starts_at<=?2 LIMIT 100`,
   ).bind(lo, hi).all();
@@ -85,21 +86,82 @@ export async function bookingReminderLadder(env: Env, sendEmail: SendEmail): Pro
 
   // T-24h — email "Tomorrow: …" (band 23h..24h; the 15-min cron sweeps it).
   for (const b of await dueRows(env, "reminder24_sent", now + 23 * H, now + 24 * H)) {
-    await remind(env, sendEmail, b, "24h", false);
+    // Commercial sessions use stable account-bound notifications; the legacy
+    // email contains a signed join URL and must not be used for this lane.
+    if (b.kind !== "consult_1to1") await remind(env, sendEmail, b, "24h", false);
     await env.DB_META.prepare("UPDATE bookings SET reminder24_sent=1 WHERE id=?1").bind(b.id).run();
   }
   // T-60m — email + push, both parties, with join link.
   for (const b of await dueRows(env, "reminder_sent", now + 45 * M, now + 60 * M)) {
-    await remind(env, sendEmail, b, "60m", true);
+    if (b.kind === "consult_1to1") {
+      const event = {
+        type: "commercial_join_window",
+        title: "Consultation reminder",
+        body: `${b.title ?? "Your consultation"} starts within the hour.`,
+        data: { type: "commercial_join_window", ...(b.listing_id ? { listing_id: b.listing_id } : {}), booking_id: b.id },
+      };
+      for (const uid of [b.creator_id, b.buyer_id]) {
+        await notifyUser(env, uid, event, { id: `commercial-notification:commercial_join_window:${b.id}:60m:${uid}` });
+      }
+    } else {
+      await remind(env, sendEmail, b, "60m", true);
+    }
     await env.DB_META.prepare("UPDATE bookings SET reminder_sent=1, reminder24_sent=1 WHERE id=?1").bind(b.id).run();
   }
   // T-10m — push only ("Starting soon — tap to join").
   for (const b of await dueRows(env, "reminder10_sent", now, now + 10 * M)) {
-    for (const uid of [b.creator_id, b.buyer_id]) {
-      try { await env.Q_PUSH?.send({ kind: "notify", to: uid, fromName: "Reminder", title: "Starting soon", body: `${b.title ?? "Your session"} — tap to join`, data: { deeplink: "/booking", booking_id: b.id } }); } catch { /* best-effort */ }
+    if (b.kind === "consult_1to1") {
+      await notifyUser(env, b.creator_id, {
+        type: "commercial",
+        title: "Consultation join window",
+        body: `${b.title ?? "Your consultation"} is ready to join.`,
+        data: { type: "commercial_join_window", ...(b.listing_id ? { listing_id: b.listing_id } : {}), booking_id: b.id },
+      }, { id: `commercial-notification:commercial_join_window:${b.id}:creator` });
+      await notifyUser(env, b.buyer_id, {
+        type: "commercial",
+        title: "Consultation join window",
+        body: `${b.title ?? "Your consultation"} is ready to join.`,
+        data: { type: "commercial_join_window", ...(b.listing_id ? { listing_id: b.listing_id } : {}), booking_id: b.id },
+      }, { id: `commercial-notification:commercial_join_window:${b.id}:buyer` });
+    } else {
+      for (const uid of [b.creator_id, b.buyer_id]) {
+        try { await env.Q_PUSH?.send({ kind: "notify", to: uid, fromName: "Reminder", title: "Starting soon", body: `${b.title ?? "Your session"} — tap to join`, data: { deeplink: "/booking", booking_id: b.id } }); } catch { /* best-effort */ }
+      }
     }
     await env.DB_META.prepare("UPDATE bookings SET reminder10_sent=1, reminder_sent=1, reminder24_sent=1 WHERE id=?1").bind(b.id).run();
   }
+
+  // Live tickets have no bookings row. Use the entitlement and listing
+  // authority, then write a stable feed event before waking the account. The
+  // 15-minute cron is bounded to 200 recipients and uses a deterministic id.
+  try {
+    const live = await env.DB_META.prepare(
+      `SELECT e.account_id,e.listing_id,e.booking_id,e.starts_at,l.title,l.creator_id,
+              (SELECT commercial_session_id FROM commercial_sessions s
+                WHERE s.listing_id=e.listing_id AND s.kind='live_event'
+                ORDER BY s.session_version DESC LIMIT 1) AS session_id
+         FROM commercial_entitlements e JOIN listings l ON l.id=e.listing_id
+        WHERE e.kind='live_event' AND e.role IN ('viewer','buyer')
+          AND e.state IN ('reserved','held','active','consumed')
+          AND e.starts_at>?1 AND e.starts_at<=?2 LIMIT 200`,
+    ).bind(now, now + 10 * M).all();
+    for (const row of (live.results ?? []) as any[]) {
+      const eventId = String(row.session_id || row.listing_id);
+      const event = {
+        type: "commercial_join_window",
+        title: "Live event join window",
+        body: `${row.title ?? "Your live event"} is ready to join.`,
+        data: {
+          type: "commercial_join_window",
+          listing_id: String(row.listing_id),
+          ...(row.booking_id ? { booking_id: String(row.booking_id) } : {}),
+          ...(row.session_id ? { session_id: String(row.session_id) } : {}),
+        },
+      };
+      await notifyUser(env, String(row.account_id), event, { id: `commercial-notification:commercial_join_window:${eventId}:${row.account_id}` });
+      await notifyUser(env, String(row.creator_id), event, { id: `commercial-notification:commercial_join_window:${eventId}:${row.creator_id}` });
+    }
+  } catch { /* commercial tables may not exist in an older shard */ }
 
   // Legacy calendar_events-only rows (no bookings row): keep the old push T-60.
   try {

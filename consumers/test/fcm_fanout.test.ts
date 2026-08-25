@@ -90,3 +90,20 @@ describe("incoming-call delivery contract", () => {
     expect(ring.data).not.toHaveProperty("from");
   });
 });
+
+describe("commercial notification delivery contract", () => {
+  it("forwards only stable ids and never provider credentials", () => {
+    const payload = buildPayload({
+      kind: "notify", to: "buyer-1", title: "Receipt ready", body: "Open your receipt", data: {
+        type: "commercial_receipt", listing_id: "listing-1", booking_id: "booking-1",
+        session_id: "session-1", provider_token: "must-not-forward", call_id: "must-not-forward",
+      },
+    });
+    expect(payload.data).toMatchObject({
+      type: "commercial_receipt", listing_id: "listing-1", booking_id: "booking-1", session_id: "session-1",
+    });
+    expect(payload.data).not.toHaveProperty("provider_token");
+    expect(payload.data).not.toHaveProperty("call_id");
+    expect(payload.data).not.toHaveProperty("fromUid");
+  });
+});

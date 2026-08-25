@@ -788,7 +788,27 @@ export function buildPayload(msg: PushMsg, now = Date.now()): PushPayload {
     // client couldn't route it to the dedicated "Calls" channel — it fell back to
     // fragile fromName=='Ava' sniffing. `recept:"1"` lets the app post a
     // "Missed call — Ava took a message from <name>" banner on the calls channel.
-    const isRecept = (msg.data as any)?.type === "receptionist";
+    const notifyData = (msg.data ?? {}) as Record<string, unknown>;
+    const commercialType = typeof notifyData.type === "string" && notifyData.type.startsWith("commercial_")
+      ? notifyData.type : null;
+    if (commercialType) {
+      // Commercial notifications are account-authorized by the producer. Keep
+      // the FCM transport to the stable client contract only; never forward a
+      // provider call id, access token, or arbitrary producer metadata.
+      const stable = (key: string): string | null => {
+        const value = notifyData[key];
+        return typeof value === "string" && /^[A-Za-z0-9_.:-]{1,160}$/.test(value) ? value : null;
+      };
+      return { highPriority: true, data: {
+        type: commercialType,
+        title: String(msg.title ?? msg.fromName ?? "AvaTOK").slice(0, 120),
+        body: String(msg.body ?? "").slice(0, 500),
+        ...(stable("listing_id") ? { listing_id: stable("listing_id")! } : {}),
+        ...(stable("booking_id") ? { booking_id: stable("booking_id")! } : {}),
+        ...(stable("session_id") ? { session_id: stable("session_id")! } : {}),
+      } };
+    }
+    const isRecept = notifyData.type === "receptionist";
     // [AVANOTIF-VM-1] Forward the SENDER's identity so the RECIPIENT resolves a
     // display name from THEIR OWN contact book, instead of trusting the
     // sender-declared `fromName` (root cause of the "919820436843 / New message"
