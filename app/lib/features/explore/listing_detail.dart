@@ -8,7 +8,9 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
+import '../../core/commercial_sessions_api.dart';
 import '../../core/money_api.dart';
+import '../../core/remote_config.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -30,6 +32,11 @@ import '../avatok/data.dart';
 import '../translation/translation_api.dart';
 import '../translation/translation_langs.dart';
 import 'creator_channel.dart';
+import 'commercial_checkout_sheets.dart';
+import '../booking/commercial_customer_screens.dart';
+import '../commercial_getstream/commercial_getstream_screens.dart';
+import '../commercial_getstream/commercial_live_gateway.dart';
+import '../commercial_getstream/commercial_live_screens.dart' as commercial;
 import 'widgets.dart';
 
 /// Listing details page (Phase 6): media carousel, title, description, icon
@@ -56,7 +63,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     super.initState();
     _load();
     _joinListingParty();
-    Analytics.capture('listing_detail_viewed', {'listing_id': widget.listingId});
+    Analytics.capture(
+        'listing_detail_viewed', {'listing_id': widget.listingId});
   }
 
   /// Join this listing's party room so we get a LIVE viewer count (#7) and pull a
@@ -70,7 +78,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         if (mounted) setState(() => _viewers = roster.length);
       });
       _lpartyEvents = room.events.listen((e) {
-        if (e['t'] == 'listing_update' && mounted) _load(); // price/SOLD changed → refresh
+        if (e['t'] == 'listing_update' && mounted)
+          _load(); // price/SOLD changed → refresh
       });
     } catch (_) {/* best-effort live layer */}
   }
@@ -86,7 +95,10 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   Future<void> _load() async {
     final d = await ListingsApi.detail(widget.listingId);
     if (!mounted) return;
-    setState(() { _d = d; _loading = false; });
+    setState(() {
+      _d = d;
+      _loading = false;
+    });
     // [MKT1-DETAIL] One skeleton, five templates — record which template rendered
     // so we can see the category-template mix buyers actually land on.
     if (d != null) {
@@ -98,7 +110,9 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     }
     // Talk-once: grey the Call Agent button if this buyer already negotiated this
     // listing version (one agent↔agent conversation per buyer per listing).
-    if (d != null && const ['sell', 'buy', 'social'].contains(d.listing.kind) && !d.isOwner) {
+    if (d != null &&
+        const ['sell', 'buy', 'social'].contains(d.listing.kind) &&
+        !d.isOwner) {
       // [AVA-MKT-CVER-1] The REAL content version of the listing we just loaded —
       // read off `d` (the fetched detail), never off a possibly-stale/unset `_d`.
       // The server keys talk-once on (buyer_id, listing_id, content_version) and
@@ -107,7 +121,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       // that reads the same loaded listing (`_d.listing.contentVersion`), so the
       // version we grey the button against is always the one we negotiate against.
       // Absent field (pre-migration server) → 0, matching what it already stores.
-      final talked = await MarketplaceApi.alreadyTalked(d.listing.id, d.listing.contentVersion);
+      final talked = await MarketplaceApi.alreadyTalked(
+          d.listing.id, d.listing.contentVersion);
       if (mounted && talked) setState(() => _alreadyTalked = true);
     }
   }
@@ -119,7 +134,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
 
   void _alreadyTalkedNotice() {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Your agent has already talked to this listing. Use Message to reach the seller.'),
+      content: Text(
+          'Your agent has already talked to this listing. Use Message to reach the seller.'),
     ));
   }
 
@@ -202,7 +218,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         // subtitle even on a COLD chat-list load (when the injectLocal live
         // listener above wasn't mounted to record it).
         try {
-          await ChatPreviewStore().record(convKey, '🤝 Your agent is negotiating…', nowSec, false);
+          await ChatPreviewStore()
+              .record(convKey, '🤝 Your agent is negotiating…', nowSec, false);
         } catch (_) {/* best-effort */}
         // The negotiation result lands in our InboxDO ~10-40s from now. With NO
         // FCM (owner decision) and a socket that can churn, ACTIVELY pull it so
@@ -210,7 +227,9 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         // idempotent cursor-resyncs over ~90s, then stop.
         for (final s in const [8, 15, 25, 40, 60, 90]) {
           Future.delayed(Duration(seconds: s), () {
-            try { SyncHub.I.forceResync(); } catch (_) {}
+            try {
+              SyncHub.I.forceResync();
+            } catch (_) {}
           });
         }
       }
@@ -218,7 +237,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       // The negotiation runs in the background — let the buyer keep browsing.
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         duration: Duration(seconds: 5),
-        content: Text('Your agent is negotiating — the result will arrive in your chat with this seller.'),
+        content: Text(
+            'Your agent is negotiating — the result will arrive in your chat with this seller.'),
       ));
     }
   }
@@ -226,28 +246,107 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   Future<void> _book() async {
     final d = _d;
     if (d == null) return;
-    final isLiveNow = d.listing.kind == 'live_event' && d.listing.status == 'live';
+    final isLiveNow =
+        d.listing.kind == 'live_event' && d.listing.status == 'live';
+    final commercialLive = d.listing.kind == 'live_event' &&
+        RemoteConfig.commercialLiveListingsEnabled;
+    // Commercial live access is account-entitled and GetStream-only. Keep this
+    // branch ahead of the legacy live player so a paid event can never fall
+    // through to Cloudflare admission.
+    if (commercialLive) {
+      if (d.booked) {
+        await _joinCommercial(d.listing);
+      } else {
+        await _commercialCheckout(d.listing);
+      }
+      _load();
+      return;
+    }
     // Phase 7: already entitled to a live event -> straight into the player.
     if (isLiveNow) {
       try {
         await SessionApi.liveJoin(d.listing.id);
         if (!mounted) return;
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => LiveViewerScreen(listingId: d.listing.id)));
+        await Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => LiveViewerScreen(listingId: d.listing.id)));
         _load();
         return;
       } on SessionApiError catch (_) {/* not booked yet -> checkout below */}
     }
     if (!mounted) return;
     final ok = await showModalBottomSheet<bool>(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => CheckoutSheet(listing: d.listing),
     );
     if (ok == true) {
       _load();
       // "Join & pay" on a live event drops the viewer straight into the stream.
       if (isLiveNow && mounted) {
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => LiveViewerScreen(listingId: d.listing.id)));
+        await Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => LiveViewerScreen(listingId: d.listing.id)));
       }
+    }
+  }
+
+  Future<void> _commercialCheckout(ListingCard listing) async {
+    final result = listing.kind == 'live_event'
+        ? await showLiveCheckoutSheet(context, listing: listing)
+        : await showConsultCheckoutSheet(context, listing: listing);
+    if (!mounted || result == null || !result.ok) return;
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BookingSuccessScreen(result: result),
+        ));
+    if (mounted) _load();
+  }
+
+  Future<void> _joinCommercial(ListingCard listing) async {
+    final snapshot = await CommercialSessionsApi.mine();
+    if (!mounted) return;
+    final matches = snapshot?.sessions
+            .where((item) => item.listingId == listing.id)
+            .toList() ??
+        const [];
+    final session = matches.isEmpty ? null : matches.first;
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Your account-bound session could not be found. Refresh and try again.'),
+      ));
+      return;
+    }
+    if (!session.isJoinWindowOpen) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(session.joinLabel)));
+      return;
+    }
+    if (session.isLiveEvent) {
+      await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => commercial.LiveViewerScreen(
+              listingId: session.listingId,
+              title: session.title,
+            ),
+          ));
+    } else if (session.bookingId != null && session.bookingId!.isNotEmpty) {
+      await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CommercialConsultationPrejoinScreen(
+              listingId: session.listingId,
+              bookingId: session.bookingId!,
+              title: session.title,
+              gateway: AuthenticatedCommercialConsultGateway(),
+            ),
+          ));
     }
   }
 
@@ -260,14 +359,24 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     final c = d.listing.creator;
     VerseApi.tagThread(c.uid, 'event:${d.listing.id}'); // fire-and-forget tag
     Analytics.capture('listing_message_tapped', {'listing_id': d.listing.id});
-    Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(
-      chat: Chat(name: c.name ?? c.handle ?? 'Creator', seed: c.uid, last: '', time: '', avatarUrl: c.avatarUrl ?? ''),
-    )));
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => ChatThreadScreen(
+                  chat: Chat(
+                      name: c.name ?? c.handle ?? 'Creator',
+                      seed: c.uid,
+                      last: '',
+                      time: '',
+                      avatarUrl: c.avatarUrl ?? ''),
+                )));
   }
 
   Future<void> _review() async {
     final ok = await showModalBottomSheet<bool>(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => _ReviewSheet(listingId: widget.listingId),
     );
     if (ok == true) _load();
@@ -278,7 +387,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   Future<void> _reportListing() async {
     final d = _d;
     if (d == null) return;
-    final ok = await ListingsApi.report('listing', d.listing.id, 'inappropriate');
+    final ok =
+        await ListingsApi.report('listing', d.listing.id, 'inappropriate');
     if (mounted && ok) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Report submitted — thank you')));
@@ -289,8 +399,35 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   /// consults, the `book` template) keep the real checkout / slot-picker path
   /// (`_book`); every other template's primary is "Talk to my agent" with the
   /// per-template verb (§4.2), wired to the unchanged `_callAgent`.
-  Widget _primaryCta(ListingCard l) {
+  Widget _primaryCta(ListingCard l, {bool booked = false}) {
     final isLive = l.status == 'live';
+    final commercialLive =
+        l.kind == 'live_event' && RemoteConfig.commercialLiveListingsEnabled;
+    final commercialConsult =
+        l.kind == 'consult' && RemoteConfig.commercialConsultListingsEnabled;
+    if (commercialLive || commercialConsult) {
+      final label = commercialLive
+          ? booked
+              ? isLive
+                  ? 'Watch now'
+                  : 'Ticket reserved'
+              : isLive
+                  ? 'Buy ticket to watch'
+                  : l.effectivePrice <= 0
+                      ? 'Reserve free ticket'
+                      : 'Buy ticket · ${l.priceLabel}'
+          : booked
+              ? 'Join consultation'
+              : 'Choose a time · ${l.priceLabel}';
+      return AdButton(
+        label: label,
+        variant: isLive ? AdButtonVariant.danger : AdButtonVariant.primary,
+        fontSize: 18,
+        fullWidth: true,
+        onPressed:
+            booked ? () => _joinCommercial(l) : () => _commercialCheckout(l),
+      );
+    }
     final isBooking = isLive ||
         l.kind == 'live_event' ||
         l.kind == 'consult' ||
@@ -305,14 +442,16 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     ? 'Book · ${l.priceLabel}'
                     : 'Book a session · ${l.priceLabel}',
         variant: isLive ? AdButtonVariant.danger : AdButtonVariant.primary,
-        fontSize: 18, fullWidth: true,
+        fontSize: 18,
+        fullWidth: true,
         onPressed: _book,
       );
     }
     return AdButton(
       label: _agentCtaLabel(l.detailTemplate),
       variant: AdButtonVariant.primary,
-      fontSize: 18, fullWidth: true,
+      fontSize: 18,
+      fullWidth: true,
       onPressed: _alreadyTalked ? _alreadyTalkedNotice : _callAgent,
     );
   }
@@ -335,28 +474,46 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   void _overflow() {
     final d = _d;
     if (d == null) return;
-    showModalBottomSheet(context: context, backgroundColor: AD.overlaySheet,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(
-        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: AD.textPrimary),
-        title: Text('Report listing', style: ADText.rowName(c: AD.textPrimary)),
-        onTap: () async {
-          Navigator.pop(c);
-          final ok = await ListingsApi.report('listing', d.listing.id, 'inappropriate');
-          if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
-        },
-      ),
-      ListTile(
-        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: AD.danger),
-        title: Text('Block this creator', style: ADText.rowName(c: AD.danger)),
-        onTap: () async {
-          Navigator.pop(c);
-          final ok = await ListingsApi.blockCreator(d.listing.creator.uid);
-          if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
-        },
-      ),
-    ])));
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: AD.overlaySheet,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (c) => SafeArea(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ListTile(
+                leading: PhosphorIcon(
+                    PhosphorIcons.flag(PhosphorIconsStyle.bold),
+                    color: AD.textPrimary),
+                title: Text('Report listing',
+                    style: ADText.rowName(c: AD.textPrimary)),
+                onTap: () async {
+                  Navigator.pop(c);
+                  final ok = await ListingsApi.report(
+                      'listing', d.listing.id, 'inappropriate');
+                  if (mounted && ok)
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Report submitted — thank you')));
+                },
+              ),
+              ListTile(
+                leading: PhosphorIcon(
+                    PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+                    color: AD.danger),
+                title: Text('Block this creator',
+                    style: ADText.rowName(c: AD.danger)),
+                onTap: () async {
+                  Navigator.pop(c);
+                  final ok =
+                      await ListingsApi.blockCreator(d.listing.creator.uid);
+                  if (mounted && ok) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Creator blocked')));
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+            ])));
   }
 
   @override
@@ -369,17 +526,33 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         child: Container(
           decoration: const BoxDecoration(
             color: AD.headerFooter,
-            border: Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
+            border:
+                Border(bottom: BorderSide(color: AD.borderHairline, width: 1)),
           ),
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s3),
+              padding:
+                  const EdgeInsets.fromLTRB(Msg.s2, Msg.s2, Msg.s2, Msg.s3),
               child: Row(children: [
                 const AdBackButton(),
                 const SizedBox(width: 4),
-                Expanded(child: Text('Listing', style: ADText.appTitle())),
-                AdBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
+                Expanded(
+                  child: Text(
+                    d?.listing.kind == 'live_event' &&
+                            RemoteConfig.commercialLiveListingsEnabled
+                        ? 'Live event'
+                        : d?.listing.kind == 'consult' &&
+                                RemoteConfig.commercialConsultListingsEnabled
+                            ? '1:1 consultation'
+                            : 'Listing',
+                    style: ADText.appTitle(),
+                  ),
+                ),
+                AdBackButton(
+                    onTap: _overflow,
+                    icon: PhosphorIcons.dotsThreeVertical(
+                        PhosphorIconsStyle.bold)),
               ]),
             ),
           ),
@@ -388,71 +561,100 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AD.iconSearch))
           : d == null
-              ? Center(child: ZineEmptyState(
-                  icon: PhosphorIcons.fileX(PhosphorIconsStyle.bold),
-                  text: 'Listing not found.'))
+              ? Center(
+                  child: ZineEmptyState(
+                      icon: PhosphorIcons.fileX(PhosphorIconsStyle.bold),
+                      text: 'Listing not found.'))
               : RefreshIndicator(
                   onRefresh: _load,
                   color: AD.iconSearch,
                   child: ListingDetailView(
-                    card: d.listing, reviews: d.reviews,
-                    creatorRating: d.creatorRating, creatorRatingCount: d.creatorRatingCount,
-                    followerCount: d.followerCount, canReview: d.booked && !d.isOwner,
+                    card: d.listing,
+                    reviews: d.reviews,
+                    creatorRating: d.creatorRating,
+                    creatorRatingCount: d.creatorRatingCount,
+                    followerCount: d.followerCount,
+                    canReview: d.booked && !d.isOwner,
                     viewers: _viewers,
                     onReview: _review,
                     onReport: _reportListing,
-                    onCreatorTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => CreatorChannelScreen(creatorUid: d.listing.creator.uid))),
+                    onCreatorTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => CreatorChannelScreen(
+                                creatorUid: d.listing.creator.uid))),
                   ),
                 ),
-      bottomNavigationBar: d == null || d.isOwner ? null : Container(
-        decoration: const BoxDecoration(
-          color: AD.headerFooter,
-          border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              // Owner's AvaTOK number — dial/message them directly inside AvaTOK.
-              if (const ['sell', 'buy', 'social'].contains(d.listing.kind) &&
-                  (d.listing.creator.avatokNumber ?? '').isNotEmpty)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _message,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(children: [
-                      PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 16, color: AD.textPrimary),
-                      const SizedBox(width: Msg.s1),
-                      Text(d.listing.creator.avatokNumber!, style: ADText.rowName(c: AD.textPrimary)),
-                      const SizedBox(width: 8),
-                      Text('· tap to message or call', style: ADText.statCaption(c: AD.textSecondary)),
-                    ]),
-                  ),
-                ),
-              // [MKT1-DETAIL] §4.2 skeleton CTAs: [Message owner] + a primary that
-              // changes VERB per template (wiring unchanged). Message owner is the
-              // round chat button; the primary is booking or "Talk to my agent".
-              Row(children: [
-              ZinePressable(
-                onTap: _message,
-                color: AD.card,
-                borderColor: AD.borderControl,
-                boxShadow: const [],
-                // Genuinely a round icon button (52x52) — pill is correct here.
-                radius: Msg.brPill,
-                child: SizedBox(width: 52, height: 52, child: Center(
-                  child: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), size: 22, color: AD.textPrimary),
-                )),
+      bottomNavigationBar: d == null || d.isOwner
+          ? null
+          : Container(
+              decoration: const BoxDecoration(
+                color: AD.headerFooter,
+                border:
+                    Border(top: BorderSide(color: AD.borderHairline, width: 1)),
               ),
-              const SizedBox(width: 12),
-              Expanded(child: _primaryCta(d.listing)),
-            ]),
-            ]),
-          ),
-        ),
-      ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Owner's AvaTOK number — dial/message them directly inside AvaTOK.
+                        if (const ['sell', 'buy', 'social']
+                                .contains(d.listing.kind) &&
+                            (d.listing.creator.avatokNumber ?? '').isNotEmpty)
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _message,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(children: [
+                                PhosphorIcon(
+                                    PhosphorIcons.phone(
+                                        PhosphorIconsStyle.bold),
+                                    size: 16,
+                                    color: AD.textPrimary),
+                                const SizedBox(width: Msg.s1),
+                                Text(d.listing.creator.avatokNumber!,
+                                    style: ADText.rowName(c: AD.textPrimary)),
+                                const SizedBox(width: 8),
+                                Text('· tap to message or call',
+                                    style: ADText.statCaption(
+                                        c: AD.textSecondary)),
+                              ]),
+                            ),
+                          ),
+                        // [MKT1-DETAIL] §4.2 skeleton CTAs: [Message owner] + a primary that
+                        // changes VERB per template (wiring unchanged). Message owner is the
+                        // round chat button; the primary is booking or "Talk to my agent".
+                        Row(children: [
+                          ZinePressable(
+                            onTap: _message,
+                            color: AD.card,
+                            borderColor: AD.borderControl,
+                            boxShadow: const [],
+                            // Genuinely a round icon button (52x52) — pill is correct here.
+                            radius: Msg.brPill,
+                            child: SizedBox(
+                                width: 52,
+                                height: 52,
+                                child: Center(
+                                  child: PhosphorIcon(
+                                      PhosphorIcons.chatCircle(
+                                          PhosphorIconsStyle.bold),
+                                      size: 22,
+                                      color: AD.textPrimary),
+                                )),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                              child: _primaryCta(d.listing, booked: d.booked)),
+                        ]),
+                      ]),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -468,9 +670,16 @@ class ListingDetailView extends StatelessWidget {
   final VoidCallback? onReview, onCreatorTap, onReport;
   final int viewers; // #7: live viewer count (PartyKit), 0 when none/off
   const ListingDetailView({
-    super.key, required this.card, this.reviews = const [],
-    this.creatorRating, this.creatorRatingCount = 0, this.followerCount = 0,
-    this.canReview = false, this.onReview, this.onCreatorTap, this.onReport,
+    super.key,
+    required this.card,
+    this.reviews = const [],
+    this.creatorRating,
+    this.creatorRatingCount = 0,
+    this.followerCount = 0,
+    this.canReview = false,
+    this.onReview,
+    this.onCreatorTap,
+    this.onReport,
     this.viewers = 0,
   });
 
@@ -483,147 +692,342 @@ class ListingDetailView extends StatelessWidget {
     final it = IntentTheme.parse(card.intent);
     final covers = card.coverMedia
         .map((m) => (m is Map ? (m['url'] ?? m['r2_key']) : null)?.toString())
-        .whereType<String>().where((u) => u.startsWith('http')).toList();
+        .whereType<String>()
+        .where((u) => u.startsWith('http'))
+        .toList();
     // §4.1 price semantics — RENT → "/mo", LEAD → "from", PROFILE → "" (nothing).
     final priceStr = priceLabel(card.price, card.currency, card.priceSemantics);
-    return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 24), children: [
-      // 1. HERO — one rule, all templates: video > photo > intent placeholder.
-      _ListingHero(card: card, covers: covers, videoId: _youtubeId(card.videoUrl), theme: it),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // 2. Title + price (intent-aware label).
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text(card.title, style: ADText.appTitle())),
-            if (priceStr.isNotEmpty) ...[
-              const SizedBox(width: Msg.s2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: card.price <= 0 ? AD.online : it.chipBg,
-                  borderRadius: Msg.brPill,
-                  border: Border.all(color: AD.borderCard, width: 2),
+    return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          // 1. HERO — one rule, all templates: video > photo > intent placeholder.
+          _ListingHero(
+              card: card,
+              covers: covers,
+              videoId: _youtubeId(card.videoUrl),
+              theme: it),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // 2. Title + price (intent-aware label).
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Text(card.title, style: ADText.appTitle())),
+                if (priceStr.isNotEmpty) ...[
+                  const SizedBox(width: Msg.s2),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: card.price <= 0 ? AD.online : it.chipBg,
+                      borderRadius: Msg.brPill,
+                      border: Border.all(color: AD.borderCard, width: 2),
+                    ),
+                    child: Text(priceStr,
+                        style: ADText.rowName(
+                            c: card.price <= 0 ? Colors.white : it.chipFg)),
+                  ),
+                ],
+              ]),
+              // #7: live viewer count (PartyKit roster). Shown only when others are
+              // here too; dormant/0 until partyEnabled is on.
+              if (viewers > 1 &&
+                  !(card.kind == 'live_event' &&
+                      RemoteConfig.commercialLiveListingsEnabled)) ...[
+                const SizedBox(height: Msg.s1),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular),
+                      size: 14, color: AD.textTertiary),
+                  const SizedBox(width: Msg.s1),
+                  Text('$viewers people viewing now',
+                      style: ADText.preview(c: AD.textTertiary)),
+                ]),
+              ],
+              const SizedBox(height: 12),
+              // [UI-MKT-2] wired stats row: star reviews / eye views / posted-ago.
+              // Each guards its own value — never renders 0 or NULL.
+              Builder(builder: (_) {
+                final chips = <Widget>[
+                  if (card.ratingAvg != null && card.ratingCount > 0)
+                    _statPill(PhosphorIcons.star(PhosphorIconsStyle.fill),
+                        '${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})',
+                        color: AD.iconStar),
+                  if (card.viewCount > 0)
+                    _statPill(PhosphorIcons.eye(PhosphorIconsStyle.bold),
+                        '${card.viewCount} view${card.viewCount == 1 ? '' : 's'}'),
+                  if (card.createdAt != null)
+                    _statPill(PhosphorIcons.clock(PhosphorIconsStyle.bold),
+                        _postedAgo(card.createdAt!)),
+                ];
+                if (chips.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(
+                      spacing: Msg.s3, runSpacing: Msg.s1, children: chips),
+                );
+              }),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                // FORMATTER FIX: the session-type chip is meaningful ONLY for creator
+                // services (live_event/consult) — for marketplace kinds (sell/buy/
+                // social) capacity is null, which used to print "Group session (NULL)".
+                // Render it only for those kinds AND only when capacity is a real value.
+                if (card.kind == 'live_event')
+                  const AdSticker('🎥 Live event')
+                else if (card.kind == 'consult' && card.capacity != null)
+                  AdSticker(card.capacity == 1
+                      ? '🗓 1:1 session'
+                      : '🗓 Group session (${card.capacity})'),
+                if (card.startsAt != null)
+                  AdSticker('🕐 ${fmtWhen(card.startsAt)}'),
+                if (card.durationMin != null)
+                  AdSticker('${card.durationMin} min'),
+                if (card.country != null && card.country!.isNotEmpty)
+                  AdSticker('${flagEmoji(card.country)} ${card.country}'),
+                if (card.adultsOnly)
+                  const AdSticker('18+', kind: AdStickerKind.no),
+                if (card.translationEnabled)
+                  AdSticker(
+                      '🌐 Voice translation${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
+                // Guard badges: skip null/empty entries so a stray null never prints "null".
+                for (final b in card.badges)
+                  if (b != null && b.toString().trim().isNotEmpty)
+                    AdSticker(b.toString()),
+                // Category hint — only when it's a real, non-empty value.
+                if (card.category.trim().isNotEmpty)
+                  AdSticker(card.category, kind: AdStickerKind.hint),
+              ]),
+              if (card.joinedCount > 0 &&
+                  !(card.kind == 'consult' &&
+                      RemoteConfig.commercialConsultListingsEnabled)) ...[
+                const SizedBox(height: Msg.s2),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.fire(PhosphorIconsStyle.fill),
+                      size: 14, color: AD.textSecondary),
+                  const SizedBox(width: Msg.s1),
+                  Text(
+                    card.kind == 'live_event' &&
+                            RemoteConfig.commercialLiveListingsEnabled
+                        ? '${card.joinedCount} tickets reserved'
+                        : '${card.joinedCount} joined',
+                    style: ADText.preview(c: AD.textSecondary),
+                  ),
+                ]),
+              ],
+              const SizedBox(height: 16),
+              if ((card.description ?? '').isNotEmpty) ...[
+                Text(card.description!,
+                    style: ADText.preview(c: AD.textPrimary)),
+                const SizedBox(height: Msg.s4),
+              ],
+              if ((card.kind == 'live_event' &&
+                      RemoteConfig.commercialLiveListingsEnabled) ||
+                  (card.kind == 'consult' &&
+                      RemoteConfig.commercialConsultListingsEnabled)) ...[
+                _CommercialServiceDetails(card: card),
+                const SizedBox(height: Msg.s4),
+              ],
+              // 3. Owner profile block — avatar, AvaTOK number, QR of the deep link.
+              _OwnerProfileBlock(
+                card: card,
+                creatorRating: creatorRating,
+                creatorRatingCount: creatorRatingCount,
+                followerCount: followerCount,
+                onCreatorTap: onCreatorTap,
+              ),
+              const SizedBox(height: Msg.s4),
+              // 4. Category block — the ONLY part that varies by template. Reads
+              // `attrs` generically (the field_schema drives what's present).
+              _CategoryBlock(card: card, theme: it),
+              const SizedBox(height: Msg.s5),
+              // 5. Reviews (existing).
+              Row(children: [
+                Text('Reviews', style: ADText.appTitle()),
+                const SizedBox(width: Msg.s2),
+                RatingStars(
+                    rating: card.ratingAvg, count: card.ratingCount, size: 15),
+                const Spacer(),
+                if (canReview)
+                  GestureDetector(
+                    onTap: onReview,
+                    behavior: HitTestBehavior.opaque,
+                    child: Text('Leave a review',
+                        style: ADText.preview(c: AD.iconSearch)),
+                  ),
+              ]),
+              if (reviews.isEmpty)
+                Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('No reviews yet — be the first.',
+                        style: ADText.preview())),
+              for (final r in reviews) ReviewTile(review: r),
+              // 6. Report — present on EVERY template (skeleton step 6). Hidden in the
+              // creation-preview (onReport null) since there's nothing to report yet.
+              if (onReport != null) ...[
+                const SizedBox(height: Msg.s4),
+                Center(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onReport,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold),
+                          size: 15, color: AD.textTertiary),
+                      const SizedBox(width: Msg.s1),
+                      Text('Report this listing',
+                          style: ADText.preview(c: AD.textTertiary)),
+                    ]),
+                  ),
                 ),
-                child: Text(priceStr,
-                    style: ADText.rowName(c: card.price <= 0 ? Colors.white : it.chipFg)),
+              ],
+            ]),
+          ),
+        ]);
+  }
+}
+
+class _CommercialServiceDetails extends StatelessWidget {
+  final ListingCard card;
+
+  const _CommercialServiceDetails({required this.card});
+
+  @override
+  Widget build(BuildContext context) {
+    final live = card.kind == 'live_event';
+    final deadline = live
+        ? card.commercialRefundWindowHours
+        : card.commercialCancellationWindowHours;
+    final deadlineText = deadline <= 0
+        ? 'This booking is non-refundable after purchase.'
+        : 'Cancel at least $deadline hours before the scheduled start for policy review.';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(live ? 'About this live event' : 'How the consultation works',
+          style: ADText.appTitle()),
+      const SizedBox(height: Msg.s3),
+      if (live)
+        const _CommercialSteps(steps: [
+          ('1', 'Get a ticket', 'Free reservation or paid ticket'),
+          ('2', 'Sign in', 'Access stays tied to your account'),
+          ('3', 'Watch live', 'Join the creator on GetStream'),
+        ])
+      else
+        const _CommercialSteps(steps: [
+          ('1', 'Choose a time', 'Pick an available private slot'),
+          ('2', 'Pay securely', 'Funds remain protected until settlement'),
+          ('3', 'Meet privately', 'One creator and one customer on GetStream'),
+        ]),
+      const SizedBox(height: Msg.s4),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(Msg.s3),
+        decoration: BoxDecoration(
+          color: AD.card,
+          borderRadius: BorderRadius.circular(Msg.rMd),
+          border: Border.all(color: AD.borderControl),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            PhosphorIcon(
+              PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
+              size: 18,
+              color: AD.online,
+            ),
+            const SizedBox(width: Msg.s2),
+            Text(
+                live
+                    ? 'Ticket and refund summary'
+                    : 'Cancellation and no-show summary',
+                style: ADText.rowName()),
+          ]),
+          const SizedBox(height: Msg.s2),
+          Text(deadlineText, style: ADText.preview(c: AD.textPrimary)),
+          if (!live) ...[
+            const SizedBox(height: Msg.s1),
+            Text(
+              card.commercialRescheduleAllowed
+                  ? 'Rescheduling is allowed before the same deadline.'
+                  : 'Rescheduling is not offered for this service.',
+              style: ADText.preview(c: AD.textPrimary),
+            ),
+            const SizedBox(height: Msg.s1),
+            Text(
+              'Book at least ${card.commercialBookingNoticeHours} hour${card.commercialBookingNoticeHours == 1 ? '' : 's'} before the session.',
+              style: ADText.preview(c: AD.textPrimary),
+            ),
+            if (card.commercialPreparationInstructions.isNotEmpty) ...[
+              const SizedBox(height: Msg.s1),
+              Text(
+                'Prepare: ${card.commercialPreparationInstructions}',
+                style: ADText.preview(c: AD.textPrimary),
               ),
             ],
-          ]),
-          // #7: live viewer count (PartyKit roster). Shown only when others are
-          // here too; dormant/0 until partyEnabled is on.
-          if (viewers > 1) ...[
             const SizedBox(height: Msg.s1),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              PhosphorIcon(PhosphorIcons.eye(PhosphorIconsStyle.regular),
-                  size: 14, color: AD.textTertiary),
-              const SizedBox(width: Msg.s1),
-              Text('$viewers people viewing now',
-                  style: ADText.preview(c: AD.textTertiary)),
-            ]),
-          ],
-          const SizedBox(height: 12),
-          // [UI-MKT-2] wired stats row: star reviews / eye views / posted-ago.
-          // Each guards its own value — never renders 0 or NULL.
-          Builder(builder: (_) {
-            final chips = <Widget>[
-              if (card.ratingAvg != null && card.ratingCount > 0)
-                _statPill(PhosphorIcons.star(PhosphorIconsStyle.fill), '${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})', color: AD.iconStar),
-              if (card.viewCount > 0)
-                _statPill(PhosphorIcons.eye(PhosphorIconsStyle.bold), '${card.viewCount} view${card.viewCount == 1 ? '' : 's'}'),
-              if (card.createdAt != null)
-                _statPill(PhosphorIcons.clock(PhosphorIconsStyle.bold), _postedAgo(card.createdAt!)),
-            ];
-            if (chips.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Wrap(spacing: Msg.s3, runSpacing: Msg.s1, children: chips),
-            );
-          }),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            // FORMATTER FIX: the session-type chip is meaningful ONLY for creator
-            // services (live_event/consult) — for marketplace kinds (sell/buy/
-            // social) capacity is null, which used to print "Group session (NULL)".
-            // Render it only for those kinds AND only when capacity is a real value.
-            if (card.kind == 'live_event')
-              const AdSticker('🎥 Live event')
-            else if (card.kind == 'consult' && card.capacity != null)
-              AdSticker(card.capacity == 1 ? '🗓 1:1 session' : '🗓 Group session (${card.capacity})'),
-            if (card.startsAt != null) AdSticker('🕐 ${fmtWhen(card.startsAt)}'),
-            if (card.durationMin != null) AdSticker('${card.durationMin} min'),
-            if (card.country != null && card.country!.isNotEmpty) AdSticker('${flagEmoji(card.country)} ${card.country}'),
-            if (card.adultsOnly) const AdSticker('18+', kind: AdStickerKind.no),
-            if (card.translationEnabled)
-              AdSticker('🌐 Voice translation${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
-            // Guard badges: skip null/empty entries so a stray null never prints "null".
-            for (final b in card.badges)
-              if (b != null && b.toString().trim().isNotEmpty) AdSticker(b.toString()),
-            // Category hint — only when it's a real, non-empty value.
-            if (card.category.trim().isNotEmpty) AdSticker(card.category, kind: AdStickerKind.hint),
-          ]),
-          if (card.joinedCount > 0) ...[
-            const SizedBox(height: Msg.s2),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              PhosphorIcon(PhosphorIcons.fire(PhosphorIconsStyle.fill),
-                  size: 14, color: AD.textSecondary),
-              const SizedBox(width: Msg.s1),
-              Text('${card.joinedCount} joined', style: ADText.preview(c: AD.textSecondary)),
-            ]),
-          ],
-          const SizedBox(height: 16),
-          if ((card.description ?? '').isNotEmpty) ...[
-            Text(card.description!, style: ADText.preview(c: AD.textPrimary)),
-            const SizedBox(height: Msg.s4),
-          ],
-          // 3. Owner profile block — avatar, AvaTOK number, QR of the deep link.
-          _OwnerProfileBlock(
-            card: card,
-            creatorRating: creatorRating,
-            creatorRatingCount: creatorRatingCount,
-            followerCount: followerCount,
-            onCreatorTap: onCreatorTap,
-          ),
-          const SizedBox(height: Msg.s4),
-          // 4. Category block — the ONLY part that varies by template. Reads
-          // `attrs` generically (the field_schema drives what's present).
-          _CategoryBlock(card: card, theme: it),
-          const SizedBox(height: Msg.s5),
-          // 5. Reviews (existing).
-          Row(children: [
-            Text('Reviews', style: ADText.appTitle()),
-            const SizedBox(width: Msg.s2),
-            RatingStars(rating: card.ratingAvg, count: card.ratingCount, size: 15),
-            const Spacer(),
-            if (canReview)
-              GestureDetector(
-                onTap: onReview,
-                behavior: HitTestBehavior.opaque,
-                child: Text('Leave a review', style: ADText.preview(c: AD.iconSearch)),
-              ),
-          ]),
-          if (reviews.isEmpty)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text('No reviews yet — be the first.', style: ADText.preview())),
-          for (final r in reviews) ReviewTile(review: r),
-          // 6. Report — present on EVERY template (skeleton step 6). Hidden in the
-          // creation-preview (onReport null) since there's nothing to report yet.
-          if (onReport != null) ...[
-            const SizedBox(height: Msg.s4),
-            Center(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onReport,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), size: 15, color: AD.textTertiary),
-                  const SizedBox(width: Msg.s1),
-                  Text('Report this listing', style: ADText.preview(c: AD.textTertiary)),
-                ]),
-              ),
+            Text(
+              card.commercialNoShowPolicy == 'session_charged'
+                  ? 'Customer no-show: the booked session is charged.'
+                  : 'No-show handling is confirmed during checkout.',
+              style: ADText.preview(c: AD.textPrimary),
             ),
           ],
+          const SizedBox(height: Msg.s2),
+          Text(
+            'The exact server policy is shown again and accepted before payment.',
+            style: ADText.preview(c: AD.textSecondary),
+          ),
         ]),
       ),
     ]);
   }
+}
+
+class _CommercialSteps extends StatelessWidget {
+  final List<(String, String, String)> steps;
+
+  const _CommercialSteps({required this.steps});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 360;
+          final children = [
+            for (final step in steps)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Msg.s1),
+                  child: Column(children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AD.primaryBadge,
+                      ),
+                      child: Text(step.$1, style: ADText.rowName()),
+                    ),
+                    const SizedBox(height: Msg.s2),
+                    Text(step.$2,
+                        textAlign: TextAlign.center, style: ADText.rowName()),
+                    const SizedBox(height: Msg.s1),
+                    Text(step.$3,
+                        textAlign: TextAlign.center, style: ADText.preview()),
+                  ]),
+                ),
+              ),
+          ];
+          if (!narrow)
+            return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children);
+          return Column(children: [
+            for (var i = 0; i < steps.length; i++) ...[
+              Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [children[i]]),
+              if (i != steps.length - 1) const SizedBox(height: Msg.s3),
+            ],
+          ]);
+        },
+      );
 }
 
 /// [MKT1-DETAIL] Extract a YouTube video id from a (server-validated, §3.4)
@@ -678,7 +1082,11 @@ class _ListingHero extends StatefulWidget {
   final List<String> covers;
   final String? videoId;
   final IntentTheme theme;
-  const _ListingHero({required this.card, required this.covers, required this.videoId, required this.theme});
+  const _ListingHero(
+      {required this.card,
+      required this.covers,
+      required this.videoId,
+      required this.theme});
   @override
   State<_ListingHero> createState() => _ListingHeroState();
 }
@@ -691,22 +1099,33 @@ class _ListingHeroState extends State<_ListingHero> {
   ListingCard get card => widget.card;
 
   @override
-  void dispose() { _pc.dispose(); super.dispose(); }
+  void dispose() {
+    _pc.dispose();
+    super.dispose();
+  }
 
   Future<void> _toggleFav() async {
     if (_favBusy || card.id.isEmpty) return;
     final next = !card.favorited;
-    setState(() { card.favorited = next; _favBusy = true; });
-    Analytics.capture(next ? 'listing_favorited' : 'listing_unfavorited', {'listing_id': card.id});
+    setState(() {
+      card.favorited = next;
+      _favBusy = true;
+    });
+    Analytics.capture(next ? 'listing_favorited' : 'listing_unfavorited',
+        {'listing_id': card.id});
     final ok = next
         ? await ListingsApi.favorite(card.id)
         : await ListingsApi.unfavorite(card.id);
     if (!mounted) return;
-    setState(() { if (!ok) card.favorited = !next; _favBusy = false; });
+    setState(() {
+      if (!ok) card.favorited = !next;
+      _favBusy = false;
+    });
   }
 
   Widget _heart() => Positioned(
-        top: 10, right: 10,
+        top: 10,
+        right: 10,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _toggleFav,
@@ -748,24 +1167,35 @@ class _ListingHeroState extends State<_ListingHero> {
               // Intent-tinted placeholder (no photo, no video).
               ? Container(
                   color: widget.theme.chipBg,
-                  child: Center(child: PhosphorIcon(widget.theme.icon, size: 64, color: widget.theme.chipFg)),
+                  child: Center(
+                      child: PhosphorIcon(widget.theme.icon,
+                          size: 64, color: widget.theme.chipFg)),
                 )
               : PageView(
                   controller: _pc,
                   onPageChanged: (i) => setState(() => _page = i),
-                  children: [for (final u in covers) CoverImage(url: u, seed: card.id.hashCode, radius: BorderRadius.zero)],
+                  children: [
+                    for (final u in covers)
+                      CoverImage(
+                          url: u,
+                          seed: card.id.hashCode,
+                          radius: BorderRadius.zero)
+                  ],
                 ),
         ),
         if (covers.length > 1)
           Positioned(
-            bottom: 10, left: 0, right: 0,
+            bottom: 10,
+            left: 0,
+            right: 0,
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               for (var i = 0; i < covers.length; i++)
                 AnimatedContainer(
                   duration: Msg.base,
                   curve: Curves.easeOutCubic,
                   margin: const EdgeInsets.symmetric(horizontal: Msg.s1),
-                  width: i == _page ? 18 : 6, height: 6,
+                  width: i == _page ? 18 : 6,
+                  height: 6,
                   decoration: BoxDecoration(
                     color: i == _page ? Colors.white : AD.textFaint,
                     borderRadius: Msg.brPill,
@@ -827,7 +1257,8 @@ class _YouTubeHeroState extends State<_YouTubeHero> {
       onTap: _play,
       child: AspectRatio(
         aspectRatio: 16 / 9,
-        child: Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
+        child:
+            Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
           Image.network(
             'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg',
             fit: BoxFit.cover,
@@ -835,7 +1266,8 @@ class _YouTubeHeroState extends State<_YouTubeHero> {
           ),
           Container(color: Colors.black.withValues(alpha: 0.12)),
           Container(
-            width: 60, height: 60,
+            width: 60,
+            height: 60,
             decoration: BoxDecoration(
               color: AD.brandYoutube,
               shape: BoxShape.circle,
@@ -877,55 +1309,73 @@ class _OwnerProfileBlock extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (c) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Msg.s5, Msg.s5, Msg.s5, Msg.s5),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Share this listing', style: ADText.appTitle(), textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            Center(child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AD.inputField,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AD.borderControl, width: 1),
-              ),
-              child: QrImageView(data: _deepLink, size: 200, backgroundColor: AD.inputField),
-            )),
-            if (number.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(number, textAlign: TextAlign.center, style: ADText.rowName(c: AD.textPrimary)),
-            ],
-            const SizedBox(height: 8),
-            Text(_deepLink, textAlign: TextAlign.center, style: ADText.statCaption(c: AD.textTertiary)),
-            const SizedBox(height: 16),
-            Row(children: [
-              Expanded(child: AdButton(
-                label: 'Copy link',
-                variant: AdButtonVariant.ghost,
-                fullWidth: true,
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: _deepLink));
-                  Analytics.capture('listing_link_copied', {'listing_id': card.id});
-                  if (c.mounted) {
-                    Navigator.pop(c);
-                    ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Link copied')));
-                  }
-                },
-              )),
-              const SizedBox(width: 12),
-              Expanded(child: AdButton(
-                label: 'Share',
-                fullWidth: true,
-                onPressed: () async {
-                  Analytics.capture('listing_link_shared', {'listing_id': card.id});
-                  await Share.share('$name on AvaTOK — $_deepLink');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              )),
-            ]),
-          ]),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Share this listing',
+                    style: ADText.appTitle(), textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                Center(
+                    child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AD.inputField,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AD.borderControl, width: 1),
+                  ),
+                  child: QrImageView(
+                      data: _deepLink,
+                      size: 200,
+                      backgroundColor: AD.inputField),
+                )),
+                if (number.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(number,
+                      textAlign: TextAlign.center,
+                      style: ADText.rowName(c: AD.textPrimary)),
+                ],
+                const SizedBox(height: 8),
+                Text(_deepLink,
+                    textAlign: TextAlign.center,
+                    style: ADText.statCaption(c: AD.textTertiary)),
+                const SizedBox(height: 16),
+                Row(children: [
+                  Expanded(
+                      child: AdButton(
+                    label: 'Copy link',
+                    variant: AdButtonVariant.ghost,
+                    fullWidth: true,
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: _deepLink));
+                      Analytics.capture(
+                          'listing_link_copied', {'listing_id': card.id});
+                      if (c.mounted) {
+                        Navigator.pop(c);
+                        ScaffoldMessenger.of(c).showSnackBar(
+                            const SnackBar(content: Text('Link copied')));
+                      }
+                    },
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(
+                      child: AdButton(
+                    label: 'Share',
+                    fullWidth: true,
+                    onPressed: () async {
+                      Analytics.capture(
+                          'listing_link_shared', {'listing_id': card.id});
+                      await Share.share('$name on AvaTOK — $_deepLink');
+                      if (c.mounted) Navigator.pop(c);
+                    },
+                  )),
+                ]),
+              ]),
         ),
       ),
     );
@@ -935,43 +1385,65 @@ class _OwnerProfileBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final number = card.creator.avatokNumber ?? '';
     final subtitle = [
-      if (creatorRating != null && creatorRatingCount > 0) '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
+      if (creatorRating != null && creatorRatingCount > 0)
+        '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
       if (followerCount > 0) '$followerCount followers',
     ].join(' · ');
     return AdCard(
       padding: const EdgeInsets.all(12),
       radius: AD.rListCard,
       child: Row(children: [
-        Expanded(child: GestureDetector(
+        Expanded(
+            child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onCreatorTap,
           child: Row(children: [
-            Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44, avatarUrl: card.creator.avatarUrl),
+            Avatar(
+                seed: card.creator.uid,
+                name: card.creator.name ?? '?',
+                size: 44,
+                avatarUrl: card.creator.avatarUrl),
             const SizedBox(width: Msg.s2),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: ADText.rowName())),
-                if (card.creator.kycVerified) ...[
-                  const SizedBox(width: Msg.s1),
-                  PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: AD.iconSearch),
-                ],
-              ]),
-              if (number.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(children: [
-                    PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 13, color: AD.textSecondary),
-                    const SizedBox(width: Msg.s1),
-                    Text(number, style: ADText.statCaption(c: AD.textSecondary)),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Row(children: [
+                    Flexible(
+                        child: Text(
+                            card.creator.name ??
+                                (card.creator.handle ?? 'Creator'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ADText.rowName())),
+                    if (card.creator.kycVerified) ...[
+                      const SizedBox(width: Msg.s1),
+                      PhosphorIcon(
+                          PhosphorIcons.sealCheck(PhosphorIconsStyle.fill),
+                          size: 16,
+                          color: AD.iconSearch),
+                    ],
                   ]),
-                ),
-              if (subtitle.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(subtitle, style: ADText.statCaption(c: AD.textSecondary)),
-                ),
-            ])),
+                  if (number.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(children: [
+                        PhosphorIcon(
+                            PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                            size: 13,
+                            color: AD.textSecondary),
+                        const SizedBox(width: Msg.s1),
+                        Text(number,
+                            style: ADText.statCaption(c: AD.textSecondary)),
+                      ]),
+                    ),
+                  if (subtitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(subtitle,
+                          style: ADText.statCaption(c: AD.textSecondary)),
+                    ),
+                ])),
           ]),
         )),
         const SizedBox(width: Msg.s2),
@@ -988,7 +1460,8 @@ class _OwnerProfileBlock extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: AD.borderControl, width: 1),
                 ),
-                child: QrImageView(data: _deepLink, size: 58, backgroundColor: AD.inputField),
+                child: QrImageView(
+                    data: _deepLink, size: 58, backgroundColor: AD.inputField),
               ),
               const SizedBox(height: Msg.s1),
               Text('Share', style: ADText.statCaption(c: AD.textTertiary)),
@@ -1015,9 +1488,25 @@ class _CategoryBlock extends StatelessWidget {
   // mandate and its sub-fields, plus i18n bookkeeping). Excluded, not enumerated
   // to render — the render itself stays generic over whatever else is in attrs.
   static const _hidden = {
-    'mandate', 'never_disclose', 'seller_private_rules', 'public_agent_brief',
-    'server_enforced_constraints', 'floor_price', 'floor_pct', 'ask_before_commit',
-    'orig_lang', 'title_orig', 'desc_orig', 'agent_instructions', 'agent_playbook',
+    'mandate',
+    'never_disclose',
+    'seller_private_rules',
+    'public_agent_brief',
+    'server_enforced_constraints',
+    'floor_price',
+    'floor_pct',
+    'ask_before_commit',
+    'orig_lang',
+    'title_orig',
+    'desc_orig',
+    'agent_instructions',
+    'agent_playbook',
+    'commercial_refund_window_hours',
+    'commercial_cancellation_window_hours',
+    'commercial_reschedule_allowed',
+    'commercial_booking_notice_hours',
+    'commercial_preparation_instructions',
+    'commercial_no_show_policy',
   };
 
   String get _heading {
@@ -1057,30 +1546,39 @@ class _CategoryBlock extends StatelessWidget {
       const SizedBox(height: 12),
       if (rows.isNotEmpty)
         AdCard(
-          padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
+          padding:
+              const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
           radius: AD.rListCard,
           child: Column(children: [
             for (var i = 0; i < rows.length; i++)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  SizedBox(
-                    width: 130,
-                    child: Text(rows[i].key, style: ADText.statCaption(c: AD.textSecondary)),
-                  ),
-                  const SizedBox(width: Msg.s2),
-                  Expanded(child: Text(rows[i].value, style: ADText.preview(c: AD.textPrimary))),
-                ]),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 130,
+                        child: Text(rows[i].key,
+                            style: ADText.statCaption(c: AD.textSecondary)),
+                      ),
+                      const SizedBox(width: Msg.s2),
+                      Expanded(
+                          child: Text(rows[i].value,
+                              style: ADText.preview(c: AD.textPrimary))),
+                    ]),
               ),
           ]),
         ),
       if (bookHint) ...[
         if (rows.isNotEmpty) const SizedBox(height: Msg.s2),
         Row(children: [
-          PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 15, color: AD.textSecondary),
+          PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold),
+              size: 15, color: AD.textSecondary),
           const SizedBox(width: Msg.s1),
-          Expanded(child: Text('Pick an available time when you tap "Book a slot" below.',
-              style: ADText.preview(c: AD.textSecondary))),
+          Expanded(
+              child: Text(
+                  'Pick an available time when you tap "Book a slot" below.',
+                  style: ADText.preview(c: AD.textSecondary))),
         ]),
       ],
     ]);
@@ -1090,7 +1588,9 @@ class _CategoryBlock extends StatelessWidget {
 /// Humanise an attrs key: `year_built` / `yearBuilt` → "Year Built".
 String _humanizeKey(String k) {
   var s = k.replaceAll('_', ' ').replaceAll('-', ' ');
-  s = s.replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}').trim();
+  s = s
+      .replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+      .trim();
   if (s.isEmpty) return k;
   return s
       .split(RegExp(r'\s+'))
@@ -1103,7 +1603,10 @@ String? _attrValue(dynamic v) {
   if (v == null) return null;
   if (v is bool) return v ? 'Yes' : 'No';
   if (v is List) {
-    final parts = v.map((e) => e?.toString().trim() ?? '').where((s) => s.isNotEmpty).toList();
+    final parts = v
+        .map((e) => e?.toString().trim() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
     return parts.isEmpty ? null : parts.join(', ');
   }
   if (v is Map) return null; // nested objects aren't a labelled-grid value
@@ -1118,23 +1621,40 @@ class ReviewTile extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Avatar(seed: review.authorId, name: review.authorName ?? '?', size: 34, avatarUrl: review.authorAvatar),
+          Avatar(
+              seed: review.authorId,
+              name: review.authorName ?? '?',
+              size: 34,
+              avatarUrl: review.authorAvatar),
           const SizedBox(width: Msg.s2),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(review.authorName ?? 'AvaTOK user',
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: ADText.rowName())),
-              Row(children: List.generate(5, (i) => PhosphorIcon(
-                  i < review.rating
-                      ? PhosphorIcons.star(PhosphorIconsStyle.fill)
-                      : PhosphorIcons.star(PhosphorIconsStyle.bold),
-                  size: 13, color: i < review.rating ? AD.iconStar : AD.textTertiary))),
-            ]),
-            if (review.body.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 2),
-                  child: Text(review.body, style: ADText.preview(c: AD.textPrimary))),
-          ])),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Row(children: [
+                  Expanded(
+                      child: Text(review.authorName ?? 'AvaTOK user',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ADText.rowName())),
+                  Row(
+                      children: List.generate(
+                          5,
+                          (i) => PhosphorIcon(
+                              i < review.rating
+                                  ? PhosphorIcons.star(PhosphorIconsStyle.fill)
+                                  : PhosphorIcons.star(PhosphorIconsStyle.bold),
+                              size: 13,
+                              color: i < review.rating
+                                  ? AD.iconStar
+                                  : AD.textTertiary))),
+                ]),
+                if (review.body.isNotEmpty)
+                  Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(review.body,
+                          style: ADText.preview(c: AD.textPrimary))),
+              ])),
         ]),
       );
 }
@@ -1172,7 +1692,9 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   /// $3/h = 5 Tokens/min for the booked duration.
-  int get _translationTokens => _translate && _translateLang != null ? TranslationApi.quoteTokens(_durationMin) : 0;
+  int get _translationTokens => _translate && _translateLang != null
+      ? TranslationApi.quoteTokens(_durationMin)
+      : 0;
   int get _totalTokens => widget.listing.effectivePrice + _translationTokens;
 
   @override
@@ -1191,29 +1713,50 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
 
   Future<void> _loadSlots() async {
-    setState(() { _loadingSlots = true; _slotStart = null; });
-    final s = await ListingsApi.slotGrid(widget.listing.creator.uid, _ymd, widget.listing.durationMin ?? 60);
-    if (mounted) setState(() { _slots = s; _loadingSlots = false; });
+    setState(() {
+      _loadingSlots = true;
+      _slotStart = null;
+    });
+    final s = await ListingsApi.slotGrid(
+        widget.listing.creator.uid, _ymd, widget.listing.durationMin ?? 60);
+    if (mounted)
+      setState(() {
+        _slots = s;
+        _loadingSlots = false;
+      });
   }
 
   Future<void> _confirm() async {
-    if (_isConsult && _slotStart == null) { setState(() => _error = 'Pick a time slot first.'); return; }
-    if (_translate && _translateLang == null) { setState(() => _error = 'Select a translation language first.'); return; }
-    setState(() { _busy = true; _error = null; });
+    if (_isConsult && _slotStart == null) {
+      setState(() => _error = 'Pick a time slot first.');
+      return;
+    }
+    if (_translate && _translateLang == null) {
+      setState(() => _error = 'Select a translation language first.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     final r = await ListingsApi.book(widget.listing.id,
-        slotStart: _slotStart, slotEnd: _slotEnd, promoCode: _promo.text.trim(),
+        slotStart: _slotStart,
+        slotEnd: _slotEnd,
+        promoCode: _promo.text.trim(),
         translationLang: _translate ? _translateLang : null);
     if (!mounted) return;
     final status = (r['status'] as num?)?.toInt() ?? 0;
     if (status == 200) {
-      Analytics.capture('listing_checkout_done', {'listing_id': widget.listing.id, 'amount': r['amount']});
+      Analytics.capture('listing_checkout_done',
+          {'listing_id': widget.listing.id, 'amount': r['amount']});
       Navigator.pop(context, true);
       return;
     }
     if (status == 402) {
       // A8 — inline top-up pre-filled with the shortfall, then checkout resumes
       // (the selected slot is kept in this sheet's state).
-      final needed = (r['needed'] as num?)?.toInt() ?? widget.listing.effectivePrice;
+      final needed =
+          (r['needed'] as num?)?.toInt() ?? widget.listing.effectivePrice;
       final bal = (r['balance'] as num?)?.toInt() ?? _balance ?? 0;
       final shortfall = (needed - bal).clamp(50, 50000).toInt();
       setState(() => _busy = false);
@@ -1221,10 +1764,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       if (!mounted) return;
       final url = t['checkout_url']?.toString();
       if (url != null && url.isNotEmpty) {
-        setState(() => _error = 'Complete the top-up in your browser, then tap Confirm again — your slot is kept.');
+        setState(() => _error =
+            'Complete the top-up in your browser, then tap Confirm again — your slot is kept.');
         Analytics.capture('checkout_topup_opened', {'shortfall': shortfall});
       } else {
-        setState(() => _error = 'Not enough Tokens (need ${fmtTokens(needed)}, have ${fmtTokens(bal)}) — top-up is currently unavailable.');
+        setState(() => _error =
+            'Not enough Tokens (need ${fmtTokens(needed)}, have ${fmtTokens(bal)}) — top-up is currently unavailable.');
       }
       _loadBalance();
       return;
@@ -1247,138 +1792,192 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
       ),
-      padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
+      padding: EdgeInsets.fromLTRB(
+          Msg.s5,
+          Msg.s4,
+          Msg.s5,
+          20 +
+              MediaQuery.of(context).viewInsets.bottom +
+              MediaQuery.of(context).viewPadding.bottom),
       child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: Msg.s4),
-              decoration: BoxDecoration(color: AD.borderControl, borderRadius: Msg.brPill))),
-          Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking', style: ADText.appTitle()),
-          const SizedBox(height: 4),
-          Text(l.title, style: ADText.preview()),
-          const SizedBox(height: Msg.s3),
-          if (_isConsult) ...[
-            Row(children: [
-              Text('Pick a time', style: ADText.sectionLabel()),
-              const Spacer(),
-              ZinePressable(
-                onTap: () async {
-                  final d = await showDatePicker(context: context, initialDate: _day,
-                      firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)));
-                  if (d != null) { setState(() => _day = d); _loadSlots(); }
-                },
-                color: AD.card,
-                borderColor: AD.borderControl,
-                radius: Msg.brMd,
-                boxShadow: const [],
-                padding: const EdgeInsets.symmetric(horizontal: Msg.s3, vertical: Msg.s2),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 14, color: AD.textPrimary),
-                  const SizedBox(width: Msg.s1),
-                  Text(_ymd, style: ADText.preview(c: AD.textPrimary)),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                  child: Container(
+                      width: 40,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: Msg.s4),
+                      decoration: BoxDecoration(
+                          color: AD.borderControl, borderRadius: Msg.brPill))),
+              Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking',
+                  style: ADText.appTitle()),
+              const SizedBox(height: 4),
+              Text(l.title, style: ADText.preview()),
+              const SizedBox(height: Msg.s3),
+              if (_isConsult) ...[
+                Row(children: [
+                  Text('Pick a time', style: ADText.sectionLabel()),
+                  const Spacer(),
+                  ZinePressable(
+                    onTap: () async {
+                      final d = await showDatePicker(
+                          context: context,
+                          initialDate: _day,
+                          firstDate: DateTime.now(),
+                          lastDate:
+                              DateTime.now().add(const Duration(days: 90)));
+                      if (d != null) {
+                        setState(() => _day = d);
+                        _loadSlots();
+                      }
+                    },
+                    color: AD.card,
+                    borderColor: AD.borderControl,
+                    radius: Msg.brMd,
+                    boxShadow: const [],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Msg.s3, vertical: Msg.s2),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      PhosphorIcon(
+                          PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+                          size: 14,
+                          color: AD.textPrimary),
+                      const SizedBox(width: Msg.s1),
+                      Text(_ymd, style: ADText.preview(c: AD.textPrimary)),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: Msg.s2),
+                if (_loadingSlots)
+                  const Center(
+                      child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child:
+                              CircularProgressIndicator(color: AD.iconSearch)))
+                else if (_slots.isEmpty)
+                  Padding(
+                      padding: const EdgeInsets.symmetric(vertical: Msg.s3),
+                      child: Text(
+                          'No availability this day — try another date.',
+                          style: ADText.preview()))
+                else
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final s in _slots) _slotChip(s),
+                  ]),
+                const SizedBox(height: Msg.s3),
+              ],
+              if (l.effectivePrice > 0) ...[
+                AdField(
+                  controller: _promo,
+                  hint: 'Promo code (optional)',
+                  textCapitalization: TextCapitalization.characters,
+                  leadIcon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
+                ),
+                const SizedBox(height: 12),
+              ],
+              // Voice translation add-on (only when the creator offers it) — AI accent.
+              if (l.translationEnabled) ...[
+                AdCard(
+                  radius: AD.rListCard,
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                    Text(
+                                        'Would you like this to be translated into the language of your choice?',
+                                        style: ADText.rowName()),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Live voice translation · \u20b9300 per hour'
+                                      '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
+                                      style: ADText.preview(c: AD.textPrimary),
+                                    ),
+                                  ])),
+                              const SizedBox(width: Msg.s2),
+                              ZineToggle(
+                                  value: _translate,
+                                  onChanged: (v) =>
+                                      setState(() => _translate = v)),
+                            ]),
+                        if (_translate) ...[
+                          const SizedBox(height: 12),
+                          ZineDropdown<String>(
+                            value: _translateLang,
+                            label: 'Select language',
+                            hint: 'Pick a language',
+                            items: [
+                              for (final lng in kTranslationLangs)
+                                DropdownMenuItem(
+                                    value: lng.code, child: Text(lng.label)),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _translateLang = v),
+                          ),
+                        ],
+                      ]),
+                ),
+                const SizedBox(height: 12),
+              ],
+              AdCard(
+                radius: AD.rListCard,
+                padding: const EdgeInsets.all(12),
+                child: Column(children: [
+                  Row(children: [
+                    PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold),
+                        size: 18, color: AD.textPrimary),
+                    const SizedBox(width: 8),
+                    Text(
+                        'Wallet: ${_balance == null ? '…' : fmtTokens(_balance!)}',
+                        style: ADText.rowName()),
+                    const Spacer(),
+                    Text(l.priceLabel, style: ADText.rowName(c: AD.online)),
+                  ]),
+                  // Itemized total when translation is on: e.g. $60 + $3 × 1 h = $63.
+                  if (_translationTokens > 0) ...[
+                    const Divider(
+                        height: 16, color: AD.borderControl, thickness: 1),
+                    Row(children: [
+                      Expanded(
+                          child: Text(
+                        'Voice translation · $_durationMin min',
+                        style: ADText.preview(),
+                      )),
+                      Text('+ ${fmtTokens(_translationTokens)}',
+                          style: ADText.preview(c: AD.textPrimary)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Expanded(
+                          child: Text('Total (including voice translation)',
+                              style: ADText.rowName())),
+                      Text(fmtTokens(_totalTokens),
+                          style: ADText.rowName(c: AD.online)),
+                    ]),
+                  ],
                 ]),
               ),
+              if (_error != null) AdErrorMsg(_error!),
+              const SizedBox(height: 16),
+              AdButton(
+                label: _totalTokens == 0
+                    ? 'Confirm (free)'
+                    : 'Pay ${l.money(_totalTokens)} & confirm',
+                fullWidth: true,
+                fontSize: 19,
+                loading: _busy,
+                onPressed: _busy ? null : _confirm,
+              ),
             ]),
-            const SizedBox(height: Msg.s2),
-            if (_loadingSlots) const Center(child: Padding(padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(color: AD.iconSearch)))
-            else if (_slots.isEmpty)
-              Padding(padding: const EdgeInsets.symmetric(vertical: Msg.s3),
-                  child: Text('No availability this day — try another date.', style: ADText.preview()))
-            else
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final s in _slots) _slotChip(s),
-              ]),
-            const SizedBox(height: Msg.s3),
-          ],
-          if (l.effectivePrice > 0) ...[
-            AdField(
-              controller: _promo,
-              hint: 'Promo code (optional)',
-              textCapitalization: TextCapitalization.characters,
-              leadIcon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
-            ),
-            const SizedBox(height: 12),
-          ],
-          // Voice translation add-on (only when the creator offers it) — AI accent.
-          if (l.translationEnabled) ...[
-            AdCard(
-              radius: AD.rListCard,
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Would you like this to be translated into the language of your choice?',
-                        style: ADText.rowName()),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Live voice translation · \u20b9300 per hour'
-                      '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
-                      style: ADText.preview(c: AD.textPrimary),
-                    ),
-                  ])),
-                  const SizedBox(width: Msg.s2),
-                  ZineToggle(value: _translate, onChanged: (v) => setState(() => _translate = v)),
-                ]),
-                if (_translate) ...[
-                  const SizedBox(height: 12),
-                  ZineDropdown<String>(
-                    value: _translateLang,
-                    label: 'Select language',
-                    hint: 'Pick a language',
-                    items: [
-                      for (final lng in kTranslationLangs)
-                        DropdownMenuItem(value: lng.code, child: Text(lng.label)),
-                    ],
-                    onChanged: (v) => setState(() => _translateLang = v),
-                  ),
-                ],
-              ]),
-            ),
-            const SizedBox(height: 12),
-          ],
-          AdCard(
-            radius: AD.rListCard,
-            padding: const EdgeInsets.all(12),
-            child: Column(children: [
-              Row(children: [
-                PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: AD.textPrimary),
-                const SizedBox(width: 8),
-                Text('Wallet: ${_balance == null ? '…' : fmtTokens(_balance!)}',
-                    style: ADText.rowName()),
-                const Spacer(),
-                Text(l.priceLabel, style: ADText.rowName(c: AD.online)),
-              ]),
-              // Itemized total when translation is on: e.g. $60 + $3 × 1 h = $63.
-              if (_translationTokens > 0) ...[
-                const Divider(height: 16, color: AD.borderControl, thickness: 1),
-                Row(children: [
-                  Expanded(child: Text(
-                    'Voice translation · $_durationMin min',
-                    style: ADText.preview(),
-                  )),
-                  Text('+ ${fmtTokens(_translationTokens)}', style: ADText.preview(c: AD.textPrimary)),
-                ]),
-                const SizedBox(height: 4),
-                Row(children: [
-                  Expanded(child: Text('Total (including voice translation)',
-                      style: ADText.rowName())),
-                  Text(fmtTokens(_totalTokens), style: ADText.rowName(c: AD.online)),
-                ]),
-              ],
-            ]),
-          ),
-          if (_error != null) AdErrorMsg(_error!),
-          const SizedBox(height: 16),
-          AdButton(
-            label: _totalTokens == 0
-                ? 'Confirm (free)'
-                : 'Pay ${l.money(_totalTokens)} & confirm',
-            fullWidth: true,
-            fontSize: 19,
-            loading: _busy,
-            onPressed: _busy ? null : _confirm,
-          ),
-        ]),
       ),
     );
   }
@@ -1389,22 +1988,36 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     final available = s['available'] == true;
     final sel = _slotStart == start;
     final d = DateTime.fromMillisecondsSinceEpoch(start);
-    final label = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    final label =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     return GestureDetector(
       // Occupied slots are shown GREYED, not hidden (spec) — tap does nothing.
-      onTap: available ? () => setState(() { _slotStart = start; _slotEnd = end; _error = null; }) : null,
+      onTap: available
+          ? () => setState(() {
+                _slotStart = start;
+                _slotEnd = end;
+                _error = null;
+              })
+          : null,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
+        padding:
+            const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s2),
         decoration: BoxDecoration(
-          color: sel ? AD.primaryBadge : (available ? AD.card : AD.headerFooter),
-          border: Border.all(color: sel ? AD.primaryBadge : AD.borderControl, width: 1),
+          color:
+              sel ? AD.primaryBadge : (available ? AD.card : AD.headerFooter),
+          border: Border.all(
+              color: sel ? AD.primaryBadge : AD.borderControl, width: 1),
           // A time slot is a tappable BUTTON, not a badge.
           borderRadius: Msg.brMd,
           boxShadow: const [],
         ),
-        child: Text(label, style: ADText.preview(
-                c: sel ? Colors.white : (available ? AD.textPrimary : AD.textTertiary))
-            .copyWith(decoration: available ? null : TextDecoration.lineThrough)),
+        child: Text(label,
+            style: ADText.preview(
+                    c: sel
+                        ? Colors.white
+                        : (available ? AD.textPrimary : AD.textTertiary))
+                .copyWith(
+                    decoration: available ? null : TextDecoration.lineThrough)),
       ),
     );
   }
@@ -1424,11 +2037,22 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   String? _error;
 
   Future<void> _send() async {
-    setState(() { _busy = true; _error = null; });
-    final ok = await ListingsApi.review(widget.listingId, _rating, _body.text.trim());
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final ok =
+        await ListingsApi.review(widget.listingId, _rating, _body.text.trim());
     if (!mounted) return;
-    if (ok) { Navigator.pop(context, true); return; }
-    setState(() { _busy = false; _error = 'Could not submit — only attendees can review after the session ends.'; });
+    if (ok) {
+      Navigator.pop(context, true);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error =
+          'Could not submit — only attendees can review after the session ends.';
+    });
   }
 
   @override
@@ -1438,29 +2062,47 @@ class _ReviewSheetState extends State<_ReviewSheet> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(top: BorderSide(color: AD.borderHairline, width: 1)),
         ),
-        padding: EdgeInsets.fromLTRB(Msg.s5, Msg.s4, Msg.s5, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Rate this session', style: ADText.appTitle()),
-          const SizedBox(height: 12),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (i) => IconButton(
-              onPressed: () => setState(() => _rating = i + 1),
-              icon: PhosphorIcon(
-                  i < _rating ? PhosphorIcons.star(PhosphorIconsStyle.fill) : PhosphorIcons.star(PhosphorIconsStyle.bold),
-                  size: 32, color: i < _rating ? AD.iconStar : AD.textTertiary)))),
-          const SizedBox(height: 12),
-          AdField(
-            controller: _body,
-            maxLines: 3,
-            hint: 'Share your experience (optional)',
-          ),
-          if (_error != null) AdErrorMsg(_error!),
-          const SizedBox(height: Msg.s3),
-          AdButton(
-            label: 'Send review',
-            fullWidth: true,
-            loading: _busy,
-            onPressed: _busy ? null : _send,
-          ),
-        ]),
+        padding: EdgeInsets.fromLTRB(
+            Msg.s5,
+            Msg.s4,
+            Msg.s5,
+            20 +
+                MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).viewPadding.bottom),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Rate this session', style: ADText.appTitle()),
+              const SizedBox(height: 12),
+              Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                      5,
+                      (i) => IconButton(
+                          onPressed: () => setState(() => _rating = i + 1),
+                          icon: PhosphorIcon(
+                              i < _rating
+                                  ? PhosphorIcons.star(PhosphorIconsStyle.fill)
+                                  : PhosphorIcons.star(PhosphorIconsStyle.bold),
+                              size: 32,
+                              color: i < _rating
+                                  ? AD.iconStar
+                                  : AD.textTertiary)))),
+              const SizedBox(height: 12),
+              AdField(
+                controller: _body,
+                maxLines: 3,
+                hint: 'Share your experience (optional)',
+              ),
+              if (_error != null) AdErrorMsg(_error!),
+              const SizedBox(height: Msg.s3),
+              AdButton(
+                label: 'Send review',
+                fullWidth: true,
+                loading: _busy,
+                onPressed: _busy ? null : _send,
+              ),
+            ]),
       );
 }

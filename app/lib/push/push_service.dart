@@ -48,6 +48,7 @@ import '../core/calls/rtc/stream_call_provider.dart'
         StreamCallTokenStore,
         StreamCallUnavailable;
 import '../core/config.dart';
+import '../core/commercial_notification.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
 import '../core/onboarding_store.dart';
@@ -72,6 +73,9 @@ import '../features/avadial/inbox/inbox_thread_screen.dart'
 import '../features/avatok/call_screen.dart';
 import '../features/avatok/contacts.dart' show ContactsStore;
 import '../features/avatok/incoming_business_call_screen.dart';
+import '../features/booking/commercial_customer_screens.dart'
+    show MySessionsScreen;
+import '../features/explore/listing_detail.dart' show ListingDetailScreen;
 // [GCALL-W4-RING] group-call ring: busy check + accept destination
 import '../features/conference/cloudflare_conference_controller.dart'
     show CloudflareConferenceController;
@@ -223,6 +227,14 @@ const _updatesChannel = AndroidNotificationChannel(
   playSound: false,
   enableVibration: false,
 );
+const _commercialChannel = AndroidNotificationChannel(
+  'avatok_commercial',
+  'Commercial sessions',
+  description: 'Bookings, live events and session updates',
+  importance: Importance.defaultImportance,
+  playSound: true,
+  enableVibration: true,
+);
 // [NOTIF-ACTIONS-1 2026-08-17] Muted-conversation channel.
 //
 // Per-conversation silencing CANNOT be done with `playSound: false` on the
@@ -292,6 +304,7 @@ Future<void> _ensureLocalInit() async {
         ?.createNotificationChannel(_incomingCallChannel); // [AVACALL-INUI-2]
     await android
         ?.createNotificationChannel(_updatesChannel); // [AVA-UPDATE-PUSH-1]
+    await android?.createNotificationChannel(_commercialChannel);
     await android
         ?.createNotificationChannel(_msgMutedChannel); // [NOTIF-ACTIONS-1]
     _localReady = true;
@@ -409,6 +422,11 @@ void _onNotifTap(String? payload) {
   final payloadKind =
       payload.contains(':') ? '${payload.split(':').first}:' : payload;
   Analytics.capture('push_notif_tapped', {'payload_kind': payloadKind});
+  final commercial = CommercialNotificationPayload.fromPayload(payload);
+  if (commercial != null) {
+    unawaited(_openCommercialNotification(commercial));
+    return;
+  }
   // Group-invite tap → open the app; the Groups tab + notification bell surface
   // the pending invite (opening the exact thread from a cold tap is a refinement).
   if (payload.startsWith('group')) {
@@ -466,6 +484,79 @@ void _onNotifTap(String? payload) {
   _clearBadge('chat_notif_tap');
   navigatorKey.currentState
       ?.popUntil((r) => r.isFirst); // back to shell/chat list
+}
+
+/// Route a commercial notification using only stable account-facing ids. A
+/// receipt/refund/session update opens My Sessions; a listing update opens the
+/// public detail page, where the server re-checks entitlement on any action.
+Future<void> _openCommercialNotification(
+  CommercialNotificationPayload payload,
+) async {
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+  nav.popUntil((r) => r.isFirst);
+  final needsSession = payload.bookingId != null ||
+      payload.kind == CommercialNotificationKind.refund ||
+      payload.kind == CommercialNotificationKind.receipt ||
+      payload.kind == CommercialNotificationKind.rescheduled ||
+      payload.kind == CommercialNotificationKind.cancelled ||
+      payload.kind == CommercialNotificationKind.checkoutConfirmed ||
+      payload.kind == CommercialNotificationKind.joinWindow;
+  if (needsSession) {
+    nav.push(MaterialPageRoute<void>(
+      builder: (_) => MySessionsScreen(
+        focusListingId: payload.listingId,
+        focusBookingId: payload.bookingId,
+      ),
+    ));
+    return;
+  }
+  final listingId = payload.listingId;
+  if (listingId != null && listingId.isNotEmpty) {
+    nav.push(MaterialPageRoute<void>(
+      builder: (_) => ListingDetailScreen(listingId: listingId),
+    ));
+  }
+}
+
+Future<void> _showCommercialNotif(Map<String, dynamic> data) async {
+  final payload = CommercialNotificationPayload.fromData(data);
+  if (payload == null) {
+    await _track('commercial_push_rejected', {
+      'reason': 'missing_stable_id_or_provider_credential',
+    });
+    return;
+  }
+  final count = await _bumpBadge('commercial');
+  await _ensureLocalInit();
+  final idSource = payload.bookingId ?? payload.listingId ?? payload.kind.name;
+  final id = 8600 + (idSource.hashCode.abs() % 1000);
+  await _local.show(
+    id,
+    payload.titleText,
+    payload.bodyText(),
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _commercialChannel.id,
+        _commercialChannel.name,
+        channelDescription: _commercialChannel.description,
+        icon: _kNotifIcon,
+        color: _kNotifAccent,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        number: count,
+        ticker: payload.titleText,
+        category: AndroidNotificationCategory.status,
+      ),
+    ),
+    payload: payload.toPayload(),
+  );
+  await _track('push_shown', {
+    'channel': 'commercial',
+    'type': payload.kind.name,
+    'has_listing_id': payload.listingId != null,
+    'has_booking_id': payload.bookingId != null,
+  });
 }
 
 /// [NOTIF-STYLE-1] Deep link for a tap on one conversation's message
@@ -756,6 +847,10 @@ Future<void> _handleBackgroundMessage(RemoteMessage message) async {
       // [BUSY-CARD-1] A callee we asked to be notified about is now free →
       // surface the tap-to-call banner even when backgrounded/killed.
       await _showNowFreeNotif(d);
+    } else if (CommercialNotificationPayload.fromData(d) != null) {
+      // Commercial delivery is server-owned. This branch only renders a
+      // notification when the payload contains stable listing/booking ids.
+      await _showCommercialNotif(d);
     } else {
       await _showIncoming(d, route: 'fcm_bg');
     }
@@ -2992,7 +3087,19 @@ Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   // still run; `CallPrewarm.start` is idempotent per callId, so the loser of
   // the gate race costs nothing.
   try {
-    CallPrewarm.instance.start(callId);
+    CallPrewarm.instance.start(
+      callId,
+      billingAuthorizationId: (d['authorization_id'] ?? '').toString().isEmpty
+          ? null
+          : (d['authorization_id'] ?? '').toString(),
+      billingCallId: (d['call_id'] ?? d['callId'] ?? '').toString().isEmpty
+          ? null
+          : (d['call_id'] ?? d['callId'] ?? '').toString(),
+      billingAttemptId: (d['attempt_id'] ?? '').toString().isEmpty
+          ? null
+          : (d['attempt_id'] ?? '').toString(),
+      billingPriceVersion: int.tryParse((d['price_version'] ?? '').toString()),
+    );
   } catch (_) {/* prewarm must never affect the ring path */}
   // Warm/cold native taps plus FCM/WS delivery can converge while the navigator
   // is mounting. Reserve before awaiting so one callId opens exactly one route.
@@ -4108,7 +4215,19 @@ Future<void> _showIncoming(Map<String, dynamic> d,
   // affect the ring path even if that ever changes.
   if (!isGroupRing) {
     try {
-      CallPrewarm.instance.start(ringCallId);
+    CallPrewarm.instance.start(
+      ringCallId,
+      billingAuthorizationId: (d['authorization_id'] ?? '').toString().isEmpty
+          ? null
+          : (d['authorization_id'] ?? '').toString(),
+      billingCallId: (d['call_id'] ?? d['callId'] ?? '').toString().isEmpty
+          ? null
+          : (d['call_id'] ?? d['callId'] ?? '').toString(),
+      billingAttemptId: (d['attempt_id'] ?? '').toString().isEmpty
+          ? null
+          : (d['attempt_id'] ?? '').toString(),
+      billingPriceVersion: int.tryParse((d['price_version'] ?? '').toString()),
+    );
     } catch (_) {/* prewarm must never affect the ring path */}
   }
   // A receipt means a user-visible ring surface was successfully raised—not
@@ -4277,9 +4396,29 @@ class PushService {
         nonce: nonce,
         generation: generation,
         transportOnly: true,
-        deviceId: deviceId);
+        deviceId: deviceId,
+        billingAuthorizationId: (f['authorization_id'] ?? '').toString().isEmpty
+            ? null
+            : (f['authorization_id'] ?? '').toString(),
+        billingCallId: (f['call_id'] ?? f['callId'] ?? '').toString().isEmpty
+            ? null
+            : (f['call_id'] ?? f['callId'] ?? '').toString(),
+        billingAttemptId: (f['attempt_id'] ?? '').toString().isEmpty
+            ? null
+            : (f['attempt_id'] ?? '').toString(),
+        billingPriceVersion: int.tryParse((f['price_version'] ?? '').toString()));
     await CallPrewarm.instance.startForegroundTransport(callId,
-        nonce: nonce, generation: generation, deviceId: deviceId);
+        nonce: nonce, generation: generation, deviceId: deviceId,
+        billingAuthorizationId: (f['authorization_id'] ?? '').toString().isEmpty
+            ? null
+            : (f['authorization_id'] ?? '').toString(),
+        billingCallId: (f['call_id'] ?? f['callId'] ?? '').toString().isEmpty
+            ? null
+            : (f['call_id'] ?? f['callId'] ?? '').toString(),
+        billingAttemptId: (f['attempt_id'] ?? '').toString().isEmpty
+            ? null
+            : (f['attempt_id'] ?? '').toString(),
+        billingPriceVersion: int.tryParse((f['price_version'] ?? '').toString()));
     Analytics.capture('call_prewarm_foreground_requested', {
       'call_id': callId,
       'transport': 'flutter_datachannel_only',
@@ -5022,6 +5161,10 @@ class PushService {
         final b = int.tryParse((d['build'] ?? '').toString()) ?? 0;
         Analytics.capture('app_update_push_fg', {'build': b});
         unawaited(UpdateService.onUpdatePush(build: b));
+        return;
+      }
+      if (CommercialNotificationPayload.fromData(d) != null) {
+        unawaited(_showCommercialNotif(d));
         return;
       }
       // [DELETE-CHAT-XDEV-1] Cleared on another of my devices while this one is
@@ -6750,7 +6893,7 @@ class PushService {
       unawaited(_isCallIdProcessed(room));
       nav.push(MaterialPageRoute(
         builder: (_) => CallScreen(
-          room: (e['callId'] ?? '').toString(),
+          room: ((e['callId'] ?? e['call_id']) ?? '').toString(),
           title: (e['fromName'] ?? 'Caller').toString(),
           seed: (e['from'] ?? 'caller').toString(),
           video: e['kind'] == 'video',
@@ -6764,6 +6907,18 @@ class PushService {
           // hands off to CallScreen.
           avatarUrl: callerAvatarFromPayload(Map<String, dynamic>.from(e)),
           traceId: (e['trace_id'] ?? '').toString(), // [TRACE-ID-1]
+          billingAuthorizationId:
+              (e['authorization_id'] ?? '').toString().isEmpty
+                  ? null
+                  : (e['authorization_id'] ?? '').toString(),
+          billingAttemptId: (e['attempt_id'] ?? '').toString().isEmpty
+              ? null
+              : (e['attempt_id'] ?? '').toString(),
+          billingPriceVersion:
+              int.tryParse((e['price_version'] ?? '').toString()),
+          billingServerCallId: ((e['call_id'] ?? e['callId']) ?? '').toString().isEmpty
+              ? null
+              : ((e['call_id'] ?? e['callId']) ?? '').toString(),
           prewarmNonce: (e['prewarmNonce'] ?? '').toString(),
           prewarmGeneration:
               int.tryParse((e['prewarmGeneration'] ?? '').toString()),

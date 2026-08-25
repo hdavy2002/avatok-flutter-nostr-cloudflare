@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_storage.dart';
 import '../../core/avatar.dart';
+import '../../core/commercial_notification.dart';
 import '../../core/listings_api.dart';
 import '../../core/notifications_api.dart';
 import '../../core/ui/avatok_dark.dart';
@@ -17,6 +18,7 @@ import '../avabrain/agent_inbox_screen.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/data.dart';
 import '../booking/avabooking_screen.dart';
+import '../booking/commercial_customer_screens.dart';
 import '../wallet/wallet_screen.dart';
 
 /// AvaInbox (Phase 8) — every message from anywhere in ONE list. A unified
@@ -342,7 +344,15 @@ class _InboxScreenState extends State<InboxScreen> {
       NotificationsApi.markRead(ids: [n.id]);
       setState(() {});
       final link = (n.data['deeplink'] ?? '').toString();
-      if (link.contains('wallet') || n.type == 'wallet' || n.type == 'payment') {
+      final commercial = CommercialNotificationPayload.fromData(n.data);
+      if (commercial != null) {
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => MySessionsScreen(
+            focusListingId: commercial.listingId,
+            focusBookingId: commercial.bookingId,
+          ),
+        ));
+      } else if (link.contains('wallet') || n.type == 'wallet' || n.type == 'payment') {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
       } else if (link.contains('booking')) {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const AvaBookingScreen()));

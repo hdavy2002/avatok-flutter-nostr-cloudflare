@@ -3,11 +3,15 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/breakpoints.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
+import '../booking/commercial_customer_screens.dart';
+import 'commercial_service_cards.dart';
+import 'create_service_choice_sheet.dart';
 import 'intent_theme.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
 
@@ -61,6 +65,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   String? _category; // null = All
   late String _country; // detected; '' = All countries
   bool _myCountryOnly = true;
+  String _commercialQuery = '';
   late Future<List<ListingCard>> _future;
 
   @override
@@ -159,6 +164,9 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
     // `embedded` doc on the widget.
     final embedded =
         widget.embedded ?? (ModalRoute.of(context)?.isFirst ?? false);
+    final commercialLive = RemoteConfig.commercialLiveListingsEnabled;
+    final commercialConsult = RemoteConfig.commercialConsultListingsEnabled;
+    final commercialDiscovery = commercialLive || commercialConsult;
     return Scaffold(
       backgroundColor: AD.bg,
       appBar: embedded
@@ -182,9 +190,18 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
           child: TextField(
             controller: _search,
             textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _load(),
+            onSubmitted: (value) {
+              _commercialQuery = value.trim();
+              Analytics.capture('marketplace_search_submitted', {
+                'has_commercial_services': commercialDiscovery,
+                'query_length': _commercialQuery.length,
+              });
+              _load();
+            },
             decoration: InputDecoration(
-              hintText: 'Search the marketplace…',
+              hintText: commercialDiscovery
+                  ? 'Search Marketplace and creator services…'
+                  : 'Search the marketplace…',
               hintStyle: TextStyle(color: AD.placeholderOnWhite),
               prefixIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular), color: AD.placeholderOnWhite),
               filled: true,
@@ -243,6 +260,12 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
         ),
         const SizedBox(height: Msg.s3),
         Divider(height: 1, color: AD.borderHairline),
+        if (commercialDiscovery)
+          _CommercialServicesShelf(
+            liveEnabled: commercialLive,
+            consultEnabled: commercialConsult,
+            query: _commercialQuery,
+          ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async => _load(fresh: true),
@@ -305,6 +328,232 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
       ]),
     );
   }
+}
+
+enum _CommercialLane { live, consult }
+
+/// Phase 2 discovery shelf. It is completely absent while both listing flags
+/// are false, preserving the current production Marketplace. Public cards lead
+/// to listing detail only; entitlement/payment remains a later server action.
+class _CommercialServicesShelf extends StatefulWidget {
+  final bool liveEnabled, consultEnabled;
+  final String query;
+
+  const _CommercialServicesShelf({
+    required this.liveEnabled,
+    required this.consultEnabled,
+    required this.query,
+  });
+
+  @override
+  State<_CommercialServicesShelf> createState() =>
+      _CommercialServicesShelfState();
+}
+
+class _CommercialServicesShelfState extends State<_CommercialServicesShelf> {
+  late _CommercialLane _lane;
+  late Future<List<ListingCard>> _live;
+  late Future<List<ListingCard>> _consult;
+
+  @override
+  void initState() {
+    super.initState();
+    _lane = widget.liveEnabled
+        ? _CommercialLane.live
+        : _CommercialLane.consult;
+    _reload();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CommercialServicesShelf oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query ||
+        oldWidget.liveEnabled != widget.liveEnabled ||
+        oldWidget.consultEnabled != widget.consultEnabled) {
+      _reload();
+    }
+  }
+
+  void _reload() {
+    _live = widget.liveEnabled
+        ? _loadLive()
+        : Future.value(const <ListingCard>[]);
+    _consult = widget.consultEnabled
+        ? widget.query.isEmpty
+            ? ListingsApi.explore(kind: 'consult')
+            : ListingsApi.search(q: widget.query, kind: 'consult')
+        : Future.value(const <ListingCard>[]);
+  }
+
+  Future<List<ListingCard>> _loadLive() async {
+    final results = widget.query.isEmpty
+        ? await Future.wait([
+            ListingsApi.liveNow(),
+            ListingsApi.explore(kind: 'live_event'),
+          ])
+        : <List<ListingCard>>[
+            await ListingsApi.search(q: widget.query, kind: 'live_event'),
+          ];
+    final byId = <String, ListingCard>{};
+    for (final result in results) {
+      for (final card in result) {
+      byId[card.id] = card;
+      }
+    }
+    final cards = byId.values.toList();
+    cards.sort((a, b) {
+      if (a.status == 'live' && b.status != 'live') return -1;
+      if (b.status == 'live' && a.status != 'live') return 1;
+      return (a.startsAt ?? 1 << 62).compareTo(b.startsAt ?? 1 << 62);
+    });
+    return cards;
+  }
+
+  void _open(ListingCard card) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ListingDetailScreen(listingId: card.id),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final future = _lane == _CommercialLane.live ? _live : _consult;
+    return Container(
+      height: 350,
+      color: AD.bg,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Msg.s4, Msg.s3, Msg.s4, Msg.s2),
+          child: Row(children: [
+            Expanded(child: Text(
+              widget.query.isEmpty
+                  ? 'Book a creator'
+                  : 'Creator results for “${widget.query}”',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ADText.rowName(),
+            )),
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const MySessionsScreen())),
+              icon: PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 16),
+              label: const Text('My sessions'),
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                final created = await openCreateServiceChoice(context);
+                if (created == true && mounted) setState(_reload);
+              },
+              icon: PhosphorIcon(
+                PhosphorIcons.plus(PhosphorIconsStyle.bold),
+                size: 16,
+              ),
+              label: const Text('Offer a service'),
+            ),
+          ]),
+        ),
+        SizedBox(
+          height: 38,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: Msg.s4),
+            children: [
+              if (widget.liveEnabled)
+                ChoiceChip(
+                  label: const Text('Live & upcoming'),
+                  selected: _lane == _CommercialLane.live,
+                  showCheckmark: false,
+                  onSelected: (_) =>
+                      setState(() => _lane = _CommercialLane.live),
+                ),
+              if (widget.liveEnabled && widget.consultEnabled)
+                const SizedBox(width: Msg.s2),
+              if (widget.consultEnabled)
+                ChoiceChip(
+                  label: const Text('1:1 consultations'),
+                  selected: _lane == _CommercialLane.consult,
+                  showCheckmark: false,
+                  onSelected: (_) =>
+                      setState(() => _lane = _CommercialLane.consult),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: Msg.s2),
+        Expanded(
+          child: FutureBuilder<List<ListingCard>>(
+            future: future,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                return _CommercialShelfMessage(
+                  icon: PhosphorIcons.cloudSlash(PhosphorIconsStyle.regular),
+                  title: 'Creator services are unavailable',
+                  action: 'Try again',
+                  onAction: () => setState(_reload),
+                );
+              }
+              final cards = snap.data ?? const <ListingCard>[];
+              if (cards.isEmpty) {
+                return _CommercialShelfMessage(
+                  icon: _lane == _CommercialLane.live
+                      ? PhosphorIcons.broadcast(PhosphorIconsStyle.regular)
+                      : PhosphorIcons.videoCamera(PhosphorIconsStyle.regular),
+                  title: _lane == _CommercialLane.live
+                      ? widget.query.isEmpty
+                          ? 'No creator streams scheduled yet'
+                          : 'No live events match this search'
+                      : widget.query.isEmpty
+                          ? 'No 1:1 consultations listed yet'
+                          : 'No consultations match this search',
+                );
+              }
+              return ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(Msg.s4, 0, Msg.s4, Msg.s3),
+                itemCount: cards.length,
+                separatorBuilder: (_, __) => const SizedBox(width: Msg.s3),
+                itemBuilder: (_, index) {
+                  final card = cards[index];
+                  return _lane == _CommercialLane.live
+                      ? LiveEventCard(card: card, onTap: () => _open(card))
+                      : ConsultationCard(card: card, onTap: () => _open(card));
+                },
+              );
+            },
+          ),
+        ),
+        Divider(height: 1, color: AD.borderHairline),
+      ]),
+    );
+  }
+}
+
+class _CommercialShelfMessage extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? action;
+  final VoidCallback? onAction;
+
+  const _CommercialShelfMessage({
+    required this.icon,
+    required this.title,
+    this.action,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(icon, size: 32, color: AD.textTertiary),
+          const SizedBox(height: Msg.s2),
+          Text(title, textAlign: TextAlign.center, style: ADText.preview()),
+          if (action != null && onAction != null)
+            TextButton(onPressed: onAction, child: Text(action!)),
+        ]),
+      );
 }
 
 /// [UI-MKT-1 · M-D6] Browse grid cell — a thin stateful wrapper that owns the

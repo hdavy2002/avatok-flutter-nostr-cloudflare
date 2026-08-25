@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../features/avatok/add_by_link_sheet.dart';
 import '../features/avatok/ava_number.dart';
 import '../features/avatok/contacts.dart';
+import '../features/booking/commercial_customer_screens.dart';
 import '../features/explore/listing_detail.dart';
 import 'analytics.dart';
 import 'affiliate_bind_service.dart';
@@ -48,6 +49,25 @@ class DeepLinks {
     if (affiliateToken.isNotEmpty) {
       unawaited(AffiliateBindService.savePendingToken(affiliateToken));
       Analytics.capture('affiliate_referral_link_opened', {'scheme': uri.scheme});
+      return;
+    }
+    final session = _commercialSession(uri);
+    if (session != null) {
+      Analytics.capture('commercial_session_link_opened', {
+        'scheme': uri.scheme,
+        'has_listing_id': session.$1 != null,
+        'has_booking_id': session.$2 != null,
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final st = _navKey?.currentState;
+        if (st == null) return;
+        st.push(MaterialPageRoute(
+          builder: (_) => MySessionsScreen(
+            focusListingId: session.$1,
+            focusBookingId: session.$2,
+          ),
+        ));
+      });
       return;
     }
     // [MKT7] Marketplace listing link — https://avatok.ai/l/<id> or avatok://l/<id>
@@ -128,6 +148,27 @@ class DeepLinks {
     if (uri.scheme == 'avatok' && uri.host == 'l' && segs.isNotEmpty) return segs.first;
     if (uri.host.endsWith('avatok.ai') && segs.length >= 2 && segs.first == 'l') return segs[1];
     return '';
+  }
+
+  /// Stable customer session link: `avatok://session?...` or
+  /// `https://avatok.ai/session?...`. Provider credentials and call ids are
+  /// deliberately not accepted from links.
+  static (String?, String?)? _commercialSession(Uri uri) {
+    final custom = uri.scheme == 'avatok' &&
+        (uri.host == 'session' || uri.path == 'session' || uri.path == '/session');
+    final web = (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.endsWith('avatok.ai') && uri.path.startsWith('/session');
+    if (!custom && !web) return null;
+    String? clean(String? value) {
+      final text = (value ?? '').trim();
+      return text.isNotEmpty && text.length <= 160 &&
+              RegExp(r'^[A-Za-z0-9_:-]+$').hasMatch(text)
+          ? text
+          : null;
+    }
+    final listing = clean(uri.queryParameters['listing_id'] ?? uri.queryParameters['listing']);
+    final booking = clean(uri.queryParameters['booking_id'] ?? uri.queryParameters['booking']);
+    return listing == null && booking == null ? null : (listing, booking);
   }
 
   /// Digits of the `?n=` number on an AvaTOK add link, or '' if none.

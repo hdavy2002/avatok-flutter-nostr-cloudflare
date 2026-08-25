@@ -130,6 +130,42 @@ class RemoteConfig {
   static bool get donationsEnabled => _b('donationsEnabled', true);
   static bool get liveEnabled => _b('liveEnabled', false);
   static bool get consultEnabled => _b('consultEnabled', false);
+  // Phase 2 commercial GetStream lane. Every launch-facing control fails
+  // closed and is independent of Messenger transport/billing configuration.
+  static bool get commercialLiveListingsEnabled =>
+      _b('commercialLiveListingsEnabled', false);
+  static bool get commercialLiveCheckoutEnabled =>
+      _b('commercialLiveCheckoutEnabled', false);
+  static bool get commercialLiveJoinEnabled =>
+      _b('commercialLiveJoinEnabled', false);
+  static bool get commercialConsultListingsEnabled =>
+      _b('commercialConsultListingsEnabled', false);
+  static bool get commercialConsultCheckoutEnabled =>
+      _b('commercialConsultCheckoutEnabled', false);
+  static bool get commercialConsultJoinEnabled =>
+      _b('commercialConsultJoinEnabled', false);
+  static int get commercialCreatorFeePct =>
+      (_asNum(_cfg['commercialCreatorFeePct'])?.toInt()) ?? 80;
+  static int get commercialSettlementHoldHours =>
+      (_asNum(_cfg['commercialSettlementHoldHours'])?.toInt()) ?? 24;
+  static int get commercialConsultJoinEarlyMin =>
+      (_asNum(_cfg['commercialConsultJoinEarlyMin'])?.toInt()) ?? 10;
+  static int get commercialConsultJoinLateMin =>
+      (_asNum(_cfg['commercialConsultJoinLateMin'])?.toInt()) ?? 2;
+  static bool get commercialConsultExtensionEnabled =>
+      _b('commercialConsultExtensionEnabled', false);
+  static int get commercialConsultExtensionMinutes =>
+      (_asNum(_cfg['commercialConsultExtensionMinutes'])?.toInt()) ?? 0;
+  static int get commercialConsultExtensionRate =>
+      (_asNum(_cfg['commercialConsultExtensionRate'])?.toInt()) ?? 0;
+  static int get commercialLiveBackstageEarlyMin =>
+      (_asNum(_cfg['commercialLiveBackstageEarlyMin'])?.toInt()) ?? 30;
+  static int get commercialLiveStartGraceMin =>
+      (_asNum(_cfg['commercialLiveStartGraceMin'])?.toInt()) ?? 15;
+  static bool get commercialReplayEnabled =>
+      _b('commercialReplayEnabled', false);
+  static bool get commercialRecordingEnabled =>
+      _b('commercialRecordingEnabled', false);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
   // Cloudflare-only media migration Wave-0 scaffold (Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-PROPOSAL-2026-07-24.md).
   static bool get cloudflareConferenceEnabled => _b('cloudflareConferenceEnabled', false);
@@ -168,6 +204,33 @@ class RemoteConfig {
   /// call; keeping separate flags makes that a config-time guarantee rather
   /// than something the client has to reconcile at runtime.
   static bool get streamCallsEnabled => _b('streamCallsEnabled', false);
+
+  /// [MESSENGER-CALL-BILLING-UI] Provider-neutral Messenger billing gate.
+  ///
+  /// All paid rates intentionally default to zero. A missing or malformed
+  /// remote config must leave paid choices unavailable, never silently free.
+  static bool get messengerCallBillingEnabled =>
+      _b('messengerCallBillingEnabled', false);
+  static int get messengerAudioFreeParticipantSecondsDaily =>
+      (_asNum(_cfg['messengerAudioFreeParticipantSecondsDaily'])?.toInt()) ?? 28800;
+  static int get messengerAudioPaidCentitokensPerParticipantMinute =>
+      (_asNum(_cfg['messengerAudioPaidCentitokensPerParticipantMinute'])?.toInt()) ?? 0;
+  static int get messengerVideoSdCentitokensPerParticipantMinute =>
+      (_asNum(_cfg['messengerVideoSdCentitokensPerParticipantMinute'])?.toInt()) ?? 0;
+  static int get messengerVideoHdCentitokensPerParticipantMinute =>
+      (_asNum(_cfg['messengerVideoHdCentitokensPerParticipantMinute'])?.toInt()) ?? 0;
+  static int get messengerVideo2kCentitokensPerParticipantMinute =>
+      (_asNum(_cfg['messengerVideo2kCentitokensPerParticipantMinute'])?.toInt()) ?? 0;
+  static int get messengerVideo4kCentitokensPerParticipantMinute =>
+      (_asNum(_cfg['messengerVideo4kCentitokensPerParticipantMinute'])?.toInt()) ?? 0;
+  static int get messengerCallReservationWallSeconds =>
+      (_asNum(_cfg['messengerCallReservationWallSeconds'])?.toInt()) ?? 300;
+  static int get messengerCallLowBalanceWarningWallSeconds =>
+      (_asNum(_cfg['messengerCallLowBalanceWarningWallSeconds'])?.toInt()) ?? 300;
+  static int get messengerCallUsageTickSeconds =>
+      (_asNum(_cfg['messengerCallUsageTickSeconds'])?.toInt()) ?? 15;
+  static int get messengerCallPriceVersion =>
+      (_asNum(_cfg['messengerCallPriceVersion'])?.toInt()) ?? 1;
 
   /// [CALL-PREWARM-1 2026-08-16] P1 of
   /// `Specs/PLAN-CALL-INSTANT-PICKUP-2026-08-16.md`. When true, the callee

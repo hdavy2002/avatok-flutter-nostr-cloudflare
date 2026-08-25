@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -15,6 +16,7 @@ import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import 'live_host_screen.dart';
 import 'live_viewer_screen.dart';
+import '../commercial_getstream/commercial_live_screens.dart' as commercial_live;
 
 class AvaLiveDiscovery extends StatefulWidget {
   const AvaLiveDiscovery({super.key});
@@ -48,6 +50,16 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
   }
 
   Future<void> _watch(ListingCard l) async {
+    // Commercial live events use account-bound GetStream admission. Listing
+    // detail owns the ticket/entitlement CTA, so this discovery surface must
+    // not probe the legacy Cloudflare join endpoint first.
+    if (RemoteConfig.commercialLiveListingsEnabled) {
+      await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ListingDetailScreen(listingId: l.id),
+      ));
+      _load();
+      return;
+    }
     // Paid order → straight into the player. No order → booking page first.
     try {
       await SessionApi.liveJoin(l.id);
@@ -97,7 +109,11 @@ class _AvaLiveDiscoveryState extends State<AvaLiveDiscovery> {
             ),
           );
     if (l == null || !mounted) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => LiveHostScreen(listingId: l.id, title: l.title)));
+    await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => RemoteConfig.commercialLiveListingsEnabled
+          ? commercial_live.LiveReadinessScreen(listingId: l.id, title: l.title)
+          : LiveHostScreen(listingId: l.id, title: l.title),
+    ));
     _load();
   }
 

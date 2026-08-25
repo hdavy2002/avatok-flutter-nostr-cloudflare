@@ -84,6 +84,176 @@ class ListingFeeQuote {
   }
 }
 
+/// Immutable server-issued commercial settlement receipt.
+///
+/// This is deliberately separate from [ListingCard.joinedCount]. A ticket or
+/// booking count is an entitlement metric, not a financial record. Creator
+/// earnings are shown only when the commercial receipt endpoint has produced a
+/// settled, internally consistent row.
+class CommercialReceipt {
+  final String receiptId;
+  final String sessionId;
+  final String orderId;
+  final String listingId;
+  final String? bookingId, buyerId, creatorId, policySnapshotId;
+  final String kind, currency, settlementState;
+  final int grossAmount, platformFeeAmount, creatorAmount, connectedMs;
+  final DateTime issuedAt;
+
+  const CommercialReceipt({
+    required this.receiptId,
+    required this.sessionId,
+    required this.orderId,
+    required this.listingId,
+    required this.kind,
+    required this.currency,
+    required this.settlementState,
+    required this.grossAmount,
+    required this.platformFeeAmount,
+    required this.creatorAmount,
+    required this.connectedMs,
+    required this.issuedAt,
+    this.bookingId,
+    this.buyerId,
+    this.creatorId,
+    this.policySnapshotId,
+  });
+
+  static int _int(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  static DateTime _date(dynamic value) {
+    if (value is num) {
+      final n = value.toInt();
+      return DateTime.fromMillisecondsSinceEpoch(
+        n < 100000000000 ? n * 1000 : n,
+        isUtc: true,
+      );
+    }
+    final parsed = DateTime.tryParse('$value');
+    return (parsed ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)).toUtc();
+  }
+
+  factory CommercialReceipt.fromJson(Map<String, dynamic> j) => CommercialReceipt(
+        receiptId: (j['receipt_id'] ?? j['id'] ?? '').toString(),
+        sessionId: (j['commercial_session_id'] ?? j['session_id'] ?? '').toString(),
+        orderId: (j['order_id'] ?? '').toString(),
+        listingId: (j['listing_id'] ?? '').toString(),
+        bookingId: j['booking_id']?.toString(),
+        buyerId: j['buyer_id']?.toString(),
+        creatorId: j['creator_id']?.toString(),
+        policySnapshotId: j['policy_snapshot_id']?.toString(),
+        kind: (j['kind'] ?? '').toString(),
+        currency: (j['currency'] ?? 'TOKENS').toString(),
+        settlementState: (j['settlement_state'] ?? '').toString(),
+        grossAmount: _int(j['gross_amount']),
+        platformFeeAmount: _int(j['platform_fee_amount']),
+        creatorAmount: _int(j['creator_amount']),
+        connectedMs: _int(j['connected_ms']),
+        issuedAt: _date(j['issued_at']),
+      );
+
+  /// A malformed row must never become a creator payout total.
+  bool get isFinanciallyConsistent =>
+      receiptId.isNotEmpty &&
+      sessionId.isNotEmpty &&
+      orderId.isNotEmpty &&
+      listingId.isNotEmpty &&
+      kind.isNotEmpty &&
+      currency.isNotEmpty &&
+      grossAmount >= 0 &&
+      platformFeeAmount >= 0 &&
+      creatorAmount >= 0 &&
+      grossAmount == platformFeeAmount + creatorAmount;
+
+  bool get isSettled => settlementState == 'settled';
+}
+
+/// Response from `GET /api/commercial/session/:sessionId/receipt`.
+class CommercialReceiptResponse {
+  final bool ready;
+  final String? settlementState;
+  final List<CommercialReceipt> receipts;
+
+  const CommercialReceiptResponse({
+    required this.ready,
+    required this.receipts,
+    this.settlementState,
+  });
+
+  factory CommercialReceiptResponse.fromJson(Map<String, dynamic> j) {
+    final rows = ((j['receipts'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((r) => CommercialReceipt.fromJson(r.cast<String, dynamic>()))
+        .toList();
+    final one = j['receipt'];
+    if (one is Map) {
+      rows.add(CommercialReceipt.fromJson(one.cast<String, dynamic>()));
+    }
+    return CommercialReceiptResponse(
+      ready: j['ready'] == true || rows.isNotEmpty,
+      settlementState: j['settlement_state']?.toString(),
+      receipts: rows,
+    );
+  }
+}
+
+/// A settlement-only rollup for Creator Studio.
+///
+/// Totals are kept by currency because converting or combining currencies on
+/// the client would invent financial data. The server receipt remains the
+/// source of truth for every amount.
+class CommercialReceiptSummary {
+  final List<CommercialReceipt> settledReceipts;
+  final int reviewPendingReceiptCount;
+  final int refundedReceiptCount;
+  final Map<String, int> grossByCurrency;
+  final Map<String, int> platformFeeByCurrency;
+  final Map<String, int> creatorAmountByCurrency;
+
+  const CommercialReceiptSummary({
+    required this.settledReceipts,
+    required this.reviewPendingReceiptCount,
+    required this.refundedReceiptCount,
+    required this.grossByCurrency,
+    required this.platformFeeByCurrency,
+    required this.creatorAmountByCurrency,
+  });
+
+  factory CommercialReceiptSummary.fromReceipts(Iterable<CommercialReceipt> rows) {
+    final settled = <CommercialReceipt>[];
+    var reviewPending = 0;
+    var refunded = 0;
+    final gross = <String, int>{};
+    final fees = <String, int>{};
+    final creator = <String, int>{};
+    for (final row in rows) {
+      if (row.settlementState == 'refunded' || row.settlementState == 'partial_refund') {
+        refunded++;
+        continue;
+      }
+      if (!row.isSettled || !row.isFinanciallyConsistent) {
+        reviewPending++;
+        continue;
+      }
+      settled.add(row);
+      gross[row.currency] = (gross[row.currency] ?? 0) + row.grossAmount;
+      fees[row.currency] = (fees[row.currency] ?? 0) + row.platformFeeAmount;
+      creator[row.currency] = (creator[row.currency] ?? 0) + row.creatorAmount;
+    }
+    return CommercialReceiptSummary(
+      settledReceipts: List.unmodifiable(settled),
+      reviewPendingReceiptCount: reviewPending,
+      refundedReceiptCount: refunded,
+      grossByCurrency: Map.unmodifiable(gross),
+      platformFeeByCurrency: Map.unmodifiable(fees),
+      creatorAmountByCurrency: Map.unmodifiable(creator),
+    );
+  }
+}
+
 /// ListingsApi (Phase 6) — AvaExplore marketplace + creator listings pipeline.
 /// Marketplace reads are public (guest browsing works signed-out); everything
 /// else rides the authed contract.
@@ -233,6 +403,23 @@ class ListingCard {
   /// "₹1250" — 1 token = Rs 1.
   String money(int tokens) => tokens == 0 ? 'Free' : '₹$tokens';
   String get priceLabel => money(effectivePrice);
+
+  /// Phase 2 creator-service policy choices live inside the existing bounded
+  /// attrs object until checkout freezes them into an immutable server policy
+  /// snapshot. Older listings receive conservative display defaults only; the
+  /// server must still supply/validate the real checkout policy.
+  int get commercialRefundWindowHours =>
+      (attrs['commercial_refund_window_hours'] as num?)?.toInt() ?? 24;
+  int get commercialCancellationWindowHours =>
+      (attrs['commercial_cancellation_window_hours'] as num?)?.toInt() ?? 24;
+  bool get commercialRescheduleAllowed =>
+      attrs['commercial_reschedule_allowed'] == true;
+  int get commercialBookingNoticeHours =>
+      (attrs['commercial_booking_notice_hours'] as num?)?.toInt() ?? 2;
+  String get commercialPreparationInstructions =>
+      (attrs['commercial_preparation_instructions'] ?? '').toString();
+  String get commercialNoShowPolicy =>
+      (attrs['commercial_no_show_policy'] ?? 'session_charged').toString();
 }
 
 class ListingReview {
@@ -457,6 +644,49 @@ class ListingsApi {
   static Future<Map<String, dynamic>?> listingStats(String id) async {
     final r = await ApiAuth.getSigned('$_base/listings/$id/stats');
     return r.statusCode == 200 ? _j(r.body) : null;
+  }
+
+  /// The commercial route is intentionally session-scoped: it returns only
+  /// immutable receipts visible to the authenticated creator or customer.
+  /// A 202 means settlement is not ready yet and is still a valid response.
+  static Future<CommercialReceiptResponse?> commercialReceipt(String sessionId) async {
+    if (sessionId.isEmpty) return null;
+    final encoded = Uri.encodeComponent(sessionId);
+    final r = await ApiAuth.getSigned('$_base/commercial/session/$encoded/receipt');
+    if (r.statusCode != 200 && r.statusCode != 202) return null;
+    return CommercialReceiptResponse.fromJson(_j(r.body));
+  }
+
+  /// Session IDs are server-defined and deterministic for the current live
+  /// session contract. This helper does not grant admission or expose a token.
+  static String liveCommercialSessionId(String listingId, {int sessionVersion = 1}) =>
+      'live_${listingId}_$sessionVersion';
+
+  static String consultCommercialSessionId(String bookingId) => 'consult_$bookingId';
+
+  /// Calendar bookings carry the consult booking id used by the commercial
+  /// session contract. This discovers only the creator's own booking ids; it
+  /// does not infer any money from booking price or count.
+  static Future<List<String>> commercialConsultSessionIds(String listingId) async {
+    final ids = <String>{};
+    for (final when in const ['past', 'upcoming']) {
+      dynamic r;
+      try {
+        r = await ApiAuth.getSigned('$_base/booking/list?role=creator&when=$when');
+      } catch (_) {
+        continue;
+      }
+      if (r.statusCode != 200) continue;
+      final rows = ((_j(r.body)['bookings'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>());
+      for (final row in rows) {
+        if (row['listing_id']?.toString() == listingId && row['id'] != null) {
+          ids.add(consultCommercialSessionId(row['id'].toString()));
+        }
+      }
+    }
+    return ids.toList();
   }
 
   // ── creator pipeline ──────────────────────────────────────────────────────
