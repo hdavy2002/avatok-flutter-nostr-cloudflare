@@ -50,6 +50,8 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  static const _appLogoAsset = 'assets/illustrations/app-logo.png';
+
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _pass = TextEditingController();
@@ -73,7 +75,8 @@ class _SignInScreenState extends State<SignInScreen> {
     if (last != null && DateTime.now().difference(last) < _otpResendCooldown) {
       final remaining = _otpResendCooldown.inSeconds -
           DateTime.now().difference(last).inSeconds;
-      setState(() => _error = 'Please wait ${remaining.clamp(1, 60)} seconds before requesting another code.');
+      setState(() => _error =
+          'Please wait ${remaining.clamp(1, 60)} seconds before requesting another code.');
       return false;
     }
     _lastOtpRequestAt = DateTime.now();
@@ -94,7 +97,10 @@ class _SignInScreenState extends State<SignInScreen> {
   Future<void> _continueWithGoogle() async {
     if (_busy) return;
     _provider = 'google';
-    setState(() { _busy = true; _error = null; });
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     unawaited(Analytics.capture('signup_attempt', {'provider': 'google'}));
     _handleStep(await widget.clerk.signInWithGoogle());
   }
@@ -112,11 +118,16 @@ class _SignInScreenState extends State<SignInScreen> {
       return;
     }
     if (!_allowOtpRequest()) return;
-    setState(() { _busy = true; _error = null; });
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     _provider = 'email_code';
     unawaited(Analytics.capture('email_otp_requested', {'mode': 'signin'}));
-    unawaited(Analytics.capture('signup_attempt', {'provider': 'email_code', 'mode': 'signin'}));
-    _handleStep(await widget.clerk.signIn(_email.text, '', emailCodeRequested: true));
+    unawaited(Analytics.capture(
+        'signup_attempt', {'provider': 'email_code', 'mode': 'signin'}));
+    _handleStep(
+        await widget.clerk.signIn(_email.text, '', emailCodeRequested: true));
   }
 
   // ── Email + password ─────────────────────────────────────────────────────────
@@ -125,11 +136,17 @@ class _SignInScreenState extends State<SignInScreen> {
     // guard prevents duplicate Clerk requests, especially duplicate OTP/reset
     // sends when a user taps or presses Enter repeatedly.
     if (_busy) return;
-    setState(() { _busy = true; _error = null; });
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     switch (_mode) {
       case _Mode.signIn:
         if (_email.text.trim().isEmpty) {
-          setState(() { _busy = false; _error = 'Enter your email'; });
+          setState(() {
+            _busy = false;
+            _error = 'Enter your email';
+          });
           return;
         }
         // [AVA-AUTH-OTP] Guard here too, so an empty password never even reaches
@@ -138,54 +155,78 @@ class _SignInScreenState extends State<SignInScreen> {
         if (_pass.text.isEmpty) {
           setState(() {
             _busy = false;
-            _error = 'Enter your password — or use “Sign in with an email code instead”.';
+            _error =
+                'Enter your password — or use “Sign in with an email code instead”.';
           });
           return;
         }
         _provider = 'password';
-        unawaited(Analytics.capture('signup_attempt', {'provider': 'password', 'mode': 'signin'}));
+        unawaited(Analytics.capture(
+            'signup_attempt', {'provider': 'password', 'mode': 'signin'}));
         AuthSession.lastPassword = _pass.text;
         _handleStep(await widget.clerk.signIn(_email.text, _pass.text));
         return;
       case _Mode.signUp:
         if (_name.text.trim().isEmpty) {
-          setState(() { _busy = false; _error = 'Enter your name'; });
+          setState(() {
+            _busy = false;
+            _error = 'Enter your name';
+          });
           return;
         }
         if (_email.text.trim().isEmpty || _pass.text.length < 8) {
-          setState(() { _busy = false; _error = 'Enter an email and a password (8+ characters)'; });
+          setState(() {
+            _busy = false;
+            _error = 'Enter an email and a password (8+ characters)';
+          });
           return;
         }
         _provider = 'password';
-        unawaited(Analytics.capture('signup_attempt', {'provider': 'password', 'mode': 'signup'}));
+        unawaited(Analytics.capture(
+            'signup_attempt', {'provider': 'password', 'mode': 'signup'}));
         AuthSession.lastPassword = _pass.text;
         // Clerk requires both first AND last name. Split the single name field;
         // fall back to reusing the one token so last_name is never empty.
         final parts = _name.text.trim().split(RegExp(r'\s+'));
         final first = parts.first;
-        final last = parts.length > 1 ? parts.sublist(1).join(' ') : parts.first;
-        _handleStep(await widget.clerk.signUp(_email.text, _pass.text, firstName: first, lastName: last));
+        final last =
+            parts.length > 1 ? parts.sublist(1).join(' ') : parts.first;
+        _handleStep(await widget.clerk
+            .signUp(_email.text, _pass.text, firstName: first, lastName: last));
         return;
       case _Mode.verify:
         if (_code.text.trim().isEmpty) {
-          setState(() { _busy = false; _error = 'Enter the code we emailed you'; });
+          setState(() {
+            _busy = false;
+            _error = 'Enter the code we emailed you';
+          });
           return;
         }
-        final err = await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
+        final err = await widget.clerk
+            .verifyCode(_pendingKind!, _pendingId!, _code.text);
         if (err == null) {
-          unawaited(Analytics.capture('email_otp_verify_succeeded', {'kind': _pendingKind ?? ''}));
+          unawaited(Analytics.capture(
+              'email_otp_verify_succeeded', {'kind': _pendingKind ?? ''}));
           _succeed();
           return;
         }
         if (mounted) {
-          setState(() { _busy = false; _error = err; });
-          unawaited(Analytics.capture('email_otp_verify_failed', {'kind': _pendingKind ?? '', 'shown_error': err}));
-          unawaited(Analytics.capture('signup_failed', {'provider': 'password', 'shown_error': err}));
+          setState(() {
+            _busy = false;
+            _error = err;
+          });
+          unawaited(Analytics.capture('email_otp_verify_failed',
+              {'kind': _pendingKind ?? '', 'shown_error': err}));
+          unawaited(Analytics.capture(
+              'signup_failed', {'provider': 'password', 'shown_error': err}));
         }
         return;
       case _Mode.reset:
         if (_email.text.trim().isEmpty) {
-          setState(() { _busy = false; _error = 'Enter your email to reset your password'; });
+          setState(() {
+            _busy = false;
+            _error = 'Enter your email to reset your password';
+          });
           return;
         }
         if (!_allowOtpRequest()) {
@@ -196,28 +237,52 @@ class _SignInScreenState extends State<SignInScreen> {
         final step = await widget.clerk.startPasswordReset(_email.text);
         if (!mounted) return;
         if (step.needsCode) {
-          setState(() { _busy = false; _pendingId = step.id; _mode = _Mode.resetCode; _error = null; });
+          setState(() {
+            _busy = false;
+            _pendingId = step.id;
+            _mode = _Mode.resetCode;
+            _error = null;
+          });
         } else {
-          setState(() { _busy = false; _error = step.error ?? 'Could not start password reset'; });
+          setState(() {
+            _busy = false;
+            _error = step.error ?? 'Could not start password reset';
+          });
         }
         return;
       case _Mode.resetCode:
         if (_code.text.trim().isEmpty || _newPass.text.length < 8) {
-          setState(() { _busy = false; _error = 'Enter the code and a new password (8+ characters)'; });
+          setState(() {
+            _busy = false;
+            _error = 'Enter the code and a new password (8+ characters)';
+          });
           return;
         }
-        final rErr = await widget.clerk.resetPassword(_pendingId!, _code.text, _newPass.text);
-        if (rErr == null) { AuthSession.lastPassword = _newPass.text; _succeed(); return; }
-        if (mounted) setState(() { _busy = false; _error = rErr; });
+        final rErr = await widget.clerk
+            .resetPassword(_pendingId!, _code.text, _newPass.text);
+        if (rErr == null) {
+          AuthSession.lastPassword = _newPass.text;
+          _succeed();
+          return;
+        }
+        if (mounted)
+          setState(() {
+            _busy = false;
+            _error = rErr;
+          });
         return;
     }
   }
 
   void _handleStep(ClerkStep r) {
     if (!mounted) return;
-    if (r.isComplete) { _succeed(); return; }
+    if (r.isComplete) {
+      _succeed();
+      return;
+    }
     if (r.needsCode) {
-      unawaited(Analytics.capture('email_otp_sent', {'kind': r.kind ?? '', 'provider': _provider}));
+      unawaited(Analytics.capture(
+          'email_otp_sent', {'kind': r.kind ?? '', 'provider': _provider}));
       setState(() {
         _busy = false;
         _pendingKind = r.kind;
@@ -228,8 +293,12 @@ class _SignInScreenState extends State<SignInScreen> {
       return;
     }
     final shown = r.error ?? 'Authentication failed';
-    unawaited(Analytics.capture('signup_failed', {'provider': _provider, 'shown_error': shown}));
-    setState(() { _busy = false; _error = shown; });
+    unawaited(Analytics.capture(
+        'signup_failed', {'provider': _provider, 'shown_error': shown}));
+    setState(() {
+      _busy = false;
+      _error = shown;
+    });
   }
 
   void _succeed() {
@@ -250,27 +319,39 @@ class _SignInScreenState extends State<SignInScreen> {
         final m = jsonDecode(res.body) as Map<String, dynamic>;
         if (m['pending'] == true) {
           if (!mounted) return;
-          final reactivate = await _showReactivateDialog((m['grace_ends_at'] as num?)?.toInt());
+          final reactivate = await _showReactivateDialog(
+              (m['grace_ends_at'] as num?)?.toInt());
           if (reactivate != true) {
             // User declined — keep the deletion scheduled and sign back out.
-            unawaited(Analytics.capture('account_deletion_reactivation_declined', {'provider': _provider}));
-            try { await widget.clerk.signOut(); } catch (_) {/* best-effort */}
+            unawaited(Analytics.capture(
+                'account_deletion_reactivation_declined',
+                {'provider': _provider}));
+            try {
+              await widget.clerk.signOut();
+            } catch (_) {/* best-effort */}
             if (!mounted) return;
             setState(() {
               _busy = false;
-              _error = 'Your account stays scheduled for deletion. Sign in again before the '
+              _error =
+                  'Your account stays scheduled for deletion. Sign in again before the '
                   'grace period ends to reactivate it.';
             });
             return;
           }
           // Reactivate: cancel the pending deletion, then continue into the app.
           try {
-            await ApiAuth.postJson(kAccountCancelDeleteUrl, const {}, timeout: const Duration(seconds: 15));
-            unawaited(Analytics.capture('account_deletion_reactivated', {'provider': _provider}));
-          } catch (_) {/* best-effort — server also re-checks status on cascade */}
+            await ApiAuth.postJson(kAccountCancelDeleteUrl, const {},
+                timeout: const Duration(seconds: 15));
+            unawaited(Analytics.capture(
+                'account_deletion_reactivated', {'provider': _provider}));
+          } catch (_) {
+            /* best-effort — server also re-checks status on cascade */
+          }
         }
       }
-    } catch (_) {/* reconcile is best-effort — never block a valid login on it */}
+    } catch (_) {
+      /* reconcile is best-effort — never block a valid login on it */
+    }
     _finish();
   }
 
@@ -279,7 +360,8 @@ class _SignInScreenState extends State<SignInScreen> {
     String? whenStr;
     if (graceEndsAtMs != null) {
       final w = DateTime.fromMillisecondsSinceEpoch(graceEndsAtMs).toLocal();
-      whenStr = '${w.year}-${w.month.toString().padLeft(2, '0')}-${w.day.toString().padLeft(2, '0')}';
+      whenStr =
+          '${w.year}-${w.month.toString().padLeft(2, '0')}-${w.day.toString().padLeft(2, '0')}';
     }
     return showDialog<bool>(
       context: context,
@@ -290,7 +372,8 @@ class _SignInScreenState extends State<SignInScreen> {
           borderRadius: Msg.brLg,
           side: const BorderSide(color: AD.borderControl, width: 1),
         ),
-        title: Text('This account is scheduled for deletion', style: ADText.threadName()),
+        title: Text('This account is scheduled for deletion',
+            style: ADText.threadName()),
         content: Text(
           whenStr != null
               ? 'Your account is set to be permanently deleted on $whenStr. Logging back in '
@@ -304,7 +387,8 @@ class _SignInScreenState extends State<SignInScreen> {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text('Not now',
-                style: ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
+                style:
+                    ADText.rowName(c: AD.textSecondary).copyWith(fontSize: 14)),
           ),
           ZineButton(
             label: 'Reactivate & continue',
@@ -319,17 +403,29 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<void> _claimReferral() async {
     // Redeem any pending invite reward for whoever referred this new user.
-    try { await ReferralService.I.claimPendingAfterSignup(); } catch (_) {/* best-effort */}
-    try { await AffiliateBindService.bindPending(); } catch (_) {/* best-effort */}
+    try {
+      await ReferralService.I.claimPendingAfterSignup();
+    } catch (_) {/* best-effort */}
+    try {
+      await AffiliateBindService.bindPending();
+    } catch (_) {/* best-effort */}
   }
 
   void _finish() {
     if (!mounted) return;
-    setState(() { _busy = false; _done = true; });
-    Timer(const Duration(milliseconds: 900), () { if (mounted) widget.onSignedIn(); });
+    setState(() {
+      _busy = false;
+      _done = true;
+    });
+    Timer(const Duration(milliseconds: 900), () {
+      if (mounted) widget.onSignedIn();
+    });
   }
 
-  void _switch(_Mode m) => setState(() { _mode = m; _error = null; });
+  void _switch(_Mode m) => setState(() {
+        _mode = m;
+        _error = null;
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -356,11 +452,34 @@ class _SignInScreenState extends State<SignInScreen> {
           'Log in',
           'Log in'
         ),
-      _Mode.signUp => ('Create ', 'account', signUpSub, 'Create account', 'Sign up'),
-      _Mode.verify => ('Verify ', 'email', 'Enter the 6-digit code we emailed you.', 'Verify', 'Verify'),
-      _Mode.reset => ('Reset ', 'password', "We'll email you a reset code.", 'Send code', 'Reset'),
-      _Mode.resetCode =>
-        ('New ', 'password', 'Enter the code we emailed + your new password.', 'Reset password', 'Reset'),
+      _Mode.signUp => (
+          'Create ',
+          'account',
+          signUpSub,
+          'Create account',
+          'Sign up'
+        ),
+      _Mode.verify => (
+          'Verify ',
+          'email',
+          'Enter the 6-digit code we emailed you.',
+          'Verify',
+          'Verify'
+        ),
+      _Mode.reset => (
+          'Reset ',
+          'password',
+          "We'll email you a reset code.",
+          'Send code',
+          'Reset'
+        ),
+      _Mode.resetCode => (
+          'New ',
+          'password',
+          'Enter the code we emailed + your new password.',
+          'Reset password',
+          'Reset'
+        ),
     };
     final showGoogle = _mode == _Mode.signIn || _mode == _Mode.signUp;
     final canPop = Navigator.of(context).canPop();
@@ -373,11 +492,13 @@ class _SignInScreenState extends State<SignInScreen> {
     // ZineBreakpoints so a <360dp phone gets tighter gutters and a smaller
     // hero instead of the same fixed 24px/36px squeezing the layout.
     final hPad = ZineBreakpoints.pagePadding(context);
+    final showHeaderChrome = canPop || tag != 'Log in';
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: ZinePaper(
         child: SafeArea(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             // [RAJ-SEAMS-1] Indigo header band (wordmark + mode tag) + flush
             // 1B Squiggle seam below it — fixed chrome above the scroll area,
             // per patches.md §6 usage note ("1B/2C/2A sit flush under the
@@ -386,84 +507,120 @@ class _SignInScreenState extends State<SignInScreen> {
             // designer instruction for this screen says INDIGO. Built INDIGO
             // (newest instruction wins) with the table's Squiggle seam —
             // flag this conflict for the owner to confirm with the designer.
-            _headerBand(hPad: hPad, canPop: canPop, tag: tag),
-            const SquiggleSeam(bandColor: AD.bandIndigo),
+            if (showHeaderChrome) ...[
+              _headerBand(hPad: hPad, canPop: canPop, tag: tag),
+              const SquiggleSeam(bandColor: AD.bandIndigo),
+            ],
             Expanded(
               child: SingleChildScrollView(
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 24),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    const SizedBox(height: Msg.s4),
-                    // [RAJ-SEAMS-1] On the verify step ONLY, the crest gives way
-                    // to 02-sign-in-illo-1.svg — the envelope + 123456 card +
-                    // chai cup art the designer drew for exactly this screen
-                    // (illustrations/MANIFEST.md: "02 Sign in India", nearby
-                    // text "Verify"). Decorative: the "Verify email" title and
-                    // the 6-digit-code subtitle beside it carry the meaning, so
-                    // it is excluded from semantics. Sign-in and sign-up keep
-                    // the crest — the art is specific to the emailed code.
-                    if (_mode == _Mode.verify)
-                      Center(
-                        child: SvgPicture.asset(
-                          Illustrations.signInHero,
-                          height: 200,
-                          fit: BoxFit.contain,
-                          excludeFromSemantics: true,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: Msg.s4),
+                      // [RAJ-SEAMS-1] On the verify step ONLY, the crest gives way
+                      // to 02-sign-in-illo-1.svg — the envelope + 123456 card +
+                      // chai cup art the designer drew for exactly this screen
+                      // (illustrations/MANIFEST.md: "02 Sign in India", nearby
+                      // text "Verify"). Decorative: the "Verify email" title and
+                      // the 6-digit-code subtitle beside it carry the meaning, so
+                      // it is excluded from semantics. Sign-in and sign-up keep
+                      // the crest — the art is specific to the emailed code.
+                      if (_mode == _Mode.verify)
+                        Center(
+                          child: SvgPicture.asset(
+                            Illustrations.signInHero,
+                            height: 200,
+                            fit: BoxFit.contain,
+                            excludeFromSemantics: true,
+                          ),
+                        )
+                      else
+                        Center(
+                          child: Container(
+                            width: 98,
+                            height: 98,
+                            padding: const EdgeInsets.all(1.5),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                _appLogoAsset,
+                                fit: BoxFit.cover,
+                                excludeFromSemantics: true,
+                              ),
+                            ),
+                          ),
                         ),
-                      )
-                    else
-                      const Center(child: ZineCrest(size: 96)),
-                    const SizedBox(height: Msg.s3),
-                    ZineMarkTitle(pre: titlePre, mark: titleMark,
-                        fontSize: ZineBreakpoints.heroTextSize(context)),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 280),
-                        child: Text(sub, style: ADText.preview(), textAlign: TextAlign.center),
+                      const SizedBox(height: Msg.s3),
+                      ZineMarkTitle(
+                          pre: titlePre,
+                          mark: titleMark,
+                          fontSize: ZineBreakpoints.heroTextSize(context)),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 280),
+                          child: Text(sub,
+                              style: ADText.preview(),
+                              textAlign: TextAlign.center),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    ..._fields(),
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      ZineErrorMsg(_error!),
-                    ],
-                    const SizedBox(height: Msg.s4),
-                    ZineButton(
-                      label: cta,
-                      icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
-                      fullWidth: true,
-                      fontSize: 20,
-                      loading: _busy,
-                      onPressed: _busy ? null : _submit,
-                    ),
-                    if (showGoogle) ...[
-                      const SizedBox(height: 16),
-                      _orDivider(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 24),
+                      ..._fields(),
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        ZineErrorMsg(_error!),
+                      ],
+                      const SizedBox(height: Msg.s4),
                       ZineButton(
-                        label: 'Continue with Google',
-                        variant: ZineButtonVariant.ghost,
-                        icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+                        label: cta,
+                        icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                         fullWidth: true,
-                        fontSize: 18,
-                        onPressed: _busy ? null : _continueWithGoogle,
+                        fontSize: 20,
+                        loading: _busy,
+                        onPressed: _busy ? null : _submit,
                       ),
-                    ],
-                    const SizedBox(height: 16),
-                    Center(child: _footerLink()),
-                    const SizedBox(height: Msg.s3),
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
-                          size: 14, color: Msg.accent),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text('Secured by Clerk · one account for everything Ava',
-                            style: ADText.sectionLabel(), textAlign: TextAlign.center),
-                      ),
+                      if (showGoogle) ...[
+                        const SizedBox(height: 16),
+                        _orDivider(),
+                        const SizedBox(height: 16),
+                        ZineButton(
+                          label: 'Continue with Google',
+                          variant: ZineButtonVariant.ghost,
+                          icon:
+                              PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+                          fullWidth: true,
+                          fontSize: 18,
+                          onPressed: _busy ? null : _continueWithGoogle,
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Center(child: _footerLink()),
+                      const SizedBox(height: Msg.s3),
+                      Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            PhosphorIcon(
+                                PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
+                                size: 14,
+                                color: Msg.accent),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                  'Secured by Clerk · one account for everything Ava',
+                                  style: ADText.sectionLabel(),
+                                  textAlign: TextAlign.center),
+                            ),
+                          ]),
                     ]),
-                ]),
               ),
             ),
           ]),
@@ -472,15 +629,18 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  /// Indigo header band — 76px content (inside the 64–92px spec range),
-  /// wordmark left (mirrors `ShellSidebar` in shell_chrome.dart, recoloured
-  /// for a dark band), mode `tag` right. Indigo is a DARK band, so every
-  /// foreground element is `AD.onBand(AD.bandIndigo)` (cream) — contrast
-  /// rule, patches.md §6. Outer `SafeArea` already wraps this Column, so the
-  /// band itself does not add a second one.
-  Widget _headerBand({required double hPad, required bool canPop, required String tag}) {
+  /// Indigo header band — keeps only navigation and non-login mode context.
+  /// The staging sign-in header intentionally has no wordmark or "Log in"
+  /// label. Indigo is a DARK band, so every foreground element is
+  /// AD.onBand(AD.bandIndigo) (cream) — contrast rule, patches.md §6.
+  /// Outer SafeArea already wraps this Column, so the band itself does not
+  /// add a second one.
+  Widget _headerBand(
+      {required double hPad, required bool canPop, required String tag}) {
     const band = AD.bandIndigo;
     final onBand = AD.onBand(band);
+    final showTag = tag != 'Log in';
+    if (!canPop && !showTag) return const SizedBox.shrink();
     return Container(
       color: band,
       padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 14),
@@ -489,26 +649,13 @@ class _SignInScreenState extends State<SignInScreen> {
           AdBackButton(color: onBand),
           const SizedBox(width: Msg.s3),
         ],
-        Text.rich(
-          TextSpan(
-            style: TextStyle(
-                fontFamily: ADText.family,
-                fontWeight: FontWeight.w700,
-                fontSize: 19,
-                letterSpacing: -0.38,
-                color: onBand),
-            children: [
-              const TextSpan(text: 'Ava'),
-              TextSpan(text: 'TOK', style: TextStyle(color: AD.haldi)),
-            ],
-          ),
-        ),
         const Spacer(),
-        Flexible(
-          child: Text(tag,
-              style: ADText.sectionLabel(c: onBand),
-              overflow: TextOverflow.ellipsis),
-        ),
+        if (showTag)
+          Flexible(
+            child: Text(tag,
+                style: ADText.sectionLabel(c: onBand),
+                overflow: TextOverflow.ellipsis),
+          ),
       ]),
     );
   }
@@ -569,7 +716,9 @@ class _SignInScreenState extends State<SignInScreen> {
         const SizedBox(height: Msg.s4),
       ],
       // EMAIL (sign in / sign up / reset request)
-      if (_mode == _Mode.signIn || _mode == _Mode.signUp || _mode == _Mode.reset) ...[
+      if (_mode == _Mode.signIn ||
+          _mode == _Mode.signUp ||
+          _mode == _Mode.reset) ...[
         ZineField(
           controller: _email,
           label: 'email',
@@ -578,7 +727,9 @@ class _SignInScreenState extends State<SignInScreen> {
           hint: 'you@example.com',
           keyboardType: TextInputType.emailAddress,
           error: _error != null && _email.text.trim().isEmpty,
-          onSubmitted: (_) { if (_mode == _Mode.reset) _submit(); },
+          onSubmitted: (_) {
+            if (_mode == _Mode.reset) _submit();
+          },
         ),
         const SizedBox(height: Msg.s4),
       ],
@@ -600,7 +751,8 @@ class _SignInScreenState extends State<SignInScreen> {
             padding: const EdgeInsets.only(top: Msg.s3),
             child: Align(
               alignment: Alignment.centerRight,
-              child: ZineLink('forgot password?', onTap: () => _switch(_Mode.reset)),
+              child: ZineLink('forgot password?',
+                  onTap: () => _switch(_Mode.reset)),
             ),
           ),
         // Passwordless: sign in with just an email code (no password / no phone).
@@ -623,7 +775,8 @@ class _SignInScreenState extends State<SignInScreen> {
           _obscure
               ? PhosphorIcons.eye(PhosphorIconsStyle.bold)
               : PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold),
-          size: 20, color: AD.textSecondary,
+          size: 20,
+          color: AD.textSecondary,
         ),
       );
 
@@ -636,23 +789,36 @@ class _SignInScreenState extends State<SignInScreen> {
     // second line instead of forcing one row wider than the screen.
     switch (_mode) {
       case _Mode.signIn:
-        return Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('New here? ', style: ADText.preview().copyWith(fontSize: 14)),
-          ZineLink('create account',
-              underline: AD.danger, fontSize: 14, onTap: () => _switch(_Mode.signUp)),
-        ]);
+        return Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('New here? ',
+                  style: ADText.preview().copyWith(fontSize: 14)),
+              ZineLink('create account',
+                  underline: AD.danger,
+                  fontSize: 14,
+                  onTap: () => _switch(_Mode.signUp)),
+            ]);
       case _Mode.signUp:
-        return Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('Have an account? ', style: ADText.preview().copyWith(fontSize: 14)),
-          ZineLink('log in', fontSize: 14, onTap: () => _switch(_Mode.signIn)),
-        ]);
+        return Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Have an account? ',
+                  style: ADText.preview().copyWith(fontSize: 14)),
+              ZineLink('log in',
+                  fontSize: 14, onTap: () => _switch(_Mode.signIn)),
+            ]);
       case _Mode.verify:
         return ZineLink('back',
             fontSize: 14,
-            onTap: () => _switch(_pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn));
+            onTap: () => _switch(
+                _pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn));
       case _Mode.reset:
       case _Mode.resetCode:
-        return ZineLink('back to log in', fontSize: 14, onTap: () => _switch(_Mode.signIn));
+        return ZineLink('back to log in',
+            fontSize: 14, onTap: () => _switch(_Mode.signIn));
     }
   }
 }

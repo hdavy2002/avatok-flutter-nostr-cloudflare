@@ -1,7 +1,7 @@
 name: avatok_call
 description: AvaTok calling test shell (P2P WebRTC over Cloudflare signaling).
 publish_to: 'none'
-version: 0.1.18+28
+version: 0.1.18+10622
 
 environment:
   sdk: '>=3.6.0 <4.0.0'
@@ -328,6 +328,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    # Sign-in branding copied from the repository design handoff.
+    - assets/illustrations/app-logo.png
     - assets/ava/    # Ava's sitewide avatar (replace ava_avatar.png to change her face)
     - assets/sounds/
     - assets/audio/    # AI ringback feature: bundled fallback ringback + busy tone
