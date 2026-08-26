@@ -93,6 +93,27 @@
 </div>
 
 <script>
+  /* [DEMO-LISTING-1 2026-08-26] Every card used to point at '/marketplace', so all
+     32 of them dead-ended on the browse page instead of opening the listing. They
+     now build a shareable /<creator-handle>/<listing-slug> URL from the card's own
+     text, which is all the data there is here — this catalogue is static HTML with
+     no ids. The route serves the bazaar listing-details design comp for now. */
+  const slugify=(value)=>String(value||'')
+    .toLowerCase()
+    .replace(/[₹']/g,'')
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'')
+    .slice(0,60);
+  const listingUrl=(card,title)=>{
+    /* Title carries the price after a '·' ("Chai & Chats with Meher · ₹149") and
+       the creator name carries the verified tick. Strip both or the URL grows a
+       price that changes whenever the pricing does. */
+    const creator=card.querySelector('.creator-name')?.textContent?.replace(/✓/g,'').trim();
+    const handle=slugify(creator);
+    const name=slugify(String(title).split('·')[0]);
+    if(!handle||!name) return '/marketplace';
+    return `/${handle}/${name}`;
+  };
   const cardFeatures={
     'live-friends':['🎥 Video','🛡 ID checked','↗ Share'],
     'live-streaming':['📡 Live','🔔 Reminder','↗ Share'],
@@ -112,14 +133,14 @@
     const features=document.createElement('div');features.className='feature-icons';
     (cardFeatures[card.closest('.category')?.id]||[]).forEach((label)=>{const item=document.createElement('span');item.className='feature-icon';item.textContent=label;features.append(item)});
     body?.querySelector('.creator-row')?.before(features);
-    const link=document.createElement('a');link.className='card-open';link.href='/marketplace';link.setAttribute('aria-label',`Open ${title}`);body?.append(link)
+    const link=document.createElement('a');link.className='card-open';link.href=listingUrl(card,title);link.setAttribute('aria-label',`Open ${title}`);body?.append(link)
   });
   const liveSchedules=['Wed 26 Aug · 7:00 AM IST','Wed 26 Aug · 6:30 AM IST','Thu 27 Aug · 5:30 PM IST','Fri 28 Aug · 8:00 PM IST','Sat 29 Aug · 9:00 AM IST','Sat 29 Aug · 6:00 PM IST','Sun 30 Aug · 8:00 PM IST','Mon 31 Aug · 6:00 AM IST'];
   document.querySelectorAll('#live-streaming .listing-card').forEach((card,index)=>{const schedule=document.createElement('div');schedule.className='schedule-line';schedule.textContent=`🗓 ${liveSchedules[index]}`;card.querySelector('.stats')?.before(schedule)});
   const availabilityDialog=document.querySelector('#availability-dialog');const availabilityTitle=document.querySelector('#availability-title');
   document.querySelectorAll('#live-friends .listing-card,#consultations .listing-card').forEach((card)=>{
     const title=card.querySelector('.card-title')?.textContent?.trim()||'this creator';const actions=document.createElement('div');actions.className='card-actions';
-    const book=document.createElement('a');book.className='book-now';book.href=`/marketplace?intent=book&listing=${encodeURIComponent(title)}`;book.textContent='Book now';book.setAttribute('aria-label',`Book ${title} now`);
+    const book=document.createElement('a');book.className='book-now';book.href=`${listingUrl(card,title)}?intent=book`;book.textContent='Book now';book.setAttribute('aria-label',`Book ${title} now`);
     const calendar=document.createElement('button');calendar.className='calendar-open';calendar.type='button';calendar.textContent='🗓 Calendar';calendar.setAttribute('aria-label',`Check availability for ${title}`);
     calendar.addEventListener('click',()=>{if(availabilityTitle)availabilityTitle.textContent=title;if(availabilityDialog?.showModal)availabilityDialog.showModal()});actions.append(book,calendar);card.querySelector('.creator-row')?.before(actions)
   });
