@@ -27,8 +27,6 @@ export interface HeaderLink { href: string; label: string }
 interface Props {
   /** Override the menu for a single page. Omit to use the site default. */
   links?: HeaderLink[];
-  /** Hide the search pill (e.g. on the auth screens). */
-  showSearch?: boolean;
   /** Sticky by default; the home page pins it over the poster. */
   sticky?: boolean;
 }
@@ -43,7 +41,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
   { href: '/sign-up', label: 'For creators' },
 ];
 
-const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
 ---
 
 {/* Anton is loaded by the component rather than the layout because the HOME
@@ -64,16 +62,8 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
   </nav>
 
   <div class="avh-right">
-    {showSearch && (
-      <form class="avh-search" action="/marketplace" method="get" role="search">
-        <input type="search" name="q" placeholder="Search creators or events" aria-label="Search creators or events" />
-        <button type="submit" aria-label="Search">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
-          </svg>
-        </button>
-      </form>
-    )}
+    {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
+        Browsing is reachable via the Marketplace link. */}
     <HeaderAuth client:idle />
     <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
   </div>
@@ -87,7 +77,6 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
 
 <nav class="avh-mobile" id="avh-mobile" aria-label="Main (mobile)" hidden>
   {links.map((l) => <a href={l.href}>{l.label}</a>)}
-  <a href="/marketplace">Search</a>
 </nav>
 
 <script>
@@ -111,8 +100,10 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
     --avh-red: #d93825;
     display: flex;
     align-items: center;
-    gap: 26px;
-    padding: 10px 22px;
+    gap: 30px;
+    /* [WEB-HEADER-2] Taller at the owner's request: ~92px against the previous
+       ~58px, so the header reads as real site chrome rather than a thin strip. */
+    padding: 18px 30px;
     background: var(--avh-cream);
     color: var(--avh-ink);
     font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
@@ -120,12 +111,12 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 
   .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }
-  .avh-logo img { display: block; height: 38px; width: auto; }
+  .avh-logo img { display: block; height: 54px; width: auto; }
 
   .avh-nav { display: flex; align-items: center; gap: 24px; }
   .avh-nav a,
   .avh-mobile a {
-    font-size: 14px;
+    font-size: 16px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--avh-ink);
@@ -141,33 +132,13 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
 
   .avh-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 
-  .avh-search {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 7px 14px;
-    border: 2px solid var(--avh-ink);
-    border-radius: 100px;
-    background: transparent;
-  }
-  .avh-search input {
-    border: 0;
-    background: none;
-    outline: none;
-    width: 168px;
-    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-    font-size: 13px;
-    color: var(--avh-ink);
-  }
-  .avh-search input::placeholder { color: rgba(22, 22, 20, 0.55); }
-  .avh-search button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--avh-ink); display: grid; place-content: center; }
 
-  .avh-orn { display: block; height: 34px; width: auto; }
+  .avh-orn { display: block; height: 46px; width: auto; }
 
   /* Auth CTAs (island) */
   .avh-cta {
     font-family: 'Anton', Impact, sans-serif;
-    font-size: 14px;
+    font-size: 16px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--avh-ink);
@@ -181,7 +152,7 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
     background: var(--avh-red);
     color: #fdf1d3;
     border-radius: 100px;
-    padding: 9px 20px;
+    padding: 12px 26px;
   }
   .avh-cta:focus-visible { outline: 3px solid var(--avh-red); outline-offset: 2px; }
 
@@ -190,7 +161,7 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
   .avh-mobile { display: none; }
 
   @media (max-width: 1100px) {
-    .avh-nav, .avh-search, .avh-orn { display: none; }
+    .avh-nav, .avh-orn { display: none; }
     .avh-burger { display: block; }
     .avh-mobile:not([hidden]) {
       display: grid;
@@ -211,6 +182,6 @@ const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
   }
   @media (max-width: 620px) {
     .avh { gap: 12px; padding: 10px 14px; }
-    .avh-logo img { height: 32px; }
+    .avh-logo img { height: 40px; }
   }
 </style>

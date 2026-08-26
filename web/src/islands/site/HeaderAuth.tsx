@@ -28,7 +28,7 @@ function Anon() {
 }
 
 function Inner() {
-  const { isLoaded, isSignedIn, signOut } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const [hasGuest, setHasGuest] = useState(false);
 
   useEffect(() => {
@@ -39,25 +39,27 @@ function Inner() {
     }
   }, []);
 
-  if (!isLoaded) return <Anon />;
-  if (!isSignedIn && !hasGuest) return <Anon />;
+  // A guest session lives in localStorage and is knowable WITHOUT Clerk, so it
+  // is checked first. Testing `isLoaded` before it meant that whenever clerk-js
+  // failed to load — an ad blocker, a flaky network — a signed-in guest was
+  // shown "Log in / Sign up" and had no way back to their dashboard.
+  if (hasGuest) return <DashboardCta />;
+  if (!isLoaded || !isSignedIn) return <Anon />;
 
-  return (
-    <>
-      <a className="avh-cta" href="/dashboard">Dashboard</a>
-      <button
-        type="button"
-        className="avh-cta avh-cta--solid"
-        onClick={async () => {
-          try { localStorage.removeItem('avatok_guest_jwt'); } catch { /* ignore */ }
-          try { await signOut(); } catch { /* ignore */ }
-          location.href = '/';
-        }}
-      >
-        Sign out
-      </button>
-    </>
-  );
+  return <DashboardCta />;
+}
+
+/*
+ * [WEB-HEADER-2 2026-08-26] Signed in = ONE Dashboard button, replacing both
+ * Log in and Sign up (owner request).
+ *
+ * Sign out deliberately does NOT live here any more. It is not lost: the
+ * dashboard sidebar's profile card (islands/shell/SidebarUser.tsx) carries it,
+ * and that is now the only place — checked before removing this one, because a
+ * header with no way out and no alternative would trap the user signed in.
+ */
+function DashboardCta() {
+  return <a className="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>;
 }
 
 export function HeaderAuth() {

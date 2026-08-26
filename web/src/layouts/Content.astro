@@ -1,6 +1,7 @@
 ---
 import Base from './Base.astro';
 import SiteFooter from '../components/SiteFooter.astro';
+import SiteHeader from '../components/SiteHeader.astro';
 
 export interface Props {
   title: string;
@@ -56,25 +57,15 @@ const routeTone = tone ?? (
   </Fragment>
 
   <div class={`editorial-page tone-${routeTone}`}>
-    <header class="editorial-nav">
-      <a class="editorial-brand" href="/" aria-label="avaTOK home">
-        <img src="/app-logo2.png" alt="" width="42" height="42" />
-        <span>ava<em>TOK</em></span>
-      </a>
-      <nav class="desktop-links" aria-label="Main navigation">
-        <a href="/about">About</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/terms">Terms</a>
-        <a href="/contact">Contact</a>
-        <a class="home-link" href="/">Meet Ava ↗</a>
-      </nav>
-      <details class="mobile-links">
-        <summary aria-label="Open menu">Menu</summary>
-        <div>
-          <a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a><a href="/">Home</a>
-        </div>
-      </details>
-    </header>
+    {/* [WEB-HEADER-2 2026-08-26] The legal + company pages used to run their
+        own `editorial-nav` (About / Privacy / Terms / Contact / Meet Ava), so
+        the site had two different headers depending which page you landed on.
+        They now share the standard SiteHeader like everything else.
+
+        `chrome={false}` still goes to Base above — Content.astro renders its
+        own <SiteFooter/> at the end, so letting Base add the chrome back would
+        print the footer twice. Header here, footer there. */}
+    <SiteHeader />
 
     <main class={`content ${width === 'wide' ? 'is-wide' : ''}`}>
       <span class="vertical-issue">avaTOK · THE HUMAN SIDE OF AI · 2026</span>
