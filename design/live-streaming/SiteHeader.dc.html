@@ -8,34 +8,48 @@
 <body>
 <x-dc>
 <!-- avaTOK standard site header.
-     [WEB-HEADER-5 2026-08-26] Owner: the comps must carry the SAME header the
-     live site does, so the mockups stop diverging from avatok.ai. The nav below
-     mirrors web/src/components/SiteHeader.astro: the same six menu items in the
-     same order, the same Anton uppercase treatment, and Log in / Sign up on the
-     right. Keep the two in step — if a menu item changes there, change it here.
+     [WEB-HEADER-6 2026-08-26] This is now a FAITHFUL copy of the live site's
+     header (web/src/components/SiteHeader.astro), not a lookalike: the same
+     hand-drawn wordmark and marigold ornament PNGs, the same cream ground
+     (#f7ead5), the same 18px/30px bar with a 30px gap, and nav + CTAs at 16px
+     Anton uppercase with 0.05em tracking. The previous version reproduced only
+     the menu ITEMS and kept the comp's own text wordmark, which is why the comp
+     pages still looked different from avatok.ai.
 
-     The jhalar band above is deliberately KEPT. It is the one piece of this
-     header the site did not have, and it has now been ported the other way, into
-     SiteHeader.astro, so both ends show the band over the bar. -->
-<div style="border-bottom:3px solid #161614;"><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
-<div style="background:#f7ead5; border-bottom:3px solid #161614;">
-  <div style="max-width:100rem; margin:0 auto; padding:18px clamp(16px,4vw,30px); display:flex; align-items:center; gap:1.875rem; flex-wrap:wrap;">
-    <a href="#" style="display:flex; align-items:baseline; gap:0.0625rem; font-family:'Anton',sans-serif; font-size:1.875rem; color:#161614;"><span>ava</span><span style="color:#d93825; font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:1.8125rem;">TOK</span></a>
-    <div style="display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap;">
-      <a href="avaTOK Marketplace.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:4px;">Marketplace</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Live events</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Private sessions</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">AI voice</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Categories</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">For creators</a>
+     The two images are absolute https://avatok.ai/ URLs on purpose. Every comp
+     is served with <base href="https://avatok-design.pages.dev/">, so a relative
+     /avatok-logo.png would resolve against the preview origin and 404. Absolute
+     URLs render correctly BOTH here and on the standalone preview.
+
+     Keep this in step with SiteHeader.astro. If a menu item changes there,
+     change it here — the whole point is that the comps stop diverging.
+
+     The jhalar band above the bar is the one piece that travelled the other way:
+     it was in the comps first and is now in SiteHeader.astro too. -->
+<div><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
+<div style="background:#f7ead5; color:#161614;">
+  <div style="display:flex; align-items:center; gap:1.875rem; padding:18px 30px;">
+    <a href="#" style="display:flex; align-items:center; flex:0 0 auto;">
+      <img src="https://avatok.ai/avatok-logo.png" alt="avaTOK" style="display:block; height:3.375rem; width:auto;" />
+    </a>
+
+    <div style="display:flex; align-items:center; gap:1.5rem;">
+      <a href="avaTOK Marketplace.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:4px;">Marketplace</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Live events</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Private sessions</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">AI voice</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Categories</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">For creators</a>
     </div>
+
     <div style="margin-left:auto; display:flex; align-items:center; gap:0.875rem;">
-      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Log in</a>
-      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; background:#d93825; color:#fdf1d3; border-radius:100px; padding:12px 26px;">Sign up</a>
+      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Log in</a>
+      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; background:#d93825; color:#fdf1d3; border-radius:100px; padding:12px 26px; white-space:nowrap;">Sign up</a>
+      <img src="https://avatok.ai/ornament-flower.png" alt="" style="display:block; height:2.875rem; width:auto;" />
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:110}}"></script>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:120}}"></script>
 </body>
 </html>
