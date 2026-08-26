@@ -15,6 +15,18 @@
 <style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,900;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap");</style>
 <style>
   * { box-sizing: border-box; }
+  /* Fluid type. Every font-size in these comps is now rem, so this one rule
+     scales all of them together with the viewport.
+       * at or below 1600px the middle term computes under 16px, so clamp picks
+         16px and the design renders EXACTLY as it always has -- laptops and
+         phones are untouched by construction;
+       * above 1600px it grows ~0.75px per 100px of width, reaching the 22px cap
+         near 2400px. On a 2560px monitor that is 1.375x, which is what makes
+         9px Silkscreen labels legible again instead of specks.
+     Box padding stays in px on purpose: letting gutters grow at the same rate
+     inflates the cards faster than the text and the grid loses a column. */
+  html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
+
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   a { color: #d93825; text-decoration: none; }
   a:hover { color: #2d7180; }
@@ -24,70 +36,70 @@
 <section style="padding:56px 48px 72px; background:#efdcc2; border-bottom:3px solid #161614;">
 
   <div id="2a" style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
-    <span style="border:2.5px solid #161614; border-radius:100px; padding:6px 14px; font-family:'Silkscreen',monospace; font-size:12px; letter-spacing:.1em; background:#fdf1d3;">2a</span>
-    <span style="font-family:'Silkscreen',monospace; font-size:12px; letter-spacing:.14em; color:#b82a19;">DESKTOP · 1440×900 · SPLIT PANEL</span>
+    <span style="border:2.5px solid #161614; border-radius:100px; padding:6px 14px; font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.1em; background:#fdf1d3;">2a</span>
+    <span style="font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.14em; color:#b82a19;">DESKTOP · 1440×900 · SPLIT PANEL</span>
   </div>
-  <h1 style="font-family:'Anton',sans-serif; font-size:68px; line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0 0 12px;">Same two doors,<br />wider frame.</h1>
-  <p style="margin:0 0 44px; font-size:19px; font-weight:500; line-height:1.55; color:#5a3d33; max-width:56ch; text-wrap:pretty;">The painted graphic moves to a left panel — marigold on log in, a centred poster on ink for create account; the form sits in a 460px column on cream. Log in and create account are separate pages, as on mobile.</p>
+  <h1 style="font-family:'Anton',sans-serif; font-size:4.25rem; line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0 0 12px;">Same two doors,<br />wider frame.</h1>
+  <p style="margin:0 0 44px; font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:56ch; text-wrap:pretty;">The painted graphic moves to a left panel — marigold on log in, a centred poster on ink for create account; the form sits in a 460px column on cream. Log in and create account are separate pages, as on mobile.</p>
 
   <div style="display:flex; flex-wrap:wrap; gap:56px; align-items:flex-start;">
 
     <!-- ========= DESKTOP · LOG IN ========= -->
     <div data-screen-label="Desktop log in" style="display:flex; flex-direction:column; gap:16px;">
-      <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">04 · LOG IN · DESKTOP</div>
+      <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">04 · LOG IN · DESKTOP</div>
       <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="{{ dw }}" height="{{ dh }}" url="avatok.com/login" tabs="{{ loginTabs }}" hint-size="1440px,900px">
         <div style="height:100%; display:grid; grid-template-columns:46% 1fr; background:#f6e4cd;">
 
           <div style="background:#feb302; border-right:3px solid #161614; position:relative; display:grid; place-items:center; padding:48px 44px;">
-            <div style="position:absolute; left:22px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; font-family:'Anton',sans-serif; font-size:20px; letter-spacing:.16em; text-transform:uppercase; color:#161614; opacity:.45;">Creator marketplace</div>
+            <div style="position:absolute; left:22px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; font-family:'Anton',sans-serif; font-size:1.25rem; letter-spacing:.16em; text-transform:uppercase; color:#161614; opacity:.45;">Creator marketplace</div>
             <div style="display:flex; flex-direction:column; align-items:center; gap:30px;">
               <img src="assets/horn-ok-please.png" alt="Horn OK Please" style="width:100%; max-width:470px; display:block;" />
-              <div style="font-family:'Kalam',cursive; font-size:25px; line-height:1.25; color:#161614; transform:rotate(-3deg); text-align:center;">Chai ho jaye?<br />Woh bhi ho jayega.</div>
+              <div style="font-family:'Kalam',cursive; font-size:1.5625rem; line-height:1.25; color:#161614; transform:rotate(-3deg); text-align:center;">Chai ho jaye?<br />Woh bhi ho jayega.</div>
             </div>
             <div style="position:absolute; bottom:26px; left:50%; transform:translateX(-50%) rotate(-1.5deg); height:36px; padding:0 22px; border-radius:100px; border:2.5px dashed #161614; display:grid; place-items:center;">
-              <span style="font-family:'Silkscreen',monospace; font-size:10px; line-height:1; color:#161614; letter-spacing:.16em; white-space:nowrap;">DESI &nbsp;·&nbsp; DIL SE &nbsp;·&nbsp; GLOBAL</span>
+              <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; line-height:1; color:#161614; letter-spacing:.16em; white-space:nowrap;">DESI &nbsp;·&nbsp; DIL SE &nbsp;·&nbsp; GLOBAL</span>
             </div>
           </div>
 
           <div style="display:grid; place-items:center; padding:48px 56px;">
             <div style="width:100%; max-width:460px; display:flex; flex-direction:column; gap:18px;">
               <div style="display:flex; align-items:baseline; gap:2px;">
-                <span style="font-family:'Anton',sans-serif; font-size:34px; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:33px; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
+                <span style="font-family:'Anton',sans-serif; font-size:2.125rem; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:2.0625rem; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
               </div>
               <div>
-                <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#b82a19; margin-bottom:10px;">WELCOME BACK</div>
-                <h2 style="font-family:'Anton',sans-serif; font-size:52px; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Good to<br />see you</h2>
+                <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#b82a19; margin-bottom:10px;">WELCOME BACK</div>
+                <h2 style="font-family:'Anton',sans-serif; font-size:3.25rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Good to<br />see you</h2>
               </div>
               <div style="display:flex; flex-direction:column; gap:8px;">
-                <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
-                <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:17px 18px; font-size:17px; font-weight:500; color:#161614;">riya.dutta@gmail.com</div>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
+                <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:17px 18px; font-size:1.0625rem; font-weight:500; color:#161614;">riya.dutta@gmail.com</div>
               </div>
               <div style="display:flex; flex-direction:column; gap:8px;">
-                <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">PASSWORD</span>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">PASSWORD</span>
                 <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:17px 18px; display:flex; align-items:center; gap:14px;">
-                  <span style="flex:1; font-size:18px; letter-spacing:.22em; color:#161614;">••••••••••</span>
-                  <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.08em; color:#b82a19;">SHOW</span>
+                  <span style="flex:1; font-size:1.125rem; letter-spacing:.22em; color:#161614;">••••••••••</span>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.08em; color:#b82a19;">SHOW</span>
                 </div>
               </div>
               <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
-                <span style="display:flex; align-items:center; gap:10px; font-size:15px; font-weight:500; color:#5a3d33;"><span style="width:22px; height:22px; border:2.5px solid #161614; border-radius:6px; background:#d93825; display:grid; place-items:center; color:#fdf1d3; font-size:13px; line-height:1;">✓</span>Keep me in</span>
-                <span style="font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; color:#d93825;">Forgot password</span>
+                <span style="display:flex; align-items:center; gap:10px; font-size:0.9375rem; font-weight:500; color:#5a3d33;"><span style="width:22px; height:22px; border:2.5px solid #161614; border-radius:6px; background:#d93825; display:grid; place-items:center; color:#fdf1d3; font-size:0.8125rem; line-height:1;">✓</span>Keep me in</span>
+                <span style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; color:#d93825;">Forgot password</span>
               </div>
-              <button style="width:100%; font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.05em; text-transform:uppercase; padding:19px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;" style-hover="transform:translate(-2px,-2px); box-shadow:4px 5px 0 #161614;">Log in</button>
+              <button style="width:100%; font-family:'Anton',sans-serif; font-size:1.1875rem; letter-spacing:.05em; text-transform:uppercase; padding:19px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;" style-hover="transform:translate(-2px,-2px); box-shadow:4px 5px 0 #161614;">Log in</button>
               <sc-if value="{{ showSocial }}" hint-placeholder-val="{{ true }}">
                 <div style="display:flex; flex-direction:column; gap:16px;">
                   <div style="display:flex; align-items:center; gap:14px;">
                     <span style="flex:1; height:2px; background:rgba(22,22,20,.2);"></span>
-                    <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">YA PHIR</span>
+                    <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">YA PHIR</span>
                     <span style="flex:1; height:2px; background:rgba(22,22,20,.2);"></span>
                   </div>
                   <div style="display:flex; gap:14px;">
-                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
-                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
+                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
+                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
                   </div>
                 </div>
               </sc-if>
-              <div style="font-size:16px; font-weight:500; color:#5a3d33;">New here? <span style="font-family:'Anton',sans-serif; font-size:16px; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Create an account</span></div>
+              <div style="font-size:1rem; font-weight:500; color:#5a3d33;">New here? <span style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Create an account</span></div>
             </div>
           </div>
         </div>
@@ -96,74 +108,74 @@
 
     <!-- ========= DESKTOP · CREATE ACCOUNT ========= -->
     <div data-screen-label="Desktop create account" style="display:flex; flex-direction:column; gap:16px;">
-      <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">05 · CREATE ACCOUNT · DESKTOP</div>
+      <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">05 · CREATE ACCOUNT · DESKTOP</div>
       <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="{{ dw }}" height="{{ dh }}" url="avatok.com/join" tabs="{{ joinTabs }}" hint-size="1440px,900px">
         <div style="height:100%; display:grid; grid-template-columns:46% 1fr; background:#f6e4cd;">
 
           <div style="background:#161614; border-right:3px solid #161614; position:relative; display:grid; place-items:center; padding:48px 44px;">
-            <div style="position:absolute; left:22px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; font-family:'Anton',sans-serif; font-size:20px; letter-spacing:.16em; text-transform:uppercase; color:#fdf1d3; opacity:.45;">Creator marketplace</div>
+            <div style="position:absolute; left:22px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; font-family:'Anton',sans-serif; font-size:1.25rem; letter-spacing:.16em; text-transform:uppercase; color:#fdf1d3; opacity:.45;">Creator marketplace</div>
             <img src="assets/pawri-poster.png" alt="Ye Hamari Pawri Ho Rahi Hai" style="width:330px; max-width:100%; display:block;" />
           </div>
 
           <div style="display:grid; place-items:center; padding:44px 56px;">
             <div style="width:100%; max-width:460px; display:flex; flex-direction:column; gap:16px;">
               <div style="display:flex; align-items:baseline; gap:2px;">
-                <span style="font-family:'Anton',sans-serif; font-size:34px; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:33px; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
+                <span style="font-family:'Anton',sans-serif; font-size:2.125rem; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:2.0625rem; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
               </div>
               <div>
-                <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#b82a19; margin-bottom:10px;">TWO MINUTES, THAT'S ALL</div>
-                <h2 style="font-family:'Anton',sans-serif; font-size:46px; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Create my account</h2>
+                <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#b82a19; margin-bottom:10px;">TWO MINUTES, THAT'S ALL</div>
+                <h2 style="font-family:'Anton',sans-serif; font-size:2.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Create my account</h2>
               </div>
               <sc-if value="{{ showRoleStep }}" hint-placeholder-val="{{ true }}">
                 <div style="display:flex; flex-direction:column; gap:9px;">
-                  <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">I'M JOINING AS</span>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">I'M JOINING AS</span>
                   <div style="display:flex; gap:14px;">
                     <div style="flex:1; border:3px solid #161614; border-radius:18px; background:#f4d8a0; padding:14px 16px 15px; box-shadow:4px 5px 0 #161614; display:flex; flex-direction:column; gap:5px;">
                       <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <span style="font-family:'Anton',sans-serif; font-size:22px; text-transform:uppercase;">Friend</span>
-                        <span style="width:22px; height:22px; border-radius:50%; background:#d93825; border:2px solid #161614; display:grid; place-items:center; color:#fdf1d3; font-size:12px; line-height:1;">✓</span>
+                        <span style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase;">Friend</span>
+                        <span style="width:22px; height:22px; border-radius:50%; background:#d93825; border:2px solid #161614; display:grid; place-items:center; color:#fdf1d3; font-size:0.75rem; line-height:1;">✓</span>
                       </div>
-                      <span style="font-size:13.5px; font-weight:500; line-height:1.35; color:#4a3a20;">Book talks, walks and adda.</span>
+                      <span style="font-size:0.8438rem; font-weight:500; line-height:1.35; color:#4a3a20;">Book talks, walks and adda.</span>
                     </div>
                     <div style="flex:1; border:2.5px solid #161614; border-radius:18px; background:#d9c3a0; padding:14px 16px 15px; display:flex; flex-direction:column; gap:5px;">
                       <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <span style="font-family:'Anton',sans-serif; font-size:22px; text-transform:uppercase;">Creator</span>
+                        <span style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase;">Creator</span>
                         <span style="width:22px; height:22px; border-radius:50%; border:2px solid #161614; background:#fdf1d3;"></span>
                       </div>
-                      <span style="font-size:13.5px; font-weight:500; line-height:1.35; color:#4a3a20;">Host sessions, get paid.</span>
+                      <span style="font-size:0.8438rem; font-weight:500; line-height:1.35; color:#4a3a20;">Host sessions, get paid.</span>
                     </div>
                   </div>
                 </div>
               </sc-if>
               <div style="display:flex; gap:14px;">
                 <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
-                  <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">NAME</span>
-                  <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:15px 16px; font-size:16px; font-weight:500; color:#a08974;">Your name</div>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">NAME</span>
+                  <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:15px 16px; font-size:1rem; font-weight:500; color:#a08974;">Your name</div>
                 </div>
                 <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
-                  <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
-                  <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:15px 16px; font-size:16px; font-weight:500; color:#a08974;">you@email.com</div>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
+                  <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:15px 16px; font-size:1rem; font-weight:500; color:#a08974;">you@email.com</div>
                 </div>
               </div>
               <div style="display:flex; flex-direction:column; gap:8px;">
-                <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">PASSWORD · 8+ CHARACTERS</span>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">PASSWORD · 8+ CHARACTERS</span>
                 <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:15px 16px; display:flex; align-items:center; gap:14px;">
-                  <span style="flex:1; font-size:16px; font-weight:500; color:#a08974;">Make it a good one</span>
-                  <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.08em; color:#b82a19;">SHOW</span>
+                  <span style="flex:1; font-size:1rem; font-weight:500; color:#a08974;">Make it a good one</span>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.08em; color:#b82a19;">SHOW</span>
                 </div>
               </div>
               <div style="display:flex; gap:11px; align-items:flex-start;">
                 <span style="width:22px; height:22px; flex:none; border:2.5px solid #161614; border-radius:6px; background:#fdf1d3; margin-top:1px;"></span>
-                <span style="font-size:14px; font-weight:500; line-height:1.4; color:#5a3d33;">I'm 18 or over and I agree to the <span style="color:#d93825;">terms</span> and <span style="color:#d93825;">safety rules</span>.</span>
+                <span style="font-size:0.875rem; font-weight:500; line-height:1.4; color:#5a3d33;">I'm 18 or over and I agree to the <span style="color:#d93825;">terms</span> and <span style="color:#d93825;">safety rules</span>.</span>
               </div>
-              <button style="width:100%; font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.05em; text-transform:uppercase; padding:19px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;" style-hover="transform:translate(-2px,-2px); box-shadow:4px 5px 0 #161614;">Create my account</button>
+              <button style="width:100%; font-family:'Anton',sans-serif; font-size:1.1875rem; letter-spacing:.05em; text-transform:uppercase; padding:19px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;" style-hover="transform:translate(-2px,-2px); box-shadow:4px 5px 0 #161614;">Create my account</button>
               <sc-if value="{{ showSocial }}" hint-placeholder-val="{{ true }}">
                 <div style="display:flex; gap:14px;">
-                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
-                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
+                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
+                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
                 </div>
               </sc-if>
-              <div style="font-size:16px; font-weight:500; color:#5a3d33;">Already with us? <span style="font-family:'Anton',sans-serif; font-size:16px; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Log in</span></div>
+              <div style="font-size:1rem; font-weight:500; color:#5a3d33;">Already with us? <span style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Log in</span></div>
             </div>
           </div>
         </div>
@@ -176,57 +188,57 @@
 <section style="padding:56px 48px 80px; background:#f6e4cd;">
 
   <div id="1a" style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
-    <span style="border:2.5px solid #161614; border-radius:100px; padding:6px 14px; font-family:'Silkscreen',monospace; font-size:12px; letter-spacing:.1em; background:#fdf1d3;">1a</span>
-    <span style="font-family:'Silkscreen',monospace; font-size:12px; letter-spacing:.14em; color:#b82a19;">AUTH · PAINTED PANEL · MOBILE + IPAD</span>
+    <span style="border:2.5px solid #161614; border-radius:100px; padding:6px 14px; font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.1em; background:#fdf1d3;">1a</span>
+    <span style="font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.14em; color:#b82a19;">AUTH · PAINTED PANEL · MOBILE + IPAD</span>
   </div>
-  <h1 style="font-family:'Anton',sans-serif; font-size:76px; line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0 0 12px;">Get in, we're<br />going live.</h1>
-  <p style="margin:0 0 44px; font-size:19px; font-weight:500; line-height:1.55; color:#5a3d33; max-width:56ch; text-wrap:pretty;">Three screens: log in and sign up at 402×874, and the centred-card layout at iPad portrait. Every field and button clears 48px of touch height.</p>
+  <h1 style="font-family:'Anton',sans-serif; font-size:4.75rem; line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0 0 12px;">Get in, we're<br />going live.</h1>
+  <p style="margin:0 0 44px; font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:56ch; text-wrap:pretty;">Three screens: log in and sign up at 402×874, and the centred-card layout at iPad portrait. Every field and button clears 48px of touch height.</p>
 
   <div style="display:flex; flex-wrap:wrap; gap:64px; align-items:flex-start;">
 
     <!-- ========= MOBILE · LOG IN ========= -->
     <div data-screen-label="Mobile log in" style="display:flex; flex-direction:column; gap:16px;">
-      <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">01 · LOG IN · IPHONE 402PT</div>
+      <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">01 · LOG IN · IPHONE 402PT</div>
       <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ w402 }}" height="{{ h874 }}" hint-size="402px,874px">
         <div style="min-height:100%; background:#f6e4cd; padding:62px 0 34px; display:flex; flex-direction:column;">
 
           <div style="padding:0 16px 2px; display:flex; flex-direction:column; align-items:center; gap:9px;">
             <div style="display:flex; align-items:baseline; gap:2px;">
-              <span style="font-family:'Anton',sans-serif; font-size:30px; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:29px; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
+              <span style="font-family:'Anton',sans-serif; font-size:1.875rem; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:1.8125rem; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
             </div>
             <img src="assets/horn-ok-please.png" alt="Horn OK Please" style="width:100%; display:block;" />
-            <div style="font-family:'Baloo 2',sans-serif; font-weight:800; font-size:20px; color:#161614;">आपका इंतज़ार था</div>
+            <div style="font-family:'Baloo 2',sans-serif; font-weight:800; font-size:1.25rem; color:#161614;">आपका इंतज़ार था</div>
           </div>
 
           <div style="padding:0 20px; display:flex; flex-direction:column; gap:14px;">
             <div style="display:flex; flex-direction:column; gap:7px;">
-              <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
-              <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:15px 16px; font-size:16px; font-weight:500; color:#161614;">riya.dutta@gmail.com</div>
+              <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
+              <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:15px 16px; font-size:1rem; font-weight:500; color:#161614;">riya.dutta@gmail.com</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:7px;">
-              <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.12em; color:#6b4f3f;">PASSWORD</span>
+              <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.12em; color:#6b4f3f;">PASSWORD</span>
               <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:15px 16px; display:flex; align-items:center; gap:12px;">
-                <span style="flex:1; font-size:17px; letter-spacing:.22em; color:#161614;">••••••••••</span>
-                <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.08em; color:#b82a19;">SHOW</span>
+                <span style="flex:1; font-size:1.0625rem; letter-spacing:.22em; color:#161614;">••••••••••</span>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; color:#b82a19;">SHOW</span>
               </div>
             </div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-              <span style="display:flex; align-items:center; gap:9px; font-size:14px; font-weight:500; color:#5a3d33;"><span style="width:20px; height:20px; border:2.5px solid #161614; border-radius:5px; background:#d93825; display:grid; place-items:center; color:#fdf1d3; font-size:12px; line-height:1;">✓</span>Keep me in</span>
-              <span style="font-family:'Anton',sans-serif; font-size:13px; letter-spacing:.05em; text-transform:uppercase; color:#d93825;">Forgot password</span>
+              <span style="display:flex; align-items:center; gap:9px; font-size:0.875rem; font-weight:500; color:#5a3d33;"><span style="width:20px; height:20px; border:2.5px solid #161614; border-radius:5px; background:#d93825; display:grid; place-items:center; color:#fdf1d3; font-size:0.75rem; line-height:1;">✓</span>Keep me in</span>
+              <span style="font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.05em; text-transform:uppercase; color:#d93825;">Forgot password</span>
             </div>
 
-            <button style="width:100%; font-family:'Anton',sans-serif; font-size:18px; letter-spacing:.05em; text-transform:uppercase; padding:17px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; margin-top:4px;">Log in</button>
+            <button style="width:100%; font-family:'Anton',sans-serif; font-size:1.125rem; letter-spacing:.05em; text-transform:uppercase; padding:17px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; margin-top:4px;">Log in</button>
 
             <sc-if value="{{ showSocial }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; flex-direction:column; gap:14px;">
                 <div style="display:flex; align-items:center; gap:12px;">
                   <span style="flex:1; height:2px; background:rgba(22,22,20,.2);"></span>
-                  <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.14em; color:#6b4f3f;">YA PHIR</span>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.14em; color:#6b4f3f;">YA PHIR</span>
                   <span style="flex:1; height:2px; background:rgba(22,22,20,.2);"></span>
                 </div>
                 <div style="display:flex; gap:12px;">
-                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
-                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
+                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
+                  <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
                 </div>
               </div>
             </sc-if>
@@ -234,9 +246,9 @@
 
           <div style="margin-top:auto; padding:16px 20px 0; display:flex; flex-direction:column; align-items:center; gap:12px;">
             <sc-if value="{{ showMarginalia }}" hint-placeholder-val="{{ true }}">
-              <div style="font-family:'Kalam',cursive; font-size:19px; line-height:1.2; color:#161614; transform:rotate(-4deg); text-align:center;">Chai ho jaye? <br />Woh bhi ho jayega.</div>
+              <div style="font-family:'Kalam',cursive; font-size:1.1875rem; line-height:1.2; color:#161614; transform:rotate(-4deg); text-align:center;">Chai ho jaye? <br />Woh bhi ho jayega.</div>
             </sc-if>
-            <div style="font-size:15px; font-weight:500; color:#5a3d33;">New here? <span style="font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Create an account</span></div>
+            <div style="font-size:0.9375rem; font-weight:500; color:#5a3d33;">New here? <span style="font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Create an account</span></div>
           </div>
         </div>
       </x-import>
@@ -244,13 +256,13 @@
 
     <!-- ========= MOBILE · SIGN UP ========= -->
     <div data-screen-label="Mobile sign up" style="display:flex; flex-direction:column; gap:16px;">
-      <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">02 · SIGN UP · ROLE FIRST</div>
+      <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">02 · SIGN UP · ROLE FIRST</div>
       <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ w402 }}" height="{{ h874 }}" hint-size="402px,874px">
         <div style="min-height:100%; background:#f6e4cd; padding:62px 0 24px; display:flex; flex-direction:column;">
 
           <div style="padding:0 16px; display:flex; flex-direction:column; align-items:center; gap:8px;">
             <div style="display:flex; align-items:baseline; gap:2px;">
-              <span style="font-family:'Anton',sans-serif; font-size:30px; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:29px; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
+              <span style="font-family:'Anton',sans-serif; font-size:1.875rem; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:1.8125rem; color:#d93825; text-shadow:2px 2px 0 #161614;">TOK</span>
             </div>
             <img src="assets/suswagatam.png" alt="Suswagatam" style="height:130px; width:auto; max-width:100%; display:block;" />
           </div>
@@ -258,122 +270,122 @@
           <div style="padding:0 20px; display:flex; flex-direction:column; gap:11px;">
             <sc-if value="{{ showRoleStep }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; flex-direction:column; gap:9px;">
-                <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.12em; color:#6b4f3f;">I'M JOINING AS</span>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.12em; color:#6b4f3f;">I'M JOINING AS</span>
                 <div style="display:flex; gap:12px;">
                   <div style="flex:1; border:3px solid #161614; border-radius:18px; background:#f4d8a0; padding:11px 12px 12px; box-shadow:4px 5px 0 #161614; display:flex; flex-direction:column; gap:5px;">
                     <div style="display:flex; align-items:center; justify-content:space-between;">
-                      <span style="font-family:'Anton',sans-serif; font-size:21px; text-transform:uppercase;">Friend</span>
-                      <span style="width:20px; height:20px; border-radius:50%; background:#d93825; border:2px solid #161614; display:grid; place-items:center; color:#fdf1d3; font-size:11px; line-height:1;">✓</span>
+                      <span style="font-family:'Anton',sans-serif; font-size:1.3125rem; text-transform:uppercase;">Friend</span>
+                      <span style="width:20px; height:20px; border-radius:50%; background:#d93825; border:2px solid #161614; display:grid; place-items:center; color:#fdf1d3; font-size:0.6875rem; line-height:1;">✓</span>
                     </div>
-                    <span style="font-size:13px; font-weight:500; line-height:1.35; color:#4a3a20;">Book talks, walks and adda.</span>
+                    <span style="font-size:0.8125rem; font-weight:500; line-height:1.35; color:#4a3a20;">Book talks, walks and adda.</span>
                   </div>
                   <div style="flex:1; border:2.5px solid #161614; border-radius:18px; background:#d9c3a0; padding:11px 12px 12px; display:flex; flex-direction:column; gap:5px;">
                     <div style="display:flex; align-items:center; justify-content:space-between;">
-                      <span style="font-family:'Anton',sans-serif; font-size:21px; text-transform:uppercase;">Creator</span>
+                      <span style="font-family:'Anton',sans-serif; font-size:1.3125rem; text-transform:uppercase;">Creator</span>
                       <span style="width:20px; height:20px; border-radius:50%; border:2px solid #161614; background:#fdf1d3;"></span>
                     </div>
-                    <span style="font-size:13px; font-weight:500; line-height:1.35; color:#4a3a20;">Host sessions, get paid.</span>
+                    <span style="font-size:0.8125rem; font-weight:500; line-height:1.35; color:#4a3a20;">Host sessions, get paid.</span>
                   </div>
                 </div>
               </div>
             </sc-if>
 
             <div style="display:flex; flex-direction:column; gap:7px;">
-              <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.12em; color:#6b4f3f;">NAME</span>
-              <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:12px 16px; font-size:16px; font-weight:500; color:#a08974;">What should we call you?</div>
+              <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.12em; color:#6b4f3f;">NAME</span>
+              <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:12px 16px; font-size:1rem; font-weight:500; color:#a08974;">What should we call you?</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:7px;">
-              <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
-              <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:12px 16px; font-size:16px; font-weight:500; color:#a08974;">you@email.com</div>
+              <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
+              <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:12px 16px; font-size:1rem; font-weight:500; color:#a08974;">you@email.com</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:7px;">
-              <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.12em; color:#6b4f3f;">PASSWORD · 8+ CHARACTERS</span>
+              <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.12em; color:#6b4f3f;">PASSWORD · 8+ CHARACTERS</span>
               <div style="border:2.5px solid #161614; border-radius:14px; background:#fdf1d3; padding:12px 16px; display:flex; align-items:center; gap:12px;">
-                <span style="flex:1; font-size:16px; font-weight:500; color:#a08974;">Make it a good one</span>
-                <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.08em; color:#b82a19;">SHOW</span>
+                <span style="flex:1; font-size:1rem; font-weight:500; color:#a08974;">Make it a good one</span>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; color:#b82a19;">SHOW</span>
               </div>
             </div>
 
             <div style="display:flex; gap:10px; align-items:flex-start;">
               <span style="width:22px; height:22px; flex:none; border:2.5px solid #161614; border-radius:5px; background:#fdf1d3; margin-top:1px;"></span>
-              <span style="font-size:13.5px; font-weight:500; line-height:1.4; color:#5a3d33;">I'm 18 or over and I agree to the <span style="color:#d93825;">terms</span> and <span style="color:#d93825;">safety rules</span>.</span>
+              <span style="font-size:0.8438rem; font-weight:500; line-height:1.4; color:#5a3d33;">I'm 18 or over and I agree to the <span style="color:#d93825;">terms</span> and <span style="color:#d93825;">safety rules</span>.</span>
             </div>
 
-            <button style="width:100%; font-family:'Anton',sans-serif; font-size:18px; letter-spacing:.05em; text-transform:uppercase; padding:17px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Create my account</button>
+            <button style="width:100%; font-family:'Anton',sans-serif; font-size:1.125rem; letter-spacing:.05em; text-transform:uppercase; padding:17px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Create my account</button>
 
             <sc-if value="{{ showSocial }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; gap:12px;">
-                <button style="flex:1; font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
-                <button style="flex:1; font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
+                <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
+                <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:15px 10px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
               </div>
             </sc-if>
           </div>
 
-          <div style="margin-top:auto; padding:10px 20px 0; text-align:center; font-size:15px; font-weight:500; color:#5a3d33;">Already with us? <span style="font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Log in</span></div>
+          <div style="margin-top:auto; padding:10px 20px 0; text-align:center; font-size:0.9375rem; font-weight:500; color:#5a3d33;">Already with us? <span style="font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Log in</span></div>
         </div>
       </x-import>
     </div>
 
     <!-- ========= IPAD · CENTRED CARD ========= -->
     <div data-screen-label="iPad log in" style="display:flex; flex-direction:column; gap:16px;">
-      <div style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">03 · IPAD PORTRAIT 834×1112 · CENTRED CARD</div>
+      <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">03 · IPAD PORTRAIT 834×1112 · CENTRED CARD</div>
       <div style="width:834px; height:1112px; border-radius:38px; background:#161614; padding:16px; box-shadow:0 40px 80px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.12); position:relative;">
         <div style="position:absolute; top:7px; left:50%; transform:translateX(-50%); width:7px; height:7px; border-radius:50%; background:#3a3a3a;"></div>
         <div style="width:100%; height:100%; border-radius:24px; overflow:hidden; background:#d46e59; position:relative; display:grid; place-items:center;">
 
-          <div style="position:absolute; top:0; left:0; right:0; display:flex; align-items:center; justify-content:space-between; padding:14px 26px; font-family:'Instrument Sans',sans-serif; font-size:14px; font-weight:600; color:#2a0f0a;">
+          <div style="position:absolute; top:0; left:0; right:0; display:flex; align-items:center; justify-content:space-between; padding:14px 26px; font-family:'Instrument Sans',sans-serif; font-size:0.875rem; font-weight:600; color:#2a0f0a;">
             <span>9:41 Tue 26 Aug</span>
-            <span style="display:flex; align-items:center; gap:10px;"><span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.08em;">WI-FI</span><span style="width:26px; height:12px; border:2px solid #2a0f0a; border-radius:3px; padding:1.5px;"><span style="display:block; width:70%; height:100%; background:#2a0f0a;"></span></span></span>
+            <span style="display:flex; align-items:center; gap:10px;"><span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em;">WI-FI</span><span style="width:26px; height:12px; border:2px solid #2a0f0a; border-radius:3px; padding:1.5px;"><span style="display:block; width:70%; height:100%; background:#2a0f0a;"></span></span></span>
           </div>
 
-          <div style="position:absolute; left:20px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; font-family:'Anton',sans-serif; font-size:22px; letter-spacing:.16em; text-transform:uppercase; color:#161614; opacity:.5;">Creator marketplace</div>
+          <div style="position:absolute; left:20px; top:50%; transform:translateY(-50%); writing-mode:vertical-rl; font-family:'Anton',sans-serif; font-size:1.375rem; letter-spacing:.16em; text-transform:uppercase; color:#161614; opacity:.5;">Creator marketplace</div>
           <div style="position:absolute; bottom:24px; left:50%; transform:translateX(-50%) rotate(-1.5deg); height:36px; padding:0 22px; border-radius:100px; border:2.5px dashed #fdf1d3; display:grid; place-items:center;">
-            <span style="font-family:'Silkscreen',monospace; font-size:10px; line-height:1; color:#fdf1d3; letter-spacing:.16em; white-space:nowrap;">DESI &nbsp;·&nbsp; DIL SE &nbsp;·&nbsp; GLOBAL</span>
+            <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; line-height:1; color:#fdf1d3; letter-spacing:.16em; white-space:nowrap;">DESI &nbsp;·&nbsp; DIL SE &nbsp;·&nbsp; GLOBAL</span>
           </div>
 
           <div style="width:560px; border:3px solid #161614; border-radius:28px; background:#fdf1d3; box-shadow:8px 9px 0 #161614; overflow:hidden;">
 
             <div style="padding:30px 34px 24px; display:flex; flex-direction:column; align-items:center; gap:16px;">
               <div style="display:flex; align-items:baseline; gap:2px;">
-                <span style="font-family:'Anton',sans-serif; font-size:36px; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:35px; color:#d93825; text-shadow:3px 3px 0 #161614;">TOK</span>
+                <span style="font-family:'Anton',sans-serif; font-size:2.25rem; color:#161614;">ava</span><span style="font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:2.1875rem; color:#d93825; text-shadow:3px 3px 0 #161614;">TOK</span>
               </div>
               <img src="assets/horn-ok-please.png" alt="Horn OK Please" style="width:100%; display:block;" />
-              <div style="font-family:'Baloo 2',sans-serif; font-weight:800; font-size:27px; color:#161614;">आपका इंतज़ार था</div>
+              <div style="font-family:'Baloo 2',sans-serif; font-weight:800; font-size:1.6875rem; color:#161614;">आपका इंतज़ार था</div>
             </div>
 
             <div style="padding:34px; display:flex; flex-direction:column; gap:18px;">
               <div style="display:flex; flex-direction:column; gap:8px;">
-                <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
-                <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:17px 18px; font-size:17px; font-weight:500; color:#161614;">riya.dutta@gmail.com</div>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
+                <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:17px 18px; font-size:1.0625rem; font-weight:500; color:#161614;">riya.dutta@gmail.com</div>
               </div>
               <div style="display:flex; flex-direction:column; gap:8px;">
-                <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#6b4f3f;">PASSWORD</span>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">PASSWORD</span>
                 <div style="border:2.5px solid #161614; border-radius:16px; background:#fdf1d3; padding:17px 18px; display:flex; align-items:center; gap:14px;">
-                  <span style="flex:1; font-size:18px; letter-spacing:.22em;">••••••••••</span>
-                  <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.08em; color:#b82a19;">SHOW</span>
+                  <span style="flex:1; font-size:1.125rem; letter-spacing:.22em;">••••••••••</span>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.08em; color:#b82a19;">SHOW</span>
                 </div>
               </div>
               <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
-                <span style="display:flex; align-items:center; gap:10px; font-size:15px; font-weight:500; color:#5a3d33;"><span style="width:22px; height:22px; border:2.5px solid #161614; border-radius:6px; background:#d93825; display:grid; place-items:center; color:#fdf1d3; font-size:13px; line-height:1;">✓</span>Keep me in</span>
-                <span style="font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; color:#d93825;">Forgot password</span>
+                <span style="display:flex; align-items:center; gap:10px; font-size:0.9375rem; font-weight:500; color:#5a3d33;"><span style="width:22px; height:22px; border:2.5px solid #161614; border-radius:6px; background:#d93825; display:grid; place-items:center; color:#fdf1d3; font-size:0.8125rem; line-height:1;">✓</span>Keep me in</span>
+                <span style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; color:#d93825;">Forgot password</span>
               </div>
-              <button style="width:100%; font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.05em; text-transform:uppercase; padding:19px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; margin-top:2px;">Log in</button>
+              <button style="width:100%; font-family:'Anton',sans-serif; font-size:1.1875rem; letter-spacing:.05em; text-transform:uppercase; padding:19px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; margin-top:2px;">Log in</button>
 
               <sc-if value="{{ showSocial }}" hint-placeholder-val="{{ true }}">
                 <div style="display:flex; flex-direction:column; gap:16px;">
                   <div style="display:flex; align-items:center; gap:14px;">
                     <span style="flex:1; height:2px; background:rgba(22,22,20,.2);"></span>
-                    <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.14em; color:#6b4f3f;">YA PHIR</span>
+                    <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f;">YA PHIR</span>
                     <span style="flex:1; height:2px; background:rgba(22,22,20,.2);"></span>
                   </div>
                   <div style="display:flex; gap:14px;">
-                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
-                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
+                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Google</button>
+                    <button style="flex:1; font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 12px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer;">Apple</button>
                   </div>
                 </div>
               </sc-if>
 
-              <div style="text-align:center; font-size:16px; font-weight:500; color:#5a3d33; padding-top:4px;">New here? <span style="font-family:'Anton',sans-serif; font-size:16px; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Create an account</span></div>
+              <div style="text-align:center; font-size:1rem; font-weight:500; color:#5a3d33; padding-top:4px;">New here? <span style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.04em; text-transform:uppercase; color:#d93825;">Create an account</span></div>
             </div>
           </div>
 
