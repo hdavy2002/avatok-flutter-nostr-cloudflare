@@ -1,0 +1,216 @@
+---
+/*
+ * SiteHeader — the standard avaTOK header, site-wide.
+ *
+ * [WEB-HEADER-1 2026-08-26] Replaces two things at once:
+ *   1. The nav that was PAINTED INTO the home page poster. Those words were
+ *      pixels with transparent `.hotspot` anchors laid over them — unreadable to
+ *      Google and to screen readers, and impossible to add a menu item to
+ *      without redrawing the artwork. The poster is now cropped below the nav
+ *      (`hero-poster-nonav.png`) and this header sits in its place.
+ *   2. `Nav.astro`, whose five menu links pointed at homepage sections that no
+ *      longer exist after the redesign (`#features`, `#receptionist`, `#number`,
+ *      `#messaging`, `#faq` — all verified absent).
+ *
+ * It is built to blend into the poster: same cream ground (#f7ead5), the real
+ * hand-drawn wordmark and the marigold ornament lifted straight out of the
+ * artwork as PNGs, so the seam between header and hero is invisible.
+ *
+ * MENU ITEMS ARE DATA. Change `DEFAULT_LINKS` below, or pass `links` for one
+ * page. That was the point of the exercise — the menu is editable on demand
+ * now, which it could never be while it lived inside a JPEG.
+ */
+import HeaderAuth from '../islands/site/HeaderAuth.tsx';
+
+export interface HeaderLink { href: string; label: string }
+
+interface Props {
+  /** Override the menu for a single page. Omit to use the site default. */
+  links?: HeaderLink[];
+  /** Hide the search pill (e.g. on the auth screens). */
+  showSearch?: boolean;
+  /** Sticky by default; the home page pins it over the poster. */
+  sticky?: boolean;
+}
+
+// The site menu. Every entry points at something that exists — checked.
+const DEFAULT_LINKS: HeaderLink[] = [
+  { href: '/marketplace', label: 'Marketplace' },
+  { href: '/#live-streaming', label: 'Live events' },
+  { href: '/#consultations', label: 'Private sessions' },
+  { href: '/#voice-agents', label: 'AI voice' },
+  { href: '/#marketplace-catalogue', label: 'Categories' },
+  { href: '/sign-up', label: 'For creators' },
+];
+
+const { links = DEFAULT_LINKS, showSearch = true, sticky = true } = Astro.props;
+---
+
+{/* Anton is loaded by the component rather than the layout because the HOME
+    page does not use Base.astro at all — it emits its own raw document — so a
+    layout-level font link would miss the one page the header matters most on.
+    A stylesheet <link> in the body is honoured by every browser. */}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&display=swap" />
+
+<header class:list={['avh', sticky && 'avh--sticky']}>
+  <a class="avh-logo" href="/" aria-label="avaTOK home">
+    <img src="/avatok-logo.png" alt="avaTOK" width="231" height="90" />
+  </a>
+
+  <nav class="avh-nav" aria-label="Main">
+    {links.map((l) => <a href={l.href}>{l.label}</a>)}
+  </nav>
+
+  <div class="avh-right">
+    {showSearch && (
+      <form class="avh-search" action="/marketplace" method="get" role="search">
+        <input type="search" name="q" placeholder="Search creators or events" aria-label="Search creators or events" />
+        <button type="submit" aria-label="Search">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+          </svg>
+        </button>
+      </form>
+    )}
+    <HeaderAuth client:idle />
+    <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
+  </div>
+
+  <button class="avh-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="avh-mobile">
+    <svg width="20" height="15" viewBox="0 0 20 15" aria-hidden="true">
+      <path d="M1 1.5h18M1 7.5h18M1 13.5h18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+    </svg>
+  </button>
+</header>
+
+<nav class="avh-mobile" id="avh-mobile" aria-label="Main (mobile)" hidden>
+  {links.map((l) => <a href={l.href}>{l.label}</a>)}
+  <a href="/marketplace">Search</a>
+</nav>
+
+<script>
+  // Progressive enhancement: the header is fully usable without this — the
+  // mobile list is simply hidden until toggled.
+  const burger = document.querySelector<HTMLButtonElement>('.avh-burger');
+  const panel = document.getElementById('avh-mobile');
+  burger?.addEventListener('click', () => {
+    const open = burger.getAttribute('aria-expanded') === 'true';
+    burger.setAttribute('aria-expanded', String(!open));
+    if (panel) panel.hidden = open;
+  });
+</script>
+
+<style is:global>
+  /* Header type: Anton matches the poster's condensed hand-lettered caps most
+     closely of the faces already loaded for the auth screens. */
+  .avh {
+    --avh-cream: #f7ead5;
+    --avh-ink: #161614;
+    --avh-red: #d93825;
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    padding: 10px 22px;
+    background: var(--avh-cream);
+    color: var(--avh-ink);
+    font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+  }
+  .avh--sticky { position: sticky; top: 0; z-index: 60; }
+
+  .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }
+  .avh-logo img { display: block; height: 38px; width: auto; }
+
+  .avh-nav { display: flex; align-items: center; gap: 24px; }
+  .avh-nav a,
+  .avh-mobile a {
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--avh-ink);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .avh-nav a:hover,
+  .avh-nav a:focus-visible {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+
+  .avh-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+
+  .avh-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 2px solid var(--avh-ink);
+    border-radius: 100px;
+    background: transparent;
+  }
+  .avh-search input {
+    border: 0;
+    background: none;
+    outline: none;
+    width: 168px;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    color: var(--avh-ink);
+  }
+  .avh-search input::placeholder { color: rgba(22, 22, 20, 0.55); }
+  .avh-search button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--avh-ink); display: grid; place-content: center; }
+
+  .avh-orn { display: block; height: 34px; width: auto; }
+
+  /* Auth CTAs (island) */
+  .avh-cta {
+    font-family: 'Anton', Impact, sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--avh-ink);
+    text-decoration: none;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .avh-cta--solid {
+    background: var(--avh-red);
+    color: #fdf1d3;
+    border-radius: 100px;
+    padding: 9px 20px;
+  }
+  .avh-cta:focus-visible { outline: 3px solid var(--avh-red); outline-offset: 2px; }
+
+  .avh-burger { display: none; margin-left: auto; border: 2px solid var(--avh-ink); border-radius: 100px; background: none; padding: 8px 11px; cursor: pointer; color: var(--avh-ink); }
+
+  .avh-mobile { display: none; }
+
+  @media (max-width: 1100px) {
+    .avh-nav, .avh-search, .avh-orn { display: none; }
+    .avh-burger { display: block; }
+    .avh-mobile:not([hidden]) {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding: 0 16px 14px;
+      background: var(--avh-cream);
+    }
+    .avh-mobile a {
+      display: flex;
+      min-height: 44px;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--avh-ink);
+      border-radius: 100px;
+      background: #fff7e6;
+    }
+  }
+  @media (max-width: 620px) {
+    .avh { gap: 12px; padding: 10px 14px; }
+    .avh-logo img { height: 32px; }
+  }
+</style>

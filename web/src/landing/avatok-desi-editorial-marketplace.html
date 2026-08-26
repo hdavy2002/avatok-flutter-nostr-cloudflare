@@ -28,7 +28,7 @@
       :root {
         color-scheme: light;
         --poster-width: 1536;
-        --poster-height: 1024;
+        --poster-height: 917;   /* [WEB-HEADER-1] nav strip cropped off the top */
       }
 
       * { box-sizing: border-box; }
@@ -96,20 +96,11 @@
       }
 
       /* Coordinates are percentages of the approved 1536 × 1024 poster. */
-      .logo { left: 2.1%; top: 1.5%; width: 16%; height: 9%; }
-      .live-events { left: 20.8%; top: 3.8%; width: 7.4%; height: 3.9%; }
-      .private-sessions { left: 29.1%; top: 3.8%; width: 9.5%; height: 3.9%; }
-      .ai-voice { left: 40%; top: 3.8%; width: 5.6%; height: 3.9%; }
-      .categories { left: 46.3%; top: 3.8%; width: 8.3%; height: 3.9%; }
-      .for-creators { left: 55.4%; top: 3.8%; width: 8.6%; height: 3.9%; }
-      .search { left: 65.9%; top: 3.4%; width: 14.2%; height: 4.4%; }
-      .login { left: 81.3%; top: 3.8%; width: 4.4%; height: 3.9%; }
-      .signup { left: 85.7%; top: 3.2%; width: 6.4%; height: 4.8%; }
-      .create-free { left: 7.8%; top: 58.6%; width: 13.6%; height: 6.8%; }
-      .explore-live { left: 23%; top: 58.6%; width: 12%; height: 6.8%; }
-      .event-kedarnath { left: 19.8%; top: 69.7%; width: 17%; height: 28.9%; border-radius: 4%; }
-      .event-ladakh { left: 38.2%; top: 69.8%; width: 15.1%; height: 28.9%; border-radius: 4%; }
-      .event-ai-voice { left: 54.7%; top: 70.6%; width: 16.7%; height: 27.9%; border-radius: 4%; }
+      .create-free { left: 7.8%; top: 53.77%; width: 13.6%; height: 7.59%; }
+      .explore-live { left: 23%; top: 53.77%; width: 12%; height: 7.59%; }
+      .event-kedarnath { left: 19.8%; top: 66.16%; width: 17%; height: 32.27%; border-radius: 4%; }
+      .event-ladakh { left: 38.2%; top: 66.28%; width: 15.1%; height: 32.27%; border-radius: 4%; }
+      .event-ai-voice { left: 54.7%; top: 67.17%; width: 16.7%; height: 31.16%; border-radius: 4%; }
 
 
       .hero-pan-hint,
@@ -145,7 +136,8 @@
           transform: rotate(13deg);
         }
 
-        .mobile-topbar {
+        .mobile-topbar { display: none !important; } /* [WEB-HEADER-1] superseded by SiteHeader */
+        .mobile-topbar-unused {
           position: relative;
           z-index: 2;
           display: flex;
@@ -429,22 +421,12 @@
             <div class="hero-canvas">
             <img
               class="hero-poster"
-              src="/og-desi-marketplace.png?v=portrait-fix-3"
+              src="/hero-poster-nonav.png?v=header-1"
               alt="avaTOK marketplace poster: India has stories. Go live."
               width="1536"
               height="1024"
               fetchpriority="high"
             />
-
-            <a class="hotspot logo" href="/" aria-label="avaTOK home"></a>
-            <a class="hotspot live-events" href="#live-streaming" aria-label="Live events"></a>
-            <a class="hotspot private-sessions" href="#consultations" aria-label="Private sessions"></a>
-            <a class="hotspot ai-voice" href="#voice-agents" aria-label="AI voice"></a>
-            <a class="hotspot categories" href="#marketplace-catalogue" aria-label="Browse categories"></a>
-            <a class="hotspot for-creators" href="/sign-up" aria-label="For creators"></a>
-            <a class="hotspot search" href="/marketplace" aria-label="Search creators or events"></a>
-            <a class="hotspot login" href="/sign-in" aria-label="Log in"></a>
-            <a class="hotspot signup" href="/sign-up" aria-label="Sign up"></a>
             <a class="hotspot create-free" href="/sign-up" aria-label="Create free"></a>
             <a class="hotspot explore-live" href="/marketplace" aria-label="Explore live events"></a>
             <a class="hotspot event-kedarnath" href="/marketplace" aria-label="Open Kedarnath Darshan event"></a>

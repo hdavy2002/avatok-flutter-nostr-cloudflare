@@ -11,7 +11,7 @@ export const prerender = true;
 
 import landingRaw from '../landing/avatok-desi-editorial-marketplace.html?raw';
 import catalogueRaw from '../landing/avatok-listings-catalogue.html?raw';
-import HomeAccountChip from '../islands/site/HomeAccountChip.tsx';
+import SiteHeader from '../components/SiteHeader.astro';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 const LEGACY_LOWER_MARK = '<!--\n  AvaTOK lower-page draft';
@@ -19,15 +19,25 @@ const [heroHtml, legacyLower = ''] = landingHtml.split(LEGACY_LOWER_MARK);
 if (!legacyLower) {
   throw new Error('index.astro: expected legacy lower-page marker is missing');
 }
-// Split the closing tags off the document so the account island can be mounted
-// INSIDE <body> rather than after </html> (where the parser would have to hoist
-// it). The two halves are emitted back-to-back below, so the rendered markup is
-// byte-identical to before apart from the island.
-const pageHtml = `${heroHtml}${catalogueRaw}\n</main>`;
-const pageClose = `\n</body>\n</html>`;
+// [WEB-HEADER-1] The document is split into three so the real <SiteHeader> can
+// be injected between <body> and <main>, where the painted-on nav used to be.
+// The poster artwork is now `hero-poster-nonav.png` — the same image with its
+// top nav strip cropped off — so the header lands in exactly the space the
+// pixels used to occupy and the seam is invisible.
+//
+// HomeAccountChip is gone: it existed only because the static poster could not
+// show a signed-in state. The header does that properly now.
+const BODY_MARK = '<body>';
+const bodyAt = heroHtml.indexOf(BODY_MARK);
+if (bodyAt === -1) {
+  throw new Error('index.astro: expected <body> in the landing document');
+}
+const headHtml = heroHtml.slice(0, bodyAt + BODY_MARK.length);
+const restHtml = heroHtml.slice(bodyAt + BODY_MARK.length);
+const pageHtml = `${restHtml}${catalogueRaw}\n</main>\n</body>\n</html>`;
 
 ---
 
+<Fragment set:html={headHtml} />
+<SiteHeader sticky={false} />
 <Fragment set:html={pageHtml} />
-<HomeAccountChip client:idle />
-<Fragment set:html={pageClose} />

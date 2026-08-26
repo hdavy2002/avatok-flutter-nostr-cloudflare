@@ -1,7 +1,14 @@
 ---
 import '../styles/tokens.css';
 import '../styles/global.css';
-import Nav from '../components/Nav.astro';
+// [WEB-HEADER-1 2026-08-26] SiteHeader replaces Nav.astro site-wide. Nav's five
+// menu links pointed at homepage anchors deleted in the redesign (#features,
+// #receptionist, #number, #messaging, #faq — all verified absent), so the menu
+// was dead on every page that rendered it. SiteHeader carries the real menu and
+// matches the home page poster, so the site now has ONE header everywhere.
+// Nav.astro is left in the tree for now, unreferenced, in case a page needs the
+// old zine chrome back; delete it once that's ruled out.
+import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 
 export interface Props {
@@ -74,7 +81,7 @@ const ogImage = image
     <slot name="head" />
   </head>
   <body class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <Nav staticCtas={navStatic} hideCtas={hideNavCtas} />}
+    {chrome && <SiteHeader />}
     <slot />
     {chrome && <SiteFooter />}
   </body>
