@@ -112,68 +112,6 @@
       .event-ai-voice { left: 54.7%; top: 70.6%; width: 16.7%; height: 27.9%; border-radius: 4%; }
 
 
-      /* [WEB-NAV-MARKETPLACE-2 2026-08-26] REAL top navigation.
-         The nav you see across the poster is BAKED INTO og-desi-marketplace.png
-         — those words are pixels, and what sits over them are transparent
-         `.hotspot` anchors with no text. So the poster nav cannot carry a new
-         menu item, and it is invisible to Google and to screen readers, which
-         for a marketplace that needs its listings indexed is a real cost.
-         This slim bar is the actual navigation: real text, real links.
-         Desktop only — at <=700px the poster is hidden and `.mobile-actions`
-         already provides a real menu (Marketplace added there too). */
-      .site-topnav {
-        position: sticky;
-        top: 0;
-        z-index: 50;
-        display: flex;
-        align-items: center;
-        gap: 24px;
-        padding: 10px 22px;
-        background: #f7ead5;
-        border-bottom: 2px solid #171717;
-        line-height: normal;
-      }
-      .site-topnav .topnav-brand {
-        font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-        font-size: 21px;
-        letter-spacing: 0.02em;
-        color: #171717;
-        text-decoration: none;
-      }
-      .site-topnav .topnav-brand span { color: #0f6f63; }
-      .site-topnav ul {
-        display: flex;
-        align-items: center;
-        gap: 22px;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-      .site-topnav a:not(.topnav-brand) {
-        font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-        font-size: 14px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #171717;
-        text-decoration: none;
-        white-space: nowrap;
-      }
-      .site-topnav a:not(.topnav-brand):hover,
-      .site-topnav a:not(.topnav-brand):focus-visible {
-        text-decoration: underline;
-        text-decoration-thickness: 2px;
-        text-underline-offset: 3px;
-      }
-      .site-topnav .topnav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-      .site-topnav .topnav-cta {
-        border: 2px solid #171717;
-        border-radius: 999px;
-        padding: 7px 15px;
-        background: #c9f24d;
-        box-shadow: 2px 2px 0 #171717;
-      }
-      @media (max-width: 700px) { .site-topnav { display: none; } }
-
       .hero-pan-hint,
       .mobile-actions,
       .mobile-hero { display: none; }
@@ -459,20 +397,6 @@
     </style>
   </head>
   <body>
-    <nav class="site-topnav" aria-label="Main">
-      <a class="topnav-brand" href="/" aria-label="avaTOK home">ava<span>TOK</span></a>
-      <ul>
-        <li><a href="/marketplace">Marketplace</a></li>
-        <li><a href="#live-streaming">Live events</a></li>
-        <li><a href="#consultations">Private sessions</a></li>
-        <li><a href="#voice-agents">AI voice</a></li>
-        <li><a href="#marketplace-catalogue">Categories</a></li>
-      </ul>
-      <div class="topnav-right">
-        <a href="/sign-in">Log in</a>
-        <a class="topnav-cta" href="/sign-up">Create free</a>
-      </div>
-    </nav>
     <main>
       <section class="hero-region" aria-label="avaTOK desi editorial marketplace">
         <div class="mobile-hero">
