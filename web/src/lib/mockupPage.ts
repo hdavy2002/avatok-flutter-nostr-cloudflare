@@ -105,6 +105,13 @@ export function renderMockupPage({
       .replaceAll(`'${filename}'`, `'${href}'`);
   }
 
+  // Fragment links need the current path pinned to them. <base> resolves a bare
+  // href="#" or href="#slots" against the ASSET ORIGIN, not the current page, so
+  // an in-page "read more" or anchor jump navigates to
+  // avatok-design.pages.dev/# and leaves the site. Prefixing the pathname makes
+  // them resolve on this page again, which is what they always meant.
+  withLinks = withLinks.replaceAll('href="#', `href="${escapeHtml(siteUrl.pathname)}#`);
+
   // Safety net. If a comp gains a link this table does not know about, it would
   // otherwise fall through to the preview origin — the exact failure this table
   // exists to prevent. Send it to the marketplace instead and leave a trace.
