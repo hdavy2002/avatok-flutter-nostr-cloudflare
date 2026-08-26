@@ -15,16 +15,22 @@
 <style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,900;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap");</style>
 <style>
   * { box-sizing: border-box; }
-  /* Fluid type. Every font-size in these comps is now rem, so this one rule
-     scales all of them together with the viewport.
-       * at or below 1600px the middle term computes under 16px, so clamp picks
-         16px and the design renders EXACTLY as it always has -- laptops and
-         phones are untouched by construction;
-       * above 1600px it grows ~0.75px per 100px of width, reaching the 22px cap
-         near 2400px. On a 2560px monitor that is 1.375x, which is what makes
-         9px Silkscreen labels legible again instead of specks.
-     Box padding stays in px on purpose: letting gutters grow at the same rate
-     inflates the cards faster than the text and the grid loses a column. */
+  /* ONE SCALE FOR THE WHOLE LAYOUT — type AND box together.
+     The layout is BOXED (max-width:100rem), not full-bleed, and every
+     font-size, the container, the grid's minmax and its gaps are all rem. So
+     this single rule zooms the entire design as one unit and the proportions
+     are locked: 4 cards per row at every desktop width, just bigger ones.
+
+     Getting here took two wrong turns, both worth not repeating:
+       * full-bleed width alone -> the grid packed 8 narrow columns and the
+         BOOK NOW / CALENDAR buttons wrapped inside them;
+       * fluid type inside a FIXED box -> text grows, card width does not, and
+         the buttons wrap again. Scaling one without the other always breaks.
+
+     At or below 1600px the middle term computes under 16px so clamp returns
+     16px, every rem equals its original px, and laptops and phones render
+     exactly as they always have. Above that it grows ~0.75px per 100px of
+     width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }

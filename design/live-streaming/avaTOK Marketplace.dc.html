@@ -14,16 +14,22 @@
 <style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap");</style>
 <style>
   * { box-sizing: border-box; }
-  /* Fluid type. Every font-size in these comps is now rem, so this one rule
-     scales all of them together with the viewport.
-       * at or below 1600px the middle term computes under 16px, so clamp picks
-         16px and the design renders EXACTLY as it always has -- laptops and
-         phones are untouched by construction;
-       * above 1600px it grows ~0.75px per 100px of width, reaching the 22px cap
-         near 2400px. On a 2560px monitor that is 1.375x, which is what makes
-         9px Silkscreen labels legible again instead of specks.
-     Box padding stays in px on purpose: letting gutters grow at the same rate
-     inflates the cards faster than the text and the grid loses a column. */
+  /* ONE SCALE FOR THE WHOLE LAYOUT — type AND box together.
+     The layout is BOXED (max-width:100rem), not full-bleed, and every
+     font-size, the container, the grid's minmax and its gaps are all rem. So
+     this single rule zooms the entire design as one unit and the proportions
+     are locked: 4 cards per row at every desktop width, just bigger ones.
+
+     Getting here took two wrong turns, both worth not repeating:
+       * full-bleed width alone -> the grid packed 8 narrow columns and the
+         BOOK NOW / CALENDAR buttons wrapped inside them;
+       * fluid type inside a FIXED box -> text grows, card width does not, and
+         the buttons wrap again. Scaling one without the other always breaks.
+
+     At or below 1600px the middle term computes under 16px so clamp returns
+     16px, every rem equals its original px, and laptops and phones render
+     exactly as they always have. Above that it grows ~0.75px per 100px of
+     width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -45,7 +51,7 @@
 
   <!-- search strip -->
   <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
-    <div style="max-width:none; margin:0 auto; padding:16px clamp(16px,4vw,40px); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+    <div style="max-width:100rem; margin:0 auto; padding:16px clamp(16px,4vw,40px); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 340px; display:flex; align-items:center; gap:10px; border:2.5px solid #161614; border-radius:100px; background:#f6e4cd; padding:6px 6px 6px 20px; box-shadow:4px 4px 0 #161614;">
         <input value="{{ q }}" onInput="{{ onSearch }}" placeholder="Dhoondo: tarot, adda, rizz, shayari, antakshari…" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font-family:'Instrument Sans',sans-serif; font-size:1rem; font-weight:600; color:#161614; padding:8px 0;" />
         <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.06em; text-transform:uppercase; padding:11px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Khojo</button>
@@ -59,7 +65,7 @@
   <!-- hero with toran tassels -->
   <div style="background:#d46e59; border-bottom:3px solid #161614;">
     <dc-import name="TruckBorder" kind="tassels" hint-size="100%,44px" style="display:block;"></dc-import>
-    <div style="max-width:none; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
+    <div style="max-width:100rem; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 380px; min-width:0;">
         <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:16px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>MARKETPLACE · 2,400 CREATORS LIVE</div>
         <h1 style="font-family:'Anton',sans-serif; font-size:clamp(46px,6.4vw,88px); line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0;">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
@@ -78,7 +84,7 @@
   </div>
 
   <!-- category tiles -->
-  <div style="max-width:none; margin:-38px auto 0; padding:0 clamp(16px,4vw,40px); position:relative; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px;">
+  <div style="max-width:100rem; margin:-38px auto 0; padding:0 clamp(16px,4vw,40px); position:relative; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px;">
     <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="8">
       <div onClick="{{ t.pick }}" style="cursor:pointer; border:3px solid #161614; border-radius:18px; overflow:hidden; background:#fdf1d3; box-shadow:{{ t.sh }}; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
         <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="{{ t.kind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
@@ -91,10 +97,10 @@
   </div>
 
   <!-- main layout -->
-  <div style="max-width:none; margin:0 auto; padding:34px clamp(16px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:30px; align-items:flex-start;">
+  <div style="max-width:100rem; margin:0 auto; padding:34px clamp(16px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:1.875rem; align-items:flex-start;">
 
     <!-- sidebar -->
-    <aside style="flex:1 1 236px; max-width:{{ asideMax }}; position:{{ asidePos }}; top:16px;">
+    <aside style="flex:1 1 14.75rem; max-width:{{ asideMax }}; position:{{ asidePos }}; top:16px;">
       <div style="border:2.5px solid #161614; border-radius:20px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; overflow:hidden;">
         <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,30px" style="display:block;"></dc-import></div>
         <div style="padding:18px 20px 6px; display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
@@ -196,7 +202,7 @@
             </div>
           </sc-if>
 
-          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:20px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(14.5rem,1fr)); gap:1.25rem;">
             <sc-for list="{{ sec.cards }}" as="c" hint-placeholder-count="8">
               <div onClick="{{ goDetails }}" style="border:3px solid #161614; border-radius:26px; overflow:hidden; background:{{ c.fill }}; box-shadow:6px 7px 0 #161614; display:flex; flex-direction:column; cursor:pointer;">
                 <div style="height:186px; background:{{ c.photo }}; position:relative;">
@@ -457,7 +463,7 @@ class Component extends DCLogic {
     const stacked = S.w < 960;
     return {
       masala, ctaColor,
-      asideMax: stacked ? '100%' : '290px',
+      asideMax: stacked ? '100%' : '18.125rem',
       asidePos: stacked ? 'static' : 'sticky',
       q: S.q,
       onSearch: e => this.setState({ q: e.target.value }),
