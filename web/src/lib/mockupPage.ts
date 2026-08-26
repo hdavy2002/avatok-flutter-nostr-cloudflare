@@ -110,7 +110,13 @@ export function renderMockupPage({
   // an in-page "read more" or anchor jump navigates to
   // avatok-design.pages.dev/# and leaves the site. Prefixing the pathname makes
   // them resolve on this page again, which is what they always meant.
-  withLinks = withLinks.replaceAll('href="#', `href="${escapeHtml(siteUrl.pathname)}#`);
+  // The ORIGIN has to be here too, not just the path: <base> rebases
+  // root-relative URLs as well, so href="/zoya-mehta#" still resolves onto the
+  // asset origin. Only a fully absolute URL is immune.
+  withLinks = withLinks.replaceAll(
+    'href="#',
+    `href="${escapeHtml(siteUrl.origin + siteUrl.pathname)}#`,
+  );
 
   // Safety net. If a comp gains a link this table does not know about, it would
   // otherwise fall through to the preview origin — the exact failure this table
