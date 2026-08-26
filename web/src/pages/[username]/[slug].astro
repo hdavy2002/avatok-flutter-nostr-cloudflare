@@ -25,6 +25,7 @@ const looksLikeSlug = /^[a-z0-9][a-z0-9._-]{1,80}$/i.test(slug ?? '');
 if (!looksLikeHandle || !looksLikeSlug) return new Response('Not found', { status: 404 });
 
 return renderMockupPage({
+  siteUrl: Astro.url,
   html: mockupHtml,
   title: `${slug} · @${username} · avaTOK`,
   // The host's name, avatar and photo open this listing's creator. Absolute for

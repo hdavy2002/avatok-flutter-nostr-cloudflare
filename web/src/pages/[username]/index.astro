@@ -32,5 +32,14 @@ if (!/^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '')) {
   return new Response('Not found', { status: 404 });
 }
 
-return renderMockupPage({ html: mockupHtml, title: `@${username} · avaTOK` });
+// Cards on a profile belong to THIS creator, so both link kinds are scoped to
+// the handle in the URL rather than the shared demo creator.
+const handle = encodeURIComponent(username!);
+return renderMockupPage({
+  siteUrl: Astro.url,
+  html: mockupHtml,
+  title: `@${username} · avaTOK`,
+  listingHref: `/${handle}/mock-listing`,
+  profileHref: `/${handle}`,
+});
 ---

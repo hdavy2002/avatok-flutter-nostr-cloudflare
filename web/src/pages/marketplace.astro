@@ -30,6 +30,7 @@ import { renderMockupPage } from '../lib/mockupPage';
 import mockupHtml from '../generated/marketplace.dc.html?raw';
 
 return renderMockupPage({
+  siteUrl: Astro.url,
   html: mockupHtml,
   title: 'Marketplace · avaTOK',
   // Every card in the comp shares one handler, so they all land on the same demo

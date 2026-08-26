@@ -47,43 +47,42 @@ export interface MockupPageOptions {
   title: string;
   /** Seconds. Short by default so the next design iteration is not invisible. */
   maxAge?: number;
-  /**
-   * Send the comp's in-page jumps to a route on THIS site instead of the asset
-   * origin. The marketplace comp navigates with
-   * `window.location.href = 'avaTOK Listing Details.dc.html'`, a bare relative
-   * filename — which <base> resolves against avatok-design.pages.dev, so a
-   * visitor clicking a card would silently leave avatok.ai mid-flow.
-   *
-   * Pass a FULLY ABSOLUTE url (`new URL(path, Astro.url).href`). <base> rebases
-   * root-relative paths as well, so '/foo' lands on the asset origin too — which
-   * looks identical in the code and still walks the visitor off the site.
-   */
+  /** Where this comp's listing links should land. Defaults to the demo listing. */
   listingHref?: string;
-  /**
-   * Where the comp's creator name / avatar / host photo should go. Same
-   * absolute-URL requirement as listingHref.
-   */
+  /** Where this comp's creator links should land. Defaults to the demo profile. */
   profileHref?: string;
 }
 
-/** The comp's hardcoded navigation target, as it appears in the .dc.html. */
-const COMP_LISTING_TARGET = "'avaTOK Listing Details.dc.html'";
-
 /**
- * The comp's profile links, written as a bare relative filename so the
- * standalone preview on avatok-design.pages.dev keeps working. On this site the
- * same rule applies as above: <base> would resolve it to the asset origin, so it
- * is rewritten to an absolute URL here.
+ * ── EVERY COMP-TO-COMP LINK IS REWRITTEN, AUTOMATICALLY ─────────────────────
+ *
+ * The comps navigate to each other by bare relative FILENAME ("avaTOK Listing
+ * Details.dc.html") so the standalone preview on avatok-design.pages.dev keeps
+ * working when the files are opened directly. On this site every page is served
+ * with <base href="https://avatok-design.pages.dev/">, so any such link resolves
+ * against the PREVIEW origin — a visitor clicking a card silently leaves
+ * avatok.ai and lands on a raw .dc page.
+ *
+ * This used to be handled per route, by passing the one or two targets each page
+ * happened to use. That is how the profile page shipped sending its cards to
+ * avatok-design.pages.dev: nobody passed `listingHref` there. Opt-in rewriting
+ * fails silently every time a comp gains a link nobody remembered to map.
+ *
+ * So the mapping is a TABLE and every entry is rewritten on every page, in both
+ * the markup form (href="…") and the script form ('…'), whether or not the route
+ * asked. A new comp is covered by adding one line here.
  */
-const COMP_PROFILE_TARGET = 'href="avaTOK Creator Profile.dc.html"';
+const COMP_ROUTES: Record<string, (o: Required<Pick<MockupPageOptions, 'listingHref' | 'profileHref'>>) => string> = {
+  'avaTOK Listing Details.dc.html': (o) => o.listingHref,
+  'avaTOK Creator Profile.dc.html': (o) => o.profileHref,
+  'avaTOK Marketplace.dc.html': () => '/marketplace',
+  'avaTOK Auth.dc.html': () => '/sign-in',
+  'avaTOK Design System.dc.html': () => '/marketplace',
+};
 
-/**
- * The same target reached from script rather than markup — the marketplace's
- * creator group navigates with `window.location.href = '…'` because the card it
- * sits inside already carries a click handler, and a nested anchor would fire
- * both. Rewritten alongside the markup form.
- */
-const COMP_PROFILE_JS_TARGET = "'avaTOK Creator Profile.dc.html'";
+/** Absolute, because <base> rebases root-relative paths onto the asset origin too. */
+const abs = (path: string, base: URL): string =>
+  path.startsWith('http') ? path : new URL(path, base).href;
 
 export function renderMockupPage({
   html,
@@ -91,14 +90,28 @@ export function renderMockupPage({
   maxAge = 60,
   listingHref,
   profileHref,
-}: MockupPageOptions): Response {
-  let withLinks = listingHref
-    ? html.replaceAll(COMP_LISTING_TARGET, JSON.stringify(listingHref).replace(/"/g, "'"))
-    : html;
-  if (profileHref) {
+  siteUrl,
+}: MockupPageOptions & { siteUrl: URL }): Response {
+  const targets = {
+    listingHref: listingHref ?? '/avatok/mock-listing',
+    profileHref: profileHref ?? '/avatok',
+  };
+
+  let withLinks = html;
+  for (const [filename, resolve] of Object.entries(COMP_ROUTES)) {
+    const href = abs(resolve(targets), siteUrl);
     withLinks = withLinks
-      .replaceAll(COMP_PROFILE_TARGET, `href="${escapeHtml(profileHref)}"`)
-      .replaceAll(COMP_PROFILE_JS_TARGET, JSON.stringify(profileHref).replace(/"/g, "'"));
+      .replaceAll(`href="${filename}"`, `href="${escapeHtml(href)}"`)
+      .replaceAll(`'${filename}'`, `'${href}'`);
+  }
+
+  // Safety net. If a comp gains a link this table does not know about, it would
+  // otherwise fall through to the preview origin — the exact failure this table
+  // exists to prevent. Send it to the marketplace instead and leave a trace.
+  const leaked = withLinks.match(/["']([^"']*\.dc\.html)["']/g);
+  if (leaked) {
+    console.warn(`[mockupPage] unmapped comp link(s), routed to /marketplace: ${leaked.join(', ')}`);
+    withLinks = withLinks.replace(/(["'])([^"']*\.dc\.html)\1/g, `$1${abs('/marketplace', siteUrl)}$1`);
   }
 
   const patched = withLinks.replace(
