@@ -143,6 +143,10 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
     background: var(--avh-cream);
     color: var(--avh-ink);
     font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+    /* [WEB-FONT-2] Anton ships ONE weight (400). Body is now Nunito 600 and the
+       header was inheriting it, so the browser was synthesising a fake bold over
+       an already-heavy face. Pin 400 and let Anton be Anton. */
+    font-weight: 400;
   }
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 

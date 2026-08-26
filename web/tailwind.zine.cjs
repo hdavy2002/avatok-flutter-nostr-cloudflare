@@ -40,8 +40,7 @@ module.exports = {
   },
   "fontFamily": {
     "display": [
-      "Anton",
-      "\"Arial Narrow\"",
+      "Nunito",
       "system-ui",
       "sans-serif"
     ],

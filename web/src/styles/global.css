@@ -5,7 +5,7 @@
 
 /* ----- self-hosted fonts (woff2, converted from app/assets/fonts) -----
    [WEB-FONT-1 2026-08-26] The three Fredoka @font-face blocks below are now
-   UNREFERENCED — headings moved to Anton and no rule asks for Fredoka any more.
+   UNREFERENCED — headings are Nunito now and no rule asks for Fredoka any more.
    A declared-but-unused @font-face costs nothing (browsers only fetch a face
    that something renders), so they are kept rather than deleted in case the
    display voice is revisited. Delete them and public/fonts/Fredoka-*.woff2
@@ -121,14 +121,13 @@ h3,
 h4,
 h5,
 h6 {
-  /* [WEB-FONT-1 2026-08-26] Was Fredoka. This base rule quietly overrode the
-     display token for every h1-h6 on a Base-layout page, so headings kept
-     rendering in Fredoka after the theme swap even though `font-display`
-     resolved to Anton. Anton ships a single 400 weight, so the old 600 asked
-     the browser to synthesise a fake bold. */
-  font-family: 'Anton', 'Arial Narrow', system-ui, sans-serif;
-  font-weight: 400;
-  letter-spacing: -0.015em;
+  /* [WEB-FONT-2 2026-08-26] Headings are Nunito. This rule was Fredoka, then
+     briefly Anton — Anton's condensed shapes and tight tracking made dashboard
+     headings look crushed. Weight 700 (self-hosted) separates a heading from
+     600 body text without changing family. */
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 
