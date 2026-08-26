@@ -78,6 +78,12 @@ const groups: { title: string; items: Item[] }[] = [
 ];
 
 const heads = heading ?? (title.split(' · ')[0]);
+
+// [WEB-FONT-3 2026-08-26] Owner: every font inside the dashboard is Nunito,
+// EXCEPT the marketplace page, which is being redesigned and must be left as
+// it is. Decided from the route rather than a prop so a new dashboard page
+// gets the right treatment without anyone remembering to pass anything.
+const plainType = !Astro.url.pathname.startsWith('/dashboard/marketplace');
 ---
 
 <Base title={title} chrome={false} noindex={true}>
@@ -89,7 +95,7 @@ const heads = heading ?? (title.split(' · ')[0]);
       Everything below that pins itself to the viewport is offset by --avh-h
       (published by SiteHeader) or it slides under the header. */}
   <SiteHeader auth="in" />
-  <div class="flex min-h-[calc(100vh-var(--avh-h))] bg-paper">
+  <div class:list={["flex min-h-[calc(100vh-var(--avh-h))] bg-paper", plainType && "dash-nunito"]}>
     <!-- Scrim (mobile) -->
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>
 
@@ -168,4 +174,20 @@ const heads = heading ?? (title.split(' · ')[0]);
     document.getElementById('dash-close')?.addEventListener('click', hide);
     scrim?.addEventListener('click', hide);
   </script>
+
+<style is:global>
+  /* [WEB-FONT-3] Silkscreen is the only non-Nunito face inside the dashboard —
+     it renders the section labels and the chips (ALL STATUSES, + CREATE, SELL,
+     EDIT, CANCELLED, NO COVER PHOTO). `font-mono` is a SITE-WIDE token, so this
+     is scoped to `.dash-nunito` rather than changing the token: the auth
+     screens and the marketplace still use Silkscreen as designed.
+
+     Silkscreen is a pixel face that needs wide tracking to be readable; Nunito
+     does not, so the tracking is pulled back to something a normal typeface
+     wants. Weight comes from the markup and is left alone. */
+  .dash-nunito .font-mono {
+    font-family: 'Nunito', system-ui, sans-serif;
+    letter-spacing: 0.04em;
+  }
+</style>
 </Base>
