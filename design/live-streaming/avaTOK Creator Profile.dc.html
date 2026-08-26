@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!-- Fonts arrive as @import, NOT <link>: support.js removes every <link>
+     element while it renders, so a <link> here never reaches the browser and
+     every face silently falls back to a system font. Do not convert back. -->
+<style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap");</style>
+<style>
+  * { box-sizing: border-box; }
+  /* ONE SCALE FOR THE WHOLE LAYOUT — type AND box together. See the same
+     block in avaTOK Marketplace.dc.html for why scaling one axis without the
+     other always breaks (narrow cards, or wrapped buttons).
+     At or below 1600px clamp returns 16px, every rem equals its original px,
+     and laptops and phones render exactly as they always have. */
+  html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
+
+  body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #d93825; text-decoration: none; }
+  a:hover { color: #2d7180; }
+  input, button { font-family: inherit; }
+</style>
+</helmet>
+
+<div style="background:#f6e4cd; min-height:100vh;">
+  <dc-import name="SiteHeader" hint-size="100%,72px" style="display:block;"></dc-import>
+
+  <!-- breadcrumb -->
+  <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
+    <div style="max-width:100rem; margin:0 auto; padding:13px clamp(14px,4vw,40px); display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.1em;">
+      <a href="avaTOK Marketplace.dc.html" style="color:#161614;">BAZAAR</a>
+      <span style="color:#8c6a52;">›</span>
+      <span style="color:#161614;">CREATORS</span>
+      <span style="color:#8c6a52;">›</span>
+      <span style="color:#d93825;">@SUNNYGILL</span>
+      <span style="margin-left:auto; color:#8c6a52;">PUBLIC PROFILE</span>
+    </div>
+  </div>
+
+  <!-- channel masthead -->
+  <div style="background:#d46e59; border-bottom:3px solid #161614;">
+    <dc-import name="TruckBorder" kind="tassels" hint-size="100%,44px" style="display:block;"></dc-import>
+    <div style="max-width:100rem; margin:0 auto; padding:clamp(20px,3vw,34px) clamp(16px,4vw,40px) clamp(36px,4vw,52px); display:flex; gap:clamp(22px,3vw,40px); align-items:center; flex-wrap:wrap;">
+      <!-- avatar -->
+      <div style="flex:none; position:relative;">
+        <div style="width:clamp(140px,15vw,184px); height:clamp(140px,15vw,184px); border-radius:50%; border:3px solid #161614; background:#1e5f66; box-shadow:6px 7px 0 #161614; position:relative; overflow:hidden;">
+          <div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px);"></div>
+          <span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:rgba(253,241,211,.75); text-align:center; line-height:1.9;">CREATOR<br />PORTRAIT</span>
+        </div>
+        <sc-if value="{{ verified }}" hint-placeholder-val="{{ true }}">
+          <div style="position:absolute; right:-12px; bottom:-6px; width:78px; height:78px; border-radius:50%; border:2.5px dashed #fdf1d3; background:rgba(22,22,20,.25); display:grid; place-items:center; transform:rotate(10deg);">
+            <span style="font-family:'Silkscreen',monospace; font-size:0.5rem; line-height:1.6; letter-spacing:.05em; color:#fdf1d3; text-align:center;">TASDEEQ<br />SHUDA<br />· ✓ ·</span>
+          </div>
+        </sc-if>
+      </div>
+      <!-- identity -->
+      <div style="flex:1 1 23.75rem; min-width:0;">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+          <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.625rem,5.4vw,4.5rem); line-height:1; letter-spacing:-0.01em; text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:5px 5px 0 #161614;">Sunny Gill</h1>
+          <sc-if value="{{ verified }}" hint-placeholder-val="{{ true }}">
+            <span style="display:flex; align-items:center; gap:8px; border:2.5px solid #161614; border-radius:100px; background:#2d7180; color:#fdf1d3; padding:8px 16px; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.1em; box-shadow:3px 3px 0 #161614; transform:rotate(-2deg);"><span style="width:18px; height:18px; flex:none; border-radius:50%; background:#fdf1d3; color:#2d7180; display:grid; place-items:center; font-size:0.75rem; font-weight:700; font-family:'Instrument Sans',sans-serif;">✓</span>VERIFIED HOST</span>
+          </sc-if>
+        </div>
+        <div style="margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.1em; color:#4a1b12;">
+          <span>@SUNNYGILL</span><span>·</span><span>{{ followerLine }}</span><span>·</span><span>{{ videoCountLine }}</span><span>·</span><span>HOST SINCE 2024</span>
+        </div>
+        <p style="margin:14px 0 0; font-size:1.0625rem; font-weight:500; line-height:1.5; color:#2a0f0a; max-width:56ch; text-wrap:pretty;">Friday raat ka antakshari sarpanch. Team A vs Team B, 300 regulars, aur meri awaaz hi pehchaan hai. <a href="#" onClick="{{ goAbout }}" style="font-weight:700; color:#4a1b12; text-decoration:underline;">…aur dikhao</a></p>
+        <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+          <sc-if value="{{ fan }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer; box-shadow:4px 4px 0 #161614;">{{ followLabel }}</button>
+            <a href="avaTOK Listing Details.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; box-shadow:4px 4px 0 #161614; display:inline-block;">Book a show</a>
+          </sc-if>
+          <sc-if value="{{ ownerView }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer; box-shadow:4px 4px 0 #161614;">Customise channel</button>
+            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; box-shadow:4px 4px 0 #161614;">Manage videos</button>
+          </sc-if>
+          <button onClick="{{ sharePick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:13px 22px; border-radius:100px; border:2.5px solid #161614; background:transparent; color:#2a0f0a; cursor:pointer;">{{ shareLabel }}</button>
+        </div>
+      </div>
+      <!-- marginalia -->
+      <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;">
+          <div style="font-family:'Kalam',cursive; font-size:1.1875rem; line-height:1.4; color:#2a0f0a; transform:rotate(-3deg); max-width:22ch;">“Meri awaaz hi<br />meri pehchaan hai.”<br /><span style="font-size:0.9375rem;">— har Friday, 9 baje</span></div>
+          <img src="assets/desi-truck.png" alt="Horn OK Please truck" style="width:clamp(170px,16vw,240px); display:block; transform:rotate(2deg); filter:drop-shadow(5px 6px 0 rgba(22,22,20,.55));" />
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- tabs -->
+  <div style="background:#fdf1d3; border-bottom:3px solid #161614; position:sticky; top:0; z-index:5;">
+    <div style="max-width:100rem; margin:0 auto; padding:0 clamp(16px,4vw,40px); display:flex; gap:clamp(14px,2.5vw,34px); align-items:stretch; overflow-x:auto;">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+        <button onClick="{{ t.pick }}" style="font-family:'Anton',sans-serif; font-size:1.0625rem; letter-spacing:.04em; text-transform:uppercase; padding:16px 4px 13px; background:none; border:none; border-bottom:4px solid {{ t.line }}; color:{{ t.col }}; cursor:pointer; white-space:nowrap;">{{ t.label }}</button>
+      </sc-for>
+      <span style="margin-left:auto; align-self:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:#8c6a52; white-space:nowrap; padding-left:14px;">{{ tabMeta }}</span>
+    </div>
+  </div>
+
+  <div style="max-width:100rem; margin:0 auto; padding:clamp(28px,4vw,48px) clamp(16px,4vw,40px) 90px;">
+
+    <!-- empty channel (home + videos) -->
+    <sc-if value="{{ showEmptyVideos }}" hint-placeholder-val="{{ false }}">
+      <div style="border:2.5px dashed #161614; border-radius:22px; background:#fdf1d3; padding:48px 28px; display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; text-align:center;">
+        <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(-8deg);"><span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">PICTURE<br />ABHI BAAKI<br />HAI</span></div>
+        <div style="max-width:44ch;">
+          <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px;">Abhi koi video nahi.</div>
+          <p style="margin:0 0 16px; font-size:0.9375rem; font-weight:500; color:#5a3d33; line-height:1.5;">{{ emptyVideoCopy }}</p>
+          <sc-if value="{{ fan }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer;">{{ followLabel }}</button>
+          </sc-if>
+          <sc-if value="{{ ownerView }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">Pehla video daalo</button>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ═══════ HOME ═══════ -->
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; flex-direction:column; gap:56px;">
+        <section>
+          <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
+            <div style="flex:1 1 18.75rem; min-width:0;">
+              <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">SABSE ZYADA DEKHE GAYE</div>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Aapke liye <span style="color:#d93825;">chuna hua.</span></h2>
+            </div>
+            <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+              <div style="font-family:'Kalam',cursive; font-size:1.1875rem; color:#8c3a2c; transform:rotate(-2deg); padding-bottom:4px;">Pehli baar aaye ho? Yahin se shuru karo →</div>
+            </sc-if>
+          </div>
+          <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 22px;"><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
+            <sc-for list="{{ forYou }}" as="v" hint-placeholder-count="4">
+              <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
+                <div style="height:150px; background:{{ v.photo }}; position:relative;">
+                  <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
+                  <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
+                  <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
+                  <span style="position:absolute; right:10px; bottom:22px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
+                  <div style="position:absolute; left:0; right:0; bottom:-1px; height:16px; background:radial-gradient(circle at 10px 13px, #fdf1d3 10px, transparent 11px) 0 0/20px 16px repeat-x;"></div>
+                </div>
+                <div style="padding:13px 16px 16px; display:flex; flex-direction:column; gap:8px;">
+                  <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614;">{{ v.title }}</h4>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section>
+          <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
+            <div style="flex:1 1 18.75rem; min-width:0;">
+              <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">PUBLIC REPLAYS · FREE DEKHO</div>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Latest <span style="color:#d93825;">videos.</span></h2>
+            </div>
+            <button onClick="{{ goVideos }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:11px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; box-shadow:3px 3px 0 #161614; margin-bottom:2px;">SAB 24 DEKHO →</button>
+          </div>
+          <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 22px;"><dc-import name="TruckBorder" kind="chai" hint-size="100%,30px" style="display:block;"></dc-import></div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
+            <sc-for list="{{ homeVideos }}" as="v" hint-placeholder-count="8">
+              <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
+                <div style="height:150px; background:{{ v.photo }}; position:relative;">
+                  <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
+                  <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
+                  <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
+                  <span style="position:absolute; right:10px; bottom:22px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
+                  <div style="position:absolute; left:0; right:0; bottom:-1px; height:16px; background:radial-gradient(circle at 10px 13px, #fdf1d3 10px, transparent 11px) 0 0/20px 16px repeat-x;"></div>
+                </div>
+                <div style="padding:13px 16px 16px; display:flex; flex-direction:column; gap:8px;">
+                  <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614;">{{ v.title }}</h4>
+                  <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </sc-if>
+
+    <!-- ═══════ VIDEOS ═══════ -->
+    <sc-if value="{{ isVideos }}" hint-placeholder-val="{{ false }}">
+      <section>
+        <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
+          <div style="flex:1 1 18.75rem; min-width:0;">
+            <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">24 PUBLIC REPLAYS</div>
+            <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Sab <span style="color:#d93825;">videos.</span></h2>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
+            <sc-for list="{{ sorts }}" as="s" hint-placeholder-count="3">
+              <button onClick="{{ s.pick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.05em; border:2px solid #161614; border-radius:100px; padding:9px 15px; cursor:pointer; background:{{ s.bg }}; color:{{ s.col }};">{{ s.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 22px;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
+          <sc-for list="{{ allVideos }}" as="v" hint-placeholder-count="12">
+            <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
+              <div style="height:150px; background:{{ v.photo }}; position:relative;">
+                <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
+                <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
+                <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
+                <span style="position:absolute; right:10px; bottom:22px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
+                <div style="position:absolute; left:0; right:0; bottom:-1px; height:16px; background:radial-gradient(circle at 10px 13px, #fdf1d3 10px, transparent 11px) 0 0/20px 16px repeat-x;"></div>
+              </div>
+              <div style="padding:13px 16px 16px; display:flex; flex-direction:column; gap:8px;">
+                <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614;">{{ v.title }}</h4>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-if>
+
+    <!-- ═══════ SHOWS ═══════ -->
+    <sc-if value="{{ isShows }}" hint-placeholder-val="{{ false }}">
+      <section>
+        <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">TICKETED · LIVE</div>
+        <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Upcoming <span style="color:#d93825;">shows.</span></h2>
+        <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 22px;"><dc-import name="TruckBorder" kind="tassels" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <sc-if value="{{ noShows }}" hint-placeholder-val="{{ false }}">
+          <div style="border:2.5px dashed #161614; border-radius:22px; background:#fdf1d3; padding:44px 28px; display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; text-align:center; max-width:920px;">
+            <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(8deg);"><span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">STAGE<br />KHAALI<br />HAI</span></div>
+            <div style="max-width:44ch;">
+              <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px;">Koi show scheduled nahi.</div>
+              <p style="margin:0 0 16px; font-size:0.9375rem; font-weight:500; color:#5a3d33; line-height:1.5;">{{ emptyShowCopy }}</p>
+              <sc-if value="{{ fan }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer;">{{ followLabel }}</button>
+              </sc-if>
+              <sc-if value="{{ ownerView }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">Show schedule karo</button>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+        <div style="display:flex; flex-direction:column; gap:16px; max-width:920px;">
+          <sc-for list="{{ shows }}" as="sh" hint-placeholder-count="3">
+            <div style="border:2.5px solid #161614; border-radius:20px; background:{{ sh.fill }}; box-shadow:5px 6px 0 #161614; padding:20px 24px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+              <div style="flex:none; border:2px solid {{ sh.chip }}; border-radius:14px; padding:10px 14px; text-align:center; min-width:82px;">
+                <span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1; color:{{ sh.tCol }};">{{ sh.day }}</span>
+                <span style="display:block; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; margin-top:5px; color:{{ sh.stub }};">{{ sh.mon }}</span>
+              </div>
+              <div style="flex:1 1 15rem; min-width:0;">
+                <h4 style="font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.1; text-transform:uppercase; margin:0 0 6px; color:{{ sh.tCol }};">{{ sh.title }}</h4>
+                <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:{{ sh.stub }};">{{ sh.meta }}</span>
+              </div>
+              <a href="avaTOK Listing Details.dc.html" style="flex:none; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; display:inline-block;">Book · {{ sh.price }}</a>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-if>
+
+    <!-- ═══════ ABOUT ═══════ -->
+    <sc-if value="{{ isAbout }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; gap:30px; flex-wrap:wrap; align-items:flex-start;">
+        <section style="flex:1.5 1 23.75rem; min-width:0;">
+          <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">CHANNEL KI KAHANI</div>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0 0 18px;">Description.</h2>
+          <div style="border:2.5px solid #161614; border-radius:22px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; padding:26px 28px;">
+            <p style="margin:0; font-size:1.0625rem; font-weight:500; line-height:1.6; color:#4a3a20; text-wrap:pretty;">Ye woh jagah hai jahan Friday raat ka scene set hota hai. Main Sunny — Ludhiana ka launda, antakshari ka sarpanch. Har hafte Team A vs Team B, 300 regulars, aur 'meri awaaz hi pehchaan hai' rules. Yahan mere shows ke public replays milte hain — highlights, grand finals, aur backstage ka full bawaal.</p>
+            <p style="margin:16px 0 0; font-size:1.0625rem; font-weight:500; line-height:1.6; color:#4a3a20; text-wrap:pretty;">Disclaimer: galat sur ke liye pehle se maafi. Replays free hain; live shows ticketed hain — seat book karo, warna Friday ka FOMO guaranteed. Ye channel achhi niyat se banaya gaya hai.</p>
+            <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:20px; font-family:'Kalam',cursive; font-size:1.1875rem; color:#8c3a2c; transform:rotate(-2deg);">Sur galat ho sakta hai, mehmaan-nawazi nahi.</div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ verified }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:22px; border:2.5px solid #161614; border-radius:22px; background:#2d7180; box-shadow:5px 6px 0 #161614; padding:22px 26px; display:flex; gap:16px; align-items:flex-start;">
+              <span style="width:42px; height:42px; flex:none; border-radius:50%; background:#fdf1d3; color:#2d7180; display:grid; place-items:center; font-size:1.25rem; font-weight:700; border:2px solid #161614;">✓</span>
+              <div>
+                <b style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase; color:#fdf1d3; display:block; margin-bottom:4px;">Verified host</b>
+                <span style="font-size:0.9375rem; font-weight:500; line-height:1.5; color:#d6ecee;">Pehchaan ki tasdeeq avaTOK ne ki hai — government ID, live video check aur payout account match. Badge har listing aur profile pe dikhta hai.</span>
+              </div>
+            </div>
+          </sc-if>
+        </section>
+        <aside style="flex:1 1 20rem; max-width:460px;">
+          <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">SEEDHI BAAT</div>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0 0 18px;">More info.</h2>
+          <div style="border:2.5px solid #161614; border-radius:22px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; overflow:hidden;">
+            <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,30px" style="display:block;"></dc-import></div>
+            <div style="padding:10px 22px 14px; display:flex; flex-direction:column;">
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.875rem;">✉</span>
+                <button onClick="{{ emailPick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 16px; cursor:pointer; background:#fdf1d3; color:#161614; box-shadow:2px 2px 0 #161614;">{{ emailLabel }}</button>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#d9c3a0; display:grid; place-items:center; font-size:0.875rem;">⌂</span>
+                <a href="#" style="font-size:0.9375rem; font-weight:600;">avatok.in/@sunnygill</a>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.875rem;">◎</span>
+                <span style="font-size:0.9375rem; font-weight:600;">Ludhiana, India</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#d9c3a0; display:grid; place-items:center; font-size:0.875rem;">✦</span>
+                <span style="font-size:0.9375rem; font-weight:600;">Joined 14 Feb 2024</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.8125rem; font-family:'Silkscreen',monospace;">♥</span>
+                <span style="font-size:0.9375rem; font-weight:600;">{{ followerLong }}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#d9c3a0; display:grid; place-items:center; font-size:0.875rem;">▸</span>
+                <span style="font-size:0.9375rem; font-weight:600;">{{ aboutCountLine }}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px; padding:11px 0;">
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.875rem;">↗</span>
+                <span style="font-size:0.9375rem; font-weight:600;">3.4 lakh views · ★ 4.9 (620 ratings)</span>
+              </div>
+            </div>
+            <div style="border-top:2.5px solid #161614; padding:16px 22px; display:flex; gap:10px; flex-wrap:wrap;">
+              <button onClick="{{ sharePick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 24px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; box-shadow:3px 3px 0 #161614;">{{ shareLabel }}</button>
+              <button onClick="{{ noop }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.06em; padding:12px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">REPORT KARO</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </sc-if>
+  </div>
+
+  <dc-import name="SiteFooter" hint-size="100%,480px" style="display:block;"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;verified&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Channel&quot;},&quot;ownerView&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Channel&quot;},&quot;newCreator&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Channel&quot;},&quot;masala&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Bazaar&quot;},&quot;ctaColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#d93825&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#d93825&quot;,&quot;#b8382a&quot;,&quot;#2d7180&quot;,&quot;#161614&quot;],&quot;section&quot;:&quot;Brand&quot;}}">
+class Component extends DCLogic {
+  state = { tab: 'home', sort: 'new', following: false, shared: false, email: false };
+
+  getVideos() {
+    if (this._v) return this._v;
+    const PAL = {
+      teal:   { photo:'#1e5f66', dark:1 }, butter: { photo:'#c9a86a', dark:0 },
+      oat:    { photo:'#b09a76', dark:0 }, brick:  { photo:'#a4352a', dark:1 }
+    };
+    const rot = ['teal','butter','brick','oat'];
+    const raw = [
+      ['Antakshari grand final · Team A vs B', 52000, 1, '1:12:04'],
+      ["'M' se gaana challenge gone wrong", 45000, 2, '14:22'],
+      ['Diwali special: 500-seat mega show', 38000, 40, '1:38:10'],
+      ['Bollywood rapid-fire round · EP 41', 31000, 3, '22:45'],
+      ['Audience ke best moments · 2025 rewind', 27000, 30, '18:03'],
+      ['Kishore Kumar medley · full riyaaz', 22000, 6, '31:56'],
+      ['Ghazal crossover with Begum Aara', 18000, 8, '48:19'],
+      ['Antakshari rules · full bawaal edition', 15000, 55, '9:41'],
+      ['Friday highlights · EP 42', 12000, 1, '16:28'],
+      ['Sur bhi, swag bhi: warmup riyaaz', 7800, 12, '11:15'],
+      ['How I host 300 log har Friday', 5100, 20, '13:37'],
+      ['Backstage: Friday setup ka scene', 3400, 4, '8:52'],
+      ['90s medley night · full replay', 9600, 16, '1:02:33'],
+      ['Punjabi tappe takeover · EP 38', 11200, 25, '26:40'],
+      ['Holi hangout · rang aur raag', 8900, 60, '54:07'],
+      ['Fan requests only · EP 36', 6700, 35, '19:24'],
+      ['Duet night with Dolly Kapoor', 14500, 10, '42:11'],
+      ['Sargam speedrun · 60 second challenge', 19800, 5, '6:03'],
+      ['Lata ji tribute baithak', 25000, 70, '58:46'],
+      ['Antakshari bloopers · season 1', 10400, 45, '12:19'],
+      ['New year countdown show replay', 16900, 90, '2:04:55'],
+      ['Mehfil-e-Sunny · unplugged', 7200, 14, '35:30'],
+      ['Team B ki comeback story', 5900, 22, '17:48'],
+      ['Pehla show · jab 12 log aaye the', 4300, 300, '28:14']
+    ];
+    const fmtV = n => n >= 100000 ? (n/100000).toFixed(1) + ' LAKH' : n >= 1000 ? (n/1000).toFixed(n % 1000 ? 1 : 0).replace('.0','') + 'K' : String(n);
+    const fmtA = d => d < 7 ? d + ' DIN PEHLE' : d < 30 ? Math.round(d/7) + ' HAFTE PEHLE' : d < 365 ? Math.round(d/30) + ' MAHINE PEHLE' : Math.round(d/365) + ' SAAL PEHLE';
+    this._v = raw.map((r, i) => {
+      const p = PAL[rot[i % 4]];
+      return {
+        title: r[0], views: r[1], age: r[2], dur: r[3],
+        photo: p.photo,
+        stripe: p.dark ? 'repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px)' : 'repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px)',
+        phL: p.dark ? 'rgba(253,241,211,.7)' : '#4a3a20',
+        meta: fmtV(r[1]) + ' VIEWS · ' + fmtA(r[2]),
+        open: () => {}
+      };
+    });
+    return this._v;
+  }
+
+  renderVals() {
+    const S = this.state;
+    const verified = this.props.verified ?? true;
+    const ownerView = this.props.ownerView ?? false;
+    const newCreator = this.props.newCreator ?? false;
+    const masala = this.props.masala ?? true;
+    const ctaColor = this.props.ctaColor ?? '#d93825';
+    const vids = this.getVideos();
+
+    const followers = 4200 + (S.following ? 1 : 0);
+    const fmtF = n => (n/1000).toFixed(1) + 'K';
+
+    const tabDefs = [
+      { id: 'home', label: 'Home' }, { id: 'videos', label: 'Videos' },
+      { id: 'shows', label: 'Shows' }, { id: 'about', label: 'About' }
+    ];
+    const tabs = tabDefs.map(t => ({
+      label: t.label,
+      line: S.tab === t.id ? '#d93825' : 'transparent',
+      col: S.tab === t.id ? '#d93825' : '#161614',
+      pick: () => this.setState({ tab: t.id })
+    }));
+    const tabMeta = newCreator
+      ? { home: 'NAYA CREATOR · SWAGAT HAI', videos: '0 REPLAYS · ABHI BAAKI', shows: 'KOI SHOW SCHEDULED NAHI', about: 'PURI KUNDLI YAHAN HAI' }[S.tab]
+      : { home: 'GHAR JAISA FEEL', videos: '24 REPLAYS · SAB FREE', shows: 'AGLA SHOW: FRIDAY 9 PM', about: 'PURI KUNDLI YAHAN HAI' }[S.tab];
+
+    const sorted = [...vids];
+    if (S.sort === 'new') sorted.sort((a, b) => a.age - b.age);
+    if (S.sort === 'pop') sorted.sort((a, b) => b.views - a.views);
+    if (S.sort === 'old') sorted.sort((a, b) => b.age - a.age);
+    const sorts = [
+      { id: 'new', label: 'NAYA PEHLE' }, { id: 'pop', label: 'SABSE HIT' }, { id: 'old', label: 'PURANA PEHLE' }
+    ].map(s => ({
+      label: s.label,
+      bg: S.sort === s.id ? '#d93825' : '#fdf1d3', col: S.sort === s.id ? '#fdf1d3' : '#161614',
+      pick: () => this.setState({ sort: s.id })
+    }));
+
+    const shows = [
+      { day: '28', mon: 'AUG · FRI 9 PM', title: 'Antakshari Friday · Team A vs B', meta: '90 MIN · GROUP GAME · HINDI · 300 SEATS', price: '₹49', fill: '#f4d8a0', tCol: '#161614', stub: '#5a3d33', chip: '#161614' },
+      { day: '04', mon: 'SEP · FRI 9 PM', title: 'EP 44 · filmy songs only night', meta: '90 MIN · THEME NIGHT · HINGLISH', price: '₹49', fill: '#2d7180', tCol: '#fdf1d3', stub: '#d6ecee', chip: '#fdf1d3' },
+      { day: '11', mon: 'SEP · FRI 9 PM', title: 'Guest night with Begum Aara', meta: '2 HRS · GHAZAL x ANTAKSHARI · URDU · HINDI', price: '₹99', fill: '#d9c3a0', tCol: '#161614', stub: '#5a3d33', chip: '#161614' }
+    ];
+
+    return {
+      verified, ownerView, masala, ctaColor,
+      fan: !ownerView,
+      followerLine: fmtF(followers) + ' FOLLOWERS',
+      followerLong: fmtF(followers) + ' followers',
+      followBg: S.following ? '#fdf1d3' : ctaColor,
+      followCol: S.following ? '#161614' : '#fdf1d3',
+      followLabel: S.following ? '✓ Following' : 'Follow',
+      followPick: () => this.setState(s => ({ following: !s.following })),
+      shareLabel: S.shared ? 'LINK COPIED ✓' : 'SHARE CHANNEL ⇗',
+      sharePick: () => { this.setState({ shared: true }); clearTimeout(this._st); this._st = setTimeout(() => this.setState({ shared: false }), 2000); },
+      emailLabel: S.email ? 'SUNNY@AVATOK.IN' : 'VIEW EMAIL ADDRESS',
+      emailPick: () => this.setState({ email: true }),
+      noop: () => {},
+      goAbout: e => { e.preventDefault(); this.setState({ tab: 'about' }); },
+      goVideos: () => this.setState({ tab: 'videos' }),
+      tabs, tabMeta,
+      isHome: S.tab === 'home' && !newCreator, isVideos: S.tab === 'videos' && !newCreator,
+      isShows: S.tab === 'shows', isAbout: S.tab === 'about',
+      showEmptyVideos: newCreator && (S.tab === 'home' || S.tab === 'videos'),
+      emptyVideoCopy: ownerView ? 'Tumhara stage tayyar hai. Pehla show host karo — replay apne aap yahan aa jayega.' : 'Sunny ne abhi tak koi replay public nahi kiya. Follow kar lo — pehla video aate hi khabar milegi.',
+      noShows: newCreator,
+      videoCountLine: newCreator ? '0 VIDEOS' : '24 VIDEOS',
+      aboutCountLine: newCreator ? '0 videos · 0 live shows' : '24 videos · 142 live shows',
+      emptyShowCopy: ownerView ? 'Calendar full sannata. Ek show schedule karo aur Friday ka scene set karo.' : 'Abhi calendar khaali hai. Follow karo — naya show announce hote hi pata chal jayega.',
+      forYou: [...vids].sort((a, b) => b.views - a.views).slice(0, 4),
+      homeVideos: [...vids].sort((a, b) => a.age - b.age).slice(0, 8),
+      allVideos: sorted, sorts, shows: newCreator ? [] : shows
+    };
+  }
+}
+</script>
+</body>
+</html>

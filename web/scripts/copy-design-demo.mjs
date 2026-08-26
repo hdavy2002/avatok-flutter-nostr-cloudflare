@@ -37,6 +37,7 @@ const DEST_DIR = join(here, '..', 'src', 'generated');
 const PAGES = [
   ['avaTOK Listing Details.dc.html', 'listing-details.dc.html'],
   ['avaTOK Marketplace.dc.html', 'marketplace.dc.html'],
+  ['avaTOK Creator Profile.dc.html', 'creator-profile.dc.html'],
 ];
 
 await mkdir(DEST_DIR, { recursive: true });

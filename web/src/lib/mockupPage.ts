@@ -59,15 +59,37 @@ export interface MockupPageOptions {
    * looks identical in the code and still walks the visitor off the site.
    */
   listingHref?: string;
+  /**
+   * Where the comp's creator name / avatar / host photo should go. Same
+   * absolute-URL requirement as listingHref.
+   */
+  profileHref?: string;
 }
 
 /** The comp's hardcoded navigation target, as it appears in the .dc.html. */
 const COMP_LISTING_TARGET = "'avaTOK Listing Details.dc.html'";
 
-export function renderMockupPage({ html, title, maxAge = 60, listingHref }: MockupPageOptions): Response {
-  const withLinks = listingHref
+/**
+ * The comp's profile links, written as a bare relative filename so the
+ * standalone preview on avatok-design.pages.dev keeps working. On this site the
+ * same rule applies as above: <base> would resolve it to the asset origin, so it
+ * is rewritten to an absolute URL here.
+ */
+const COMP_PROFILE_TARGET = 'href="avaTOK Creator Profile.dc.html"';
+
+export function renderMockupPage({
+  html,
+  title,
+  maxAge = 60,
+  listingHref,
+  profileHref,
+}: MockupPageOptions): Response {
+  let withLinks = listingHref
     ? html.replaceAll(COMP_LISTING_TARGET, JSON.stringify(listingHref).replace(/"/g, "'"))
     : html;
+  if (profileHref) {
+    withLinks = withLinks.replaceAll(COMP_PROFILE_TARGET, `href="${escapeHtml(profileHref)}"`);
+  }
 
   const patched = withLinks.replace(
     '<head>',

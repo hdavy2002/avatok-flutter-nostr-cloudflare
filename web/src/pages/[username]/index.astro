@@ -1,0 +1,36 @@
+---
+// [DEMO-PROFILE-1 2026-08-26] Creator profile: /<username>
+//
+// Owner decision: every creator name, avatar and profile affordance on the
+// front page and the listing detail should land here. FOR NOW the page is the
+// bazaar comp from design/live-streaming/ ("avaTOK Creator Profile.dc.html") —
+// look and feel only, hardcoded mock data, backend wiring comes later.
+//
+// WHY A DIRECTORY ROUTE
+//   Astro reads pages/[username]/index.astro as the ONE-segment /<username> and
+//   pages/[username]/[slug].astro as the two-segment /<username>/<listing>, so
+//   the profile and the listing can share a namespace without either shadowing
+//   the other. Static routes still win over both — /about, /blog, /sign-in and
+//   friends are matched before any dynamic segment — which is the only reason a
+//   bare-handle route at the site root is safe.
+//
+//   The real data-driven creator page is untouched at /c/<handle>
+//   (pages/c/[handle].astro); nothing here replaces it, and links already shared
+//   to it keep working.
+export const prerender = false;
+
+import { renderMockupPage } from '../../lib/mockupPage';
+// Staged into web/src/generated/ by prebuild — see scripts/copy-design-demo.mjs
+// for why it is generated rather than committed, and why it is not in public/.
+import mockupHtml from '../../generated/creator-profile.dc.html?raw';
+
+const { username } = Astro.params;
+
+// Astro matches static routes first, so this guard is only for the rest: a bare
+// handle must not swallow asset-ish or malformed paths and answer 200.
+if (!/^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '')) {
+  return new Response('Not found', { status: 404 });
+}
+
+return renderMockupPage({ html: mockupHtml, title: `@${username} · avaTOK` });
+---
