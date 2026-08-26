@@ -77,6 +77,14 @@ const COMP_LISTING_TARGET = "'avaTOK Listing Details.dc.html'";
  */
 const COMP_PROFILE_TARGET = 'href="avaTOK Creator Profile.dc.html"';
 
+/**
+ * The same target reached from script rather than markup — the marketplace's
+ * creator group navigates with `window.location.href = '…'` because the card it
+ * sits inside already carries a click handler, and a nested anchor would fire
+ * both. Rewritten alongside the markup form.
+ */
+const COMP_PROFILE_JS_TARGET = "'avaTOK Creator Profile.dc.html'";
+
 export function renderMockupPage({
   html,
   title,
@@ -88,7 +96,9 @@ export function renderMockupPage({
     ? html.replaceAll(COMP_LISTING_TARGET, JSON.stringify(listingHref).replace(/"/g, "'"))
     : html;
   if (profileHref) {
-    withLinks = withLinks.replaceAll(COMP_PROFILE_TARGET, `href="${escapeHtml(profileHref)}"`);
+    withLinks = withLinks
+      .replaceAll(COMP_PROFILE_TARGET, `href="${escapeHtml(profileHref)}"`)
+      .replaceAll(COMP_PROFILE_JS_TARGET, JSON.stringify(profileHref).replace(/"/g, "'"));
   }
 
   const patched = withLinks.replace(

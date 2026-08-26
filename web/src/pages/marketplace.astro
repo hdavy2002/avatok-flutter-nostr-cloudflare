@@ -41,5 +41,9 @@ return renderMockupPage({
   // '/avatok/mock-listing' navigates to avatok-design.pages.dev/avatok/mock-listing
   // and dumps the visitor on the preview site's index.
   listingHref: new URL('/avatok/mock-listing', Astro.url).href,
+  // The creator avatar + name on each card open the profile instead of the
+  // listing. One demo creator for now, same reason as the listing above: the
+  // comp carries no per-card handle to build a real URL from.
+  profileHref: new URL('/avatok', Astro.url).href,
 });
 ---

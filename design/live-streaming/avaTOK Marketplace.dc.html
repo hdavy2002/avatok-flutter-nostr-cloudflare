@@ -238,8 +238,10 @@
                     <button onClick="{{ goDetails }}" style="flex:1; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">CALENDAR</button>
                   </div>
                   <div style="display:flex; align-items:center; gap:9px; padding-top:11px; border-top:1.5px solid {{ c.hairC }};">
-                    <span style="width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid {{ c.chipC }}; display:grid; place-items:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; color:{{ c.chipC }};">{{ c.ini }}</span>
-                    <span style="font-size:0.8125rem; font-weight:600; color:{{ c.nameC }};">{{ c.name }} ✓</span>
+                    <span onClick="{{ goProfile }}" title="View profile" style="display:flex; align-items:center; gap:9px; cursor:pointer;">
+                      <span style="width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid {{ c.chipC }}; display:grid; place-items:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; color:{{ c.chipC }};">{{ c.ini }}</span>
+                      <span style="font-size:0.8125rem; font-weight:600; color:{{ c.nameC }}; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px;" style-hover="text-decoration-color:currentColor;">{{ c.name }} ✓</span>
+                    </span>
                     <span style="margin-left:auto; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:{{ c.stubC }};">{{ c.dur }}</span>
                   </div>
                 </div>
@@ -409,7 +411,8 @@ class Component extends DCLogic {
           const fav = !!S.favs[c.id];
           return { ...c,
             hBg: fav ? '#d93825' : '#fdf1d3', hCol: fav ? '#fdf1d3' : '#161614', hG: fav ? '♥' : '♡',
-            hPick: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(s => ({ favs: { ...s.favs, [c.id]: !s.favs[c.id] } })); }
+            hPick: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(s => ({ favs: { ...s.favs, [c.id]: !s.favs[c.id] } })); },
+            goProfile: (e) => { if (e && e.stopPropagation) e.stopPropagation(); window.location.href = 'avaTOK Creator Profile.dc.html'; }
           };
         })
       });
