@@ -33,7 +33,7 @@
 
   <!-- search strip -->
   <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
-    <div style="max-width:1560px; margin:0 auto; padding:16px clamp(16px,4vw,40px); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+    <div style="max-width:none; margin:0 auto; padding:16px clamp(16px,4vw,40px); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 340px; display:flex; align-items:center; gap:10px; border:2.5px solid #161614; border-radius:100px; background:#f6e4cd; padding:6px 6px 6px 20px; box-shadow:4px 4px 0 #161614;">
         <input value="{{ q }}" onInput="{{ onSearch }}" placeholder="Dhoondo: tarot, adda, rizz, shayari, antakshari…" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font-family:'Instrument Sans',sans-serif; font-size:16px; font-weight:600; color:#161614; padding:8px 0;" />
         <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.06em; text-transform:uppercase; padding:11px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Khojo</button>
@@ -47,7 +47,7 @@
   <!-- hero with toran tassels -->
   <div style="background:#d46e59; border-bottom:3px solid #161614;">
     <dc-import name="TruckBorder" kind="tassels" hint-size="100%,44px" style="display:block;"></dc-import>
-    <div style="max-width:1560px; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
+    <div style="max-width:none; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 380px; min-width:0;">
         <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:12px; letter-spacing:.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:16px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>MARKETPLACE · 2,400 CREATORS LIVE</div>
         <h1 style="font-family:'Anton',sans-serif; font-size:clamp(46px,6.4vw,88px); line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0;">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
@@ -66,7 +66,7 @@
   </div>
 
   <!-- category tiles -->
-  <div style="max-width:1560px; margin:-38px auto 0; padding:0 clamp(16px,4vw,40px); position:relative; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px;">
+  <div style="max-width:none; margin:-38px auto 0; padding:0 clamp(16px,4vw,40px); position:relative; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px;">
     <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="8">
       <div onClick="{{ t.pick }}" style="cursor:pointer; border:3px solid #161614; border-radius:18px; overflow:hidden; background:#fdf1d3; box-shadow:{{ t.sh }}; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
         <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="{{ t.kind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
@@ -79,7 +79,7 @@
   </div>
 
   <!-- main layout -->
-  <div style="max-width:1560px; margin:0 auto; padding:34px clamp(16px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:30px; align-items:flex-start;">
+  <div style="max-width:none; margin:0 auto; padding:34px clamp(16px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:30px; align-items:flex-start;">
 
     <!-- sidebar -->
     <aside style="flex:1 1 236px; max-width:{{ asideMax }}; position:{{ asidePos }}; top:16px;">

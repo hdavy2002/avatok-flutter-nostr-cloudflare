@@ -27,7 +27,7 @@
 
   <!-- breadcrumb -->
   <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
-    <div style="max-width:1560px; margin:0 auto; padding:13px clamp(14px,4vw,40px); display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em;">
+    <div style="max-width:none; margin:0 auto; padding:13px clamp(14px,4vw,40px); display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em;">
       <a href="avaTOK Marketplace.dc.html" style="color:#161614;">BAZAAR</a>
       <span style="color:#8c6a52;">›</span>
       <a href="avaTOK Marketplace.dc.html" style="color:#161614;">{{ catLabel }}</a>
@@ -39,7 +39,7 @@
 
   <!-- live / countdown ticker -->
   <div data-wire="stream.status" style="background:{{ tickBg }}; border-bottom:3px solid #161614;">
-    <div style="max-width:1560px; margin:0 auto; padding:11px clamp(14px,4vw,40px); display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <div style="max-width:none; margin:0 auto; padding:11px clamp(14px,4vw,40px); display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:8px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#fdf1d3;"><span style="width:8px; height:8px; border-radius:50%; background:{{ tickDot }}; animation:{{ tickAnim }};"></span>{{ tickLead }}</span>
       <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:{{ tickSubC }};">{{ tickSub }}</span>
       <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
@@ -49,7 +49,7 @@
   </div>
 
   <!-- hero -->
-  <div style="max-width:1560px; margin:0 auto; padding:clamp(20px,3vw,44px) clamp(14px,4vw,40px) 10px; display:flex; gap:clamp(20px,3vw,40px); flex-wrap:wrap; align-items:flex-start;">
+  <div style="max-width:none; margin:0 auto; padding:clamp(20px,3vw,44px) clamp(14px,4vw,40px) 10px; display:flex; gap:clamp(20px,3vw,40px); flex-wrap:wrap; align-items:flex-start;">
 
     <!-- player -->
     <div style="flex:1.7 1 400px; min-width:min(100%,300px);">
@@ -168,7 +168,7 @@
   </div>
 
   <!-- main layout -->
-  <div style="max-width:1560px; margin:0 auto; padding:clamp(20px,3vw,40px) clamp(14px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start;">
+  <div style="max-width:none; margin:0 auto; padding:clamp(20px,3vw,40px) clamp(14px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start;">
 
     <!-- booking aside -->
     <aside style="flex:1 1 320px; max-width:{{ asideMax }}; position:{{ asidePos }}; top:16px; min-width:min(100%,290px); order:{{ asideOrder }};">
@@ -498,7 +498,7 @@
   </div>
 
   <!-- browse more events -->
-  <div style="max-width:1560px; margin:0 auto; padding:0 clamp(14px,4vw,40px) 90px;">
+  <div style="max-width:none; margin:0 auto; padding:0 clamp(14px,4vw,40px) 90px;">
     <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
       <h2 style="font-family:'Anton',sans-serif; font-size:clamp(30px,3vw,44px); text-transform:uppercase; margin:0; flex:1 1 260px;">Browse more <span style="color:#d93825;">events.</span></h2>
       <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
