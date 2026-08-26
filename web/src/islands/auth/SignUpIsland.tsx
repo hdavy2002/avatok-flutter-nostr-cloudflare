@@ -33,7 +33,7 @@ import { useSignUp } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import {
-  Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, RolePicker,
+  Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, RolePicker, CodeStep,
   validateEmail, validatePassword, validateRequired, clerkError,
   useClerkStalled, STALLED_MESSAGE,
   type FieldErrors, type Role,
@@ -140,32 +140,20 @@ function Inner() {
   /* ── Step 2: email code ─────────────────────────────────────────────── */
   if (stage === 'verify') {
     return (
-      <form className="auth-form auth-form--signup" onSubmit={onVerify} noValidate>
-        <div className="auth-desktop-head">
-          <p className="auth-eyebrow">One last thing</p>
-          <h1 className="auth-h2">Check your<br />email</h1>
-        </div>
-        <p className="auth-footline" style={{ textAlign: 'left' }}>
-          We sent a 6-digit code to <strong>{email}</strong>.
-        </p>
-
-        {formError && <p className="auth-formerr" role="alert">{formError}</p>}
-
-        <Field
-          label="Verification code" name="code" inputMode="numeric" maxLength={6}
-          autoComplete="one-time-code" placeholder="123456"
-          value={code} onChange={set(setCode, 'code')} error={errors.code}
-        />
-
-        <Button type="submit" loading={submitting}>Verify and finish</Button>
-
-        <div className="auth-foot">
-          <p className="auth-footline">
-            {resent ? 'Code sent again.' : 'Didn’t get it?'}
-            <a href="#resend" onClick={(ev) => { ev.preventDefault(); void resend(); }}>Resend code</a>
-          </p>
-        </div>
-      </form>
+      <CodeStep
+        eyebrow="One last thing"
+        heading={<>Check your<br />email</>}
+        sentTo={email}
+        code={code}
+        onCode={set(setCode, 'code')}
+        error={errors.code}
+        formError={formError}
+        submitting={submitting}
+        onSubmit={onVerify}
+        onResend={() => void resend()}
+        resent={resent}
+        cta="Verify and finish"
+      />
     );
   }
 

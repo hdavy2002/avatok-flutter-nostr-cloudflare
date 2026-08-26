@@ -1,24 +1,35 @@
 /* /sign-in — avaTOK log in.
  *
  * [WEB-AUTH-DESIGN-1 2026-08-26] Custom Clerk flow via `useSignIn()`, NOT the
- * prebuilt <SignIn/> component that used to live here. The design is a bespoke
- * form (truck-art palette, Silkscreen labels, solid ink shadows) and Clerk's
- * drop-in cannot be themed that far, so we drive the API directly.
+ * prebuilt <SignIn/> component. The design is a bespoke form (truck-art palette,
+ * Silkscreen labels, solid ink shadows) that Clerk's drop-in cannot be themed
+ * to, so we drive the API directly.
  *
- * The flow is deliberately the simplest Clerk supports:
- *   signIn.create({ identifier, password })  ->  status 'complete'  ->  setActive
- * The live instance has second_factor.required = false and email_address as the
- * only first factor (verified against the public Clerk environment endpoint), so
- * there is no MFA branch to handle. If MFA is ever switched on, `status` comes
- * back as 'needs_second_factor' and lands in the explicit fallback below rather
- * than silently doing nothing.
+ * [WEB-AUTH-FACTORS-1 2026-08-26] A password submit does NOT always come back
+ * `complete`. Verified against the live instance: the owner's own account
+ * returns `needs_first_factor` and advertises three strategies —
+ *
+ *     password · email_code · reset_password_email_code
+ *
+ * The first build treated anything that wasn't `complete` as an unsupported
+ * dead end and told the user "this account needs an extra verification step
+ * that isn't set up here yet", which stranded them on a page with nowhere to
+ * go. Clerk was in fact offering a perfectly good route: email a code.
+ *
+ * So the flow now has two stages:
+ *   1. password  -> complete            -> done
+ *   2. password  -> needs_first_factor  -> email a 6-digit code -> complete
+ * and `needs_second_factor` is handled too (currently no second factors are
+ * enabled, but an account-level TOTP would otherwise strand the user again).
+ *
+ * The rule this encodes: never leave the user on a screen with no next action.
  */
 import { useState } from 'react';
 import { useSignIn } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import {
-  Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED,
+  Field, Button, CheckRow, Divider, SocialPair, SOCIAL_ENABLED, CodeStep,
   validateEmail, validatePassword, clerkError, useClerkStalled, STALLED_MESSAGE,
   type FieldErrors,
 } from './AuthKit';
@@ -32,14 +43,49 @@ function nextUrl(): string {
   return '/marketplace';
 }
 
+type Stage = 'password' | 'code';
+
+/*
+ * Minimal structural types for the bits of Clerk's sign-in resource we read.
+ * `@clerk/types` is not a dependency of this project (only @clerk/clerk-react
+ * is), so importing SignInResource from it fails to resolve. These describe
+ * exactly the fields used below and nothing more — narrow enough that a Clerk
+ * upgrade changing an unrelated field cannot silently break the build.
+ */
+interface Factor {
+  strategy: string;
+  emailAddressId?: string;
+  phoneNumberId?: string;
+}
+interface SignInLike {
+  status: string | null;
+  createdSessionId: string | null;
+  supportedFirstFactors?: Factor[] | null;
+  supportedSecondFactors?: Factor[] | null;
+}
+
+/** Find a factor by strategy that also carries the id the prepare call needs. */
+function factorWithId(
+  factors: Factor[] | null | undefined,
+  strategy: string,
+  idKey: 'emailAddressId' | 'phoneNumberId',
+): string | undefined {
+  const f = factors?.find((x) => x.strategy === strategy && x[idKey]);
+  return f?.[idKey];
+}
+
 function Inner() {
   const { isLoaded, signIn, setActive } = useSignIn();
+  const [stage, setStage] = useState<Stage>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [keepMeIn, setKeepMeIn] = useState(true); // README: checked by default
+  const [code, setCode] = useState('');
+  const [codeKind, setCodeKind] = useState<'first' | 'second'>('first');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resent, setResent] = useState(false);
   const stalled = useClerkStalled(isLoaded);
 
   function set<T>(setter: (v: T) => void, key: string) {
@@ -50,9 +96,57 @@ function Inner() {
     };
   }
 
+  async function finish(res: SignInLike) {
+    await setActive!({ session: res.createdSessionId });
+    location.href = nextUrl();
+  }
+
+  /**
+   * Decide what to do with a non-complete sign-in. Returns true when it has
+   * moved the user somewhere useful, false when there is genuinely no route.
+   */
+  async function advance(res: SignInLike): Promise<boolean> {
+    if (!signIn) return false;
+
+    if (res.status === 'needs_first_factor') {
+      const emailAddressId = factorWithId(res.supportedFirstFactors, 'email_code', 'emailAddressId');
+      if (emailAddressId) {
+        await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
+        setCodeKind('first');
+        setStage('code');
+        return true;
+      }
+      return false;
+    }
+
+    if (res.status === 'needs_second_factor') {
+      if (res.supportedSecondFactors?.some((f) => f.strategy === 'totp')) {
+        // An authenticator app supplies the code; nothing to prepare.
+        setCodeKind('second');
+        setStage('code');
+        return true;
+      }
+      const phoneNumberId = factorWithId(res.supportedSecondFactors, 'phone_code', 'phoneNumberId');
+      if (phoneNumberId) {
+        await signIn.prepareSecondFactor({ strategy: 'phone_code', phoneNumberId });
+        setCodeKind('second');
+        setStage('code');
+        return true;
+      }
+      return false;
+    }
+
+    if (res.status === 'needs_new_password') {
+      location.href = '/forgot-password';
+      return true;
+    }
+
+    return false;
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded || submitting) return;
+    if (!isLoaded || !signIn || !setActive || submitting) return;
 
     const next: FieldErrors = {
       email: validateEmail(email),
@@ -65,19 +159,72 @@ function Inner() {
     setFormError(null);
     try {
       const res = await signIn.create({ identifier: email.trim(), password });
-      if (res.status === 'complete') {
-        await setActive({ session: res.createdSessionId });
-        location.href = nextUrl();
-        return;
-      }
-      // Not complete and not an error — only reachable if MFA or another
-      // factor gets enabled later. Say so plainly instead of hanging.
-      setFormError('This account needs an extra verification step that isn’t set up here yet.');
+      if (res.status === 'complete') { await finish(res); return; }
+      if (await advance(res)) return;
+      // Genuinely nothing we can drive — say what to do next rather than
+      // leaving the user staring at the form.
+      setFormError('We can’t finish signing in here. Try “Forgot password”, or contact support.');
     } catch (err) {
       setFormError(clerkError(err));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function onCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isLoaded || !signIn || !setActive || submitting) return;
+    if (code.trim().length < 6) {
+      setErrors({ code: 'Enter the 6-digit code.' });
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = codeKind === 'first'
+        ? await signIn.attemptFirstFactor({ strategy: 'email_code', code: code.trim() })
+        : await signIn.attemptSecondFactor({ strategy: 'totp', code: code.trim() });
+      if (res.status === 'complete') { await finish(res); return; }
+      setFormError('That code didn’t complete sign-in. Please try again.');
+    } catch (err) {
+      setFormError(clerkError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function resend() {
+    if (!isLoaded || !signIn || codeKind !== 'first') return;
+    try {
+      const emailAddressId = factorWithId(
+        signIn.supportedFirstFactors as Factor[] | null | undefined,
+        'email_code', 'emailAddressId',
+      );
+      if (!emailAddressId) return;
+      await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
+      setResent(true);
+    } catch (err) {
+      setFormError(clerkError(err));
+    }
+  }
+
+  if (stage === 'code') {
+    return (
+      <CodeStep
+        eyebrow="One last check"
+        heading={<>Check your<br />email</>}
+        sentTo={email}
+        code={code}
+        onCode={set(setCode, 'code')}
+        error={errors.code}
+        formError={formError}
+        submitting={submitting}
+        onSubmit={onCodeSubmit}
+        onResend={codeKind === 'first' ? resend : undefined}
+        resent={resent}
+        cta="Verify and log in"
+      />
+    );
   }
 
   return (
@@ -126,10 +273,6 @@ function Inner() {
   );
 }
 
-/**
- * Clerk is loaded lazily, so the form would otherwise pop in. We render the
- * static chrome immediately and only the form waits — the page never looks empty.
- */
 export function LoginIsland() {
   if (!CLERK_PUBLISHABLE_KEY) {
     return (

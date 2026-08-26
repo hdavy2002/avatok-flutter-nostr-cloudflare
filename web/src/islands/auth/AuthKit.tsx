@@ -250,6 +250,74 @@ export function SocialPair({ onProvider }: { onProvider?: (p: 'google' | 'facebo
   );
 }
 
+/* ── Code step ────────────────────────────────────────────────────────── */
+/**
+ * The 6-digit-code screen, shared by three flows that all need the same thing:
+ *   • sign-up email verification      (verify_at_sign_up)
+ *   • sign-in first factor            (needs_first_factor -> email_code)
+ *   • password reset                  (reset_password_email_code)
+ *
+ * Kept in one place so the three never drift apart visually.
+ */
+export function CodeStep({
+  eyebrow, heading, sentTo, code, onCode, error, formError,
+  submitting, onSubmit, onResend, resent, children, cta = 'Verify and continue',
+}: {
+  eyebrow: string;
+  heading: ReactNode;
+  sentTo: string;
+  code: string;
+  onCode: (v: string) => void;
+  error?: string;
+  formError?: string | null;
+  submitting: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  onResend?: () => void;
+  resent?: boolean;
+  /** Extra fields rendered under the code box (password reset adds one). */
+  children?: ReactNode;
+  cta?: string;
+}) {
+  return (
+    <form className="auth-form" onSubmit={onSubmit} noValidate>
+      <div className="auth-desktop-head">
+        <p className="auth-eyebrow">{eyebrow}</p>
+        <h1 className="auth-h2">{heading}</h1>
+      </div>
+
+      <p className="auth-footline" style={{ textAlign: 'left' }}>
+        We sent a 6-digit code to <strong>{sentTo}</strong>.
+      </p>
+
+      {formError && <p className="auth-formerr" role="alert">{formError}</p>}
+
+      <Field
+        label="Verification code" name="code" inputMode="numeric" maxLength={6}
+        autoComplete="one-time-code" placeholder="123456"
+        value={code} onChange={onCode} error={error}
+      />
+
+      {children}
+
+      <Button type="submit" loading={submitting}>{cta}</Button>
+
+      {onResend && (
+        <div className="auth-foot">
+          <p className="auth-footline">
+            {resent ? 'Code sent again.' : 'Didn’t get it?'}
+            <a
+              href="#resend"
+              onClick={(ev) => { ev.preventDefault(); onResend(); }}
+            >
+              Resend code
+            </a>
+          </p>
+        </div>
+      )}
+    </form>
+  );
+}
+
 /* ── Ornaments ────────────────────────────────────────────────────────── */
 export function Rail() {
   return <span className="auth-rail" aria-hidden="true">Creator Marketplace</span>;
