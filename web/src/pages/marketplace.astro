@@ -35,6 +35,11 @@ return renderMockupPage({
   // Every card in the comp shares one handler, so they all land on the same demo
   // listing — the comp carries no per-card id to build a real URL from. Passing
   // a real id is the first piece of the backend work, not a bug.
-  listingHref: '/avatok/mock-listing',
+  //
+  // FULLY ABSOLUTE, on purpose. <base href="https://avatok-design.pages.dev/">
+  // rebases root-relative URLs too, not just bare filenames — a plain
+  // '/avatok/mock-listing' navigates to avatok-design.pages.dev/avatok/mock-listing
+  // and dumps the visitor on the preview site's index.
+  listingHref: new URL('/avatok/mock-listing', Astro.url).href,
 });
 ---

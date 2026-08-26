@@ -53,6 +53,10 @@ export interface MockupPageOptions {
    * `window.location.href = 'avaTOK Listing Details.dc.html'`, a bare relative
    * filename — which <base> resolves against avatok-design.pages.dev, so a
    * visitor clicking a card would silently leave avatok.ai mid-flow.
+   *
+   * Pass a FULLY ABSOLUTE url (`new URL(path, Astro.url).href`). <base> rebases
+   * root-relative paths as well, so '/foo' lands on the asset origin too — which
+   * looks identical in the code and still walks the visitor off the site.
    */
   listingHref?: string;
 }
