@@ -21,10 +21,10 @@ module.exports = {
     "blueMark": "var(--zine-blueMark)"
   },
   "borderRadius": {
-    "zine": "22px",
+    "zine": "20px",
     "zineSm": "16px",
-    "zineField": "18px",
-    "zineBadge": "11px"
+    "zineField": "16px",
+    "zineBadge": "12px"
   },
   "borderWidth": {
     "zine": "2.5px",
@@ -40,17 +40,18 @@ module.exports = {
   },
   "fontFamily": {
     "display": [
-      "Fredoka",
+      "Anton",
+      "\"Arial Narrow\"",
       "system-ui",
       "sans-serif"
     ],
     "body": [
-      "Nunito",
+      "\"Instrument Sans\"",
       "system-ui",
       "sans-serif"
     ],
     "mono": [
-      "\"Space Mono\"",
+      "Silkscreen",
       "ui-monospace",
       "monospace"
     ]

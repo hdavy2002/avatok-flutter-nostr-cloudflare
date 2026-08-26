@@ -68,6 +68,10 @@
   font-display: swap;
 }
 
+/* [WEB-THEME-1] The full semantic token set (--ava-*). Must come before the
+   Tailwind layers so component code can use it in @apply-free plain CSS. */
+@import './ava-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -91,12 +95,12 @@ body {
 body {
   background: var(--zine-paper);
   color: var(--zine-ink);
-  font-family: 'Nunito', system-ui, sans-serif;
-  font-weight: 700;
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-weight: 500;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Faint radial-dot paper texture (mirrors ZinePaper in the app). */
-  background-image: radial-gradient(rgba(35, 27, 20, 0.05) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(22, 22, 20, 0.05) 1px, transparent 1px);
   background-size: 22px 22px;
   min-height: 100vh;
 }

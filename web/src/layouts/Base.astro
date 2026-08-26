@@ -74,10 +74,18 @@ const ogImage = image
     <meta name="twitter:description" content={description} />
     {ogImage && <meta name="twitter:image" content={ogImage} />}
 
-    <!-- Preload the two most-used font faces to cut first-paint FOUT. -->
-    <link rel="preload" href="/fonts/Fredoka-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/Nunito-Bold.woff2" as="font" type="font/woff2" crossorigin />
+    {/* [WEB-THEME-1] The Fredoka + Nunito preloads that were here are gone:
+        those faces are no longer referenced by any token, so preloading them
+        made every page fetch two fonts it never rendered. */}
 
+    {/* [WEB-THEME-1] Brand faces. Also loaded by SiteHeader for the home
+        page, which bypasses this layout; duplicate <link>s to the same
+        href are de-duplicated by the browser, so this is not a double
+        download. Needed here for chrome={false} pages (auth, dashboard)
+        that never render SiteHeader. */}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap" />
     <slot name="head" />
   </head>
   <body class="min-h-screen bg-paper text-ink font-body">

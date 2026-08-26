@@ -44,13 +44,14 @@ const DEFAULT_LINKS: HeaderLink[] = [
 const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
 ---
 
-{/* Anton is loaded by the component rather than the layout because the HOME
+{/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
+    the layout because the HOME
     page does not use Base.astro at all — it emits its own raw document — so a
     layout-level font link would miss the one page the header matters most on.
     A stylesheet <link> in the body is honoured by every browser. */}
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap" />
 
 <header class:list={['avh', sticky && 'avh--sticky']}>
   <a class="avh-logo" href="/" aria-label="avaTOK home">

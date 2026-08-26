@@ -2,29 +2,29 @@
 /* Source of truth: web/design/zine-tokens.dart. Re-run via `npm run prebuild`. */
 :root {
   /* surfaces + ink + poster accents + derived tints */
-  --zine-paper: #F9F7ED;
-  --zine-paper2: #F4F0E3;
-  --zine-card: #FEFDFA;
-  --zine-ink: #231B14;
-  --zine-inkSoft: #554B42;
-  --zine-inkMute: #897E74;
-  --zine-placeholder: #8F847A;
-  --zine-blue: #A0F7F1;
-  --zine-blueInk: #007D7F;
-  --zine-lime: #BFEB56;
-  --zine-coral: #FE674C;
-  --zine-lilac: #CDAEF2;
-  --zine-mint: #77EDAE;
-  --zine-mintInk: #008853;
-  --zine-tape: rgba(191, 235, 86, 0.62);
-  --zine-coralMark: rgba(254, 103, 76, 0.341);
-  --zine-blueMark: rgba(160, 247, 241, 0.502);
+  --zine-paper: #F6E4CD;
+  --zine-paper2: #EFDCC2;
+  --zine-card: #FDF1D3;
+  --zine-ink: #161614;
+  --zine-inkSoft: #5A3D33;
+  --zine-inkMute: #6B4F3F;
+  --zine-placeholder: #A08974;
+  --zine-blue: #F4D8A0;
+  --zine-blueInk: #1E5F66;
+  --zine-lime: #FEB302;
+  --zine-coral: #D93825;
+  --zine-lilac: #D9C3A0;
+  --zine-mint: #8FD0C0;
+  --zine-mintInk: #15773D;
+  --zine-tape: rgba(254, 179, 2, 0.502);
+  --zine-coralMark: rgba(217, 56, 37, 0.302);
+  --zine-blueMark: rgba(244, 216, 160, 0.549);
 
   /* geometry */
-  --zine-r: 22px;
+  --zine-r: 20px;
   --zine-rSm: 16px;
-  --zine-rField: 18px;
-  --zine-rBadge: 11px;
+  --zine-rField: 16px;
+  --zine-rBadge: 12px;
   --zine-bw: 2.5px;
   --zine-bwLg: 3px;
 

@@ -53,7 +53,8 @@ const routeTone = tone ?? (
     <link rel="icon" href="/app-logo2.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,ital,wght@6..96,400;6..96,600;6..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet" />
+    {/* [WEB-THEME-1] Bodoni Moda + DM Sans dropped — Base.astro loads the
+        brand faces and these are no longer referenced. */}
   </Fragment>
 
   <div class={`editorial-page tone-${routeTone}`}>
@@ -89,9 +90,15 @@ const routeTone = tone ?? (
 
 <style is:global>
   .editorial-page {
-    --paper:#f8f4e8; --ink:#181816; --blue:#4f5cff; --sky:#cde9ff; --pink:#ff78a8;
-    --red:#f2533d; --lime:#d7f36b; --yellow:#ffd95e; --lav:#c9b9ff; --white:#fffdf7;
-    --sans:'DM Sans',Arial,sans-serif; --serif:'Bodoni Moda',Georgia,serif;
+    /* [WEB-THEME-1 2026-08-26] Remapped onto the avaTOK design tokens. These 23
+       content + legal pages carry their OWN palette rather than the --zine-*
+       set, so the site-wide token swap missed them entirely and they were still
+       rendering the old white/purple editorial look. Polarity preserved: light
+       fills stay light, the accent stays an accent. */
+    --paper:#F6E4CD; --ink:#161614; --blue:#1E5F66; --sky:#F4D8A0; --pink:#F03060;
+    --red:#D93825; --lime:#FEB302; --yellow:#F0D018; --lav:#D9C3A0; --white:#FDF1D3;
+    --sans:'Instrument Sans',system-ui,sans-serif; --serif:'Playfair Display',Georgia,serif;
+    --display:'Anton','Arial Narrow',sans-serif;
     min-height:100vh; overflow:hidden; color:var(--ink); background:var(--paper); font-family:var(--sans); font-weight:500;
   }
   .editorial-page.tone-sky { background:var(--sky); }
@@ -118,7 +125,7 @@ const routeTone = tone ?? (
   .vertical-issue { position:absolute; top:115px; left:-94px; writing-mode:vertical-rl; transform:rotate(180deg); font-family:var(--serif); font-style:italic; font-size:16px; letter-spacing:.1em; }
   .content-head { position:relative; z-index:1; padding-bottom:62px; border-bottom:1px solid var(--ink); }
   .content-head .kick { margin:0 0 18px; color:var(--blue); font-size:18px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
-  .content-head h1 { max-width:950px; margin:0; font-family:var(--sans); font-size:clamp(68px,9vw,132px); line-height:.84; letter-spacing:-.075em; font-weight:700; text-wrap:balance; }
+  .content-head h1 { max-width:950px; margin:0; font-family:var(--display); font-size:clamp(68px,9vw,132px); line-height:.84; letter-spacing:-.075em; font-weight:700; text-wrap:balance; }
   .content-head h1::first-letter { font-family:var(--serif); font-style:italic; color:var(--blue); }
   .content-head .lead { max-width:800px; margin:30px 0 0; font-size:clamp(24px,2.3vw,34px); line-height:1.32; font-weight:500; text-wrap:pretty; }
   .content-head .updated { display:inline-block; margin:24px 0 0; padding:9px 13px; border:1px solid var(--ink); border-radius:999px; background:var(--white); font-size:14px; font-weight:700; letter-spacing:.05em; }
@@ -128,7 +135,7 @@ const routeTone = tone ?? (
   .tone-sky .content .prose > p:first-child { box-shadow-color:var(--pink); }
   .tone-lime .content .prose > p:first-child { box-shadow-color:var(--lav); }
   .tone-pink .content .prose > p:first-child { box-shadow-color:var(--yellow); }
-  .content .prose h2 { margin:66px 0 0; font-family:var(--sans); font-size:clamp(34px,4vw,52px); line-height:1; letter-spacing:-.045em; color:var(--ink); }
+  .content .prose h2 { margin:66px 0 0; font-family:var(--display); font-size:clamp(34px,4vw,52px); line-height:1; letter-spacing:-.045em; color:var(--ink); }
   .content .prose h2::before { content:'✦'; margin-right:12px; color:var(--blue); font-size:.55em; vertical-align:middle; }
   .content .prose h3 { margin:38px 0 0; font-size:26px; color:var(--ink); }
   .content .prose a { color:var(--blue); font-weight:700; text-decoration-thickness:2px; text-underline-offset:3px; }

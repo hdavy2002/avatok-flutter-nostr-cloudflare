@@ -12,55 +12,55 @@ class Zine {
 
   // ---- surfaces ----
   /// Page background — warm off-white. oklch(0.975 0.013 95)
-  static const paper = Color(0xFFF9F7ED);
+  static const paper = Color(0xFFF6E4CD);
   /// Tinted band / secondary surface. oklch(0.955 0.018 92)
-  static const paper2 = Color(0xFFF4F0E3);
+  static const paper2 = Color(0xFFEFDCC2);
   /// Card & component surface (near-white). oklch(0.995 0.004 95)
-  static const card = Color(0xFFFEFDFA);
+  static const card = Color(0xFFFDF1D3);
 
   // ---- ink (text + borders + shadows) ----
   /// Primary text, ALL borders, ALL shadows. oklch(0.23 0.018 60)
-  static const ink = Color(0xFF231B14);
+  static const ink = Color(0xFF161614);
   /// Secondary text. oklch(0.42 0.02 62)
-  static const inkSoft = Color(0xFF554B42);
+  static const inkSoft = Color(0xFF5A3D33);
   /// Tertiary text, disabled, captions. oklch(0.60 0.02 62)
-  static const inkMute = Color(0xFF897E74);
+  static const inkMute = Color(0xFF6B4F3F);
   /// Input placeholder. oklch(0.62 0.02 62)
-  static const placeholder = Color(0xFF8F847A);
+  static const placeholder = Color(0xFFA08974);
 
   // ---- poster accents (flat fills only) ----
   /// Pale aqua-blue — brand fill. oklch(0.92 0.085 190)
-  static const blue = Color(0xFFA0F7F1);
+  static const blue = Color(0xFFF4D8A0);
   /// Deep teal-blue — accent TEXT color ("TOK"), links. oklch(0.52 0.12 196)
-  static const blueInk = Color(0xFF007D7F);
+  static const blueInk = Color(0xFF1E5F66);
   /// Acid lime — THE primary action color. oklch(0.88 0.18 124)
-  static const lime = Color(0xFFBFEB56);
+  static const lime = Color(0xFFFEB302);
   /// Coral — destructive/error (the ONLY fill that takes white text). oklch(0.70 0.19 32)
-  static const coral = Color(0xFFFE674C);
+  static const coral = Color(0xFFD93825);
   /// Lilac — AI/magic features. oklch(0.80 0.10 305)
-  static const lilac = Color(0xFFCDAEF2);
+  static const lilac = Color(0xFFD9C3A0);
   /// Mint — money/success. oklch(0.86 0.14 158)
-  static const mint = Color(0xFF77EDAE);
+  static const mint = Color(0xFF8FD0C0);
   /// Mint accent-text variant. oklch(0.55 0.13 158)
-  static const mintInk = Color(0xFF008853);
+  static const mintInk = Color(0xFF15773D);
 
   // ---- derived tints ----
   /// Tape strip fill: lime @62%.
-  static const tape = Color(0x9EBFEB56);
+  static const tape = Color(0x80FEB302);
   /// Coral marker-highlight variant @34%.
-  static const coralMark = Color(0x57FE674C);
+  static const coralMark = Color(0x4DD93825);
   /// Blue marker-highlight variant @50%.
-  static const blueMark = Color(0x80A0F7F1);
+  static const blueMark = Color(0x8CF4D8A0);
 
   // ---- geometry ----
   /// Default card radius.
-  static const double r = 22;
+  static const double r = 20;
   /// Small card / tile radius.
   static const double rSm = 16;
   /// Field radius.
-  static const double rField = 18;
+  static const double rField = 16;
   /// Icon badge radius.
-  static const double rBadge = 11;
+  static const double rBadge = 12;
   /// Standard border width on every contained element.
   static const double bw = 2.5;
   /// Heavy border (hero crest, extra-large containers).
@@ -70,7 +70,7 @@ class Zine {
   /// Large offset shadow — hero cards/badges. 6px 7px 0 ink.
   static const shadow = [BoxShadow(color: ink, offset: Offset(6, 7))];
   /// Small offset shadow — buttons/chips/cards. 3px 3px 0 ink.
-  static const shadowSm = [BoxShadow(color: ink, offset: Offset(3, 3))];
+  static const shadowSm = [BoxShadow(color: ink, offset: Offset(4, 5))];
   /// Tiny offset — sticker pills. 2px 2px 0 ink.
   static const shadowXs = [BoxShadow(color: ink, offset: Offset(2, 2))];
   /// Pressed-in shadow. 1px 1px 0 ink.

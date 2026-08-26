@@ -169,6 +169,15 @@ logo/
 proposals/AvaTok_Tiered_Pricing_Brief.pdf
 scroll-site-generator.skill
 design/
+# [WEB-THEME-1 2026-08-26] …but NOT the web client's design tokens. `design/`
+# above is a bare pattern, so it also matched `web/design/`, where
+# `zine-tokens.dart` lives — the single source of truth that
+# `scripts/export-zine-tokens.mjs` compiles into tokens.css and the Tailwind
+# theme on every build (`npm run prebuild`). The file was already tracked, so
+# nothing was lost, but `git add` refused every edit to it: the one file that
+# controls the site's entire palette could not be committed by normal means.
+!web/design/
+!web/design/**
 tools/
 
 Specs/AUDIT-2026-08-07-guardian-and-ava-in-chat.md

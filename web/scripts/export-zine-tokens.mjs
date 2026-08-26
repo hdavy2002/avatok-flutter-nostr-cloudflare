@@ -101,11 +101,11 @@ const shadows = {
 
 // ---- verification spot-checks (Phase 0 acceptance gate) ----
 const EXPECT = {
-  paper: '#F9F7ED',
-  lime: '#BFEB56',
-  coral: '#FE674C',
-  ink: '#231B14',
-  blueInk: '#007D7F',
+  paper: '#F6E4CD',
+  lime: '#FEB302',
+  coral: '#D93825',
+  ink: '#161614',
+  blueInk: '#1E5F66',
 };
 const mismatches = [];
 for (const [k, v] of Object.entries(EXPECT)) {
@@ -177,10 +177,13 @@ const themeExtend = {
   borderRadius,
   borderWidth,
   boxShadow,
+  // [WEB-THEME-1] The four voices from design/tokens/TOKENS.md. `mono` is the
+  // Silkscreen "stub" voice (labels, eyebrows, chips) — the name stays `mono`
+  // so the ~hundreds of existing `font-mono` call sites keep working.
   fontFamily: {
-    display: ['Fredoka', 'system-ui', 'sans-serif'],
-    body: ['Nunito', 'system-ui', 'sans-serif'],
-    mono: ['"Space Mono"', 'ui-monospace', 'monospace'],
+    display: ['Anton', '"Arial Narrow"', 'system-ui', 'sans-serif'],
+    body: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+    mono: ['Silkscreen', 'ui-monospace', 'monospace'],
   },
   transitionDuration,
 };

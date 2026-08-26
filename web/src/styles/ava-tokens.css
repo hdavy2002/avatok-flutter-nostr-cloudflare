@@ -1,0 +1,216 @@
+/* VENDORED from design/tokens/tokens.css — the avaTOK design-token bundle.
+ * [WEB-THEME-1 2026-08-26] Kept verbatim so it can be re-copied when the design
+ * bundle updates; do not hand-edit, change the source and copy again.
+ *
+ * HOW THIS RELATES TO tokens.css (the --zine-* file next to it):
+ *   `src/styles/tokens.css` is GENERATED from design/zine-tokens.dart and is
+ *   what every existing Tailwind class resolves to (bg-paper -> var(--zine-paper)).
+ *   Those --zine-* values have been remapped onto the palette below, so the site
+ *   is already themed by it.
+ *   This file publishes the FULL semantic set (--ava-surface-*, --ava-text-*,
+ *   shadows, type scale, component recipes) for new work to use directly.
+ *   Read design/tokens/TOKENS.md before picking a fill: the contrast pairings
+ *   and the two-value red/green rules are not carried by the values themselves.
+ */
+
+/* avaTOK design tokens — v1
+   Primitives first, then semantic aliases. Use the semantic names in product code;
+   reach for a primitive only when no semantic token fits.
+   Rules that the values alone can't carry are in TOKENS.md — read the contrast pairings before using a card fill. */
+
+:root {
+  /* ---------- GROUNDS · one per section, never two ---------- */
+  --ava-ground-paper: #F6E4CD;        /* default page ground */
+  --ava-ground-paper-alt: #EFDCC2;    /* alternating band on paper */
+  --ava-ground-terracotta: #D46E59;   /* feature/showcase band — max 2 per page */
+
+  /* ---------- INK & SIGNAL ---------- */
+  --ava-ink: #161614;                 /* borders, display type on light, all hard shadows */
+  --ava-ink-soft: #2A1C16;            /* large prose on paper */
+  --ava-signal: #D93825;              /* primary action, links, active state, LIVE */
+  --ava-signal-deep: #B82A19;         /* eyebrows, errors, small red type (AA on cream) */
+  --ava-bone: #FDF1D3;                /* card + input interiors, type on dark grounds */
+
+  /* ---------- SUPPORT FILLS ---------- */
+  --ava-teal: #2D7180;                /* trust, verification, safe space — bone text */
+  --ava-teal-deep: #1E5F66;
+  --ava-teal-ink: #0F3F45;
+  --ava-butter: #F4D8A0;              /* warmth, selected state — ink text */
+  --ava-oat: #D9C3A0;                 /* quiet neutral, unselected, disabled — ink text */
+  --ava-brick: #B8382A;               /* sits on terracotta without vibrating — bone text */
+  --ava-marigold: #EA9101;            /* ornament blocks */
+  --ava-marigold-bright: #FEB302;     /* the auth left panel */
+
+  /* ---------- TEXT ---------- */
+  --ava-text: #161614;
+  --ava-text-body: #5A3D33;           /* body prose on paper */
+  --ava-text-label: #6B4F3F;          /* Silkscreen labels, meta */
+  --ava-text-placeholder: #A08974;
+  --ava-text-on-dark: #FDF1D3;
+  --ava-text-on-teal: #DCEFF0;
+  --ava-text-on-brick: #FDF1D3;
+  --ava-text-on-butter: #4A3A20;
+  --ava-text-on-terracotta: #2A0F0A;
+  --ava-stub-on-teal: #D6ECEE;        /* 9-11px type on teal */
+  --ava-stub-on-brick: #FBE4DF;       /* 9-11px type on brick */
+
+  /* ---------- TRUCK-ART ORNAMENT · never a page ground, used in threes ---------- */
+  --ava-truck-cobalt: #3A3A9E;
+  --ava-truck-cobalt-shadow: #0E1A52;
+  --ava-truck-sky: #00A8F0;
+  --ava-truck-chrome: #F0D018;
+  --ava-truck-vermilion: #D83030;
+  --ava-truck-emerald: #1E9E52;       /* flat fills only, no type */
+  --ava-truck-emerald-text: #15773D;  /* use when bone type sits on green */
+  --ava-truck-emerald-shadow: #0D3B21;
+  --ava-truck-magenta: #F03060;
+  --ava-truck-saffron: #F0A830;
+
+  /* ---------- SEMANTIC · surfaces ---------- */
+  --ava-surface-page: var(--ava-ground-paper);
+  --ava-surface-raised: var(--ava-bone);      /* cards, inputs, menus, table rows */
+  --ava-surface-sunken: var(--ava-ground-paper-alt);
+  --ava-surface-feature: var(--ava-ground-terracotta);
+  --ava-surface-inverse: var(--ava-ink);      /* dark panels, footer */
+  --ava-surface-selected: var(--ava-butter);
+  --ava-surface-muted: var(--ava-oat);
+
+  /* ---------- SEMANTIC · lines & shadows ---------- */
+  --ava-border: 2.5px solid var(--ava-ink);   /* default control border */
+  --ava-border-strong: 3px solid var(--ava-ink); /* cards, selected state */
+  --ava-border-hairline: 1.5px solid rgba(22,22,20,.20);
+  --ava-border-hairline-on-dark: 1.5px solid rgba(253,241,211,.28);
+  --ava-rule: 2px solid rgba(22,22,20,.18);   /* dividers */
+  --ava-section-rule: 3px solid var(--ava-ink);
+  --ava-shadow-sm: 4px 5px 0 var(--ava-ink);
+  --ava-shadow-md: 5px 6px 0 var(--ava-ink);
+  --ava-shadow-lg: 6px 7px 0 var(--ava-ink);
+  --ava-shadow-xl: 8px 9px 0 var(--ava-ink);
+  --ava-text-shadow-display: 6px 6px 0 var(--ava-ink);  /* hero on colour */
+  --ava-text-shadow-card: 3px 3px 0 var(--ava-ink);
+  /* Shadows are solid offsets with zero blur. No blur, no gradient, no glow — anywhere. */
+
+  /* ---------- SEMANTIC · state ---------- */
+  --ava-state-live: #D93825;
+  --ava-state-available: #1E5F66;
+  --ava-state-available-dot: #8FD0C0;
+  --ava-state-success: #15773D;
+  --ava-state-warning: #EA9101;
+  --ava-state-error: #B82A19;
+  --ava-state-disabled-fill: var(--ava-oat);
+  --ava-state-disabled-text: rgba(22,22,20,.55);
+  --ava-focus-ring: 3px solid var(--ava-signal);
+  --ava-focus-offset: 2px;
+
+  /* ---------- TYPE ---------- */
+  --ava-font-display: 'Anton', 'Arial Narrow', sans-serif;   /* all headings, buttons, nav */
+  --ava-font-serif: 'Playfair Display', Georgia, serif;      /* 900 italic — accent titles, the TOK */
+  --ava-font-sans: 'Instrument Sans', system-ui, sans-serif; /* all prose and inputs */
+  --ava-font-stub: 'Silkscreen', ui-monospace, monospace;    /* labels, eyebrows, chips */
+  --ava-font-deva: 'Baloo 2', sans-serif;                    /* Devanagari display */
+  --ava-font-hand: 'Kalam', cursive;                         /* asides only */
+
+  --ava-size-hero: 96px;      --ava-lh-hero: 1.02;
+  --ava-size-h1: 62px;        --ava-lh-h1: 1.02;
+  --ava-size-h2: 46px;        --ava-lh-h2: 1.02;
+  --ava-size-h3: 30px;        --ava-lh-h3: 1.06;
+  --ava-size-h4: 22px;        --ava-lh-h4: 1.08;
+  --ava-size-lede: 20px;      --ava-lh-lede: 1.5;
+  --ava-size-body: 17px;      --ava-lh-body: 1.55;
+  --ava-size-body-sm: 15px;   --ava-lh-body-sm: 1.45;
+  --ava-size-caption: 13.5px; --ava-lh-caption: 1.4;
+  --ava-size-input: 17px;
+  --ava-size-button: 18px;
+  --ava-size-button-sm: 14px;
+  --ava-size-stub: 11px;      /* range 9-13 */
+  --ava-size-stub-sm: 9px;
+
+  --ava-weight-body: 500;
+  --ava-weight-strong: 600;
+  --ava-track-display: -0.015em;   /* headings */
+  --ava-track-button: 0.05em;
+  --ava-track-stub: 0.12em;        /* range .08-.16 */
+
+  /* ---------- SPACE ---------- */
+  --ava-space-1: 4px;   --ava-space-2: 7px;   --ava-space-3: 9px;
+  --ava-space-4: 12px;  --ava-space-5: 14px;  --ava-space-6: 16px;
+  --ava-space-7: 18px;  --ava-space-8: 22px;  --ava-space-9: 26px;
+  --ava-space-10: 34px; --ava-space-11: 44px; --ava-space-12: 56px;
+  --ava-space-13: 72px; --ava-space-14: 88px;
+  --ava-page-gutter: 40px;
+  --ava-page-max: 1240px;
+  --ava-section-y: 88px;
+
+  /* ---------- RADII ---------- */
+  --ava-radius-xs: 5px;    /* checkbox */
+  --ava-radius-sm: 12px;
+  --ava-radius-md: 14px;   /* mobile input */
+  --ava-radius-lg: 16px;   /* desktop input */
+  --ava-radius-xl: 20px;   /* card */
+  --ava-radius-2xl: 26px;  /* creator card, modal */
+  --ava-radius-pill: 100px;
+
+  /* ---------- MOTION ---------- */
+  --ava-transition: transform .12s ease, box-shadow .12s ease;
+  --ava-hover-lift: translate(-2px, -2px);   /* pair with --ava-shadow-sm; never a colour change */
+
+  /* ---------- CONTROL SIZING ---------- */
+  --ava-control-height: 52px;      /* desktop */
+  --ava-control-height-touch: 48px;/* absolute floor on touch */
+  --ava-control-pad-y: 17px;
+  --ava-control-pad-x: 30px;
+  --ava-checkbox: 22px;
+}
+
+/* ---------- COMPONENT RECIPES ---------- */
+
+.ava-btn {
+  font-family: var(--ava-font-display); font-size: var(--ava-size-button);
+  letter-spacing: var(--ava-track-button); text-transform: uppercase;
+  padding: var(--ava-control-pad-y) var(--ava-control-pad-x);
+  border: var(--ava-border); border-radius: var(--ava-radius-pill);
+  cursor: pointer; transition: var(--ava-transition);
+}
+.ava-btn--primary { background: var(--ava-signal); color: var(--ava-bone); }
+.ava-btn--secondary { background: var(--ava-bone); color: var(--ava-ink); }
+.ava-btn--dark { background: var(--ava-ink); color: var(--ava-bone); }
+.ava-btn:hover { transform: var(--ava-hover-lift); box-shadow: var(--ava-shadow-sm); }
+.ava-btn:active { transform: none; box-shadow: none; }
+.ava-btn:disabled { background: var(--ava-state-disabled-fill); color: var(--ava-state-disabled-text); cursor: not-allowed; }
+
+.ava-input {
+  background: var(--ava-bone); border: var(--ava-border);
+  border-radius: var(--ava-radius-lg); padding: 17px 18px;
+  font-family: var(--ava-font-sans); font-size: var(--ava-size-input);
+  font-weight: var(--ava-weight-body); color: var(--ava-text);
+}
+.ava-input::placeholder { color: var(--ava-text-placeholder); }
+.ava-input:focus-visible { outline: var(--ava-focus-ring); outline-offset: var(--ava-focus-offset); }
+
+.ava-label {
+  font-family: var(--ava-font-stub); font-size: 10px;
+  letter-spacing: var(--ava-track-stub); color: var(--ava-text-label);
+  text-transform: uppercase;
+}
+
+.ava-card {
+  background: var(--ava-surface-raised); border: var(--ava-border-strong);
+  border-radius: var(--ava-radius-xl); box-shadow: var(--ava-shadow-md);
+}
+
+.ava-chip {
+  font-family: var(--ava-font-stub); font-size: var(--ava-size-stub);
+  letter-spacing: 0.05em; padding: 8px 14px;
+  border: 2px solid var(--ava-ink); border-radius: var(--ava-radius-pill);
+  background: var(--ava-bone);
+}
+
+/* Footer / dark panel: surface-inverse ground, bone display type, butter for handwritten asides,
+   bone at 45% for the vertical rail, signal red only for the one action that matters. */
+.ava-footer {
+  background: var(--ava-surface-inverse); color: var(--ava-text-on-dark);
+  border-top: var(--ava-section-rule);
+  padding: var(--ava-space-14) var(--ava-page-gutter);
+}
+.ava-footer a { color: var(--ava-bone); text-decoration: none; }
+.ava-footer a:hover { color: var(--ava-truck-chrome); }
