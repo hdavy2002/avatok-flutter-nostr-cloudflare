@@ -1,0 +1,406 @@
+/* avaTOK auth surface — /sign-in and /sign-up.
+ *
+ * [WEB-AUTH-DESIGN-1 2026-08-26] Recreated from design/login/README.md. Every
+ * colour, size, radius and shadow below is taken verbatim from that handoff.
+ *
+ * WHY PLAIN CSS AND NOT TAILWIND: the rest of the site is Tailwind on the
+ * "zine" token set, but this surface has its own palette, its own six fonts and
+ * a shadow grammar (solid offsets, zero blur) that shares nothing with the zine
+ * tokens. Expressing it as Tailwind utilities would mean widening the global
+ * theme with ~20 one-off values that no other page may use. One scoped
+ * stylesheet keeps it contained and makes it trivially deletable.
+ *
+ * Everything is scoped under `.auth` so it cannot leak into the rest of the site.
+ *
+ * BREAKPOINTS:
+ *   < 768px          single column, paper ground        (mobile spec)
+ *   768px – 1279px   centred 560px card, terracotta     (iPad spec)
+ *   >= 1280px        split panel 46% / 1fr              (desktop spec)
+ *
+ * NOTE — deliberate deviation from README §Responsive, which says the card
+ * applies "from 900–1279px". The handoff also specifies the iPad screen at
+ * 834 × 1112 (iPad portrait). Those two statements contradict each other: at
+ * 900px the card would never appear on the very device it was drawn for — a
+ * real iPad portrait would get the mobile layout stretched to 834px. Verified
+ * in a browser before changing it. The card therefore starts at 768px, the
+ * standard tablet floor, so an actual iPad gets the design that was made for it.
+ */
+
+.auth {
+  /* Grounds */
+  --paper: #f6e4cd;
+  --terracotta: #d46e59;
+  /* Ink & signal */
+  --ink: #161614;
+  --signal: #d93825;
+  --bone: #fdf1d3;
+  /* Support fills */
+  --butter: #f4d8a0;
+  --oat: #d9c3a0;
+  --marigold: #feb302;
+  --body-brown: #5a3d33;
+  --label-brown: #6b4f3f;
+  --placeholder: #a08974;
+  --error: #b82a19;
+  --card-copy: #4a3a20;
+
+  --f-display: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+  --f-serif: 'Playfair Display', Georgia, serif;
+  --f-body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-label: 'Silkscreen', 'Courier New', monospace;
+  --f-deva: 'Baloo 2', system-ui, sans-serif;
+  --f-hand: 'Kalam', cursive;
+
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.auth *,
+.auth *::before,
+.auth *::after { box-sizing: border-box; }
+
+/* ── Wordmark ─────────────────────────────────────────────────────────── */
+.auth-wordmark {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  text-decoration: none;
+  line-height: 1;
+}
+.auth-wordmark .wm-ava {
+  font-family: var(--f-display);
+  font-size: 30px;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+}
+.auth-wordmark .wm-tok {
+  font-family: var(--f-serif);
+  font-weight: 900;
+  font-style: italic;
+  font-size: 29px;
+  color: var(--signal);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+/* ── Layout shells ────────────────────────────────────────────────────── */
+.auth-shell { display: flex; flex-direction: column; min-height: 100dvh; }
+.auth-head { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 0 16px 2px; text-align: center; }
+.auth-head img { display: block; max-width: 100%; height: auto; }
+.auth-hindi { font-family: var(--f-deva); font-weight: 800; font-size: 20px; color: var(--ink); margin: 0; }
+
+.auth-form { display: flex; flex-direction: column; gap: 14px; padding: 0 20px; }
+.auth-form--signup { gap: 11px; }
+
+.auth-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 16px 0; text-align: center; }
+.auth-aside { font-family: var(--f-hand); font-size: 19px; color: var(--ink); transform: rotate(-4deg); margin: 0; line-height: 1.3; }
+.auth-footline { font-size: 15px; font-weight: 500; color: var(--body-brown); margin: 0; }
+.auth-footline a { font-family: var(--f-display); font-size: 15px; text-transform: uppercase; color: var(--signal); text-decoration: none; letter-spacing: 0.02em; margin-left: 6px; }
+.auth-footline a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Fields ───────────────────────────────────────────────────────────── */
+.auth-field { display: flex; flex-direction: column; gap: 7px; }
+.auth-label {
+  font-family: var(--f-label);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--label-brown);
+}
+.auth-boxwrap { position: relative; display: flex; align-items: center; }
+.auth-box {
+  width: 100%;
+  background: var(--bone);
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  padding: 15px 16px;
+  font-family: var(--f-body);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  outline: none;
+}
+.auth-form--signup .auth-box { padding: 12px 16px; }
+.auth-box::placeholder { color: var(--placeholder); }
+/* Chrome paints autofilled inputs pale blue, which overrides the bone interior
+   and makes returning users see a different design from everyone else. There is
+   no way to set the background directly — the long inset shadow is the standard
+   workaround. */
+.auth-box:-webkit-autofill,
+.auth-box:-webkit-autofill:hover,
+.auth-box:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--bone) inset;
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
+}
+.auth-box:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.auth-box[type='password'] { letter-spacing: 0.22em; font-size: 17px; }
+/* A revealed password is normal prose again, not bulleted. */
+.auth-box[type='text'].is-password { letter-spacing: normal; font-size: 16px; }
+
+.auth-show {
+  position: absolute;
+  right: 14px;
+  background: none;
+  border: 0;
+  padding: 4px;
+  cursor: pointer;
+  font-family: var(--f-label);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--error);
+  text-transform: uppercase;
+}
+.auth-show:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; border-radius: 4px; }
+
+.auth-err { font-size: 13px; color: var(--error); margin: 0; }
+.auth-formerr {
+  font-size: 13px;
+  color: var(--error);
+  background: var(--bone);
+  border: 2.5px solid var(--error);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 0;
+}
+
+/* ── Checkbox rows ────────────────────────────────────────────────────── */
+.auth-row { display: flex; align-items: center; gap: 10px; }
+.auth-check {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  border: 2.5px solid var(--ink);
+  border-radius: 5px;
+  background: var(--bone);
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+}
+.auth-check--lg { width: 22px; height: 22px; }
+.auth-check:checked { background: var(--signal); }
+.auth-check:checked::after { content: '✓'; color: var(--bone); font-size: 13px; line-height: 1; }
+.auth-check:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.auth-row label { font-size: 14px; font-weight: 500; color: var(--body-brown); cursor: pointer; }
+.auth-terms label { font-size: 13.5px; line-height: 1.45; }
+.auth-terms a { color: var(--signal); }
+.auth-forgot {
+  margin-left: auto;
+  font-family: var(--f-display);
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--signal);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.auth-forgot:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.auth-btn {
+  display: block;
+  width: 100%;
+  font-family: var(--f-display);
+  font-size: 18px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 17px 24px;
+  border-radius: 100px;
+  border: 2.5px solid var(--ink);
+  background: var(--signal);
+  color: var(--bone);
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.auth-btn:active { transform: translate(0, 0); box-shadow: none; }
+.auth-btn:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.auth-btn:disabled { background: var(--oat); color: rgba(22, 22, 20, 0.6); cursor: not-allowed; }
+.auth-btn--ghost { background: var(--bone); color: var(--ink); font-size: 14px; padding: 15px 10px; }
+.auth-btn--ink { background: var(--ink); color: var(--bone); font-size: 14px; padding: 15px 10px; }
+
+/* Hover lift is desktop-only per the README (no colour change). */
+@media (min-width: 1280px) and (hover: hover) {
+  .auth-btn:not(:disabled):hover { transform: translate(-2px, -2px); box-shadow: 4px 5px 0 var(--ink); }
+}
+
+.auth-social { display: flex; gap: 12px; }
+.auth-social .auth-btn { flex: 1; }
+
+.auth-divider { display: flex; align-items: center; gap: 12px; }
+.auth-divider::before,
+.auth-divider::after { content: ''; flex: 1; height: 2px; background: rgba(22, 22, 20, 0.2); }
+.auth-divider span { font-family: var(--f-label); font-weight: 700; font-size: 10px; letter-spacing: 0.14em; color: var(--label-brown); }
+
+/* ── Role picker ──────────────────────────────────────────────────────── */
+.auth-roles { display: flex; gap: 12px; }
+.auth-role {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 11px 12px 12px;
+  border-radius: 18px;
+  border: 2.5px solid var(--ink);
+  background: var(--oat);
+  cursor: pointer;
+  font-family: var(--f-body);
+}
+.auth-role[aria-checked='true'] { background: var(--butter); border-width: 3px; box-shadow: 4px 5px 0 var(--ink); }
+.auth-role:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.auth-role-top { display: flex; align-items: center; gap: 8px; }
+.auth-radio {
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  background: var(--bone);
+  display: grid;
+  place-content: center;
+  font-size: 12px;
+  line-height: 1;
+}
+.auth-role[aria-checked='true'] .auth-radio { background: var(--signal); color: var(--bone); }
+.auth-role-title { font-family: var(--f-display); font-size: 21px; text-transform: uppercase; letter-spacing: -0.015em; }
+.auth-role-sub { font-size: 13px; font-weight: 500; color: var(--card-copy); margin: 0; line-height: 1.4; }
+
+/* ── Ornaments (tablet + desktop only) ────────────────────────────────── */
+.auth-rail,
+.auth-stamp { display: none; }
+
+/* The eyebrow + big heading exist only on the desktop split layout. Below
+   1280px the header block (wordmark + graphic + Hindi line) carries the page
+   instead, exactly as drawn in the mobile and iPad screens. */
+.auth-desktop-head { display: none; }
+
+/* ── 768–1279px: centred card on terracotta (iPad spec) ───────────────── */
+@media (min-width: 768px) {
+  .auth { background: var(--terracotta); }
+  .auth-shell { align-items: center; justify-content: center; padding: 48px 24px 80px; position: relative; }
+  .auth-card {
+    width: 560px;
+    max-width: 100%;
+    border: 3px solid var(--ink);
+    border-radius: 28px;
+    background: var(--bone);
+    box-shadow: 8px 9px 0 var(--ink);
+    overflow: hidden;
+  }
+  .auth-head { padding: 30px 34px 24px; gap: 16px; }
+  .auth-wordmark .wm-ava { font-size: 36px; }
+  .auth-wordmark .wm-tok { font-size: 35px; }
+  .auth-hindi { font-size: 27px; }
+  .auth-form { padding: 0 34px 34px; gap: 18px; }
+  .auth-label { font-size: 11px; }
+  .auth-box { border-radius: 16px; padding: 17px 18px; font-size: 17px; }
+  .auth-form--signup .auth-box { padding: 15px 16px; }
+  .auth-btn { font-size: 19px; padding: 19px 24px; }
+  .auth-btn--ghost, .auth-btn--ink { font-size: 15px; padding: 16px 12px; }
+  .auth-foot { padding: 0 34px 30px; margin-top: 0; }
+  .auth-footline { font-size: 16px; }
+  .auth-aside { display: none; }
+
+  .auth-rail {
+    display: block;
+    position: fixed;
+    left: 20px; top: 50%;
+    transform: translateY(-50%);
+    writing-mode: vertical-rl;
+    font-family: var(--f-display);
+    font-size: 22px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(22, 22, 20, 0.5);
+    pointer-events: none;
+  }
+  .auth-stamp {
+    display: block;
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) rotate(-1.5deg);
+    height: 36px;
+    display: grid;
+    place-content: center;
+    padding: 0 22px;
+    border-radius: 100px;
+    border: 2.5px dashed var(--bone);
+    font-family: var(--f-label);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--bone);
+    white-space: nowrap;
+  }
+}
+
+/* ── >=1280px: split panel (desktop spec) ─────────────────────────────── */
+@media (min-width: 1280px) {
+  .auth { background: var(--paper); }
+  .auth-shell {
+    display: grid;
+    grid-template-columns: 46% 1fr;
+    align-items: stretch;
+    justify-content: initial;
+    padding: 0;
+    min-height: 100dvh;
+  }
+  /* The card chrome dissolves — the right column IS the surface. */
+  .auth-card { width: 100%; max-width: 460px; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+
+  .auth-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    padding: 48px 44px;
+    border-right: 3px solid var(--ink);
+    position: relative;
+    min-width: 380px;
+  }
+  .auth-panel--marigold { background: var(--marigold); }
+  .auth-panel--ink { background: var(--ink); }
+  .auth-panel img { display: block; max-width: 470px; width: 100%; height: auto; }
+  .auth-panel--ink img { max-width: 330px; }
+  .auth-panel .auth-aside { display: block; font-size: 25px; transform: rotate(-3deg); }
+
+  .auth-main { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 56px; background: var(--paper); }
+  .auth-head { align-items: flex-start; text-align: left; padding: 0 0 4px; gap: 10px; }
+  .auth-head img, .auth-hindi { display: none; }
+  .auth-wordmark { justify-content: flex-start; }
+  .auth-wordmark .wm-ava { font-size: 34px; }
+  .auth-wordmark .wm-tok { font-size: 33px; }
+  .auth-desktop-head { display: flex; flex-direction: column; gap: 8px; }
+  .auth-eyebrow { font-family: var(--f-label); font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--error); margin: 0; }
+  .auth-h2 { font-family: var(--f-display); font-size: 52px; line-height: 1.02; letter-spacing: -0.01em; text-transform: uppercase; margin: 0; }
+  .auth-form { padding: 0; gap: 18px; }
+  .auth-foot { align-items: flex-start; text-align: left; padding: 0; margin-top: 18px; }
+
+  /* Name pair sits side by side on desktop only. */
+  .auth-namepair { display: flex; gap: 14px; }
+  .auth-namepair .auth-field { flex: 1; }
+
+  .auth-rail { position: absolute; left: 22px; font-size: 20px; color: rgba(22, 22, 20, 0.45); }
+  .auth-panel--ink .auth-rail { color: rgba(253, 241, 211, 0.45); }
+  .auth-stamp { bottom: 26px; border-color: var(--ink); color: var(--ink); }
+  .auth-panel--ink .auth-stamp { border-color: var(--bone); color: var(--bone); }
+  /* On desktop the stamp belongs to the decorative panel only. Both pages carry
+     a second copy in .auth-main for the 768–1279 card layout (where there is no
+     panel); without this it renders twice side by side on wide screens. */
+  .auth-main > .auth-stamp,
+  .auth-main > .auth-rail { display: none; }
+}
+
+/* Below 1280 the decorative panel is hidden outright, never shrunk. */
+@media (max-width: 1279px) { .auth-panel { display: none; } }
+
+/* Sign-up desktop heading is a touch smaller (README §5). */
+@media (min-width: 1280px) { .auth-main--signup .auth-h2 { font-size: 46px; } .auth-main--signup { padding: 44px 56px; } .auth-main--signup .auth-form { gap: 16px; } }
+
+@media (prefers-reduced-motion: reduce) { .auth-btn { transition: none; } }

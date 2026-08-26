@@ -1,35 +1,76 @@
 ---
-// Clerk sign-in page (full-account path). Minimal by design — guest checkout
-// means most fans never see this. Uses Phase 0's Clerk provider via the island.
+// avatok.ai — Log in.
+//
+// [WEB-AUTH-DESIGN-1 2026-08-26] Rebuilt from design/login/README.md, replacing
+// Clerk's prebuilt <SignIn/> drop-in (which could not be themed this far).
+//
+// Astro page shell + ONE React island for the form. The shell is server-rendered
+// so the artwork, wordmark and layout paint immediately; only the interactive
+// form hydrates. `chrome={false}` drops the site header and footer — the auth
+// screens are a standalone surface in the handoff, with their own ornaments.
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import SignInPanel from '../islands/auth/SignInPanel.tsx';
+import LoginIsland from '../islands/auth/LoginIsland.tsx';
 import { clerkFapiHost } from '../lib/config';
+import '../styles/auth.css';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-// Host clerk-js will load from, decoded from the publishable key (prod/staging/
-// pk_test previews all resolve correctly; undefined when no key is configured).
 const clerkHost = clerkFapiHost();
 ---
 
-<Base title="Sign in · avatok.ai" description="Sign in to avatok.ai." navStatic={true}>
-  {clerkHost && (
-    <Fragment slot="head">
-      <!-- Warm the connection to Clerk's frontend API before the island mounts
-           so clerk-js starts downloading on an already-open TLS connection (cuts
-           the blank-then-slow first paint on /sign-in). Host is derived from the
-           publishable key, so it's correct in every environment. -->
-      <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
-      <link rel="dns-prefetch" href={`https://${clerkHost}`} />
-    </Fragment>
-  )}
-  <main class="mx-auto max-w-md px-4 py-12">
-    <header class="mb-6 text-center">
-      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Welcome back</span>
-      <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Sign in</h1>
-    </header>
-    <SignInPanel client:load />
-  </main>
+<Base
+  title="Log in · avaTOK"
+  description="Log in to avaTOK — India's creator marketplace for live events, private sessions and AI voice."
+  chrome={false}
+>
+  <Fragment slot="head">
+    <!-- The six brand faces (README §Type). Loaded here rather than globally so
+         the rest of the site doesn't pay for fonts only auth uses. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@700&family=Baloo+2:wght@800&family=Kalam&display=swap"
+    />
+    {clerkHost && (
+      <Fragment>
+        <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
+        <link rel="dns-prefetch" href={`https://${clerkHost}`} />
+      </Fragment>
+    )}
+  </Fragment>
+
+  <div class="auth">
+    <div class="auth-shell">
+      <!-- Decorative left panel — desktop (>=1280px) only. Hidden, never
+           shrunk, below that (README §Responsive). -->
+      <aside class="auth-panel auth-panel--marigold" aria-hidden="true">
+        <span class="auth-rail">Creator Marketplace</span>
+        <img src="/auth/horn-ok-please.png" alt="" width="996" height="354" />
+        <p class="auth-aside">Chai ho jaye?<br />Woh bhi ho jayega.</p>
+        <span class="auth-stamp">Desi · Dil Se · Global</span>
+      </aside>
+
+      <main class="auth-main">
+        <!-- Rail and stamp for the 768–1279 card layout. The panel above owns
+             its own copies for >=1280; these two are hidden there. Duplicated
+             rather than shared because the panel is display:none below 1280,
+             which would take the ornaments with it. -->
+        <span class="auth-rail">Creator Marketplace</span>
+        <div class="auth-card">
+          <header class="auth-head">
+            <a class="auth-wordmark" href="/" aria-label="avaTOK home">
+              <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
+            </a>
+            <img src="/auth/horn-ok-please.png" alt="" width="996" height="354" fetchpriority="high" />
+            <p class="auth-hindi" lang="hi">आपका इंतज़ार था</p>
+          </header>
+          <LoginIsland client:load />
+        </div>
+        <span class="auth-stamp">Desi · Dil Se · Global</span>
+      </main>
+    </div>
+  </div>
 </Base>

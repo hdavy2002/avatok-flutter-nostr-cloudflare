@@ -1,33 +1,72 @@
 ---
-// Clerk sign-up page (full-account path). Most fans never need this — guest
-// checkout captures email at the point of booking — but creators sign up here
-// to get the dashboard and create listings. Redirects to /dashboard (or ?next).
+// avatok.ai — Create account.
+//
+// [WEB-AUTH-DESIGN-1 2026-08-26] Rebuilt from design/login/README.md, replacing
+// Clerk's prebuilt <SignUp/> drop-in. See sign-in.astro for the shell rationale.
+//
+// The desktop left panel here is INK with the pawri poster (README §5), against
+// the marigold + horn artwork on log in — that contrast is intentional in the
+// handoff, not a copy/paste slip.
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
-import SignUpPanel from '../islands/auth/SignUpPanel.tsx';
+import SignUpIsland from '../islands/auth/SignUpIsland.tsx';
 import { clerkFapiHost } from '../lib/config';
+import '../styles/auth.css';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-// Host clerk-js will load from, decoded from the publishable key.
 const clerkHost = clerkFapiHost();
 ---
 
-<Base title="Sign up · avatok.ai" description="Create your avatok.ai account — sell live events, 1:1s, classes and AI agents." navStatic={true}>
-  {clerkHost && (
-    <Fragment slot="head">
-      <!-- Warm the connection to Clerk's frontend API before the island mounts.
-           Host derived from the publishable key, so it's correct in every env. -->
-      <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
-      <link rel="dns-prefetch" href={`https://${clerkHost}`} />
-    </Fragment>
-  )}
-  <main class="mx-auto max-w-md px-4 py-12">
-    <header class="mb-6 text-center">
-      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Join avatok</span>
-      <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Create your account</h1>
-    </header>
-    <SignUpPanel client:load />
-  </main>
+<Base
+  title="Create account · avaTOK"
+  description="Join avaTOK — book private sessions and live events, or host your own and get paid."
+  chrome={false}
+>
+  <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@700&family=Baloo+2:wght@800&family=Kalam&display=swap"
+    />
+    {clerkHost && (
+      <Fragment>
+        <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
+        <link rel="dns-prefetch" href={`https://${clerkHost}`} />
+      </Fragment>
+    )}
+  </Fragment>
+
+  <div class="auth">
+    <div class="auth-shell">
+      <aside class="auth-panel auth-panel--ink" aria-hidden="true">
+        <span class="auth-rail">Creator Marketplace</span>
+        <img src="/auth/pawri-poster.png" alt="" width="563" height="751" />
+        <span class="auth-stamp">Desi · Dil Se · Global</span>
+      </aside>
+
+      <main class="auth-main auth-main--signup">
+        <!-- See sign-in.astro: ornaments for the 768–1279 card layout, hidden
+             at >=1280 where the decorative panel carries its own. -->
+        <span class="auth-rail">Creator Marketplace</span>
+        <div class="auth-card">
+          <header class="auth-head">
+            <a class="auth-wordmark" href="/" aria-label="avaTOK home">
+              <span class="wm-ava">ava</span><span class="wm-tok">TOK</span>
+            </a>
+            <!-- The graphic carries the welcome line on sign-up, so there is no
+                 separate Hindi text row here (README §2). -->
+            <img
+              src="/auth/suswagatam.png" alt="" width="998" height="668"
+              fetchpriority="high" style="height:130px;width:auto;"
+            />
+          </header>
+          <SignUpIsland client:load />
+        </div>
+        <span class="auth-stamp">Desi · Dil Se · Global</span>
+      </main>
+    </div>
+  </div>
 </Base>
