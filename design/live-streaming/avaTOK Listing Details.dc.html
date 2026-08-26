@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@600;700;800&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #d93825; text-decoration: none; }
+  a:hover { color: #2d7180; }
+  input, button { font-family: inherit; }
+  @keyframes tokPulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .55; } }
+</style>
+</helmet>
+
+<div style="background:#f6e4cd; min-height:100vh;">
+  <dc-import name="SiteHeader" hint-size="100%,72px" style="display:block;"></dc-import>
+
+  <!-- breadcrumb -->
+  <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
+    <div style="max-width:1560px; margin:0 auto; padding:13px clamp(14px,4vw,40px); display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em;">
+      <a href="avaTOK Marketplace.dc.html" style="color:#161614;">BAZAAR</a>
+      <span style="color:#8c6a52;">›</span>
+      <a href="avaTOK Marketplace.dc.html" style="color:#161614;">{{ catLabel }}</a>
+      <span style="color:#8c6a52;">›</span>
+      <span style="color:#d93825;">ANTAKSHARI FRIDAY</span>
+      <span style="margin-left:auto; color:#8c6a52;">LISTING #ST-0104</span>
+    </div>
+  </div>
+
+  <!-- live / countdown ticker -->
+  <div data-wire="stream.status" style="background:{{ tickBg }}; border-bottom:3px solid #161614;">
+    <div style="max-width:1560px; margin:0 auto; padding:11px clamp(14px,4vw,40px); display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <span style="display:flex; align-items:center; gap:8px; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#fdf1d3;"><span style="width:8px; height:8px; border-radius:50%; background:{{ tickDot }}; animation:{{ tickAnim }};"></span>{{ tickLead }}</span>
+      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:{{ tickSubC }};">{{ tickSub }}</span>
+      <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+        <button data-wire="stream.join" onClick="{{ joinTry }}" style="margin-left:auto; font-family:'Anton',sans-serif; font-size:13px; letter-spacing:.06em; text-transform:uppercase; padding:8px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Join now ▸</button>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <div style="max-width:1560px; margin:0 auto; padding:clamp(20px,3vw,44px) clamp(14px,4vw,40px) 10px; display:flex; gap:clamp(20px,3vw,40px); flex-wrap:wrap; align-items:flex-start;">
+
+    <!-- player -->
+    <div style="flex:1.7 1 400px; min-width:min(100%,300px);">
+      <!-- nazar battu strip -->
+      <div style="display:flex; align-items:center; justify-content:center; gap:12px; border:2.5px solid #161614; border-radius:100px; background:#161614; padding:10px 16px; margin-bottom:14px; flex-wrap:nowrap;">
+        <img src="assets/lol-sticker.png" alt="LOL sticker" style="height:{{ nazarH1 }}; flex:none;" />
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:{{ nazarFs }}; letter-spacing:.1em; color:#fdf1d3; text-align:center; flex:0 1 auto; min-width:0;">BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
+        <img src="assets/luv-it-sticker.png" alt="I luv it sticker" style="height:{{ nazarH2 }}; flex:none;" />
+      </div>
+      <div style="border:3px solid #161614; border-radius:26px; overflow:hidden; background:#fdf1d3; box-shadow:7px 8px 0 #161614;">
+        <div style="height:clamp(300px,40vw,540px); background:{{ catPhoto }}; position:relative;">
+          <div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.13) 0 9px, transparent 9px 20px);"></div>
+          <div style="position:absolute; top:14px; left:14px; right:14px; display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; background:{{ liveBg }}; border:1.5px solid #161614; color:#fdf1d3; border-radius:100px; padding:7px 13px; display:flex; align-items:center; gap:7px;"><span style="width:7px; height:7px; border-radius:50%; background:{{ liveDot }}; animation:{{ liveAnim }};"></span>{{ liveLabel }}</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.06em; background:rgba(22,22,20,.72); color:#fdf1d3; border-radius:100px; padding:7px 13px;" data-wire="stream.viewers">◉ {{ watching }}</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.06em; background:rgba(22,22,20,.72); color:#fdf1d3; border-radius:100px; padding:7px 13px;" data-wire="booking.count">✓ {{ bookedCount }} BOOKED</span>
+            <span style="margin-left:auto; display:flex; gap:8px;">
+              <button data-wire="share.open" onClick="{{ sharePick }}" style="width:34px; height:34px; flex:none; border-radius:50%; background:#fdf1d3; border:1.5px solid #161614; display:grid; place-items:center; font-size:13px; cursor:pointer; padding:0;">⇗</button>
+              <button data-wire="favorites.toggle" onClick="{{ favPick }}" style="width:34px; height:34px; flex:none; border-radius:50%; background:{{ favBg }}; border:1.5px solid #161614; display:grid; place-items:center; font-size:15px; color:{{ favCol }}; cursor:pointer; padding:0;">{{ favG }}</button>
+            </span>
+          </div>
+          <span style="position:absolute; left:50%; top:42%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:rgba(253,241,211,.65); text-align:center; line-height:2;">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>
+          <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+            <button data-wire="stream.join" onClick="{{ joinTry }}" style="position:absolute; left:50%; bottom:60px; transform:translateX(-50%); font-family:'Anton',sans-serif; font-size:20px; letter-spacing:.05em; text-transform:uppercase; padding:16px 40px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; box-shadow:5px 6px 0 #161614;">▸ Join now</button>
+          </sc-if>
+          <sc-if value="{{ notLive }}" hint-placeholder-val="{{ true }}">
+            <div data-wire="stream.countdown" style="position:absolute; left:50%; bottom:56px; transform:translateX(-50%); display:flex; gap:8px; align-items:flex-end;">
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:22px; line-height:1;">{{ cdD }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:9px; letter-spacing:.1em; margin-top:4px;">DAYS</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:22px; line-height:1;">{{ cdH }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:9px; letter-spacing:.1em; margin-top:4px;">HRS</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:22px; line-height:1;">{{ cdM }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:9px; letter-spacing:.1em; margin-top:4px;">MIN</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:22px; line-height:1;">{{ cdS }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:9px; letter-spacing:.1em; margin-top:4px;">SEC</span></span>
+            </div>
+          </sc-if>
+          <div style="position:absolute; left:0; right:0; bottom:-1px; height:18px; background:radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x;"></div>
+        </div>
+        <div style="padding:13px 18px 15px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="width:30px; height:30px; flex:none; border-radius:50%; border:1.5px solid #161614; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px;">SG</span>
+          <span style="font-size:14px; font-weight:600;">Sunny Gill ✓</span>
+          <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52;">HOST SINCE 2024 · REPLIES IN ~10 MIN</span>
+          <span style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:{{ joinNoteC }};">{{ joinNote }}</span>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin-top:14px;">
+        <div style="height:76px; border:2.5px solid #161614; border-radius:14px; background:#c9a86a; position:relative; overflow:hidden;"><div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px);"></div><span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; color:#4a3a20;">SHOW STILL</span></div>
+        <div style="height:76px; border:2.5px solid #161614; border-radius:14px; background:#a4352a; position:relative; overflow:hidden;"><div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px);"></div><span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; color:#fbe4df;">SHOW STILL</span></div>
+        <div style="height:76px; border:2.5px solid #161614; border-radius:14px; background:#b09a76; position:relative; overflow:hidden;"><div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px);"></div><span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; color:#4a3a20;">SHOW STILL</span></div>
+        <div style="height:76px; border:2.5px solid #161614; border-radius:14px; background:#1e5f66; position:relative; overflow:hidden;"><div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px);"></div><span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; color:#d6ecee;">HIGHLIGHT REEL</span></div>
+      </div>
+
+      <!-- share -->
+      <div style="margin-top:14px; border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; box-shadow:4px 5px 0 #161614; padding:16px 18px;">
+        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
+          <div style="flex:1 1 260px; min-width:0;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.14em; color:#6b4f3f;">SHARE THE SHOW</span>
+              <button data-wire="share.link.copy" onClick="{{ copyLink }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; color:{{ copyLinkC }}; background:none; border:none; cursor:pointer; text-decoration:underline; padding:0;">{{ copyLinkLabel }}</button>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button data-wire="share.whatsapp" onClick="{{ shareWa }}" style="display:flex; align-items:center; gap:7px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 14px; cursor:pointer; background:#2d7180; color:#fdf1d3; box-shadow:3px 3px 0 #161614;"><span style="width:7px; height:7px; border-radius:50%; background:#8fd0c0;"></span>WHATSAPP</button>
+              <button data-wire="share.facebook" onClick="{{ shareFb }}" style="display:flex; align-items:center; gap:7px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 14px; cursor:pointer; background:#b8382a; color:#fdf1d3; box-shadow:3px 3px 0 #161614;"><span style="width:7px; height:7px; border-radius:50%; background:#ffd0c4;"></span>FACEBOOK</button>
+              <button data-wire="share.youtube" onClick="{{ shareYt }}" style="display:flex; align-items:center; gap:7px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 14px; cursor:pointer; background:#161614; color:#fdf1d3; box-shadow:3px 3px 0 #161614;"><span style="width:7px; height:7px; border-radius:50%; background:#d93825;"></span>YOUTUBE</button>
+              <button data-wire="share.embed.toggle" onClick="{{ embedToggle }}" style="display:flex; align-items:center; gap:7px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 14px; cursor:pointer; background:{{ embedBg }}; color:{{ embedCol }}; box-shadow:3px 3px 0 #161614;">&lt;/&gt; EMBED {{ embedCaret }}</button>
+            </div>
+          </div>
+          <div style="flex:none; display:flex; align-items:center; gap:12px;">
+            <div style="border:2.5px solid #161614; border-radius:12px; background:#fff; padding:6px; box-shadow:3px 3px 0 #161614;">
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=176x176&amp;margin=0&amp;color=161614&amp;bgcolor=ffffff&amp;data=https%3A%2F%2Favatok.in%2Fshow%2Fst-0104" alt="QR code — open this show" style="width:88px; height:88px; display:block;" />
+            </div>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:#8c6a52; line-height:1.9; max-width:90px;">SCAN TO OPEN THIS SHOW ON YOUR PHONE</span>
+          </div>
+        </div>
+        <sc-if value="{{ embedOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:14px; border:2px solid #161614; border-radius:14px; background:#161614; padding:14px 16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.1em; color:#b39c82;">PASTE THIS ON YOUR SITE OR BLOG</span>
+              <button data-wire="share.embed.copy" onClick="{{ copyEmbed }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:2px solid #fdf1d3; border-radius:100px; padding:7px 14px; cursor:pointer; background:{{ copyEmbedBg }}; color:{{ copyEmbedCol }};">{{ copyEmbedLabel }}</button>
+            </div>
+            <code style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; line-height:2; color:#8fd0c0; word-break:break-all; white-space:pre-wrap;">{{ embedCode }}</code>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- title / meta -->
+    <div style="flex:1 1 320px; min-width:min(100%,280px);">
+      <div style="font-family:'Nunito',sans-serif; font-weight:800; font-weight:700; font-size:13px; letter-spacing:.16em; color:#b82a19; margin-bottom:12px;">{{ catEyebrow }}</div>
+      <h1 style="font-family:'Anton',sans-serif; font-size:clamp(36px,4.4vw,60px); line-height:1.03; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Antakshari Friday <span style="color:#d93825;">with Sunny.</span></h1>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:16px;">
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">★ 4.9 · 620 RATINGS</span>
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">♡ 300 REGULARS</span>
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">90 MIN · HINDI</span>
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; border:1.5px solid #2d7180; border-radius:100px; padding:7px 12px; color:#2d7180; background:#fdf1d3;">✓ 100% REAL HUMAN · NO AI</span>
+      </div>
+      <p style="margin:18px 0 0; font-size:17px; font-weight:500; line-height:1.55; color:#4a3a20; max-width:52ch; text-wrap:pretty;">Team A vs Team B, classic antakshari rules with Sunny's twists. He hosts, keeps score, and brings full drama when someone fumbles the lyrics. Come as a stranger, leave as antakshari-family.</p>
+      <div style="margin-top:18px; border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; box-shadow:4px 5px 0 #161614; padding:14px 18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px;">
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:22px;">{{ bookedCount }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:#8c6a52;">✓ BOOKED THIS SHOW</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:22px;">{{ watchStat }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:#8c6a52;">{{ watchStatLabel }}</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:22px;">132</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:#8c6a52;">SHOWS HOSTED</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:22px;">96%</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:#8c6a52;">♡ COME BACK AGAIN</span></span>
+      </div>
+      <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:20px;">
+        <span style="font-family:'Anton',sans-serif; font-size:34px;">₹49 <span style="font-size:16px; letter-spacing:.04em;">/ SEAT</span></span>
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52;">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
+      </div>
+      <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:16px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+          <img src="assets/desi-swag.png" alt="Desi swag" style="width:112px; flex:none; transform:rotate(-4deg);" />
+          <div style="font-family:'Kalam',cursive; font-size:20px; color:#8c3a2c; transform:rotate(-2deg);">"Jo jeeta wahi Sunny-kant." — a regular</div>
+        </div>
+        <div style="margin-top:22px; display:flex; align-items:center; justify-content:center; gap:22px; flex-wrap:wrap;">
+          <img src="assets/vadapav-uncle.png" alt="Baccha hai tu mera, ye le vada pav kha" style="width:clamp(170px,16vw,230px); transform:rotate(-2deg);" />
+          <img src="assets/dekho-pyar-se.png" alt="Dekho magar pyar se" style="width:clamp(150px,14vw,200px); border:3px solid #161614; border-radius:14px; transform:rotate(2deg); box-shadow:5px 6px 0 #161614;" />
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- main layout -->
+  <div style="max-width:1560px; margin:0 auto; padding:clamp(20px,3vw,40px) clamp(14px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start;">
+
+    <!-- booking aside -->
+    <aside style="flex:1 1 320px; max-width:{{ asideMax }}; position:{{ asidePos }}; top:16px; min-width:min(100%,290px); order:{{ asideOrder }};">
+      <div style="border:3px solid #161614; border-radius:24px; background:#fdf1d3; box-shadow:6px 7px 0 #161614; overflow:hidden;">
+        <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="tassels" hint-size="100%,36px" style="display:block;"></dc-import></div>
+        <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#d93825; border-bottom:2.5px solid #161614; padding:12px 22px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="width:8px; height:8px; border-radius:50%; background:#fdf1d3; animation:tokPulse 1.2s ease-in-out infinite;"></span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#fdf1d3;">LIVE NOW · {{ watching }} WATCHING</span>
+            <span style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; color:#ffd0c4;">BOOK &amp; JOIN INSTANTLY</span>
+          </div>
+        </sc-if>
+        <div style="padding:20px 22px 24px;">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:16px;">
+            <span style="font-family:'Anton',sans-serif; font-size:24px; text-transform:uppercase;">Book a seat</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; color:#8c6a52;">₹49 / SEAT</span>
+          </div>
+
+          <div style="border:2px solid #161614; border-radius:16px; background:#f6e4cd; padding:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+              <button data-wire="availability.month.prev" onClick="{{ prevM }}" style="width:26px; height:26px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:13px; display:grid; place-items:center; padding:0;">‹</button>
+              <span style="font-family:'Anton',sans-serif; font-size:15px; text-transform:uppercase; letter-spacing:.03em;">{{ monthLabel }}</span>
+              <button data-wire="availability.month.next" onClick="{{ nextM }}" style="width:26px; height:26px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:13px; display:grid; place-items:center; padding:0;">›</button>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px;">
+              <sc-for list="{{ dows }}" as="w" hint-placeholder-count="7">
+                <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; color:#8c6a52; text-align:center;">{{ w.t }}</span>
+              </sc-for>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;">
+              <sc-for list="{{ calCells }}" as="d" hint-placeholder-count="35">
+                <div data-wire="availability.date.select" onClick="{{ d.pick }}" style="height:28px; display:grid; place-items:center; border-radius:8px; cursor:{{ d.cur }}; background:{{ d.bg }}; position:relative;">
+                  <span style="font-size:12px; font-weight:600; color:{{ d.col }};">{{ d.t }}</span>
+                  <sc-if value="{{ d.dot }}" hint-placeholder-val="{{ false }}"><span style="position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; background:#d93825;"></span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:8px; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:#8c6a52;">● = SHOW DAY · EVERY FRIDAY</div>
+          </div>
+
+          <div style="margin-top:16px;">
+            <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:#6b4f3f; margin-bottom:10px;">{{ slotHead }}</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <sc-for list="{{ slots }}" as="sl" hint-placeholder-count="2">
+                <button data-wire="availability.slot.select" onClick="{{ sl.pick }}" style="display:flex; align-items:center; gap:12px; width:100%; text-align:left; border:2px solid #161614; border-radius:14px; background:{{ sl.bg }}; padding:12px 14px; cursor:{{ sl.cur }}; opacity:{{ sl.op }}; box-shadow:{{ sl.sh }};">
+                  <span style="width:16px; height:16px; flex:none; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center;"><span style="width:7px; height:7px; border-radius:50%; background:{{ sl.dotIn }};"></span></span>
+                  <span style="min-width:0; flex:1;">
+                    <span style="display:block; font-family:'Anton',sans-serif; font-size:16px; letter-spacing:.02em;">{{ sl.time }}</span>
+                    <span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.06em; color:#8c6a52; margin:4px 0 6px;">{{ sl.label }}</span>
+                    <span style="display:block; height:7px; border:1.5px solid #161614; border-radius:100px; background:#f6e4cd; overflow:hidden;"><span style="display:block; height:100%; width:{{ sl.fillW }}; background:{{ sl.fillC }};"></span></span>
+                  </span>
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; color:{{ sl.seatC }}; text-align:right; white-space:nowrap;">{{ sl.seats }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <sc-if value="{{ canBook }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:#6b4f3f;">HOW MANY SEATS?</span>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <button data-wire="booking.qty.decrement" onClick="{{ qMinus }}" style="width:30px; height:30px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:15px; display:grid; place-items:center; padding:0;">−</button>
+                <span style="font-family:'Anton',sans-serif; font-size:20px; min-width:20px; text-align:center;">{{ qty }}</span>
+                <button data-wire="booking.qty.increment" onClick="{{ qPlus }}" style="width:30px; height:30px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:15px; display:grid; place-items:center; padding:0;">+</button>
+              </div>
+            </div>
+            <div style="margin-top:14px; border-top:2px dashed rgba(22,22,20,.35); padding-top:12px; display:flex; flex-direction:column; gap:7px;">
+              <sc-for list="{{ priceRows }}" as="pr" hint-placeholder-count="3">
+                <div style="display:flex; justify-content:space-between; gap:10px;">
+                  <span style="font-size:13px; font-weight:500; color:#5a3d33;">{{ pr.label }}</span>
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; color:#161614;">{{ pr.val }}</span>
+                </div>
+              </sc-for>
+              <div style="display:flex; justify-content:space-between; gap:10px; border-top:2px solid #161614; padding-top:9px; margin-top:3px;">
+                <span style="font-family:'Anton',sans-serif; font-size:17px; text-transform:uppercase;">Total</span>
+                <span style="font-family:'Anton',sans-serif; font-size:17px;">{{ totalLabel }}</span>
+              </div>
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.06em; color:#8c6a52;">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ notBooked }}" hint-placeholder-val="{{ true }}">
+            <button data-wire="booking.create" onClick="{{ book }}" style="width:100%; margin-top:16px; font-family:'Anton',sans-serif; font-size:17px; letter-spacing:.05em; text-transform:uppercase; padding:16px; border-radius:100px; border:2.5px solid #161614; background:{{ bookBg }}; color:#fdf1d3; cursor:{{ bookCur }}; box-shadow:4px 5px 0 #161614;">{{ bookLabel }}</button>
+            <div style="margin-top:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.06em; color:#8c6a52; text-align:center; line-height:1.8;">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
+          </sc-if>
+          <sc-if value="{{ booked }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:16px; border:2.5px solid #161614; border-radius:18px; background:#2d7180; padding:18px 20px; box-shadow:4px 5px 0 #161614;">
+              <div style="font-family:'Anton',sans-serif; font-size:22px; text-transform:uppercase; color:#fdf1d3; text-shadow:2px 2px 0 #0f3f45;">Seat locked! ✓</div>
+              <p style="margin:8px 0 0; font-size:13px; font-weight:500; line-height:1.55; color:#d6ecee;">{{ bookedLine }}</p>
+              <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+                <button data-wire="stream.join" onClick="{{ joinTry }}" style="width:100%; margin-top:12px; font-family:'Anton',sans-serif; font-size:16px; letter-spacing:.05em; text-transform:uppercase; padding:13px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; box-shadow:3px 4px 0 #0f3f45;">▸ Join the show now</button>
+              </sc-if>
+              <p style="margin:10px 0 0; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.06em; color:#c4e3e0; line-height:1.8;">{{ bookedNote }}</p>
+              <button data-wire="booking.cancel" onClick="{{ unbook }}" style="margin-top:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#fdf1d3; background:none; border:none; cursor:pointer; text-decoration:underline; padding:0;">CHANGE / CANCEL BOOKING</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+        <div style="margin:18px 10px 0; font-family:'Kalam',cursive; font-size:18px; line-height:1.35; color:#8c3a2c; transform:rotate(-2deg);">Seat gayi toh gaana bhi gaya.<br />— Bazaar rule #7</div>
+      </sc-if>
+    </aside>
+
+    <!-- left column -->
+    <main style="flex:999 1 520px; min-width:0; display:flex; flex-direction:column; gap:52px; order:2;">
+
+      <section>
+        <h2 style="font-family:'Anton',sans-serif; font-size:clamp(28px,2.6vw,38px); text-transform:uppercase; margin:0;">How the show <span style="color:#d93825;">works.</span></h2>
+        <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="{{ catKind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px;">
+          <div style="border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; padding:18px 20px; box-shadow:4px 5px 0 #161614;">
+            <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#d93825; margin-bottom:8px;">STEP 1 · JOIN</div>
+            <p style="margin:0; font-size:14px; font-weight:500; line-height:1.5; color:#4a3a20;">Open your link 5 minutes before showtime. Sunny sorts everyone into Team A or Team B — coming with friends? Ask for the same team.</p>
+          </div>
+          <div style="border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; padding:18px 20px; box-shadow:4px 5px 0 #161614;">
+            <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#d93825; margin-bottom:8px;">STEP 2 · SING</div>
+            <p style="margin:0; font-size:14px; font-weight:500; line-height:1.5; color:#4a3a20;">Classic antakshari rules with Sunny's twists: movie-only rounds, antara-only rounds, and the dreaded 'Th' round. Off-key? Bilkul chalega.</p>
+          </div>
+          <div style="border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; padding:18px 20px; box-shadow:4px 5px 0 #161614;">
+            <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#d93825; margin-bottom:8px;">STEP 3 · WIN</div>
+            <p style="margin:0; font-size:14px; font-weight:500; line-height:1.5; color:#4a3a20;">Winning team gets a free pass to next week's show. Everyone else gets lifetime bragging rights and a recap reel — only if you opt in.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- meet the host -->
+      <section>
+        <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(28px,2.6vw,38px); text-transform:uppercase; margin:0; flex:1 1 240px;">Meet the <span style="color:#d93825;">host.</span></h2>
+          <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">ID VERIFIED · PAST SESSIONS SHOWN UNEDITED</span>
+        </div>
+        <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="tassels" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="border:3px solid #161614; border-radius:24px; background:#fdf1d3; box-shadow:6px 7px 0 #161614; overflow:hidden;">
+          <div style="display:flex; flex-wrap:wrap;">
+            <!-- profile column -->
+            <div style="flex:1 1 250px; max-width:340px; min-width:min(100%,250px); border-right:2.5px solid #161614; border-bottom:2.5px solid #161614; padding:22px; display:flex; flex-direction:column; gap:14px; background:#f6e4cd;">
+              <div style="height:210px; border:2.5px solid #161614; border-radius:18px; background:#1e5f66; position:relative; overflow:hidden;">
+                <div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px);"></div>
+                <span style="position:absolute; left:50%; top:60%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.1em; color:rgba(253,241,211,.7); white-space:nowrap;">HOST PHOTO</span>
+                <span style="position:absolute; top:10px; left:10px; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; background:#d93825; color:#fdf1d3; border-radius:100px; padding:5px 10px;">✓ ID VERIFIED</span>
+              </div>
+              <div>
+                <div style="font-family:'Anton',sans-serif; font-size:26px; text-transform:uppercase; line-height:1.05;">Sunny Gill</div>
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52; margin-top:6px;">HOST SINCE 2024 · AMRITSAR / TORONTO</div>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:7px;">
+                <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; border:1.5px solid #161614; border-radius:100px; padding:6px 10px;">{{ hostChip1 }}</span>
+                <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; border:1.5px solid #161614; border-radius:100px; padding:6px 10px;">{{ hostChip2 }}</span>
+                <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; border:1.5px solid #161614; border-radius:100px; padding:6px 10px;">~10 MIN REPLY</span>
+              </div>
+              <button data-wire="chat.host.open" onClick="{{ msgHost }}" style="font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.05em; text-transform:uppercase; padding:14px; border-radius:100px; border:2.5px solid #161614; background:{{ msgBg }}; color:{{ msgCol }}; cursor:pointer; box-shadow:3px 4px 0 #161614;">{{ msgLabel }}</button>
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.06em; color:#8c6a52; text-align:center;">MESSAGES STAY ON AVATOK · NO PHONE NUMBERS SHARED</span>
+            </div>
+            <!-- bio + sessions + listings -->
+            <div style="flex:2.2 1 320px; min-width:min(100%,300px); padding:22px 24px; display:flex; flex-direction:column; gap:22px;">
+              <div>
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:#6b4f3f; margin-bottom:8px;">ABOUT SUNNY</div>
+                <p style="margin:0; font-size:14px; font-weight:500; line-height:1.6; color:#4a3a20; text-wrap:pretty;">Former wedding-band singer from Amritsar, now Toronto's loudest antakshari referee. Sunny started hosting online during a homesick winter in 2024 and never stopped. He knows 4,000+ Hindi songs by heart, remembers every regular's favourite singer, and takes scoring more seriously than the ICC. Off the mic he teaches music to kids on weekends.</p>
+              </div>
+              <sc-if value="{{ isNewHost }}" hint-placeholder-val="{{ false }}">
+                <div style="border:2.5px dashed #161614; border-radius:18px; background:#f6e4cd; padding:20px 22px;">
+                  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+                    <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; background:#d93825; color:#fdf1d3; border-radius:100px; padding:6px 12px;">NAYA HOST</span>
+                    <span style="font-family:'Anton',sans-serif; font-size:19px; text-transform:uppercase;">No shows hosted yet — you'd be among the first.</span>
+                  </div>
+                  <p style="margin:0 0 14px; font-size:14px; font-weight:500; line-height:1.55; color:#4a3a20;">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
+                  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px;">
+                    <div style="border:2px solid #161614; border-radius:12px; background:#fdf1d3; padding:11px 13px;"><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; color:#2d7180; margin-bottom:4px;">✓ ID VERIFIED</span><span style="font-size:12px; font-weight:500; color:#4a3a20; line-height:1.45;">Government ID matched to the payout account.</span></div>
+                    <div style="border:2px solid #161614; border-radius:12px; background:#fdf1d3; padding:11px 13px;"><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; color:#2d7180; margin-bottom:4px;">✓ INTRO CALL DONE</span><span style="font-size:12px; font-weight:500; color:#4a3a20; line-height:1.45;">A live onboarding call with the avaTOK team.</span></div>
+                    <div style="border:2px solid #161614; border-radius:12px; background:#fdf1d3; padding:11px 13px;"><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; color:#2d7180; margin-bottom:4px;">✓ RULES TRAINING</span><span style="font-size:12px; font-weight:500; color:#4a3a20; line-height:1.45;">Completed conduct and safety training.</span></div>
+                  </div>
+                  <div style="margin-top:14px; border-top:2px dashed rgba(22,22,20,.3); padding-top:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#d93825;">FIRST-SHOW PROMISE</span>
+                    <span style="font-size:13px; font-weight:500; color:#4a3a20;">If a first show is cancelled or falls flat, your refund is automatic — no questions, no forms.</span>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ hasHistory }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:#6b4f3f; margin-bottom:10px;">PAST SESSIONS</div>
+                <div style="display:flex; flex-direction:column;">
+                  <sc-for list="{{ hostSessions }}" as="hs" hint-placeholder-count="4">
+                    <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1.5px dashed rgba(22,22,20,.25); flex-wrap:wrap;">
+                      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.06em; color:#8c6a52; flex:none; width:74px;">{{ hs.date }}</span>
+                      <span style="font-size:14px; font-weight:600; min-width:0; flex:1 1 160px;">{{ hs.title }}</span>
+                      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; color:#2d7180;">{{ hs.crowd }}</span>
+                      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; color:#d93825;">{{ hs.rating }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              </sc-if>
+              <div>
+                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:10px;">
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:#6b4f3f;">ALSO LISTED BY SUNNY</span>
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.06em; color:#8c6a52;">{{ listingCount }}</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px;">
+                  <sc-for list="{{ hostListings }}" as="hl" hint-placeholder-count="3">
+                    <div data-wire="host.listing.open" onClick="{{ hl.go }}" style="cursor:pointer; border:2.5px solid #161614; border-radius:16px; background:{{ hl.bg }}; padding:14px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:3px 4px 0 #161614; transition:transform .12s ease;" style-hover="transform:translateY(-2px);">
+                      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:{{ hl.tagC }};">{{ hl.tag }}</span>
+                      <span style="font-family:'Anton',sans-serif; font-size:17px; line-height:1.1; text-transform:uppercase; color:{{ hl.titleC }};">{{ hl.title }}</span>
+                      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.05em; color:{{ hl.metaC }};">{{ hl.meta }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- house rules -->
+      <section>
+        <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(28px,2.6vw,38px); text-transform:uppercase; margin:0; flex:1 1 240px;">Sunny's house <span style="color:#d93825;">rules.</span></h2>
+          <img src="assets/jatt-sticker.png" alt="Caution: Jatt on board — proceed with respect" style="width:clamp(120px,12vw,170px); flex:none; transform:rotate(-5deg); align-self:center;" />
+          <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
+        </div>
+        <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="eyes" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="border:3px solid #161614; border-radius:22px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; overflow:hidden;">
+          <div style="padding:20px 24px 8px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:13px;">SG</span>
+            <p style="margin:0; flex:1 1 260px; font-size:14px; font-weight:500; line-height:1.5; color:#4a3a20;">"These are my rules for the room. Follow them and we'll have the best 90 minutes of your week. Break them and out you go — pyaar se, but out."</p>
+          </div>
+          <div style="padding:14px 24px 22px; display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px;">
+            <sc-for list="{{ rules }}" as="ru" hint-placeholder-count="6">
+              <div style="display:flex; gap:12px; align-items:flex-start; border:2px solid #161614; border-radius:14px; padding:13px 15px; background:{{ ru.bg }};">
+                <span style="flex:none; width:26px; height:26px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; color:#d93825;">{{ ru.n }}</span>
+                <span style="min-width:0;">
+                  <span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#6b4f3f; margin-bottom:4px;">{{ ru.head }}</span>
+                  <span style="display:block; font-size:13px; font-weight:500; line-height:1.5; color:#4a3a20;">{{ ru.text }}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="border-top:2px dashed rgba(22,22,20,.35); padding:14px 24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#f6e4cd;">
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52;">AVATOK BASELINE RULES ALWAYS APPLY ON TOP — HARASSMENT, HATE OR RECORDING WITHOUT CONSENT = INSTANT BAN.</span>
+            <a href="#" style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; text-decoration:underline;">READ PLATFORM RULES</a>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(28px,2.6vw,38px); text-transform:uppercase; margin:0; flex:1 1 240px;">Public ki <span style="color:#d93825;">Rai.</span></h2>
+          <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
+        </div>
+        <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="chai" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+          <div style="flex:1 1 220px; max-width:300px; min-width:0;">
+            <div style="border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; padding:20px; box-shadow:4px 5px 0 #161614;">
+            <div style="font-family:'Anton',sans-serif; font-size:52px; line-height:1;">4.9</div>
+            <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52; margin:6px 0 14px;">620 RATINGS · 132 SHOWS</div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <sc-for list="{{ bars }}" as="b" hint-placeholder-count="5">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; width:14px;">{{ b.star }}</span>
+                  <div style="flex:1; height:9px; border:1.5px solid #161614; border-radius:100px; background:#f6e4cd; overflow:hidden;"><div style="height:100%; width:{{ b.w }}; background:#d93825;"></div></div>
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; color:#8c6a52; width:30px; text-align:right;">{{ b.n }}</span>
+                </div>
+              </sc-for>
+            </div>
+            </div>
+            <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+              <img src="assets/baccha-uncle.png" alt="Baccha hai tu mera, tension kyu leta hai" style="width:100%; max-width:250px; margin:16px auto 0; display:block; transform:rotate(-2deg);" />
+            </sc-if>
+          </div>
+          <div style="flex:2 1 300px; display:flex; flex-direction:column; gap:14px; min-width:0;">
+            <sc-for list="{{ reviews }}" as="r" hint-placeholder-count="3">
+              <div style="border:2.5px solid #161614; border-radius:18px; background:{{ r.bg }}; padding:16px 20px; box-shadow:4px 5px 0 #161614;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.06em; color:{{ r.starC }};">{{ r.stars }}</span>
+                  <span style="font-size:13px; font-weight:600; color:{{ r.nameC }};">{{ r.who }}</span>
+                  <span style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:10px; letter-spacing:.08em; color:{{ r.metaC }};">{{ r.when }} · VERIFIED</span>
+                </div>
+                <p style="margin:0; font-size:14px; font-weight:500; line-height:1.5; color:{{ r.bodyC }};">{{ r.text }}</p>
+              </div>
+            </sc-for>
+            <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:4px;">
+              <button data-wire="reviews.page.prev" onClick="{{ revPrev }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; border:2px solid #161614; border-radius:100px; padding:9px 16px; cursor:{{ revPrevCur }}; background:#fdf1d3; color:{{ revPrevC }}; box-shadow:3px 3px 0 #161614;">‹ PREV</button>
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.1em; color:#6b4f3f;">{{ revPage }}</span>
+              <button data-wire="reviews.page.next" onClick="{{ revNext }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; border:2px solid #161614; border-radius:100px; padding:9px 16px; cursor:{{ revNextCur }}; background:#fdf1d3; color:{{ revNextC }}; box-shadow:3px 3px 0 #161614;">NEXT ›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div style="border:3px solid #161614; border-radius:26px; overflow:hidden; background:#2d7180; box-shadow:6px 7px 0 #161614;">
+          <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,34px" style="display:block;"></dc-import></div>
+          <div style="padding:clamp(22px,3vw,32px);">
+            <div style="display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(26px,2.4vw,36px); text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:3px 3px 0 #0f3f45;">Seedhi baat, no chakkar.</h2>
+              <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.1em; color:#c4e3e0;">THESE PROMISES APPLY TO EVERY LISTING</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px;">
+              <div style="border:2px solid #fdf1d3; border-radius:16px; padding:14px 16px;">
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; color:#fdf1d3; margin-bottom:6px;">FULL PRICE UPFRONT</div>
+                <p style="margin:0; font-size:13px; font-weight:500; line-height:1.5; color:#d6ecee;">Ticket + fees + GST — all visible before you book. No new numbers at checkout, ever.</p>
+              </div>
+              <div style="border:2px solid #fdf1d3; border-radius:16px; padding:14px 16px;">
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; color:#fdf1d3; margin-bottom:6px;">CANCEL = FULL REFUND</div>
+                <p style="margin:0; font-size:13px; font-weight:500; line-height:1.5; color:#d6ecee;">Free cancellation up to 24 hours before the show. If the host cancels, your refund is automatic.</p>
+              </div>
+              <div style="border:2px solid #fdf1d3; border-radius:16px; padding:14px 16px;">
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; color:#fdf1d3; margin-bottom:6px;">REAL SEATS, REAL COUNTS</div>
+                <p style="margin:0; font-size:13px; font-weight:500; line-height:1.5; color:#d6ecee;">Seat and viewer counters come from live inventory. No fake "only 2 left!" drama here.</p>
+              </div>
+              <div style="border:2px solid #fdf1d3; border-radius:16px; padding:14px 16px;">
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; color:#fdf1d3; margin-bottom:6px;">HUMAN OR AI — CLEARLY LABELLED</div>
+                <p style="margin:0; font-size:13px; font-weight:500; line-height:1.5; color:#d6ecee;">This show is 100% live human. AI agents live in their own section with their own label. Never mixed.</p>
+              </div>
+              <div style="border:2px solid #fdf1d3; border-radius:16px; padding:14px 16px;">
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; color:#fdf1d3; margin-bottom:6px;">RECORDING OFF BY DEFAULT</div>
+                <p style="margin:0; font-size:13px; font-weight:500; line-height:1.5; color:#d6ecee;">The recap reel only includes people who said yes during the show. Everyone else is out, permanently.</p>
+              </div>
+              <div style="border:2px solid #fdf1d3; border-radius:16px; padding:14px 16px;">
+                <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; color:#fdf1d3; margin-bottom:6px;">MODERATED ROOM</div>
+                <p style="margin:0; font-size:13px; font-weight:500; line-height:1.5; color:#d6ecee;">Report button on every screen. Bad behaviour means instant exit — and your refund stays yours.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- browse more events -->
+  <div style="max-width:1560px; margin:0 auto; padding:0 clamp(14px,4vw,40px) 90px;">
+    <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
+      <h2 style="font-family:'Anton',sans-serif; font-size:clamp(30px,3vw,44px); text-transform:uppercase; margin:0; flex:1 1 260px;">Browse more <span style="color:#d93825;">events.</span></h2>
+      <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; align-items:flex-end; gap:12px; flex:none;">
+          <div style="font-family:'Kalam',cursive; font-size:19px; line-height:1.3; color:#8c3a2c; transform:rotate(-2deg); padding-bottom:10px;">Ek show se kya hoga?<br />Scroll karte raho…</div>
+          <img src="assets/chill-uncle.png" alt="Chill uncle with coconut" style="width:130px; flex:none; transform:rotate(3deg); filter:drop-shadow(4px 5px 0 rgba(22,22,20,.4));" />
+        </div>
+      </sc-if>
+      <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">{{ evMeta }}</span>
+    </div>
+    <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 24px;"><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:20px;">
+      <sc-for list="{{ evCards }}" as="c" hint-placeholder-count="8">
+        <div data-wire="catalog.item.open" onClick="{{ c.go }}" style="cursor:pointer; border:3px solid #161614; border-radius:26px; overflow:hidden; background:{{ c.fill }}; box-shadow:6px 7px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
+          <div style="height:160px; background:{{ c.photo }}; position:relative;">
+            <div style="position:absolute; inset:0; background-image:{{ c.stripe }};"></div>
+            <span style="position:absolute; top:12px; left:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; background:{{ c.pillBg }}; color:#fdf1d3; border-radius:100px; padding:6px 11px; display:flex; align-items:center; gap:6px; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:50%; background:{{ c.pillDot }}; animation:{{ c.pillAnim }};"></span>{{ c.status }}</span>
+            <span style="position:absolute; left:50%; bottom:46%; transform:translateX(-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.1em; color:{{ c.phL }};">PORTRAIT</span>
+            <div style="position:absolute; left:0; right:0; bottom:-1px; height:18px; background:radial-gradient(circle at 11px 15px, {{ c.fill }} 11px, transparent 12px) 0 0/22px 18px repeat-x;"></div>
+          </div>
+          <div style="padding:14px 17px 17px; display:flex; flex-direction:column; gap:10px; flex:1;">
+            <div style="display:flex; justify-content:space-between; gap:8px; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.1em; color:{{ c.stubC }};"><span>{{ c.s1 }}</span><span>{{ c.s2 }}</span></div>
+            <h4 style="font-family:{{ c.tFam }}; font-style:{{ c.tSty }}; font-weight:{{ c.tWt }}; font-size:22px; line-height:1.07; text-transform:{{ c.tCase }}; color:{{ c.tCol }}; text-shadow:{{ c.tShad }}; margin:0;">{{ c.title }}</h4>
+            <p style="margin:0; font-size:14px; font-weight:500; line-height:1.45; color:{{ c.bodyC }};">{{ c.blurb }}</p>
+            <div style="display:flex; align-items:center; gap:9px; margin-top:auto; padding-top:10px; border-top:1.5px solid {{ c.hairC }};">
+              <span style="width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid {{ c.chipC }}; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; color:{{ c.chipC }};">{{ c.ini }}</span>
+              <span style="font-size:13px; font-weight:600; color:{{ c.nameC }};">{{ c.name }} ✓</span>
+              <span style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:11px; letter-spacing:.08em; color:{{ c.stubC }};">{{ c.dur }}</span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:30px;">
+      <button data-wire="catalog.page.prev" onClick="{{ evPrev }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; border:2px solid #161614; border-radius:100px; padding:10px 18px; cursor:{{ evPrevCur }}; background:#fdf1d3; color:{{ evPrevC }}; box-shadow:3px 3px 0 #161614;">‹ PREV</button>
+      <sc-for list="{{ evDots }}" as="pd" hint-placeholder-count="2">
+        <button data-wire="catalog.page.select" onClick="{{ pd.pick }}" style="width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:{{ pd.bg }}; color:{{ pd.col }}; font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; cursor:pointer; display:grid; place-items:center; padding:0; box-shadow:3px 3px 0 #161614;">{{ pd.n }}</button>
+      </sc-for>
+      <button data-wire="catalog.page.next" onClick="{{ evNext }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em; border:2px solid #161614; border-radius:100px; padding:10px 18px; cursor:{{ evNextCur }}; background:#fdf1d3; color:{{ evNextC }}; box-shadow:3px 3px 0 #161614;">NEXT ›</button>
+    </div>
+  </div>
+
+  <dc-import name="SiteFooter" hint-size="100%,480px" style="display:block;"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;category&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;stream&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;stream&quot;,&quot;friends&quot;,&quot;adda&quot;,&quot;astro&quot;,&quot;ai&quot;,&quot;consult&quot;,&quot;glow&quot;],&quot;section&quot;:&quot;Standard design&quot;},&quot;liveState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;countdown&quot;,&quot;live&quot;],&quot;section&quot;:&quot;Show state&quot;},&quot;soldOut&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Show state&quot;},&quot;newHost&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Show state&quot;},&quot;masala&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Bazaar&quot;},&quot;ctaColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#d93825&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#d93825&quot;,&quot;#b8382a&quot;,&quot;#2d7180&quot;,&quot;#161614&quot;],&quot;section&quot;:&quot;Brand&quot;}}">
+class Component extends DCLogic {
+  SHOW_URL = 'https://avatok.in/show/st-0104';
+  state = { calY: 2026, calM: 8, selD: 4, slot: 0, qty: 1, booked: false, fav: false, revPg: 0, joined: 0, embedOpen: false, copiedE: false, copiedL: false, now: Date.now(), w: typeof window !== 'undefined' ? window.innerWidth : 1280 };
+
+  componentDidMount() {
+    this._onR = () => this.setState({ w: window.innerWidth });
+    window.addEventListener('resize', this._onR);
+    this._tick = setInterval(() => this.setState({ now: Date.now() }), 1000);
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._onR); clearInterval(this._tick); }
+
+  availDays(y, m) {
+    const out = [], dim = new Date(y, m + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) if (new Date(y, m, d).getDay() === 5) out.push(d);
+    return out;
+  }
+
+  slotDefs(d, soldOut) {
+    const mk = (time, label, total, taken) => ({ time, label, total, taken: soldOut ? total : taken, left: soldOut ? 0 : Math.max(0, total - taken) });
+    return [
+      mk('9:00 PM IST', 'MAIN SHOW · 90 MIN', 60, (d * 13) % 38 + 14),
+      mk('7:30 PM IST', 'NEWBIE WARM-UP · 30 MIN', 20, (d * 7) % 15 + 3)
+    ];
+  }
+
+  nextShow() {
+    // next Friday 21:00 local
+    const n = new Date(this.state.now);
+    const t = new Date(n);
+    t.setHours(21, 0, 0, 0);
+    let add = (5 - t.getDay() + 7) % 7;
+    if (add === 0 && t.getTime() <= n.getTime()) add = 7;
+    t.setDate(t.getDate() + add);
+    return t;
+  }
+
+  browseVals() {
+    const S = this.state;
+    const PAL = {
+      teal:   { fill:'#2d7180', photo:'#1e5f66', shad:'#0f3f45', dark:1, stub:'#d6ecee' },
+      butter: { fill:'#f4d8a0', photo:'#c9a86a', shad:'', dark:0, stub:'#5a3d33' },
+      oat:    { fill:'#d9c3a0', photo:'#b09a76', shad:'', dark:0, stub:'#5a3d33' },
+      brick:  { fill:'#b8382a', photo:'#a4352a', shad:'#7d271e', dark:1, stub:'#fbe4df' }
+    };
+    const mk = (pk, serif, title, blurb, s1, s2, status, live, name, dur) => {
+      const p = PAL[pk], d = p.dark;
+      return {
+        fill: p.fill, photo: p.photo,
+        stripe: d ? 'repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px)' : 'repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px)',
+        pillBg: live ? '#d93825' : '#1e5f66', pillDot: live ? '#fdf1d3' : '#8fd0c0',
+        pillAnim: live ? 'tokPulse 1.2s ease-in-out infinite' : 'none',
+        status, phL: d ? 'rgba(253,241,211,.7)' : '#4a3a20',
+        stubC: p.stub, s1, s2,
+        tFam: serif ? "'Playfair Display',serif" : "'Anton',sans-serif",
+        tSty: serif ? 'italic' : 'normal', tWt: serif ? 900 : 400,
+        tCase: serif ? 'none' : 'uppercase',
+        tCol: d ? '#fdf1d3' : (serif ? '#c02f1d' : '#161614'),
+        tShad: d ? '3px 3px 0 ' + p.shad : 'none',
+        title, blurb, bodyC: d ? '#fdf1d3' : '#4a3a20',
+        chipC: d ? '#fdf1d3' : '#161614',
+        nameC: d ? '#fdf1d3' : '#161614',
+        hairC: d ? 'rgba(253,241,211,.28)' : 'rgba(22,22,20,.2)',
+        ini: name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+        name, dur,
+        go: () => { window.location.href = 'avaTOK Listing Details.dc.html'; }
+      };
+    };
+    const EV = [
+      mk('butter',1,'Ghazal baithak with Aara · ₹199','Low lights, live harmonium, and ghazals that quietly wreck you.','LIVE MUSIC','URDU','SAT 9 PM',0,'Begum Aara','60 MIN'),
+      mk('oat',0,'Bollywood trivia night · ₹99','Kitne aadmi the? Come find out. Winner gets lifetime bragging rights.','QUIZ','HINGLISH','WED 8 PM',0,'Cine Chachu','60 MIN'),
+      mk('brick',0,'Standup: Sharma ji ka beta · ₹149','Batch topper turned comedian — now roasting both life choices, live.','COMEDY','HINGLISH','LIVE',1,'Arjun Sharma','45 MIN'),
+      mk('teal',0,'DDLJ watch party · ₹79','Palat… palat… and three hundred strangers say it together.','WATCH PARTY','HINDI','SUN 6 PM',0,'Pooja Mehta','3 HRS'),
+      mk('butter',1,'90s item-song aerobics · ₹129','Cardio set to full 90s masala. Thumkas count as squats here.','FITNESS','HINDI','MON 7 AM',0,'Dolly Kapoor','40 MIN'),
+      mk('brick',0,'Live cooking: 2 AM Maggi · ₹59','Doodh wali, cheese wali, hostel wali — every sacred recipe, live.','COOKING','HINGLISH','TONIGHT 2 AM',0,'Chef Bunty','30 MIN'),
+      mk('oat',0,'Garba warm-up baithak · ₹99','Learn the steps before Navratri, or face the cousins who judge.','DANCE','GUJARATI','THU 7 PM',0,'Falguni Desai','60 MIN'),
+      mk('teal',0,'Gully rap cypher · ₹99','Bring bars, hear bars. Apna time aayega — practice starts here.','CYPHER','HINGLISH','LIVE',1,'MC Toofan','60 MIN'),
+      mk('butter',1,'Desi book club adda · ₹79','One chapter, a thousand opinions. Premchand to campus novels.','BOOK CLUB','HINDI · ENGLISH','SUN 11 AM',0,'Ira Kulkarni','60 MIN'),
+      mk('teal',0,'Match-day adda · ₹39','Live match, live reactions, live heartbreak — together.','CRICKET','HINGLISH','MATCH DAYS',0,'Kaptaan Vicky','3 HRS'),
+      mk('oat',0,'Shaam ki chai adda · ₹49','Aunty-approved gossip circle. Newcomers get a full welcome.','EVENING CIRCLE','HINDI','DAILY 6 PM',0,'Leela Aunty','45 MIN'),
+      mk('brick',0,'Breakup support adda · ₹59','Everyone here is single. Cry a little, laugh a lot, move on together.','SUPPORT GROUP','HINGLISH','SAT 8 PM',0,'Zoya Sheikh','60 MIN'),
+      mk('teal',0,'Midnight canteen adda · ₹29','The 2 AM club for night owls. Strangers, stories, and chai.','GROUP HANGOUT','HINGLISH','TONIGHT 12 AM',0,'Bunty Hostwala','60 MIN'),
+      mk('butter',1,'Mehendi & nail art live · ₹79','Wedding-season prep. One hand for practice, one for the masterpiece.','ART','HINDI','SAT 3 PM',0,'Rukhsar Apa','60 MIN'),
+      mk('brick',0,'Thrift fit check · ₹59','Same wardrobe, new styling. Turn Sarojini finds into runway looks.','FASHION','HINGLISH','TONIGHT 7 PM',0,'Jassi Sandhu','30 MIN'),
+      mk('oat',0,'Sunday mandi walk adda · ₹35','One host, ten strangers, one vegetable market. Bonding over bhindi.','WALK & TALK','HINDI','SUN 8 AM',0,'Ramu Kaka','60 MIN'),
+      mk('teal',0,'Antakshari junior league · ₹39','Same rules, smaller humans. Kids 8–14 bring their A-game and zero stage fright.','KIDS GAME','HINDI','SAT 5 PM',0,'Sunny Gill','60 MIN'),
+      mk('butter',1,'Shaadi playlist clinic · ₹149','From baraat entry to sangeet finale — a DJ builds your wedding playlist live.','MUSIC','HINGLISH','FRI 6 PM',0,'DJ Gattu','45 MIN'),
+      mk('brick',0,'Chai tasting: 6 states · ₹89','Kashmiri noon chai to Cutting Bombay style. Brew along from your kitchen.','TASTING','HINDI','SUN 4 PM',0,'Chaiwala Anna','60 MIN'),
+      mk('oat',0,'Retro radio hour · ₹49','Binaca Geetmala energy. Old requests, older stories, live dedications.','NOSTALGIA','HINDI','WED 9 PM',0,'RJ Meena','60 MIN')
+    ];
+    const PER = S.w < 760 ? 4 : 10, pages = Math.ceil(EV.length / PER);
+    const pg = Math.min(S.evPg || 0, pages - 1);
+    return {
+      evCards: EV.slice(pg * PER, pg * PER + PER),
+      evMeta: 'SHOWING ' + (pg * PER + 1) + '–' + Math.min((pg + 1) * PER, EV.length) + ' OF ' + EV.length + ' EVENTS',
+      evDots: Array.from({ length: pages }, (_, i) => ({
+        n: String(i + 1),
+        bg: i === pg ? '#d93825' : '#fdf1d3',
+        col: i === pg ? '#fdf1d3' : '#161614',
+        pick: () => this.setState({ evPg: i })
+      })),
+      evPrev: pg > 0 ? () => this.setState({ evPg: pg - 1 }) : () => {},
+      evNext: pg < pages - 1 ? () => this.setState({ evPg: pg + 1 }) : () => {},
+      evPrevCur: pg > 0 ? 'pointer' : 'not-allowed',
+      evNextCur: pg < pages - 1 ? 'pointer' : 'not-allowed',
+      evPrevC: pg > 0 ? '#161614' : '#b39c82',
+      evNextC: pg < pages - 1 ? '#161614' : '#b39c82'
+    };
+  }
+
+  renderVals() {
+    const S = this.state;
+    const masala = this.props.masala ?? true;
+    const ctaColor = this.props.ctaColor ?? '#d93825';
+    const soldOut = this.props.soldOut ?? false;
+    const isLive = (this.props.liveState ?? 'live') === 'live';
+    const category = this.props.category ?? 'stream';
+    const CATS = {
+      stream:  { label: 'LIVE STREAMING & SHOWS', eyebrow: '01 · GROUP SHOWS · TICKETED · WEEKLY', kind: 'jhalar', photo: '#1e5f66' },
+      friends: { label: 'LIVE FRIENDS',           eyebrow: '02 · PRIVATE 1:1 · DIL SE',            kind: 'chai',   photo: '#8a5a3a' },
+      adda:    { label: 'ADDA ROOMS',             eyebrow: '03 · STRANGERS WELCOME · GROUP',       kind: 'lotus',  photo: '#7a6244' },
+      astro:   { label: 'ASTRO & TAROT',          eyebrow: 'KISMAT DESK · READINGS',               kind: 'eyes',   photo: '#a4352a' },
+      ai:      { label: 'AI VOICE AGENTS',        eyebrow: '04 · 24/7 · CLEARLY LABELLED AI',      kind: 'auto',   photo: '#2d4f66' },
+      consult: { label: 'CONSULTING DESK',        eyebrow: '05 · EXPERTISE ON DEMAND',             kind: 'eyes',   photo: '#5a5a38' },
+      glow:    { label: 'GLOW-UP STUDIO',         eyebrow: 'FULL MAKEOVER SCENE',                  kind: 'lotus',  photo: '#8a3a5a' }
+    };
+    const cat = CATS[category] || CATS.stream;
+    const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const avail = this.availDays(S.calY, S.calM);
+
+    const firstDow = new Date(S.calY, S.calM, 1).getDay();
+    const dim = new Date(S.calY, S.calM + 1, 0).getDate();
+    const calCells = [];
+    for (let i = 0; i < firstDow; i++) calCells.push({ t: '', bg: 'transparent', col: '#161614', dot: false, cur: 'default', pick: () => {} });
+    for (let d = 1; d <= dim; d++) {
+      const sel = S.selD === d, on = avail.includes(d);
+      calCells.push({
+        t: String(d), bg: sel ? ctaColor : 'transparent',
+        col: sel ? '#fdf1d3' : (on ? '#161614' : '#b39c82'),
+        dot: on && !sel, cur: on ? 'pointer' : 'default',
+        pick: on ? () => this.setState({ selD: d, slot: 0, booked: false }) : () => {}
+      });
+    }
+
+    const defs = S.selD != null ? this.slotDefs(S.selD, soldOut) : [];
+    const slots = defs.map((sl, i) => {
+      const sel = S.slot === i, full = sl.left === 0;
+      const pct = Math.round(sl.taken / sl.total * 100);
+      return {
+        time: sl.time, label: sl.label,
+        seats: full ? 'HOUSEFULL' : sl.left + ' OF ' + sl.total + ' FREE',
+        seatC: full ? '#b82a19' : (sel ? '#2d7180' : '#8c6a52'),
+        bg: sel && !full ? '#f6e4cd' : '#fdf1d3',
+        sh: sel && !full ? '3px 3px 0 #161614' : 'none',
+        op: full ? 0.55 : 1, cur: full ? 'not-allowed' : 'pointer',
+        dotIn: sel && !full ? ctaColor : 'transparent',
+        fillW: pct + '%', fillC: pct >= 85 ? '#b82a19' : '#2d7180',
+        pick: full ? () => {} : () => this.setState({ slot: i, booked: false })
+      };
+    });
+
+    const cur = defs[S.slot];
+    const canBook = S.selD != null && cur && cur.left > 0;
+    const qty = Math.min(S.qty, cur ? Math.max(cur.left, 1) : 4);
+    const base = 49 * qty, fee = 6, gst = Math.round((base + fee) * 0.18), total = base + fee + gst;
+    const dateLabel = S.selD != null ? 'FRI ' + S.selD + ' ' + MN[S.calM].slice(0, 3).toUpperCase() + ' ' + S.calY : '';
+    const bookedCount = cur ? cur.taken : 41;
+
+    // countdown
+    const target = this.nextShow();
+    let diff = Math.max(0, target.getTime() - S.now);
+    const dd = Math.floor(diff / 86400000); diff -= dd * 86400000;
+    const hh = Math.floor(diff / 3600000); diff -= hh * 3600000;
+    const mm = Math.floor(diff / 60000); diff -= mm * 60000;
+    const ss = Math.floor(diff / 1000);
+    const p2 = n => String(n).padStart(2, '0');
+    const nextLabel = 'FRI ' + target.getDate() + ' ' + MN[target.getMonth()].slice(0, 3).toUpperCase() + ' · 9:00 PM IST';
+    const watching = isLive ? '214 WATCHING' : '1.2K FOLLOW THIS SHOW';
+
+    // reviews
+    const RV = [
+      { s: 5, who: 'Megha T.', when: 'AUG 2026', text: "Came alone the first time, now it's my fixed Friday plan. The 'Th' round alone is worth the ticket. Full paisa vasool." },
+      { s: 3, who: 'Arvind K.', when: 'JUL 2026', text: "Great show, but with 60 people you don't get many turns. The warm-up slot was better — smaller group, more singing. Turn system in the main show could improve." },
+      { s: 5, who: 'Junaid S.', when: 'JUL 2026', text: "I join from Toronto. The timing is rough (11:30 AM here) but it's the closest thing to home. Team B zindabad." },
+      { s: 5, who: 'Sarah D.', when: 'JUL 2026', text: 'Came for the memes, stayed for the harmonium rounds. Sunny remembers regulars by name, which is rare on any platform.' },
+      { s: 4, who: 'Nikhil P.', when: 'JUN 2026', text: 'Really fun host, and the refund for the cancelled June 12 show hit my account the same night without me asking. One show had audio lag for ~10 minutes.' },
+      { s: 5, who: 'Ananya R.', when: 'JUN 2026', text: "Made three actual friends here. We now have a WhatsApp group called 'Team A Forever'. That says everything." },
+      { s: 5, who: 'Dev M.', when: 'MAY 2026', text: "Boss, this is the only meeting I never skip. My manager thinks I have a 'weekly commitment'. Technically true." },
+      { s: 4, who: 'Priya S.', when: 'MAY 2026', text: 'Loved that recording is opt-in — I keep my camera off and nobody makes it weird. Would love a ladies-only special sometime.' },
+      { s: 5, who: 'Rahul B.', when: 'APR 2026', text: 'Booked for my parents as an anniversary thing. They out-sang everyone under 30 and now they book it themselves. Kya scene hai.' }
+    ];
+    const PER = 3, pages = Math.ceil(RV.length / PER);
+    const pg = Math.min(S.revPg, pages - 1);
+    const reviews = RV.slice(pg * PER, pg * PER + PER).map((r, i) => {
+      const teal = (pg * PER + i) % 4 === 2;
+      return {
+        bg: teal ? '#2d7180' : '#fdf1d3',
+        stars: '★'.repeat(r.s) + '☆'.repeat(5 - r.s),
+        starC: teal ? '#fdf1d3' : (r.s >= 5 ? '#d93825' : '#b82a19'),
+        who: r.who, nameC: teal ? '#fdf1d3' : '#161614',
+        when: r.when, metaC: teal ? '#c4e3e0' : '#8c6a52',
+        bodyC: teal ? '#d6ecee' : '#4a3a20', text: r.text
+      };
+    });
+
+    const stacked = S.w < 1020;
+    return {
+      masala, ctaColor,
+      catLabel: cat.label, catEyebrow: cat.eyebrow, catKind: cat.kind, catPhoto: cat.photo,
+      nazarH1: (S.w < 560 ? 22 : 34) + 'px', nazarH2: (S.w < 560 ? 19 : 30) + 'px', nazarFs: (S.w < 560 ? 9 : 12) + 'px',
+      // ticker
+      isLive, notLive: !isLive,
+      tickBg: isLive ? '#d93825' : '#161614',
+      tickDot: isLive ? '#fdf1d3' : '#d93825',
+      tickAnim: isLive ? 'tokPulse 1.2s ease-in-out infinite' : 'none',
+      tickLead: isLive ? 'LIVE NOW — ANTAKSHARI FRIDAY' : 'NEXT SHOW: ' + nextLabel,
+      tickSub: isLive ? '214 WATCHING · SHOW ENDS 10:30 PM IST' : 'LIVE IN ' + dd + 'D ' + p2(hh) + ':' + p2(mm) + ':' + p2(ss) + ' · ' + bookedCount + ' SEATS ALREADY BOOKED',
+      tickSubC: isLive ? '#ffd0c4' : '#b39c82',
+      // player
+      liveBg: isLive ? '#d93825' : '#1e5f66',
+      liveDot: isLive ? '#fdf1d3' : '#8fd0c0',
+      liveAnim: isLive ? 'tokPulse 1.2s ease-in-out infinite' : 'none',
+      liveLabel: isLive ? 'LIVE NOW' : 'EVERY FRI · 9 PM IST',
+      watching, bookedCount,
+      watchStat: isLive ? '214' : '1.2K',
+      watchStatLabel: isLive ? '◉ WATCHING RIGHT NOW' : '◉ FOLLOW THIS SHOW',
+      cdD: p2(dd), cdH: p2(hh), cdM: p2(mm), cdS: p2(ss),
+      joinTry: () => this.setState(s => ({ joined: s.booked ? 2 : 1 })),
+      joinNote: S.joined === 2 ? 'CONNECTING YOU TO THE SHOW…' : (S.joined === 1 ? 'TICKET HOLDERS ONLY — BOOK A SEAT FIRST →' : ''),
+      joinNoteC: S.joined === 2 ? '#2d7180' : '#b82a19',
+      sharePick: () => this.setState(s => ({ embedOpen: !s.embedOpen })),
+      shareWa: () => window.open('https://wa.me/?text=' + encodeURIComponent('Antakshari Friday with Sunny — Fridays 9 PM IST on avaTOK. ' + this.SHOW_URL), '_blank'),
+      shareFb: () => window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(this.SHOW_URL), '_blank'),
+      shareYt: () => window.open('https://www.youtube.com/@avatok', '_blank'),
+      embedToggle: () => this.setState(s => ({ embedOpen: !s.embedOpen })),
+      embedOpen: !!S.embedOpen,
+      embedCaret: S.embedOpen ? '▲' : '▼',
+      embedBg: S.embedOpen ? '#161614' : '#fdf1d3',
+      embedCol: S.embedOpen ? '#fdf1d3' : '#161614',
+      embedCode: '<iframe src="' + this.SHOW_URL + '/embed" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="Antakshari Friday with Sunny — avaTOK" allow="autoplay" loading="lazy"></iframe>',
+      copyEmbed: () => { try { navigator.clipboard.writeText('<iframe src="' + this.SHOW_URL + '/embed" width="640" height="400" style="border:3px solid #161614; border-radius:18px;" title="Antakshari Friday with Sunny — avaTOK" allow="autoplay" loading="lazy"></iframe>'); } catch (e) {} this.setState({ copiedE: true }); setTimeout(() => this.setState({ copiedE: false }), 1600); },
+      copyEmbedLabel: S.copiedE ? 'COPIED ✓' : 'COPY CODE',
+      copyEmbedBg: S.copiedE ? '#2d7180' : 'transparent',
+      copyEmbedCol: '#fdf1d3',
+      copyLink: () => { try { navigator.clipboard.writeText(this.SHOW_URL); } catch (e) {} this.setState({ copiedL: true }); setTimeout(() => this.setState({ copiedL: false }), 1600); },
+      copyLinkLabel: S.copiedL ? 'COPIED ✓' : 'COPY LINK',
+      copyLinkC: S.copiedL ? '#2d7180' : '#d93825',
+      favBg: S.fav ? '#d93825' : '#fdf1d3', favCol: S.fav ? '#fdf1d3' : '#161614', favG: S.fav ? '♥' : '♡',
+      favPick: () => this.setState(s => ({ fav: !s.fav })),
+      // layout
+      asideMax: stacked ? '100%' : '400px',
+      asidePos: stacked ? 'static' : 'sticky',
+      asideOrder: stacked ? 1 : 3,
+      // calendar + booking
+      monthLabel: MN[S.calM] + ' ' + S.calY,
+      prevM: () => this.setState(s => ({ calM: s.calM === 0 ? 11 : s.calM - 1, calY: s.calM === 0 ? s.calY - 1 : s.calY, selD: null, booked: false })),
+      nextM: () => this.setState(s => ({ calM: s.calM === 11 ? 0 : s.calM + 1, calY: s.calM === 11 ? s.calY + 1 : s.calY, selD: null, booked: false })),
+      dows: ['S','M','T','W','T','F','S'].map(t => ({ t })),
+      calCells,
+      slotHead: S.selD != null ? 'PICK A SLOT · ' + dateLabel : 'PICK A DATE ON THE CALENDAR FIRST',
+      slots, canBook, qty,
+      qMinus: () => this.setState(s => ({ qty: Math.max(1, s.qty - 1), booked: false })),
+      qPlus: () => this.setState(s => ({ qty: Math.min(cur ? cur.left : 4, Math.min(4, s.qty + 1)), booked: false })),
+      priceRows: canBook ? [
+        { label: 'Ticket ₹49 × ' + qty, val: '₹' + base },
+        { label: 'Platform fee (flat)', val: '₹' + fee },
+        { label: 'GST 18%', val: '₹' + gst }
+      ] : [],
+      totalLabel: '₹' + total,
+      notBooked: !S.booked, booked: S.booked,
+      book: canBook ? () => this.setState({ booked: true, joined: 0 }) : () => {},
+      bookBg: canBook ? ctaColor : '#b39c82',
+      bookCur: canBook ? 'pointer' : 'not-allowed',
+      bookLabel: !canBook ? (S.selD == null ? 'Pick a date first' : 'Housefull — waitlist soon') : (isLive ? 'Book & join now · ₹' + total : 'Book ' + qty + (qty > 1 ? ' seats' : ' seat') + ' · ₹' + total),
+      bookedLine: qty + (qty > 1 ? ' seats' : ' seat') + ' · ' + dateLabel + ' · ' + (cur ? cur.time : '') + ' · ₹' + total + ' paid.',
+      bookedNote: isLive ? 'YOUR SEAT IS HELD — JUMP IN ANY TIME BEFORE THE SHOW ENDS.' : 'JOIN LINK ARRIVES 15 MIN BEFORE SHOWTIME. CANCEL UP TO 24 HRS BEFORE FOR A FULL REFUND.',
+      unbook: () => this.setState({ booked: false, joined: 0 }),
+      // host profile
+      msgHost: () => { this.setState({ msgSent: true }); setTimeout(() => this.setState({ msgSent: false }), 2200); },
+      msgLabel: S.msgSent ? 'Chat opened ✓' : '✉ Message Sunny',
+      msgBg: S.msgSent ? '#2d7180' : ctaColor,
+      msgCol: '#fdf1d3',
+      isNewHost: this.props.newHost ?? false,
+      hasHistory: !(this.props.newHost ?? false),
+      hostChip1: (this.props.newHost ?? false) ? 'NAYA HOST' : '★ 4.9 HOST RATING',
+      hostChip2: (this.props.newHost ?? false) ? 'FIRST SHOW: FRI 4 SEP' : '132 SHOWS',
+      listingCount: (this.props.newHost ?? false) ? '1 ACTIVE LISTING — THIS ONE' : '3 ACTIVE LISTINGS',
+      hostSessions: [
+        { date: 'AUG 21', title: 'Antakshari Friday #131', crowd: '58 JOINED', rating: '★ 4.9' },
+        { date: 'AUG 14', title: 'Antakshari Friday #130', crowd: '60 JOINED', rating: '★ 5.0' },
+        { date: 'AUG 8', title: 'Junior league special', crowd: '24 JOINED', rating: '★ 4.8' },
+        { date: 'AUG 7', title: 'Antakshari Friday #129', crowd: '55 JOINED', rating: '★ 4.9' },
+        { date: 'JUL 31', title: 'Antakshari Friday #128 · 90s only', crowd: '60 JOINED', rating: '★ 4.9' }
+      ],
+      hostListings: (this.props.newHost ?? false) ? [
+        { tag: 'GROUP GAME · FRI 9 PM', title: 'Antakshari Friday · ₹49', meta: 'THIS PAGE · FIRST SHOW 4 SEP', bg: '#2d7180', tagC: '#c4e3e0', titleC: '#fdf1d3', metaC: '#d6ecee', go: () => {} }
+      ] : [
+        { tag: 'GROUP GAME · FRI 9 PM', title: 'Antakshari Friday · ₹49', meta: 'THIS PAGE · 90 MIN', bg: '#2d7180', tagC: '#c4e3e0', titleC: '#fdf1d3', metaC: '#d6ecee', go: () => {} },
+        { tag: 'KIDS 8–14 · SAT 5 PM', title: 'Antakshari junior league · ₹39', meta: '60 MIN · HINDI', bg: '#fdf1d3', tagC: '#8c6a52', titleC: '#161614', metaC: '#8c6a52', go: () => { window.location.href = 'avaTOK Listing Details.dc.html'; } },
+        { tag: '1:1 COACHING · ON REQUEST', title: 'Sing without fear · ₹199', meta: '30 MIN · VIDEO CALL', bg: '#fdf1d3', tagC: '#8c6a52', titleC: '#161614', metaC: '#8c6a52', go: () => { window.location.href = 'avaTOK Listing Details.dc.html'; } }
+      ],
+      // house rules (creator-defined)
+      rules: [
+        { n: '1', head: 'MIC MANNERS', text: "Stay muted until it's your team's turn. When you sing, sing loud — besura is welcome, background TV is not.", bg: '#fdf1d3' },
+        { n: '2', head: 'CAMERA IS OPTIONAL', text: 'Camera on is fun but never required. Nobody may ask another guest to turn theirs on. Ever.', bg: '#f6e4cd' },
+        { n: '3', head: 'NO RECORDING', text: "Screen-recording the show or other guests is an instant ban. The recap reel covers it — opt in if you want in.", bg: '#f6e4cd' },
+        { n: '4', head: 'RESPECT THE REFEREE', text: "Sunny's scoring is final. Argue for fun, not for real. 'Galat lyrics' appeals get exactly one replay.", bg: '#fdf1d3' },
+        { n: '5', head: 'KEEP IT FAMILY-FRIENDLY', text: 'All ages join this room. Keep language and song picks PG — save the item numbers for the aerobics show.', bg: '#fdf1d3' },
+        { n: '6', head: 'NEW FOLKS SING FIRST', text: "First-timers get the first easy letter of the night. Regulars, let them have the moment — you were new once too.", bg: '#f6e4cd' }
+      ],
+      // reviews
+      bars: [
+        { star: '5', w: '88%', n: '546' }, { star: '4', w: '9%', n: '56' }, { star: '3', w: '2%', n: '12' },
+        { star: '2', w: '1%', n: '4' }, { star: '1', w: '0.5%', n: '2' }
+      ],
+      reviews,
+      revPage: 'PAGE ' + (pg + 1) + ' / ' + pages,
+      revPrev: pg > 0 ? () => this.setState({ revPg: pg - 1 }) : () => {},
+      revNext: pg < pages - 1 ? () => this.setState({ revPg: pg + 1 }) : () => {},
+      revPrevCur: pg > 0 ? 'pointer' : 'not-allowed',
+      revNextCur: pg < pages - 1 ? 'pointer' : 'not-allowed',
+      revPrevC: pg > 0 ? '#161614' : '#b39c82',
+      revNextC: pg < pages - 1 ? '#161614' : '#b39c82',
+      ...this.browseVals()
+    };
+  }
+}
+</script>
+</body>
+</html>

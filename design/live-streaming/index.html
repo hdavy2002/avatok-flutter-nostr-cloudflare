@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>avaTOK — design preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #fdf1d3; color: #161614;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    padding: clamp(24px, 6vw, 64px);
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .eyebrow {
+    font-family: 'Silkscreen', monospace; font-weight: 700; font-size: 11px;
+    letter-spacing: .16em; color: #b82a19; margin-bottom: 12px;
+  }
+  h1 {
+    font-family: 'Anton', sans-serif; font-size: clamp(38px, 6vw, 64px);
+    line-height: 1.02; letter-spacing: -0.01em; text-transform: uppercase; margin: 0 0 14px;
+  }
+  h1 em {
+    color: #d93825; font-family: 'Playfair Display', serif;
+    font-style: italic; font-weight: 900;
+  }
+  .lede { font-size: 16px; font-weight: 500; color: #5a3d33; line-height: 1.5; max-width: 56ch; margin: 0 0 34px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+  a.card {
+    display: block; text-decoration: none; color: inherit;
+    border: 3px solid #161614; border-radius: 22px; background: #f6e4cd;
+    box-shadow: 6px 7px 0 #161614; padding: 22px 20px;
+    transition: transform .12s ease-out, box-shadow .12s ease-out;
+  }
+  a.card:hover { transform: translate(-1px, -1px); box-shadow: 7px 8px 0 #161614; }
+  a.card:active { transform: translate(2px, 2px); box-shadow: 3px 4px 0 #161614; }
+  a.card.primary { background: #d93825; color: #fdf1d3; }
+  a.card .tag {
+    font-family: 'Silkscreen', monospace; font-size: 9px; letter-spacing: .1em;
+    color: #8c6a52; display: block; margin-bottom: 10px;
+  }
+  a.card.primary .tag { color: #ffd0c4; }
+  a.card .name {
+    font-family: 'Anton', sans-serif; font-size: 21px; text-transform: uppercase;
+    line-height: 1.08; margin-bottom: 8px;
+  }
+  a.card .note { font-size: 13.5px; font-weight: 500; line-height: 1.45; color: #5a3d33; }
+  a.card.primary .note { color: #ffe6df; }
+  .foot {
+    margin-top: 40px; padding-top: 18px; border-top: 2.5px solid rgba(22,22,20,.2);
+    font-family: 'Silkscreen', monospace; font-size: 9px; letter-spacing: .1em; color: #8c6a52;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">INTERNAL PREVIEW · NOT THE LIVE SITE</div>
+  <h1>avaTOK <em>bazaar</em> mockups.</h1>
+  <p class="lede">
+    Static design mockups running on mock data. Start at the marketplace — every listing card
+    is clickable and takes you into the listing details page.
+  </p>
+
+  <div class="grid">
+    <a class="card primary" href="avaTOK%20Marketplace.dc.html">
+      <span class="tag">START HERE</span>
+      <div class="name">Marketplace</div>
+      <div class="note">Search, filters, category browse. Click any card.</div>
+    </a>
+    <a class="card" href="avaTOK%20Listing%20Details.dc.html">
+      <span class="tag">MAIN DELIVERABLE</span>
+      <div class="name">Listing details</div>
+      <div class="note">Availability calendar, booking flow, live-show states.</div>
+    </a>
+    <a class="card" href="avaTOK%20Auth.dc.html">
+      <span class="tag">ONBOARDING</span>
+      <div class="name">Auth screens</div>
+      <div class="note">Sign in, sign up, verification.</div>
+    </a>
+    <a class="card" href="avaTOK%20Design%20System.dc.html">
+      <span class="tag">REFERENCE</span>
+      <div class="name">Design system</div>
+      <div class="note">Palette, type scale, component reference.</div>
+    </a>
+  </div>
+
+  <div class="foot">MOCK DATA ONLY · NO BACKEND · NOT AVATOK.AI</div>
+</div>
+</body>
+</html>

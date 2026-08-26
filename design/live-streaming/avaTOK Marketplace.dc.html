@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #d93825; text-decoration: none; }
+  a:hover { color: #2d7180; }
+  input, button { font-family: inherit; }
+  input::placeholder { color: #a08974; }
+</style>
+</helmet>
+
+<div style="background:#f6e4cd; min-height:100vh;">
+
+  <!-- ═══════════ SITE HEADER — REPLACEABLE BLOCK ═══════════
+       The header lives in SiteHeader.dc.html. To swap in your standard
+       header, either replace that file's contents, or delete this
+       dc-import and paste your own header markup here. ═══════════ -->
+  <dc-import name="SiteHeader" hint-size="100%,72px" style="display:block;"></dc-import>
+  <!-- ═══════════ END SITE HEADER ═══════════ -->
+
+  <!-- search strip -->
+  <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
+    <div style="max-width:1560px; margin:0 auto; padding:16px clamp(16px,4vw,40px); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+      <div style="flex:1 1 340px; display:flex; align-items:center; gap:10px; border:2.5px solid #161614; border-radius:100px; background:#f6e4cd; padding:6px 6px 6px 20px; box-shadow:4px 4px 0 #161614;">
+        <input value="{{ q }}" onInput="{{ onSearch }}" placeholder="Dhoondo: tarot, adda, rizz, shayari, antakshari…" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font-family:'Instrument Sans',sans-serif; font-size:16px; font-weight:600; color:#161614; padding:8px 0;" />
+        <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.06em; text-transform:uppercase; padding:11px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Khojo</button>
+      </div>
+      <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+        <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.1em; color:#8c6a52;">DHOONDTE REH JAOGE? NAHI. YAHAN SAB MILEGA.</span>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- hero with toran tassels -->
+  <div style="background:#d46e59; border-bottom:3px solid #161614;">
+    <dc-import name="TruckBorder" kind="tassels" hint-size="100%,44px" style="display:block;"></dc-import>
+    <div style="max-width:1560px; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
+      <div style="flex:1 1 380px; min-width:0;">
+        <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:12px; letter-spacing:.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:16px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>MARKETPLACE · 2,400 CREATORS LIVE</div>
+        <h1 style="font-family:'Anton',sans-serif; font-size:clamp(46px,6.4vw,88px); line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0;">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
+        <p style="margin:24px 0 0; font-size:19px; font-weight:500; line-height:1.5; color:#2a0f0a; max-width:50ch; text-wrap:pretty;">Streams, dost, jyotish, adda rooms, AI agents aur full glow-ups — seat book karo ya seedha live ghuso. Scene sorted.</p>
+        <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:20px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+            <span style="font-family:'Baloo 2',sans-serif; font-weight:800; font-size:21px; color:#fdf1d3; text-shadow:2px 2px 0 #161614;">सब कुछ मिलेगा — live.</span>
+            <span style="font-family:'Kalam',cursive; font-size:19px; color:#2a0f0a; transform:rotate(-3deg); display:inline-block;">Dilli se Toronto tak, sab yahin milte hain →</span>
+          </div>
+        </sc-if>
+      </div>
+      <div style="flex:none; margin:0 auto;">
+        <img src="assets/suswagatam.png" alt="Suswagatam — welcome" style="width:clamp(230px,25vw,330px); display:block; transform:rotate(-3deg); filter:drop-shadow(6px 7px 0 rgba(22,22,20,.55));" />
+      </div>
+    </div>
+  </div>
+
+  <!-- category tiles -->
+  <div style="max-width:1560px; margin:-38px auto 0; padding:0 clamp(16px,4vw,40px); position:relative; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px;">
+    <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="8">
+      <div onClick="{{ t.pick }}" style="cursor:pointer; border:3px solid #161614; border-radius:18px; overflow:hidden; background:#fdf1d3; box-shadow:{{ t.sh }}; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
+        <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="{{ t.kind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="padding:12px 15px 13px; display:flex; flex-direction:column; gap:5px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><span style="font-family:'Anton',sans-serif; font-size:18px; text-transform:uppercase; letter-spacing:.01em; color:{{ t.col }};">{{ t.label }}</span><span style="font-family:'Silkscreen',monospace; font-size:11px; color:#d93825;">{{ t.mark }}</span></div>
+          <span style="font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.08em; color:#8c6a52;">{{ t.sub }}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- main layout -->
+  <div style="max-width:1560px; margin:0 auto; padding:34px clamp(16px,4vw,40px) 90px; display:flex; flex-wrap:wrap; gap:30px; align-items:flex-start;">
+
+    <!-- sidebar -->
+    <aside style="flex:1 1 236px; max-width:{{ asideMax }}; position:{{ asidePos }}; top:16px;">
+      <div style="border:2.5px solid #161614; border-radius:20px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; overflow:hidden;">
+        <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,30px" style="display:block;"></dc-import></div>
+        <div style="padding:18px 20px 6px; display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+          <span style="font-family:'Anton',sans-serif; font-size:24px; text-transform:uppercase;">Filters</span>
+          <button onClick="{{ clearAll }}" style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.08em; color:#d93825; background:none; border:none; cursor:pointer; text-decoration:underline; padding:0;">SAB HATAO</button>
+        </div>
+
+        <div style="padding:12px 20px 18px;">
+          <div style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.14em; color:#6b4f3f; margin-bottom:10px;">CATEGORY</div>
+          <div style="display:flex; flex-direction:column;">
+            <sc-for list="{{ cats }}" as="k" hint-placeholder-count="8">
+              <div onClick="{{ k.pick }}" style="display:flex; align-items:center; gap:10px; padding:4px 0; cursor:pointer;">
+                <span style="width:15px; height:15px; flex:none; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center;"><span style="width:7px; height:7px; border-radius:50%; background:{{ k.dot }};"></span></span>
+                <span style="font-size:14px; font-weight:{{ k.wt }}; color:#161614;">{{ k.label }}</span>
+                <span style="margin-left:auto; font-family:'Silkscreen',monospace; font-size:10px; color:#8c6a52;">{{ k.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="border-top:2px dashed rgba(22,22,20,.35); padding:14px 20px 16px;">
+          <div style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.14em; color:#6b4f3f; margin-bottom:10px;">AVAILABLE ON</div>
+          <button onClick="{{ calToggle }}" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; border:2px solid #161614; border-radius:12px; background:#fdf1d3; padding:10px 14px; cursor:pointer; box-shadow:3px 3px 0 #161614;">
+            <span style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.06em; color:{{ calLabelCol }};">{{ calLabel }}</span>
+            <span style="font-size:12px; font-weight:700;">{{ calCaret }}</span>
+          </button>
+          <sc-if value="{{ calOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:10px; border:2px solid #161614; border-radius:14px; background:#f6e4cd; padding:12px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+                <button onClick="{{ prevM }}" style="width:24px; height:24px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:12px; display:grid; place-items:center; padding:0;">‹</button>
+                <span style="font-family:'Anton',sans-serif; font-size:14px; text-transform:uppercase; letter-spacing:.03em;">{{ monthLabel }}</span>
+                <button onClick="{{ nextM }}" style="width:24px; height:24px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:12px; display:grid; place-items:center; padding:0;">›</button>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;">
+                <sc-for list="{{ calCells }}" as="d" hint-placeholder-count="35">
+                  <div onClick="{{ d.pick }}" style="height:24px; display:grid; place-items:center; border-radius:7px; cursor:pointer; background:{{ d.bg }}; position:relative;">
+                    <span style="font-size:11px; font-weight:600; color:{{ d.col }};">{{ d.t }}</span>
+                    <sc-if value="{{ d.dot }}" hint-placeholder-val="{{ false }}"><span style="position:absolute; bottom:1px; left:50%; transform:translateX(-50%); width:3px; height:3px; border-radius:50%; background:#d93825;"></span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:6px; font-family:'Silkscreen',monospace; font-size:8px; letter-spacing:.08em; color:#8c6a52;">● = KOI NA KOI FREE HAI</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="border-top:2px dashed rgba(22,22,20,.35); padding:16px 20px 22px;">
+          <div style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.14em; color:#6b4f3f; margin-bottom:12px;">PRICE</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            <sc-for list="{{ prices }}" as="p" hint-placeholder-count="4">
+              <button onClick="{{ p.pick }}" style="font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.05em; border:2px solid #161614; border-radius:100px; padding:8px 13px; cursor:pointer; background:{{ p.bg }}; color:{{ p.col }};">{{ p.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
+        <div style="margin:18px 10px 0; font-family:'Kalam',cursive; font-size:18px; line-height:1.35; color:#8c3a2c; transform:rotate(-2deg);">Jo dhoondoge, wahi milega.<br />— Bazaar rule #1</div>
+      </sc-if>
+    </aside>
+
+    <!-- results -->
+    <main style="flex:999 1 620px; min-width:0; display:flex; flex-direction:column; gap:60px;">
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:-34px;">
+        <span style="font-family:'Silkscreen',monospace; font-size:11px; letter-spacing:.12em; color:#161614;">{{ metaLine }}</span>
+        <span style="flex:1; height:2px; background:rgba(22,22,20,.2); min-width:60px;"></span>
+      </div>
+
+      <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="3">
+        <section>
+          <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
+            <div style="flex:1 1 300px; min-width:0;">
+              <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:11px; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">{{ sec.eyebrow }}</div>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(34px,3.4vw,48px); line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">{{ sec.title }} <span style="color:#d93825;">{{ sec.title2 }}</span></h2>
+            </div>
+            <sc-if value="{{ sec.punchOn }}" hint-placeholder-val="{{ false }}">
+              <div style="font-family:'Kalam',cursive; font-size:20px; line-height:1.3; color:#8c3a2c; transform:rotate(-2deg); max-width:30ch; padding-bottom:4px;">{{ sec.punch }}</div>
+            </sc-if>
+            <sc-if value="{{ sec.stampOn }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:none; width:98px; height:98px; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; text-align:center; transform:rotate(8deg); margin-bottom:2px;"><span style="font-family:'Silkscreen',monospace; font-size:9px; line-height:1.7; color:#d93825; letter-spacing:.06em;">SITARE<br />SAB JAANTE<br />HAIN</span></div>
+            </sc-if>
+            <sc-if value="{{ sec.posterOn }}" hint-placeholder-val="{{ false }}">
+              <img src="assets/pawri-poster.png" alt="Ye hamari pawri ho rahi hai" style="flex:none; width:104px; border:3px solid #161614; border-radius:10px; transform:rotate(3deg); box-shadow:5px 6px 0 #161614; margin-bottom:4px;" />
+            </sc-if>
+          </div>
+          <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 10px;"><dc-import name="TruckBorder" kind="{{ sec.kind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
+          <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:20px;">
+            <span style="font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.1em; color:#8c6a52;">{{ sec.countLabel }}</span>
+            <span style="font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.1em; color:#8c6a52;">{{ sec.tag }}</span>
+          </div>
+
+          <sc-if value="{{ sec.empty }}" hint-placeholder-val="{{ false }}">
+            <div style="border:2.5px dashed #161614; border-radius:22px; background:#fdf1d3; padding:40px 28px; display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; text-align:center;">
+              <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(-8deg);"><span style="font-family:'Silkscreen',monospace; font-size:9px; line-height:1.7; color:#d93825; letter-spacing:.06em;">BURI NAZAR<br />LAG GAYI<br />· 404 ·</span></div>
+              <div style="max-width:40ch;">
+                <div style="font-family:'Anton',sans-serif; font-size:26px; text-transform:uppercase; margin-bottom:8px;">Koi nahi mila, boss.</div>
+                <p style="margin:0 0 16px; font-size:15px; font-weight:500; color:#5a3d33; line-height:1.5;">Is filter combination mein full sannata hai. Thoda chill karo, filter loosen karo.</p>
+                <button onClick="{{ clearAll }}" style="font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Sab dikhao</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:20px;">
+            <sc-for list="{{ sec.cards }}" as="c" hint-placeholder-count="8">
+              <div onClick="{{ goDetails }}" style="border:3px solid #161614; border-radius:26px; overflow:hidden; background:{{ c.fill }}; box-shadow:6px 7px 0 #161614; display:flex; flex-direction:column; cursor:pointer;">
+                <div style="height:186px; background:{{ c.photo }}; position:relative;">
+                  <div style="position:absolute; inset:0; background-image:{{ c.stripe }};"></div>
+                  <div style="position:absolute; top:12px; left:12px; right:12px; display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+                    <span style="font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.08em; background:{{ c.pillBg }}; color:#fdf1d3; border-radius:100px; padding:6px 11px; display:flex; align-items:center; gap:6px; min-width:0;"><span style="width:6px; height:6px; border-radius:50%; background:{{ c.pillDot }}; flex:none;"></span>{{ c.status }}</span>
+                    <button onClick="{{ c.hPick }}" style="width:30px; height:30px; flex:none; border-radius:50%; background:{{ c.hBg }}; border:1.5px solid #161614; display:grid; place-items:center; font-size:14px; color:{{ c.hCol }}; cursor:pointer; padding:0;">{{ c.hG }}</button>
+                  </div>
+                  <span style="position:absolute; left:50%; bottom:46%; transform:translateX(-50%); font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.1em; color:{{ c.phL }};">PORTRAIT</span>
+                  <div style="position:absolute; left:0; right:0; bottom:-1px; height:18px; background:radial-gradient(circle at 11px 15px, {{ c.fill }} 11px, transparent 12px) 0 0/22px 18px repeat-x;"></div>
+                </div>
+                <div style="padding:15px 17px 17px; display:flex; flex-direction:column; gap:11px; flex:1;">
+                  <div style="display:flex; justify-content:space-between; gap:8px; font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.1em; color:{{ c.stubC }};"><span>{{ c.s1 }}</span><span>{{ c.s2 }}</span></div>
+                  <h4 style="font-family:{{ c.tFam }}; font-style:{{ c.tSty }}; font-weight:{{ c.tWt }}; font-size:{{ c.tSize }}px; line-height:1.07; text-transform:{{ c.tCase }}; color:{{ c.tCol }}; text-shadow:{{ c.tShad }}; margin:0;">{{ c.title }}</h4>
+                  <p style="margin:0; font-size:14px; font-weight:500; line-height:1.45; color:{{ c.bodyC }};">{{ c.blurb }}</p>
+                  <div style="display:flex; flex-wrap:wrap; gap:7px;">
+                    <span style="font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.05em; border:1.5px solid {{ c.chipC }}; border-radius:100px; padding:6px 10px; color:{{ c.chipC }};">{{ c.ch1 }}</span>
+                    <span style="font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.05em; border:1.5px solid {{ c.chipC }}; border-radius:100px; padding:6px 10px; color:{{ c.chipC }};">{{ c.ch2 }}</span>
+                  </div>
+                  <div style="display:flex; gap:9px; margin-top:auto;">
+                    <button onClick="{{ goDetails }}" style="flex:1; font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">BOOK NOW</button>
+                    <button onClick="{{ goDetails }}" style="flex:1; font-family:'Silkscreen',monospace; font-size:10px; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">CALENDAR</button>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:9px; padding-top:11px; border-top:1.5px solid {{ c.hairC }};">
+                    <span style="width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid {{ c.chipC }}; display:grid; place-items:center; font-family:'Silkscreen',monospace; font-size:9px; color:{{ c.chipC }};">{{ c.ini }}</span>
+                    <span style="font-size:13px; font-weight:600; color:{{ c.nameC }};">{{ c.name }} ✓</span>
+                    <span style="margin-left:auto; font-family:'Silkscreen',monospace; font-size:9px; letter-spacing:.08em; color:{{ c.stubC }};">{{ c.dur }}</span>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </sc-for>
+    </main>
+  </div>
+
+  <!-- ═══════════ SITE FOOTER — REPLACEABLE BLOCK ═══════════
+       The footer lives in SiteFooter.dc.html. Replace that file's
+       contents to swap the footer everywhere it is imported. ═══════ -->
+  <dc-import name="SiteFooter" hint-size="100%,480px" style="display:block;"></dc-import>
+  <!-- ═══════════ END SITE FOOTER ═══════════ -->
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;masala&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Bazaar&quot;},&quot;liveOnly&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Bazaar&quot;},&quot;ctaColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#d93825&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#d93825&quot;,&quot;#b8382a&quot;,&quot;#2d7180&quot;,&quot;#161614&quot;],&quot;section&quot;:&quot;Brand&quot;}}">
+class Component extends DCLogic {
+  state = { cat: 'all', price: 'all', q: '', selD: null, calY: 2026, calM: 7, calOpen: false, favs: {}, w: typeof window !== 'undefined' ? window.innerWidth : 1280 };
+
+  componentDidMount() {
+    this._onR = () => this.setState({ w: window.innerWidth });
+    window.addEventListener('resize', this._onR);
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._onR); }
+
+  getData() {
+    if (this._data) return this._data;
+    const PAL = {
+      teal:   { fill:'#2d7180', photo:'#1e5f66', shad:'#0f3f45', dark:1, stub:'#d6ecee' },
+      butter: { fill:'#f4d8a0', photo:'#c9a86a', shad:'', dark:0, stub:'#5a3d33' },
+      oat:    { fill:'#d9c3a0', photo:'#b09a76', shad:'', dark:0, stub:'#5a3d33' },
+      brick:  { fill:'#b8382a', photo:'#a4352a', shad:'#7d271e', dark:1, stub:'#fbe4df' }
+    };
+    let uid = 0;
+    const mk = (pk, serif, title, price, blurb, s1, s2, ch1, ch2, status, live, name, dur, days) => {
+      const p = PAL[pk], d = p.dark;
+      const ini = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      return {
+        id: uid++, price, days, live,
+        fill: p.fill, photo: p.photo,
+        stripe: d ? 'repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px)' : 'repeating-linear-gradient(135deg, rgba(22,22,20,.12) 0 9px, transparent 9px 20px)',
+        pillBg: live ? '#d93825' : '#1e5f66', pillDot: live ? '#ffd0c4' : '#8fd0c0',
+        status, phL: d ? 'rgba(253,241,211,.7)' : '#4a3a20',
+        stubC: p.stub, s1, s2,
+        tFam: serif ? "'Playfair Display',serif" : "'Anton',sans-serif",
+        tSty: serif ? 'italic' : 'normal', tWt: serif ? 900 : 400,
+        tSize: serif ? 24 : 23, tCase: serif ? 'none' : 'uppercase',
+        tCol: d ? '#fdf1d3' : (serif ? '#c02f1d' : '#161614'),
+        tShad: d ? '3px 3px 0 ' + p.shad : 'none',
+        title, blurb, bodyC: d ? '#fdf1d3' : '#4a3a20',
+        chipC: d ? '#fdf1d3' : '#161614', ch1, ch2,
+        nameC: d ? '#fdf1d3' : '#161614',
+        hairC: d ? 'rgba(253,241,211,.28)' : 'rgba(22,22,20,.2)',
+        ini, name, dur
+      };
+    };
+    this._data = [
+      { id:'stream', eyebrow:'01 · GROUP SHOWS · TICKETED', title:'Live streaming', title2:'& shows.', punch:'“Ye hamari pawri ho rahi hai!”', kind:'jhalar', tag:'PICTURE ABHI BAAKI HAI', stamp:0, poster:1, cards:[
+        mk('teal',0,'Antakshari Friday with Sunny · ₹49',49,"Team A vs Team B — 'meri awaaz hi pehchaan hai' rules apply. Full bawaal.",'GROUP GAME','HINDI','♡ 300 REGULARS','★ 4.9 · 620','FRI 9 PM',0,'Sunny Gill','90 MIN',[7,14,21,28]),
+        mk('butter',1,'Ghazal baithak with Aara · ₹199',199,'Low lights, live harmonium, aur ghazals jo aaram se barbaad kar dein.','LIVE MUSIC','URDU','✓ 120 BAITHAKS','★ 5.0 · 233','SAT 9 PM',0,'Begum Aara','60 MIN',[1,8,15,22,29]),
+        mk('oat',0,'Bollywood trivia night · ₹99',99,"Kitne aadmi the? Aake pata karo. Winner ko lifetime bragging rights.",'QUIZ','HINGLISH','✓ 90 NIGHTS','★ 4.8 · 415','WED 8 PM',0,'Cine Chachu','60 MIN',[4,11,18,25]),
+        mk('brick',0,'Standup: Sharma ji ka beta · ₹149',149,'Batch topper tha, engineering chhodi, ab dono decisions ko roast karta hai.','COMEDY','HINGLISH','100% RELATABLE','★ 4.9 · 780','LIVE',1,'Arjun Sharma','45 MIN',[5,12,19,26]),
+        mk('butter',1,'90s item-song aerobics · ₹129',129,'Cardio on full 90s masala. Yahan thumke bhi squats mein count hote hain.','FITNESS','HINDI','♡ 450 REGULARS','★ 4.8 · 388','MON 7 AM',0,'Dolly Kapoor','40 MIN',[2,9,16,23,30]),
+        mk('teal',0,'DDLJ watch party · ₹79',79,'Palat… palat… aur teen sau ajnabi saath mein bolte hain.','WATCH PARTY','HINDI','✓ 32 SHOWS','★ 4.9 · 501','SUN 6 PM',0,'Pooja Mehta','3 HRS',[6,13,20,27]),
+        mk('brick',0,'Live cooking: 2 AM Maggi · ₹59',59,'Doodh wali, cheese wali, hostel wali — sab sacred recipes, live.','COOKING','HINGLISH','✓ 200 MIDNIGHTS','★ 4.7 · 296','TONIGHT 2 AM',0,'Chef Bunty','30 MIN',[3,10,17,24,31]),
+        mk('oat',0,'Garba warm-up baithak · ₹99',99,"Navratri se pehle steps seekh lo, warna cousins full judge karenge.",'DANCE','GUJARATI','♡ 600 DANCERS','★ 4.8 · 344','THU 7 PM',0,'Falguni Desai','60 MIN',[1,4,8,11,15])
+      ]},
+      { id:'friends', eyebrow:'02 · PRIVATE 1:1 · DIL SE', title:'Live friends', title2:'& yaari.', punch:'“Kuch kuch hota hai… tum nahi samjhoge.”', kind:'chai', tag:'DIL KA SCENE · PRIVATE ROOM', stamp:0, poster:0, cards:[
+        mk('teal',0,'A queer safe-space chat · ₹199',199,'Jaise ho waise aao. Affirming baatein, friendly company, zero assumptions.','QUEER-FRIENDLY','SAFE SPACE','10 MIN RESPONSE','✓ 1.2K TALKS','AVAILABLE NOW',0,'Alex Fernandes','30 MIN',[2,9,16,23,30]),
+        mk('butter',1,'Kolkata Adda with Riya · ₹149',149,'Films, khana, family ya pura nonsense — time gaayab ho jata hai yahan.','GIRL FRIEND','BENGALI · HINDI','♡ 420 REGULARS','★ 4.8 · 392','NEXT 5 PM',0,'Riya Dutta','30 MIN',[1,3,8,15,22]),
+        mk('oat',0,'Walk & talk with Rohan · ₹129',129,'Ek easy evening walk, life pe baatein — jaise purane yaar catching up.','BOY FRIEND','VIDEO WALK','6 MIN RESPONSE','★ 4.8 · 183','WALKING NOW',0,'Rohan Joshi','20 MIN',[4,11,18,25]),
+        mk('brick',0,'Quiet company with Kavya · ₹99',99,'Perform karne ka pressure nahi. Padho, kaam karo, ya bas chup baitho.','QUIET COMPANY','TAMIL · ENGLISH','♡ 96% COME BACK','★ 4.9 · 251','AVAILABLE NOW',0,'Kavya Iyer','20 MIN',[5,6,12,19,26]),
+        mk('butter',1,'Gossip adda with Pinky aunty · ₹89',89,'Full mohalla report, K3G-level plot twists. Chai apni le aana.','GOSSIP ADDA','HINDI · PUNJABI','★ 4.9 · 512','100% MASALA','TONIGHT 9 PM',0,'Pinky Malhotra','45 MIN',[7,14,21,28]),
+        mk('teal',0,'Shayari on demand with Faiz · ₹79',79,'Mood batao, mehfil milegi — couplets made to order, wah-wah included.','SHAYARI','URDU · HINDI','✓ 800 MEHFILS','★ 5.0 · 214','NEXT 8 PM',0,'Faiz Khan','20 MIN',[2,10,17,24,31]),
+        mk('brick',0,'Late-night vent line · ₹119',119,'Jo dil mein hai, bol do. Meher sunti hai jab tak chai thandi na ho jaye.','VENT LINE','11 PM – 3 AM','LISTENER FIRST','♡ 91% COME BACK','AVAILABLE NOW',0,'Meher Ali','40 MIN',[1,2,3,8,9,10]),
+        mk('oat',0,'Chai pe charcha with Dadu · ₹59',59,'Retired professor, unlimited kisse, cricket aur chai pe pakki raay.','GRANDPA TALK','BANGLA · ENGLISH','✓ 2K CHARCHAS','★ 4.9 · 604','MORNINGS 7 AM',0,'Dadu Banerjee','30 MIN',[6,13,20,27])
+      ]},
+      { id:'adda', eyebrow:'03 · STRANGERS WELCOME · GROUP', title:'Adda', title2:'rooms.', punch:'“Bade bade shehron mein, ajnabi hi kaam aate hain.”', kind:'lotus', tag:'AJNABI SE YAAR TAK', stamp:0, poster:0, cards:[
+        mk('teal',0,'Midnight canteen adda · ₹29',29,'2 AM club for night owls. Ajnabi, kisse aur sasta nasha — chai only.','GROUP HANGOUT','HINGLISH','♡ 900 NIGHT OWLS','★ 4.8 · 512','TONIGHT 12 AM',0,'Bunty Hostwala','60 MIN',[2,5,9,12,16,19]),
+        mk('butter',1,'Shaam ki chai adda · ₹49',49,'Aunty-approved gossip circle. Naye logon ko full swag se swagat.','EVENING CIRCLE','HINDI','✓ 340 SHAAMS','★ 4.9 · 288','DAILY 6 PM',0,'Leela Aunty','45 MIN',[1,2,3,4,7,8,9]),
+        mk('oat',0,'Breakup support adda · ₹59',59,'Sab yahan single hain. Ro lo, hass lo, saath mein move on karo.','SUPPORT GROUP','HINGLISH','♡ 96% FEEL BETTER','TISSUES FREE','SAT 8 PM',0,'Zoya Sheikh','60 MIN',[6,13,20,27]),
+        mk('brick',0,'Gully rap cypher · ₹99',99,'Bars sunao, bars suno. Apna time aayega — practice yahin hogi.','CYPHER','HINGLISH','✓ 80 CYPHERS','★ 4.9 · 377','LIVE',1,'MC Toofan','60 MIN',[3,10,17,24,31]),
+        mk('butter',1,'Desi book club adda · ₹79',79,'Ek chapter, hazaar opinions. Premchand se lekar campus novels tak.','BOOK CLUB','HINDI · ENGLISH','✓ 52 CHAPTERS','★ 4.8 · 190','SUN 11 AM',0,'Ira Kulkarni','60 MIN',[6,13,20,27]),
+        mk('teal',0,'Match-day adda · ₹39',39,'Live match, live reactions, live heartbreak. India India, saath mein.','CRICKET','HINGLISH','♡ 1.1K FANS','★ 4.7 · 640','MATCH DAYS',0,'Kaptaan Vicky','3 HRS',[4,11,18,25]),
+        mk('brick',0,'Introverts anonymous · ₹49',49,'Camera off allowed. Lurk karo, jab mann kare tab bolo. No pressure.','QUIET ADDA','SAFE SPACE','♡ 93% RETURN','CAM OPTIONAL','THU 9 PM',0,'Sam Pillai','45 MIN',[5,12,19,26]),
+        mk('oat',0,'Sunday mandi walk adda · ₹35',35,'Ek host, dus ajnabi, ek sabzi mandi. Bhindi ke bhav pe bonding.','WALK & TALK','HINDI','✓ 44 WALKS','★ 4.8 · 152','SUN 8 AM',0,'Ramu Kaka','60 MIN',[6,13,20,27])
+      ]},
+      { id:'astro', hideInAll:1, eyebrow:'KISMAT DESK', title:'Astro', title2:'& tarot.', punch:'“Rishtey mein toh hum tumhare future hote hain.”', kind:'eyes', tag:'GRAHON KI GUARANTEE NAHI', stamp:1, poster:0, cards:[
+        mk('teal',0,'Kundli express with Guruji · ₹249',249,"Full janm kundli, grahon ka hisaab, aur ek free 'beta, sambhal ke'.",'VEDIC','HINDI · SANSKRIT','✓ 3K KUNDLIS','★ 4.8 · 913','NEXT 6 AM',0,'Guruji Shastri','45 MIN',[3,10,17,24,31]),
+        mk('butter',1,'Tarot with Tania didi · ₹199',199,'Teen cards, zero sugar-coating. Universe ne jo bola, wahi bolegi.','TAROT','ENGLISH · HINDI','10 MIN RESPONSE','★ 4.9 · 488','AVAILABLE NOW',0,"Tania D'Souza",'30 MIN',[1,5,12,19,26]),
+        mk('oat',0,"'Shaadi kab hogi?' special · ₹299",299,'Har aunty ka favourite sawaal, planets se seedha jawab.','MATCH ASTRO','GUJARATI · HINDI','♡ 780 REGULARS','★ 4.8 · 350','SAT 11 AM',0,'Sonal Ben','45 MIN',[7,14,21,28]),
+        mk('brick',0,'Ex wapas aayega? Tarot · ₹99',99,'Spoiler: shayad nahi. Par cards se hi sun lo — closure milega.','HEARTBREAK DESK','HINGLISH','✓ 1.5K READINGS','100% SAVAGE','LIVE',1,'Ricky Oberoi','15 MIN',[2,4,9,11,16,18]),
+        mk('butter',1,'Palm lines with Prem bhai · ₹179',179,'Chaalis saal se haath padh rahe hain. Lines unki, secrets tumhare.','PALMISTRY','HINDI · MARATHI','✓ 40 YRS','★ 4.9 · 1.1K','NEXT 4 PM',0,'Prem Bhai','30 MIN',[5,13,20,27]),
+        mk('teal',0,'Vastu for 1BHK dreams · ₹149',149,'Haan, rented flat ka bhi north-east hota hai. Chhota ghar, sahi vibes.','VASTU','HINDI','✓ 900 HOMES','★ 4.7 · 265','SUN 10 AM',0,'Verma Ji','30 MIN',[6,13,27]),
+        mk('brick',0,'Mercury retrograde helpline · ₹159',159,'Phone hang? Rishta hang? Planet ko saath mein blame karo, phir week fix karo.','MODERN ASTRO','ENGLISH','♡ 88% CALMER','★ 4.8 · 402','AVAILABLE NOW',0,'Naina Rao','25 MIN',[8,15,22,29]),
+        mk('oat',0,'Numerology with Nilesh · ₹129',129,'Tumhara naam, tumhara number, tumhara lucky Tuesday. Maths, but destiny.','NUMEROLOGY','HINDI · ENGLISH','✓ 2.2K CHARTS','★ 4.6 · 318','NEXT 7 PM',0,'Nilesh Shah','20 MIN',[9,16,23,30])
+      ]},
+      { id:'ai', eyebrow:'04 · 24/7 · APKA APNA AI', title:'AI voice', title2:'agents.', punch:'“Kabhi kabhi lagta hai apun hi bhagwan hai.”', kind:'auto', tag:'SOTA NAHI HAI YE', stamp:0, poster:0, cards:[
+        mk('teal',0,"Riya's AI — 24/7 bestie · ₹19",19,'Asli Riya so rahi hai, uska AI jaag raha hai. Same energy, zero wait.','AI CLONE','HINDI · BANGLA','⚡ INSTANT','♡ 12K CHATS','ALWAYS ON',0,'Riya Dutta AI','PER 10 MIN',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('butter',1,'AI shayari hotline · ₹15',15,'Mood bolo, sher milega. Ghalib-trained, heartbreak-tested.','AI POET','URDU · HINDI','⚡ INSTANT','★ 4.8 · 2.1K','ALWAYS ON',0,'Faiz Khan AI','PER 5 MIN',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('oat',0,'Padhai ka AI partner · ₹25',25,"Pomodoro, doubts, motivation — 3 AM pe bhi 'chal beta, ek aur chapter'.",'STUDY BUDDY','HINGLISH','⚡ INSTANT','✓ 40K SESSIONS','ALWAYS ON',0,'Padhaku AI','PER 30 MIN',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('brick',0,'AI rishta screener · ₹49',49,'Uski chat paste karo, red flags ka full audit milega. Brutal honesty ON.','DATING AUDIT','HINGLISH','100% SAVAGE','♡ 8K SAVED','ALWAYS ON',0,'Red Flag AI','PER CHAT',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('butter',1,"Naani's AI kahaniyan · ₹9",9,'Sleep stories in pure naani voice. Vicks wali feeling, guaranteed.','SLEEP STORIES','HINDI','⚡ INSTANT','★ 4.9 · 5.6K','ALWAYS ON',0,'Naani AI','PER NIGHT',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('teal',0,'AI gym bro · ₹19',19,"'Ek aur rep bhai!' — 24 ghante, zero judgement, full josh.",'FITNESS','HINGLISH','⚡ INSTANT','✓ 18K SETS','ALWAYS ON',0,'Bro AI','PER WORKOUT',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('brick',0,'AI interview taker · ₹39',39,"Mock HR rounds jo asli se zyada khatarnak hain. 'Apni weakness batao?'",'MOCK INTERVIEW','ENGLISH · HINDI','✓ 9K MOCKS','★ 4.7 · 1.3K','ALWAYS ON',0,'HR Sharma AI','PER ROUND',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+        mk('oat',0,'Bollywood AI antakshari · ₹12',12,"Machine kabhi haarti nahi. 'M' se gaana? Good luck, champion.",'GAME','HINDI','⚡ INSTANT','★ 4.8 · 3.2K','ALWAYS ON',0,'Antakshari AI','PER GAME',[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31])
+      ]},
+      { id:'consult', eyebrow:'05 · GYAAN ON DEMAND', title:'Consulting', title2:'desk.', punch:'“All izz well — ek call ke baad.”', kind:'eyes', tag:'FUNDA CLEAR HOGA', stamp:0, poster:0, cards:[
+        mk('teal',0,'Placement prep with Ankit sir · ₹299',299,'FAANG nahi toh kya, resume toh dhang ka banao. DSA se HR tak.','CAREERS','HINGLISH','✓ 600 OFFERS','★ 4.9 · 812','NEXT MON',0,'Ankit Verma','60 MIN',[1,8,15,22,29]),
+        mk('butter',1,'CA didi: tax bachao · ₹249',249,"ITR, GST aur 'ye 80C kya hota hai?' — sab clear, bina jargon ke.",'TAX & MONEY','HINDI','✓ 2K FILINGS','★ 4.8 · 590','NEXT 11 AM',0,'CA Shruti','45 MIN',[2,9,16,23,30]),
+        mk('oat',0,'UPSC mentor Mishra ji · ₹199',199,'Prelims ka dar, mains ka pyaar. Strategy from a 3-attempt survivor.','UPSC','HINDI · ENGLISH','✓ 14 SELECTIONS','★ 4.9 · 233','SAT 5 PM',0,'Mishra Ji','60 MIN',[6,13,20,27]),
+        mk('brick',0,'Startup reality check · ₹349',349,'Pitch sunao, sach suno. Shark Tank se pehle yahan aao.','STARTUPS','HINGLISH','✓ 300 PITCHES','100% SEEDHI BAAT','AVAILABLE NOW',0,'Raghav Bhatia','45 MIN',[3,10,17,24,31]),
+        mk('butter',1,'Visa file review with Simran · ₹299',299,'SOP polish, fund proof, interview prep — Canada calling, sensibly.','STUDY ABROAD','PUNJABI · ENGLISH','✓ 850 VISAS','★ 4.8 · 466','NEXT 3 PM',0,'Simran Kaur','45 MIN',[4,11,18,25]),
+        mk('teal',0,'Code review with Neha · ₹249',249,'Tumhara spaghetti code, uski Maggi-level expertise. PR approve hoga.','TECH','ENGLISH','✓ 1.2K REVIEWS','★ 4.9 · 388','TONIGHT 10 PM',0,'Neha Reddy','45 MIN',[5,12,19,26]),
+        mk('brick',0,'Career switch ka jugaad · ₹199',199,'Mechanical se product manager? Ho jayega. Roadmap milega, bahane nahi.','CAREERS','HINGLISH','♡ 89% SWITCHED','★ 4.7 · 301','WED 7 PM',0,'Kabir Anand','40 MIN',[7,14,21,28]),
+        mk('oat',0,'Pocket-money investing 101 · ₹149',149,'SIP kya hai, FD kyun nahi, crypto se door kyun. Basics, bindaas.','MONEY','HINDI · ENGLISH','✓ 5K STUDENTS','★ 4.8 · 720','SUN 12 PM',0,'Paisa Bhaiya','40 MIN',[6,13,20,27])
+      ]},
+      { id:'glow', hideInAll:1, eyebrow:'FULL MAKEOVER SCENE', title:'Glow-up', title2:'studio.', punch:'“Main apni favourite hoon!”', kind:'lotus', tag:'SWAG SE SWAGAT', stamp:0, poster:0, cards:[
+        mk('teal',0,'Dating profile roast · ₹99',99,'Bio se 5th photo tak — pehle full roast, phir full rebuild. Rizz loading.','PROFILE FIX','HINGLISH','100% SAVAGE','♡ 2K GLOW-UPS','AVAILABLE NOW',0,'Tara Bose','30 MIN',[1,3,8,10,15,17]),
+        mk('butter',1,'Saree draping SOS · ₹129',129,'Farewell hai aur pleats nahi ban rahi? 30 minute mein scene sorted.','STYLING','HINDI','✓ 900 DRAPES','★ 4.9 · 410','NEXT 4 PM',0,'Meenakshi R','30 MIN',[2,9,16,23,30]),
+        mk('oat',0,'Skincare on a budget · ₹99',99,'Sasta, sundar, science-backed. 10-step nahi — 3-step routine, bas.','SKINCARE','HINGLISH','✓ 3K ROUTINES','★ 4.8 · 655','THU 8 PM',0,'Dr. Ahana','30 MIN',[4,11,18,25]),
+        mk('brick',0,'Rizz coaching with Veer · ₹149',149,'Shah Rukh spread-arms energy, minus the cringe. Confidence 101.','CONFIDENCE','HINGLISH','♡ 85% BOLDER','★ 4.7 · 289','LIVE',1,'Veer Malhotra','40 MIN',[5,12,19,26]),
+        mk('butter',1,'Mehendi & nail art live · ₹79',79,'Shaadi season prep. Ek haath practice, ek haath masterpiece.','ART','HINDI','✓ 240 SESSIONS','★ 4.9 · 372','SAT 3 PM',0,'Rukhsar Apa','60 MIN',[6,13,20,27]),
+        mk('teal',0,'Thrift fit check · ₹59',59,'Wardrobe wahi, styling nayi. Sarojini finds ko runway banao.','FASHION','HINGLISH','♡ 1.4K FITS','★ 4.8 · 520','TONIGHT 7 PM',0,'Jassi Sandhu','30 MIN',[7,14,21,28]),
+        mk('brick',0,'Beard & hair rescue · ₹89',89,"Barber ko exactly kya bolna hai, seekho. 'Bas thoda sa' ka sach.",'GROOMING','HINDI','✓ 700 RESCUES','★ 4.7 · 244','FRI 6 PM',0,'Ustad Salim','25 MIN',[1,8,15,22,29]),
+        mk('oat',0,'Insta glow-up audit · ₹119',119,'Grid, captions, reels — full makeover. Aesthetic on point, yaar.','SOCIALS','HINGLISH','✓ 1K AUDITS','★ 4.8 · 431','SUN 5 PM',0,'Kiara Nanda','40 MIN',[6,13,20,27])
+      ]}
+    ];
+    return this._data;
+  }
+
+  renderVals() {
+    const S = this.state, defs = this.getData();
+    const masala = this.props.masala ?? true;
+    const ctaColor = this.props.ctaColor ?? '#d93825';
+    const liveOnly = this.props.liveOnly ?? false;
+    const perSec = S.w < 760 ? 4 : 8;
+    const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    const pr = { all: p => true, u: p => p < 100, m: p => p >= 100 && p <= 199, h: p => p >= 200 };
+    const ql = S.q.trim().toLowerCase();
+    const match = c =>
+      pr[S.price](c.price) &&
+      (!ql || (c.title + ' ' + c.name + ' ' + c.s1 + ' ' + c.s2).toLowerCase().includes(ql)) &&
+      (!liveOnly || c.live) &&
+      (S.selD == null || c.days.includes(S.selD));
+
+    let total = 0;
+    const sections = [];
+    for (const def of defs) {
+      if (S.cat !== 'all' && def.id !== S.cat) continue;
+      if (S.cat === 'all' && def.hideInAll) continue;
+      const f = def.cards.filter(match);
+      total += f.length;
+      sections.push({
+        eyebrow: def.eyebrow, title: def.title, title2: def.title2,
+        punch: def.punch, punchOn: masala,
+        stampOn: masala && !!def.stamp, posterOn: masala && !!def.poster,
+        kind: def.kind, tag: def.tag,
+        countLabel: 'SHOWING ' + f.length + ' OF ' + def.cards.length + (f.length < def.cards.length ? ' · FILTER LAGA HAI' : ' · SAB HAAZIR'),
+        empty: f.length === 0,
+        cards: f.slice(0, perSec).map(c => {
+          const fav = !!S.favs[c.id];
+          return { ...c,
+            hBg: fav ? '#d93825' : '#fdf1d3', hCol: fav ? '#fdf1d3' : '#161614', hG: fav ? '♥' : '♡',
+            hPick: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(s => ({ favs: { ...s.favs, [c.id]: !s.favs[c.id] } })); }
+          };
+        })
+      });
+    }
+
+    const catDefs = [
+      { id: 'all', label: 'Everything', sub: 'PURA BAZAAR', count: 40, kind: 'jhalar' },
+      { id: 'stream', label: 'Live streaming', sub: 'PAWRI ZONE', count: 8, kind: 'tassels' },
+      { id: 'friends', label: 'Live friends', sub: 'DIL KA SCENE', count: 8, kind: 'chai' },
+      { id: 'adda', label: 'Adda rooms', sub: 'AJNABI ZONE', count: 8, kind: 'lotus' },
+      { id: 'astro', label: 'Astro & tarot', sub: 'KISMAT DESK', count: 8, kind: 'eyes' },
+      { id: 'ai', label: 'AI voice agents', sub: 'ROBOT DOST', count: 8, kind: 'auto' },
+      { id: 'consult', label: 'Consulting', sub: 'GYAAN DESK', count: 8, kind: 'eyes' },
+      { id: 'glow', label: 'Glow-up studio', sub: 'SWAG DESK', count: 8, kind: 'lotus' }
+    ];
+    const tiles = catDefs.filter(k => k.id !== 'all' && k.id !== 'astro' && k.id !== 'glow').map(k => ({
+      label: k.label, sub: k.count + ' LISTINGS · ' + k.sub, kind: k.kind,
+      sh: S.cat === k.id ? '6px 7px 0 ' + ctaColor : '5px 6px 0 #161614',
+      col: S.cat === k.id ? '#d93825' : '#161614',
+      mark: S.cat === k.id ? '●' : '',
+      pick: () => this.setState({ cat: k.id })
+    }));
+    const cats = catDefs.map(k => ({
+      label: k.label, count: k.count,
+      dot: S.cat === k.id ? '#d93825' : 'transparent',
+      wt: S.cat === k.id ? 700 : 500,
+      pick: () => this.setState({ cat: k.id })
+    }));
+    const prices = [
+      { id: 'all', label: 'SAB' }, { id: 'u', label: 'UNDER ₹100' }, { id: 'm', label: '₹100–199' }, { id: 'h', label: '₹200+' }
+    ].map(p => ({
+      label: p.label,
+      bg: S.price === p.id ? '#d93825' : '#fdf1d3', col: S.price === p.id ? '#fdf1d3' : '#161614',
+      pick: () => this.setState({ price: p.id })
+    }));
+
+    const catCards = defs.filter(d => S.cat === 'all' || d.id === S.cat).flatMap(d => d.cards)
+      .filter(c => pr[S.price](c.price) && (!ql || (c.title + ' ' + c.name).toLowerCase().includes(ql)));
+    const avail = new Set(catCards.flatMap(c => c.days));
+    const firstDow = new Date(S.calY, S.calM, 1).getDay();
+    const dim = new Date(S.calY, S.calM + 1, 0).getDate();
+    const calCells = [];
+    for (let i = 0; i < firstDow; i++) calCells.push({ t: '', bg: 'transparent', col: '#161614', dot: false, pick: () => {} });
+    for (let d = 1; d <= dim; d++) {
+      const sel = S.selD === d;
+      calCells.push({
+        t: String(d),
+        bg: sel ? '#d93825' : 'transparent',
+        col: sel ? '#fdf1d3' : (avail.has(d) ? '#161614' : '#b39c82'),
+        dot: avail.has(d) && !sel,
+        pick: () => this.setState(s => ({ selD: s.selD === d ? null : d, calOpen: false }))
+      });
+    }
+
+    const parts = [];
+    parts.push(total + ' LISTING' + (total === 1 ? '' : 'S'));
+    parts.push(S.cat === 'all' ? 'PURA BAZAAR' : catDefs.find(k => k.id === S.cat).label.toUpperCase());
+    if (S.price !== 'all') parts.push({ u: 'UNDER ₹100', m: '₹100–199', h: '₹200+' }[S.price]);
+    if (S.selD != null) parts.push(S.selD + ' ' + MN[S.calM].slice(0, 3).toUpperCase());
+    if (ql) parts.push('“' + S.q.trim().toUpperCase() + '”');
+
+    const stacked = S.w < 960;
+    return {
+      masala, ctaColor,
+      asideMax: stacked ? '100%' : '290px',
+      asidePos: stacked ? 'static' : 'sticky',
+      q: S.q,
+      onSearch: e => this.setState({ q: e.target.value }),
+      noop: () => {},
+      goDetails: () => { window.location.href = 'avaTOK Listing Details.dc.html'; },
+      clearAll: () => this.setState({ cat: 'all', price: 'all', q: '', selD: null }),
+      tiles, cats, prices, sections,
+      calOpen: S.calOpen,
+      calToggle: () => this.setState(s => ({ calOpen: !s.calOpen })),
+      calLabel: S.selD != null ? S.selD + ' ' + MN[S.calM].slice(0, 3).toUpperCase() + ' ' + S.calY + ' · FILTER ON' : 'KOI BHI DIN',
+      calLabelCol: S.selD != null ? '#d93825' : '#161614',
+      calCaret: S.calOpen ? '▲' : '▼',
+      metaLine: parts.filter(Boolean).join(' · '),
+      monthLabel: MN[S.calM] + ' ' + S.calY,
+      prevM: () => this.setState(s => ({ calM: s.calM === 0 ? 11 : s.calM - 1, calY: s.calM === 0 ? s.calY - 1 : s.calY, selD: null })),
+      nextM: () => this.setState(s => ({ calM: s.calM === 11 ? 0 : s.calM + 1, calY: s.calM === 11 ? s.calY + 1 : s.calY, selD: null })),
+      calCells
+    };
+  }
+}
+</script>
+</body>
+</html>

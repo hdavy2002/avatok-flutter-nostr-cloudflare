@@ -178,6 +178,31 @@ design/
 # controls the site's entire palette could not be committed by normal means.
 !web/design/
 !web/design/**
+
+# [DESIGN-PREVIEW-1 2026-08-26] …and NOT the live-streaming mockups, which are
+# now tracked so `design-preview.yml` can publish them to the `avatok-design`
+# Pages project. CI checks out the repo — an ignored file is a file CI cannot
+# deploy, which is the only reason these moved into git.
+#
+# Only the ~7MB that actually RENDERS is tracked: the .dc.html pages, the
+# support.js runtime, README.md and assets/. Deliberately still ignored, because
+# no page references any of it: uploads/ (26MB of raw drops),
+# design_handoff_avatok_auth/, _src/, .thumbnail and the .jsx device frames.
+#
+# `design/` on line 171 excludes the DIRECTORY, and git will not descend into an
+# excluded directory — so a bare `!design/live-streaming/**` does nothing. The
+# parent has to be re-included first, then its other children re-excluded. Hence
+# the alternating negations below; do not "simplify" them into one line.
+!design/
+/design/*
+!/design/live-streaming/
+/design/live-streaming/*
+!/design/live-streaming/*.dc.html
+!/design/live-streaming/index.html
+!/design/live-streaming/support.js
+!/design/live-streaming/README.md
+!/design/live-streaming/assets/
+!/design/live-streaming/assets/**
 tools/
 
 Specs/AUDIT-2026-08-07-guardian-and-ava-in-chat.md

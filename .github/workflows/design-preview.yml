@@ -1,0 +1,60 @@
+# Publish the static design mockups in design/live-streaming/ to a SEPARATE
+# Cloudflare Pages project so the owner can click through them in a browser.
+#
+# ⚠️ THIS IS NOT THE LIVE SITE. The real avatok.ai web client is web/ and is
+# deployed by web-deploy.yml to the Pages project `avatok-app`. This workflow
+# deploys to `avatok-design` — a different project, a different hostname, and
+# it must STAY different. Never point this at avatok-app: the mockups run on
+# hardcoded mock data with no backend, and publishing them over the real site
+# would replace a working marketplace with a design comp.
+#
+# The mockups are plain static files (support.js is a self-contained runtime and
+# every page "opens directly in a browser" per design/live-streaming/README.md),
+# so there is no build step — the folder is uploaded as-is.
+#
+# workflow_dispatch ONLY, deliberately. Adding a `push:` trigger here would also
+# break scripts/git_safe_push.py for every agent (see PUSH_TRIGGER_ALLOWED in
+# that script — only web-deploy.yml is allowlisted).
+name: Deploy design preview (Cloudflare Pages)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: design-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard — refuse to deploy over the live site
+        run: |
+          if [ "${{ vars.DESIGN_PAGES_PROJECT }}" = "avatok-app" ]; then
+            echo "::error::Refusing to publish design mockups over the live avatok-app project."
+            exit 1
+          fi
+          test -f "design/live-streaming/index.html" \
+            || { echo "::error::design/live-streaming/index.html missing — no entry point."; exit 1; }
+
+      - name: Create the Pages project if it does not exist
+        uses: cloudflare/wrangler-action@v3
+        continue-on-error: true      # already-exists is the expected steady state
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create avatok-design --production-branch=main
+
+      - name: Deploy to Cloudflare Pages (avatok-design)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy "design/live-streaming"
+            --project-name=avatok-design
+            --branch=main
+            --commit-hash=${{ github.sha }}
