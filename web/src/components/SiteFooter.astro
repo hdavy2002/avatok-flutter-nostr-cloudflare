@@ -1,26 +1,30 @@
 ---
-// Universal site footer — used by BOTH layouts:
-//   • Base.astro      (marketing / app pages, when `chrome` is true)
-//   • Content.astro   (editorial legal + policy pages)
-// Before 2026-08-05 these were two different footers listing different links,
-// so the legal pages exposed only 4 of ~19 policies. One component now, so a
-// new policy gets added in exactly one place.
+// [WEB-FOOTER-2 2026-08-26] Site footer, rebuilt to the bazaar design.
 //
-// Self-contained: styles are scoped and define their own tokens locally, so
-// nothing leaks into app pages. Fonts are @font-face'd in global.css.
+// Owner: use the footer from the design comp (truck-art strips, Horn OK Please
+// art, the Kalam sign-off, dark panel). This is that design.
 //
-// [AVA-IDGATE-1] /biometric-retention MUST stay linked here. BIPA §15(a)
-// requires the retention schedule to be PUBLICLY AVAILABLE; a page reachable
-// only by direct URL is a weak reading of that. Do not remove that link.
-//
-// Mobile: each column becomes a <details> accordion so ~19 links stay usable
-// on a phone instead of turning the footer into an endless scroll.
+// ─── EVERY EXISTING LINK IS STILL HERE, ON PURPOSE ──────────────────────────
+// The comp draws three short columns (~12 links). This footer carried 26,
+// several of which are not editorial choices:
+//   * Grievance Redressal — named grievance officer contact is required of an
+//     intermediary under India's IT Rules 2021;
+//   * Child Safety Standards — required by the Play Store listing, which links
+//     to it directly;
+//   * Privacy Policy, Terms, Refunds, DMCA, Biometric Data Schedule — linked
+//     from the app listing and from consent flows.
+// Dropping them to match the comp's link count would have been a compliance
+// regression dressed as a design change, so the comp's LOOK is adopted and the
+// link set is kept whole, spread over five columns instead of three. If the
+// owner wants fewer links, that is a decision to take on the legal ones
+// deliberately, not a side effect of restyling.
+import TruckBorder from './TruckBorder.astro';
 
 const year = new Date().getFullYear();
 
 const columns = [
   {
-    title: 'Product',
+    title: 'Bazaar',
     links: [
       { href: '/#live-friends', label: 'Live Friends' },
       { href: '/#live-streaming', label: 'Live Streaming' },
@@ -71,165 +75,167 @@ const columns = [
 ];
 ---
 
-<footer class="ava-footer">
-  <div class="wrap">
+<footer class="bazaar-footer">
+  <TruckBorder kind="chai" count={40} />
 
-    <div class="top">
-      <div class="brand-col">
-        <a class="brand" href="/">
-          <img src="/app-logo2.png" alt="" width="38" height="38" />
-          <span class="wm">ava<span class="tok">TOK</span></span>
-        </a>
-        <p class="desc">
-          India's marketplace for live companionship, paid streams, private consultations, and creator-trained AI voices.
-        </p>
-      </div>
-
-      {columns.map((col) => (
-        <nav class="col" aria-label={col.title}>
-          <h4>{col.title}</h4>
-          {col.links.map((l) => <a href={l.href}>{l.label}</a>)}
-        </nav>
-      ))}
-
-      {columns.map((col) => (
-        <details class="acc">
-          <summary>{col.title}</summary>
-          <div>{col.links.map((l) => <a href={l.href}>{l.label}</a>)}</div>
-        </details>
-      ))}
+  <div class="bf-main">
+    <div class="bf-brand">
+      <a class="bf-logo" href="/" aria-label="avaTOK home"><span>ava</span><span>TOK</span></a>
+      <p class="bf-tag">India's live creator bazaar. Seat book karo, kursi kheencho, apna time lo.</p>
+      <span class="bf-script">Aapki awaaz, duniya tak.</span>
     </div>
 
-    <div class="bottom">
-      <span>© {year} Ava Global International Pvt Ltd &amp; Ava Global International, Inc. All rights reserved.</span>
-      <span class="mini">
-        <a href="/privacy">Privacy</a>
-        <a href="/terms">Terms</a>
-        <a href="/cookies">Cookies</a>
-        <a href="/grievance">Grievance</a>
-      </span>
-    </div>
+    {columns.map((col) => (
+      <nav class="bf-col" aria-label={col.title}>
+        <h2 class="bf-col-title">{col.title}</h2>
+        {col.links.map((l) => <a href={l.href}>{l.label}</a>)}
+      </nav>
+    ))}
 
-    <p class="made">Made in India <span class="heart" role="img" aria-label="with love">♥</span></p>
+    <div class="bf-art">
+      {/* Already on the site for the auth screens, so this costs no new asset. */}
+      <img src="/auth/horn-ok-please.png" alt="Horn OK Please" width="250" height="150" loading="lazy" />
+      <span class="bf-art-line">OK TATA · PHIR MILENGE</span>
+      <span class="bf-art-hi">फिर आना!</span>
+    </div>
   </div>
+
+  <div class="bf-legal">
+    <div class="bf-legal-inner">
+      <span>BURI NAZAR WALE, TERA MUH KALA · USE DIPPER AT NIGHT</span>
+      <span>© {year} AVATOK · MADE WITH ♥ AND CUTTING CHAI</span>
+    </div>
+  </div>
+
+  <div class="bf-rule"></div>
+  <TruckBorder kind="auto" count={40} />
+  <TruckBorder kind="tassels" count={44} />
 </footer>
 
 <style>
-  .ava-footer {
-    --paper: #f3efe3;
-    --ink: #181816;
-    --ink-soft: #5c5f66;
-    --rule: rgba(24, 24, 22, 0.16);
-    --accent: #16aeb4;
-
-    border-top: 2px solid var(--ink);
-    background: var(--paper);
-    color: var(--ink);
-    padding: 56px 0 30px;
-    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 15px;
-    line-height: 1.6;
-
-    /* Defensive resets. The home page injects a self-contained landing document
-       whose CSS includes a bare `footer { display:flex; flex-direction:column;
-       align-items:center; text-align:center; gap:22px }` rule. That element
-       selector would otherwise reach into this component and collapse the whole
-       layout into a centred column. Pin the properties it sets. */
-    display: block;
-    flex-direction: initial;
-    justify-content: initial;
-    align-items: initial;
-    gap: 0;
-    text-align: left;
-  }
-  .ava-footer .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 26px; }
-  .ava-footer a { color: inherit; text-decoration: none; }
-  .ava-footer a:hover { color: var(--accent); text-decoration: underline; }
-
-  /* ---------- top ---------- */
-  .ava-footer .top {
-    display: grid;
-    grid-template-columns: 1.4fr repeat(5, 1fr);
-    gap: 30px;
-    padding-bottom: 34px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .ava-footer .brand { display: flex; align-items: center; gap: 9px; }
-  .ava-footer .brand img { width: 38px; height: 38px; border-radius: 50%; }
-  .ava-footer .wm { font-size: 23px; font-weight: 800; letter-spacing: -.04em; }
-  .ava-footer .tok { color: var(--accent); }
-  .ava-footer .desc { margin: 12px 0 0; max-width: 290px; color: var(--ink-soft); font-size: 14px; }
-
-  .ava-footer .col { display: flex; flex-direction: column; gap: 9px; }
-  .ava-footer .col h4 {
-    margin: 0 0 4px; font-size: 12px; font-weight: 800;
-    letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
-  }
-  .ava-footer .col a { font-size: 14px; color: var(--ink-soft); }
-
-  .ava-footer .acc { display: none; }
-
-  /* ---------- bottom ---------- */
-  .ava-footer .bottom {
-    display: flex; flex-wrap: wrap; gap: 12px 22px;
-    align-items: center; justify-content: space-between;
-    padding-top: 22px; font-size: 13px; color: var(--ink-soft);
-  }
-  .ava-footer .mini { display: flex; flex-wrap: wrap; gap: 18px; }
-  .ava-footer .mini a { font-weight: 700; }
-  .ava-footer .made { margin: 16px 0 0; text-align: center; font-size: 13px; color: var(--ink-soft); }
-  .ava-footer .heart { color: #e53935; }
-
-  /* Long labels ("Payouts & Withdrawals") must never force a column wider than
-     its track and blow out the grid. */
-  .ava-footer .col a,
-  .ava-footer .acc a { overflow-wrap: anywhere; }
-
-  /* ---------- tablet ----------
-     Breakpoint is 1180px, NOT 1020px. iPad landscape and the 12.9" iPad Pro in
-     portrait are both exactly 1024px CSS px — at a 1020px breakpoint they fell
-     into the six-column desktop grid, leaving ~128px per column and wrapping
-     every two-word link onto three lines. 1180px puts every iPad on the
-     three-column layout. iPad portrait (768/834) and iPad mini (744) also land
-     here, above the 720px accordion breakpoint, which is what we want: tablets
-     get real columns, phones get accordions. */
-  @media (max-width: 1180px) {
-    .ava-footer .top { grid-template-columns: 1fr 1fr 1fr; gap: 26px 22px; }
-    .ava-footer .brand-col { grid-column: 1 / -1; }
-    .ava-footer .desc { max-width: 520px; }
+  /* Colours are literals rather than tokens because this footer is a direct port
+     of the comp, which is the source of truth for the bazaar palette. */
+  .bazaar-footer {
+    background: #161614;
+    color: #fdf1d3;
+    border-top: 3px solid #161614;
   }
 
-  /* ---------- phone: columns become accordions ---------- */
-  /* Phone type is deliberately much larger than desktop. At the previous
-     13–15px the footer read as fine print next to the 18px body copy on the
-     policy pages, which is the wrong signal for links people are meant to
-     actually use. Tap targets are sized with it. */
-  @media (max-width: 720px) {
-    .ava-footer { padding: 40px 0 30px; font-size: 18px; }
-    .ava-footer .wrap { padding: 0 18px; }
-    .ava-footer .top { display: block; padding-bottom: 8px; border-bottom: 0; }
-    .ava-footer .brand-col { margin-bottom: 22px; }
-    .ava-footer .col { display: none; }
-    .ava-footer .wm { font-size: 27px; }
-    .ava-footer .desc { font-size: 17px; line-height: 1.5; }
+  .bf-main {
+    max-width: 100rem;
+    margin: 0 auto;
+    padding: 56px clamp(16px, 4vw, 40px) 44px;
+    display: flex;
+    gap: 3rem;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
 
-    .ava-footer .acc { display: block; border-top: 1px solid var(--rule); }
-    .ava-footer .acc summary {
-      list-style: none; cursor: pointer; padding: 17px 2px;
-      font-size: 19px; font-weight: 800; letter-spacing: .02em;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .ava-footer .acc summary::-webkit-details-marker { display: none; }
-    .ava-footer .acc summary::after { content: '+'; font-size: 26px; font-weight: 600; line-height: 1; }
-    .ava-footer .acc[open] summary::after { content: '–'; }
-    .ava-footer .acc div { display: flex; flex-direction: column; gap: 4px; padding: 2px 2px 14px; }
-    /* padding, not gap, so each row is a ≥44px tap target */
-    .ava-footer .acc a { font-size: 19px; line-height: 1.35; padding: 9px 0; color: var(--ink-soft); }
+  .bf-brand { flex: 1 1 17.5rem; }
 
-    /* the entity block used to carry this rule; .top drops its border on phones */
-    .ava-footer .bottom { flex-direction: column; align-items: flex-start; gap: 14px; font-size: 16px; border-top: 1px solid var(--rule); padding-top: 22px; }
-    .ava-footer .mini { gap: 14px 22px; }
-    .ava-footer .mini a { font-size: 17px; padding: 4px 0; }
-    .ava-footer .made { font-size: 16px; }
+  .bf-logo {
+    display: flex;
+    align-items: baseline;
+    gap: 0.0625rem;
+    font-family: 'Anton', Impact, sans-serif;
+    /* Anton ships one weight; see the font-synthesis note in global.css. */
+    font-weight: 400;
+    font-size: 1.875rem;
+    margin-bottom: 14px;
+    text-decoration: none;
+  }
+  .bf-logo span:first-child { color: #fdf1d3; }
+  .bf-logo span:last-child {
+    color: #d93825;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-weight: 900;
+    font-size: 1.8125rem;
+  }
+
+  .bf-tag {
+    margin: 0 0 18px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.5;
+    color: #c9b8a4;
+    max-width: 36ch;
+  }
+
+  .bf-script {
+    font-family: 'Kalam', cursive;
+    font-size: 1.25rem;
+    color: #e8a08f;
+    transform: rotate(-2deg);
+    display: inline-block;
+  }
+
+  .bf-col { flex: 1 1 9.375rem; display: flex; flex-direction: column; }
+
+  .bf-col-title {
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #e8a08f;
+    margin: 0 0 14px;
+  }
+
+  .bf-col a {
+    color: #c9b8a4;
+    font-size: 0.9062rem;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 0.28rem 0;
+  }
+  .bf-col a:hover { color: #f0d018; }
+  .bf-col a:focus-visible { outline: 2px solid #f0d018; outline-offset: 2px; }
+
+  .bf-art {
+    flex: 1 1 15rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: center;
+  }
+  .bf-art img { width: min(250px, 100%); height: auto; display: block; }
+  .bf-art-line {
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    color: #c9b8a4;
+  }
+  .bf-art-hi {
+    font-family: 'Baloo 2', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 1.125rem;
+    color: #f0d018;
+  }
+
+  .bf-legal { border-top: 1.5px solid rgba(253, 241, 211, 0.22); }
+  .bf-legal-inner {
+    max-width: 100rem;
+    margin: 0 auto;
+    padding: 18px clamp(16px, 4vw, 40px);
+    display: flex;
+    gap: 1.125rem;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    color: #fdf1d3;
+  }
+
+  .bf-rule { border-top: 2px solid #f0d018; }
+
+  @media (max-width: 700px) {
+    .bf-main { gap: 2rem; padding-top: 40px; }
+    .bf-col { flex-basis: 45%; }
   }
 </style>
