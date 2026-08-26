@@ -349,7 +349,104 @@ rulebook" below or `Specs/AVATALK-CLOUDFLARE-RULEBOOK.md` conflict with the new 
 central D1 the high-write message store — messages live in DO-local SQLite per user.
 Still valid: per-account scoping. NOTE (2026-06-10): the old "1:1-only calls" rule
 was CHANGED in Phase 10 — group conferences ≤25 via Cloudflare Realtime are now allowed (see
-the product rule below).
+the product rule below). NOTE (2026-08-26): the media-provider half of that rule is
+SUPERSEDED — see the next section.
+
+---
+
+## 🎥 WHO CARRIES MEDIA — GETSTREAM vs CLOUDFLARE (reconciled 2026-08-26)
+
+**Do NOT "restore" calls to Cloudflare.** Three owner decisions overlap here and an
+agent reading only one of them will migrate live calling to the wrong provider. This
+section is the reconciliation; where anything below it, the Engineering rulebook, or
+`Specs/AVATALK-CLOUDFLARE-RULEBOOK.md` says "Cloudflare is the only real-time media
+provider", **that sentence is stale and this section wins.**
+
+### The rule in force TODAY
+
+**GetStream carries all Messenger 1:1 audio AND video. Cloudflare carries neither.**
+
+Owner decision 2026-08-21, `Specs/PLAN-STREAM-ONLY-CALLS-2026-08-21.md` §0, verbatim:
+
+> Stream only. Cloudflare must not handle audio or video calls.
+> No rollback to Cloudflare, no repair of its calling engine.
+> Cloudflare continues to serve every non-call app service.
+
+Enforced by ONE gate: `routeToStreamCallIfEnabled` in
+`app/lib/features/avatok/place_1to1_call.dart:28-48`. Every human 1:1 entry point must
+pass through it before it is allowed to touch the legacy Cloudflare `CallScreen`. Prod
+has `streamCallsEnabled = true`, so the legacy screen is unreachable by construction.
+
+**Why the gate exists — the build-10612 incident (2026-08-21).** Only `place1to1Call`
+honoured the flag. The other eight `CallScreen(` mount sites — chat thread ×4, Recents
+call-back, team inbox call-back, team IVR warm transfer, and the incoming-accept path in
+`push/push_service.dart` — pushed the legacy screen directly and bypassed the flag. Prod
+KV said `streamCallsEnabled = true` while every failing call reported
+`provider = "cloudflare"`. See `Specs/AUDIT-2026-08-21-build-10612-getusermedia-factoryid.md` §3.
+**If you add a new call entry point, it goes through this gate. Never mount `CallScreen`
+directly.**
+
+The legacy Cloudflare engine stays COMPILED and intact as an emergency backup. Turning
+`streamCallsEnabled` off makes every site fall through to it again — that is what keeps
+the flag a real kill switch rather than dead code. **Do not delete it.**
+
+### The rule that is WRITTEN but DORMANT
+
+`Specs/SPEC-2026-08-24-MESSENGER-1TO1-CALL-BILLING-GATE.md:20` splits audio by
+**payment**, not by media type:
+
+| media | provider |
+|---|---|
+| **Free** audio (4 free wall-clock hours/payer/UTC day) | Cloudflare |
+| **Paid** audio | **GetStream** |
+| **All** video, from the first connected second | **GetStream** |
+
+This is gated on `messengerCallBillingEnabled`, which is **`false` in production**, so it
+is NOT in force. It activates only when that flag is flipped, and it then supersedes the
+Stream-only rule for Messenger 1:1. Until then, Stream-only applies.
+
+> ⚠️ The common mis-statement is "audio is Cloudflare only." That is wrong in both
+> regimes: today GetStream carries all audio, and under the billing gate only *free*
+> audio returns to Cloudflare. Never write "audio = Cloudflare" without the word "free".
+
+### What Cloudflare still owns (do NOT move these to GetStream)
+
+- **Group conferences ≤25** — `worker/src/routes/groupcall.ts:54` `PROVIDER = "cloudflare_realtime"`,
+  `GroupCallRoom` DO, cap `MAX_CONF_PARTICIPANTS = 25` at `:52-53`.
+- **STUN/TURN/ICE**, signalling, and every non-call app service.
+- **AvaLive** (`worker/src/routes/live.ts`, Cloudflare Stream Live WHIP/WHEP) and
+  **AvaConsult** (`worker/src/routes/consult.ts`) — both dark (`liveEnabled=false`,
+  `consultEnabled=false`) and both still on the broken `stream_webrtc_flutter` engine.
+  **They must not be re-enabled until migrated, or they fail exactly like 10612 did.**
+
+### Phase 2 commercial lane — GetStream ONLY, no Cloudflare fallback
+
+Paid live events and paid 1:1 consultations
+(`Specs/SPEC-2026-08-24-PHASE-2-GETSTREAM-LIVE-CONSULT-MARKETPLACE.md` §1, lines 12-19):
+*"Cloudflare must not carry, signal, publish, relay, or play Phase 2 media."* Call types
+`avatok_livestream` and `avatok_consult_1to1`, ids minted server-side
+(`worker/src/lib/commercial_stream_sessions.ts:30-55`). All `commercial*` flags are
+`false` in prod. **Never add a Cloudflare media fallback to this lane** — failing closed
+is the specified behaviour, because an unmetered session is a money bug.
+
+### Three lanes, three flags — never confuse them
+
+| Lane | Flag | Prod | Route |
+|---|---|---|---|
+| A1 — old hand-rolled pilot, **audio-only**, forces video to Cloudflare | `streamCallPilotEnabled` | `false` | `prepareStreamCall`, `selectCallProvider` (`stream_video_calls.ts:184-205`) |
+| A2 — **the live lane**, audio **and** video | `streamCallsEnabled` | **`true`** | `POST /api/stream-calls/place` (`stream_video_calls.ts:915`) |
+| B — commercial live/consult | `commercial*` | `false` | `/api/commercial/*` |
+
+`remote_config.dart:167-206` forbids A1 and A2 both being on. **A1's audio-only
+restriction does not describe production** — quoting `selectCallProvider` as evidence
+that "GetStream is audio-only" is a documented mistake; it governs the dormant lane.
+
+### Unverifiable from this repo
+
+**GetStream region (Mumbai / `ap-south`) is NOT configured in code.** No region, edge or
+geo setting exists in `stream_video_calls.ts`, `commercial_stream_sessions.ts`,
+`stream_lane.dart` or `wrangler.toml`. It is an app-level setting in the GetStream
+dashboard. Do not assert the region from the codebase — check the console.
 
 ---
 
@@ -447,12 +544,18 @@ literal text / string search (TODOs, error messages, arbitrary tokens).
 
 **AvaTOK product rule — RULE CHANGE 2026-06-10 (owner decision, Phase 10).**
 Group conferences ARE allowed in AvaTalk groups, **≤25 participants, via Cloudflare Realtime**
-(`worker/src/routes/groupcall.ts` + `app/lib/features/conference/`). Cloudflare is
-the only real-time media provider: SFU, TURN, ICE delivery, and signalling all
-stay Cloudflare-native. Cloudflare STUN is primary and Google Public STUN is the
-owner-approved discovery-only fallback. 1:1 calls
-stay P2P (CallRoom DO, **2-peer cap unchanged** — group conferences never touch
-it; do NOT raise the cap). Group/conference CONSULTING still lives in AvaConsult.
+(`worker/src/routes/groupcall.ts` + `app/lib/features/conference/`). Cloudflare owns the
+GROUP conference SFU, plus TURN, ICE delivery and signalling everywhere. Cloudflare STUN
+is primary and Google Public STUN is the owner-approved discovery-only fallback.
+
+> ⚠️ **AMENDED 2026-08-26.** This paragraph used to read "Cloudflare is the only
+> real-time media provider" and to say 1:1 calls stay P2P on the CallRoom DO. **Both
+> claims are now false for Messenger 1:1**, which moved to GetStream on 2026-08-21
+> (`streamCallsEnabled = true` in prod). See **"WHO CARRIES MEDIA"** above — it wins over
+> this paragraph. The 2-peer CallRoom cap is unchanged and group conferences still never
+> touch it; do NOT raise the cap.
+
+Group/conference CONSULTING still lives in AvaConsult.
 Enforcement: group-thread call icons active only when `memberCount <= 25`
 (otherwise greyed + a notice popup), the Worker rejects start/join for >25-member
 groups, and the Cloudflare Realtime participant cap of 25 is the server-side backstop. All gated
