@@ -31,6 +31,13 @@ on:
     paths:
       - 'web/**'
       - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
+      # [DESIGN-FLUID-1 2026-08-26] The bazaar comps are now SITE SOURCE, not
+      # just preview material: prebuild stages them into web/src/generated/ and
+      # /marketplace and /<creator>/<listing> inline them at build time. Without
+      # this path a design edit deployed to avatok-design.pages.dev while
+      # avatok.ai quietly kept serving the previous build's copy — the two
+      # disagreeing with nothing failing and no run to point at.
+      - 'design/live-streaming/**'
       - '.github/workflows/web-deploy.yml'
   workflow_dispatch:                  # allow manual "Run workflow"
 
