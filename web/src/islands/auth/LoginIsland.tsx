@@ -159,11 +159,21 @@ function Inner() {
     setFormError(null);
     try {
       const res = await signIn.create({ identifier: email.trim(), password });
-      if (res.status === 'complete') { await finish(res); return; }
+      if (res.status === 'complete' && res.createdSessionId) { await finish(res); return; }
       if (await advance(res)) return;
-      // Genuinely nothing we can drive — say what to do next rather than
-      // leaving the user staring at the form.
-      setFormError('We can’t finish signing in here. Try “Forgot password”, or contact support.');
+      // Genuinely nothing we can drive. Point at the email-code route, which is
+      // available on this instance and does not depend on the password path.
+      //
+      // The status is logged rather than shown: it is meaningless to the person
+      // reading it, but it is the one thing needed to diagnose this, and there
+      // is no PostHog in the web client to send it to.
+      console.warn('[avatok] unhandled sign-in status', {
+        status: res.status,
+        createdSessionId: res.createdSessionId,
+        firstFactors: res.supportedFirstFactors?.map((f: Factor) => f.strategy),
+        secondFactors: res.supportedSecondFactors?.map((f: Factor) => f.strategy),
+      });
+      setFormError('That didn’t complete. Use “Email me a code instead” below — it works without your password.');
     } catch (err) {
       setFormError(clerkError(err));
     } finally {
@@ -186,6 +196,43 @@ function Inner() {
         : await signIn.attemptSecondFactor({ strategy: 'totp', code: code.trim() });
       if (res.status === 'complete') { await finish(res); return; }
       setFormError('That code didn’t complete sign-in. Please try again.');
+    } catch (err) {
+      setFormError(clerkError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /**
+   * Sign in with an emailed code and NO password.
+   *
+   * [WEB-AUTH-CODE-1 2026-08-26] This is a first-class route, not a fallback.
+   * The password path can fail in ways the browser cannot fix — a password that
+   * was never set, one Clerk rejects as breached (`enforce_hibp_on_sign_in` is
+   * on for this instance), or a status we don't recognise. Any of those used to
+   * mean no way in at all. `email_code` is offered by Clerk for these accounts
+   * (verified live) and depends on none of it.
+   */
+  async function emailCodeInstead() {
+    if (!isLoaded || !signIn || submitting) return;
+    const err = validateEmail(email);
+    if (err) { setErrors((e) => ({ ...e, email: err })); return; }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await signIn.create({ identifier: email.trim() });
+      const emailAddressId = factorWithId(
+        res.supportedFirstFactors as Factor[] | null | undefined,
+        'email_code', 'emailAddressId',
+      );
+      if (!emailAddressId) {
+        setFormError('We can’t email a code to that address. Check the email and try again.');
+        return;
+      }
+      await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
+      setCodeKind('first');
+      setStage('code');
     } catch (err) {
       setFormError(clerkError(err));
     } finally {
@@ -260,7 +307,14 @@ function Inner() {
         Log in
       </Button>
 
-      {SOCIAL_ENABLED && <Divider label="Ya phir" />}
+      <Divider label="Ya phir" />
+
+      {/* Password-free way in. Always visible — a person who has forgotten
+          whether they ever set a password shouldn't have to fail first. */}
+      <Button variant="ghost" onClick={() => void emailCodeInstead()} disabled={stalled || submitting}>
+        Email me a code instead
+      </Button>
+
       <SocialPair />
 
       <div className="auth-foot">
