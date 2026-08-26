@@ -8,45 +8,127 @@
 <body>
 <x-dc>
 <!-- avaTOK standard site header.
-     [WEB-HEADER-6 2026-08-26] This is now a FAITHFUL copy of the live site's
-     header (web/src/components/SiteHeader.astro), not a lookalike: the same
-     hand-drawn wordmark and marigold ornament PNGs, the same cream ground
-     (#f7ead5), the same 18px/30px bar with a 30px gap, and nav + CTAs at 16px
-     Anton uppercase with 0.05em tracking. The previous version reproduced only
-     the menu ITEMS and kept the comp's own text wordmark, which is why the comp
-     pages still looked different from avatok.ai.
+     [WEB-HEADER-6] A faithful copy of the live site's header
+     (web/src/components/SiteHeader.astro): the same hand-drawn wordmark and
+     marigold ornament, the same cream ground (#f7ead5), an 18px/30px bar with a
+     30px gap, and nav plus CTAs at 16px Anton uppercase with 0.05em tracking.
 
-     The two images are absolute https://avatok.ai/ URLs on purpose. Every comp
-     is served with <base href="https://avatok-design.pages.dev/">, so a relative
-     /avatok-logo.png would resolve against the preview origin and 404. Absolute
-     URLs render correctly BOTH here and on the standalone preview.
+     Both images are absolute https://avatok.ai/ URLs on purpose. Every comp is
+     served with <base href="https://avatok-design.pages.dev/">, so a
+     root-relative /avatok-logo.png resolves against the preview origin and 404s.
+     Absolute renders correctly BOTH here and on the standalone preview.
+
+     [WEB-HEADER-7 2026-08-26] The menu collapses to a hamburger at 1100px — the
+     same breakpoint SiteHeader.astro uses — so phones AND iPads (768 portrait,
+     1024 landscape) get the button instead of a nav wrapping into ragged rows.
+
+     Built on <details>/<summary>, NOT a click handler. This file is a Design
+     Component: support.js re-renders its markup and the only script slot belongs
+     to the DCLogic class, so a listener bound here has nothing dependable to
+     attach to. <details> needs no JavaScript — it opens on click and on
+     Enter/Space and is announced properly by screen readers. Do not "upgrade" it
+     to a button plus a listener.
+
+     ONLY the panel lives inside <details>. A closed <details> hides every child
+     except its <summary>, so putting the bar in there would blank the header on
+     desktop. The panel is absolutely positioned against .avh-c instead, which is
+     why that element is position:relative.
 
      Keep this in step with SiteHeader.astro. If a menu item changes there,
-     change it here — the whole point is that the comps stop diverging.
+     change it here — the comps are a separate document tree and cannot import
+     the Astro component. -->
+<style>
+  .avh-c { position: relative; }
+  .avh-c-bar { display: flex; align-items: center; gap: 1.875rem; padding: 18px 30px; }
+  .avh-c-nav { display: flex; align-items: center; gap: 1.5rem; }
+  .avh-c-cta { display: flex; align-items: center; gap: 0.875rem; margin-left: auto; }
+  .avh-c-menu { display: none; }
+  .avh-c a {
+    font-family: 'Anton', sans-serif; font-weight: 400; font-size: 1rem;
+    letter-spacing: .05em; text-transform: uppercase; color: #161614;
+    white-space: nowrap; text-decoration: none;
+  }
+  .avh-c a.is-current { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .avh-c a.solid { background: #d93825; color: #fdf1d3; border-radius: 100px; padding: 12px 26px; }
 
-     The jhalar band above the bar is the one piece that travelled the other way:
-     it was in the comps first and is now in SiteHeader.astro too. -->
+  @media (max-width: 1100px) {
+    /* Nav and the marigold give way to the button, as the site header does. */
+    .avh-c-nav, .avh-c-orn { display: none; }
+    .avh-c-menu { display: block; margin-left: auto; }
+    .avh-c-cta { margin-left: 0; }
+
+    .avh-c-summary {
+      list-style: none;
+      display: flex; align-items: center; gap: 10px;
+      border: 2px solid #161614; border-radius: 100px;
+      padding: 9px 15px; cursor: pointer;
+      font-family: 'Anton', sans-serif; font-size: 0.875rem;
+      letter-spacing: .05em; text-transform: uppercase;
+    }
+    .avh-c-summary::-webkit-details-marker { display: none; }
+    .avh-c-bars {
+      display: block; width: 19px; height: 2.6px; background: #161614;
+      border-radius: 2px; box-shadow: 0 6px 0 #161614, 0 12px 0 #161614;
+      margin-bottom: 12px;   /* the shadows draw the lower two bars */
+    }
+
+    .avh-c-panel {
+      position: absolute; left: 0; right: 0; top: 100%; z-index: 70;
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px; padding: 12px 16px 16px;
+      background: #f7ead5; border-bottom: 3px solid #161614;
+    }
+    .avh-c-panel a {
+      display: flex; min-height: 44px;      /* real touch target, not a text link */
+      align-items: center; justify-content: center;
+      border: 2px solid #161614; border-radius: 100px;
+      background: #fff7e6; text-align: center;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .avh-c-bar { gap: 12px; padding: 10px 14px; }
+    .avh-c-logo { height: 2.5rem; }
+    /* Two pill columns stop fitting the longer labels below ~620px. */
+    .avh-c-panel { grid-template-columns: 1fr; }
+    /* Log in as text would push the burger off a narrow phone; Sign up stays. */
+    .avh-c-cta a:not(.solid) { display: none; }
+    .avh-c a.solid { padding: 10px 18px; font-size: 0.875rem; }
+  }
+</style>
 <div><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
-<div style="background:#f7ead5; color:#161614;">
-  <div style="display:flex; align-items:center; gap:1.875rem; padding:18px 30px;">
+<div class="avh-c" style="background:#f7ead5; color:#161614;">
+  <div class="avh-c-bar">
     <a href="#" style="display:flex; align-items:center; flex:0 0 auto;">
-      <img src="https://avatok.ai/avatok-logo.png" alt="avaTOK" style="display:block; height:3.375rem; width:auto;" />
+      <img class="avh-c-logo" src="https://avatok.ai/avatok-logo.png" alt="avaTOK" style="display:block; height:3.375rem; width:auto;" />
     </a>
 
-    <div style="display:flex; align-items:center; gap:1.5rem;">
-      <a href="avaTOK Marketplace.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:4px;">Marketplace</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Live events</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Private sessions</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">AI voice</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Categories</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">For creators</a>
+    <nav class="avh-c-nav">
+      <a class="is-current" href="avaTOK Marketplace.dc.html">Marketplace</a>
+      <a href="#">Live events</a>
+      <a href="#">Private sessions</a>
+      <a href="#">AI voice</a>
+      <a href="#">Categories</a>
+      <a href="#">For creators</a>
+    </nav>
+
+    <div class="avh-c-cta">
+      <a href="avaTOK Auth.dc.html">Log in</a>
+      <a class="solid" href="avaTOK Auth.dc.html">Sign up</a>
+      <img class="avh-c-orn" src="https://avatok.ai/ornament-flower.png" alt="" style="display:block; height:2.875rem; width:auto;" />
     </div>
 
-    <div style="margin-left:auto; display:flex; align-items:center; gap:0.875rem;">
-      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; white-space:nowrap;">Log in</a>
-      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; background:#d93825; color:#fdf1d3; border-radius:100px; padding:12px 26px; white-space:nowrap;">Sign up</a>
-      <img src="https://avatok.ai/ornament-flower.png" alt="" style="display:block; height:2.875rem; width:auto;" />
-    </div>
+    <details class="avh-c-menu">
+      <summary class="avh-c-summary" aria-label="Menu"><span class="avh-c-bars"></span>Menu</summary>
+      <nav class="avh-c-panel">
+        <a href="avaTOK Marketplace.dc.html">Marketplace</a>
+        <a href="#">Live events</a>
+        <a href="#">Private sessions</a>
+        <a href="#">AI voice</a>
+        <a href="#">Categories</a>
+        <a href="#">For creators</a>
+      </nav>
+    </details>
   </div>
 </div>
 </x-dc>
