@@ -35,7 +35,7 @@
 const ASSET_ORIGIN = 'https://avatok-design.pages.dev/';
 
 const FONT_CSS =
-  'https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&family=Silkscreen:wght@400;700&display=swap';
+  'https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&family=Nunito:wght@400;600;700;800;900&display=swap';
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
