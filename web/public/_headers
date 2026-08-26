@@ -1,0 +1,38 @@
+# [WEB-CACHE-1 2026-08-26] Cache policy for avatok.ai.
+#
+# THE BUG THIS FIXES
+#   Every HTML response was going out as
+#     cache-control: public, max-age=2678400, must-revalidate
+#   2678400 seconds is 31 days — Cloudflare's DEFAULT Browser Cache TTL, not
+#   anything this repo asked for. Nothing set a header, so the zone default
+#   applied to the pages themselves.
+#
+#   The effect: a visitor who had ever loaded avatok.ai kept that exact HTML for
+#   a month. Deploys were invisible to them. Worse, the HTML holds hashed
+#   /_astro/<name>.<hash>.css references, and those files are replaced on every
+#   deploy — so a month-old page asks for a stylesheet that no longer exists and
+#   renders as raw unstyled markup with whatever navigation it shipped with.
+#   That is exactly the "site looks fucked" report on 2026-08-26: an old cached
+#   homepage with the retired Receptionist nav and no CSS, while the live site
+#   was fine for anyone loading it fresh.
+#
+#   `must-revalidate` does NOT save you here. It only governs what happens once
+#   an entry is already STALE; for the 31 days the entry is fresh the browser
+#   never asks the server anything.
+#
+# THE RULE
+#   HTML is the index that names every hashed asset, so it must never outlive a
+#   deploy. Everything content-hashed can be cached forever, because a new build
+#   produces a new filename rather than new contents at the same URL.
+
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Content-hashed by Astro — the filename changes whenever the bytes do, so these
+# are safe to pin for a year and are what keeps repeat visits fast.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Self-hosted woff2, versioned by deploy path and never edited in place.
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
