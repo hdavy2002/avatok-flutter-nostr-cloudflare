@@ -126,7 +126,7 @@
   .gs-signup { margin: 0 auto; }
   .signup-note { margin-top: 14px; display: flex; align-items: center; gap: 9px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 17px; color: var(--ink-soft); }
   .avatars { display: flex; }
-  .avatars span { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--paper); margin-left: -8px; display: grid; place-items: center; font-family: 'Nunito',system-ui,sans-serif; font-size: 12px; color: #fff; }
+  .avatars span { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--paper); margin-left: -8px; display: grid; place-items: center; font-family: 'Fredoka',sans-serif; font-size: 12px; color: #fff; }
 
   /* hero phone collage */
   .hero-art { position: relative; height: 560px; }
@@ -153,7 +153,7 @@
 
   .post { border: 2.5px solid var(--ink); border-radius: 18px; background: var(--card); overflow: hidden; }
   .post-h { display: flex; align-items: center; gap: 8px; padding: 9px 10px; }
-  .ava { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--ink); display: grid; place-items: center; font-family: 'Nunito',system-ui,sans-serif; font-weight: 600; font-size: 13px; color: #fff; flex: none; }
+  .ava { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--ink); display: grid; place-items: center; font-family: 'Fredoka',sans-serif; font-weight: 600; font-size: 13px; color: #fff; flex: none; }
   .post-h .who { display: flex; flex-direction: column; line-height: 1.05; }
   .post-h .who b { font-size: 13px; }
   .post-h .who .hand { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 10px; color: var(--ink-soft); }
@@ -225,7 +225,7 @@
   .own-list { display: flex; flex-direction: column; gap: 14px; margin-top: 26px; }
   .own-row { display: flex; gap: 14px; align-items: flex-start; }
   .own-row .ck { width: 38px; height: 38px; flex: none; border-radius: 50%; background: var(--blue); color: var(--ink); border: 2.5px solid var(--ink); display: grid; place-items: center; font-size: 19px; }
-  .own-row b { font-family: 'Nunito',system-ui,sans-serif; font-weight: 600; font-size: 22px; }
+  .own-row b { font-family: 'Fredoka',sans-serif; font-weight: 600; font-size: 22px; }
   .own-row p { font-size: 17px; font-weight: 700; color: var(--ink-soft); }
   .vault {
     border: 3px solid var(--ink); border-radius: var(--r); background: var(--card); box-shadow: var(--shadow);
@@ -235,14 +235,14 @@
   .vault-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .vault-item { border: 2.5px solid var(--ink); border-radius: 14px; padding: 13px; display: flex; flex-direction: column; gap: 6px; }
   .vault-item .lbl { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--ink-soft); }
-  .vault-item .big { font-family: 'Nunito',system-ui,sans-serif; font-weight: 600; font-size: 26px; }
+  .vault-item .big { font-family: 'Fredoka',sans-serif; font-weight: 600; font-size: 26px; }
   .keychip { display: inline-flex; align-items: center; gap: 7px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px; padding: 6px 11px; border: 2.5px solid var(--ink); border-radius: 100px; background: var(--lime); }
 
   /* ---------- PROOF ---------- */
   .proof { padding: 80px 0; background: var(--blue); color: var(--ink); border-top: 2.5px solid var(--ink); border-bottom: 2.5px solid var(--ink); position: relative; overflow: hidden; }
   .proof .dotpatch { opacity: .25; }
   .proof-top { text-align: center; margin-bottom: 50px; position: relative; }
-  .bignum { font-family: 'Nunito',system-ui,sans-serif; font-weight: 700; font-size: clamp(72px, 13vw, 168px); line-height: 0.86; letter-spacing: -0.04em; }
+  .bignum { font-family: 'Fredoka',sans-serif; font-weight: 700; font-size: clamp(72px, 13vw, 168px); line-height: 0.86; letter-spacing: -0.04em; }
   .proof-top .sub { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 10px; color: var(--blue-ink); }
   .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 980px; margin: 0 auto; }
   .note {
@@ -266,7 +266,7 @@
   .faq { padding: 30px 0 90px; }
   .faq-grid { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
   .qa { border: 2.5px solid var(--ink); border-radius: 18px; background: var(--card); box-shadow: var(--shadow-sm); overflow: hidden; }
-  .qa summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 24px; font-family: 'Nunito',system-ui,sans-serif; font-weight: 600; font-size: 24px; }
+  .qa summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 24px; font-family: 'Fredoka',sans-serif; font-weight: 600; font-size: 24px; }
   .qa summary::-webkit-details-marker { display: none; }
   .qa .tog { width: 34px; height: 34px; flex: none; border-radius: 50%; border: 2.5px solid var(--ink); display: grid; place-items: center; font-size: 19px; background: var(--lime); transition: transform .2s ease; }
   .qa[open] .tog { transform: rotate(45deg); background: var(--coral); color: #fff; }
@@ -331,7 +331,7 @@
     border: 2.5px solid var(--ink); background: var(--card); box-shadow: 3px 3px 0 var(--ink);
     font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 19px; white-space: nowrap;
   }
-  .chip .glyph { width: 40px; height: 40px; border-radius: 11px; border: 2.5px solid var(--ink); display: grid; place-items: center; color: #fff; font-family: 'Nunito',system-ui,sans-serif; font-weight: 700; font-size: 18px; flex: none; }
+  .chip .glyph { width: 40px; height: 40px; border-radius: 11px; border: 2.5px solid var(--ink); display: grid; place-items: center; color: #fff; font-family: 'Fredoka',sans-serif; font-weight: 700; font-size: 18px; flex: none; }
   @media (prefers-reduced-motion: reduce) { .track.left, .track.right { animation: none; } }
 
   /* ---------- FOR CREATORS ---------- */
@@ -343,7 +343,7 @@
   .bar-row { display: grid; grid-template-columns: 120px 1fr; gap: 18px; align-items: center; }
   .bar-row .lbl { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 20px; }
   .bar-track { height: 46px; border: 2.5px solid var(--ink); border-radius: 100px; background: var(--card); overflow: hidden; position: relative; }
-  .bar-fill { height: 100%; border-radius: 100px; display: flex; align-items: center; justify-content: flex-end; padding-right: 16px; font-family: 'Nunito',system-ui,sans-serif; font-weight: 700; font-size: 17px; color: var(--ink); width: 0; transition: width 1.1s cubic-bezier(.2,.8,.2,1); }
+  .bar-fill { height: 100%; border-radius: 100px; display: flex; align-items: center; justify-content: flex-end; padding-right: 16px; font-family: 'Fredoka',sans-serif; font-weight: 700; font-size: 17px; color: var(--ink); width: 0; transition: width 1.1s cubic-bezier(.2,.8,.2,1); }
   .bar-fill.old { background: oklch(0.86 0.012 220); }
   .bar-fill.ours { background: var(--blue); color: var(--ink); }
   .creators .barnote { margin-top: 22px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 14px; color: var(--ink-soft); }

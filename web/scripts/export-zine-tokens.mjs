@@ -177,22 +177,12 @@ const themeExtend = {
   borderRadius,
   borderWidth,
   boxShadow,
-  // [WEB-THEME-1] The voices from design/tokens/TOKENS.md, with one owner
-  // override: `display` is Nunito, not Anton. Anton is a CONDENSED face with
-  // -0.015em tracking, which at dashboard heading sizes ("Listing performance",
-  // "Earnings") reads as crushed — the owner's word, and correct. Nunito is the
-  // display voice as well as the body voice now; weight carries the hierarchy
-  // instead of a different family.
-  //
-  // Anton is NOT gone: SiteHeader and the auth screens still set it explicitly,
-  // where it is uppercase nav/display at small sizes and does the job it was
-  // designed for.
-  //
-  // `mono` is the Silkscreen "stub" voice (labels, eyebrows, chips) — the name
-  // stays `mono` so the ~hundreds of existing `font-mono` call sites keep working.
+  // [WEB-THEME-1] The four voices from design/tokens/TOKENS.md. `mono` is the
+  // Silkscreen "stub" voice (labels, eyebrows, chips) — the name stays `mono`
+  // so the ~hundreds of existing `font-mono` call sites keep working.
   fontFamily: {
-    display: ['Nunito', 'system-ui', 'sans-serif'],
-    body: ['Nunito', 'system-ui', 'sans-serif'],
+    display: ['Anton', '"Arial Narrow"', 'system-ui', 'sans-serif'],
+    body: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
     mono: ['Silkscreen', 'ui-monospace', 'monospace'],
   },
   transitionDuration,

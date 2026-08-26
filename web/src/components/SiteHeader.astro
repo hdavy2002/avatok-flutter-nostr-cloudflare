@@ -70,7 +70,7 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
     A stylesheet <link> in the body is honoured by every browser. */}
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap" />
 
 <header class:list={['avh', sticky && 'avh--sticky']}>
   <a class="avh-logo" href="/" aria-label="avaTOK home">
@@ -143,10 +143,6 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
     background: var(--avh-cream);
     color: var(--avh-ink);
     font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
-    /* [WEB-FONT-2] Anton ships ONE weight (400). Body is now Nunito 600 and the
-       header was inheriting it, so the browser was synthesising a fake bold over
-       an already-heavy face. Pin 400 and let Anton be Anton. */
-    font-weight: 400;
   }
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 

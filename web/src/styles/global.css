@@ -3,13 +3,7 @@
  * bundled fonts and sets the paper/ink defaults. No colors are hardcoded here
  * except via the zine vars. */
 
-/* ----- self-hosted fonts (woff2, converted from app/assets/fonts) -----
-   [WEB-FONT-1 2026-08-26] The three Fredoka @font-face blocks below are now
-   UNREFERENCED — headings are Nunito now and no rule asks for Fredoka any more.
-   A declared-but-unused @font-face costs nothing (browsers only fetch a face
-   that something renders), so they are kept rather than deleted in case the
-   display voice is revisited. Delete them and public/fonts/Fredoka-*.woff2
-   together if that is ruled out. */
+/* ----- self-hosted fonts (woff2, converted from app/assets/fonts) ----- */
 @font-face {
   font-family: 'Fredoka';
   src: url('/fonts/Fredoka-Medium.woff2') format('woff2');
@@ -101,12 +95,8 @@ body {
 body {
   background: var(--zine-paper);
   color: var(--zine-ink);
-  /* [WEB-FONT-1 2026-08-26] Nunito is the site default (owner request).
-     Weight 600, NOT the token's 500: only 600/700/800/900 are self-hosted
-     (public/fonts), so 500 would have no real file and the browser would
-     substitute silently. 600 is the lightest weight that actually exists. */
-  font-family: 'Nunito', system-ui, sans-serif;
-  font-weight: 600;
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-weight: 500;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Faint radial-dot paper texture (mirrors ZinePaper in the app). */
@@ -121,12 +111,8 @@ h3,
 h4,
 h5,
 h6 {
-  /* [WEB-FONT-2 2026-08-26] Headings are Nunito. This rule was Fredoka, then
-     briefly Anton — Anton's condensed shapes and tight tracking made dashboard
-     headings look crushed. Weight 700 (self-hosted) separates a heading from
-     600 body text without changing family. */
-  font-family: 'Nunito', system-ui, sans-serif;
-  font-weight: 700;
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0;
 }
