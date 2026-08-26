@@ -29,6 +29,25 @@ interface Props {
   links?: HeaderLink[];
   /** Sticky by default; the home page pins it over the poster. */
   sticky?: boolean;
+  /**
+   * How the right-hand CTA decides what to show.
+   *
+   * [WEB-HEADER-4 2026-08-26] `auto` mounts a Clerk island to read the live
+   * session. That island brings its own <ClerkProvider>, and
+   * @clerk/clerk-react THROWS "multiple <ClerkProvider>" if two of them mount
+   * on one page — the React root then renders nothing and the CTA silently
+   * vanishes. Caught on the live dashboard: the sidebar's SidebarUser already
+   * owns a provider, so the header's disappeared. 15 pages mount a body Clerk
+   * island (dashboard, all 7 admin pages, book, consult, agent, 4 vision).
+   *
+   * So pages that already know the answer say so instead of asking Clerk:
+   *   'in'     — signed-in-only pages (dashboard, admin): static Dashboard link
+   *   'static' — pages with their own Clerk island: static Log in / Sign up
+   *   'auto'   — everywhere else: the island reads the real session
+   *
+   * Static means no second provider, no crash, and no JavaScript needed.
+   */
+  auth?: 'auto' | 'in' | 'static';
 }
 
 // The site menu. Every entry points at something that exists — checked.
@@ -41,7 +60,7 @@ const DEFAULT_LINKS: HeaderLink[] = [
   { href: '/sign-up', label: 'For creators' },
 ];
 
-const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
+const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
 ---
 
 {/* [WEB-THEME-1] The five brand faces. Loaded by the component rather than
@@ -65,7 +84,16 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
   <div class="avh-right">
     {/* [WEB-HEADER-2 2026-08-26] Search pill removed at the owner's request.
         Browsing is reachable via the Marketplace link. */}
-    <HeaderAuth client:idle />
+    {auth === 'in' ? (
+      <a class="avh-cta avh-cta--solid" href="/dashboard">Dashboard</a>
+    ) : auth === 'static' ? (
+      <Fragment>
+        <a class="avh-cta" href="/sign-in">Log in</a>
+        <a class="avh-cta avh-cta--solid" href="/sign-up">Sign up</a>
+      </Fragment>
+    ) : (
+      <HeaderAuth client:idle />
+    )}
     <img class="avh-orn" src="/ornament-flower.png" alt="" width="85" height="80" aria-hidden="true" />
   </div>
 

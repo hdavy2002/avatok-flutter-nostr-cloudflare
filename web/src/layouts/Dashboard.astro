@@ -88,7 +88,7 @@ const heads = heading ?? (title.split(' · ')[0]);
 
       Everything below that pins itself to the viewport is offset by --avh-h
       (published by SiteHeader) or it slides under the header. */}
-  <SiteHeader />
+  <SiteHeader auth="in" />
   <div class="flex min-h-[calc(100vh-var(--avh-h))] bg-paper">
     <!-- Scrim (mobile) -->
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>

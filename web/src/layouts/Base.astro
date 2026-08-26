@@ -19,6 +19,12 @@ export interface Props {
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
   /**
+   * [WEB-HEADER-4] Forwarded to SiteHeader. Any page that mounts its OWN Clerk
+   * island MUST pass 'static' (or 'in' for signed-in-only pages) — two
+   * <ClerkProvider>s on one page throw and the header CTA silently disappears.
+   */
+  headerAuth?: 'auto' | 'in' | 'static';
+  /**
    * Render header CTAs as static Log in / Sign up links (no Clerk island).
    * REQUIRED on pages whose body mounts its own Clerk island, to avoid the
    * "multiple <ClerkProvider>" crash. See Nav.astro.
@@ -39,6 +45,7 @@ const {
   description = 'A private number nobody can trace, an AI receptionist that never misses a call, and your AI brain in every chat — AvaTok.',
   image,
   chrome = true,
+  headerAuth = 'auto',
   navStatic = false,
   noindex = false,
   hideNavCtas = false,
@@ -89,7 +96,7 @@ const ogImage = image
     <slot name="head" />
   </head>
   <body class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <SiteHeader />}
+    {chrome && <SiteHeader auth={headerAuth} />}
     <slot />
     {chrome && <SiteFooter />}
   </body>
