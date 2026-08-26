@@ -24,13 +24,6 @@ export interface Card {
   live?: boolean;
   starts_at?: number | null;
   ends_at?: number | null;
-  /**
-   * [DEMO-LISTING-1 2026-08-26] URL slug for the shareable /<handle>/<slug>
-   * route. Optional because the Worker does not emit it yet — listingHref()
-   * derives one from the title and falls back to /l/<id>. When /api/explore
-   * starts returning a real, stable slug, this becomes the authority.
-   */
-  slug?: string | null;
 }
 
 export type ListingKind = 'live' | 'consult' | 'event' | 'agent' | 'content' | string;
