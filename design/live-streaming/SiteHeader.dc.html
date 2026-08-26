@@ -60,6 +60,14 @@
   .avh-c a.is-current { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
   .avh-c a.solid { background: #d93825; color: #fdf1d3; border-radius: 100px; padding: 12px 26px; }
 
+  /* These two live in CSS, NOT inline. An inline style beats any selector, so
+     while `style="display:block"` sat on the ornament the media query below
+     could never hide it — it stayed on a 390px screen and pushed the bar 55px
+     wider than the viewport. Same reason the logo's height is here: the 620px
+     override could not touch an inline height. */
+  .avh-c-logo { display: block; height: 3.375rem; width: auto; }
+  .avh-c-orn { display: block; height: 2.875rem; width: auto; }
+
   @media (max-width: 1100px) {
     /* Nav and the marigold give way to the button, as the site header does. */
     .avh-c-nav, .avh-c-orn { display: none; }
@@ -109,7 +117,7 @@
 <div class="avh-c" style="background:#f7ead5; color:#161614;">
   <div class="avh-c-bar">
     <a href="https://avatok.ai/" style="display:flex; align-items:center; flex:0 0 auto;">
-      <img class="avh-c-logo" src="https://avatok.ai/avatok-logo.png" alt="avaTOK" style="display:block; height:3.375rem; width:auto;" />
+      <img class="avh-c-logo" src="https://avatok.ai/avatok-logo.png" alt="avaTOK" />
     </a>
 
     <nav class="avh-c-nav">
@@ -124,7 +132,7 @@
     <div class="avh-c-cta">
       <a href="https://avatok.ai/sign-in">Log in</a>
       <a class="solid" href="https://avatok.ai/sign-up">Sign up</a>
-      <img class="avh-c-orn" src="https://avatok.ai/ornament-flower.png" alt="" style="display:block; height:2.875rem; width:auto;" />
+      <img class="avh-c-orn" src="https://avatok.ai/ornament-flower.png" alt="" />
     </div>
 
     <details class="avh-c-menu">
