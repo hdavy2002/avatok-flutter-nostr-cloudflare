@@ -24,8 +24,32 @@ function priceLabel(listing: CardModel): string | null {
  * ink-bordered poster with hard shadow, title, creator + price footer, and a
  * LIVE pill when joinable. Links to the listing route by default.
  */
+/**
+ * [DEMO-LISTING-1 2026-08-26] Shareable listing URL: /<creator handle>/<slug>.
+ * Falls back to /l/<id> when the listing carries no handle — an id always
+ * exists, a handle does not, and a card that links nowhere is worse than an
+ * ugly link. Both routes stay live: /l/<id> is what every already-shared link
+ * uses, so it must keep working.
+ */
+export function listingHref(listing: CardModel): string {
+  const handle = listing.creator?.handle?.trim();
+  if (!handle) return `/l/${encodeURIComponent(listing.id)}`;
+  // Prefer a server-supplied slug; otherwise derive one from the title. The id
+  // is appended when deriving so two listings with the same title can't collide
+  // on one URL — a slug is only a label until the Worker owns it.
+  const slug =
+    listing.slug?.trim() ||
+    `${listing.title ?? ''}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+  if (!slug) return `/l/${encodeURIComponent(listing.id)}`;
+  return `/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`;
+}
+
 export function ListingTile({ listing, href, width = 360, className = '' }: ListingTileProps) {
-  const target = href ?? `/l/${encodeURIComponent(listing.id)}`;
+  const target = href ?? listingHref(listing);
   const price = priceLabel(listing);
   const isLive = listing.live || listing.joinable;
 

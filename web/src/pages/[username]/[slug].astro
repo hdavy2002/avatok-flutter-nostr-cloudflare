@@ -1,0 +1,61 @@
+---
+// [DEMO-LISTING-1 2026-08-26] Pretty listing URL: /<username>/<slug>
+//
+// Owner decision 2026-08-26: listings get a shareable /creator/listing URL, and
+// FOR NOW the page they render is the bazaar mockup from design/live-streaming/
+// ("avaTOK Listing Details.dc.html") — look and feel only, hardcoded mock data,
+// backend wiring comes later. The real data-driven page still exists at
+// /l/<id> (ListingDetailView.astro); nothing here replaces it yet.
+//
+// ─── WHY THE HTML IS SERVED RAW INSTEAD OF PORTED TO ASTRO ───────────────────
+// The mockup is a self-contained Design Component document: a <x-dc> template
+// with {{ }} holes, a `class Component extends DCLogic` script, and the
+// support.js runtime that binds them at load. Re-expressing 88KB of that as
+// Astro/Tailwind is the actual port, and it is throwaway work until the design
+// is signed off. So the document is shipped verbatim and Astro only owns the
+// URL. When the design settles, THIS is the file to replace with a real
+// component — the route can stay exactly as it is.
+//
+// ─── THE <base> TAG IS LOAD-BEARING, DO NOT REMOVE ───────────────────────────
+// support.js resolves components as COMPONENT_DIR + "/" + name + ".dc.html"
+// with COMPONENT_DIR = "." — i.e. relative to the DOCUMENT. Served at
+// /dollykapoor/mock-listing, "./SiteHeader.dc.html" would resolve to
+// /dollykapoor/SiteHeader.dc.html and 404, and every <dc-import> (header,
+// footer, all six TruckBorder strips) would silently render nothing. The same
+// applies to ./support.js itself and every assets/*.png. <base href="/demo/">
+// re-points all of it at the copied folder in one line.
+export const prerender = false;
+
+// Vite inlines this at BUILD time, so there is no runtime filesystem read (there
+// is no filesystem on Workers) and no self-fetch. web/public/demo/ is produced
+// by scripts/copy-design-demo.mjs in prebuild — see that file for why it is a
+// copy and not a second committed tree.
+import mockupHtml from '../../../public/demo/avaTOK Listing Details.dc.html?raw';
+
+const { username, slug } = Astro.params;
+
+// Astro matches static routes before dynamic ones, so /about, /blog, /sign-in
+// and friends still win over this catch-all. This guard is for the rest: a bare
+// handle must not swallow asset-ish or malformed paths and answer 200.
+const looksLikeHandle = /^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '');
+const looksLikeSlug = /^[a-z0-9][a-z0-9._-]{1,80}$/i.test(slug ?? '');
+if (!looksLikeHandle || !looksLikeSlug) return new Response('Not found', { status: 404 });
+
+const html = mockupHtml.replace(
+  '<head>',
+  `<head>
+<base href="/demo/" />
+<title>${slug} · @${username} · avaTOK</title>
+<meta name="robots" content="noindex, nofollow" />`,
+);
+
+// noindex above and a short cache here, deliberately: this is a design comp on
+// fake data. It must not be indexed as a real listing, and it must not be
+// cached so long that the next design iteration is invisible for an hour.
+return new Response(html, {
+  headers: {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'public, max-age=60',
+  },
+});
+---

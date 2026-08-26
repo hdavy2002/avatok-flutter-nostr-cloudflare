@@ -3,18 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "avatok.ai public web client — consume-side (browse, book, pay, watch, consult, talk to AI). Astro + React islands + Tailwind on Cloudflare Pages, rendered in the app's zine visual language.",
+  "description": "avatok.ai public web client \u2014 consume-side (browse, book, pay, watch, consult, talk to AI). Astro + React islands + Tailwind on Cloudflare Pages, rendered in the app's zine visual language.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "export-tokens": "node scripts/export-zine-tokens.mjs",
-    "predev": "node scripts/export-zine-tokens.mjs",
+    "predev": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs",
     "dev": "astro dev",
-    "prebuild": "node scripts/export-zine-tokens.mjs",
+    "prebuild": "node scripts/export-zine-tokens.mjs && node scripts/copy-design-demo.mjs",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "copy-demo": "node scripts/copy-design-demo.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "12.6.13",

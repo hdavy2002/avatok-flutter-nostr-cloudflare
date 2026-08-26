@@ -203,6 +203,11 @@ design/
 !/design/live-streaming/README.md
 !/design/live-streaming/assets/
 !/design/live-streaming/assets/**
+
+# [DEMO-LISTING-1 2026-08-26] Build output, not source. web/scripts/copy-design-demo.mjs
+# regenerates web/public/demo/ from design/live-streaming/ on every build and dev
+# run. Committing it would be a second 7MB copy of the same PNGs, free to drift.
+web/public/demo/
 tools/
 
 Specs/AUDIT-2026-08-07-guardian-and-ava-in-chat.md
