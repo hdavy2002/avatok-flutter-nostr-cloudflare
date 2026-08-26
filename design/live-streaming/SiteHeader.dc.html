@@ -36,7 +36,16 @@
 
      Keep this in step with SiteHeader.astro. If a menu item changes there,
      change it here — the comps are a separate document tree and cannot import
-     the Astro component. -->
+     the Astro component.
+
+     [DEMO-LINKS-2 2026-08-26] Every href here is an ABSOLUTE https://avatok.ai
+     URL, and that is not optional. This file is pulled in with <dc-import>,
+     which support.js fetches AT RUNTIME from the asset origin — so the server
+     never sees this markup and cannot rewrite it the way it rewrites the page
+     document. A relative href, or even a bare "#", is resolved against
+     <base href="https://avatok-design.pages.dev/"> and walks the visitor off
+     avatok.ai onto a raw comp page. Absolute URLs work from the live site and
+     from the standalone preview alike. -->
 <style>
   .avh-c { position: relative; }
   .avh-c-bar { display: flex; align-items: center; gap: 1.875rem; padding: 18px 30px; }
@@ -99,34 +108,34 @@
 <div><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
 <div class="avh-c" style="background:#f7ead5; color:#161614;">
   <div class="avh-c-bar">
-    <a href="#" style="display:flex; align-items:center; flex:0 0 auto;">
+    <a href="https://avatok.ai/" style="display:flex; align-items:center; flex:0 0 auto;">
       <img class="avh-c-logo" src="https://avatok.ai/avatok-logo.png" alt="avaTOK" style="display:block; height:3.375rem; width:auto;" />
     </a>
 
     <nav class="avh-c-nav">
-      <a class="is-current" href="avaTOK Marketplace.dc.html">Marketplace</a>
-      <a href="#">Live events</a>
-      <a href="#">Private sessions</a>
-      <a href="#">AI voice</a>
-      <a href="#">Categories</a>
-      <a href="#">For creators</a>
+      <a class="is-current" href="https://avatok.ai/marketplace">Marketplace</a>
+      <a href="https://avatok.ai/#live-streaming">Live events</a>
+      <a href="https://avatok.ai/#consultations">Private sessions</a>
+      <a href="https://avatok.ai/#voice-agents">AI voice</a>
+      <a href="https://avatok.ai/#marketplace-catalogue">Categories</a>
+      <a href="https://avatok.ai/sign-up">For creators</a>
     </nav>
 
     <div class="avh-c-cta">
-      <a href="avaTOK Auth.dc.html">Log in</a>
-      <a class="solid" href="avaTOK Auth.dc.html">Sign up</a>
+      <a href="https://avatok.ai/sign-in">Log in</a>
+      <a class="solid" href="https://avatok.ai/sign-up">Sign up</a>
       <img class="avh-c-orn" src="https://avatok.ai/ornament-flower.png" alt="" style="display:block; height:2.875rem; width:auto;" />
     </div>
 
     <details class="avh-c-menu">
       <summary class="avh-c-summary" aria-label="Menu"><span class="avh-c-bars"></span>Menu</summary>
       <nav class="avh-c-panel">
-        <a href="avaTOK Marketplace.dc.html">Marketplace</a>
-        <a href="#">Live events</a>
-        <a href="#">Private sessions</a>
-        <a href="#">AI voice</a>
-        <a href="#">Categories</a>
-        <a href="#">For creators</a>
+        <a href="https://avatok.ai/marketplace">Marketplace</a>
+        <a href="https://avatok.ai/#live-streaming">Live events</a>
+        <a href="https://avatok.ai/#consultations">Private sessions</a>
+        <a href="https://avatok.ai/#voice-agents">AI voice</a>
+        <a href="https://avatok.ai/#marketplace-catalogue">Categories</a>
+        <a href="https://avatok.ai/sign-up">For creators</a>
       </nav>
     </details>
   </div>
