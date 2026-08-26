@@ -26,13 +26,18 @@
 // re-points all of it at the copied folder in one line.
 export const prerender = false;
 
-// The mockup is fetched from the static asset at REQUEST time rather than
-// imported with `?raw`. `?raw` inlines all 88KB into the Worker bundle, which is
-// already ~3.4MB across 113 modules — close enough to the Pages Function ceiling
-// that it is not worth spending budget on a file the CDN can serve for free.
-// web/public/demo/ is produced by scripts/copy-design-demo.mjs in prebuild; see
-// that file for why it is a generated copy and not a second committed tree.
-const MOCKUP_PATH = '/demo/avaTOK Listing Details.dc.html';
+// Inlined at build time from web/src/generated/, which prebuild stages out of
+// design/live-streaming/. It is NOT served from public/ — read the header of
+// scripts/copy-design-demo.mjs before changing that; adding these files to
+// public/ overflows Cloudflare's 100-rule _routes.json ceiling and takes the
+// whole site's deploy down with an error message that names nothing.
+import mockupHtml from '../../generated/listing-details.dc.html?raw';
+
+// support.js, the <dc-import> components and assets/*.png are loaded from the
+// avatok-design Pages project (published by design-preview.yml from the same
+// folder) so this route adds no static assets of its own. Trailing slash
+// matters: <base> resolves relative to the directory.
+const ASSET_ORIGIN = 'https://avatok-design.pages.dev/';
 
 const { username, slug } = Astro.params;
 
@@ -43,18 +48,10 @@ const looksLikeHandle = /^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '');
 const looksLikeSlug = /^[a-z0-9][a-z0-9._-]{1,80}$/i.test(slug ?? '');
 if (!looksLikeHandle || !looksLikeSlug) return new Response('Not found', { status: 404 });
 
-const mockupRes = await fetch(new URL(MOCKUP_PATH, Astro.url));
-if (!mockupRes.ok) {
-  // Loud, not silent. A missing asset means prebuild did not run or the file was
-  // renamed — serving a blank 200 would look like a broken design instead.
-  return new Response(`Demo mockup unavailable (${mockupRes.status})`, { status: 502 });
-}
-const mockupHtml = await mockupRes.text();
-
 const html = mockupHtml.replace(
   '<head>',
   `<head>
-<base href="/demo/" />
+<base href="${ASSET_ORIGIN}" />
 <title>${slug} · @${username} · avaTOK</title>
 <meta name="robots" content="noindex, nofollow" />`,
 );
