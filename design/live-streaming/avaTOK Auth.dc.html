@@ -33,6 +33,17 @@
      width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
+  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
+     it asked for a face that does not exist and the browser synthesised one by
+     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
+     run into each other. That is the "sticky/bold" look, and no amount of
+     letter-spacing fixes it because the glyphs themselves are distorted.
+     Anton is already a heavy display face; it must never be asked for bold.
+     Element-only selector on purpose: a descendant selector would also flatten
+     the Playfair 900 "TOK" nested inside the Anton logo link. */
+  [style*="Anton"] { font-weight: 400; }
+
+
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   a { color: #d93825; text-decoration: none; }
   a:hover { color: #2d7180; }

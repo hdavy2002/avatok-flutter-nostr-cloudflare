@@ -21,6 +21,17 @@
      and laptops and phones render exactly as they always have. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
+  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
+     it asked for a face that does not exist and the browser synthesised one by
+     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
+     run into each other. That is the "sticky/bold" look, and no amount of
+     letter-spacing fixes it because the glyphs themselves are distorted.
+     Anton is already a heavy display face; it must never be asked for bold.
+     Element-only selector on purpose: a descendant selector would also flatten
+     the Playfair 900 "TOK" nested inside the Anton logo link. */
+  [style*="Anton"] { font-weight: 400; }
+
+
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   a { color: #d93825; text-decoration: none; }
   a:hover { color: #2d7180; }
@@ -139,7 +150,7 @@
           <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
             <sc-for list="{{ forYou }}" as="v" hint-placeholder-count="4">
               <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
-                <div style="height:150px; background:{{ v.photo }}; position:relative;">
+                <div style="aspect-ratio:16/9; background:{{ v.photo }}; position:relative;">
                   <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
                   <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
                   <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
@@ -167,7 +178,7 @@
           <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
             <sc-for list="{{ homeVideos }}" as="v" hint-placeholder-count="8">
               <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
-                <div style="height:150px; background:{{ v.photo }}; position:relative;">
+                <div style="aspect-ratio:16/9; background:{{ v.photo }}; position:relative;">
                   <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
                   <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
                   <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
@@ -203,7 +214,7 @@
         <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
           <sc-for list="{{ allVideos }}" as="v" hint-placeholder-count="12">
             <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
-              <div style="height:150px; background:{{ v.photo }}; position:relative;">
+              <div style="aspect-ratio:16/9; background:{{ v.photo }}; position:relative;">
                 <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
                 <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
                 <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
