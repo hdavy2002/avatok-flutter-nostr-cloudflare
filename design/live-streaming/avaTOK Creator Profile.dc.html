@@ -21,15 +21,27 @@
      and laptops and phones render exactly as they always have. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
-  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
-     it asked for a face that does not exist and the browser synthesised one by
-     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
-     run into each other. That is the "sticky/bold" look, and no amount of
-     letter-spacing fixes it because the glyphs themselves are distorted.
-     Anton is already a heavy display face; it must never be asked for bold.
-     Element-only selector on purpose: a descendant selector would also flatten
-     the Playfair 900 "TOK" nested inside the Anton logo link. */
-  [style*="Anton"] { font-weight: 400; }
+  /* ── DISPLAY TYPE SAFETY NET — sitewide, applies to fonts added later ──────
+     Two silent causes make heavy display faces run their letters together:
+
+     1. SYNTHESISED WEIGHTS. Anton and Impact ship a single weight (400).
+        h1-h6 default to bold, so a heading in one of them asks for a face that
+        does not exist and the browser FAKES it by smearing every glyph
+        sideways — strokes fatten, sidebearings vanish, letters touch. That is
+        the "sticky" look, and letter-spacing cannot fix it because the glyphs
+        themselves are distorted. font-synthesis:none forbids the fake outright,
+        so any face added in future is protected without anyone remembering
+        this rule exists — the browser falls back to the real weight instead.
+
+     2. NEGATIVE TRACKING. These faces are drawn tight already; letter-spacing
+        below zero closes what little gap is left. Display headings are pinned
+        to 0 here, and the source values were raised to 0 as well.
+
+     Headings reset to 400 because that is the weight these faces actually
+     ship. An inline font-weight still wins — inline beats a selector — so a
+     heading that genuinely wants Playfair 900 or Instrument Sans 600 keeps it. */
+  *, *::before, *::after { font-synthesis: none; }
+  h1, h2, h3, h4, h5, h6 { font-weight: 400; }
 
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -73,7 +85,7 @@
       <!-- identity -->
       <div style="flex:1 1 23.75rem; min-width:0;">
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-          <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.625rem,5.4vw,4.5rem); line-height:1; letter-spacing:-0.01em; text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:5px 5px 0 #161614;">Sunny Gill</h1>
+          <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.625rem,5.4vw,4.5rem); line-height:1; letter-spacing:0; text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:5px 5px 0 #161614;">Sunny Gill</h1>
           <sc-if value="{{ verified }}" hint-placeholder-val="{{ true }}">
             <span style="display:flex; align-items:center; gap:8px; border:2.5px solid #161614; border-radius:100px; background:#2d7180; color:#fdf1d3; padding:8px 16px; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.1em; box-shadow:3px 3px 0 #161614; transform:rotate(-2deg);"><span style="width:18px; height:18px; flex:none; border-radius:50%; background:#fdf1d3; color:#2d7180; display:grid; place-items:center; font-size:0.75rem; font-weight:700; font-family:'Instrument Sans',sans-serif;">✓</span>VERIFIED HOST</span>
           </sc-if>

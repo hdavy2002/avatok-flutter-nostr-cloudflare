@@ -32,15 +32,27 @@
      width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
-  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
-     it asked for a face that does not exist and the browser synthesised one by
-     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
-     run into each other. That is the "sticky/bold" look, and no amount of
-     letter-spacing fixes it because the glyphs themselves are distorted.
-     Anton is already a heavy display face; it must never be asked for bold.
-     Element-only selector on purpose: a descendant selector would also flatten
-     the Playfair 900 "TOK" nested inside the Anton logo link. */
-  [style*="Anton"] { font-weight: 400; }
+  /* ── DISPLAY TYPE SAFETY NET — sitewide, applies to fonts added later ──────
+     Two silent causes make heavy display faces run their letters together:
+
+     1. SYNTHESISED WEIGHTS. Anton and Impact ship a single weight (400).
+        h1-h6 default to bold, so a heading in one of them asks for a face that
+        does not exist and the browser FAKES it by smearing every glyph
+        sideways — strokes fatten, sidebearings vanish, letters touch. That is
+        the "sticky" look, and letter-spacing cannot fix it because the glyphs
+        themselves are distorted. font-synthesis:none forbids the fake outright,
+        so any face added in future is protected without anyone remembering
+        this rule exists — the browser falls back to the real weight instead.
+
+     2. NEGATIVE TRACKING. These faces are drawn tight already; letter-spacing
+        below zero closes what little gap is left. Display headings are pinned
+        to 0 here, and the source values were raised to 0 as well.
+
+     Headings reset to 400 because that is the weight these faces actually
+     ship. An inline font-weight still wins — inline beats a selector — so a
+     heading that genuinely wants Playfair 900 or Instrument Sans 600 keeps it. */
+  *, *::before, *::after { font-synthesis: none; }
+  h1, h2, h3, h4, h5, h6 { font-weight: 400; }
 
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -79,7 +91,7 @@
     <div style="max-width:100rem; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 23.75rem; min-width:0;">
         <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:16px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>MARKETPLACE · 2,400 CREATORS LIVE</div>
-        <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.875rem,6.4vw,5.5rem); line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0;">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
+        <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.875rem,6.4vw,5.5rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0;">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
         <p style="margin:24px 0 0; font-size:1.1875rem; font-weight:500; line-height:1.5; color:#2a0f0a; max-width:50ch; text-wrap:pretty;">Streams, dost, jyotish, adda rooms, AI agents aur full glow-ups — seat book karo ya seedha live ghuso. Scene sorted.</p>
         <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
           <div style="margin-top:20px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
@@ -184,7 +196,7 @@
           <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
             <div style="flex:1 1 18.75rem; min-width:0;">
               <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">{{ sec.eyebrow }}</div>
-              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2.125rem,3.4vw,3rem); line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">{{ sec.title }} <span style="color:#d93825;">{{ sec.title2 }}</span></h2>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2.125rem,3.4vw,3rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0;">{{ sec.title }} <span style="color:#d93825;">{{ sec.title2 }}</span></h2>
             </div>
             <sc-if value="{{ sec.punchOn }}" hint-placeholder-val="{{ false }}">
               <div style="font-family:'Kalam',cursive; font-size:1.25rem; line-height:1.3; color:#8c3a2c; transform:rotate(-2deg); max-width:30ch; padding-bottom:4px;">{{ sec.punch }}</div>

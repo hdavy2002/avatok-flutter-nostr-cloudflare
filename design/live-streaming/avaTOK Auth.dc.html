@@ -33,15 +33,27 @@
      width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
-  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
-     it asked for a face that does not exist and the browser synthesised one by
-     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
-     run into each other. That is the "sticky/bold" look, and no amount of
-     letter-spacing fixes it because the glyphs themselves are distorted.
-     Anton is already a heavy display face; it must never be asked for bold.
-     Element-only selector on purpose: a descendant selector would also flatten
-     the Playfair 900 "TOK" nested inside the Anton logo link. */
-  [style*="Anton"] { font-weight: 400; }
+  /* ── DISPLAY TYPE SAFETY NET — sitewide, applies to fonts added later ──────
+     Two silent causes make heavy display faces run their letters together:
+
+     1. SYNTHESISED WEIGHTS. Anton and Impact ship a single weight (400).
+        h1-h6 default to bold, so a heading in one of them asks for a face that
+        does not exist and the browser FAKES it by smearing every glyph
+        sideways — strokes fatten, sidebearings vanish, letters touch. That is
+        the "sticky" look, and letter-spacing cannot fix it because the glyphs
+        themselves are distorted. font-synthesis:none forbids the fake outright,
+        so any face added in future is protected without anyone remembering
+        this rule exists — the browser falls back to the real weight instead.
+
+     2. NEGATIVE TRACKING. These faces are drawn tight already; letter-spacing
+        below zero closes what little gap is left. Display headings are pinned
+        to 0 here, and the source values were raised to 0 as well.
+
+     Headings reset to 400 because that is the weight these faces actually
+     ship. An inline font-weight still wins — inline beats a selector — so a
+     heading that genuinely wants Playfair 900 or Instrument Sans 600 keeps it. */
+  *, *::before, *::after { font-synthesis: none; }
+  h1, h2, h3, h4, h5, h6 { font-weight: 400; }
 
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -56,7 +68,7 @@
     <span style="border:2.5px solid #161614; border-radius:100px; padding:6px 14px; font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.1em; background:#fdf1d3;">2a</span>
     <span style="font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.14em; color:#b82a19;">DESKTOP · 1440×900 · SPLIT PANEL</span>
   </div>
-  <h1 style="font-family:'Anton',sans-serif; font-size:4.25rem; line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0 0 12px;">Same two doors,<br />wider frame.</h1>
+  <h1 style="font-family:'Anton',sans-serif; font-size:4.25rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 12px;">Same two doors,<br />wider frame.</h1>
   <p style="margin:0 0 44px; font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:56ch; text-wrap:pretty;">The painted graphic moves to a left panel — marigold on log in, a centred poster on ink for create account; the form sits in a 460px column on cream. Log in and create account are separate pages, as on mobile.</p>
 
   <div style="display:flex; flex-wrap:wrap; gap:56px; align-items:flex-start;">
@@ -85,7 +97,7 @@
               </div>
               <div>
                 <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#b82a19; margin-bottom:10px;">WELCOME BACK</div>
-                <h2 style="font-family:'Anton',sans-serif; font-size:3.25rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Good to<br />see you</h2>
+                <h2 style="font-family:'Anton',sans-serif; font-size:3.25rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0;">Good to<br />see you</h2>
               </div>
               <div style="display:flex; flex-direction:column; gap:8px;">
                 <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#6b4f3f;">EMAIL</span>
@@ -141,7 +153,7 @@
               </div>
               <div>
                 <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#b82a19; margin-bottom:10px;">TWO MINUTES, THAT'S ALL</div>
-                <h2 style="font-family:'Anton',sans-serif; font-size:2.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Create my account</h2>
+                <h2 style="font-family:'Anton',sans-serif; font-size:2.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0;">Create my account</h2>
               </div>
               <sc-if value="{{ showRoleStep }}" hint-placeholder-val="{{ true }}">
                 <div style="display:flex; flex-direction:column; gap:9px;">
@@ -208,7 +220,7 @@
     <span style="border:2.5px solid #161614; border-radius:100px; padding:6px 14px; font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.1em; background:#fdf1d3;">1a</span>
     <span style="font-family:'Silkscreen',monospace; font-size:0.75rem; letter-spacing:.14em; color:#b82a19;">AUTH · PAINTED PANEL · MOBILE + IPAD</span>
   </div>
-  <h1 style="font-family:'Anton',sans-serif; font-size:4.75rem; line-height:1.02; letter-spacing:-0.015em; text-transform:uppercase; margin:0 0 12px;">Get in, we're<br />going live.</h1>
+  <h1 style="font-family:'Anton',sans-serif; font-size:4.75rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 12px;">Get in, we're<br />going live.</h1>
   <p style="margin:0 0 44px; font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:56ch; text-wrap:pretty;">Three screens: log in and sign up at 402×874, and the centred-card layout at iPad portrait. Every field and button clears 48px of touch height.</p>
 
   <div style="display:flex; flex-wrap:wrap; gap:64px; align-items:flex-start;">

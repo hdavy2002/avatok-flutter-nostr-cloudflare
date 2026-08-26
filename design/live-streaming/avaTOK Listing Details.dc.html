@@ -32,15 +32,27 @@
      width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
-  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
-     it asked for a face that does not exist and the browser synthesised one by
-     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
-     run into each other. That is the "sticky/bold" look, and no amount of
-     letter-spacing fixes it because the glyphs themselves are distorted.
-     Anton is already a heavy display face; it must never be asked for bold.
-     Element-only selector on purpose: a descendant selector would also flatten
-     the Playfair 900 "TOK" nested inside the Anton logo link. */
-  [style*="Anton"] { font-weight: 400; }
+  /* ── DISPLAY TYPE SAFETY NET — sitewide, applies to fonts added later ──────
+     Two silent causes make heavy display faces run their letters together:
+
+     1. SYNTHESISED WEIGHTS. Anton and Impact ship a single weight (400).
+        h1-h6 default to bold, so a heading in one of them asks for a face that
+        does not exist and the browser FAKES it by smearing every glyph
+        sideways — strokes fatten, sidebearings vanish, letters touch. That is
+        the "sticky" look, and letter-spacing cannot fix it because the glyphs
+        themselves are distorted. font-synthesis:none forbids the fake outright,
+        so any face added in future is protected without anyone remembering
+        this rule exists — the browser falls back to the real weight instead.
+
+     2. NEGATIVE TRACKING. These faces are drawn tight already; letter-spacing
+        below zero closes what little gap is left. Display headings are pinned
+        to 0 here, and the source values were raised to 0 as well.
+
+     Headings reset to 400 because that is the weight these faces actually
+     ship. An inline font-weight still wins — inline beats a selector — so a
+     heading that genuinely wants Playfair 900 or Instrument Sans 600 keeps it. */
+  *, *::before, *::after { font-synthesis: none; }
+  h1, h2, h3, h4, h5, h6 { font-weight: 400; }
 
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -164,7 +176,7 @@
     <!-- title / meta -->
     <div style="flex:1 1 20rem; min-width:min(100%,17.5rem);">
       <div style="font-family:'Nunito',sans-serif; font-weight:800; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:12px;">{{ catEyebrow }}</div>
-      <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.25rem,4.4vw,3.75rem); line-height:1.03; letter-spacing:-0.01em; text-transform:uppercase; margin:0;">Antakshari Friday <span style="color:#d93825;">with Sunny.</span></h1>
+      <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.25rem,4.4vw,3.75rem); line-height:1.03; letter-spacing:0; text-transform:uppercase; margin:0;">Antakshari Friday <span style="color:#d93825;">with Sunny.</span></h1>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:16px;">
         <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">★ 4.9 · 620 RATINGS</span>
         <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">♡ 300 REGULARS</span>

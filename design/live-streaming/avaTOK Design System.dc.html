@@ -32,15 +32,27 @@
      width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
-  /* Anton ships ONE weight (400). h1-h6 default to bold, so every heading using
-     it asked for a face that does not exist and the browser synthesised one by
-     smearing each glyph sideways — strokes fatten, sidebearings vanish, letters
-     run into each other. That is the "sticky/bold" look, and no amount of
-     letter-spacing fixes it because the glyphs themselves are distorted.
-     Anton is already a heavy display face; it must never be asked for bold.
-     Element-only selector on purpose: a descendant selector would also flatten
-     the Playfair 900 "TOK" nested inside the Anton logo link. */
-  [style*="Anton"] { font-weight: 400; }
+  /* ── DISPLAY TYPE SAFETY NET — sitewide, applies to fonts added later ──────
+     Two silent causes make heavy display faces run their letters together:
+
+     1. SYNTHESISED WEIGHTS. Anton and Impact ship a single weight (400).
+        h1-h6 default to bold, so a heading in one of them asks for a face that
+        does not exist and the browser FAKES it by smearing every glyph
+        sideways — strokes fatten, sidebearings vanish, letters touch. That is
+        the "sticky" look, and letter-spacing cannot fix it because the glyphs
+        themselves are distorted. font-synthesis:none forbids the fake outright,
+        so any face added in future is protected without anyone remembering
+        this rule exists — the browser falls back to the real weight instead.
+
+     2. NEGATIVE TRACKING. These faces are drawn tight already; letter-spacing
+        below zero closes what little gap is left. Display headings are pinned
+        to 0 here, and the source values were raised to 0 as well.
+
+     Headings reset to 400 because that is the weight these faces actually
+     ship. An inline font-weight still wins — inline beats a selector — so a
+     heading that genuinely wants Playfair 900 or Instrument Sans 600 keeps it. */
+  *, *::before, *::after { font-synthesis: none; }
+  h1, h2, h3, h4, h5, h6 { font-weight: 400; }
 
 
   body { margin: 0; background: #f6e4cd; color: #161614; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -55,11 +67,11 @@
   <div style="background:#d46e59; border-bottom:3px solid #161614; position:relative; overflow:hidden;">
     <div style="max-width:1240px; margin:0 auto; padding:52px 40px 60px; display:flex; gap:36px; align-items:stretch;">
      <div style="flex:1; min-width:0;">
-      <div style="display:flex; align-items:baseline; gap:2px; font-family:'Anton',sans-serif; font-size:2.5rem; letter-spacing:-0.01em; margin-bottom:40px;">
+      <div style="display:flex; align-items:baseline; gap:2px; font-family:'Anton',sans-serif; font-size:2.5rem; letter-spacing:0; margin-bottom:40px;">
         <span style="color:#161614;">ava</span><span style="color:#fdf1d3; font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:2.375rem; text-shadow:3px 3px 0 #161614;">TOK</span>
       </div>
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.8125rem; letter-spacing:0.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:20px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>DESIGN SYSTEM · V1 · DESI PRESS</div>
-      <h1 style="font-family:'Anton',sans-serif; font-size:6.5rem; line-height:1.02; letter-spacing:-0.015em; margin:0; text-transform:uppercase; color:#fdf1d3; text-shadow:6px 6px 0 #161614; max-width:15ch;">The desi<br />press kit.</h1>
+      <h1 style="font-family:'Anton',sans-serif; font-size:6.5rem; line-height:1.02; letter-spacing:0; margin:0; text-transform:uppercase; color:#fdf1d3; text-shadow:6px 6px 0 #161614; max-width:15ch;">The desi<br />press kit.</h1>
       <p style="margin:34px 0 0; font-size:1.25rem; font-weight:500; line-height:1.5; color:#2a0f0a; max-width:52ch; text-wrap:pretty;">Everything the new avaTOK is made of — the ground colours, the four voices of type, the torn paper, the stamps and the marginalia. Built so the next twenty pages look like they came off the same press.</p>
      </div>
      <div style="flex:none; display:flex; align-items:center;">
@@ -72,7 +84,7 @@
   <section style="padding:88px 0; border-bottom:3px solid #161614;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#b82a19; margin-bottom:18px;">01 · THE ETHOS</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 14px; max-width:22ch;">Six rules the page already keeps.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 14px; max-width:22ch;">Six rules the page already keeps.</h2>
       <p style="font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:58ch; margin:0 0 48px; text-wrap:pretty;">Named so the next page follows them deliberately instead of by imitation.</p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(17.5rem,1fr)); gap:22px;">
@@ -121,7 +133,7 @@
   <section style="padding:88px 0; background:#efdcc2; border-bottom:3px solid #161614;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#b82a19; margin-bottom:18px;">02 · PALETTE</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 14px;">Two grounds. One red.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 14px;">Two grounds. One red.</h2>
       <p style="font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:60ch; margin:0 0 42px; text-wrap:pretty;">A section sits on either cream or terracotta — never both, never a third. Everything else is a card fill or an ornament.</p>
 
       <div style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:14px;">GROUNDS — PICK ONE PER SECTION</div>
@@ -174,7 +186,7 @@
   <section style="padding:88px 0; border-bottom:3px solid #161614;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#b82a19; margin-bottom:18px;">03 · TYPOGRAPHY</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 14px;">Four voices.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 14px;">Four voices.</h2>
       <p style="font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:62ch; margin:0 0 44px; text-wrap:pretty;">A poster shout, a hand-painted signboard, a plain speaking voice and a ticket stub. Each one has exactly one job and they never swap.</p>
 
       <div style="display:flex; flex-direction:column; gap:20px;">
@@ -186,7 +198,7 @@
             <p style="margin:12px 0 0; font-size:0.9375rem; font-weight:500; line-height:1.45; color:#5a3d33;">Every headline, card title, price and nav label. Always <b>uppercase</b>, tracking <b>−0.015em</b>. Leading is <b>1.0–1.08</b> — tighter than that and the offset shadow of one line lands on the cap-height of the next. On a coloured ground it always carries that shadow, so it never goes below 1.0.</p>
           </div>
           <div>
-            <div style="font-family:'Anton',sans-serif; font-size:4.125rem; line-height:1.0; text-transform:uppercase; letter-spacing:-0.015em;">India has stories.<br /><span style="color:#d93825;">Go live.</span></div>
+            <div style="font-family:'Anton',sans-serif; font-size:4.125rem; line-height:1.0; text-transform:uppercase; letter-spacing:0;">India has stories.<br /><span style="color:#d93825;">Go live.</span></div>
           </div>
         </div>
 
@@ -249,7 +261,7 @@
   <section style="padding:88px 0; background:#d46e59; border-bottom:3px solid #161614;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#4a1b12; margin-bottom:18px;">04 · DEVICES &amp; ORNAMENT</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 14px; color:#fdf1d3; text-shadow:5px 5px 0 #161614;">The press effects.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 14px; color:#fdf1d3; text-shadow:5px 5px 0 #161614;">The press effects.</h2>
       <p style="font-size:1.1875rem; font-weight:500; line-height:1.55; color:#2a0f0a; max-width:60ch; margin:0 0 46px; text-wrap:pretty;">Six moves that make a plain grid look printed. Use two or three per section — all six at once is a scrapbook.</p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(18.125rem,1fr)); gap:22px;">
@@ -331,7 +343,7 @@
   <section style="padding:88px 0; background:#efdcc2; border-bottom:3px solid #161614;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#b82a19; margin-bottom:18px;">05 · TRUCK ART GRAMMAR</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 14px; max-width:20ch;">Horn OK please.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 14px; max-width:20ch;">Horn OK please.</h2>
       <p style="font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:64ch; margin:0 0 20px; text-wrap:pretty;">The ornament layer. Everything above is the restrained press — cream, ink, one red. Truck art is what goes <i>on top of it</i>: the frames, the plaques, the dividers and the section headers. It is loud on purpose, so it is rationed on purpose.</p>
       <div style="display:flex; gap:14px; align-items:flex-start; border-left:5px solid #d93825; padding:4px 0 4px 18px; margin-bottom:46px; max-width:64ch;">
         <p style="margin:0; font-size:1.0625rem; font-weight:600; line-height:1.5; color:#161614;">The rule that keeps it from becoming a mela: <b>one truck-art object per section.</b> A framed plaque, or an ornate divider, or a decorated section header — never two, and never inside a creator card. The cards stay plain so the ornament reads as special.</p>
@@ -665,7 +677,7 @@
   <section style="padding:88px 0; border-bottom:3px solid #161614;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#b82a19; margin-bottom:18px;">06 · PARTS</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 44px;">The kit, live.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 44px;">The kit, live.</h2>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(22.5rem,1fr)); gap:22px; margin-bottom:22px;">
         <div style="border:2.5px solid #161614; border-radius:20px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; padding:28px;">
@@ -856,7 +868,7 @@
   <section style="padding:88px 0 100px;">
     <div style="max-width:1240px; margin:0 auto; padding:0 40px;">
       <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:0.16em; color:#b82a19; margin-bottom:18px;">07 · PAGE RECIPE</div>
-      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:-0.01em; text-transform:uppercase; margin:0 0 14px;">How to build the next one.</h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:3.875rem; line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0 0 14px;">How to build the next one.</h2>
       <p style="font-size:1.1875rem; font-weight:500; line-height:1.55; color:#5a3d33; max-width:60ch; margin:0 0 44px; text-wrap:pretty;">The two page shapes already in play, and the budget that keeps them from turning into a scrapbook.</p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(22.5rem,1fr)); gap:22px; margin-bottom:22px;">

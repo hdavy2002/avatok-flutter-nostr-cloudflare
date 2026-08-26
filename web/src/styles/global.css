@@ -105,6 +105,29 @@ body {
   min-height: 100vh;
 }
 
+/* ── DISPLAY TYPE SAFETY NET — sitewide, and covers fonts added later ────────
+   [WEB-TYPE-1 2026-08-26] Heavy display faces were rendering with their letters
+   run together, and the cause was not tracking — it was a SYNTHESISED WEIGHT.
+
+   Anton and Impact ship a single weight (400). h1–h6 default to bold, so any
+   heading set in one of them asks for a face that does not exist, and the
+   browser fabricates it by smearing every glyph sideways: strokes fatten,
+   sidebearings vanish, adjacent letters touch. No amount of letter-spacing
+   repairs that, because the glyph shapes themselves are distorted.
+
+   font-synthesis:none forbids the fabrication outright. The browser renders the
+   real weight instead, which means a display font introduced next month is
+   protected without anyone remembering this rule is here. That is the point of
+   putting it in global.css rather than per page.
+
+   It also disables fake ITALIC for the same reason — a synthesised oblique is a
+   sheared upright, not the drawn italic. */
+*,
+*::before,
+*::after {
+  font-synthesis: none;
+}
+
 h1,
 h2,
 h3,
@@ -113,7 +136,9 @@ h5,
 h6 {
   font-family: 'Fredoka', system-ui, sans-serif;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  /* Was -0.02em. Negative tracking on faces that are already drawn tight closes
+     the last of the gap between letters; 0 is the floor for display type here. */
+  letter-spacing: 0;
   margin: 0;
 }
 
