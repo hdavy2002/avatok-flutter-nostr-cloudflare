@@ -133,7 +133,13 @@
     const features=document.createElement('div');features.className='feature-icons';
     (cardFeatures[card.closest('.category')?.id]||[]).forEach((label)=>{const item=document.createElement('span');item.className='feature-icon';item.textContent=label;features.append(item)});
     body?.querySelector('.creator-row')?.before(features);
-    const link=document.createElement('a');link.className='card-open';link.href=listingUrl(card,title);link.setAttribute('aria-label',`Open ${title}`);body?.append(link)
+    /* Appended to the CARD, not the card-body. As a child of .card-body the
+       overlay only covered the text half, so the photo — the top ~40% and the
+       obvious thing to click — did nothing. .listing-card is position:relative,
+       so inset:0 here spans the whole card. The controls that must stay
+       clickable sit above it on z-index 3: .fav on the photo, .card-actions
+       (Book now / Calendar) in the body. .card-open is z-index 2. */
+    const link=document.createElement('a');link.className='card-open';link.href=listingUrl(card,title);link.setAttribute('aria-label',`Open ${title}`);card.append(link)
   });
   const liveSchedules=['Wed 26 Aug · 7:00 AM IST','Wed 26 Aug · 6:30 AM IST','Thu 27 Aug · 5:30 PM IST','Fri 28 Aug · 8:00 PM IST','Sat 29 Aug · 9:00 AM IST','Sat 29 Aug · 6:00 PM IST','Sun 30 Aug · 8:00 PM IST','Mon 31 Aug · 6:00 AM IST'];
   document.querySelectorAll('#live-streaming .listing-card').forEach((card,index)=>{const schedule=document.createElement('div');schedule.className='schedule-line';schedule.textContent=`🗓 ${liveSchedules[index]}`;card.querySelector('.stats')?.before(schedule)});
