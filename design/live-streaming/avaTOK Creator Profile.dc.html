@@ -11,7 +11,7 @@
 <!-- Fonts arrive as @import, NOT <link>: support.js removes every <link>
      element while it renders, so a <link> here never reaches the browser and
      every face silently falls back to a system font. Do not convert back. -->
-<style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap");</style>
+<style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap");</style>
 <style>
   * { box-sizing: border-box; }
   /* ONE SCALE FOR THE WHOLE LAYOUT — type AND box together. See the same
@@ -56,7 +56,7 @@
 
   <!-- breadcrumb -->
   <div style="background:#fdf1d3; border-bottom:3px solid #161614;">
-    <div style="max-width:100rem; margin:0 auto; padding:13px clamp(14px,4vw,40px); display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.1em;">
+    <div style="max-width:100rem; margin:0 auto; padding:13px clamp(14px,4vw,40px); display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.1em;">
       <a href="avaTOK Marketplace.dc.html" style="color:#161614;">BAZAAR</a>
       <span style="color:#8c6a52;">›</span>
       <span style="color:#161614;">CREATORS</span>
@@ -74,36 +74,36 @@
       <div style="flex:none; position:relative;">
         <div style="width:clamp(140px,15vw,184px); height:clamp(140px,15vw,184px); border-radius:50%; border:3px solid #161614; background:#1e5f66; box-shadow:6px 7px 0 #161614; position:relative; overflow:hidden;">
           <div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px);"></div>
-          <span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:rgba(253,241,211,.75); text-align:center; line-height:1.9;">CREATOR<br />PORTRAIT</span>
+          <span style="position:absolute; inset:0; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:rgba(253,241,211,.75); text-align:center; line-height:1.9;">CREATOR<br />PORTRAIT</span>
         </div>
         <sc-if value="{{ verified }}" hint-placeholder-val="{{ true }}">
           <div style="position:absolute; right:-12px; bottom:-6px; width:78px; height:78px; border-radius:50%; border:2.5px dashed #fdf1d3; background:rgba(22,22,20,.25); display:grid; place-items:center; transform:rotate(10deg);">
-            <span style="font-family:'Silkscreen',monospace; font-size:0.5rem; line-height:1.6; letter-spacing:.05em; color:#fdf1d3; text-align:center;">TASDEEQ<br />SHUDA<br />· ✓ ·</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; line-height:1.6; letter-spacing:.05em; color:#fdf1d3; text-align:center;">TASDEEQ<br />SHUDA<br />· ✓ ·</span>
           </div>
         </sc-if>
       </div>
       <!-- identity -->
       <div style="flex:1 1 23.75rem; min-width:0;">
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-          <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.625rem,5.4vw,4.5rem); line-height:1; letter-spacing:0; text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:5px 5px 0 #161614;">Sunny Gill</h1>
+          <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.625rem,5.4vw,4.5rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:5px 5px 0 #161614; word-spacing:0.22em">Sunny Gill</h1>
           <sc-if value="{{ verified }}" hint-placeholder-val="{{ true }}">
-            <span style="display:flex; align-items:center; gap:8px; border:2.5px solid #161614; border-radius:100px; background:#2d7180; color:#fdf1d3; padding:8px 16px; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.1em; box-shadow:3px 3px 0 #161614; transform:rotate(-2deg);"><span style="width:18px; height:18px; flex:none; border-radius:50%; background:#fdf1d3; color:#2d7180; display:grid; place-items:center; font-size:0.75rem; font-weight:700; font-family:'Instrument Sans',sans-serif;">✓</span>VERIFIED HOST</span>
+            <span style="display:flex; align-items:center; gap:8px; border:2.5px solid #161614; border-radius:100px; background:#2d7180; color:#fdf1d3; padding:8px 16px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.1em; box-shadow:3px 3px 0 #161614; transform:rotate(-2deg);"><span style="width:18px; height:18px; flex:none; border-radius:50%; background:#fdf1d3; color:#2d7180; display:grid; place-items:center; font-size:0.75rem; font-weight:700; font-family:'Instrument Sans',sans-serif;">✓</span>VERIFIED HOST</span>
           </sc-if>
         </div>
-        <div style="margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.1em; color:#4a1b12;">
+        <div style="margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.8125rem; letter-spacing:.1em; color:#4a1b12;">
           <span>@SUNNYGILL</span><span>·</span><span>{{ followerLine }}</span><span>·</span><span>{{ videoCountLine }}</span><span>·</span><span>HOST SINCE 2024</span>
         </div>
         <p style="margin:14px 0 0; font-size:1.0625rem; font-weight:500; line-height:1.5; color:#2a0f0a; max-width:56ch; text-wrap:pretty;">Friday raat ka antakshari sarpanch. Team A vs Team B, 300 regulars, aur meri awaaz hi pehchaan hai. <a href="#" onClick="{{ goAbout }}" style="font-weight:700; color:#4a1b12; text-decoration:underline;">…aur dikhao</a></p>
         <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
           <sc-if value="{{ fan }}" hint-placeholder-val="{{ true }}">
-            <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer; box-shadow:4px 4px 0 #161614;">{{ followLabel }}</button>
-            <a href="avaTOK Listing Details.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; box-shadow:4px 4px 0 #161614; display:inline-block;">Book a show</a>
+            <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer; box-shadow:4px 4px 0 #161614; word-spacing:0.22em">{{ followLabel }}</button>
+            <a href="avaTOK Listing Details.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; box-shadow:4px 4px 0 #161614; display:inline-block; word-spacing:0.22em">Book a show</a>
           </sc-if>
           <sc-if value="{{ ownerView }}" hint-placeholder-val="{{ false }}">
-            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer; box-shadow:4px 4px 0 #161614;">Customise channel</button>
-            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; box-shadow:4px 4px 0 #161614;">Manage videos</button>
+            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#161614; color:#fdf1d3; cursor:pointer; box-shadow:4px 4px 0 #161614; word-spacing:0.22em">Customise channel</button>
+            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px 30px; border-radius:100px; border:2.5px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; box-shadow:4px 4px 0 #161614; word-spacing:0.22em">Manage videos</button>
           </sc-if>
-          <button onClick="{{ sharePick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:13px 22px; border-radius:100px; border:2.5px solid #161614; background:transparent; color:#2a0f0a; cursor:pointer;">{{ shareLabel }}</button>
+          <button onClick="{{ sharePick }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.08em; padding:13px 22px; border-radius:100px; border:2.5px solid #161614; background:transparent; color:#2a0f0a; cursor:pointer;">{{ shareLabel }}</button>
         </div>
       </div>
       <!-- marginalia -->
@@ -120,9 +120,9 @@
   <div style="background:#fdf1d3; border-bottom:3px solid #161614; position:sticky; top:0; z-index:5;">
     <div style="max-width:100rem; margin:0 auto; padding:0 clamp(16px,4vw,40px); display:flex; gap:clamp(14px,2.5vw,34px); align-items:stretch; overflow-x:auto;">
       <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
-        <button onClick="{{ t.pick }}" style="font-family:'Anton',sans-serif; font-size:1.0625rem; letter-spacing:.04em; text-transform:uppercase; padding:16px 4px 13px; background:none; border:none; border-bottom:4px solid {{ t.line }}; color:{{ t.col }}; cursor:pointer; white-space:nowrap;">{{ t.label }}</button>
+        <button onClick="{{ t.pick }}" style="font-family:'Anton',sans-serif; font-size:1.0625rem; letter-spacing:.04em; text-transform:uppercase; padding:16px 4px 13px; background:none; border:none; border-bottom:4px solid {{ t.line }}; color:{{ t.col }}; cursor:pointer; white-space:nowrap; word-spacing:0.22em">{{ t.label }}</button>
       </sc-for>
-      <span style="margin-left:auto; align-self:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:#8c6a52; white-space:nowrap; padding-left:14px;">{{ tabMeta }}</span>
+      <span style="margin-left:auto; align-self:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:#8c6a52; white-space:nowrap; padding-left:14px;">{{ tabMeta }}</span>
     </div>
   </div>
 
@@ -131,15 +131,15 @@
     <!-- empty channel (home + videos) -->
     <sc-if value="{{ showEmptyVideos }}" hint-placeholder-val="{{ false }}">
       <div style="border:2.5px dashed #161614; border-radius:22px; background:#fdf1d3; padding:48px 28px; display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; text-align:center;">
-        <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(-8deg);"><span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">PICTURE<br />ABHI BAAKI<br />HAI</span></div>
+        <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(-8deg);"><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">PICTURE<br />ABHI BAAKI<br />HAI</span></div>
         <div style="max-width:44ch;">
-          <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px;">Abhi koi video nahi.</div>
+          <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px; letter-spacing:0.06em; word-spacing:0.22em">Abhi koi video nahi.</div>
           <p style="margin:0 0 16px; font-size:0.9375rem; font-weight:500; color:#5a3d33; line-height:1.5;">{{ emptyVideoCopy }}</p>
           <sc-if value="{{ fan }}" hint-placeholder-val="{{ true }}">
-            <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer;">{{ followLabel }}</button>
+            <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer; word-spacing:0.22em">{{ followLabel }}</button>
           </sc-if>
           <sc-if value="{{ ownerView }}" hint-placeholder-val="{{ false }}">
-            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">Pehla video daalo</button>
+            <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; word-spacing:0.22em">Pehla video daalo</button>
           </sc-if>
         </div>
       </div>
@@ -151,8 +151,8 @@
         <section>
           <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
             <div style="flex:1 1 18.75rem; min-width:0;">
-              <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">SABSE ZYADA DEKHE GAYE</div>
-              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Aapke liye <span style="color:#d93825;">chuna hua.</span></h2>
+              <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">SABSE ZYADA DEKHE GAYE</div>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0; letter-spacing:0.06em; word-spacing:0.22em">Aapke liye <span style="color:#d93825;">chuna hua.</span></h2>
             </div>
             <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
               <div style="font-family:'Kalam',cursive; font-size:1.1875rem; color:#8c3a2c; transform:rotate(-2deg); padding-bottom:4px;">Pehli baar aaye ho? Yahin se shuru karo →</div>
@@ -164,14 +164,14 @@
               <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
                 <div style="aspect-ratio:16/9; background:{{ v.photo }}; position:relative;">
                   <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
-                  <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
+                  <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
                   <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
-                  <span style="position:absolute; right:10px; bottom:22px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
+                  <span style="position:absolute; right:10px; bottom:22px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
                   <div style="position:absolute; left:0; right:0; bottom:-1px; height:16px; background:radial-gradient(circle at 10px 13px, #fdf1d3 10px, transparent 11px) 0 0/20px 16px repeat-x;"></div>
                 </div>
                 <div style="padding:13px 16px 16px; display:flex; flex-direction:column; gap:8px;">
-                  <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614;">{{ v.title }}</h4>
-                  <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
+                  <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614; letter-spacing:0.06em; word-spacing:0.22em">{{ v.title }}</h4>
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
                 </div>
               </div>
             </sc-for>
@@ -181,10 +181,10 @@
         <section>
           <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
             <div style="flex:1 1 18.75rem; min-width:0;">
-              <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">PUBLIC REPLAYS · FREE DEKHO</div>
-              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Latest <span style="color:#d93825;">videos.</span></h2>
+              <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">PUBLIC REPLAYS · FREE DEKHO</div>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0; letter-spacing:0.06em; word-spacing:0.22em">Latest <span style="color:#d93825;">videos.</span></h2>
             </div>
-            <button onClick="{{ goVideos }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:11px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; box-shadow:3px 3px 0 #161614; margin-bottom:2px;">SAB 24 DEKHO →</button>
+            <button onClick="{{ goVideos }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.08em; padding:11px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; box-shadow:3px 3px 0 #161614; margin-bottom:2px;">SAB 24 DEKHO →</button>
           </div>
           <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 22px;"><dc-import name="TruckBorder" kind="chai" hint-size="100%,30px" style="display:block;"></dc-import></div>
           <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(15.625rem,1fr)); gap:20px;">
@@ -192,14 +192,14 @@
               <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
                 <div style="aspect-ratio:16/9; background:{{ v.photo }}; position:relative;">
                   <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
-                  <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
+                  <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
                   <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
-                  <span style="position:absolute; right:10px; bottom:22px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
+                  <span style="position:absolute; right:10px; bottom:22px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
                   <div style="position:absolute; left:0; right:0; bottom:-1px; height:16px; background:radial-gradient(circle at 10px 13px, #fdf1d3 10px, transparent 11px) 0 0/20px 16px repeat-x;"></div>
                 </div>
                 <div style="padding:13px 16px 16px; display:flex; flex-direction:column; gap:8px;">
-                  <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614;">{{ v.title }}</h4>
-                  <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
+                  <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614; letter-spacing:0.06em; word-spacing:0.22em">{{ v.title }}</h4>
+                  <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
                 </div>
               </div>
             </sc-for>
@@ -213,12 +213,12 @@
       <section>
         <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
           <div style="flex:1 1 18.75rem; min-width:0;">
-            <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">24 PUBLIC REPLAYS</div>
-            <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Sab <span style="color:#d93825;">videos.</span></h2>
+            <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">24 PUBLIC REPLAYS</div>
+            <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0; letter-spacing:0.06em; word-spacing:0.22em">Sab <span style="color:#d93825;">videos.</span></h2>
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
             <sc-for list="{{ sorts }}" as="s" hint-placeholder-count="3">
-              <button onClick="{{ s.pick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.05em; border:2px solid #161614; border-radius:100px; padding:9px 15px; cursor:pointer; background:{{ s.bg }}; color:{{ s.col }};">{{ s.label }}</button>
+              <button onClick="{{ s.pick }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.05em; border:2px solid #161614; border-radius:100px; padding:9px 15px; cursor:pointer; background:{{ s.bg }}; color:{{ s.col }};">{{ s.label }}</button>
             </sc-for>
           </div>
         </div>
@@ -228,14 +228,14 @@
             <div onClick="{{ v.open }}" style="cursor:pointer; border:3px solid #161614; border-radius:22px; overflow:hidden; background:#fdf1d3; box-shadow:5px 6px 0 #161614; display:flex; flex-direction:column; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
               <div style="aspect-ratio:16/9; background:{{ v.photo }}; position:relative;">
                 <div style="position:absolute; inset:0; background-image:{{ v.stripe }};"></div>
-                <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
+                <span style="position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:{{ v.phL }};">SHOW CLIP</span>
                 <span style="position:absolute; left:12px; top:12px; width:34px; height:34px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center; font-size:0.8125rem;">▸</span>
-                <span style="position:absolute; right:10px; bottom:22px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
+                <span style="position:absolute; right:10px; bottom:22px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; background:rgba(22,22,20,.8); color:#fdf1d3; border-radius:100px; padding:5px 10px;">{{ v.dur }}</span>
                 <div style="position:absolute; left:0; right:0; bottom:-1px; height:16px; background:radial-gradient(circle at 10px 13px, #fdf1d3 10px, transparent 11px) 0 0/20px 16px repeat-x;"></div>
               </div>
               <div style="padding:13px 16px 16px; display:flex; flex-direction:column; gap:8px;">
-                <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614;">{{ v.title }}</h4>
-                <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
+                <h4 style="font-family:'Anton',sans-serif; font-size:1.125rem; line-height:1.15; text-transform:uppercase; margin:0; color:#161614; letter-spacing:0.06em; word-spacing:0.22em">{{ v.title }}</h4>
+                <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52;">{{ v.meta }}</span>
               </div>
             </div>
           </sc-for>
@@ -246,20 +246,20 @@
     <!-- ═══════ SHOWS ═══════ -->
     <sc-if value="{{ isShows }}" hint-placeholder-val="{{ false }}">
       <section>
-        <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">TICKETED · LIVE</div>
-        <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0;">Upcoming <span style="color:#d93825;">shows.</span></h2>
+        <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">TICKETED · LIVE</div>
+        <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0; letter-spacing:0.06em; word-spacing:0.22em">Upcoming <span style="color:#d93825;">shows.</span></h2>
         <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 22px;"><dc-import name="TruckBorder" kind="tassels" hint-size="100%,30px" style="display:block;"></dc-import></div>
         <sc-if value="{{ noShows }}" hint-placeholder-val="{{ false }}">
           <div style="border:2.5px dashed #161614; border-radius:22px; background:#fdf1d3; padding:44px 28px; display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; text-align:center; max-width:920px;">
-            <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(8deg);"><span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">STAGE<br />KHAALI<br />HAI</span></div>
+            <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(8deg);"><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">STAGE<br />KHAALI<br />HAI</span></div>
             <div style="max-width:44ch;">
-              <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px;">Koi show scheduled nahi.</div>
+              <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px; letter-spacing:0.06em; word-spacing:0.22em">Koi show scheduled nahi.</div>
               <p style="margin:0 0 16px; font-size:0.9375rem; font-weight:500; color:#5a3d33; line-height:1.5;">{{ emptyShowCopy }}</p>
               <sc-if value="{{ fan }}" hint-placeholder-val="{{ true }}">
-                <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer;">{{ followLabel }}</button>
+                <button onClick="{{ followPick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ followBg }}; color:{{ followCol }}; cursor:pointer; word-spacing:0.22em">{{ followLabel }}</button>
               </sc-if>
               <sc-if value="{{ ownerView }}" hint-placeholder-val="{{ false }}">
-                <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">Show schedule karo</button>
+                <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; word-spacing:0.22em">Show schedule karo</button>
               </sc-if>
             </div>
           </div>
@@ -268,14 +268,14 @@
           <sc-for list="{{ shows }}" as="sh" hint-placeholder-count="3">
             <div style="border:2.5px solid #161614; border-radius:20px; background:{{ sh.fill }}; box-shadow:5px 6px 0 #161614; padding:20px 24px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
               <div style="flex:none; border:2px solid {{ sh.chip }}; border-radius:14px; padding:10px 14px; text-align:center; min-width:82px;">
-                <span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1; color:{{ sh.tCol }};">{{ sh.day }}</span>
-                <span style="display:block; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; margin-top:5px; color:{{ sh.stub }};">{{ sh.mon }}</span>
+                <span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.02; color:{{ sh.tCol }}; letter-spacing:0.06em; word-spacing:0.22em">{{ sh.day }}</span>
+                <span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; margin-top:5px; color:{{ sh.stub }};">{{ sh.mon }}</span>
               </div>
               <div style="flex:1 1 15rem; min-width:0;">
-                <h4 style="font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.1; text-transform:uppercase; margin:0 0 6px; color:{{ sh.tCol }};">{{ sh.title }}</h4>
-                <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:{{ sh.stub }};">{{ sh.meta }}</span>
+                <h4 style="font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.1; text-transform:uppercase; margin:0 0 6px; color:{{ sh.tCol }}; letter-spacing:0.06em; word-spacing:0.22em">{{ sh.title }}</h4>
+                <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:{{ sh.stub }};">{{ sh.meta }}</span>
               </div>
-              <a href="avaTOK Listing Details.dc.html" style="flex:none; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; display:inline-block;">Book · {{ sh.price }}</a>
+              <a href="avaTOK Listing Details.dc.html" style="flex:none; font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; display:inline-block; word-spacing:0.22em">Book · {{ sh.price }}</a>
             </div>
           </sc-for>
         </div>
@@ -286,8 +286,8 @@
     <sc-if value="{{ isAbout }}" hint-placeholder-val="{{ false }}">
       <div style="display:flex; gap:30px; flex-wrap:wrap; align-items:flex-start;">
         <section style="flex:1.5 1 23.75rem; min-width:0;">
-          <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">CHANNEL KI KAHANI</div>
-          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0 0 18px;">Description.</h2>
+          <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">CHANNEL KI KAHANI</div>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0 0 18px; letter-spacing:0.06em; word-spacing:0.22em">Description.</h2>
           <div style="border:2.5px solid #161614; border-radius:22px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; padding:26px 28px;">
             <p style="margin:0; font-size:1.0625rem; font-weight:500; line-height:1.6; color:#4a3a20; text-wrap:pretty;">Ye woh jagah hai jahan Friday raat ka scene set hota hai. Main Sunny — Ludhiana ka launda, antakshari ka sarpanch. Har hafte Team A vs Team B, 300 regulars, aur 'meri awaaz hi pehchaan hai' rules. Yahan mere shows ke public replays milte hain — highlights, grand finals, aur backstage ka full bawaal.</p>
             <p style="margin:16px 0 0; font-size:1.0625rem; font-weight:500; line-height:1.6; color:#4a3a20; text-wrap:pretty;">Disclaimer: galat sur ke liye pehle se maafi. Replays free hain; live shows ticketed hain — seat book karo, warna Friday ka FOMO guaranteed. Ye channel achhi niyat se banaya gaya hai.</p>
@@ -299,21 +299,21 @@
             <div style="margin-top:22px; border:2.5px solid #161614; border-radius:22px; background:#2d7180; box-shadow:5px 6px 0 #161614; padding:22px 26px; display:flex; gap:16px; align-items:flex-start;">
               <span style="width:42px; height:42px; flex:none; border-radius:50%; background:#fdf1d3; color:#2d7180; display:grid; place-items:center; font-size:1.25rem; font-weight:700; border:2px solid #161614;">✓</span>
               <div>
-                <b style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase; color:#fdf1d3; display:block; margin-bottom:4px;">Verified host</b>
+                <b style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase; color:#fdf1d3; display:block; margin-bottom:4px; letter-spacing:0.06em; word-spacing:0.22em">Verified host</b>
                 <span style="font-size:0.9375rem; font-weight:500; line-height:1.5; color:#d6ecee;">Pehchaan ki tasdeeq avaTOK ne ki hai — government ID, live video check aur payout account match. Badge har listing aur profile pe dikhta hai.</span>
               </div>
             </div>
           </sc-if>
         </section>
         <aside style="flex:1 1 20rem; max-width:460px;">
-          <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">SEEDHI BAAT</div>
-          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0 0 18px;">More info.</h2>
+          <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">SEEDHI BAAT</div>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2rem,3.2vw,2.75rem); line-height:1.02; text-transform:uppercase; margin:0 0 18px; letter-spacing:0.06em; word-spacing:0.22em">More info.</h2>
           <div style="border:2.5px solid #161614; border-radius:22px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; overflow:hidden;">
             <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,30px" style="display:block;"></dc-import></div>
             <div style="padding:10px 22px 14px; display:flex; flex-direction:column;">
               <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
                 <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.875rem;">✉</span>
-                <button onClick="{{ emailPick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 16px; cursor:pointer; background:#fdf1d3; color:#161614; box-shadow:2px 2px 0 #161614;">{{ emailLabel }}</button>
+                <button onClick="{{ emailPick }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.06em; border:2px solid #161614; border-radius:100px; padding:9px 16px; cursor:pointer; background:#fdf1d3; color:#161614; box-shadow:2px 2px 0 #161614;">{{ emailLabel }}</button>
               </div>
               <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
                 <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#d9c3a0; display:grid; place-items:center; font-size:0.875rem;">⌂</span>
@@ -328,7 +328,7 @@
                 <span style="font-size:0.9375rem; font-weight:600;">Joined 14 Feb 2024</span>
               </div>
               <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
-                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.8125rem; font-family:'Silkscreen',monospace;">♥</span>
+                <span style="width:34px; height:34px; flex:none; border-radius:50%; border:2px solid #161614; background:#f4d8a0; display:grid; place-items:center; font-size:0.9375rem; font-family:'Nunito',sans-serif; font-weight:800;">♥</span>
                 <span style="font-size:0.9375rem; font-weight:600;">{{ followerLong }}</span>
               </div>
               <div style="display:flex; align-items:center; gap:14px; padding:11px 0; border-bottom:1.5px dashed rgba(22,22,20,.25);">
@@ -341,8 +341,8 @@
               </div>
             </div>
             <div style="border-top:2.5px solid #161614; padding:16px 22px; display:flex; gap:10px; flex-wrap:wrap;">
-              <button onClick="{{ sharePick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 24px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; box-shadow:3px 3px 0 #161614;">{{ shareLabel }}</button>
-              <button onClick="{{ noop }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.06em; padding:12px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">REPORT KARO</button>
+              <button onClick="{{ sharePick }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 24px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; box-shadow:3px 3px 0 #161614; word-spacing:0.22em">{{ shareLabel }}</button>
+              <button onClick="{{ noop }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.06em; padding:12px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">REPORT KARO</button>
             </div>
           </div>
         </aside>

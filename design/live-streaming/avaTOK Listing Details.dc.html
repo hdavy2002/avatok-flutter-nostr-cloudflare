@@ -84,7 +84,7 @@
       <span style="display:flex; align-items:center; gap:8px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.1em; color:#fdf1d3;"><span style="width:8px; height:8px; border-radius:50%; background:{{ tickDot }}; animation:{{ tickAnim }};"></span>{{ tickLead }}</span>
       <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.1em; color:{{ tickSubC }};">{{ tickSub }}</span>
       <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
-        <button data-wire="stream.join" onClick="{{ joinTry }}" style="margin-left:auto; font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.06em; text-transform:uppercase; padding:8px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">Join now ▸</button>
+        <button data-wire="stream.join" onClick="{{ joinTry }}" style="margin-left:auto; font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.06em; text-transform:uppercase; padding:8px 20px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer; word-spacing:0.22em">Join now ▸</button>
       </sc-if>
     </div>
   </div>
@@ -114,14 +114,14 @@
           </div>
           <span style="position:absolute; left:50%; top:42%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.12em; color:rgba(253,241,211,.65); text-align:center; line-height:2;">LIVE STAGE · HOST CAMERA<br />16:9 STREAM DROPS HERE</span>
           <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
-            <button data-wire="stream.join" onClick="{{ joinTry }}" style="position:absolute; left:50%; bottom:60px; transform:translateX(-50%); font-family:'Anton',sans-serif; font-size:1.25rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 40px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; box-shadow:5px 6px 0 #161614;">▸ Join now</button>
+            <button data-wire="stream.join" onClick="{{ joinTry }}" style="position:absolute; left:50%; bottom:60px; transform:translateX(-50%); font-family:'Anton',sans-serif; font-size:1.25rem; letter-spacing:.05em; text-transform:uppercase; padding:16px 40px; border-radius:100px; border:2.5px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer; box-shadow:5px 6px 0 #161614; word-spacing:0.22em">▸ Join now</button>
           </sc-if>
           <sc-if value="{{ notLive }}" hint-placeholder-val="{{ true }}">
             <div data-wire="stream.countdown" style="position:absolute; left:50%; bottom:56px; transform:translateX(-50%); display:flex; gap:8px; align-items:flex-end;">
-              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1;">{{ cdD }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">DAYS</span></span>
-              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1;">{{ cdH }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">HRS</span></span>
-              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1;">{{ cdM }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">MIN</span></span>
-              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1;">{{ cdS }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">SEC</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.02; letter-spacing:0.06em; word-spacing:0.22em">{{ cdD }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">DAYS</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.02; letter-spacing:0.06em; word-spacing:0.22em">{{ cdH }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">HRS</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.02; letter-spacing:0.06em; word-spacing:0.22em">{{ cdM }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">MIN</span></span>
+              <span style="border:2px solid #fdf1d3; border-radius:12px; background:rgba(22,22,20,.72); color:#fdf1d3; padding:9px 12px; text-align:center; min-width:58px;"><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; line-height:1.02; letter-spacing:0.06em; word-spacing:0.22em">{{ cdS }}</span><span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.5625rem; letter-spacing:.1em; margin-top:4px;">SEC</span></span>
             </div>
           </sc-if>
           <div style="position:absolute; left:0; right:0; bottom:-1px; height:18px; background:radial-gradient(circle at 11px 15px, #fdf1d3 11px, transparent 12px) 0 0/22px 18px repeat-x;"></div>
@@ -176,7 +176,7 @@
     <!-- title / meta -->
     <div style="flex:1 1 20rem; min-width:min(100%,17.5rem);">
       <div style="font-family:'Nunito',sans-serif; font-weight:800; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:12px;">{{ catEyebrow }}</div>
-      <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.25rem,4.4vw,3.75rem); line-height:1.03; letter-spacing:0; text-transform:uppercase; margin:0;">Antakshari Friday <span style="color:#d93825;">with Sunny.</span></h1>
+      <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.25rem,4.4vw,3.75rem); line-height:1.03; letter-spacing:0; text-transform:uppercase; margin:0; word-spacing:0.22em">Antakshari Friday <span style="color:#d93825;">with Sunny.</span></h1>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:16px;">
         <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">★ 4.9 · 620 RATINGS</span>
         <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.06em; border:1.5px solid #161614; border-radius:100px; padding:7px 12px; background:#fdf1d3;">♡ 300 REGULARS</span>
@@ -185,13 +185,13 @@
       </div>
       <p style="margin:18px 0 0; font-size:1.0625rem; font-weight:500; line-height:1.55; color:#4a3a20; max-width:52ch; text-wrap:pretty;">Team A vs Team B, classic antakshari rules with Sunny's twists. He hosts, keeps score, and brings full drama when someone fumbles the lyrics. Come as a stranger, leave as antakshari-family.</p>
       <div style="margin-top:18px; border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; box-shadow:4px 5px 0 #161614; padding:14px 18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr)); gap:12px;">
-        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem;">{{ bookedCount }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">✓ BOOKED THIS SHOW</span></span>
-        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem;">{{ watchStat }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">{{ watchStatLabel }}</span></span>
-        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem;">132</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">SHOWS HOSTED</span></span>
-        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem;">96%</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">♡ COME BACK AGAIN</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; letter-spacing:0.06em; word-spacing:0.22em">{{ bookedCount }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">✓ BOOKED THIS SHOW</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; letter-spacing:0.06em; word-spacing:0.22em">{{ watchStat }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">{{ watchStatLabel }}</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; letter-spacing:0.06em; word-spacing:0.22em">132</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">SHOWS HOSTED</span></span>
+        <span><span style="display:block; font-family:'Anton',sans-serif; font-size:1.375rem; letter-spacing:0.06em; word-spacing:0.22em">96%</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:#8c6a52;">♡ COME BACK AGAIN</span></span>
       </div>
       <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:20px;">
-        <span style="font-family:'Anton',sans-serif; font-size:2.125rem;">₹49 <span style="font-size:1rem; letter-spacing:.04em;">/ SEAT</span></span>
+        <span style="font-family:'Anton',sans-serif; font-size:2.125rem; letter-spacing:0.06em; word-spacing:0.22em">₹49 <span style="font-size:1rem; letter-spacing:.04em;">/ SEAT</span></span>
         <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52;">FEES &amp; GST SHOWN BEFORE YOU BOOK</span>
       </div>
       <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
@@ -223,14 +223,14 @@
         </sc-if>
         <div style="padding:20px 22px 24px;">
           <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:16px;">
-            <span style="font-family:'Anton',sans-serif; font-size:1.5rem; text-transform:uppercase;">Book a seat</span>
+            <span style="font-family:'Anton',sans-serif; font-size:1.5rem; text-transform:uppercase; letter-spacing:0.06em; word-spacing:0.22em">Book a seat</span>
             <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; color:#8c6a52;">₹49 / SEAT</span>
           </div>
 
           <div style="border:2px solid #161614; border-radius:16px; background:#f6e4cd; padding:14px;">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
               <button data-wire="availability.month.prev" onClick="{{ prevM }}" style="width:26px; height:26px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:0.8125rem; display:grid; place-items:center; padding:0;">‹</button>
-              <span style="font-family:'Anton',sans-serif; font-size:0.9375rem; text-transform:uppercase; letter-spacing:.03em;">{{ monthLabel }}</span>
+              <span style="font-family:'Anton',sans-serif; font-size:0.9375rem; text-transform:uppercase; letter-spacing:.03em; word-spacing:0.22em">{{ monthLabel }}</span>
               <button data-wire="availability.month.next" onClick="{{ nextM }}" style="width:26px; height:26px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:0.8125rem; display:grid; place-items:center; padding:0;">›</button>
             </div>
             <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px;">
@@ -256,7 +256,7 @@
                 <button data-wire="availability.slot.select" onClick="{{ sl.pick }}" style="display:flex; align-items:center; gap:12px; width:100%; text-align:left; border:2px solid #161614; border-radius:14px; background:{{ sl.bg }}; padding:12px 14px; cursor:{{ sl.cur }}; opacity:{{ sl.op }}; box-shadow:{{ sl.sh }};">
                   <span style="width:16px; height:16px; flex:none; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center;"><span style="width:7px; height:7px; border-radius:50%; background:{{ sl.dotIn }};"></span></span>
                   <span style="min-width:0; flex:1;">
-                    <span style="display:block; font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.02em;">{{ sl.time }}</span>
+                    <span style="display:block; font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.02em; word-spacing:0.22em">{{ sl.time }}</span>
                     <span style="display:block; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.06em; color:#8c6a52; margin:4px 0 6px;">{{ sl.label }}</span>
                     <span style="display:block; height:7px; border:1.5px solid #161614; border-radius:100px; background:#f6e4cd; overflow:hidden;"><span style="display:block; height:100%; width:{{ sl.fillW }}; background:{{ sl.fillC }};"></span></span>
                   </span>
@@ -271,7 +271,7 @@
               <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.12em; color:#6b4f3f;">HOW MANY SEATS?</span>
               <div style="display:flex; align-items:center; gap:12px;">
                 <button data-wire="booking.qty.decrement" onClick="{{ qMinus }}" style="width:30px; height:30px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:0.9375rem; display:grid; place-items:center; padding:0;">−</button>
-                <span style="font-family:'Anton',sans-serif; font-size:1.25rem; min-width:20px; text-align:center;">{{ qty }}</span>
+                <span style="font-family:'Anton',sans-serif; font-size:1.25rem; min-width:20px; text-align:center; letter-spacing:0.06em; word-spacing:0.22em">{{ qty }}</span>
                 <button data-wire="booking.qty.increment" onClick="{{ qPlus }}" style="width:30px; height:30px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:0.9375rem; display:grid; place-items:center; padding:0;">+</button>
               </div>
             </div>
@@ -283,23 +283,23 @@
                 </div>
               </sc-for>
               <div style="display:flex; justify-content:space-between; gap:10px; border-top:2px solid #161614; padding-top:9px; margin-top:3px;">
-                <span style="font-family:'Anton',sans-serif; font-size:1.0625rem; text-transform:uppercase;">Total</span>
-                <span style="font-family:'Anton',sans-serif; font-size:1.0625rem;">{{ totalLabel }}</span>
+                <span style="font-family:'Anton',sans-serif; font-size:1.0625rem; text-transform:uppercase; letter-spacing:0.06em; word-spacing:0.22em">Total</span>
+                <span style="font-family:'Anton',sans-serif; font-size:1.0625rem; letter-spacing:0.06em; word-spacing:0.22em">{{ totalLabel }}</span>
               </div>
               <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.06em; color:#8c6a52;">THAT'S IT. NO SURPRISES AT CHECKOUT.</span>
             </div>
           </sc-if>
 
           <sc-if value="{{ notBooked }}" hint-placeholder-val="{{ true }}">
-            <button data-wire="booking.create" onClick="{{ book }}" style="width:100%; margin-top:16px; font-family:'Anton',sans-serif; font-size:1.0625rem; letter-spacing:.05em; text-transform:uppercase; padding:16px; border-radius:100px; border:2.5px solid #161614; background:{{ bookBg }}; color:#fdf1d3; cursor:{{ bookCur }}; box-shadow:4px 5px 0 #161614;">{{ bookLabel }}</button>
+            <button data-wire="booking.create" onClick="{{ book }}" style="width:100%; margin-top:16px; font-family:'Anton',sans-serif; font-size:1.0625rem; letter-spacing:.05em; text-transform:uppercase; padding:16px; border-radius:100px; border:2.5px solid #161614; background:{{ bookBg }}; color:#fdf1d3; cursor:{{ bookCur }}; box-shadow:4px 5px 0 #161614; word-spacing:0.22em">{{ bookLabel }}</button>
             <div style="margin-top:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.06em; color:#8c6a52; text-align:center; line-height:1.8;">FREE CANCEL UP TO 24 HRS BEFORE THE SHOW<br />NO AUTO-RENEW · NO HIDDEN FEES</div>
           </sc-if>
           <sc-if value="{{ booked }}" hint-placeholder-val="{{ false }}">
             <div style="margin-top:16px; border:2.5px solid #161614; border-radius:18px; background:#2d7180; padding:18px 20px; box-shadow:4px 5px 0 #161614;">
-              <div style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase; color:#fdf1d3; text-shadow:2px 2px 0 #0f3f45;">Seat locked! ✓</div>
+              <div style="font-family:'Anton',sans-serif; font-size:1.375rem; text-transform:uppercase; color:#fdf1d3; text-shadow:2px 2px 0 #0f3f45; letter-spacing:0.06em; word-spacing:0.22em">Seat locked! ✓</div>
               <p style="margin:8px 0 0; font-size:0.8125rem; font-weight:500; line-height:1.55; color:#d6ecee;">{{ bookedLine }}</p>
               <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
-                <button data-wire="stream.join" onClick="{{ joinTry }}" style="width:100%; margin-top:12px; font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; box-shadow:3px 4px 0 #0f3f45;">▸ Join the show now</button>
+                <button data-wire="stream.join" onClick="{{ joinTry }}" style="width:100%; margin-top:12px; font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; padding:13px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; box-shadow:3px 4px 0 #0f3f45; word-spacing:0.22em">▸ Join the show now</button>
               </sc-if>
               <p style="margin:10px 0 0; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.06em; color:#c4e3e0; line-height:1.8;">{{ bookedNote }}</p>
               <button data-wire="booking.cancel" onClick="{{ unbook }}" style="margin-top:12px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#fdf1d3; background:none; border:none; cursor:pointer; text-decoration:underline; padding:0;">CHANGE / CANCEL BOOKING</button>
@@ -316,7 +316,7 @@
     <main style="flex:999 1 32.5rem; min-width:0; display:flex; flex-direction:column; gap:52px; order:2;">
 
       <section>
-        <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0;">How the show <span style="color:#d93825;">works.</span></h2>
+        <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; letter-spacing:0.06em; word-spacing:0.22em">How the show <span style="color:#d93825;">works.</span></h2>
         <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="{{ catKind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(13.75rem,1fr)); gap:16px;">
           <div style="border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; padding:18px 20px; box-shadow:4px 5px 0 #161614;">
@@ -337,7 +337,7 @@
       <!-- meet the host -->
       <section>
         <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
-          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; flex:1 1 15rem;">Meet the <span style="color:#d93825;">host.</span></h2>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; flex:1 1 15rem; letter-spacing:0.06em; word-spacing:0.22em">Meet the <span style="color:#d93825;">host.</span></h2>
           <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">ID VERIFIED · PAST SESSIONS SHOWN UNEDITED</span>
         </div>
         <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="tassels" hint-size="100%,30px" style="display:block;"></dc-import></div>
@@ -351,7 +351,7 @@
                 <span style="position:absolute; top:10px; left:10px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; background:#d93825; color:#fdf1d3; border-radius:100px; padding:5px 10px;">✓ ID VERIFIED</span>
               </a>
               <div>
-                <a href="avaTOK Creator Profile.dc.html" style="color:inherit; text-decoration:none;"><div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; line-height:1.05;">Sunny Gill</div></a>
+                <a href="avaTOK Creator Profile.dc.html" style="color:inherit; text-decoration:none;"><div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; line-height:1.05; letter-spacing:0.06em; word-spacing:0.22em">Sunny Gill</div></a>
                 <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52; margin-top:6px;">HOST SINCE 2024 · AMRITSAR / TORONTO</div>
               </div>
               <div style="display:flex; flex-wrap:wrap; gap:7px;">
@@ -359,7 +359,7 @@
                 <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.05em; border:1.5px solid #161614; border-radius:100px; padding:6px 10px;">{{ hostChip2 }}</span>
                 <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.05em; border:1.5px solid #161614; border-radius:100px; padding:6px 10px;">~10 MIN REPLY</span>
               </div>
-              <button data-wire="chat.host.open" onClick="{{ msgHost }}" style="font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:14px; border-radius:100px; border:2.5px solid #161614; background:{{ msgBg }}; color:{{ msgCol }}; cursor:pointer; box-shadow:3px 4px 0 #161614;">{{ msgLabel }}</button>
+              <button data-wire="chat.host.open" onClick="{{ msgHost }}" style="font-family:'Anton',sans-serif; font-size:0.9375rem; letter-spacing:.05em; text-transform:uppercase; padding:14px; border-radius:100px; border:2.5px solid #161614; background:{{ msgBg }}; color:{{ msgCol }}; cursor:pointer; box-shadow:3px 4px 0 #161614; word-spacing:0.22em">{{ msgLabel }}</button>
               <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.06em; color:#8c6a52; text-align:center;">MESSAGES STAY ON AVATOK · NO PHONE NUMBERS SHARED</span>
             </div>
             <!-- bio + sessions + listings -->
@@ -372,7 +372,7 @@
                 <div style="border:2.5px dashed #161614; border-radius:18px; background:#f6e4cd; padding:20px 22px;">
                   <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
                     <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; background:#d93825; color:#fdf1d3; border-radius:100px; padding:6px 12px;">NAYA HOST</span>
-                    <span style="font-family:'Anton',sans-serif; font-size:1.1875rem; text-transform:uppercase;">No shows hosted yet — you'd be among the first.</span>
+                    <span style="font-family:'Anton',sans-serif; font-size:1.1875rem; text-transform:uppercase; letter-spacing:0.06em; word-spacing:0.22em">No shows hosted yet — you'd be among the first.</span>
                   </div>
                   <p style="margin:0 0 14px; font-size:0.875rem; font-weight:500; line-height:1.55; color:#4a3a20;">We show real history only, so this space stays empty until the first show happens. Here's what avaTOK has checked instead:</p>
                   <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(11.25rem,1fr)); gap:10px;">
@@ -410,7 +410,7 @@
                   <sc-for list="{{ hostListings }}" as="hl" hint-placeholder-count="3">
                     <div data-wire="host.listing.open" onClick="{{ hl.go }}" style="cursor:pointer; border:2.5px solid #161614; border-radius:16px; background:{{ hl.bg }}; padding:14px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:3px 4px 0 #161614; transition:transform .12s ease;" style-hover="transform:translateY(-2px);">
                       <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.625rem; letter-spacing:.08em; color:{{ hl.tagC }};">{{ hl.tag }}</span>
-                      <span style="font-family:'Anton',sans-serif; font-size:1.0625rem; line-height:1.1; text-transform:uppercase; color:{{ hl.titleC }};">{{ hl.title }}</span>
+                      <span style="font-family:'Anton',sans-serif; font-size:1.0625rem; line-height:1.1; text-transform:uppercase; color:{{ hl.titleC }}; letter-spacing:0.06em; word-spacing:0.22em">{{ hl.title }}</span>
                       <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.05em; color:{{ hl.metaC }};">{{ hl.meta }}</span>
                     </div>
                   </sc-for>
@@ -424,7 +424,7 @@
       <!-- house rules -->
       <section>
         <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
-          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; flex:1 1 15rem;">Sunny's house <span style="color:#d93825;">rules.</span></h2>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; flex:1 1 15rem; letter-spacing:0.06em; word-spacing:0.22em">Sunny's house <span style="color:#d93825;">rules.</span></h2>
           <img src="assets/jatt-sticker.png" alt="Caution: Jatt on board — proceed with respect" style="width:clamp(120px,12vw,170px); flex:none; transform:rotate(-5deg); align-self:center;" />
           <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">SET BY THE HOST · SHOWN BEFORE EVERY BOOKING</span>
         </div>
@@ -454,14 +454,14 @@
 
       <section>
         <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
-          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; flex:1 1 15rem;">Public ki <span style="color:#d93825;">Rai.</span></h2>
+          <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.75rem,2.6vw,2.375rem); text-transform:uppercase; margin:0; flex:1 1 15rem; letter-spacing:0.06em; word-spacing:0.22em">Public ki <span style="color:#d93825;">Rai.</span></h2>
           <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52; padding-bottom:6px;">ALL FROM VERIFIED BOOKINGS · WE DELETE NOTHING</span>
         </div>
         <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:14px 0 20px;"><dc-import name="TruckBorder" kind="chai" hint-size="100%,30px" style="display:block;"></dc-import></div>
         <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
           <div style="flex:1 1 13.75rem; max-width:300px; min-width:0;">
             <div style="border:2.5px solid #161614; border-radius:18px; background:#fdf1d3; padding:20px; box-shadow:4px 5px 0 #161614;">
-            <div style="font-family:'Anton',sans-serif; font-size:3.25rem; line-height:1;">4.9</div>
+            <div style="font-family:'Anton',sans-serif; font-size:3.25rem; line-height:1.02; letter-spacing:0.06em; word-spacing:0.22em">4.9</div>
             <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52; margin:6px 0 14px;">620 RATINGS · 132 SHOWS</div>
             <div style="display:flex; flex-direction:column; gap:6px;">
               <sc-for list="{{ bars }}" as="b" hint-placeholder-count="5">
@@ -502,7 +502,7 @@
           <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,34px" style="display:block;"></dc-import></div>
           <div style="padding:clamp(22px,3vw,32px);">
             <div style="display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
-              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.625rem,2.4vw,2.25rem); text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:3px 3px 0 #0f3f45;">Seedhi baat, no chakkar.</h2>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.625rem,2.4vw,2.25rem); text-transform:uppercase; margin:0; color:#fdf1d3; text-shadow:3px 3px 0 #0f3f45; letter-spacing:0.06em; word-spacing:0.22em">Seedhi baat, no chakkar.</h2>
               <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:#c4e3e0;">THESE PROMISES APPLY TO EVERY LISTING</span>
             </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(14.375rem,1fr)); gap:14px;">
@@ -540,7 +540,7 @@
   <!-- browse more events -->
   <div style="max-width:100rem; margin:0 auto; padding:0 clamp(14px,4vw,40px) 90px;">
     <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap;">
-      <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.875rem,3vw,2.75rem); text-transform:uppercase; margin:0; flex:1 1 16.25rem;">Browse more <span style="color:#d93825;">events.</span></h2>
+      <h2 style="font-family:'Anton',sans-serif; font-size:clamp(1.875rem,3vw,2.75rem); text-transform:uppercase; margin:0; flex:1 1 16.25rem; letter-spacing:0.06em; word-spacing:0.22em">Browse more <span style="color:#d93825;">events.</span></h2>
       <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
         <div style="display:flex; align-items:flex-end; gap:12px; flex:none;">
           <div style="font-family:'Kalam',cursive; font-size:1.1875rem; line-height:1.3; color:#8c3a2c; transform:rotate(-2deg); padding-bottom:10px;">Ek show se kya hoga?<br />Scroll karte raho…</div>

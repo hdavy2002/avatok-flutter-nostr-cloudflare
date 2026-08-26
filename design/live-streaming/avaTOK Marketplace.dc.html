@@ -11,7 +11,7 @@
 <!-- Fonts arrive as @import, NOT <link>: support.js removes every <link>
      element while it renders, so a <link> here never reaches the browser and
      every face silently falls back to a system font. Do not convert back. -->
-<style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap");</style>
+<style>@import url("https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap");</style>
 <style>
   * { box-sizing: border-box; }
   /* ONE SCALE FOR THE WHOLE LAYOUT — type AND box together.
@@ -77,10 +77,10 @@
     <div style="max-width:100rem; margin:0 auto; padding:16px clamp(16px,4vw,40px); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 21.25rem; display:flex; align-items:center; gap:10px; border:2.5px solid #161614; border-radius:100px; background:#f6e4cd; padding:6px 6px 6px 20px; box-shadow:4px 4px 0 #161614;">
         <input value="{{ q }}" onInput="{{ onSearch }}" placeholder="Dhoondo: tarot, adda, rizz, shayari, antakshari…" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font-family:'Instrument Sans',sans-serif; font-size:1rem; font-weight:600; color:#161614; padding:8px 0;" />
-        <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.06em; text-transform:uppercase; padding:11px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Khojo</button>
+        <button onClick="{{ noop }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.06em; text-transform:uppercase; padding:11px 24px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; word-spacing:0.22em">Khojo</button>
       </div>
       <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
-        <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.1em; color:#8c6a52;">DHOONDTE REH JAOGE? NAHI. YAHAN SAB MILEGA.</span>
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.1em; color:#8c6a52;">DHOONDTE REH JAOGE? NAHI. YAHAN SAB MILEGA.</span>
       </sc-if>
     </div>
   </div>
@@ -90,8 +90,8 @@
     <dc-import name="TruckBorder" kind="tassels" hint-size="100%,44px" style="display:block;"></dc-import>
     <div style="max-width:100rem; margin:0 auto; padding:clamp(18px,3vw,26px) clamp(16px,4vw,40px) clamp(56px,7vw,78px); display:flex; gap:clamp(20px,3vw,36px); align-items:center; flex-wrap:wrap;">
       <div style="flex:1 1 23.75rem; min-width:0;">
-        <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.75rem; letter-spacing:.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:16px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>MARKETPLACE · 2,400 CREATORS LIVE</div>
-        <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.875rem,6.4vw,5.5rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0;">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
+        <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.875rem; letter-spacing:.14em; color:#4a1b12; display:flex; align-items:center; gap:10px; margin-bottom:16px;"><span style="width:9px; height:9px; border-radius:50%; background:#d93825; display:block;"></span>MARKETPLACE · 2,400 CREATORS LIVE</div>
+        <h1 style="font-family:'Anton',sans-serif; font-size:clamp(2.875rem,6.4vw,5.5rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0; word-spacing:0.22em">The bazaar<br /><span style="color:#fdf1d3; text-shadow:6px 6px 0 #161614;">is open.</span></h1>
         <p style="margin:24px 0 0; font-size:1.1875rem; font-weight:500; line-height:1.5; color:#2a0f0a; max-width:50ch; text-wrap:pretty;">Streams, dost, jyotish, adda rooms, AI agents aur full glow-ups — seat book karo ya seedha live ghuso. Scene sorted.</p>
         <sc-if value="{{ masala }}" hint-placeholder-val="{{ true }}">
           <div style="margin-top:20px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
@@ -112,8 +112,8 @@
       <div onClick="{{ t.pick }}" style="cursor:pointer; border:3px solid #161614; border-radius:18px; overflow:hidden; background:#fdf1d3; box-shadow:{{ t.sh }}; transition:transform .12s ease;" style-hover="transform:translateY(-3px);">
         <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="{{ t.kind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
         <div style="padding:12px 15px 13px; display:flex; flex-direction:column; gap:5px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><span style="font-family:'Anton',sans-serif; font-size:1.125rem; text-transform:uppercase; letter-spacing:.01em; color:{{ t.col }};">{{ t.label }}</span><span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; color:#d93825;">{{ t.mark }}</span></div>
-          <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:#8c6a52;">{{ t.sub }}</span>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><span style="font-family:'Anton',sans-serif; font-size:1.125rem; text-transform:uppercase; letter-spacing:.01em; color:{{ t.col }}; word-spacing:0.22em">{{ t.label }}</span><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.8125rem; color:#d93825;">{{ t.mark }}</span></div>
+          <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52;">{{ t.sub }}</span>
         </div>
       </div>
     </sc-for>
@@ -127,34 +127,34 @@
       <div style="border:2.5px solid #161614; border-radius:20px; background:#fdf1d3; box-shadow:5px 6px 0 #161614; overflow:hidden;">
         <div style="border-bottom:2.5px solid #161614;"><dc-import name="TruckBorder" kind="lotus" hint-size="100%,30px" style="display:block;"></dc-import></div>
         <div style="padding:18px 20px 6px; display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
-          <span style="font-family:'Anton',sans-serif; font-size:1.5rem; text-transform:uppercase;">Filters</span>
-          <button onClick="{{ clearAll }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; color:#d93825; background:none; border:none; cursor:pointer; text-decoration:underline; padding:0;">SAB HATAO</button>
+          <span style="font-family:'Anton',sans-serif; font-size:1.5rem; text-transform:uppercase; letter-spacing:0.06em; word-spacing:0.22em">Filters</span>
+          <button onClick="{{ clearAll }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.08em; color:#d93825; background:none; border:none; cursor:pointer; text-decoration:underline; padding:0;">SAB HATAO</button>
         </div>
 
         <div style="padding:12px 20px 18px;">
-          <div style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:10px;">CATEGORY</div>
+          <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:10px;">CATEGORY</div>
           <div style="display:flex; flex-direction:column;">
             <sc-for list="{{ cats }}" as="k" hint-placeholder-count="8">
               <div onClick="{{ k.pick }}" style="display:flex; align-items:center; gap:10px; padding:4px 0; cursor:pointer;">
                 <span style="width:15px; height:15px; flex:none; border-radius:50%; border:2px solid #161614; background:#fdf1d3; display:grid; place-items:center;"><span style="width:7px; height:7px; border-radius:50%; background:{{ k.dot }};"></span></span>
                 <span style="font-size:0.875rem; font-weight:{{ k.wt }}; color:#161614;">{{ k.label }}</span>
-                <span style="margin-left:auto; font-family:'Silkscreen',monospace; font-size:0.625rem; color:#8c6a52;">{{ k.count }}</span>
+                <span style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; color:#8c6a52;">{{ k.count }}</span>
               </div>
             </sc-for>
           </div>
         </div>
 
         <div style="border-top:2px dashed rgba(22,22,20,.35); padding:14px 20px 16px;">
-          <div style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:10px;">AVAILABLE ON</div>
+          <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:10px;">AVAILABLE ON</div>
           <button onClick="{{ calToggle }}" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; border:2px solid #161614; border-radius:12px; background:#fdf1d3; padding:10px 14px; cursor:pointer; box-shadow:3px 3px 0 #161614;">
-            <span style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.06em; color:{{ calLabelCol }};">{{ calLabel }}</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.06em; color:{{ calLabelCol }};">{{ calLabel }}</span>
             <span style="font-size:0.75rem; font-weight:700;">{{ calCaret }}</span>
           </button>
           <sc-if value="{{ calOpen }}" hint-placeholder-val="{{ false }}">
             <div style="margin-top:10px; border:2px solid #161614; border-radius:14px; background:#f6e4cd; padding:12px;">
               <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
                 <button onClick="{{ prevM }}" style="width:24px; height:24px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:0.75rem; display:grid; place-items:center; padding:0;">‹</button>
-                <span style="font-family:'Anton',sans-serif; font-size:0.875rem; text-transform:uppercase; letter-spacing:.03em;">{{ monthLabel }}</span>
+                <span style="font-family:'Anton',sans-serif; font-size:0.875rem; text-transform:uppercase; letter-spacing:.03em; word-spacing:0.22em">{{ monthLabel }}</span>
                 <button onClick="{{ nextM }}" style="width:24px; height:24px; border-radius:50%; border:2px solid #161614; background:#fdf1d3; cursor:pointer; font-weight:700; font-size:0.75rem; display:grid; place-items:center; padding:0;">›</button>
               </div>
               <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;">
@@ -165,16 +165,16 @@
                   </div>
                 </sc-for>
               </div>
-              <div style="margin-top:6px; font-family:'Silkscreen',monospace; font-size:0.5rem; letter-spacing:.08em; color:#8c6a52;">● = KOI NA KOI FREE HAI</div>
+              <div style="margin-top:6px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:#8c6a52;">● = KOI NA KOI FREE HAI</div>
             </div>
           </sc-if>
         </div>
 
         <div style="border-top:2px dashed rgba(22,22,20,.35); padding:16px 20px 22px;">
-          <div style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:12px;">PRICE</div>
+          <div style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.14em; color:#6b4f3f; margin-bottom:12px;">PRICE</div>
           <div style="display:flex; flex-wrap:wrap; gap:8px;">
             <sc-for list="{{ prices }}" as="p" hint-placeholder-count="4">
-              <button onClick="{{ p.pick }}" style="font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.05em; border:2px solid #161614; border-radius:100px; padding:8px 13px; cursor:pointer; background:{{ p.bg }}; color:{{ p.col }};">{{ p.label }}</button>
+              <button onClick="{{ p.pick }}" style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.05em; border:2px solid #161614; border-radius:100px; padding:8px 13px; cursor:pointer; background:{{ p.bg }}; color:{{ p.col }};">{{ p.label }}</button>
             </sc-for>
           </div>
         </div>
@@ -187,7 +187,7 @@
     <!-- results -->
     <main style="flex:999 1 38.75rem; min-width:0; display:flex; flex-direction:column; gap:60px;">
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:-34px;">
-        <span style="font-family:'Silkscreen',monospace; font-size:0.6875rem; letter-spacing:.12em; color:#161614;">{{ metaLine }}</span>
+        <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.8125rem; letter-spacing:.12em; color:#161614;">{{ metaLine }}</span>
         <span style="flex:1; height:2px; background:rgba(22,22,20,.2); min-width:60px;"></span>
       </div>
 
@@ -195,14 +195,14 @@
         <section>
           <div style="display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;">
             <div style="flex:1 1 18.75rem; min-width:0;">
-              <div style="font-family:'Silkscreen',monospace; font-weight:700; font-size:0.6875rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">{{ sec.eyebrow }}</div>
-              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2.125rem,3.4vw,3rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0;">{{ sec.title }} <span style="color:#d93825;">{{ sec.title2 }}</span></h2>
+              <div style="font-family:'Nunito',sans-serif; font-weight:700; font-size:0.8125rem; letter-spacing:.16em; color:#b82a19; margin-bottom:10px;">{{ sec.eyebrow }}</div>
+              <h2 style="font-family:'Anton',sans-serif; font-size:clamp(2.125rem,3.4vw,3rem); line-height:1.02; letter-spacing:0; text-transform:uppercase; margin:0; word-spacing:0.22em">{{ sec.title }} <span style="color:#d93825;">{{ sec.title2 }}</span></h2>
             </div>
             <sc-if value="{{ sec.punchOn }}" hint-placeholder-val="{{ false }}">
               <div style="font-family:'Kalam',cursive; font-size:1.25rem; line-height:1.3; color:#8c3a2c; transform:rotate(-2deg); max-width:30ch; padding-bottom:4px;">{{ sec.punch }}</div>
             </sc-if>
             <sc-if value="{{ sec.stampOn }}" hint-placeholder-val="{{ false }}">
-              <div style="flex:none; width:98px; height:98px; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; text-align:center; transform:rotate(8deg); margin-bottom:2px;"><span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">SITARE<br />SAB JAANTE<br />HAIN</span></div>
+              <div style="flex:none; width:98px; height:98px; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; text-align:center; transform:rotate(8deg); margin-bottom:2px;"><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">SITARE<br />SAB JAANTE<br />HAIN</span></div>
             </sc-if>
             <sc-if value="{{ sec.posterOn }}" hint-placeholder-val="{{ false }}">
               <img src="assets/pawri-poster.png" alt="Ye hamari pawri ho rahi hai" style="flex:none; width:104px; border:3px solid #161614; border-radius:10px; transform:rotate(3deg); box-shadow:5px 6px 0 #161614; margin-bottom:4px;" />
@@ -210,17 +210,17 @@
           </div>
           <div style="border:2.5px solid #161614; border-radius:10px; overflow:hidden; margin:16px 0 10px;"><dc-import name="TruckBorder" kind="{{ sec.kind }}" hint-size="100%,30px" style="display:block;"></dc-import></div>
           <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:20px;">
-            <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:#8c6a52;">{{ sec.countLabel }}</span>
-            <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:#8c6a52;">{{ sec.tag }}</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:#8c6a52;">{{ sec.countLabel }}</span>
+            <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:#8c6a52;">{{ sec.tag }}</span>
           </div>
 
           <sc-if value="{{ sec.empty }}" hint-placeholder-val="{{ false }}">
             <div style="border:2.5px dashed #161614; border-radius:22px; background:#fdf1d3; padding:40px 28px; display:flex; align-items:center; gap:26px; flex-wrap:wrap; justify-content:center; text-align:center;">
-              <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(-8deg);"><span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">BURI NAZAR<br />LAG GAYI<br />· 404 ·</span></div>
+              <div style="width:104px; height:104px; flex:none; border-radius:50%; border:2.5px dashed #d93825; display:grid; place-items:center; transform:rotate(-8deg);"><span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; line-height:1.7; color:#d93825; letter-spacing:.06em;">BURI NAZAR<br />LAG GAYI<br />· 404 ·</span></div>
               <div style="max-width:40ch;">
-                <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px;">Koi nahi mila, boss.</div>
+                <div style="font-family:'Anton',sans-serif; font-size:1.625rem; text-transform:uppercase; margin-bottom:8px; letter-spacing:0.06em; word-spacing:0.22em">Koi nahi mila, boss.</div>
                 <p style="margin:0 0 16px; font-size:0.9375rem; font-weight:500; color:#5a3d33; line-height:1.5;">Is filter combination mein full sannata hai. Thoda chill karo, filter loosen karo.</p>
-                <button onClick="{{ clearAll }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer;">Sab dikhao</button>
+                <button onClick="{{ clearAll }}" style="font-family:'Anton',sans-serif; font-size:0.875rem; letter-spacing:.05em; text-transform:uppercase; padding:12px 26px; border-radius:100px; border:2.5px solid #161614; background:#d93825; color:#fdf1d3; cursor:pointer; word-spacing:0.22em">Sab dikhao</button>
               </div>
             </div>
           </sc-if>
@@ -231,30 +231,30 @@
                 <div style="height:186px; background:{{ c.photo }}; position:relative;">
                   <div style="position:absolute; inset:0; background-image:{{ c.stripe }};"></div>
                   <div style="position:absolute; top:12px; left:12px; right:12px; display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
-                    <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; background:{{ c.pillBg }}; color:#fdf1d3; border-radius:100px; padding:6px 11px; display:flex; align-items:center; gap:6px; min-width:0;"><span style="width:6px; height:6px; border-radius:50%; background:{{ c.pillDot }}; flex:none;"></span>{{ c.status }}</span>
+                    <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; background:{{ c.pillBg }}; color:#fdf1d3; border-radius:100px; padding:6px 11px; display:flex; align-items:center; gap:6px; min-width:0;"><span style="width:6px; height:6px; border-radius:50%; background:{{ c.pillDot }}; flex:none;"></span>{{ c.status }}</span>
                     <button onClick="{{ c.hPick }}" style="width:30px; height:30px; flex:none; border-radius:50%; background:{{ c.hBg }}; border:1.5px solid #161614; display:grid; place-items:center; font-size:0.875rem; color:{{ c.hCol }}; cursor:pointer; padding:0;">{{ c.hG }}</button>
                   </div>
-                  <span style="position:absolute; left:50%; bottom:46%; transform:translateX(-50%); font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ c.phL }};">PORTRAIT</span>
+                  <span style="position:absolute; left:50%; bottom:46%; transform:translateX(-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:{{ c.phL }};">PORTRAIT</span>
                   <div style="position:absolute; left:0; right:0; bottom:-1px; height:18px; background:radial-gradient(circle at 11px 15px, {{ c.fill }} 11px, transparent 12px) 0 0/22px 18px repeat-x;"></div>
                 </div>
                 <div style="padding:15px 17px 17px; display:flex; flex-direction:column; gap:11px; flex:1;">
-                  <div style="display:flex; justify-content:space-between; gap:8px; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.1em; color:{{ c.stubC }};"><span>{{ c.s1 }}</span><span>{{ c.s2 }}</span></div>
+                  <div style="display:flex; justify-content:space-between; gap:8px; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:{{ c.stubC }};"><span>{{ c.s1 }}</span><span>{{ c.s2 }}</span></div>
                   <h4 style="font-family:{{ c.tFam }}; font-style:{{ c.tSty }}; font-weight:{{ c.tWt }}; font-size:calc({{ c.tSize }} * 0.0625rem); line-height:1.07; text-transform:{{ c.tCase }}; color:{{ c.tCol }}; text-shadow:{{ c.tShad }}; margin:0;">{{ c.title }}</h4>
                   <p style="margin:0; font-size:0.875rem; font-weight:500; line-height:1.45; color:{{ c.bodyC }};">{{ c.blurb }}</p>
                   <div style="display:flex; flex-wrap:wrap; gap:7px;">
-                    <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.05em; border:1.5px solid {{ c.chipC }}; border-radius:100px; padding:6px 10px; color:{{ c.chipC }};">{{ c.ch1 }}</span>
-                    <span style="font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.05em; border:1.5px solid {{ c.chipC }}; border-radius:100px; padding:6px 10px; color:{{ c.chipC }};">{{ c.ch2 }}</span>
+                    <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.05em; border:1.5px solid {{ c.chipC }}; border-radius:100px; padding:6px 10px; color:{{ c.chipC }};">{{ c.ch1 }}</span>
+                    <span style="font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.05em; border:1.5px solid {{ c.chipC }}; border-radius:100px; padding:6px 10px; color:{{ c.chipC }};">{{ c.ch2 }}</span>
                   </div>
                   <div style="display:flex; gap:9px; margin-top:auto;">
-                    <button onClick="{{ goDetails }}" style="flex:1; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">BOOK NOW</button>
-                    <button onClick="{{ goDetails }}" style="flex:1; font-family:'Silkscreen',monospace; font-size:0.625rem; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">CALENDAR</button>
+                    <button onClick="{{ goDetails }}" style="flex:1; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:{{ ctaColor }}; color:#fdf1d3; cursor:pointer;">BOOK NOW</button>
+                    <button onClick="{{ goDetails }}" style="flex:1; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.75rem; letter-spacing:.08em; padding:13px 8px; border-radius:100px; border:2px solid #161614; background:#fdf1d3; color:#161614; cursor:pointer;">CALENDAR</button>
                   </div>
                   <div style="display:flex; align-items:center; gap:9px; padding-top:11px; border-top:1.5px solid {{ c.hairC }};">
                     <span onClick="{{ goProfile }}" title="View profile" style="display:flex; align-items:center; gap:9px; cursor:pointer;">
-                      <span style="width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid {{ c.chipC }}; display:grid; place-items:center; font-family:'Silkscreen',monospace; font-size:0.5625rem; color:{{ c.chipC }};">{{ c.ini }}</span>
+                      <span style="width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid {{ c.chipC }}; display:grid; place-items:center; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; color:{{ c.chipC }};">{{ c.ini }}</span>
                       <span style="font-size:0.8125rem; font-weight:600; color:{{ c.nameC }}; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px;" style-hover="text-decoration-color:currentColor;">{{ c.name }} ✓</span>
                     </span>
-                    <span style="margin-left:auto; font-family:'Silkscreen',monospace; font-size:0.5625rem; letter-spacing:.08em; color:{{ c.stubC }};">{{ c.dur }}</span>
+                    <span style="margin-left:auto; font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.08em; color:{{ c.stubC }};">{{ c.dur }}</span>
                   </div>
                 </div>
               </div>

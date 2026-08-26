@@ -591,6 +591,47 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 
 ---
 
+## Type rules — NEVER NEGATIVE TRACKING ON BOLD/DISPLAY (owner decision 2026-08-26)
+
+These are standing rules for the web client (`web/`) **and** the bazaar comps in
+`design/live-streaming/`. They exist because the headings kept coming out with
+their letters run together, and the cause was never what it looked like.
+
+**The type stack.** Anton for display, **Nunito** for labels and eyebrows,
+Instrument Sans for body, Kalam for handwriting. **No typewriter, pixel or
+monospace faces** — Silkscreen and Space Mono are both retired; anything still
+naming them is stale.
+
+**Tracking.**
+
+- **Never negative on bold or display type.** Display headlines `0.055em`–`0.07em`;
+  bold UI labels `0.04em`–`0.08em`; small-caps eyebrows `0.1em`–`0.16em`.
+- `word-spacing: 0.2em`–`0.24em` on bold headlines.
+- Line height at least `1.02` on display, `1.15` on card titles. Card titles
+  often carry a hard `text-shadow`; a sub-1 line-height makes a wrapped title
+  collide with the shadow of the line above it.
+
+**Two silent traps, both already paid for:**
+
+1. **Synthesised bold.** Anton and Impact ship ONE weight (400). `h1`–`h6`
+   default to bold, so a heading in either asks for a face that does not exist
+   and the browser fabricates it by smearing each glyph sideways — strokes
+   fatten, sidebearings vanish, letters touch. Letter-spacing cannot repair it;
+   the glyphs themselves are distorted. `global.css` carries
+   `*, *::before, *::after { font-synthesis: none }` plus `h1..h6 { font-weight: 400 }`
+   so any display font added later is protected without anyone remembering.
+   Keep that rule.
+2. **Inline styles beat media queries.** A `style="display:block"` on an element
+   makes every responsive rule for it dead — the comp header's marigold stayed
+   visible on a 390px phone and pushed the bar 55px past the viewport. Put
+   anything a breakpoint needs to change in CSS, not inline.
+
+**Nunito reads smaller than the pixel face it replaced**, so label sizes were
+bumped when swapping: 8→11, 9→11, 10→12, 11→13, 12→14, 13→15 px, and every
+Nunito label carries an explicit `font-weight` of 700–900.
+
+---
+
 ## Design-system guard — TWO AUTOMATED CHECKS (added 2026-08-05)
 
 The 2026-08-04/05 cleanup folded ~1,600 legacy design-system references, ~1,900
