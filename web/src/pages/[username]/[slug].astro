@@ -48,22 +48,28 @@ const looksLikeHandle = /^[a-z0-9][a-z0-9._-]{1,30}$/i.test(username ?? '');
 const looksLikeSlug = /^[a-z0-9][a-z0-9._-]{1,80}$/i.test(slug ?? '');
 if (!looksLikeHandle || !looksLikeSlug) return new Response('Not found', { status: 404 });
 
-// The webfonts are injected here rather than left to the mockup, which declares
-// them inside <helmet> in its <x-dc> block. support.js hoists the <style> tags
-// out of <helmet> but NOT the <link> tags, so the page shipped with Anton,
-// Playfair Display and Instrument Sans named in CSS and none of them actually
-// downloaded — document.fonts was empty and every heading silently rendered in
-// a system fallback. Declaring a family is not loading it.
-const FONTS =
-  'https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Nunito:wght@600;700;800&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&display=swap';
+// The webfonts come in as a <style>@import, NOT a <link> — and that is not a
+// style preference, it is the only form that survives.
+//
+// The mockup declares its fonts in a <link> inside <helmet> in its <x-dc>
+// block, and support.js removes every <link> element from the document while it
+// renders (the finished page reports document.querySelectorAll('link').length
+// === 0, even for links added ahead of it in <head>). So the page shipped with
+// Anton, Playfair Display and Instrument Sans named all over its CSS and not one
+// of them downloaded — document.fonts was empty and every heading quietly fell
+// back to a system face. Declaring a family is not loading it.
+//
+// <style> elements are left alone, so an @import inside one gets the fonts in.
+// If you replace this with a <link>, the fonts silently stop loading again and
+// the page still looks almost right, which is what made it hard to spot.
+const FONT_CSS =
+  'https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Instrument+Sans:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&family=Kalam:wght@400;700&family=Silkscreen:wght@400;700&display=swap';
 
 const html = mockupHtml.replace(
   '<head>',
   `<head>
 <base href="${ASSET_ORIGIN}" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="${FONTS}" />
+<style>@import url("${FONT_CSS}");</style>
 <title>${slug} · @${username} · avaTOK</title>
 <meta name="robots" content="noindex, nofollow" />`,
 );
