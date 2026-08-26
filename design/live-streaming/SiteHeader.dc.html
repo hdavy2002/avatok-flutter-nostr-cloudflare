@@ -7,24 +7,35 @@
 </head>
 <body>
 <x-dc>
-<!-- avaTOK standard site header. Swap this file's contents to replace the header everywhere it is imported. -->
+<!-- avaTOK standard site header.
+     [WEB-HEADER-5 2026-08-26] Owner: the comps must carry the SAME header the
+     live site does, so the mockups stop diverging from avatok.ai. The nav below
+     mirrors web/src/components/SiteHeader.astro: the same six menu items in the
+     same order, the same Anton uppercase treatment, and Log in / Sign up on the
+     right. Keep the two in step — if a menu item changes there, change it here.
+
+     The jhalar band above is deliberately KEPT. It is the one piece of this
+     header the site did not have, and it has now been ported the other way, into
+     SiteHeader.astro, so both ends show the band over the bar. -->
 <div style="border-bottom:3px solid #161614;"><dc-import name="TruckBorder" kind="jhalar" hint-size="100%,30px" style="display:block;"></dc-import></div>
-<div style="background:#f6e4cd; border-bottom:3px solid #161614;">
-  <div style="max-width:100rem; margin:0 auto; padding:14px clamp(16px,4vw,40px); display:flex; align-items:center; gap:1.375rem; flex-wrap:wrap;">
-    <a href="#" style="display:flex; align-items:baseline; gap:0.0625rem; font-family:'Anton',sans-serif; font-size:1.625rem; color:#161614;"><span>ava</span><span style="color:#d93825; font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:1.5625rem;">TOK</span></a>
-    <div style="display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap;">
-      <a href="avaTOK Marketplace.dc.html" style="font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.06em; text-transform:uppercase; color:#161614; border-bottom:3px solid #d93825; padding-bottom:2px;">Marketplace</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.06em; text-transform:uppercase; color:#161614;">Live events</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.06em; text-transform:uppercase; color:#161614;">Private sessions</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:0.8125rem; letter-spacing:.06em; text-transform:uppercase; color:#161614;">AI voice</a>
+<div style="background:#f7ead5; border-bottom:3px solid #161614;">
+  <div style="max-width:100rem; margin:0 auto; padding:18px clamp(16px,4vw,30px); display:flex; align-items:center; gap:1.875rem; flex-wrap:wrap;">
+    <a href="#" style="display:flex; align-items:baseline; gap:0.0625rem; font-family:'Anton',sans-serif; font-size:1.875rem; color:#161614;"><span>ava</span><span style="color:#d93825; font-family:'Playfair Display',serif; font-style:italic; font-weight:900; font-size:1.8125rem;">TOK</span></a>
+    <div style="display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap;">
+      <a href="avaTOK Marketplace.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:4px;">Marketplace</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Live events</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Private sessions</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">AI voice</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Categories</a>
+      <a href="#" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">For creators</a>
     </div>
-    <div style="margin-left:auto; display:flex; align-items:center; gap:1rem;">
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:0.75rem; letter-spacing:.06em; text-transform:uppercase; color:#161614;">Log in</a>
-      <a href="#" style="font-family:'Anton',sans-serif; font-size:0.75rem; letter-spacing:.06em; text-transform:uppercase; background:#d93825; color:#fdf1d3; border-radius:100px; padding:9px 18px;">Sign up</a>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:0.875rem;">
+      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:#161614;">Log in</a>
+      <a href="avaTOK Auth.dc.html" style="font-family:'Anton',sans-serif; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; background:#d93825; color:#fdf1d3; border-radius:100px; padding:12px 26px;">Sign up</a>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:80}}"></script>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:110}}"></script>
 </body>
 </html>

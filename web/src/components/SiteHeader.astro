@@ -21,6 +21,7 @@
  * now, which it could never be while it lived inside a JPEG.
  */
 import HeaderAuth from '../islands/site/HeaderAuth.tsx';
+import TruckBorder from './TruckBorder.astro';
 
 export interface HeaderLink { href: string; label: string }
 
@@ -72,7 +73,12 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Instrument+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Baloo+2:wght@700;800&family=Kalam:wght@400;700&display=swap" />
 
+{/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
+    header. Inside <header> on purpose — a sticky header that left the band
+    outside would scroll the band away and pin the bar on its own. */}
 <header class:list={['avh', sticky && 'avh--sticky']}>
+  <TruckBorder kind="jhalar" count={60} class="avh-band" />
+  <div class="avh-bar">
   <a class="avh-logo" href="/" aria-label="avaTOK home">
     <img src="/avatok-logo.png" alt="avaTOK" width="231" height="90" />
   </a>
@@ -102,6 +108,7 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
       <path d="M1 1.5h18M1 7.5h18M1 13.5h18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
     </svg>
   </button>
+  </div>
 </header>
 
 <nav class="avh-mobile" id="avh-mobile" aria-label="Main (mobile)" hidden>
@@ -130,20 +137,29 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
 
   /* Header type: Anton matches the poster's condensed hand-lettered caps most
      closely of the faces already loaded for the auth screens. */
+  /* [WEB-HEADER-5] .avh is now the SHELL: the bazaar band stacked over the bar.
+     The row styles moved to .avh-bar — .avh used to be the flex row itself, and
+     a band added as one of its children would have sat inline beside the logo. */
   .avh {
     --avh-cream: #f7ead5;
     --avh-ink: #161614;
     --avh-red: #d93825;
+    display: block;
+    background: var(--avh-cream);
+    color: var(--avh-ink);
+    font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
+  }
+
+  .avh-bar {
     display: flex;
     align-items: center;
     gap: 30px;
     /* [WEB-HEADER-2] Taller at the owner's request: ~92px against the previous
        ~58px, so the header reads as real site chrome rather than a thin strip. */
     padding: 18px 30px;
-    background: var(--avh-cream);
-    color: var(--avh-ink);
-    font-family: 'Anton', Impact, 'Arial Narrow Bold', sans-serif;
   }
+
+  .avh-band { display: block; }
   .avh--sticky { position: sticky; top: 0; z-index: 60; }
 
   .avh-logo { display: flex; align-items: center; flex: 0 0 auto; }
@@ -217,7 +233,7 @@ const { links = DEFAULT_LINKS, sticky = true, auth = 'auto' } = Astro.props;
     }
   }
   @media (max-width: 620px) {
-    .avh { gap: 12px; padding: 10px 14px; }
+    .avh-bar { gap: 12px; padding: 10px 14px; }
     .avh-logo img { height: 40px; }
   }
 </style>
