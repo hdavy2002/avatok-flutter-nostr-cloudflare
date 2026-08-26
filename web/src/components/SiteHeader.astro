@@ -92,6 +92,13 @@ const { links = DEFAULT_LINKS, sticky = true } = Astro.props;
 </script>
 
 <style is:global>
+  /* Published header height. The dashboard pins its sidebar and its own toolbar
+     to the viewport, so it needs to offset both by exactly this much or they
+     slide underneath. Exposed as a variable so the two can never drift apart —
+     change the padding below and the dashboard follows automatically. */
+  :root { --avh-h: 90px; }
+  @media (max-width: 620px) { :root { --avh-h: 60px; } }
+
   /* Header type: Anton matches the poster's condensed hand-lettered caps most
      closely of the faces already loaded for the auth screens. */
   .avh {

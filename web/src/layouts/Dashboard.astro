@@ -8,6 +8,7 @@
 // camera / mic / speaker lives in the phone app; the web manages listings, money
 // and account.
 import Base from './Base.astro';
+import SiteHeader from '../components/SiteHeader.astro';
 import SidebarUser from '../islands/shell/SidebarUser.tsx';
 
 export interface Props {
@@ -80,17 +81,29 @@ const heads = heading ?? (title.split(' · ')[0]);
 ---
 
 <Base title={title} chrome={false} noindex={true}>
-  <div class="flex min-h-screen bg-paper">
+  {/* [WEB-HEADER-3 2026-08-26] The dashboard ran with no site header at all, so
+      signed-in users lost the site navigation the moment they went to work.
+      `chrome={false}` stays: Base's footer does not belong under a dashboard,
+      only the header does, so it is rendered here explicitly.
+
+      Everything below that pins itself to the viewport is offset by --avh-h
+      (published by SiteHeader) or it slides under the header. */}
+  <SiteHeader />
+  <div class="flex min-h-[calc(100vh-var(--avh-h))] bg-paper">
     <!-- Scrim (mobile) -->
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>
 
     <!-- Sidebar -->
     <aside
       id="dash-sidebar"
-      class="fixed inset-y-0 left-0 z-50 flex w-[272px] -translate-x-full flex-col border-r-zine border-ink bg-paper2 transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0"
+      class="fixed inset-y-0 left-0 z-50 flex w-[272px] -translate-x-full flex-col border-r-zine border-ink bg-paper2 transition-transform duration-200 ease-out lg:sticky lg:top-[var(--avh-h)] lg:h-[calc(100vh-var(--avh-h))] lg:translate-x-0"
     >
       <!-- Brand -->
-      <div class="flex items-center gap-2 border-b-zine border-ink px-5 py-4">
+      {/* [WEB-HEADER-3] Hidden on desktop: SiteHeader carries the wordmark a
+          few pixels above this, so showing it twice looked like a mistake. The
+          mobile drawer keeps it — there the header is behind the overlay, and
+          this row also holds the only close button. */}
+      <div class="flex items-center gap-2 border-b-zine border-ink px-5 py-4 lg:hidden">
         <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
           <svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M3 21 L13 3 L23 21" fill="none" stroke="var(--zine-blueInk)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle></svg>
           <span class="font-display font-semibold text-[21px] leading-none tracking-[-0.4px] text-ink">ava<span class="text-blueInk">TOK</span></span>
@@ -128,7 +141,7 @@ const heads = heading ?? (title.split(' · ')[0]);
     <!-- Main column -->
     <div class="flex min-w-0 flex-1 flex-col">
       <!-- Page header -->
-      <header class="sticky top-0 z-30 flex items-center gap-3 border-b-zine border-ink bg-paper2/95 px-4 py-3 backdrop-blur sm:px-6">
+      <header class="sticky top-[var(--avh-h)] z-30 flex items-center gap-3 border-b-zine border-ink bg-paper2/95 px-4 py-3 backdrop-blur sm:px-6">
         <button id="dash-burger" type="button" aria-label="Open menu" class="flex h-9 w-9 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden">
           <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true"><path d="M1 1h16M1 7h16M1 13h16" stroke="var(--zine-ink)" stroke-width="2.4" stroke-linecap="round"></path></svg>
         </button>
