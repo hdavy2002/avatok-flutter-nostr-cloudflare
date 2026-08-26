@@ -109,7 +109,25 @@ function Inner() {
     if (!signIn) return false;
 
     if (res.status === 'needs_first_factor') {
-      const emailAddressId = factorWithId(res.supportedFirstFactors, 'email_code', 'emailAddressId');
+      let emailAddressId = factorWithId(res.supportedFirstFactors, 'email_code', 'emailAddressId');
+
+      // [WEB-AUTH-CODE-2 2026-08-26] THE BUG BEHIND "we can't finish signing in
+      // here". A create() carrying a password that does not complete comes back
+      // WITHOUT `supportedFirstFactors` populated — Clerk only fills that list
+      // on the identifier-only call. So the lookup above found nothing and the
+      // flow dead-ended, even though the account plainly supports email_code
+      // (confirmed by probing the live instance identifier-only).
+      //
+      // Re-asking with the identifier alone returns the factor list. It costs
+      // one extra request on a path that was previously a dead end.
+      if (!emailAddressId) {
+        const relisted = await signIn.create({ identifier: email.trim() });
+        emailAddressId = factorWithId(
+          relisted.supportedFirstFactors as Factor[] | null | undefined,
+          'email_code', 'emailAddressId',
+        );
+      }
+
       if (emailAddressId) {
         await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
         setCodeKind('first');
@@ -160,20 +178,25 @@ function Inner() {
     try {
       const res = await signIn.create({ identifier: email.trim(), password });
       if (res.status === 'complete' && res.createdSessionId) { await finish(res); return; }
-      if (await advance(res)) return;
-      // Genuinely nothing we can drive. Point at the email-code route, which is
-      // available on this instance and does not depend on the password path.
-      //
-      // The status is logged rather than shown: it is meaningless to the person
-      // reading it, but it is the one thing needed to diagnose this, and there
-      // is no PostHog in the web client to send it to.
-      console.warn('[avatok] unhandled sign-in status', {
+
+      // Logged, not shown: the status means nothing to the person reading it,
+      // but it is the one fact needed to diagnose this, and the web client has
+      // no PostHog to send it to.
+      console.warn('[avatok] sign-in did not complete on password', {
         status: res.status,
         createdSessionId: res.createdSessionId,
-        firstFactors: res.supportedFirstFactors?.map((f: Factor) => f.strategy),
-        secondFactors: res.supportedSecondFactors?.map((f: Factor) => f.strategy),
+        firstFactors: res.supportedFirstFactors?.map((f: Factor) => f.strategy) ?? null,
+        secondFactors: res.supportedSecondFactors?.map((f: Factor) => f.strategy) ?? null,
       });
-      setFormError('That didn’t complete. Use “Email me a code instead” below — it works without your password.');
+
+      if (await advance(res)) return;
+
+      // [WEB-AUTH-CODE-2] Last resort: whatever the status was, try the emailed
+      // code. Getting the person in matters more than classifying why the
+      // password path stopped, and this route depends on none of it. Only if
+      // THIS also fails is there genuinely nothing left to offer.
+      if (await sendEmailCode()) return;
+      setFormError('We couldn’t sign you in or email you a code. Please check the email address, or use “Forgot password”.');
     } catch (err) {
       setFormError(clerkError(err));
     } finally {
@@ -213,6 +236,29 @@ function Inner() {
    * mean no way in at all. `email_code` is offered by Clerk for these accounts
    * (verified live) and depends on none of it.
    */
+  /**
+   * Ask Clerk to email a 6-digit code and move to the code screen.
+   * Returns false when this account can't be reached that way.
+   * Throws nothing — callers treat false as "offer something else".
+   */
+  async function sendEmailCode(): Promise<boolean> {
+    if (!signIn) return false;
+    try {
+      const res = await signIn.create({ identifier: email.trim() });
+      const emailAddressId = factorWithId(
+        res.supportedFirstFactors as Factor[] | null | undefined,
+        'email_code', 'emailAddressId',
+      );
+      if (!emailAddressId) return false;
+      await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
+      setCodeKind('first');
+      setStage('code');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function emailCodeInstead() {
     if (!isLoaded || !signIn || submitting) return;
     const err = validateEmail(email);
@@ -221,20 +267,9 @@ function Inner() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await signIn.create({ identifier: email.trim() });
-      const emailAddressId = factorWithId(
-        res.supportedFirstFactors as Factor[] | null | undefined,
-        'email_code', 'emailAddressId',
-      );
-      if (!emailAddressId) {
+      if (!(await sendEmailCode())) {
         setFormError('We can’t email a code to that address. Check the email and try again.');
-        return;
       }
-      await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId });
-      setCodeKind('first');
-      setStage('code');
-    } catch (err) {
-      setFormError(clerkError(err));
     } finally {
       setSubmitting(false);
     }
