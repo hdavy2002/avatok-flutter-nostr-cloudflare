@@ -12,6 +12,7 @@ export const prerender = true;
 import landingRaw from '../landing/avatok-desi-editorial-marketplace.html?raw';
 import catalogueRaw from '../landing/avatok-listings-catalogue.html?raw';
 import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
 
 const landingHtml = landingRaw.replace(/^﻿?\s*<!doctype html>/i, '');
 const LEGACY_LOWER_MARK = '<!--\n  AvaTOK lower-page draft';
@@ -34,10 +35,16 @@ if (bodyAt === -1) {
 }
 const headHtml = heroHtml.slice(0, bodyAt + BODY_MARK.length);
 const restHtml = heroHtml.slice(bodyAt + BODY_MARK.length);
-const pageHtml = `${restHtml}${catalogueRaw}\n</main>\n</body>\n</html>`;
+// [WEB-FOOTER-3] The closing tags are split out so <SiteFooter /> can render
+// INSIDE the document. The home page emits its own raw markup, so appending the
+// component after the fragment would have put the footer past </html>.
+const pageHtml = `${restHtml}${catalogueRaw}`;
+const closeHtml = '\n</main>\n</body>\n</html>';
 
 ---
 
 <Fragment set:html={headHtml} />
 <SiteHeader sticky={false} />
 <Fragment set:html={pageHtml} />
+<SiteFooter />
+<Fragment set:html={closeHtml} />
