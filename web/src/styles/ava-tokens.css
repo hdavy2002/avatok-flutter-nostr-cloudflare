@@ -105,7 +105,11 @@
   /* ---------- TYPE ---------- */
   --ava-font-display: 'Anton', 'Arial Narrow', sans-serif;   /* all headings, buttons, nav */
   --ava-font-serif: 'Playfair Display', Georgia, serif;      /* 900 italic — accent titles, the TOK */
-  --ava-font-sans: 'Instrument Sans', system-ui, sans-serif; /* all prose and inputs */
+  /* [WEB-FONT-1 2026-08-26] DELIBERATE DEVIATION from design/tokens/tokens.css,
+     which specifies Instrument Sans here. The owner chose Nunito as the site
+     default, and Instrument Sans is no longer requested by any page — leaving
+     the token pointing at it would hand new code a font that never loads. */
+  --ava-font-sans: 'Nunito', system-ui, sans-serif;      /* all prose and inputs */
   --ava-font-stub: 'Silkscreen', ui-monospace, monospace;    /* labels, eyebrows, chips */
   --ava-font-deva: 'Baloo 2', sans-serif;                    /* Devanagari display */
   --ava-font-hand: 'Kalam', cursive;                         /* asides only */

@@ -3,7 +3,13 @@
  * bundled fonts and sets the paper/ink defaults. No colors are hardcoded here
  * except via the zine vars. */
 
-/* ----- self-hosted fonts (woff2, converted from app/assets/fonts) ----- */
+/* ----- self-hosted fonts (woff2, converted from app/assets/fonts) -----
+   [WEB-FONT-1 2026-08-26] The three Fredoka @font-face blocks below are now
+   UNREFERENCED — headings moved to Anton and no rule asks for Fredoka any more.
+   A declared-but-unused @font-face costs nothing (browsers only fetch a face
+   that something renders), so they are kept rather than deleted in case the
+   display voice is revisited. Delete them and public/fonts/Fredoka-*.woff2
+   together if that is ruled out. */
 @font-face {
   font-family: 'Fredoka';
   src: url('/fonts/Fredoka-Medium.woff2') format('woff2');
@@ -95,8 +101,12 @@ body {
 body {
   background: var(--zine-paper);
   color: var(--zine-ink);
-  font-family: 'Instrument Sans', system-ui, sans-serif;
-  font-weight: 500;
+  /* [WEB-FONT-1 2026-08-26] Nunito is the site default (owner request).
+     Weight 600, NOT the token's 500: only 600/700/800/900 are self-hosted
+     (public/fonts), so 500 would have no real file and the browser would
+     substitute silently. 600 is the lightest weight that actually exists. */
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-weight: 600;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Faint radial-dot paper texture (mirrors ZinePaper in the app). */
@@ -111,9 +121,14 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: 'Fredoka', system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  /* [WEB-FONT-1 2026-08-26] Was Fredoka. This base rule quietly overrode the
+     display token for every h1-h6 on a Base-layout page, so headings kept
+     rendering in Fredoka after the theme swap even though `font-display`
+     resolved to Anton. Anton ships a single 400 weight, so the old 600 asked
+     the browser to synthesise a fake bold. */
+  font-family: 'Anton', 'Arial Narrow', system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
   margin: 0;
 }
 

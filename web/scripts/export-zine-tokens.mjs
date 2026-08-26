@@ -182,7 +182,7 @@ const themeExtend = {
   // so the ~hundreds of existing `font-mono` call sites keep working.
   fontFamily: {
     display: ['Anton', '"Arial Narrow"', 'system-ui', 'sans-serif'],
-    body: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+    body: ['Nunito', 'system-ui', 'sans-serif'],
     mono: ['Silkscreen', 'ui-monospace', 'monospace'],
   },
   transitionDuration,

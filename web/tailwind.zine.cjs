@@ -46,7 +46,7 @@ module.exports = {
       "sans-serif"
     ],
     "body": [
-      "\"Instrument Sans\"",
+      "Nunito",
       "system-ui",
       "sans-serif"
     ],
