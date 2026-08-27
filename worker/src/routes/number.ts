@@ -14,6 +14,12 @@ import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
 import { tierOf } from "./plans";
 import { COUNTRIES, planFor, canonical, display, validNsn, validOwnNsn, exampleNsn, generate, type CountryPlan } from "../lib/numbering";
+// [PIVOT-PAID-NUMBER-1] Paid vanity-number purchase for free-tier accounts.
+// Copies the charge/refund pattern from virtualDidPurchase (virtual_lines.ts:109-138)
+// VERBATIM: stable opId, chargeAmount 402 on insufficient balance, refund-on-failure
+// via a distinct `${opId}:refund` op id.
+import { chargeAmount } from "../feature_pricing";
+import { walletOp } from "./wallet";
 
 const RESERVE_TTL_MS = 10 * 60 * 1000; // 10-minute hold while the user confirms
 
@@ -118,7 +124,11 @@ export async function available(req: Request, env: Env): Promise<Response> {
     pattern: pattern ? "yes" : "no", pattern_value: pattern || null,
     entitled: paid(tier), tier, results: out.length, has_results: out.length > 0,
   }, req);
-  return json({ country: plan.iso2, entitled: paid(tier), tier, numbers: out });
+  // [PIVOT-PAID-NUMBER-1] Free-tier clients need the price to render a "Buy for
+  // ₹N" confirm step without a subscription. 0 means the paid path is dark
+  // (unconfigured) — the client must treat 0 as "not for sale", never free.
+  const cfg = await readConfig(env);
+  return json({ country: plan.iso2, entitled: paid(tier), tier, numbers: out, vanityPriceTokens: cfg.avatokVanityNumberTokens });
 }
 
 function resolveInput(req: Request, body: { country?: string; nsn?: string; number?: string }): { plan: CountryPlan; nsn: string; number: string } | null {
@@ -138,7 +148,16 @@ export async function reserve(req: Request, env: Env): Promise<Response> {
   if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!paid(await tierOf(env, ctx.uid))) return json({ error: "upgrade_required" }, 402);
+  // [PIVOT-PAID-NUMBER-1] A free-tier account may still reserve — the SAME short
+  // TTL hold used by the paid tier flow — as the first step of buying a vanity
+  // number with tokens via purchaseVanity() below, but ONLY once the owner has
+  // actually priced that path (avatokVanityNumberTokens > 0); otherwise the paid
+  // path is dark and this stays exactly the old tier-gated 402. The existing
+  // subscription-tier reserve path is unchanged.
+  const cfgReserve = await readConfig(env);
+  if (!paid(await tierOf(env, ctx.uid)) && !(cfgReserve.avatokVanityNumberTokens > 0)) {
+    return json({ error: "upgrade_required" }, 402);
+  }
   const body = (await req.json().catch(() => ({}))) as any;
   const r = resolveInput(req, body);
   if (!r) return json({ error: "invalid_number" }, 400);
@@ -330,6 +349,127 @@ export async function assignOwn(req: Request, env: Env): Promise<Response> {
     tier, is_free: !paid(tier), kind: "own", publicly_resolvable_by_number: false,
   }, req);
   return json({ ok: true, number, display: disp });
+}
+
+// POST /api/number/purchase {country, nsn|number} — auth. [PIVOT-PAID-NUMBER-1]
+//
+// Lets a FREE-TIER account buy a SPECIFIC vanity/short AvaTOK number with
+// tokens (1 token = ₹1), without a subscription — a path that runs ALONGSIDE
+// the existing tier-gated reserve()/assign() flow above (that path is
+// untouched; a paid-tier account should keep using assign() directly, which
+// is free for them). Requires an active reservation for this exact number
+// held by this uid (POST /api/number/reserve — same RESERVE_TTL_MS hold used
+// by the tier path), so a purchase can't race a browsing session onto a
+// number someone else is mid-checkout on.
+//
+// Pricing: `avatokVanityNumberTokens` in config.ts, default 0. Fails CLOSED
+// when unpriced ("not for sale") — mirrors how telephony_tiers/virtual_lines
+// treat an unconfigured rate. Never free.
+//
+// Charge pattern copied VERBATIM from virtualDidPurchase
+// (worker/src/routes/virtual_lines.ts:109-138): a stable opId, chargeAmount
+// with a 402 insufficient_balance on failure, and refund-on-failure via a
+// DISTINCT `${opId}:refund` op id.
+//
+// Improvement over that template: these numbers are pure-virtual (no PSTN,
+// no external provider call), so the only post-charge failure mode is the D1
+// write itself. virtualDidPurchase's equivalent branch returns
+// `ownership_record_failed` and leaves the charge for MANUAL reconciliation
+// (a `console.error` "reconciliation required" and nothing more). Here we
+// instead REFUND IMMEDIATELY on that D1 failure, exactly like the
+// provider-call failure branch above it — the user is never left having paid
+// for a number they don't have.
+export async function purchaseVanity(req: Request, env: Env): Promise<Response> {
+  if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  await ensureNumberSourceCol(env); // [PIVOT-PAID-NUMBER-1] same column as assign()/assignOwn()
+  const cfg = await readConfig(env);
+  const price = cfg.avatokVanityNumberTokens;
+  // Fail CLOSED: 0 (or any non-positive/misconfigured value) means "not for
+  // sale" — never treat an unpriced flag as free.
+  if (!(Number.isFinite(price) && price > 0)) {
+    return json({ error: "vanity_purchase_disabled" }, 503);
+  }
+  const body = (await req.json().catch(() => ({}))) as any;
+  const r = resolveInput(req, body);
+  if (!r) {
+    analytics(env, "number_purchase_failed", ctx.uid, { reason: "invalid_number", country: (body?.country ?? null) }, req);
+    return json({ error: "invalid_number" }, 400);
+  }
+  const db = metaSession(env);
+  // Require this account to be holding the SAME reservation it took out via
+  // POST /api/number/reserve — this is the "reuse the reserve TTL hold"
+  // handoff: purchase can only finalize a number this uid already has a live
+  // hold on, not an arbitrary un-reserved number.
+  const now = Date.now();
+  const res = await env.DB_META.prepare(
+    "SELECT uid, expires_at FROM number_reservations WHERE number=?1",
+  ).bind(r.number).first<{ uid: string; expires_at: number }>();
+  if (!res || res.uid !== ctx.uid || res.expires_at <= now) {
+    analytics(env, "number_purchase_failed", ctx.uid, { reason: "reservation_expired", country: r.plan.iso2, number: r.number }, req);
+    return json({ error: "reservation_expired" }, 409);
+  }
+  if (await isTaken(db, r.number, ctx.uid)) {
+    analytics(env, "number_purchase_failed", ctx.uid, { reason: "number_taken", country: r.plan.iso2, number: r.number }, req);
+    return json({ error: "number_taken" }, 409);
+  }
+
+  const opId = `avatok_vanity:${ctx.uid}:${r.number}`;
+  const charge = await chargeAmount(env, ctx.uid, "avatok_vanity_number", price, opId);
+  if (!charge.ok) {
+    analytics(env, "number_purchase_failed", ctx.uid, { reason: charge.reason ?? "charge_failed", country: r.plan.iso2, number: r.number, price }, req);
+    return json({ error: charge.reason === "insufficient" ? "insufficient_balance" : "charge_failed", balance: charge.balance }, 402);
+  }
+
+  const disp = display(r.plan, r.nsn);
+  const prev = await env.DB_META.prepare("SELECT number FROM avatok_numbers WHERE uid=?1 AND status='active'").bind(ctx.uid).first<{ number: string }>();
+  const hadReal = await env.DB_META.prepare("SELECT phone_hash, avatok_number FROM users WHERE uid=?1").bind(ctx.uid).first<{ phone_hash: string | null; avatok_number: string | null }>();
+
+  // Same commit shape as assign() above — claim the number, replace the
+  // account's public identity, clear the reservation.
+  const stmts = [
+    env.DB_META.prepare(
+      "INSERT INTO users (uid, created_at, updated_at) VALUES (?1,?2,?2) ON CONFLICT(uid) DO NOTHING",
+    ).bind(ctx.uid, now),
+    env.DB_META.prepare("UPDATE avatok_numbers SET status='released', uid=NULL, released_at=?2, updated_at=?2 WHERE uid=?1 AND status='active'").bind(ctx.uid, now),
+    env.DB_META.prepare(
+      `INSERT INTO avatok_numbers (number, country, uid, display, status, claimed_at, updated_at)
+       VALUES (?1,?2,?3,?4,'active',?5,?5)
+       ON CONFLICT(number) DO UPDATE SET uid=?3, country=?2, display=?4, status='active', claimed_at=?5, released_at=NULL, updated_at=?5`,
+    ).bind(r.number, r.plan.iso2, ctx.uid, disp, now),
+    env.DB_META.prepare(
+      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, number_norm=substr(?2,-10), phone_discoverable=0, free_number_used=1, share_token=COALESCE(share_token,?4), avatok_number_source='generated', updated_at=?5 WHERE uid=?1",
+    ).bind(ctx.uid, r.number, disp, crypto.randomUUID().replace(/-/g, ""), now),
+    env.DB_META.prepare("DELETE FROM number_reservations WHERE number=?1").bind(r.number),
+  ];
+
+  try {
+    await env.DB_META.batch(stmts);
+  } catch (e) {
+    // [PIVOT-PAID-NUMBER-1] Charge succeeded, D1 write failed. Unlike
+    // virtualDidPurchase's `ownership_record_failed` (manual reconciliation,
+    // no refund), refund immediately — there is no external provider state to
+    // reconcile here, so nothing is lost by reversing the charge right away.
+    try {
+      await walletOp(env, ctx.uid, {
+        op: "credit", uid: ctx.uid, amount: price, type: "refund", app_name: "avatok_vanity_number",
+        ref: opId, op_id: `${opId}:refund`,
+        ledger: { debit: "platform:fees", credit: `user:${ctx.uid}`, type: "avatok_vanity_refund", ref: opId },
+      });
+    } catch {
+      console.error("[number] vanity purchase refund reconciliation required", ctx.uid, r.number, String(e));
+    }
+    analytics(env, "number_purchase_failed", ctx.uid, { reason: "write_failed", country: r.plan.iso2, number: r.number, price, refunded: true }, req);
+    return json({ error: "purchase_failed", refunded: true, detail: String(e).slice(0, 120) }, 502);
+  }
+
+  analytics(env, prev ? "number_purchased_changed" : "number_purchased", ctx.uid, {
+    country: r.plan.iso2, country_name: r.plan.name, country_dial: r.plan.dial,
+    number: r.number, display: disp, nsn: r.nsn, price_tokens: price,
+    previous: prev?.number ?? null, replaced_previous: !!prev, had_real_phone: !!hadReal?.phone_hash,
+  }, req);
+  return json({ ok: true, number: r.number, display: disp, charged: price });
 }
 
 // GET /api/number/me — current account's number + entitlement (restore/display).

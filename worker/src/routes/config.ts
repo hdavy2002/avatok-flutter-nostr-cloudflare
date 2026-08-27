@@ -873,6 +873,15 @@ export interface PlatformConfig {
   // virtual number that represents a user and hides their real phone. Master
   // switch for /api/number/* and the directory's number search key.
   numberFeatureEnabled: boolean;
+  // [PIVOT-PAID-NUMBER-1] Price (in tokens, 1 token = ₹1) for a FREE-TIER user to
+  // buy a specific vanity/short AvaTOK number without a subscription — the paid
+  // path added alongside the existing tier-gated reserve/assign flow in
+  // number.ts. NUMERIC → MUST also be in `numericKeys` below (fake-flag rule,
+  // CLAUDE.md) or `flags.sh set avatokVanityNumberTokens=50` 400s `bad type`.
+  // Default 0 means "not for sale" — the purchase endpoint fails CLOSED (never
+  // free) until the owner explicitly prices it in KV, mirroring how an
+  // unconfigured telephony_tiers/virtual_lines rate is treated.
+  avatokVanityNumberTokens: number;
   // AVACALLS / Virtual Numbers — dark until the additive schema and client are
   // verified. Numeric values are token units unless explicitly named subunits.
   avaCallsEnabled: boolean;
@@ -1846,6 +1855,7 @@ const DEFAULTS: PlatformConfig = {
   billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   playTopupEnabled: true,          // AvaWallet Google Play top-up (gated also by Play service account)
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
+  avatokVanityNumberTokens: 0,     // [PIVOT-PAID-NUMBER-1] 0 = paid vanity-number path DARK until priced
   avaCallsEnabled: false,
   avaCallsUniversalDialpadEnabled: false,
   avaCallsAvatokResolveEnabled: false,
@@ -2379,6 +2389,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // AVACALLS / Virtual Numbers pricing and per-account cap.
     "avaCallsPstnTokensPerMinute", "avaCallsPstnMinRunwayMinutes",
     "virtualNumberFreeMaxPerAccount", "virtualNumberDidMonthlyTokens",
+    // [PIVOT-PAID-NUMBER-1] paid vanity AvaTOK number price, in tokens.
+    "avatokVanityNumberTokens",
   ]);
   const stringKeys = new Set(["virtualNumberPrimaryProvider"]);
   for (const [k, v] of Object.entries(body)) {

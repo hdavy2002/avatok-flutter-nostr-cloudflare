@@ -152,36 +152,91 @@ class AvaNumber {
   }
 
   /// Available vanity numbers for a country (authed). `pattern` filters by digits.
-  static Future<({bool entitled, int tier, List<AvailableNumber> numbers})> available(String country, {String pattern = ''}) async {
+  /// [PIVOT-PAID-NUMBER-1] `vanityPriceTokens` is the server-configured price (in
+  /// tokens, 1 token = ₹1) for a free-tier account to BUY one of these specific
+  /// numbers without a subscription. 0 means the paid path is dark/unpriced —
+  /// callers must treat 0 as "not for sale", never as free.
+  static Future<({bool entitled, int tier, List<AvailableNumber> numbers, int vanityPriceTokens})> available(String country, {String pattern = ''}) async {
     try {
       final q = 'country=${Uri.encodeQueryComponent(country)}${pattern.isNotEmpty ? '&pattern=${Uri.encodeQueryComponent(pattern)}' : ''}';
       final r = await ApiAuth.getSigned('$kNumberBase/available?$q');
       if (r.statusCode != 200) {
         Analytics.capture('number_store_opened_client', {'country': country, 'ok': false, 'status': r.statusCode});
-        return (entitled: false, tier: 0, numbers: <AvailableNumber>[]);
+        return (entitled: false, tier: 0, numbers: <AvailableNumber>[], vanityPriceTokens: 0);
       }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final list = (j['numbers'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final vanityPrice = (j['vanityPriceTokens'] is int)
+          ? j['vanityPriceTokens'] as int
+          : int.tryParse('${j['vanityPriceTokens']}') ?? 0;
       Analytics.capture('number_store_opened_client', {
         'country': country, 'ok': true,
         'has_pattern': pattern.isNotEmpty,
         'result_count': list.length,
         'entitled': j['entitled'] == true,
         'tier': (j['tier'] as int?) ?? 0,
+        'vanity_price_tokens': vanityPrice,
       });
-      return (entitled: j['entitled'] == true, tier: (j['tier'] as int?) ?? 0, numbers: list.map(AvailableNumber.fromJson).toList());
+      return (
+        entitled: j['entitled'] == true,
+        tier: (j['tier'] as int?) ?? 0,
+        numbers: list.map(AvailableNumber.fromJson).toList(),
+        vanityPriceTokens: vanityPrice,
+      );
     } catch (e) {
       Analytics.capture('number_store_opened_client', {'country': country, 'ok': false, 'error': e.runtimeType.toString()});
-      return (entitled: false, tier: 0, numbers: <AvailableNumber>[]);
+      return (entitled: false, tier: 0, numbers: <AvailableNumber>[], vanityPriceTokens: 0);
     }
   }
 
-  /// Hold a number briefly while the user confirms (authed + paid).
+  /// Hold a number briefly while the user confirms (authed + paid, OR authed
+  /// free-tier when the [PIVOT-PAID-NUMBER-1] paid-vanity path is priced).
   static Future<bool> reserve(String country, String nsn) async {
     try {
       final r = await ApiAuth.postJson('$kNumberBase/reserve', {'country': country, 'nsn': nsn});
       return r.statusCode == 200;
     } catch (_) { return false; }
+  }
+
+  /// [PIVOT-PAID-NUMBER-1] Buy a SPECIFIC vanity number with tokens — the
+  /// free-tier path alongside [assign] (which stays free-plan-blocked). The
+  /// number must already be held via [reserve] by this account. `balance` is
+  /// populated on an `insufficient_balance` error so the caller can show the
+  /// shortfall; the app never offers an in-app top-up (payments are web-only
+  /// under the marketplace pivot) — direct the user to the web instead.
+  static Future<({bool ok, String? number, String? display, int? charged, int? balance, String? error})> purchase(String country, String nsn) async {
+    try {
+      final r = await ApiAuth.postJson('$kNumberBase/purchase', {'country': country, 'nsn': nsn});
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && j['ok'] == true) {
+        Analytics.capture('number_purchased_client', {
+          'country': country, 'nsn': nsn,
+          'number': (j['number'] ?? '').toString(),
+          'display': (j['display'] ?? '').toString(),
+          'charged_tokens': j['charged'],
+        });
+        // Write-through the `me` cache exactly like assign() so the next screen
+        // reflects the just-bought number instead of a stale pre-purchase value.
+        final cur = (await _readCache(_meCacheKey)) ?? <String, dynamic>{};
+        cur['number'] = (j['number'] ?? '').toString();
+        cur['display'] = (j['display'] ?? '').toString();
+        cur['feature'] = true;
+        await _writeCache(_meCacheKey, cur);
+        return (
+          ok: true, number: (j['number'] ?? '').toString(), display: (j['display'] ?? '').toString(),
+          charged: (j['charged'] is int) ? j['charged'] as int : int.tryParse('${j['charged']}'),
+          balance: null, error: null,
+        );
+      }
+      final err = (j['error'] ?? 'http_${r.statusCode}').toString();
+      final balance = (j['balance'] is int) ? j['balance'] as int : int.tryParse('${j['balance']}');
+      Analytics.capture('number_purchase_failed_client', {'country': country, 'nsn': nsn, 'error': err, 'status': r.statusCode});
+      return (ok: false, number: null, display: null, charged: null, balance: balance, error: err);
+    } catch (e) {
+      Analytics.error(domain: 'number', code: 'purchase_failed', action: 'purchase',
+          message: e.toString(), extra: {'country': country});
+      return (ok: false, number: null, display: null, charged: null, balance: null, error: 'network');
+    }
   }
 
   /// Assign the number — it becomes the user's network identity and replaces the

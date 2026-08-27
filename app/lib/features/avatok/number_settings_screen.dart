@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
+import '../../core/wallet_entitlement.dart';
 import 'ava_number.dart';
 
 /// Green used for number accents — reads clearly on the dark v2 surfaces.
@@ -44,6 +45,13 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
   bool _loadingAvail = false;
   bool _busy = false;
   bool _picking = false; // showing the picker (vs the current-number summary)
+  // [PIVOT-PAID-NUMBER-1] When true, a tap on a picker row buys the number with
+  // tokens (via _confirmPurchase) instead of the free assign() flow — the path a
+  // free-tier account uses to get a SPECIFIC vanity number without a subscription.
+  bool _purchaseFlow = false;
+  // Server-configured price in tokens (1 token = ₹1). 0 = paid path unpriced/dark;
+  // the "Buy a specific number" entry point only ever appears when this is > 0.
+  int _vanityPriceTokens = 0;
 
   @override
   void initState() {
@@ -73,6 +81,13 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     });
     if (!me.canGenerate) Analytics.capture('assign_blocked_free_tier', const {'where': 'settings'});
     if (_picking && me.canGenerate) _loadAvailable();
+    // [PIVOT-PAID-NUMBER-1] Free-tier-with-no-generation-left: silently seed the
+    // vanity price so the "Buy a specific number" entry point can decide whether
+    // to show itself at all (it never appears while the price is unconfigured/0).
+    if (!me.canGenerate && _country != null) {
+      final probe = await AvaNumber.available(_country!.iso2);
+      if (mounted) setState(() => _vanityPriceTokens = probe.vanityPriceTokens);
+    }
   }
 
   Future<void> _loadAvailable() async {
@@ -84,6 +99,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     setState(() {
       _avail = res.numbers;
       _loadingAvail = false;
+      _vanityPriceTokens = res.vanityPriceTokens; // [PIVOT-PAID-NUMBER-1]
     });
   }
 
@@ -193,6 +209,134 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       if (res.error == 'number_taken') _loadAvailable();
     }
+  }
+
+  /// [PIVOT-PAID-NUMBER-1] Buy a SPECIFIC vanity number with tokens (1 token =
+  /// ₹1) — the free-tier path alongside [_confirm]/[AvaNumber.assign], which
+  /// stays blocked for free accounts. The app is READ-ONLY for money under the
+  /// marketplace pivot: on an insufficient balance this tells the user and
+  /// points at the web — it never offers an in-app top-up.
+  Future<void> _confirmPurchase(AvailableNumber n) async {
+    setState(() => _busy = true);
+    final reserved = await AvaNumber.reserve(_country!.iso2, n.nsn);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!reserved) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Just taken — pick another')));
+      _loadAvailable();
+      return;
+    }
+
+    // Best-effort local balance check for a friendlier message than a bare
+    // 402 — the server's own check in purchaseVanity() is still the real gate.
+    final snap = await WalletEntitlement.I.refresh();
+    if (!mounted) return;
+    if (snap.isConfirmed && snap.spendable < _vanityPriceTokens) {
+      await _showInsufficientBalance(balance: snap.spendable);
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AD.popover,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Buy this number?', style: ADText.threadName().copyWith(fontSize: 18)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(n.display, style: ADText.appTitle(c: _numGreen).copyWith(fontSize: 20, letterSpacing: 0)),
+          const SizedBox(height: 12),
+          Text('₹$_vanityPriceTokens', style: ADText.appTitle(c: AD.primaryBadge).copyWith(fontSize: 22, letterSpacing: 0)),
+          const SizedBox(height: 4),
+          Text('$_vanityPriceTokens tokens, charged from your AvaWallet balance.', style: ADText.preview(c: AD.textSecondary)),
+          const SizedBox(height: 12),
+          Row(children: [
+            PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 16, color: AD.online),
+            const SizedBox(width: Msg.s1),
+            Expanded(child: Text('Your real number stays private and is never shown.', style: ADText.preview(c: AD.textSecondary))),
+          ]),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel', style: ADText.rowName(c: AD.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Buy for ₹$_vanityPriceTokens', style: ADText.rowName(c: _numGreen))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _busy = true);
+    final res = await AvaNumber.purchase(_country!.iso2, n.nsn);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (res.ok) {
+      final me = await AvaNumber.me();
+      Analytics.capture('number_purchased', {
+        'country': _country!.iso2,
+        'number': res.display ?? n.display,
+        'nsn': n.nsn,
+        'price_tokens': res.charged ?? _vanityPriceTokens,
+        'via': widget.gate ? 'onboarding_gate' : 'settings',
+        if (Analytics.currentEmail != null) 'account_email': Analytics.currentEmail!,
+        r'$set': <String, Object>{
+          'avatok_number': res.display ?? n.display,
+          'number_country': _country!.iso2,
+          'number_plan': 'free_vanity_purchase',
+        },
+      });
+      if (!mounted) return;
+      setState(() { _me = me; _picking = false; _purchaseFlow = false; });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
+      if (widget.gate) {
+        Analytics.capture('number_gate_completed', {'country': _country!.iso2, 'plan': 'free_vanity_purchase'});
+        widget.onAssignedNumber?.call(res.display ?? n.display);
+        widget.onAssigned?.call();
+      }
+      return;
+    }
+
+    Analytics.error(
+      domain: 'number', code: res.error ?? 'purchase_failed', action: 'purchase',
+      extra: {'country': _country!.iso2, 'via': widget.gate ? 'onboarding_gate' : 'settings'},
+    );
+    if (res.error == 'insufficient_balance') {
+      await _showInsufficientBalance(balance: res.balance);
+      return;
+    }
+    final msg = res.error == 'number_taken'
+        ? 'Just taken — pick another'
+        : res.error == 'reservation_expired'
+            ? 'That hold expired — pick again'
+            : res.error == 'vanity_purchase_disabled'
+                ? "Buying a specific number isn't available yet"
+                : 'Could not buy that number';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (res.error == 'number_taken' || res.error == 'reservation_expired') _loadAvailable();
+  }
+
+  /// [PIVOT-PAID-NUMBER-1] The app is read-only for money under the marketplace
+  /// pivot — this NEVER offers an in-app top-up, only points at the web.
+  Future<void> _showInsufficientBalance({int? balance}) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AD.popover,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AD.borderControl, width: 1),
+            borderRadius: BorderRadius.circular(AD.rDialog)),
+        title: Text('Not enough tokens', style: ADText.threadName().copyWith(fontSize: 18)),
+        content: Text(
+          'This number costs $_vanityPriceTokens tokens (₹$_vanityPriceTokens)'
+          '${balance != null ? ' — your balance is $balance tokens.' : '.'} '
+          'Top up on avatok.ai from a browser, then come back and try again.',
+          style: ADText.preview(c: AD.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('OK', style: ADText.rowName(c: _numGreen))),
+        ],
+      ),
+    );
   }
 
   Future<void> _release() async {
@@ -429,7 +573,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           const SizedBox(height: Msg.s3),
           _button(label: 'Change number', ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
-              onPressed: _busy ? null : () { setState(() => _picking = true); _loadAvailable(); }),
+              onPressed: _busy ? null : () { setState(() { _picking = true; _purchaseFlow = false; }); _loadAvailable(); }),
           const SizedBox(height: Msg.s2),
           _button(label: 'Release number', ghost: true, fullWidth: true, fontSize: 16,
               icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), trailingIcon: false,
@@ -451,6 +595,18 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             ]),
           ),
           const SizedBox(height: 12),
+          // [PIVOT-PAID-NUMBER-1] Buy a SPECIFIC vanity number with tokens
+          // instead of upgrading — only shown once the owner has priced it
+          // (avatokVanityNumberTokens > 0). Dark by default.
+          if (_vanityPriceTokens > 0) ...[
+            _button(label: 'Buy a specific number', ghost: true, fullWidth: true, fontSize: 16,
+                icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), trailingIcon: false,
+                onPressed: _busy ? null : () {
+                  setState(() { _picking = true; _purchaseFlow = true; });
+                  _loadAvailable();
+                }),
+            const SizedBox(height: Msg.s2),
+          ],
           _button(label: 'See plans', fullWidth: true,
               icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
               onPressed: () { Navigator.of(context).maybePop(); }),
@@ -475,6 +631,17 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           ]),
         ),
         const SizedBox(height: 16),
+        // [PIVOT-PAID-NUMBER-1] Same paid-vanity entry point as above, for the
+        // "no number yet" case. Dark unless priced.
+        if (_vanityPriceTokens > 0) ...[
+          _button(label: 'Buy a specific number', ghost: true, fullWidth: true, fontSize: 16,
+              icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), trailingIcon: false,
+              onPressed: _busy ? null : () {
+                setState(() { _picking = true; _purchaseFlow = true; });
+                _loadAvailable();
+              }),
+          const SizedBox(height: Msg.s2),
+        ],
         _button(
           label: 'See plans',
           fullWidth: true,
@@ -529,12 +696,17 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: _card(
             padding: const EdgeInsets.symmetric(horizontal: Msg.s4, vertical: Msg.s4),
-            onTap: _busy ? null : () => _confirm(n),
+            // [PIVOT-PAID-NUMBER-1] In purchase mode this row buys the number
+            // with tokens instead of the free assign() flow.
+            onTap: _busy ? null : () => _purchaseFlow ? _confirmPurchase(n) : _confirm(n),
             child: Row(children: [
               Expanded(child: Text(n.display, style: ADText.rowName().copyWith(fontSize: 16), overflow: TextOverflow.ellipsis)),
               const SizedBox(width: Msg.s1),
               Flexible(
-                child: Text('available', style: ADText.statCaption(c: _numGreen),
+                // [PIVOT-PAID-NUMBER-1] In purchase mode, show the token price
+                // (₹) instead of "available" — this row costs tokens to claim.
+                child: Text(_purchaseFlow ? '₹$_vanityPriceTokens' : 'available',
+                    style: ADText.statCaption(c: _numGreen),
                     overflow: TextOverflow.ellipsis, maxLines: 1),
               ),
               const SizedBox(width: 8),
@@ -548,7 +720,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       widgets.addAll([
         const SizedBox(height: 8),
         _button(label: 'Keep current number', ghost: true, fullWidth: true, fontSize: 15,
-            onPressed: _busy ? null : () => setState(() => _picking = false)),
+            onPressed: _busy ? null : () => setState(() { _picking = false; _purchaseFlow = false; })),
       ]);
     }
     return widgets;
