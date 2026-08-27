@@ -38,25 +38,68 @@ export interface Props {
   noindex?: boolean;
   /** Hide the header auth CTAs (Log in / Sign up) entirely. */
   hideNavCtas?: boolean;
+  /**
+   * [WEB-SEO-1] Per-page keywords. Google ignores this tag, but the answer
+   * engines we care about (and several Indian/regional crawlers) still read it,
+   * and it costs nothing. Pages that don't set it inherit the site defaults.
+   */
+  keywords?: string;
 }
 
 const {
   title = 'AvaTok',
-  description = 'A private number nobody can trace, an AI receptionist that never misses a call, and your AI brain in every chat — AvaTok.',
+  // [WEB-SEO-1 2026-08-27] The old default described the receptionist/private
+  // number product. What avaTOK actually sells today is: earn from home by
+  // listening, chatting, being a home friend or live streaming. Every page that
+  // does not set its own description inherits this, so it is worth getting right.
+  description = 'avaTOK is a free platform to earn from home — create a free listing and get paid to listen, chat, be a home friend, host private sessions or live stream. People subscribe to your calendar and book you.',
   image,
   chrome = true,
   headerAuth = 'auto',
   navStatic = false,
   noindex = false,
   hideNavCtas = false,
+  keywords = 'avaTOK, work from home India, earn money online from home, get paid to listen, online friend, talk to someone online, paid chat, live streaming platform India, creator marketplace India, side income from home',
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
 // og:image must be an ABSOLUTE url — Facebook, WhatsApp, LinkedIn and Slack all
 // drop a relative path, which is why shared links used to render with no card.
-const ogImage = image
-  ? new URL(image, Astro.site ?? 'https://avatok.ai').toString()
-  : undefined;
+//
+// [WEB-SEO-1 2026-08-27] It also now DEFAULTS to the brand card instead of being
+// undefined. Before this, any page that forgot to pass `image` emitted no
+// og:image at all and shared as a bare grey link with `twitter:card=summary`.
+const ogImage = new URL(image ?? '/ogimage.jpg', Astro.site ?? 'https://avatok.ai').toString();
+
+// [WEB-SEO-1] Site-wide Organization/WebSite graph. Answer engines read this to
+// decide what avaTOK *is*; the home page carries its own richer copy (it emits
+// its own <head>), so keep the two consistent.
+const orgLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': 'https://avatok.ai/#organization',
+      name: 'avaTOK',
+      alternateName: ['AvaTOK', 'AvaTok', 'avatok.ai'],
+      url: 'https://avatok.ai/',
+      logo: 'https://avatok.ai/avatok-logo.png',
+      image: 'https://avatok.ai/ogimage.jpg',
+      description:
+        'avaTOK is a free platform where anyone can earn money from home by listening, chatting, being a home friend, hosting private sessions or live streaming. Creators publish a free listing and people book them through their calendar.',
+      areaServed: 'IN',
+      email: 'support@avatok.ai',
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://avatok.ai/#website',
+      url: 'https://avatok.ai/',
+      name: 'avaTOK',
+      inLanguage: 'en-IN',
+      publisher: { '@id': 'https://avatok.ai/#organization' },
+    },
+  ],
+};
 ---
 
 <!doctype html>
@@ -66,20 +109,31 @@ const ogImage = image
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/app-logo2.png" type="image/png" />
     <link rel="canonical" href={canonical} />
-    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+    {noindex
+      ? <meta name="robots" content="noindex, nofollow" />
+      : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />}
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="keywords" content={keywords} />
 
     <!-- Per-page social meta — pages can add more via the `head` slot. -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="avaTOK" />
+    <meta property="og:locale" content="en_IN" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    {ogImage && <meta property="og:image" content={ogImage} />}
-    <meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:secure_url" content={ogImage} />
+    <meta property="og:image:alt" content={title} />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    {ogImage && <meta name="twitter:image" content={ogImage} />}
+    <meta name="twitter:image" content={ogImage} />
+
+    {/* [WEB-SEO-1] Organization + WebSite structured data on every page. */}
+    {!noindex && <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />}
 
     {/* [WEB-THEME-1] The Fredoka + Nunito preloads that were here are gone:
         those faces are no longer referenced by any token, so preloading them

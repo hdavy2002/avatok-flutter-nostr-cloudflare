@@ -3,27 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>avaTOK — India has stories. Go live.</title>
-    <meta name="description" content="Create paid live events, book private sessions, and launch AI voice experiences on avaTOK — India's social marketplace for memorable moments." />
+    <!-- [WEB-SEO-1 2026-08-27] Homepage SEO/AI-answer block. The home page emits
+         its own <head> (index.astro splices it), so it does NOT inherit any of
+         Base.astro's meta — every tag the site needs has to live here.
+         og:image is the shared 1280x672 /ogimage.jpg used site-wide. -->
+    <title>avaTOK — Get Paid to Listen, Chat & Live Stream From Home</title>
+    <meta name="description" content="Work from home on avaTOK: sign up free, create a free listing, and earn money by listening to someone's stress, being a home friend, chatting, or live streaming your life, trek, puja or cooking. People subscribe to your calendar and book you. India-first, free to join." />
+    <meta name="keywords" content="work from home India, earn money online from home, get paid to listen, online friend, talk to someone online, paid chat, emotional support listener, live streaming platform India, creator marketplace India, side income from home, sit at home and earn, book a call, paid live stream, avaTOK" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="theme-color" content="#f7ead5" />
     <link rel="canonical" href="https://avatok.ai/" />
     <link rel="icon" type="image/png" href="/app-logo2.png" />
     <link rel="apple-touch-icon" href="/app-logo2.png" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="avaTOK" />
     <meta property="og:locale" content="en_IN" />
     <meta property="og:url" content="https://avatok.ai/" />
-    <meta property="og:title" content="avaTOK — India has stories. Go live." />
-    <meta property="og:description" content="Create paid live events, private sessions, and AI voice experiences. Your story, your audience, your terms." />
-    <meta property="og:image" content="https://avatok.ai/og-desi-marketplace.png" />
-    <meta property="og:image:alt" content="avaTOK desi editorial marketplace poster" />
-    <meta property="og:image:width" content="1536" />
-    <meta property="og:image:height" content="1024" />
+    <meta property="og:title" content="avaTOK — Get Paid to Listen, Chat & Live Stream From Home" />
+    <meta property="og:description" content="Sign up free, create a free listing, and earn from home — listen to someone's stress, be a home friend, or live stream your life. People subscribe to your calendar and book you." />
+    <meta property="og:image" content="https://avatok.ai/ogimage.jpg" />
+    <meta property="og:image:secure_url" content="https://avatok.ai/ogimage.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:alt" content="avaTOK — get paid to listen, chat and live stream from home" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="672" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="avaTOK — India has stories. Go live." />
-    <meta name="twitter:description" content="A social marketplace for live events, private sessions, and AI voice experiences." />
-    <meta name="twitter:image" content="https://avatok.ai/og-desi-marketplace.png" />
-    <meta name="twitter:image:alt" content="avaTOK desi editorial marketplace poster" />
+    <meta name="twitter:title" content="avaTOK — Get Paid to Listen, Chat & Live Stream From Home" />
+    <meta name="twitter:description" content="Free to join. Create a free listing and earn from home — listening, chatting, being a home friend, or live streaming." />
+    <meta name="twitter:image" content="https://avatok.ai/ogimage.jpg" />
+    <meta name="twitter:image:alt" content="avaTOK — get paid to listen, chat and live stream from home" />
     <style>
       :root {
         color-scheme: light;
@@ -387,6 +396,114 @@
         *, *::before, *::after { scroll-behavior: auto !important; }
       }
     </style>
+
+    <!-- [WEB-SEO-1 2026-08-27] Structured data. This is what answer engines
+         (Google AI Overviews, ChatGPT, Perplexity, Claude) actually parse, and
+         it matters more here than on a normal page: the desktop hero is a
+         POSTER IMAGE, so without this block the crawlable text on the home page
+         is thin. Keep it in sync with the visible "How avaTOK works" section
+         near the bottom of the document — contradicting the visible page is how
+         rich results get dropped. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://avatok.ai/#organization",
+          "name": "avaTOK",
+          "alternateName": ["AvaTOK", "AvaTok", "avatok.ai"],
+          "url": "https://avatok.ai/",
+          "logo": "https://avatok.ai/avatok-logo.png",
+          "image": "https://avatok.ai/ogimage.jpg",
+          "description": "avaTOK is a free platform where anyone can earn money from home by listening, chatting, being a home friend, hosting private sessions or live streaming. Creators publish a free listing, people subscribe to their calendar and book them.",
+          "areaServed": "IN",
+          "email": "support@avatok.ai"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://avatok.ai/#website",
+          "url": "https://avatok.ai/",
+          "name": "avaTOK",
+          "inLanguage": "en-IN",
+          "publisher": { "@id": "https://avatok.ai/#organization" },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": { "@type": "EntryPoint", "urlTemplate": "https://avatok.ai/marketplace?q={search_term_string}" },
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "name": "avaTOK",
+          "url": "https://avatok.ai/",
+          "applicationCategory": "SocialNetworkingApplication",
+          "operatingSystem": "Web, Android",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR", "description": "Free to sign up and free to create a listing. avaTOK takes a share only when you get paid." }
+        },
+        {
+          "@type": "HowTo",
+          "name": "How to start earning from home on avaTOK",
+          "description": "Sign up free, create a free listing, open your calendar and get paid when people book you.",
+          "totalTime": "PT10M",
+          "estimatedCost": { "@type": "MonetaryAmount", "currency": "INR", "value": "0" },
+          "step": [
+            { "@type": "HowToStep", "position": 1, "name": "Sign up free", "text": "Create a free avaTOK account. There is no joining fee and no equipment to buy — a phone is enough.", "url": "https://avatok.ai/sign-up" },
+            { "@type": "HowToStep", "position": 2, "name": "Create a free listing", "text": "Say what you offer: listening to someone's stress, being a home friend, a chat, a conversation, a date, advice, or a live stream. Set your own price per minute or per session.", "url": "https://avatok.ai/dashboard/listings/new" },
+            { "@type": "HowToStep", "position": 3, "name": "Open your calendar", "text": "Mark the hours you are free. People subscribe to your calendar and book a slot that suits them.", "url": "https://avatok.ai/dashboard/calendar" },
+            { "@type": "HowToStep", "position": 4, "name": "Talk, or go live", "text": "Take the call or chat at the booked time, or live stream your life — a trek, a hike, a puja, a cooking channel, anything.", "url": "https://avatok.ai/dashboard/live" },
+            { "@type": "HowToStep", "position": 5, "name": "Get paid", "text": "Earnings land in your avaTOK wallet in tokens and are withdrawn to your bank account over UPI.", "url": "https://avatok.ai/payouts" }
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://avatok.ai/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is avaTOK?",
+              "acceptedAnswer": { "@type": "Answer", "text": "avaTOK is a marketplace where people get paid for their time and attention. You create a free listing — listening to someone's stress, being a home friend, a chat, advice, a date, or a live stream — and people book you through your calendar. It is free to join and free to list." }
+            },
+            {
+              "@type": "Question",
+              "name": "How can I make money from home on avaTOK?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Sign up free, create a free listing, and open your calendar. People subscribe to your calendar and book you for a call, a chat or a live session. You set the price. You can work from home, part time, with only a phone — no fee to start, no interview, no fixed shift." }
+            },
+            {
+              "@type": "Question",
+              "name": "Do I need to be an influencer or have followers?",
+              "acceptedAnswer": { "@type": "Answer", "text": "No. Influencers and creators earn well on avaTOK because they arrive with an audience, but the marketplace works from zero followers: people browse listings and book whoever fits what they need. Being a good listener is enough to start." }
+            },
+            {
+              "@type": "Question",
+              "name": "What can I offer on avaTOK?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Listening to someone's stress, being a home friend, a friendly chat or conversation, a discussion, advice, a virtual date, tuition and consultations — and live streams of anything: your day, a trek or hike, a puja, a cooking channel, music, gaming or travel." }
+            },
+            {
+              "@type": "Question",
+              "name": "Is avaTOK free to join?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Yes. Signing up is free and creating a listing is free. avaTOK only takes a share when you actually get paid for a booking or a live stream." }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I get paid on avaTOK?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Buyers pay in avaTOK tokens, where 1 token equals ₹1. Your earnings sit in your avaTOK wallet and are withdrawn to your bank account over UPI." }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I live stream on avaTOK?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Yes. You can go live from your phone and charge for a ticketed live event or stream to your subscribers — your life, a trek, a hike, a puja, a cooking channel, or anything else you want to share." }
+            },
+            {
+              "@type": "Question",
+              "name": "Is avaTOK safe?",
+              "acceptedAnswer": { "@type": "Answer", "text": "avaTOK verifies identity, keeps payments in escrow until a session is delivered, and enforces community guidelines. Your phone number is never shown to the people who book you." }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <main>

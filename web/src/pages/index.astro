@@ -11,6 +11,11 @@ export const prerender = true;
 
 import landingRaw from '../landing/avatok-desi-editorial-marketplace.html?raw';
 import catalogueRaw from '../landing/avatok-listings-catalogue.html?raw';
+// [WEB-SEO-1 2026-08-27] Crawlable "How avaTOK works" band. The desktop hero is
+// a poster IMAGE, so without this the home page has almost no text for search
+// engines or answer engines (ChatGPT/Perplexity/AI Overviews) to quote. It
+// mirrors the FAQPage + HowTo JSON-LD in the landing document's <head>.
+import seoBandRaw from '../landing/avatok-seo-explainer.html?raw';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 
@@ -38,7 +43,7 @@ const restHtml = heroHtml.slice(bodyAt + BODY_MARK.length);
 // [WEB-FOOTER-3] The closing tags are split out so <SiteFooter /> can render
 // INSIDE the document. The home page emits its own raw markup, so appending the
 // component after the fragment would have put the footer past </html>.
-const pageHtml = `${restHtml}${catalogueRaw}`;
+const pageHtml = `${restHtml}${catalogueRaw}${seoBandRaw}`;
 const closeHtml = '\n</main>\n</body>\n</html>';
 
 ---

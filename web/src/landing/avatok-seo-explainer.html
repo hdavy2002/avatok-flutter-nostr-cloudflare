@@ -1,0 +1,179 @@
+<!-- [WEB-SEO-1 2026-08-27] Crawlable "How avaTOK works" band.
+
+     WHY THIS EXISTS. The desktop home page is a POSTER IMAGE, so the crawlable
+     text above this point is thin — a handful of card titles and a mobile hero.
+     Search engines and answer engines (ChatGPT, Perplexity, Claude, Google AI
+     Overviews) can only quote words, not pixels, and "how do I earn money from
+     home" is precisely the question we want them to answer with avaTOK. This
+     band is the plain-English answer in real, visible HTML.
+
+     It is deliberately NOT hidden text: display:none / visibility:hidden copy is
+     discounted by Google and reads as cloaking. It ships visible, and it matches
+     the FAQPage + HowTo JSON-LD in the document head — if you edit one, edit the
+     other, because contradicting structured data is dropped.
+
+     TYPE RULES (CLAUDE.md): no negative letter-spacing on bold or display type,
+     line-height >= 1.15 on titles, explicit font-weight on every label.
+-->
+<style>
+  .seo-band {
+    background: #f7ead5;
+    color: #1c1512;
+    padding: clamp(2.5rem, 5vw, 4.5rem) clamp(1.25rem, 5vw, 4rem);
+    border-top: 3px solid #1c1512;
+    font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  .seo-band__inner { max-width: 68rem; margin: 0 auto; }
+  .seo-band__eyebrow {
+    font-weight: 800;
+    font-size: 0.8125rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #b23a1f;
+    margin: 0 0 0.75rem;
+  }
+  .seo-band h2 {
+    font-family: Anton, 'Instrument Sans', Impact, sans-serif;
+    font-weight: 400;
+    font-size: clamp(1.75rem, 4.2vw, 3rem);
+    line-height: 1.06;
+    letter-spacing: 0.055em;
+    word-spacing: 0.2em;
+    text-transform: uppercase;
+    margin: 0 0 1rem;
+  }
+  .seo-band h3 {
+    font-weight: 700;
+    font-size: 1.0625rem;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+    margin: 0 0 0.4rem;
+  }
+  .seo-band p { font-size: 1rem; line-height: 1.6; margin: 0 0 1rem; max-width: 46rem; }
+  .seo-band__steps {
+    list-style: none;
+    padding: 0;
+    margin: 2rem 0 0;
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  }
+  .seo-band__steps li {
+    background: #fffaf0;
+    border: 2px solid #1c1512;
+    border-radius: 0.75rem;
+    padding: 1.1rem 1.2rem;
+    box-shadow: 4px 4px 0 #1c1512;
+  }
+  .seo-band__steps .num {
+    display: inline-block;
+    font-weight: 900;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    color: #b23a1f;
+    margin-bottom: 0.5rem;
+  }
+  .seo-band__steps p { font-size: 0.9375rem; margin: 0; }
+  .seo-band__faq { margin-top: 2.5rem; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); }
+  .seo-band__faq h3 { margin-bottom: 0.35rem; }
+  .seo-band__faq p { font-size: 0.9375rem; margin: 0; }
+  .seo-band__cta {
+    display: inline-block;
+    margin-top: 2.25rem;
+    background: #df432b;
+    color: #fffaf0;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 0.9rem 1.6rem;
+    border: 2px solid #1c1512;
+    border-radius: 999px;
+    box-shadow: 4px 4px 0 #1c1512;
+  }
+  .seo-band__cta:focus-visible { outline: 3px solid #1c1512; outline-offset: 3px; }
+</style>
+
+<section class="seo-band" id="how-avatok-works" aria-labelledby="how-avatok-works-title">
+  <div class="seo-band__inner">
+    <p class="seo-band__eyebrow">Earn from home · Free to join</p>
+    <h2 id="how-avatok-works-title">How avaTOK works</h2>
+    <p>
+      avaTOK is a marketplace for your time and your attention. Sign up free, create a free
+      listing, and get paid to do something people already need: listen to someone's stress,
+      be a home friend, have a chat or a discussion, give advice, go on a virtual date — or
+      simply live stream your life. People subscribe to your calendar, pick a slot and book you.
+      That is the whole thing.
+    </p>
+    <p>
+      You do not need followers, a studio, a degree or an interview. A phone and a quiet corner
+      at home is enough. Influencers and creators do well here because they arrive with an
+      audience — but the marketplace is built so a first-time listener with zero followers can
+      take a booking on day one. You set your own price, your own hours, and you can stop
+      whenever you like.
+    </p>
+
+    <ol class="seo-band__steps">
+      <li>
+        <span class="num">STEP 1</span>
+        <h3>Sign up free</h3>
+        <p>No joining fee, no equipment to buy, no fixed shift. Just an account.</p>
+      </li>
+      <li>
+        <span class="num">STEP 2</span>
+        <h3>Create a free listing</h3>
+        <p>Say what you offer — listening, a chat, a home friend, advice, a date, a live stream — and set your price.</p>
+      </li>
+      <li>
+        <span class="num">STEP 3</span>
+        <h3>Open your calendar</h3>
+        <p>Mark the hours you are free. People subscribe to your calendar and book the slot that suits them.</p>
+      </li>
+      <li>
+        <span class="num">STEP 4</span>
+        <h3>Talk, or go live</h3>
+        <p>Take the call or chat at the booked time, or live stream your day, a trek, a hike, a puja, a cooking channel — anything.</p>
+      </li>
+      <li>
+        <span class="num">STEP 5</span>
+        <h3>Get paid</h3>
+        <p>Earnings arrive in your avaTOK wallet in tokens (1 token = ₹1) and withdraw to your bank over UPI.</p>
+      </li>
+    </ol>
+
+    <div class="seo-band__faq">
+      <div>
+        <h3>Can I really make money sitting at home?</h3>
+        <p>
+          Yes — that is what avaTOK is for. Work from home, part time or full time, from any city
+          or village in India. You are paid per session, per minute or per ticketed live event,
+          at a price you set yourself.
+        </p>
+      </div>
+      <div>
+        <h3>What kinds of listings do people book?</h3>
+        <p>
+          Someone to listen when work or family is heavy, a home friend to talk to in the evening,
+          a conversation in your own language, tuition, advice, a consultation, a virtual date —
+          and live streams of treks, hikes, pujas, cooking, music, travel and everyday life.
+        </p>
+      </div>
+      <div>
+        <h3>Is it free to list?</h3>
+        <p>
+          Signing up and creating a listing are both free. avaTOK takes a share only when you
+          actually get paid, so there is nothing to lose by putting a listing up today.
+        </p>
+      </div>
+      <div>
+        <h3>Is it safe?</h3>
+        <p>
+          Identity is verified, payments are held in escrow until a session is delivered, and your
+          phone number is never shown to the people who book you. Community guidelines are enforced.
+        </p>
+      </div>
+    </div>
+
+    <a class="seo-band__cta" href="/sign-up">Create your free listing</a>
+  </div>
+</section>

@@ -2,8 +2,75 @@
 # surfaces (creator dashboard, AvaVision, admin ops) stay reachable by URL but
 # are kept out of search. Per-page <meta name="robots" content="noindex"> is the
 # authoritative signal; these rules are a belt-and-suspenders for crawlers.
+#
+# [WEB-SEO-1 2026-08-27] AI answer engines are named EXPLICITLY below. They are
+# already covered by `User-agent: *`, but several of them (GPTBot, Google-Extended,
+# Applebot-Extended, CCBot) are opt-OUT crawlers that publishers commonly block,
+# and an explicit Allow is the unambiguous signal that avaTOK wants to be read,
+# quoted and cited when someone asks an assistant how to earn money from home.
+# Do NOT add a Disallow for these without a deliberate decision — it would remove
+# avaTOK from ChatGPT, Claude, Perplexity and Google AI Overviews answers.
+
 User-agent: *
 Disallow: /dashboard
 Disallow: /admin
 Disallow: /vision
 Allow: /
+
+# ── AI / answer-engine crawlers: explicitly welcome ──────────────────────────
+# OpenAI: training, search index, and live user-triggered fetches
+User-agent: GPTBot
+Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+# Anthropic
+User-agent: ClaudeBot
+Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+# Google Gemini / AI Overviews grounding
+User-agent: Google-Extended
+Allow: /
+
+# Apple Intelligence
+User-agent: Applebot-Extended
+Allow: /
+
+# Microsoft Copilot
+User-agent: Bingbot
+Allow: /
+
+# Common Crawl — the corpus most open models are trained on
+User-agent: CCBot
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: meta-externalagent
+Allow: /
+
+Sitemap: https://avatok.ai/sitemap.xml
