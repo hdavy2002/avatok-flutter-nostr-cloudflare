@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/chat_thread.dart';
@@ -223,7 +224,12 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                 ),
                 const SizedBox(height: Msg.s5),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  _action(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Call', AD.incomingCall, _call),
+                  // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is being killed —
+                  // the dial engine already refuses at place_1to1_call.dart, so hide
+                  // this action too instead of leaving it visible-and-failing with
+                  // a snackbar.
+                  if (RemoteConfig.messengerCallingEnabled)
+                    _action(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Call', AD.incomingCall, _call),
                   _action(PhosphorIcons.chatText(PhosphorIconsStyle.bold), 'Message', AD.iconVideo, _sms),
                   _action(PhosphorIcons.chatCircleDots(PhosphorIconsStyle.fill), 'AvaTOK', AD.primaryBadge, _avatok),
                   _action(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', AD.iconSearch, _edit),
@@ -250,7 +256,11 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                   color: AD.incomingCall,
                   label: 'Phone',
                   value: widget.number,
-                  onTap: _call,
+                  // [PIVOT-MSGR-CALL-OFF-1] Keep the tile (it's the only place the
+                  // number is shown/copyable), but drop the tap-to-call affordance
+                  // while Messenger calling is killed — a null onTap just disables
+                  // the gesture instead of dialing through a dead engine.
+                  onTap: RemoteConfig.messengerCallingEnabled ? _call : null,
                 ),
                 if (_o?.personalEmail?.isNotEmpty ?? false)
                   _fieldTile(

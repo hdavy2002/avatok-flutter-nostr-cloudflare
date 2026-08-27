@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../avatok/contact_actions.dart';
@@ -90,37 +91,41 @@ Future<void> showAvaDialRowMenu(
             onChanged?.call();
           },
         ),
-        _row(
-          icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-          color: AD.incomingCall,
-          label: 'Call',
-          onTap: () async {
-            Navigator.pop(sheetCtx);
-            // [AVADIAL-AVATOK-ONLY-1] AvaTOK-only (owner pivot 2026-07-16): resolve
-            // against the AvaTOK directory and place an in-app AvaTOK-to-AvaTOK call
-            // through place1to1Call. The former carrier/PSTN dial
-            // (AvaDialChannel.placeCall) is removed; an off-network number shows a
-            // "Not on AvaTOK" state instead of routing to the system dialer.
-            Analytics.capture('avadial_contact_call', const {'via': 'row_menu'});
-            Contact? hit;
-            try {
-              hit = await Directory.resolve(number);
-            } catch (_) {
-              hit = null;
-            }
-            if (!navContext.mounted) return;
-            if (hit == null || hit.uid.isEmpty) {
-              Analytics.capture('avadial_contact_not_on_avatok', const {'via': 'row_menu'});
-              await _showNotOnAvaTok(navContext, number);
-              return;
-            }
-            await place1to1Call(navContext,
-                uid: hit.uid,
-                name: (name?.isNotEmpty ?? false) ? name! : hit.name,
-                avatarUrl: hit.avatarUrl,
-                dialer: true);
-          },
-        ),
+        // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is being killed — the dial
+        // engine already refuses at place_1to1_call.dart, so hide this row too
+        // instead of leaving it visible-and-failing with a snackbar.
+        if (RemoteConfig.messengerCallingEnabled)
+          _row(
+            icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+            color: AD.incomingCall,
+            label: 'Call',
+            onTap: () async {
+              Navigator.pop(sheetCtx);
+              // [AVADIAL-AVATOK-ONLY-1] AvaTOK-only (owner pivot 2026-07-16): resolve
+              // against the AvaTOK directory and place an in-app AvaTOK-to-AvaTOK call
+              // through place1to1Call. The former carrier/PSTN dial
+              // (AvaDialChannel.placeCall) is removed; an off-network number shows a
+              // "Not on AvaTOK" state instead of routing to the system dialer.
+              Analytics.capture('avadial_contact_call', const {'via': 'row_menu'});
+              Contact? hit;
+              try {
+                hit = await Directory.resolve(number);
+              } catch (_) {
+                hit = null;
+              }
+              if (!navContext.mounted) return;
+              if (hit == null || hit.uid.isEmpty) {
+                Analytics.capture('avadial_contact_not_on_avatok', const {'via': 'row_menu'});
+                await _showNotOnAvaTok(navContext, number);
+                return;
+              }
+              await place1to1Call(navContext,
+                  uid: hit.uid,
+                  name: (name?.isNotEmpty ?? false) ? name! : hit.name,
+                  avatarUrl: hit.avatarUrl,
+                  dialer: true);
+            },
+          ),
         _row(
           icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
           color: AD.iconVideo,

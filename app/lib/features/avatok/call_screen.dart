@@ -873,13 +873,19 @@ class _CallScreenState extends State<CallScreen> {
         duration: const Duration(seconds: 6),
       ));
     }
+    // [PIVOT-MSGR-CALL-OFF-1] This offers to re-place a fresh 1:1 audio call
+    // (paid continuation) once the legacy Cloudflare call runs out of funds.
+    // The dial engine (place_1to1_call.dart) already refuses that redial when
+    // Messenger calling is off, so gate the offer itself — otherwise a user
+    // could consent to spend tokens on a continuation that then fails to dial.
     if (mounted &&
         billing != null &&
         billing.fundsExhausted &&
         !widget.video &&
         widget.outgoing &&
         billing.authorization.provider == 'cloudflare' &&
-        !_billingContinuationShown) {
+        !_billingContinuationShown &&
+        RemoteConfig.messengerCallingEnabled) {
       _billingContinuationShown = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_offerPaidAudioContinuation());
@@ -1503,20 +1509,27 @@ class _CallScreenState extends State<CallScreen> {
     final ctx = nav.context;
     final messenger = ScaffoldMessenger.maybeOf(ctx);
     if (messenger == null) return;
+    // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is being killed. The dial
+    // engine (place_1to1_call.dart) already refuses a redial, so offering a
+    // "Call back" action here would just be a button that fails — drop the
+    // action and keep only the informational text about the failed escalation.
     messenger.showSnackBar(SnackBar(
       duration: const Duration(seconds: 8),
       content: Text('$why Call $peerName back?'),
-      action: SnackBarAction(
-        label: 'Call back',
-        onPressed: () {
-          Analytics.capture('addcall_call_back_tapped', {'peer_uid': peerUid});
-          unawaited(place1to1Call(ctx,
-              uid: peerUid,
-              name: peerName,
-              avatarUrl: peerAvatar,
-              video: video));
-        },
-      ),
+      action: RemoteConfig.messengerCallingEnabled
+          ? SnackBarAction(
+              label: 'Call back',
+              onPressed: () {
+                Analytics.capture(
+                    'addcall_call_back_tapped', {'peer_uid': peerUid});
+                unawaited(place1to1Call(ctx,
+                    uid: peerUid,
+                    name: peerName,
+                    avatarUrl: peerAvatar,
+                    video: video));
+              },
+            )
+          : null,
     ));
   }
 
@@ -2144,6 +2157,18 @@ class _CallScreenState extends State<CallScreen> {
                           name: widget.title,
                           message: (_postRingBusy!['message'] ?? '').toString(),
                           onTryAgain: () async {
+                            // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is
+                            // being killed and the dial engine
+                            // (place_1to1_call.dart) already refuses a redial
+                            // silently — no snackbar, nothing — which would
+                            // make this button look dead rather than hidden.
+                            // Do the same thing "Close" does instead of
+                            // attempting a doomed redial.
+                            if (!RemoteConfig.messengerCallingEnabled) {
+                              unawaited(_closeOutcomeAndPop(
+                                  reason: 'paid-busy-close'));
+                              return;
+                            }
                             Analytics.capture('call_menu_option_selected', {
                               'call_id': widget.room,
                               'option': 'call_again',
@@ -2202,6 +2227,15 @@ class _CallScreenState extends State<CallScreen> {
                           // [RECEPT-SETTINGS-1] voicemail removed — the card now
                           // offers Call again / Save contact / Close only.
                           onCallAgain: () async {
+                            // [PIVOT-MSGR-CALL-OFF-1] Same reasoning as the
+                            // post-ring-busy card's onTryAgain above — the
+                            // engine refuses this redial silently, so fall
+                            // back to Close rather than a dead-looking button.
+                            if (!RemoteConfig.messengerCallingEnabled) {
+                              unawaited(_closeOutcomeAndPop(
+                                  reason: 'no-answer-close'));
+                              return;
+                            }
                             Analytics.capture('call_menu_option_selected', {
                               'call_id': widget.room,
                               'option': 'call_again',
@@ -2903,25 +2937,32 @@ class _CallScreenState extends State<CallScreen> {
       },
       // [AVACALL-MENU-1] Call again — pop this screen and re-place the 1:1 call
       // (audio; a declined/busy call is retried as the same modality it started).
-      onCallAgain: () async {
-        Analytics.capture('call_menu_option_selected', {
-          'call_id': widget.room,
-          'option': 'call_again',
-        });
-        final nav = Navigator.of(context);
-        final uidSeed = widget.seed,
-            title = widget.title,
-            avatar = widget.avatarUrl,
-            vid = widget.video;
-        await _session.dismissOutcomeAndWait(reason: 'menu-call-again');
-        _popIfMounted();
-        unawaited(place1to1Call(nav.context,
-            uid: uidSeed,
-            name: title,
-            avatarUrl: avatar,
-            video: vid,
-            business: widget.business));
-      },
+      // [PIVOT-MSGR-CALL-OFF-1] `onCallAgain` is nullable and CallOutcomeMenu
+      // hides the button entirely when it is null (call_outcome_menu.dart:343)
+      // — so passing null here is a real "not built", not a disabled-but-
+      // visible button, matching the dial engine's refusal in
+      // place_1to1_call.dart.
+      onCallAgain: !RemoteConfig.messengerCallingEnabled
+          ? null
+          : () async {
+              Analytics.capture('call_menu_option_selected', {
+                'call_id': widget.room,
+                'option': 'call_again',
+              });
+              final nav = Navigator.of(context);
+              final uidSeed = widget.seed,
+                  title = widget.title,
+                  avatar = widget.avatarUrl,
+                  vid = widget.video;
+              await _session.dismissOutcomeAndWait(reason: 'menu-call-again');
+              _popIfMounted();
+              unawaited(place1to1Call(nav.context,
+                  uid: uidSeed,
+                  name: title,
+                  avatarUrl: avatar,
+                  video: vid,
+                  business: widget.business));
+            },
       // [AVACALL-MENU-1] Message — pop and open the DM thread with the callee.
       onMessage: () {
         Analytics.capture('call_menu_option_selected', {

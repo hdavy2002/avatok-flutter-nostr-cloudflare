@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/api_auth.dart';
+import '../../core/remote_config.dart';
 import '../../core/team_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -129,6 +130,19 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
       return;
     }
     if (!mounted) return;
+    // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is being killed. This legacy
+    // bridge is the "warm transfer call" affordance for this screen (there's no
+    // separate button to hide — the caller's dialpad digit press IS the
+    // affordance), so refuse it the same way place_1to1_call.dart already does,
+    // instead of pushing a CallScreen that has failed 100% of calls since build
+    // 10612.
+    if (!RemoteConfig.messengerCallingEnabled) {
+      setState(() {
+        _routing = false;
+        _status = 'Sorry, transfers aren\'t available right now';
+      });
+      return;
+    }
     Navigator.pushReplacement(context, MaterialPageRoute(
       builder: (_) => CallScreen(
         room: 'avatok-$number', title: name.isNotEmpty ? name : '+$number',

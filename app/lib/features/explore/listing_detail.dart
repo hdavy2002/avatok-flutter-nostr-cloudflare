@@ -610,16 +610,30 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                             child: Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Row(children: [
+                                // [PIVOT-MSGR-CALL-OFF-1] The tap target below
+                                // (_message) always opens the chat thread — it
+                                // never places a call. But the phone icon and
+                                // "...or call" text advertise a call affordance
+                                // that chat_thread.dart already hides when
+                                // Messenger calling is off, so swap to a
+                                // message-only icon/caption to match, instead
+                                // of visible-and-failing copy.
                                 PhosphorIcon(
-                                    PhosphorIcons.phone(
-                                        PhosphorIconsStyle.bold),
+                                    RemoteConfig.messengerCallingEnabled
+                                        ? PhosphorIcons.phone(
+                                            PhosphorIconsStyle.bold)
+                                        : PhosphorIcons.chatCircle(
+                                            PhosphorIconsStyle.bold),
                                     size: 16,
                                     color: AD.textPrimary),
                                 const SizedBox(width: Msg.s1),
                                 Text(d.listing.creator.avatokNumber!,
                                     style: ADText.rowName(c: AD.textPrimary)),
                                 const SizedBox(width: 8),
-                                Text('· tap to message or call',
+                                Text(
+                                    RemoteConfig.messengerCallingEnabled
+                                        ? '· tap to message or call'
+                                        : '· tap to message',
                                     style: ADText.statCaption(
                                         c: AD.textSecondary)),
                               ]),
@@ -1424,6 +1438,12 @@ class _OwnerProfileBlock extends StatelessWidget {
                           color: AD.iconSearch),
                     ],
                   ]),
+                  // [PIVOT-MSGR-CALL-OFF-1] Deliberately NOT gated on
+                  // RemoteConfig.messengerCallingEnabled: this phone icon is a
+                  // decorative label on the creator's number inside the QR
+                  // share card, with no onTap of its own — the row's tap
+                  // (onCreatorTap, above) opens the profile, not a call.
+                  // There is no call affordance here to hide.
                   if (number.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),

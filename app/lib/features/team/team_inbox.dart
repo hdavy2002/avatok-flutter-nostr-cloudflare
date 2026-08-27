@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/api_auth.dart';
 import '../../core/calls/call_room_id.dart'; // [CALL-ROOM-ID-1]
 import '../../core/config.dart';
+import '../../core/remote_config.dart';
 import '../../core/team_api.dart';
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
@@ -159,13 +160,18 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
           ],
           const SizedBox(height: Msg.s4),
           Row(children: [
-            Expanded(
-              child: ZineButton(
-                label: 'Call back', icon: PhosphorIcons.phone(PhosphorIconsStyle.bold), trailingIcon: false,
-                fontSize: 14, variant: ZineButtonVariant.lime, onPressed: () => _callBack(m),
+            // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 calling is being killed — the
+            // dial engine already refuses at place_1to1_call.dart, so hide "Call
+            // back" too instead of leaving it visible-and-failing with a snackbar.
+            if (RemoteConfig.messengerCallingEnabled) ...[
+              Expanded(
+                child: ZineButton(
+                  label: 'Call back', icon: PhosphorIcons.phone(PhosphorIconsStyle.bold), trailingIcon: false,
+                  fontSize: 14, variant: ZineButtonVariant.lime, onPressed: () => _callBack(m),
+                ),
               ),
-            ),
-            const SizedBox(width: Msg.s3),
+              const SizedBox(width: Msg.s3),
+            ],
             Expanded(
               child: ZineButton(
                 label: playing ? 'Stop' : 'Play',
