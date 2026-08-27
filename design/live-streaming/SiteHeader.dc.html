@@ -70,9 +70,11 @@
 
   @media (max-width: 1100px) {
     /* Nav and the marigold give way to the button, as the site header does. */
-    .avh-c-nav, .avh-c-orn { display: none; }
+    /* [WEB-HEADER-10] Log in / Sign up leave the BAR and join the panel. They
+       were sitting between the wordmark and the burger, which read as the
+       header's main content on a phone. The panel copies below carry them. */
+    .avh-c-nav, .avh-c-orn, .avh-c-cta { display: none; }
     .avh-c-menu { display: block; margin-left: auto; }
-    .avh-c-cta { margin-left: 0; }
 
     .avh-c-summary {
       list-style: none;
@@ -106,6 +108,12 @@
       border: 2px solid #161614; border-radius: 100px;
       background: #fff7e6; text-align: center;
     }
+    /* Auth spans the full width under the nav pills so it reads as a separate
+       action, not a seventh menu item. */
+    .avh-c-menu[open] .avh-c-panel a.panel-auth { grid-column: 1 / -1; }
+    .avh-c-menu[open] .avh-c-panel a.panel-auth.solid {
+      background: #d93825; color: #fdf1d3; border-color: #161614;
+    }
   }
 
   @media (max-width: 620px) {
@@ -113,8 +121,6 @@
     .avh-c-logo { height: 2.5rem; }
     /* Two pill columns stop fitting the longer labels below ~620px. */
     .avh-c-menu[open] .avh-c-panel { grid-template-columns: 1fr; }
-    /* Log in as text would push the burger off a narrow phone; Sign up stays. */
-    .avh-c-cta a:not(.solid) { display: none; }
     .avh-c a.solid { padding: 10px 18px; font-size: 0.875rem; }
   }
 </style>
@@ -149,6 +155,8 @@
         <a href="https://avatok.ai/#voice-agents">AI voice</a>
         <a href="https://avatok.ai/#marketplace-catalogue">Categories</a>
         <a href="https://avatok.ai/sign-up">For creators</a>
+        <a class="panel-auth" href="https://avatok.ai/sign-in">Log in</a>
+        <a class="panel-auth solid" href="https://avatok.ai/sign-up">Sign up</a>
       </nav>
     </details>
   </div>

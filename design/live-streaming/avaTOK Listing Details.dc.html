@@ -32,6 +32,17 @@
      width and caps at 22px (1.375x) near 2400px. */
   html { font-size: clamp(16px, calc(16px + (100vw - 1600px) * 0.0075), 22px); }
 
+  /* [WEB-HOST-1] The host column's width and divider live here, NOT inline.
+     It carried max-width:340px and a border-right; once the two columns stack
+     on a phone the cap kept it at 340px inside a full-width box, leaving dead
+     space to the right of the photo and a divider line running down the middle
+     of nothing. Inline styles cannot be overridden by a media query, which is
+     why they moved. */
+  .ld-host-col { max-width: 21.25rem; border-right: 2.5px solid #161614; }
+  @media (max-width: 900px) {
+    .ld-host-col { max-width: none; border-right: 0; }
+  }
+
   /* ── DISPLAY TYPE SAFETY NET — sitewide, applies to fonts added later ──────
      Two silent causes make heavy display faces run their letters together:
 
@@ -344,7 +355,7 @@
         <div style="border:3px solid #161614; border-radius:24px; background:#fdf1d3; box-shadow:6px 7px 0 #161614; overflow:hidden;">
           <div style="display:flex; flex-wrap:wrap;">
             <!-- profile column -->
-            <div style="flex:1 1 15.625rem; max-width:340px; min-width:min(100%,15.625rem); border-right:2.5px solid #161614; border-bottom:2.5px solid #161614; padding:22px; display:flex; flex-direction:column; gap:14px; background:#f6e4cd;">
+            <div class="ld-host-col" style="flex:1 1 15.625rem; min-width:min(100%,15.625rem); border-bottom:2.5px solid #161614; padding:22px; display:flex; flex-direction:column; gap:14px; background:#f6e4cd;">
               <a href="avaTOK Creator Profile.dc.html" style="display:block; height:210px; border:2.5px solid #161614; border-radius:18px; background:#1e5f66; position:relative; overflow:hidden;">
                 <div style="position:absolute; inset:0; background-image:repeating-linear-gradient(135deg, rgba(253,241,211,.14) 0 9px, transparent 9px 20px);"></div>
                 <span style="position:absolute; left:50%; top:60%; transform:translate(-50%,-50%); font-family:'Nunito',sans-serif; font-weight:800; font-size:0.6875rem; letter-spacing:.1em; color:rgba(253,241,211,.7); white-space:nowrap;">HOST PHOTO</span>
