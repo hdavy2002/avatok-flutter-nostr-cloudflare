@@ -3264,5 +3264,32 @@
     "description": "Presentation fixes on the Ava screen, reported 2026-08-24 from one screenshot: the two avatars were tiny (84px / r42) on a screen with nothing else on it, Ava's avatar was greyed to 45% opacity for the whole connecting phase (which reads as disabled, not connecting), and the animation showing both sides communicating was missing. Avatars are now 132px; the dim is gone; and _LinkFlow replaces it — dots travelling along a rail between the two faces, moving TOWARD whoever is currently speaking and coloured indigo for Ava / marigold for the caller, driven by the same ReceptionistCall.micLevel and avaLevel notifiers the per-face halo uses, with a slow drift toward Ava while connecting so waiting looks alive. One 2s ticker, six dots, one CustomPainter, no import of the legacy lane's _LinkPainter (the two lanes must stay independent). Labels ellipsize under a fixed width so \"Sonal's Ava\" cannot shift the layout. Client-only; presentation only.",
     "shipped": "",
     "no_telemetry": "Presentation only: no code path, no gate, no new event, and no property that could carry a failure value. The animation is driven entirely by micLevel/avaLevel, whose real behaviour is already asserted by STREAM-AVA-AUDIO-1 (a confirmed speaker route and a live session) and STREAM-RECEPTIONIST-1 (stream_lane_ava_connected) — if those pass, the notifiers are moving and the link is animating. Visual acceptance is by eye on the screenshot that reported it; inventing an event that fires whenever a widget paints would be an 'events are flowing' check, which the ship gate exists to forbid."
+  },
+  "PIVOT-BRAIN-OFF-1": {
+    "description": "Marketplace-first pivot (2026-08-27): the owner asked for AvaBrain ingestion to go dark platform-wide and there was no way to do it. brainEnabled was declared in routes/config.ts DEFAULTS but had ZERO consumers - lib/brain_ingest.ts read no platform config at all and gated only on per-user consent, so the documented brake could not be pulled. It is now read at the top of brainIngest(), before the domain registry lookup, and fails CLOSED on a config read error. Because brainIngest is the single server-lane entry point, this covers do/call_room.ts, lib/recept_stats.ts, routes/brain_media.ts and every future producer without touching them. Drops emit metric brain_ingest_rejected_platform_off and event ingest_rejected_platform_off (tagged with email when the producer passed one).",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "brainEnabled"
+    ],
+    "success": [
+      {
+        "event": "ingest_rejected_platform_off",
+        "app": "avabrain",
+        "property": "flag",
+        "equals": "brainEnabled",
+        "why": "Proves real producers are reaching the new gate. Before this change lib/brain_ingest.ts read no platform config at all, so brainEnabled had zero consumers and the platform-wide brake could not be pulled. The event ARRIVING is not enough — flag must carry the key name, or we are looking at some other drop path."
+      },
+      {
+        "event": "ingest_rejected_device_private",
+        "app": "avabrain",
+        "property": "reason",
+        "not_in": [
+          "platform_off"
+        ],
+        "why": "Guards against the new check swallowing the pre-existing device_private hard-reject. device_private must still be reported as its own reason, not collapsed into platform_off."
+      }
+    ]
   }
 }

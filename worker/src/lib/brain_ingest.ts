@@ -14,6 +14,7 @@
 
 import type { Env } from "../types";
 import { track, metric } from "../hooks";
+import { readConfig } from "../routes/config";
 import {
   BRAIN_DOMAINS,
   type BrainDomain,
@@ -51,7 +52,7 @@ export interface BrainIngestInput {
 export interface BrainIngestResult {
   ok: boolean;
   dropped?: boolean;
-  reason?: "device_private" | "no_consent" | "consent_error" | "queue_error" | "acl_safety";
+  reason?: "device_private" | "no_consent" | "consent_error" | "queue_error" | "acl_safety" | "platform_off";
 }
 
 // FNV-1a (32-bit) → hex. Deterministic, synchronous, bounded length. The
@@ -121,6 +122,37 @@ async function consentAllows(env: Env, uid: string, consentKey: BrainConsentKey)
 export async function brainIngest(env: Env, input: BrainIngestInput): Promise<BrainIngestResult> {
   const { uid, domain, kind } = input;
   if (!uid || !domain || !kind) return { ok: false, dropped: true, reason: "no_consent" };
+
+  // 0. PLATFORM BRAKE — `brainEnabled` (routes/config.ts DEFAULTS). Until
+  //    2026-08-27 this flag was declared but had ZERO consumers: nothing in this
+  //    file read platform config at all, so the documented platform-wide switch for
+  //    AvaBrain ingestion could not actually be pulled and the only gate was
+  //    per-user consent. The marketplace-first pivot requires AvaBrain ingestion to
+  //    go dark for everyone, so the flag is wired here — at the one choke point every
+  //    server-lane producer already passes through, which covers do/call_room.ts,
+  //    lib/recept_stats.ts, routes/brain_media.ts and every future producer for free.
+  //
+  //    Checked BEFORE the domain registry lookup so an unknown/legacy domain cannot
+  //    slip past while the platform is off. FAILS CLOSED like consentAllows below:
+  //    a config read error drops the event rather than ingesting it, because the
+  //    cost of dropping one event is far lower than the cost of ingesting when the
+  //    owner believes ingestion is off.
+  let platformOn: boolean;
+  try {
+    const cfg: any = await readConfig(env);
+    platformOn = cfg?.brainEnabled === true;
+  } catch {
+    platformOn = false; // FAIL CLOSED
+  }
+  if (!platformOn) {
+    try {
+      metric(env, "brain_ingest_rejected_platform_off", [1], [domain, kind]);
+      void track(env, uid, "ingest_rejected_platform_off", "avabrain", {
+        domain, kind, flag: "brainEnabled", ...(input.email ? { email: input.email } : {}),
+      });
+    } catch { /* telemetry best-effort */ }
+    return { ok: false, dropped: true, reason: "platform_off" };
+  }
 
   // §10.3 ACL — the legal-basis `safety` store is NEVER written through this public
   // lane. It is a separate store (guardian_events) written directly, and only, by
