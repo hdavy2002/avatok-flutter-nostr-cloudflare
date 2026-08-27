@@ -3317,5 +3317,32 @@
         "why": "The inverse assertion. With askAvaEnabled TRUE this must still be PRESENT, proving the gate is a reversible switch and not a one-way kill - the failure mode where a flag ships stuck off and nobody notices because 'the feature is meant to be dark'."
       }
     ]
+  },
+  "PIVOT-AI-DARK-1": {
+    "description": "Marketplace-first pivot (2026-08-27): aiEnabled was a sledgehammer with no client half. It is declared in routes/config.ts, prod TRUE, and enforced server-side in lib/ai_gate.ts (returns blocked/'ai_disabled'), but NO Flutter file read it - so flipping it off left every AI affordance visibly present in the composer and thread menu, each firing a real request that came back refused. Users would see AI features that are there and broken rather than gone. Added RemoteConfig.aiEnabled (default TRUE, mirroring the server) and wired it into the four in-thread surfaces: the catch-up card, the smart-reply chips, 'Discuss with Ava', and the per-chat 'Ava in this chat' switch. Also suppressed the NETWORK calls, not just the UI - _catchupAvailable, _whatDidIMiss and _maybeFetchSmartReplies now short-circuit before the request, following the generativeEnabled precedent. Separately this gives smartRepliesEnabled its FIRST consumer: it had a RemoteConfig getter and a DEFAULTS entry but zero call sites, so the documented switch did nothing.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "aiEnabled",
+      "smartRepliesEnabled",
+      "discussWithAvaEnabled"
+    ],
+    "success": [
+      {
+        "event": "chat_thread_menu_opened",
+        "app": "avatok",
+        "property": "ai_enabled",
+        "equals": false,
+        "why": "The assertion is a VALUE, not an arrival. With aiEnabled flipped false in prod, real thread-menu opens must report ai_enabled=false - proving devices actually fetched the new config and the client half is live. Measuring the DISAPPEARANCE of AI events instead would be indistinguishable from nobody using chat that day."
+      },
+      {
+        "event": "chat_thread_menu_opened",
+        "app": "avatok",
+        "property": "discuss_with_ava_enabled",
+        "exists": true,
+        "why": "Confirms the per-surface flag is being read independently of the master, so the two can be reasoned about separately rather than one masking the other."
+      }
+    ]
   }
 }

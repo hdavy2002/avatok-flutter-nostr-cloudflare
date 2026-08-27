@@ -71,12 +71,22 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
   /// Whether the "What did I miss?" button should be offered: a group thread with
   /// >25 unread and the messaging AvaBrain guardrail ON.
   Future<bool> _catchupAvailable() async {
+    // [PIVOT-AI-DARK-1] Master switch first — cheapest check, and it keeps the
+    // "What did I miss?" affordance from being offered at all when AI is dark.
+    if (!RemoteConfig.aiEnabled) return false;
     if (!(widget.chat.group || widget.chat.gid != null)) return false;
     if (_unreadIncoming <= 25) return false;
     return BrainConsent.isOn('messaging');
   }
 
   Future<void> _whatDidIMiss() async {
+    // [PIVOT-AI-DARK-1] Belt and braces. _catchupAvailable already hides the
+    // entry point, but a stale widget or a future caller must not be able to
+    // POST into a server that will only answer `ai_disabled`. The pattern the
+    // codebase already learned with generativeEnabled: short-circuit WITHOUT a
+    // network call rather than letting every tap become a real request into a
+    // guaranteed refusal.
+    if (!RemoteConfig.aiEnabled) return;
     final conv = _serverConvId;
     if (conv == null) return;
     if (!await BrainConsent.isOn('messaging')) {
@@ -223,8 +233,17 @@ extension _ChatThreadAiAssist on _ChatThreadScreenState {
 
   // ---- STREAM G [GROUP-AI-4] smart replies (DMs) ----
   /// Debounced fetch after an incoming DM. Only fires for 1:1 threads when the
-  /// screen is mounted (open + foreground). Guardrail + flag are enforced server-side.
+  /// screen is mounted (open + foreground). The guardrail stays server-enforced,
+  /// but the FLAGS are now checked here too — [PIVOT-AI-DARK-1]. This method used
+  /// to fire on every incoming DM and rely entirely on the server to refuse,
+  /// which meant flipping `aiEnabled` or `smartRepliesEnabled` off silenced the
+  /// chips while still generating a request per message. Server-side enforcement
+  /// remains the authority; this just stops paying for a refusal.
   void _maybeFetchSmartReplies() {
+    if (!RemoteConfig.aiEnabled || !RemoteConfig.smartRepliesEnabled) {
+      if (_smartReplies.isNotEmpty) setState(() => _smartReplies = const []);
+      return;
+    }
     if (widget.chat.group || widget.chat.gid != null) return; // DMs only
     _smartReplyDebounce?.cancel();
     _smartReplyDebounce = Timer(const Duration(milliseconds: 900), () async {

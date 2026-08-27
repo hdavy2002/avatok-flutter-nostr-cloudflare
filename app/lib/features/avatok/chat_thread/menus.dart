@@ -47,6 +47,18 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
   }
 
   void _overflow() {
+    // [PIVOT-AI-DARK-1] Observation point for the AI-dark flip. The thread menu
+    // is user-initiated and low-volume, which makes it a far better place to
+    // measure than the per-message smart-reply path. It records the flag state
+    // AT THE MOMENT the AI rows would have been drawn, so a prod flip can be
+    // verified by a property VALUE (ai_enabled=false) rather than by the absence
+    // of some other event — absence is also what "nobody opened a chat" looks
+    // like, and that ambiguity is what let three fixes ship dead on 2026-08-08.
+    Analytics.capture('chat_thread_menu_opened', {
+      'ai_enabled': RemoteConfig.aiEnabled,
+      'discuss_with_ava_enabled': RemoteConfig.discussWithAvaEnabled,
+      'is_group': widget.chat.group || widget.chat.gid != null,
+    });
     showModalBottomSheet(
       context: context,
       backgroundColor: AD.overlaySheet,
@@ -71,14 +83,21 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
           // server flag first and the compile const only as a safety net. It used
           // to read the const alone, which meant disabling this AI surface needed
           // a new APK and a store rollout.
-          if (RemoteConfig.discussWithAvaEnabled && _convKey != null)
+          // [PIVOT-AI-DARK-1] aiEnabled is the master; discussWithAvaEnabled is
+          // the per-surface switch. Both must be on.
+          if (RemoteConfig.aiEnabled &&
+              RemoteConfig.discussWithAvaEnabled &&
+              _convKey != null)
             _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Discuss with Ava',
                 _discussWithAva),
           // Phase A (Ava Copilot, D29): per-chat "Ava in this chat" switch —
           // ON by default. 1:1 = your own Ava only; groups = admins only (the
           // server enforces; a rejected flip reverts quietly). OFF hides the
           // Ava doc context-menu items and stops copilot processing here.
-          if (_convKey != null)
+          // [PIVOT-AI-DARK-1] The per-chat "Ava in this chat" switch is itself an
+          // AI affordance — offering the user a toggle for a feature the platform
+          // has turned off is worse than offering nothing.
+          if (RemoteConfig.aiEnabled && _convKey != null)
             StatefulBuilder(builder: (sctx, setSheet) => SwitchListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                   secondary: Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AD.textPrimary),

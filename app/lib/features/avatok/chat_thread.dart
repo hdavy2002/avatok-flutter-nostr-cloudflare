@@ -1368,7 +1368,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             if (widget.chat.gid != null && _confLive && RemoteConfig.conferenceEnabled) _confBanner(),
             // STREAM G [GROUP-AI-1]: the catch-up summary card, pinned above the
             // thread (dismissible). Rendered only when we have bullets to show.
-            if (!_catchupDismissed && _catchupBullets.isNotEmpty)
+            // [PIVOT-AI-DARK-1] aiEnabled gates it too — the fetch in ai_assist
+            // is also short-circuited, so with AI dark there are no bullets to
+            // render anyway. Kept here as well because presentation must not
+            // depend on a network path staying suppressed.
+            if (RemoteConfig.aiEnabled && !_catchupDismissed && _catchupBullets.isNotEmpty)
               CatchupCard(bullets: _catchupBullets, msgCount: _catchupCount, onDismiss: _dismissCatchup),
             // [RAJ-SEAMS-1 / RAJ-INDIGO-1] The 1B Squiggle seam. It used to be
             // a Column sibling directly under the header, where its transparent
@@ -1643,7 +1647,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> with WidgetsBinding
             // Unknown-number threads are a one-way voicemail record (no live peer
             // to reply to), so the composer is replaced with a read-only note.
             // STREAM G [GROUP-AI-4]: smart-reply chips above the input (DMs only).
-            if (!_isTelThread && _smartReplies.isNotEmpty)
+            // [PIVOT-AI-DARK-1] Smart-reply chips are an AI surface. Note
+            // `smartRepliesEnabled` had a RemoteConfig getter but ZERO consumers
+            // until now — declared on both sides yet wired to nothing, so the
+            // documented switch did nothing. This is its first real consumer.
+            if (RemoteConfig.aiEnabled &&
+                RemoteConfig.smartRepliesEnabled &&
+                !_isTelThread &&
+                _smartReplies.isNotEmpty)
               SmartReplyChips(suggestions: _smartReplies, onTap: _insertSmartReply),
             // STREAM B (SAFE-GATE-2): a pending stranger thread replaces the
             // composer with the safety gate bar (Safety/Block/Report/Accept).

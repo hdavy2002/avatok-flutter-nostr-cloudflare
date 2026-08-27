@@ -710,6 +710,17 @@ class RemoteConfig {
   /// a network call (see ava_generative/image_tool.dart). Compile-time fallback
   /// [kGenerativeEnabledDefault] only applies on a config-fetch failure.
   static bool get generativeEnabled => _b('generativeEnabled', kGenerativeEnabledDefault);
+  /// [PIVOT-AI-DARK-1] MASTER switch for every Ava feature. Declared in
+  /// routes/config.ts and enforced server-side in lib/ai_gate.ts (`ai_disabled`),
+  /// but until 2026-08-27 NO Flutter file read it. That made it a sledgehammer
+  /// with no client half: flipping it off left every AI affordance visibly
+  /// present in the composer and thread menu, each one firing a real request
+  /// that came back blocked — the user sees features that are there and broken
+  /// rather than features that are gone. Reading it here lets the UI HIDE, which
+  /// is the behaviour the marketplace-first pivot's "AI in chat goes dark" needs.
+  /// Default TRUE mirrors the server default; the client value only ever gates
+  /// presentation and request suppression — the server remains the authority.
+  static bool get aiEnabled => _b('aiEnabled', true);
   /// [PIVOT-AI-SWITCHES-1] "Discuss this chat with Ava" — the entry point in the
   /// thread overflow menu (features/avatok/chat_thread/menus.dart). Until
   /// 2026-08-27 this was gated ONLY by the compile-time const
