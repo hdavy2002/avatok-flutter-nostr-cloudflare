@@ -33,6 +33,26 @@ export interface PlatformConfig {
   commercialLiveStartGraceMin: number;
   commercialReplayEnabled: boolean;
   commercialRecordingEnabled: boolean;
+  // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 audio/video calling. The pivot
+  // (Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md §4) kills it:
+  // Messenger keeps simple text messaging, and all paid session media moves to
+  // GetStream. Enforced client-side at the one choke point
+  // routeToStreamCallIfEnabled (app/lib/features/avatok/place_1to1_call.dart).
+  //
+  // 🚨 This is NOT the same thing as `streamCallsEnabled`, and the two must never
+  // be confused. `streamCallsEnabled` only ROUTES: turning it off does not
+  // disable calling, it makes every entry point fall through to the legacy
+  // Cloudflare CallScreen, which has failed 100% of calls since build 10612
+  // (getUserMedia(): unknown factoryId null). Using it as a disable mechanism
+  // ships BROKEN calling instead of NO calling. `streamCallsEnabled` stays true
+  // because the paid consultation/livestream lane depends on the same SDK,
+  // token route and push wiring.
+  //
+  // Default FALSE per the owner decision. It is deliberately fail-closed: a
+  // config-fetch failure leaves calling off, which is the correct direction for
+  // a feature being removed. Only builds that ship this key read it, so
+  // declaring it does not affect clients already in the field.
+  messengerCallingEnabled: boolean;
   conferenceEnabled: boolean;
   // FREE LAUNCH group AUDIO on Cloudflare Realtime SFU (Specs/FREE-LAUNCH-DIRECTION.md
   // + Specs/CF-REALTIME-SFU-GROUP-AUDIO-BUILD.md). Default OFF: the new audio-only
@@ -1598,6 +1618,7 @@ const DEFAULTS: PlatformConfig = {
   commercialLiveStartGraceMin: 15,
   commercialReplayEnabled: false,
   commercialRecordingEnabled: false,
+  messengerCallingEnabled: false,  // [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 A/V is killed by the marketplace-first pivot. NOT streamCallsEnabled — see the interface comment.
   conferenceEnabled: true,         // group AUDIO calls (master kill switch)
   groupAudioSfuEnabled: false,     // CF Realtime SFU group path — dormant until built+CI-verified
   brainEnabled: false,             // FREE LAUNCH: secondary — revisit later

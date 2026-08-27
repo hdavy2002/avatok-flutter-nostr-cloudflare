@@ -60,6 +60,41 @@ Future<bool> routeToStreamCallIfEnabled(
   String? peerEmail,
   MessengerCallAuthorization? billingAuthorization,
 }) async {
+  // ── [PIVOT-MSGR-CALL-OFF-1] MESSENGER CALLING IS KILLED ──────────────────
+  // The marketplace-first pivot (2026-08-27) removes Messenger 1:1 audio and
+  // video entirely; Messenger keeps simple text messaging and all paid session
+  // media moves to GetStream (livestream + 1:1 consultation, region Mumbai).
+  //
+  // This check is FIRST, before the billing/provider logic below, because none
+  // of that reasoning applies to a product that no longer exists — and because
+  // a refusal must never be able to fall through to a paid path.
+  //
+  // It returns TRUE, not false. The return contract of this function is "I have
+  // taken responsibility for the dial; the caller must NOT mount CallScreen".
+  // Returning false here would hand every entry point straight to the legacy
+  // Cloudflare CallScreen, which has failed 100% of calls since build 10612 —
+  // i.e. it would ship broken calling instead of no calling. That is the exact
+  // trap `streamCallsEnabled` sets, and it is why this needed its own flag.
+  //
+  // The paid lane is untouched: consultations and livestreams never call this
+  // function (they route via features/consult/ and commercial_sessions_api),
+  // and `streamCallsEnabled` stays true so their SDK, token and push wiring
+  // keep working.
+  //
+  // The ~19 UI affordances are hidden separately. Hiding alone is not enough —
+  // a stale route, a deep link, or a build that predates the hiding can still
+  // reach this function, so the engine has to refuse independently.
+  if (!RemoteConfig.messengerCallingEnabled) {
+    Analytics.capture('messenger_call_refused_feature_off', {
+      'entrypoint': entrypoint,
+      'media_mode': video ? 'video' : 'audio',
+      'flag': 'messengerCallingEnabled',
+      'user_email': Analytics.currentEmail ?? '',
+      'peer_email': peerEmail ?? '',
+    });
+    return true;
+  }
+
   // [MESSENGER-CALL-BILLING-ROUTE-1] Free Messenger audio stays on Cloudflare
   // while the daily allowance is available. Paid audio and every video call
   // use GetStream. A paid authorization therefore must never fall through to

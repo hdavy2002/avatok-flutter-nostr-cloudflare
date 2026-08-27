@@ -166,6 +166,20 @@ class RemoteConfig {
       _b('commercialReplayEnabled', false);
   static bool get commercialRecordingEnabled =>
       _b('commercialRecordingEnabled', false);
+  /// [PIVOT-MSGR-CALL-OFF-1] Messenger 1:1 audio/video calling. The
+  /// marketplace-first pivot kills it: Messenger keeps simple text messaging and
+  /// all paid session media moves to GetStream.
+  ///
+  /// 🚨 Do NOT reach for `streamCallsEnabled` to disable calling. That flag only
+  /// ROUTES — off, every entry point falls through to the legacy Cloudflare
+  /// CallScreen, which has failed 100% of calls since build 10612. That ships
+  /// broken calling rather than no calling. `streamCallsEnabled` stays TRUE
+  /// because the paid consultation/livestream lane shares the same SDK, token
+  /// route and push wiring.
+  ///
+  /// Default FALSE — fail-closed, matching routes/config.ts DEFAULTS.
+  static bool get messengerCallingEnabled =>
+      _b('messengerCallingEnabled', false);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
   // Cloudflare-only media migration Wave-0 scaffold (Specs/CLOUDFLARE-ONLY-REALTIME-MEDIA-MIGRATION-PROPOSAL-2026-07-24.md).
   static bool get cloudflareConferenceEnabled => _b('cloudflareConferenceEnabled', false);

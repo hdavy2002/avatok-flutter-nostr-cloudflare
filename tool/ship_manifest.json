@@ -3344,5 +3344,43 @@
         "why": "Confirms the per-surface flag is being read independently of the master, so the two can be reasoned about separately rather than one masking the other."
       }
     ]
+  },
+  "PIVOT-MSGR-CALL-OFF-1": {
+    "description": "Marketplace-first pivot (2026-08-27): Messenger 1:1 audio/video calling is killed. New flag messengerCallingEnabled, declared in the PlatformConfig interface AND DEFAULTS in worker/src/routes/config.ts, default FALSE (fail-closed - a config-fetch failure leaves calling off, the correct direction for a feature being removed). Enforced at routeToStreamCallIfEnabled (app/lib/features/avatok/place_1to1_call.dart), the single choke point every human 1:1 dial already passes through, and placed FIRST - before the billing/provider logic, so a refusal can never fall through into a paid path. CRITICALLY it returns TRUE, not false: the function's contract is 'I have taken responsibility, caller must not mount CallScreen', so returning false would route every entry point to the legacy Cloudflare CallScreen which has failed 100% of calls since build 10612 - shipping broken calling instead of no calling. streamCallsEnabled deliberately stays TRUE because the paid consultation/livestream lane shares its SDK, token route and push wiring; the paid lane never calls this function (it routes via features/consult/ and commercial_sessions_api) and is verified untouched. UI hiding of the ~19 affordances and the incoming-push path are separate issues.",
+    "shipped": "",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "messengerCallingEnabled",
+      "streamCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "messenger_call_refused_feature_off",
+        "app": "avatok",
+        "property": "flag",
+        "equals": "messengerCallingEnabled",
+        "why": "Proves the engine gate is actually reached. The event carries both user_email and peer_email so either side of the attempted call retrieves it - this is a two-sided feature and one device on the build cannot demonstrate it."
+      },
+      {
+        "event": "messenger_call_refused_feature_off",
+        "app": "avatok",
+        "property": "media_mode",
+        "in": [
+          "audio",
+          "video"
+        ],
+        "why": "Confirms BOTH audio and video are refused. A gate that only caught one of them would look green while half of Messenger calling stayed alive."
+      },
+      {
+        "event": "messenger_call_billing_provider_blocked",
+        "app": "avatok",
+        "property": "reason",
+        "not_in": [
+          "stream_provider_disabled"
+        ],
+        "why": "Guards the specific mistake this issue exists to avoid: if anyone disables calling by flipping streamCallsEnabled instead, this failure reason reappears and calls fall through to the broken legacy CallScreen. Its ABSENCE is the proof the correct switch was used."
+      }
+    ]
   }
 }
