@@ -1,5 +1,13 @@
 # Phase 1 "Space" — launch audit and minimum path to live
 
+> 🔻 **PARTIALLY SUPERSEDED 2026-08-27 by `Specs/PIVOT-2026-08-27-MARKETPLACE-FIRST-PAID-SESSIONS.md`.**
+> The audit findings below (what exists, the four gaps, the effort estimates) remain accurate
+> and were re-verified. What CHANGED the day after this was written: Messenger audio/video
+> calling is being **killed** rather than kept alongside; the app's default landing screen
+> becomes **Marketplace**; AI in chat goes **dark**; payments move to the **web only**; and
+> the GetStream region is **Mumbai**. Read the pivot spec first — it is the governing
+> document. Section 5 "Decisions you need to make" has been answered there.
+
 **Date:** 2026-08-26 · **Environment audited:** production (read-only) · **No writes made**
 **Scope:** creator live-streaming events + paid 1:1 consultation, with browser fallback for emailed links
 **Media provider (owner decision, this session):** GetStream
