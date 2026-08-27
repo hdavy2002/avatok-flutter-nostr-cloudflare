@@ -3381,5 +3381,56 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Presentation-only icon-system migration: no code path, no gate, no flag, no new event, and no property that could carry a failure value. Verification is mechanical and was run: flutter analyze reports 0 errors across the four touched files. Note the guard is NOT yet green overall - 46 violations remain in untracked/in-flight files that this issue deliberately does not touch."
+  },
+  "PIVOT-MSGR-CALL-OFF-2": {
+    "description": "UI half of the Messenger-calling kill (engine half is PIVOT-MSGR-CALL-OFF-1). Hides the outgoing call affordances behind RemoteConfig.messengerCallingEnabled so they are NOT BUILT, rather than left visible and failing with a snackbar. Sites: chat_thread.dart header audio+video; contact_detail_screen.dart header Call action and the tap-to-dial gesture on the phone tile (tile kept - it is the only place the number is shown, and long-press-to-copy still works); contact_row_menu.dart 'Call' row; team_inbox.dart 'Call back'; team_ivr_screen.dart warm transfer (no button to hide - the affordance is a dialpad digit press, so the resulting call action is refused with a status message); listing_detail.dart owner-number CTA icon and caption changed from 'tap to message or call' to 'tap to message'. Two sites deliberately NOT gated after investigation: core/calls/call_overlay.dart returnToActiveCall(), which re-mounts an ALREADY-ACTIVE minimised session and is not a dial entry point - gating it would strand a user in a live call, including a paid consultation, and the file already carries the same precedent for streamCallsEnabled; and listing_detail.dart:1441, a QR share-card row whose tap is onCreatorTap (opens the profile), not a call. In chat_thread.dart the flag is nested INSIDE the `else if (!c.group)` branch rather than added to its condition - putting it in the condition would make a 1:1 thread fall through to the next branch and render GROUP-conference buttons driven by group-only state. NOT DONE, blocked: six further sites live in files carrying other agents' uncommitted work (calls_screen.dart, dialpad_search_tab.dart, ava_phone_screen.dart, ava_phone_contacts.dart, shell/v2/avadial_root.dart, askava_screen.dart) and must be gated once that work lands.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "messengerCallingEnabled",
+      "conferenceEnabled"
+    ],
+    "success": [
+      {
+        "event": "messenger_call_refused_feature_off",
+        "app": "avatok",
+        "property": "entrypoint",
+        "not_in": [
+          "chat_thread",
+          "recents_callback"
+        ],
+        "why": "The engine gate (OFF-1) fires when a button was tapped. If the UI hiding works, the hidden entrypoints should STOP appearing in refusals - a refusal still arriving from chat_thread means the button is still on screen and this issue did not land. This asserts the UI change by its effect on the engine's own telemetry rather than by a new event nobody would look at."
+      }
+    ]
+  },
+  "PIVOT-MSGR-CALL-OFF-3": {
+    "description": "Incoming half of the Messenger-calling kill. Without it a caller on an OLD build can still ring a phone on the NEW build and it rings normally. Four gates, each refusing before any ringtone, CallKit/notification display or screen push: push_service.dart _showIncoming (after its d['type']!='call' early return), _routeToBrandedIncoming (the dominant production ring lane), and _openCall (placed AFTER the e['group'] early-return so group conferences, governed by conferenceEnabled, are untouched); plus incoming_business_call_screen.dart _accept() and stream_incoming_screen.dart initState()+_onAccept() for a screen already on-screen when the flag flips. THE HARD PART was not refusing paid sessions, which share the same GetStream SDK and push wiring and are the new core product - silently dropping a consultation the customer PAID for is far worse than a Messenger call that still rings. Distinguished by POSITIVE identification, so an unrecognised or future call type still rings: Messenger calls are created with StreamCallType.defaultType() (value 'default', stream_call_service.dart:631,935) while paid sessions are minted server-side as avatok_livestream / avatok_consult_1to1 (worker/src/lib/commercial_stream_sessions.ts) and joined via StreamCallType.fromString (commercial_getstream_handoff.dart:290). Independently verified that the legacy FCM lane cannot carry a paid session at all: _showIncoming returns unless d['type']=='call', and GetStream's native push is early-returned at sender=='stream.video' (push_service.dart:768).",
+    "shipped": "",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "messengerCallingEnabled",
+      "streamCallsEnabled",
+      "conferenceEnabled"
+    ],
+    "success": [
+      {
+        "event": "messenger_incoming_refused_feature_off",
+        "app": "avatok",
+        "property": "flag",
+        "equals": "messengerCallingEnabled",
+        "why": "Two-sided by construction: it takes a caller on an old build and a callee on the new one, so one device cannot demonstrate it - the [CALL-PRESENCE-1] mistake. Proves the callee actually refused rather than simply never being rung."
+      },
+      {
+        "event": "stream_lane_ring_screen_shown",
+        "app": "avatok",
+        "property": "call_type",
+        "not_in": [
+          "default"
+        ],
+        "why": "THE SAFETY ASSERTION, and the one that matters most. Paid consultations and livestreams must STILL RING. This says the Stream ring screen keeps appearing for avatok_consult_1to1 / avatok_livestream while no longer appearing for 'default'. If this event disappears entirely, the gate is eating paid sessions - a money bug - and the fix must be reverted immediately."
+      }
+    ]
   }
 }

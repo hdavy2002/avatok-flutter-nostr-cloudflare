@@ -3070,6 +3070,26 @@ final CallTtlGate _brandedRouteGate = CallTtlGate(ttlMs: _kTerminalCallTtlMs);
 Future<void> _routeToBrandedIncoming(Map<String, dynamic> d) async {
   final callId = (d['callId'] ?? '').toString();
   if (callId.isEmpty) return;
+  // [MESSENGER-CALL-KILL-INCOMING-1] Defense-in-depth: `_showIncoming`
+  // already refuses a Messenger ring before this is reached from a live FCM/
+  // WS push, but this function is ALSO entered directly from a cold-start
+  // FSI notification tap (`_maybeRouteBrandedIncoming`, payload kind
+  // 'bizcall') and from a native ring tap (`_handleNativeRingAction`), either
+  // of which can bypass `_showIncoming` on a payload that was already
+  // pending before a flag flip. `IncomingBusinessCallScreen` (this route's
+  // destination) is exclusively the Messenger branded ring surface —
+  // GetStream commercial sessions never construct a 'bizcall' FSI payload —
+  // so refusing unconditionally here is safe for the paid lane.
+  if (!RemoteConfig.messengerCallingEnabled) {
+    Analytics.capture('messenger_incoming_refused_feature_off', {
+      'flag': 'messengerCallingEnabled',
+      'call_id': callId,
+      'kind': (d['kind'] ?? '').toString(),
+      'entrypoint': 'route_to_branded_incoming',
+      'user_email': Analytics.currentEmail ?? '',
+    });
+    return;
+  }
   // Don't surface a screen for a call the caller already cancelled (WS5 guard).
   if (PushService.wasCallTerminated(callId)) return;
   // [CALL-PREWARM-2 2026-08-17] The SECOND (and, in production, the DOMINANT)
@@ -3732,6 +3752,26 @@ Future<void> _showIncoming(Map<String, dynamic> d,
   }
   final ringCallId = (d['callId'] ?? '').toString();
   final ringCaller = (d['fromPub'] ?? d['from'] ?? '').toString();
+  // [MESSENGER-CALL-KILL-INCOMING-1] Refuse a Messenger call ring before any
+  // CallKit/notification surface is raised. `type == 'call'` (checked just
+  // above) is exclusively the Messenger 1:1/group ring payload — paid
+  // livestreams and consultations never reach `_showIncoming` at all: they
+  // arrive over GetStream's own native push SDK (see the
+  // `sender == 'stream.video'` early-return in `_handleBackgroundMessage`),
+  // and commercial informational pushes (booking reminders etc.) go through
+  // `_showCommercialNotif`, a completely different payload `type`. Refusing
+  // here can therefore never drop a paid session.
+  if (!RemoteConfig.messengerCallingEnabled) {
+    Analytics.capture('messenger_incoming_refused_feature_off', {
+      'flag': 'messengerCallingEnabled',
+      'call_id': ringCallId,
+      'kind': (d['kind'] ?? '').toString(),
+      'route': route,
+      'entrypoint': 'show_incoming',
+      'user_email': Analytics.currentEmail ?? '',
+    });
+    return;
+  }
   // [STREAM-CALL-PILOT-1] Stream's native incoming-call surface is the sole
   // ring owner for a Stream-selected call. The legacy FCM/CallKit path must
   // return before it raises its own UI, otherwise the recipient sees two
@@ -6669,6 +6709,25 @@ class PushService {
       // admits a joiner, and it admits everyone up to the cap.
       if (e['group'] == true || e['group'] == 'true') {
         await _openGroupCall(e);
+        return;
+      }
+      // [MESSENGER-CALL-KILL-INCOMING-1] `_openCall` is the accept-side
+      // choke point for the legacy Messenger 1:1 ring only: GetStream's own
+      // incoming calls never come through this method at all (see the
+      // `STREAM-ROUTE-1` comment just below — Stream's native Firebase
+      // service owns them), and paid livestream/consult sessions mount their
+      // own screens via `commercial_getstream_handoff.dart`, never
+      // `CallScreen`. Group calls are excluded above and stay governed by
+      // `conferenceEnabled`, not this flag. Safe to refuse unconditionally.
+      if (!RemoteConfig.messengerCallingEnabled) {
+        Analytics.capture('messenger_incoming_refused_feature_off', {
+          'flag': 'messengerCallingEnabled',
+          'call_id': room,
+          'kind': (e['kind'] ?? '').toString(),
+          'entrypoint': 'open_call_accept',
+          'user_email': Analytics.currentEmail ?? '',
+        });
+        _noteTerminalCall(room);
         return;
       }
       // [STREAM-ROUTE-1 2026-08-21] STREAM IS THE ONLY 1:1 CALL PATH.

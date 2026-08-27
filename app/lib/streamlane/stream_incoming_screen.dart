@@ -37,6 +37,7 @@ import '../core/ui/messenger_theme.dart';
 // screen silently never appeared. Import cycles are legal in Dart; the
 // push_service → glue → lane → this-file cycle resolves fine.
 import '../core/analytics.dart';
+import '../core/remote_config.dart'; // [MESSENGER-CALL-KILL-INCOMING-1]
 import '../main.dart' show RootFlow;
 // [STREAM-RING-2 2026-08-21] `PushService` added to the `show` clause: the
 // foreground ringer below calls `PushService.start/stopStreamForegroundRing`,
@@ -82,10 +83,48 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
   bool _acting = false; // Accept/Decline in flight — don't double-dismiss.
   bool _dismissed = false; // Any dismissal path already ran.
 
+  /// [MESSENGER-CALL-KILL-INCOMING-1] Positive identification only: GetStream
+  /// call TYPE (`callCid.type`, distinct from the call id) is the
+  /// server-authoritative discriminator — Messenger 1:1/group calls are
+  /// created with `StreamCallType.defaultType()` (`value == 'default'`,
+  /// verified against the stream_video 1.4.3 API docs), while paid
+  /// commercial sessions are always minted server-side with an explicit
+  /// custom type, `avatok_livestream` or `avatok_consult_1to1`
+  /// (`worker/src/lib/commercial_stream_sessions.ts`,
+  /// `commercial_getstream_handoff.dart`'s `StreamCallType.fromString`).
+  /// Gating on the POSITIVE `== 'default'` check — rather than "not a known
+  /// commercial type" — means an unrecognised/future call type still rings
+  /// through instead of being silently dropped; a paid session the customer
+  /// already paid for must never be swallowed by this switch.
+  bool get _isMessengerCall => widget.call.callCid.type.value == 'default';
+
   @override
   void initState() {
     super.initState();
     final callId = widget.call.callCid.value;
+    if (_isMessengerCall && !RemoteConfig.messengerCallingEnabled) {
+      Analytics.capture('messenger_incoming_refused_feature_off', <String, Object>{
+        'flag': 'messengerCallingEnabled',
+        'call_id': callId,
+        'call_type': widget.call.callCid.type.value,
+        'entrypoint': 'stream_incoming_screen_init',
+        'user_email': Analytics.currentEmail ?? '',
+      });
+      // Refuse before any ringtone/haptic starts and before the ring-shown
+      // telemetry fires — this call must never audibly or visibly ring.
+      // Deferred to the next frame: `Navigator.of(context)` inside
+      // `_exitRingScreen` needs this widget mounted in the tree first.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _dismissed = true;
+        unawaited(StreamCallService.instance.decline(
+          widget.call,
+          peerId: widget.call.state.value.createdByUser.id,
+        ));
+        _exitRingScreen();
+      });
+      return;
+    }
     Analytics.capture('stream_lane_ring_screen_shown', <String, Object>{
       'call_id': callId,
       'provider': 'stream',
@@ -203,6 +242,24 @@ class _StreamIncomingScreenState extends State<StreamIncomingScreen> {
 
   Future<void> _onAccept() async {
     if (_acting || _dismissed) return;
+    // [MESSENGER-CALL-KILL-INCOMING-1] Defense-in-depth: `initState` above
+    // already refuses and self-dismisses before this screen can even ring
+    // when it's a Messenger call, so this should be unreachable in practice.
+    // Kept as a second, independent check on the Accept button itself in
+    // case a screen already on-screen before a flag flip survives to this
+    // tap. Same positive `_isMessengerCall` check — paid livestream/consult
+    // calls are never touched.
+    if (_isMessengerCall && !RemoteConfig.messengerCallingEnabled) {
+      Analytics.capture('messenger_incoming_refused_feature_off', <String, Object>{
+        'flag': 'messengerCallingEnabled',
+        'call_id': widget.call.callCid.value,
+        'call_type': widget.call.callCid.type.value,
+        'entrypoint': 'stream_incoming_screen_accept',
+        'user_email': Analytics.currentEmail ?? '',
+      });
+      await _onDecline();
+      return;
+    }
     setState(() => _acting = true);
     await _StreamForegroundRinger.instance.stop(
       widget.call.callCid.value,

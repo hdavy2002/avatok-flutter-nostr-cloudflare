@@ -10,6 +10,7 @@ import '../../core/avatar.dart';
 import '../../core/blocking_api.dart';
 import '../../core/calls/call_prewarm.dart'; // [CALL-PREWARM-2]
 import '../../core/chat_state.dart';
+import '../../core/remote_config.dart'; // [MESSENGER-CALL-KILL-INCOMING-1]
 import '../../core/ui/avatok_dark.dart';
 import '../../core/ui/messenger_theme.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -426,6 +427,26 @@ class _IncomingBusinessCallScreenState extends State<IncomingBusinessCallScreen>
 
   void _accept() {
     if (_busy) return;
+    // [MESSENGER-CALL-KILL-INCOMING-1] Defense-in-depth: push_service.dart
+    // already refuses to construct THIS screen at all once
+    // `messengerCallingEnabled` is off (see `_showIncoming` /
+    // `_routeToBrandedIncoming`), so this should never fire in practice. But
+    // `IncomingBusinessCallScreen` is exclusively the Messenger 1:1 ring
+    // surface — paid GetStream livestream/consult sessions mount their own
+    // screens via `commercial_getstream_handoff.dart` and never this one — so
+    // it is unambiguously safe to refuse Accept here too, in case a screen
+    // that was already on-screen before a flag flip survives to this tap.
+    if (!RemoteConfig.messengerCallingEnabled) {
+      Analytics.capture('messenger_incoming_refused_feature_off', {
+        'flag': 'messengerCallingEnabled',
+        'call_id': widget.callId,
+        'kind': widget.video ? 'video' : 'audio',
+        'entrypoint': 'incoming_business_call_accept',
+        'user_email': Analytics.currentEmail ?? '',
+      });
+      unawaited(_decline());
+      return;
+    }
     setState(() { _busy = true; _accepting = true; });
     final callId = widget.callId;
     final extra = _extra;
