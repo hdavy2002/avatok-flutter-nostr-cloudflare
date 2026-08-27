@@ -97,10 +97,17 @@ class AddCard {
   final String firstName;
   final String lastName;
   final String email;
-  final String number;  // AvaTOK number (paid) or real phone (free)
-  final String plan;    // 'paid' | 'free'
+  // [PIVOT-NUMBER-MASK-1] Always the sharer's AvaTOK number — the server
+  // (worker/src/routes/number.ts shareCardPut) resolves this itself from the
+  // account's own avatok_number row and never trusts client input, for paid
+  // AND free accounts alike. The real phone number is never returned here.
+  final String number;
+  final String plan;    // 'paid' | 'free' — informational only; no longer selects which number is shared.
   const AddCard({required this.uid, required this.name, this.avatarUrl = '', this.firstName = '', this.lastName = '', this.email = '', this.number = '', this.plan = 'free'});
-  bool get sharesRealNumber => plan == 'free';
+  // [PIVOT-NUMBER-MASK-1] Retained only so any remaining caller compiles;
+  // `number` is now always the AvaTOK number regardless of plan, so this is
+  // always false. Prefer reading `number` directly.
+  bool get sharesRealNumber => false;
 }
 
 class AvaNumber {
