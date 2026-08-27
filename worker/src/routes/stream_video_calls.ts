@@ -808,7 +808,14 @@ export type StreamPlaceRefusalCode =
   | "call_cancelled"
   | "billing_authorization_required"
   | "billing_authorization_invalid"
-  | "billing_authorization_expired";
+  | "billing_authorization_expired"
+  // [WORKER-TSC-GREEN-1] Emitted at the billing-DO init failure path below but
+  // never declared, so that `refuse(...)` call did not typecheck. Added rather
+  // than renamed to the existing `authority_unavailable`: this is a
+  // client-visible wire value, and the two mean different things — this one is
+  // specifically the BILLING authority, not call admission. No client switches
+  // on it today, so adding the member is behaviour-neutral.
+  | "billing_authority_unavailable";
 
 type StreamPlaceBody = {
   callee_uid?: unknown;
@@ -1876,7 +1883,11 @@ export async function streamVideoWebhook(req: Request, env: Env, ctx?: Execution
       ?? event.data?.participant?.session_id ?? event.data?.session_participant?.session_id ?? null,
     occurredAt: streamEventTimestampMs(event) ?? Date.now(),
     rawJson,
-  }).catch(() => ({ handled: true, reviewPending: true }));
+    // [WORKER-TSC-GREEN-1] `duplicate: false` on the failure path. Without it the
+    // catch produced a second object shape with no `duplicate` key, so the union
+    // of the two results had no such property and the read below did not
+    // typecheck. A reconciliation failure is explicitly NOT a duplicate.
+  }).catch(() => ({ handled: true, reviewPending: true, duplicate: false }));
   if (commercialEvent.handled) {
     if (commercialEvent.reviewPending) return json({ error: "commercial reconciliation pending" }, 503);
     return json({ ok: true, event_type: eventType, duplicate: commercialEvent.duplicate === true });

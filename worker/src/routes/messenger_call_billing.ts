@@ -434,7 +434,7 @@ export async function messengerCallAuthorize(req: Request, env: Env): Promise<Re
     provider: selectedPreview.provider,
     rate_centitokens_per_participant_minute: selectedPreview.rate_centitokens_per_participant_minute,
     price_version: selectedPreview.price_version,
-    consent_id: consentChallenge,
+    consent_id: consentChallenge ?? null, // [WORKER-TSC-GREEN-1] the field is `string | null`; undefined was leaking in
     allowance_day: day,
     status: needsConsent ? "pending_consent" : "authorized",
     reservation_ref: null,

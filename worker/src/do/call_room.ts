@@ -195,6 +195,20 @@ interface MessengerAudioBillingContext extends MessengerCallBillingAuthorization
   media_epoch: number;
   seats: Record<RoomSideTag, { nonce: string; established: boolean; last_heartbeat_ms: number }>;
 }
+/**
+ * [WORKER-TSC-GREEN-1] Integer check that also NARROWS the type.
+ *
+ * `Number.isInteger(x)` returns a plain boolean, so TypeScript keeps treating a
+ * checked property as `number | undefined` afterwards. That is why the guard in
+ * messengerSnapshotFromUnknown validated three fields correctly at runtime and
+ * still failed to typecheck when they were assigned into the returned snapshot.
+ * A type predicate narrows the property reference for the rest of the scope.
+ * Runtime behaviour is unchanged — `Number.isInteger(undefined)` is false either way.
+ */
+function isIntNarrow(value: unknown): value is number {
+  return Number.isInteger(value);
+}
+
 const MESSENGER_MEDIA_HEARTBEAT_MS = 30_000;
 
 /** [CALL-GRACE-MARGIN-1 2026-08-03] (audit H4) 30 s → 45 s.
@@ -1489,8 +1503,11 @@ export class CallRoom {
     const b = raw as Partial<MessengerCallBillingAuthorizationSnapshot>;
     if (b.authorization_id === undefined || typeof b.attempt_id !== "string" || b.attempt_id.length === 0 || b.call_id !== callId || b.payer_uid !== callerUid || b.callee_uid !== calleeUid ||
         b.media !== "audio" || b.quality_sku !== "audio" || b.provider !== "cloudflare" ||
-        !Number.isInteger(b.rate_centitokens_per_participant_minute) || !Number.isInteger(b.price_version) ||
-        !Number.isInteger(b.daily_audio_allowance_participant_seconds) || typeof b.expires_at !== "number") return null;
+        // [WORKER-TSC-GREEN-1] isIntNarrow, not Number.isInteger: the latter
+        // returns a plain boolean and does not narrow, so the three fields stayed
+        // `number | undefined` and the object literal below failed to typecheck.
+        !isIntNarrow(b.rate_centitokens_per_participant_minute) || !isIntNarrow(b.price_version) ||
+        !isIntNarrow(b.daily_audio_allowance_participant_seconds) || typeof b.expires_at !== "number") return null;
     return {
       authorization_id: String(b.authorization_id), call_id: callId, attempt_id: b.attempt_id, payer_uid: callerUid, callee_uid: calleeUid,
       media: "audio", quality_sku: "audio", provider: "cloudflare",
@@ -1585,7 +1602,13 @@ export class CallRoom {
 
   /** Start the new meter only after two authenticated seats are connected. */
   private async ensureHumanCallUsageStarted(session: CallSession, now = Date.now()): Promise<void> {
-    if (session.session_state === "completed" || session.session_state === "handoff" || session.session_state === "ended") return;
+    // [WORKER-TSC-GREEN-1] The `=== "ended"` arm was removed: `session_state` is
+    // never "ended" (its union is creating|ringing|connected|completed|handoff),
+    // so the comparison was statically impossible and tsc rejected it. "ended" is
+    // a LEG state — see caller_leg_state / callee_leg_state — not a session state.
+    // Terminal sessions are already covered by completed/handoff, so behaviour is
+    // unchanged.
+    if (session.session_state === "completed" || session.session_state === "handoff") return;
     const connected = session.session_state === "connected";
     if (!connected) return;
     // A terminal aggregate is never eligible: session.session_state !== "completed"

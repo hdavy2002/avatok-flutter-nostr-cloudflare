@@ -106,6 +106,23 @@ function positiveMs(value: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
 }
 
+/**
+ * [WORKER-TSC-GREEN-1] Integer check that ALSO narrows the type.
+ *
+ * `Number.isInteger(x)` returns a plain boolean, so TypeScript still considers
+ * `b.price_version` to be `number | undefined` on the right-hand side of
+ * `Number.isInteger(b.price_version) && b.price_version >= 1`. The comparison is
+ * correct at runtime but does not typecheck, which is why validSnapshot was
+ * contributing five of the worker's pre-existing tsc errors. A type predicate
+ * narrows the property reference for the rest of the `&&` chain.
+ *
+ * Runtime behaviour is identical — `Number.isInteger` returns false for
+ * `undefined`, so no snapshot that used to validate stops validating.
+ */
+function isInt(value: unknown): value is number {
+  return Number.isInteger(value);
+}
+
 function validSnapshot(input: unknown): input is MessengerCallBillingAuthorizationSnapshot {
   const b = input as Partial<MessengerCallBillingAuthorizationSnapshot> | null;
   // Keep the explicit media guard visible: video and paid audio are Stream;
@@ -116,13 +133,13 @@ function validSnapshot(input: unknown): input is MessengerCallBillingAuthorizati
     b.provider === "stream";
   const audio = b?.media === "audio" && b.quality_sku === "audio" &&
     ((b.provider === "cloudflare" && b.rate_centitokens_per_participant_minute === 0 && (b.reservation_ref === null || b.reservation_ref === undefined)) ||
-      (b.provider === "stream" && Number.isInteger(b.rate_centitokens_per_participant_minute) && b.rate_centitokens_per_participant_minute > 0 && text(b.reservation_ref) !== ""));
+      (b.provider === "stream" && isInt(b.rate_centitokens_per_participant_minute) && b.rate_centitokens_per_participant_minute > 0 && text(b.reservation_ref) !== ""));
   return !!b && (mediaIsVideo || b.media === "audio") && text(b.authorization_id) !== "" && text(b.call_id) !== "" && text(b.attempt_id) !== "" &&
     uid(b.payer_uid) !== "" && uid(b.callee_uid) !== "" && b.payer_uid !== b.callee_uid &&
-    (audio || video) && Number.isInteger(b.rate_centitokens_per_participant_minute) && b.rate_centitokens_per_participant_minute >= 0 &&
+    (audio || video) && isInt(b.rate_centitokens_per_participant_minute) && b.rate_centitokens_per_participant_minute >= 0 &&
     (b.media !== "audio" || (b.provider === "cloudflare" ? (b.rate_centitokens_per_participant_minute === 0 && (b.reservation_ref === null || b.reservation_ref === undefined)) : b.rate_centitokens_per_participant_minute > 0 && text(b.reservation_ref) !== "")) &&
-    Number.isInteger(b.price_version) && b.price_version >= 1 &&
-    Number.isInteger(b.daily_audio_allowance_participant_seconds) && b.daily_audio_allowance_participant_seconds >= 0 &&
+    isInt(b.price_version) && b.price_version >= 1 &&
+    isInt(b.daily_audio_allowance_participant_seconds) && b.daily_audio_allowance_participant_seconds >= 0 &&
     (b.allowance_day === null || b.allowance_day === undefined || /^\d{4}-\d{2}-\d{2}$/.test(b.allowance_day)) &&
     (b.reservation_ref === null || b.reservation_ref === undefined || text(b.reservation_ref) !== "") &&
     Number.isFinite(b.expires_at);
@@ -211,12 +228,16 @@ export class MessengerCallBillingDO {
   }
 
   private readState(): BillingStateRow | null {
-    const row = this.sql.exec("SELECT * FROM billing_state WHERE k=1").toArray()[0] as BillingStateRow | undefined;
+    // [WORKER-TSC-GREEN-1] via `unknown`: DO SQLite rows are typed
+    // `Record<string, SqlStorageValue>`, which has no overlap with the declared
+    // row shape, so the direct cast was a tsc error. The shape is guaranteed by
+    // the SELECT and the table schema, not by the type system.
+    const row = this.sql.exec("SELECT * FROM billing_state WHERE k=1").toArray()[0] as unknown as BillingStateRow | undefined;
     return row ?? null;
   }
 
   private readParticipant(participantUid: string): ParticipantRow | null {
-    const row = this.sql.exec("SELECT uid,present,generation,joined_at_ms,last_event_at_ms FROM billing_participants WHERE uid=?1", participantUid).toArray()[0] as ParticipantRow | undefined;
+    const row = this.sql.exec("SELECT uid,present,generation,joined_at_ms,last_event_at_ms FROM billing_participants WHERE uid=?1", participantUid).toArray()[0] as unknown as ParticipantRow | undefined; // [WORKER-TSC-GREEN-1] see readState
     return row ?? null;
   }
 
@@ -680,7 +701,7 @@ export class MessengerCallBillingDO {
   }
 
   private repairTotalsFromDurableTicks(): void {
-    const totals = this.sql.exec("SELECT COALESCE(SUM((interval_end_ms-interval_start_ms)/1000),0) AS wall_seconds, COALESCE(SUM(participant_seconds),0) AS participant_seconds, COALESCE(SUM(free_participant_seconds),0) AS free_seconds, COALESCE(SUM(paid_participant_seconds),0) AS paid_seconds, COALESCE(SUM(charged_centitoken_seconds),0) AS charged, COALESCE(SUM(tokens_charged),0) AS tokens FROM billing_ticks").one<Record<string, number>>();
+    const totals = this.sql.exec("SELECT COALESCE(SUM((interval_end_ms-interval_start_ms)/1000),0) AS wall_seconds, COALESCE(SUM(participant_seconds),0) AS participant_seconds, COALESCE(SUM(free_participant_seconds),0) AS free_seconds, COALESCE(SUM(paid_participant_seconds),0) AS paid_seconds, COALESCE(SUM(charged_centitoken_seconds),0) AS charged, COALESCE(SUM(tokens_charged),0) AS tokens FROM billing_ticks").one() as unknown as Record<string, number>; // [WORKER-TSC-GREEN-1] SqlStorageCursor.one() takes no type argument in this workers-types version
     this.sql.exec("UPDATE billing_state SET connected_wall_seconds=MAX(connected_wall_seconds,?1), participant_seconds=MAX(participant_seconds,?2), free_participant_seconds=MAX(free_participant_seconds,?3), paid_participant_seconds=MAX(paid_participant_seconds,?4), charged_centitoken_seconds=MAX(charged_centitoken_seconds,?5), tokens_charged=MAX(tokens_charged,?6) WHERE k=1",
       Number(totals?.wall_seconds ?? 0), Number(totals?.participant_seconds ?? 0), Number(totals?.free_seconds ?? 0), Number(totals?.paid_seconds ?? 0), Number(totals?.charged ?? 0), Number(totals?.tokens ?? 0));
   }
@@ -705,7 +726,8 @@ export class MessengerCallBillingDO {
     if (!row) return { ok: false, status: 503, error: "billing state disappeared" };
     try {
       // Retry/replay pending billing_ticks through appendLedger before receipt.
-      const pendingTickCount = Number(this.sql.exec("SELECT COUNT(*) AS count FROM billing_ticks WHERE ledger_status='pending'").one<{ count: number }>()?.count ?? 0);
+      // [WORKER-TSC-GREEN-1] one() takes no type argument in this workers-types version.
+      const pendingTickCount = Number((this.sql.exec("SELECT COUNT(*) AS count FROM billing_ticks WHERE ledger_status='pending'").one() as unknown as { count: number } | undefined)?.count ?? 0);
       if (pendingTickCount > 0) await this.drainPendingTicks(row);
       this.repairTotalsFromDurableTicks();
       row = this.readState();

@@ -198,10 +198,15 @@ export async function avaThreadTurn(req: Request, env: Env, execCtx: ExecutionCo
         }
         if (speaker && activeSession) await touchGroupMediaSession(env, conv, activeSession);
         if (activeSession) {
+          // [WORKER-TSC-GREEN-1] Capture into a const before the closure. The
+          // `if (activeSession)` guard does not survive into the .then() callback
+          // because `activeSession` is reassignable, so TS still saw it as
+          // possibly null at the property access below.
+          const session = activeSession;
           execCtx.waitUntil(emailP.then((email) => trackRouteTurn(env, ctx.uid, email, "ava_group_media_session", {
             ...routeProps, status: 202, duration_ms: Date.now() - t0,
             shared_role: speaker ? "participant" : "initiator",
-            media_kind: activeSession.media_kind ?? "general",
+            media_kind: session.media_kind ?? "general",
           })));
         }
       }

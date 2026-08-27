@@ -130,7 +130,13 @@ export function messengerRateFor(
     };
   }
   if (quality !== "sd" && quality !== "hd" && quality !== "2k" && quality !== "4k") return null;
-  const field: Record<MessengerVideoQuality, keyof MessengerBillingConfig> = {
+  // [WORKER-TSC-GREEN-1] Keyed to MessengerPricingConfig, not the wider
+  // MessengerBillingConfig. `config` is a MessengerPricingConfig (a Pick of five
+  // rate keys), so a `keyof MessengerBillingConfig` index was not provably valid
+  // and resolved to `any`. All four video keys below are in the Pick, so this is
+  // a tightening with no behaviour change — and it now fails loudly if a rate key
+  // is ever removed from the Pick.
+  const field: Record<MessengerVideoQuality, keyof MessengerPricingConfig> = {
     sd: "messengerVideoSdCentitokensPerParticipantMinute",
     hd: "messengerVideoHdCentitokensPerParticipantMinute",
     "2k": "messengerVideo2kCentitokensPerParticipantMinute",

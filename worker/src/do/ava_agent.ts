@@ -2045,7 +2045,10 @@ Return strict JSON only with keys: reply, action (discuss|ready_for_approval|han
             await trackUserContact(this.env, uid, email, phone, "ava_song_flow", "avaai", {
               turn_id: statusId, conv_kind: convKind, private: priv, phase: "duration_fit",
               outcome: "lyrics_fitted_for_approval", duration_seconds: fittedFlow.durationSeconds,
-              original_words: generationFit.wordCount, fitted_words: fitted.fittedWords,
+              // [WORKER-TSC-GREEN-1] The fit result exposes `words`, not
+              // `wordCount` — this property was always undefined, so the
+              // telemetry field silently shipped empty.
+              original_words: generationFit.words, fitted_words: fitted.fittedWords,
             }).catch(() => {});
             return { ok: true, status_id: statusId, lyrics_fitted: true };
           }

@@ -1358,21 +1358,12 @@
     ]
   },
   "WORKER-TSC-GREEN-1": {
-    "description": "Restore green `npx tsc --noEmit` in worker/: remove duplicate OPENROUTER_API_KEY declaration in types.ts and narrow R2Range optional offset/length in ai_media_jobs.ts (two range-response sites). No behavior change intended; range responses now only claim 206 when both bounds exist.",
-    "flags": [],
-    "min_devices_on_build": 1,
-    "shipped": "pending",
+    "description": "npx tsc --noEmit in worker/ was RED at HEAD with 19 errors, unrelated to any feature work. This matters because wrangler builds with esbuild, which strips types WITHOUT checking them - so a deploy succeeds on code that does not compile, exactly the failure CLAUDE.md records for 2026-08-01 (a track() call reached prod with 3 args instead of 5 and the alert it powered would have fired malformed). All 19 fixed: (1) five in do/messenger_call_billing.ts and three in do/call_room.ts where Number.isInteger() validated correctly at runtime but returns a plain boolean and so does not NARROW - replaced with an isInt/isIntNarrow type predicate; (2) two DO SQLite row casts routed through `unknown` (rows are Record<string,SqlStorageValue>, no overlap with the declared row shape); (3) two SqlStorageCursor.one<T>() calls that pass a type argument the installed workers-types does not accept; (4) do/ava_agent.ts read generationFit.wordCount which does not exist - the field is `words`, so that telemetry property had ALWAYS been undefined; (5) do/call_room.ts compared session_state to \"ended\", statically impossible since \"ended\" is a LEG state - dead arm removed, completed/handoff already cover terminal sessions; (6) lib/messenger_call_billing.ts indexed a MessengerPricingConfig with keyof MessengerBillingConfig, silently resolving to any; (7) routes/ava_thread.ts null-narrowing lost inside a .then() closure; (8) routes/messenger_call_billing.ts let undefined leak into a `string | null` field; (9) routes/stream_video_calls.ts emitted an undeclared refusal code (added to the union rather than renamed - it is a client-visible wire value) and read `.duplicate` off a union whose catch branch lacked the key. Only ava_agent's `words` fix changes an observable value; everything else is type-level.",
+    "shipped": "",
     "two_sided": false,
-    "success": [
-      {
-        "event": "call_translation_mint",
-        "property": "ok",
-        "equals": true,
-        "min_events": 0,
-        "where": {},
-        "note": "Type-level fix; success is `npx tsc --noEmit` exiting 0 (verified locally 2026-08-16) and no new 5xx on /api/ai/jobs asset serving."
-      }
-    ]
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Type-level corrections to code paths that already existed, with no new gate, flag or user-visible behaviour. The one observable change is do/ava_agent.ts `original_words`, which was reading a non-existent property and therefore always emitted undefined; it now carries the real word count, so the assertion is simply that the existing ava_song_flow event stops shipping an empty field. Verified instead by the check that actually matters here: npx tsc --noEmit in worker/ exits 0, which is the gate this issue exists to restore."
   },
   "CALL-TELEPHONY-STREAM-1": {
     "description": "telephonyEventStream built a fresh receiveBroadcastStream per access; CallSession and CallTranslationController each subscribed per call, so the second listen replaced the first at the engine (CallSession stopped seeing cellular held/resumed events whenever translation controller existed) and the extra cancel at hangup threw PlatformException 'No active stream to cancel' on both devices after every call. Now one cached shared broadcast stream (same pattern as _mic / CallRecorderNative.events()).",
