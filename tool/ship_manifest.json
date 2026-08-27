@@ -3432,5 +3432,50 @@
         "why": "THE SAFETY ASSERTION, and the one that matters most. Paid consultations and livestreams must STILL RING. This says the Stream ring screen keeps appearing for avatok_consult_1to1 / avatok_livestream while no longer appearing for 'default'. If this event disappears entirely, the gate is eating paid sessions - a money bug - and the fix must be reverted immediately."
       }
     ]
+  },
+  "PIVOT-NUMBER-MASK-1": {
+    "description": "THE highest-severity item in the marketplace-first pivot. worker/src/routes/number.ts shareCardPut leaked every FREE user's REAL phone number: the comment said 'Paid users share their AvaTOK number; free users their real number', which is the exact opposite of the owner's 2026-08-27 decision that the AvaTOK number is the public identity for EVERYONE. Worse than the comment suggested - the server never computed the number at all, it persisted whatever `number` string the CLIENT posted, so a free-tier client baked the raw real number into the durable share_card blob served to anyone who scanned the QR or resolved the ?t= token. Now the server resolves the number itself from users.avatok_number / avatok_number_display for the authenticated account and IGNORES the client field entirely; with no AvaTOK number assigned it fails CLOSED with 409 no_avatok_number rather than falling back to anything real-number-shaped. JSON shape unchanged - same fields, same snake_case names, only the VALUE of `number` changes and `plan` becomes purely informational. Clients: deep_links.dart no longer branches on sharesRealNumber to decide between Contact.number and Contact.phone; ava_number.dart keeps the sharesRealNumber getter (three other call sites in add_by_link_sheet.dart read it) but hard-returns false, which corrects that file without editing it.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "numberFeatureEnabled"
+    ],
+    "success": [
+      {
+        "event": "number_share_card_put",
+        "app": "avatok",
+        "property": "plan",
+        "exists": true,
+        "why": "Share-card writes must CONTINUE after the fix. If they stop, the new fail-closed 409 no_avatok_number path is firing for real users, meaning accounts without an assigned AvaTOK number can no longer share at all - a regression the fix must not cause."
+      }
+    ]
+  },
+  "PIVOT-NUMBER-PRIVACY-1": {
+    "description": "Two further real-number exposure paths closed alongside PIVOT-NUMBER-MASK-1. (1) users.private_number stores RAW phone digits with an opt-in show_private_number flag; routes/api.ts resolved an account from that raw real number (SELECT uid FROM users WHERE show_private_number=1 AND private_number=?1), so anyone who knew or guessed a real number could turn it into an AvaTOK identity. number.ts privateNumberSet now hard-writes show_private_number=0 so no NEW row can become exposable - but that does nothing for rows already flagged 1, so the READ in api.ts was deleted outright, which is what actually closes it for existing rows too. Column and field names kept: they are a shipped wire contract, they are simply never read. (2) assign-own let a user bind ANY well-formatted number unverified (phone OTP has been unrouted since 2026-07-10, returning 410) and GET /api/add?n= then resolved it publicly - so someone could claim a real person's number and be findable by it. Chose to keep the binding but exclude it from public resolution rather than disable the endpoint, because exactly one path depends on it end-to-end (ava_number.dart AvaNumber.assignOwn) and disabling would hard-break that flow with no fallback and no data migration. Implemented via a lazily-migrated users.avatok_number_source column (idempotent ALTER guarded like the existing ensureLastSeenCols pattern): assign() stamps 'generated', assignOwn() stamps 'own', and the anonymous ?n=<digits> lookup treats 'own' exactly like not-found (404). The consent-based ?t=<share_token> path is untouched, since that requires the owner to have deliberately shared the link and is not a digit-guessing vector.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "numberFeatureEnabled"
+    ],
+    "success": [
+      {
+        "event": "number_add_resolve",
+        "app": "avatok",
+        "property": "source",
+        "not_in": [
+          "own"
+        ],
+        "why": "Proves the anonymous digit lookup no longer resolves an unverified self-bound number. A resolve still reporting source='own' means the impersonation vector is open."
+      },
+      {
+        "event": "number_add_resolve",
+        "app": "avatok",
+        "property": "found",
+        "exists": true,
+        "why": "The counterweight: normal generated-number resolution must keep working. If this event disappears entirely, the 'own' exclusion is over-matching and has broken add-by-number for everyone."
+      }
+    ]
   }
 }

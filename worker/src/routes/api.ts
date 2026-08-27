@@ -3193,15 +3193,30 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
     // 10 digits) are BOTH indexed, so "+13022202211", "13022202211" and
     // "3022202211" all resolve via an index lookup — no table scan.
     const suffix = digits.slice(-10);
-    let byNum = await db.prepare(
+    // `const`, not `let`: with the private-number fallback below removed there is
+    // no longer any reassignment.
+    const byNum = await db.prepare(
       "SELECT uid FROM users WHERE avatok_number=?1 OR number_norm=?2 ORDER BY (avatok_number=?1) DESC LIMIT 1",
     ).bind(digits, suffix).first<{ uid: string }>();
-    if (!byNum) {
-      // Opt-in private number (rare) — guarded in case the columns predate migration.
-      try {
-        byNum = await db.prepare("SELECT uid FROM users WHERE show_private_number=1 AND private_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
-      } catch { /* columns may not exist */ }
-    }
+    // [PIVOT-NUMBER-PRIVACY-1] The private-number fallback is REMOVED.
+    //
+    // It used to run `SELECT uid FROM users WHERE show_private_number=1 AND
+    // private_number=?1`, which resolved an account from a RAW REAL phone
+    // number — anyone who knew (or guessed) someone's real number could turn it
+    // into their AvaTOK identity. The marketplace-first pivot (2026-08-27) makes
+    // the AvaTOK number the ONLY public identity: the real number is collected
+    // for signup, stored as sha256(E.164), and shown to nobody.
+    //
+    // `privateNumberSet` in routes/number.ts now hard-writes show_private_number=0
+    // so no NEW row can become exposable, but that alone does not help the rows
+    // already flagged 1 from before the fix. Deleting the read is what actually
+    // closes it, for existing rows as well as new ones. The column and its field
+    // name are left in place — they are a shipped wire contract — they are simply
+    // never read here again.
+    //
+    // Lookup by `avatok_number` / `number_norm` above is unaffected and is the
+    // intended path: `number_norm` is the last 10 digits of the AVATOK number
+    // (migrations/search_number_norm.sql), not of the real one.
     if (byNum) return json({ uid: byNum.uid, profile: profOut(await fetchProf(byNum.uid)) });
   }
   return json({ uid: null }, 404);
