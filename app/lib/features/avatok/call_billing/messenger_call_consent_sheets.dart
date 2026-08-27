@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
@@ -173,7 +174,7 @@ class _VideoQualitySheetState extends State<_VideoQualitySheet> {
           child: Row(
             children: [
               Icon(
-                selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                selected ? PhosphorIcons.radioButton(PhosphorIconsStyle.regular) : PhosphorIcons.circle(PhosphorIconsStyle.regular),
                 color: rate.isAvailable ? AD.primaryBadge : AD.textTertiary,
               ),
               const SizedBox(width: Msg.s3),

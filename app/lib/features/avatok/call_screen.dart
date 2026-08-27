@@ -2293,7 +2293,7 @@ class _CallScreenState extends State<CallScreen> {
                               ),
                             ),
                           ),
-                          icon: const Icon(Icons.receipt_long_outlined),
+                          icon: Icon(PhosphorIcons.receipt(PhosphorIconsStyle.regular)),
                           label: const Text('View call receipt'),
                         ),
                       ] else if (billing != null) ...[
@@ -2311,7 +2311,7 @@ class _CallScreenState extends State<CallScreen> {
                               );
                             }
                           },
-                          icon: const Icon(Icons.refresh),
+                          icon: Icon(PhosphorIcons.arrowClockwise(PhosphorIconsStyle.regular)),
                           label: const Text('Refresh receipt'),
                         ),
                       ],

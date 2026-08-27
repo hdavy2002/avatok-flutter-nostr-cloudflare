@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
@@ -74,7 +75,7 @@ class MessengerCallBillingHud extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            danger ? Icons.account_balance_wallet : Icons.info_outline,
+            danger ? PhosphorIcons.wallet(PhosphorIconsStyle.regular) : PhosphorIcons.info(PhosphorIconsStyle.regular),
             size: 18,
             color: danger ? AD.destructiveInk : AD.textSecondary,
           ),

@@ -3373,5 +3373,13 @@
         "why": "Guards the specific mistake this issue exists to avoid: if anyone disables calling by flipping streamCallsEnabled instead, this failure reason reappears and calls fall through to the broken legacy CallScreen. Its ABSENCE is the proof the correct switch was used."
       }
     ]
+  },
+  "DESIGN-GUARD-ICONS-1": {
+    "description": "tool/check_design_guard.py --check icons was RED at HEAD with 52 bare Material Icons.* across 10 files, against a baseline of 0. The guard only runs on pull_request and this debt landed straight on main, so it never fired. This commit converts only the SIX occurrences in four files that are exclusively this issue's work: the three call_billing screens (billing_hud, consent_sheets, receipt_details) and call_screen.dart, all to PhosphorIcons.<name>(PhosphorIconsStyle.regular). Names were verified against the installed phosphor_flutter 2.1.0 regular set (1512 icons) BEFORE the rewrite rather than guessed - a wrong name is a compile error, and CLAUDE.md records a blind sed producing the non-existent handTokens. The rewrite also breaks const-ness: `const Icon(Icons.x)` becomes `const Icon(PhosphorIcons.x(...))` and a method call cannot appear in a constant expression, so `const` was dropped at the two call_screen sites (const_eval_method_invocation, caught by flutter analyze locally). DELIBERATELY NOT INCLUDED: the remaining 46 occurrences in app/lib/features/virtual_numbers/ (11 files, entirely UNTRACKED) and app/lib/features/avaphone/ava_phone_screen.dart (~724 uncommitted lines). Those belong to another agent's in-flight work in this shared tree; committing them would have published someone else's unfinished feature under this issue id - the exact cross-agent sweeping failure CLAUDE.md documents. The design guard therefore stays RED until that agent lands their work, and the remaining conversions must be done by or with them.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Presentation-only icon-system migration: no code path, no gate, no flag, no new event, and no property that could carry a failure value. Verification is mechanical and was run: flutter analyze reports 0 errors across the four touched files. Note the guard is NOT yet green overall - 46 violations remain in untracked/in-flight files that this issue deliberately does not touch."
   }
 }

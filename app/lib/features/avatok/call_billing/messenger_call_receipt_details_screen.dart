@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/avatok_dark.dart';
 import '../../../core/ui/messenger_theme.dart';
@@ -80,7 +81,7 @@ class MessengerCallReceiptDetailsScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            free ? Icons.check_circle_outline : Icons.account_balance_wallet_outlined,
+            free ? PhosphorIcons.checkCircle(PhosphorIconsStyle.regular) : PhosphorIcons.wallet(PhosphorIconsStyle.regular),
             color: free ? AD.online : AD.primaryBadge,
             size: 28,
           ),
