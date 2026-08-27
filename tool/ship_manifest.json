@@ -3291,5 +3291,31 @@
         "why": "Guards against the new check swallowing the pre-existing device_private hard-reject. device_private must still be reported as its own reason, not collapsed into platform_off."
       }
     ]
+  },
+  "PIVOT-AI-SWITCHES-1": {
+    "description": "Marketplace-first pivot (2026-08-27): two AI surfaces had no remote kill switch, which blocked both the AI-dark decision and the ShellV2/Marketplace landing. (1) 'Discuss this chat with Ava' was gated only by the compile-time const kDiscussWithAvaEnabled (core/feature_flags.dart:84) - disabling it needed a new APK and a store rollout. (2) AskAva (features/askava/askava_screen.dart) had NO flag whatsoever and was dark only as a side effect of shellV2 being false, so flipping shellV2 true for the Marketplace landing would have shipped an AI surface with no brake. Both keys are now declared in the PlatformConfig interface AND DEFAULTS in worker/src/routes/config.ts (booleans, so no numericKeys entry), with client reads at RemoteConfig.discussWithAvaEnabled / RemoteConfig.askAvaEnabled. AskAva is gated at BOTH the engine (shell_v2.dart _askAva, the single choke point every entry point binds to) and the UI (the AvaBrain slot in app_switcher_bar.dart is hidden, mirroring how the Inbox slot already hides behind pstnVoicemail). Both default TRUE on purpose: declaring the switch must be behaviour-neutral; the dark-ing is a separate deliberate prod flip.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "discussWithAvaEnabled",
+      "askAvaEnabled"
+    ],
+    "success": [
+      {
+        "event": "shellv2_askava_refused",
+        "app": "avatok",
+        "property": "flag",
+        "equals": "askAvaEnabled",
+        "why": "The whole point of this issue is that AskAva was UNSWITCHABLE. Proving the flip works means seeing the refusal actually fire with the flag name attached - not merely seeing shellv2_askava_opened stop, which would also be the signature of nobody having tapped it."
+      },
+      {
+        "event": "shellv2_askava_opened",
+        "app": "avatok",
+        "property": "hint",
+        "exists": true,
+        "why": "The inverse assertion. With askAvaEnabled TRUE this must still be PRESENT, proving the gate is a reversible switch and not a one-way kill - the failure mode where a flag ships stuck off and nobody notices because 'the feature is meant to be dark'."
+      }
+    ]
   }
 }

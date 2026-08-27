@@ -39,7 +39,6 @@ import '../../core/composer_ai.dart';
 import '../translation/ondevice_translate.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/brain_consent.dart';
-import '../../core/feature_flags.dart';
 import '../ava_companion/companion_thread.dart';
 import '../avachat/discuss_seed.dart';
 import '../avachat/thread_context.dart';

@@ -124,15 +124,30 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
   // shell/v2/shell_chrome.dart — all three must be kept in sync.
   // Not `const`: PhosphorIcons.x(style) is a function call, not a constant.
   static final Map<RootId, (IconData, IconData, String)> _meta = {
-    RootId.avaDial: (PhosphorIcons.phone(PhosphorIconsStyle.regular), PhosphorIcons.phone(PhosphorIconsStyle.fill), 'Calls'),
-    RootId.avaTalk: (PhosphorIcons.chatCircle(PhosphorIconsStyle.regular), PhosphorIcons.chatCircle(PhosphorIconsStyle.fill), 'AvaTOK'),
-    RootId.services: (PhosphorIcons.storefront(PhosphorIconsStyle.regular), PhosphorIcons.storefront(PhosphorIconsStyle.fill), 'Services'),
+    RootId.avaDial: (
+      PhosphorIcons.phone(PhosphorIconsStyle.regular),
+      PhosphorIcons.phone(PhosphorIconsStyle.fill),
+      'AvaCalls'
+    ),
+    RootId.avaTalk: (
+      PhosphorIcons.chatCircle(PhosphorIconsStyle.regular),
+      PhosphorIcons.chatCircle(PhosphorIconsStyle.fill),
+      'AvaTOK'
+    ),
+    RootId.services: (
+      PhosphorIcons.storefront(PhosphorIconsStyle.regular),
+      PhosphorIcons.storefront(PhosphorIconsStyle.fill),
+      'Services'
+    ),
   };
 
   /// [AFF-NAV-1] Footer display for the AvaAffiliate slot that takes over the
   /// Services position while the affiliate kill switch is ON.
-  static final (IconData, IconData, String) _affiliateMeta =
-      (PhosphorIcons.handshake(PhosphorIconsStyle.regular), PhosphorIcons.handshake(PhosphorIconsStyle.fill), 'Affiliate');
+  static final (IconData, IconData, String) _affiliateMeta = (
+    PhosphorIcons.handshake(PhosphorIconsStyle.regular),
+    PhosphorIcons.handshake(PhosphorIconsStyle.fill),
+    'Affiliate'
+  );
 
   /// [AFF-NAV-1] (owner 2026-08-05) Services is DEFERRED, not deleted: while
   /// `avaAffiliateEnabled` is on, the Services footer slot renders AvaAffiliate
@@ -207,80 +222,93 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             color: _band,
           ),
           child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Semantics(
-              button: true,
-              label: _expanded ? 'Hide app menu' : 'Swipe up to show app menu',
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _setExpanded(!_expanded),
-                onVerticalDragEnd: (details) {
-                  final velocity = details.primaryVelocity ?? 0;
-                  if (velocity < -80) _setExpanded(true);
-                  if (velocity > 80) _setExpanded(false);
-                },
-                child: SizedBox(
-                  height: 40,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // [UI-HEADER-2026] Was a bare Material
-                      // `Icons.keyboard_arrow_*_rounded` pair — the ONLY two
-                      // icon violations the design guard reported under
-                      // `shell/**` (its icons baseline is 0, so they failed the
-                      // check on every PR). Phosphor carets are the app's
-                      // standard and read the same at 18px.
-                      PhosphorIcon(
-                        _expanded
-                            ? PhosphorIcons.caretDown(PhosphorIconsStyle.bold)
-                            : PhosphorIcons.caretUp(PhosphorIconsStyle.bold),
-                        size: 18,
-                        color: _onBand,
-                      ),
-                      const SizedBox(width: Msg.s1),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AD.bubbleOutPlay,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          child: Text(
-                            _expanded ? 'Swipe down' : 'Swipe up',
-                            style: ADText.sectionLabel(c: Colors.white).copyWith(
-                              fontSize: 12,
-                              height: 1.1,
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Semantics(
+                  button: true,
+                  label:
+                      _expanded ? 'Hide app menu' : 'Swipe up to show app menu',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _setExpanded(!_expanded),
+                    onVerticalDragEnd: (details) {
+                      final velocity = details.primaryVelocity ?? 0;
+                      if (velocity < -80) _setExpanded(true);
+                      if (velocity > 80) _setExpanded(false);
+                    },
+                    child: SizedBox(
+                      height: 40,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // [UI-HEADER-2026] Was a bare Material
+                          // `Icons.keyboard_arrow_*_rounded` pair — the ONLY two
+                          // icon violations the design guard reported under
+                          // `shell/**` (its icons baseline is 0, so they failed the
+                          // check on every PR). Phosphor carets are the app's
+                          // standard and read the same at 18px.
+                          PhosphorIcon(
+                            _expanded
+                                ? PhosphorIcons.caretDown(
+                                    PhosphorIconsStyle.bold)
+                                : PhosphorIcons.caretUp(
+                                    PhosphorIconsStyle.bold),
+                            size: 18,
+                            color: _onBand,
+                          ),
+                          const SizedBox(width: Msg.s1),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: AD.bubbleOutPlay,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              child: Text(
+                                _expanded ? 'Swipe down' : 'Swipe up',
+                                style: ADText.sectionLabel(c: Colors.white)
+                                    .copyWith(
+                                  fontSize: 12,
+                                  height: 1.1,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+                if (_expanded)
+                  // Keep the proven full-size cells when open. Only the closed state
+                  // is compact; users never have to target shrunken icons.
+                  SizedBox(
+                    height: 66,
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < widget.order.length; i++) ...[
+                          Expanded(child: _draggableSlot(i)),
+                          if (widget.order[i] == RootId.avaDial &&
+                              RemoteConfig.pstnVoicemail)
+                            Expanded(child: _inboxSlot()),
+                        ],
+                        // [PIVOT-AI-SWITCHES-1] The AvaBrain/AskAva slot follows
+                        // the same pattern the Inbox slot above already uses —
+                        // the affordance is HIDDEN when the feature is off, not
+                        // left visible to fail on tap. AskAva previously had no
+                        // flag at all and was dark only because shellV2 is false;
+                        // the Marketplace landing flips shellV2 true, so without
+                        // this the pivot would expose an unswitchable AI surface.
+                        if (RemoteConfig.askAvaEnabled)
+                          Expanded(child: _avaBrainSlot()),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-            if (_expanded)
-              // Keep the proven full-size cells when open. Only the closed state
-              // is compact; users never have to target shrunken icons.
-              SizedBox(
-                height: 66,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < widget.order.length; i++) ...[
-                      Expanded(child: _draggableSlot(i)),
-                      if (widget.order[i] == RootId.avaDial &&
-                          RemoteConfig.pstnVoicemail)
-                        Expanded(child: _inboxSlot()),
-                    ],
-                    Expanded(child: _avaBrainSlot()),
-                  ],
-                ),
-              ),
-          ],
-        ),
           ),
         ),
       ],
@@ -346,9 +374,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
             scale: isHover ? 1.12 : 1.0,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => _activate(() => affiliate
-                  ? widget.onOpenAffiliate()
-                  : widget.onSelect(root)),
+              onTap: () => _activate(() =>
+                  affiliate ? widget.onOpenAffiliate() : widget.onSelect(root)),
               child: item,
             ),
           ),
@@ -451,7 +478,8 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
       // Active icon sits on the orange pill; inactive sits straight on the bar
       // — both stay one colour (owner request 2026-07-13, pic 5: "not greyed"),
       // now AD.onBand for the indigo band instead of ink.
-      child: iconWidget ?? Icon(selected ? selectedIcon : icon, size: 22, color: _onBand),
+      child: iconWidget ??
+          Icon(selected ? selectedIcon : icon, size: 22, color: _onBand),
     );
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -473,8 +501,7 @@ class _AppSwitcherBarState extends State<AppSwitcherBar> {
                   // fill, now AD.bandIndigo.
                   color: _band,
                   borderRadius: BorderRadius.circular(Msg.rSm),
-                  border: Border.all(
-                      color: const Color(0xFFFF453A), width: 1),
+                  border: Border.all(color: const Color(0xFFFF453A), width: 1),
                 ),
                 child: Text(
                   badge > 99 ? '99+' : '$badge',

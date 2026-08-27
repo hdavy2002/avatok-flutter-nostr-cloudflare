@@ -66,7 +66,12 @@ extension _ChatThreadMenus on _ChatThreadScreenState {
           if (_isTelThread && !_callerSaved)
             _action(ctx, PhosphorIcons.userPlus(PhosphorIconsStyle.bold), 'Save to contacts',
                 () { Navigator.pop(ctx); _saveUnknownContact(source: 'thread_menu'); }),
-          if (kDiscussWithAvaEnabled && _convKey != null)
+          // [PIVOT-AI-SWITCHES-1] RemoteConfig.discussWithAvaEnabled falls back to
+          // kDiscussWithAvaEnabled on a config-fetch failure, so this reads the
+          // server flag first and the compile const only as a safety net. It used
+          // to read the const alone, which meant disabling this AI surface needed
+          // a new APK and a store rollout.
+          if (RemoteConfig.discussWithAvaEnabled && _convKey != null)
             _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Discuss with Ava',
                 _discussWithAva),
           // Phase A (Ava Copilot, D29): per-chat "Ava in this chat" switch —

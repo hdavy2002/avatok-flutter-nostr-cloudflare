@@ -710,6 +710,26 @@ class RemoteConfig {
   /// a network call (see ava_generative/image_tool.dart). Compile-time fallback
   /// [kGenerativeEnabledDefault] only applies on a config-fetch failure.
   static bool get generativeEnabled => _b('generativeEnabled', kGenerativeEnabledDefault);
+  /// [PIVOT-AI-SWITCHES-1] "Discuss this chat with Ava" — the entry point in the
+  /// thread overflow menu (features/avatok/chat_thread/menus.dart). Until
+  /// 2026-08-27 this was gated ONLY by the compile-time const
+  /// [kDiscussWithAvaEnabled], so turning it off needed a new APK and a store
+  /// rollout — there was no KV path at all. The marketplace-first pivot requires
+  /// AI-in-chat to go dark remotely, so it now has a real declared flag.
+  /// Default TRUE deliberately: shipping the switch must not by itself change
+  /// behaviour. The dark-ing is a separate, explicit prod flip.
+  /// The compile const stays as the config-fetch-failure fallback, and the menu
+  /// keeps its existing AvaBrain DM/group consent check at use — this flag is a
+  /// third gate on top, never a replacement for consent.
+  static bool get discussWithAvaEnabled =>
+      _b('discussWithAvaEnabled', kDiscussWithAvaEnabled);
+  /// [PIVOT-AI-SWITCHES-1] AskAva — the standalone Ava surface mounted from
+  /// shell/shell_v2.dart. It had NO flag of any kind and was only accidentally
+  /// dark because `shellV2` is false in prod. That made it a live hazard for the
+  /// pivot: flipping `shellV2` on to put Marketplace on the landing screen would
+  /// have shipped AskAva with no way to turn it off. Default TRUE for the same
+  /// reason as above — the switch itself is behaviour-neutral; the flip is not.
+  static bool get askAvaEnabled => _b('askAvaEnabled', true);
   /// Guardian (scam/grooming/deepfake safety) surfaces + settings section.
   /// Mirrors the compile default [kGuardianEnabledDefault]. When false the
   /// Guardian settings section is not registered and the per-chat shield icon is

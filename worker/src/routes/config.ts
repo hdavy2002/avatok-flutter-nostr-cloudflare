@@ -720,6 +720,15 @@ export interface PlatformConfig {
   guardianEnabled: boolean;          // Guardian safety surfaces (basic free, deep premium)
   companionEnabled: boolean;         // blank "New chat with Ava" + personas
   generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
+  // [PIVOT-AI-SWITCHES-1] Two AI surfaces that had no remote switch at all until
+  // 2026-08-27. "Discuss with Ava" was gated only by the compile-time const
+  // kDiscussWithAvaEnabled (needing an APK + store rollout to disable), and AskAva
+  // had nothing whatsoever — it was dark only as a side effect of shellV2 being
+  // false, so flipping shellV2 on for the Marketplace landing would have shipped
+  // an AI surface with no brake. Both default TRUE so declaring them changes no
+  // behaviour; the marketplace-first pivot flips them in KV as a separate step.
+  discussWithAvaEnabled: boolean;    // thread menu → "Discuss this chat with Ava"
+  askAvaEnabled: boolean;            // standalone AskAva surface (ShellV2)
   imageDailyCap: number;             // per-USER/day image-gen fair-use backstop (ALL tiers, incl. unlimited)
   // Dedicated gate for the durable derived-media API. It remains dark until a
   // real queue is provisioned and at least one kind handler is implemented.
@@ -1771,6 +1780,8 @@ const DEFAULTS: PlatformConfig = {
   guardianEnabled: true,           // safety shield — free, trust driver
   companionEnabled: true,          // basic free Ava chat
   generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden
+  discussWithAvaEnabled: true,     // [PIVOT-AI-SWITCHES-1] matches today's compile-const behaviour; the pivot flips it in KV
+  askAvaEnabled: true,             // [PIVOT-AI-SWITCHES-1] behaviour-neutral today (shellV2 is false); MUST be flipped false before shellV2 goes true
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   aiMediaJobsEnabled: false,       // five media handlers are intentionally dark until individually production-ready
   voiceNoteEncryptionEnabled: false, // [AVA-MEDIA-JOB-2] MVP: voice notes are server-readable, not E2E (owner decision 2026-07-25)

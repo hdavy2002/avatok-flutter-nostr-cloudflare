@@ -166,6 +166,7 @@ class ShellV2 extends StatefulWidget {
       case 'services':
       case 'marketplace':
       case 'listing':
+      case 'commercial_session':
       case 'wallet':
       case 'payout':
         return RootId.services;
@@ -602,6 +603,19 @@ class _ShellV2State extends State<ShellV2> {
   }
 
   void _askAva([String hint = 'root']) {
+    // [PIVOT-AI-SWITCHES-1] Engine gate. Every AskAva entry point routes through
+    // here (ShellScope.askAva and AppSwitcherBar.onAskAva both bind to it), so
+    // this one check closes the surface even if a caller is added later that
+    // forgets to consult the flag. The bar slot is hidden separately — hiding
+    // alone is not enough, because a stale route or a deep link can still call
+    // in. Refusing emits its own event so a flip can be VERIFIED in PostHog
+    // rather than assumed from the absence of shellv2_askava_opened.
+    if (!RemoteConfig.askAvaEnabled) {
+      Analytics.capture('shellv2_askava_refused', {
+        'root': _root.key, 'hint': hint, 'flag': 'askAvaEnabled',
+      });
+      return;
+    }
     Analytics.capture('shellv2_askava_opened', {'root': _root.key, 'hint': hint});
     // Reflect the open overlay in the footer: move the active indicator to the
     // "Ava" icon (and off the current root) while Ask Ava is showing.
@@ -703,18 +717,25 @@ class _ShellV2State extends State<ShellV2> {
               // `AppSwitcherBar` (see the note there). Pinned to the bottom of
               // the BODY, whose bottom edge is exactly the top edge of the
               // bottomNavigationBar — so it stays flush with the bar even when
-              // the app menu expands, and its transparent half now reveals the
-              // scrolling content instead of a dead strip of Scaffold cream.
+              // the app menu expands.
               //
-              // `IgnorePointer` matters here: this sits over the last ~36px of
+              // [UI-PILL-FOOTER-2026] Owner: every screen drops the flipped
+              // Double wave for the 2D Pill morse strip (patches.md §6 seam
+              // 2D) — dash-dot pills in the three accents on paper, closed by
+              // the hard 3px ink rule that is the flat edge onto the indigo
+              // switcher bar. Headers keep their wave; only footers changed.
+              // The strip is OPAQUE where the wave was half-transparent, which
+              // is the intended look: content scrolls behind the paper band
+              // rather than through scallops.
+              //
+              // `IgnorePointer` matters here: this sits over the last ~30px of
               // every screen in the app, including a chat list's newest row and
               // any FAB parked in that corner.
-              const Positioned(
-                left: 0, right: 0, bottom: 0,
-                child: IgnorePointer(
-                  child: DoubleWaveSeam(bandColor: AD.bandIndigo, flip: true),
+              if (!_askAvaOpen)
+                const Positioned(
+                  left: 0, right: 0, bottom: 0,
+                  child: IgnorePointer(child: PillMorseFooter()),
                 ),
-              ),
             ],
           ),
           // The app switcher is rendered ONCE here, at the shell level — so the
