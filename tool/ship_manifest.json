@@ -3477,5 +3477,62 @@
         "why": "The counterweight: normal generated-number resolution must keep working. If this event disappears entirely, the 'own' exclusion is over-matching and has broken add-by-number for everyone."
       }
     ]
+  },
+  "PIVOT-PAID-NUMBER-1": {
+    "description": "Paid vanity/short AvaTOK numbers bought with TOKENS (1 token = INR 1). Built into avatok_numbers/number.ts, NOT virtual_lines: number.ts does not check virtual_lines, so building there could issue the same number twice the moment virtualNumberFreeEnabled is flipped on. New number flag avatokVanityNumberTokens declared in all THREE required places in config.ts (PlatformConfig interface, DEFAULTS, and numericKeys - a number key missing from numericKeys is un-settable via the API, the same failure class as a fake flag). Default 0 = NOT FOR SALE and the path fails closed with 503 vanity_purchase_disabled; 0 is never treated as free. New purchaseVanity() copies virtualDidPurchase verbatim: stable opId `avatok_vanity:<uid>:<canonical>`, chargeAmount, 402 insufficient_balance, and refund via walletOp credit under a DISTINCT `<opId>:refund` id. It IMPROVES on the template at the charge-succeeded-then-D1-write-failed window: virtualDidPurchase returns ownership_record_failed and leaves the money taken for manual reconciliation, which is only defensible because it has an external provider call to reconcile against; these numbers are pure-virtual and non-PSTN, so there is nothing to reconcile and purchaseVanity refunds immediately instead. Requires an active reservation held by the same uid, reusing the existing number_reservations TTL hold. The route was wired into index.ts as part of this issue - the agent that wrote purchaseVanity could not touch index.ts, leaving it unreachable dead code, the endpoint equivalent of a fake flag. Client: price shown as INR, insufficient_balance points at the web, and NO in-app top-up anywhere, because the app is read-only for money under this pivot.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "avatokVanityNumberTokens",
+      "numberFeatureEnabled"
+    ],
+    "success": [
+      {
+        "event": "number_vanity_purchase",
+        "app": "avatok",
+        "property": "result",
+        "not_in": [
+          "ownership_record_failed"
+        ],
+        "why": "THE MONEY ASSERTION. This value appearing means a user was charged and did not get a number. It is the failure the template tolerates and this implementation refunds, so it must never be observed."
+      },
+      {
+        "event": "number_vanity_purchase",
+        "app": "avatok",
+        "property": "price_tokens",
+        "gt": 0,
+        "why": "Guards the fail-closed default. A purchase recorded at 0 tokens means avatokVanityNumberTokens was unset and the 503 guard was bypassed - i.e. paid numbers being given away free."
+      }
+    ]
+  },
+  "PIVOT-MKT-LANDING-1": {
+    "description": "Code half of making Marketplace the default landing screen. RootId.services is now FIRST in RootOrderPrefs.defaultOrder (root_order_store.dart) AND in the synchronous placeholder _root in shell_v2.dart - both were required; changing only one leaves a landing-race frame that briefly shows AvaTOK before the async load flips it. The persisted key was version-bumped shellv2_root_order_v1 -> _v2, WITHOUT WHICH THIS CHANGE IS INVISIBLE to every existing user: they have a stored order and would keep it forever. Verified the key goes through readScoped/scopedKey per-account helpers (mandatory in this codebase - one phone is shared by a parent and each child account) and that no other file referenced the old key. The three duplicated RootId->(icon,label) maps in app_switcher_bar.dart, app_order_screen.dart and shell_chrome.dart did NOT need edits: they are keyed lookups, not ordered lists. RootId.avaDial (AvaCalls) was deliberately left in place, now last - with Messenger calling killed it becomes an empty dialer, but its fate is an open question for the owner. NOT DONE and NOT SAFE YET: this ships behaviour-neutral because shellV2 defaults false. Flipping it is a whole-shell swap that has NEVER shipped to production, and it also requires marketplaceEnabled=true and avaAffiliateEnabled=false (or Affiliate hijacks the Services slot). Those are production KV flips for the owner, gated on a soak.",
+    "shipped": "",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "shellV2",
+      "marketplaceEnabled",
+      "avaAffiliateEnabled"
+    ],
+    "success": [
+      {
+        "event": "shellv2_root_switch",
+        "app": "avatok",
+        "property": "root",
+        "exists": true,
+        "why": "ShellV2 has never run in production, so the first thing to verify is that its roots mount and switch at all - before any claim about WHICH root leads."
+      },
+      {
+        "event": "shellv2_root_switch",
+        "app": "avatok",
+        "property": "from_root",
+        "not_in": [
+          "avatalk"
+        ],
+        "why": "Catches the version-bump failing. If users still land on AvaTOK and switch away from it, the persisted shellv2_root_order key was not actually reset and the old saved order is still winning - the exact way this change becomes invisible while looking shipped."
+      }
+    ]
   }
 }

@@ -180,7 +180,12 @@ class ShellV2 extends StatefulWidget {
 }
 
 class _ShellV2State extends State<ShellV2> {
-  RootId _root = RootId.avaTalk;
+  // [PIVOT-MKT-LANDING-1] Synchronous placeholder before `_initRootState`
+  // resolves `RootOrderPrefs.load()` and sets `_root = order.first`. Kept in
+  // sync with `RootOrderPrefs.defaultOrder`'s new first entry (Services /
+  // Marketplace) so there is no landing-race frame that briefly shows AvaTOK
+  // before the async load flips it — see `_initRootState` below.
+  RootId _root = RootId.services;
 
   // True while the universal Ask Ava overlay is on screen. Ask Ava is a GLOBAL
   // action pushed onto the active root's navigator (not a root), so `_root` never

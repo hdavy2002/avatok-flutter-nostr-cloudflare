@@ -23,19 +23,26 @@ import '../shell_v2.dart';
 class RootOrderPrefs {
   RootOrderPrefs._();
 
-  static const _key = 'shellv2_root_order_v1';
+  // [PIVOT-MKT-LANDING-1] Bumped v1 -> v2: the default order below changed
+  // (Marketplace now leads), and a stored v1 order must NOT silently carry
+  // forward — otherwise every existing user keeps their old AvaTalk-first
+  // order and never sees Marketplace as the landing screen. `load()` falls
+  // back to `defaultOrder` for anyone with no v2 value yet, which is exactly
+  // everyone pre-pivot.
+  static const _key = 'shellv2_root_order_v2';
   static const _hintKey = 'shellv2_root_reorder_hint_seen_v1';
   static const _ss = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  /// Default order (owner decision 2026-07-12): AvaTalk (AvaTOK), AvaDial (Calls),
-  /// Services (Marketplace). AvaTOK is the default landing app but need NOT stay
-  /// first — a user can drag any root to the front.
+  /// Default order ([PIVOT-MKT-LANDING-1] owner decision 2026-08-27 —
+  /// marketplace-first pivot): Services (Marketplace) now leads, then AvaTalk
+  /// (AvaTOK), then AvaDial (Calls). Marketplace is the default landing app but
+  /// need NOT stay first — a user can drag any root to the front.
   static const List<RootId> defaultOrder = [
+    RootId.services,
     RootId.avaTalk,
     RootId.avaDial,
-    RootId.services,
   ];
 
   /// Bumps whenever the order changes so any listening surface repaints.
